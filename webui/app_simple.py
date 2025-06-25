@@ -390,6 +390,46 @@ async def get_job(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
     return JobStatus(**job)
 
+@app.delete("/api/jobs/{job_id}")
+async def delete_job(job_id: str):
+    """Delete a job and its associated collection"""
+    job = load_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    try:
+        # Delete Qdrant collection
+        collection_name = f"job_{job_id}"
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"http://{QDRANT_HOST}:{QDRANT_PORT}/collections/{collection_name}",
+                timeout=30.0
+            )
+            # It's OK if collection doesn't exist
+            if response.status_code not in [200, 404]:
+                response.raise_for_status()
+        
+        # Delete job file
+        job_file = os.path.join(JOBS_DIR, f"{job_id}.json")
+        if os.path.exists(job_file):
+            os.remove(job_file)
+        
+        # Delete associated parquet files
+        parquet_files = glob.glob(os.path.join(OUTPUT_DIR, f"*{job_id}*.parquet"))
+        for pf in parquet_files:
+            try:
+                os.remove(pf)
+            except:
+                pass
+        
+        logger.info(f"Deleted job {job_id} and associated data")
+        
+        return {"status": "deleted", "job_id": job_id}
+        
+    except Exception as e:
+        logger.error(f"Failed to delete job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/search")
 async def search(request: SearchRequest):
     """Search for similar documents"""
