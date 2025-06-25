@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Document Embedding hourly
+Requires=embed.service
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

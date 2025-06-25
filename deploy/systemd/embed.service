@@ -1,0 +1,17 @@
+[Unit]
+Description=Document Embedding Service
+After=extract.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /root/document-embedding-project/vecpipe/embed_chunks_simple.py \
+    --input /opt/vecpipe/extract \
+    --output /var/embeddings/ingest
+User=root
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=7200
+Environment="CUDA_VISIBLE_DEVICES=0"
+
+[Install]
+WantedBy=multi-user.target

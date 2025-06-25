@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Document Extraction hourly
+Requires=extract.service
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

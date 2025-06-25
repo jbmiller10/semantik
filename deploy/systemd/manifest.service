@@ -1,0 +1,14 @@
+[Unit]
+Description=Document Manifest Generation Service
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/root/document-embedding-project/scripts/build_manifest.sh
+User=root
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

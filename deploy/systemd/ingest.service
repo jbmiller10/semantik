@@ -1,0 +1,17 @@
+[Unit]
+Description=Qdrant Ingestion Service
+After=embed.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /root/document-embedding-project/vecpipe/ingest_qdrant.py \
+    --input /var/embeddings/ingest \
+    --loaded /var/embeddings/loaded \
+    --rejects /var/embeddings/rejects
+User=root
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=multi-user.target

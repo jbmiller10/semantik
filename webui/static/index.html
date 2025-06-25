@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Embedding System</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .progress-bar { transition: width 0.3s ease; }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold mb-8 text-gray-800">
+            <i class="fas fa-database mr-2"></i>Document Embedding System
+        </h1>
+
+        <!-- Tabs -->
+        <div class="mb-8">
+            <div class="flex border-b">
+                <button class="tab-button px-6 py-3 font-semibold text-gray-700 hover:text-blue-600 border-b-2 border-transparent hover:border-blue-600 transition-colors" 
+                        onclick="switchTab('create')" data-tab="create">
+                    <i class="fas fa-plus-circle mr-2"></i>Create Embeddings
+                </button>
+                <button class="tab-button px-6 py-3 font-semibold text-gray-700 hover:text-blue-600 border-b-2 border-transparent hover:border-blue-600 transition-colors" 
+                        onclick="switchTab('jobs')" data-tab="jobs">
+                    <i class="fas fa-tasks mr-2"></i>Jobs
+                </button>
+                <button class="tab-button px-6 py-3 font-semibold text-gray-700 hover:text-blue-600 border-b-2 border-transparent hover:border-blue-600 transition-colors" 
+                        onclick="switchTab('search')" data-tab="search">
+                    <i class="fas fa-search mr-2"></i>Search
+                </button>
+            </div>
+        </div>
+
+        <!-- Create Embeddings Tab -->
+        <div id="create-tab" class="tab-content active">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-2xl font-semibold mb-6">Create New Embedding Job</h2>
+                
+                <form id="create-job-form" class="space-y-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Job Name</label>
+                        <input type="text" id="job-name" required
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="My Document Collection">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                        <textarea id="job-description"
+                                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  rows="3" placeholder="Optional description"></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Directory Path</label>
+                        <div class="flex space-x-2">
+                            <input type="text" id="directory-path" required
+                                   class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   placeholder="/path/to/documents">
+                            <button type="button" onclick="scanDirectory()"
+                                    class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors">
+                                <i class="fas fa-folder-open mr-2"></i>Scan
+                            </button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            HuggingFace Model
+                            <span id="device-info" class="ml-2 text-xs text-gray-500"></span>
+                        </label>
+                        <select id="model-name"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <!-- Models will be loaded dynamically -->
+                        </select>
+                        <input type="text" id="custom-model" style="display:none"
+                               class="mt-2 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="Enter custom model name">
+                        <p id="model-description" class="mt-1 text-sm text-gray-600"></p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Chunk Size (tokens)</label>
+                            <input type="number" id="chunk-size" value="600" min="100" max="2000"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Chunk Overlap (tokens)</label>
+                            <input type="number" id="chunk-overlap" value="200" min="0" max="500"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+
+                    <!-- File scan results -->
+                    <div id="scan-results" class="hidden">
+                        <h3 class="text-lg font-medium mb-2">Scan Results</h3>
+                        <div id="scan-summary" class="p-4 bg-blue-50 rounded-md mb-4"></div>
+                        <div id="file-list" class="max-h-64 overflow-y-auto border border-gray-300 rounded-md p-2"></div>
+                    </div>
+
+                    <div class="flex justify-end space-x-4">
+                        <button type="button" onclick="resetForm()"
+                                class="px-6 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors">
+                            Reset
+                        </button>
+                        <button type="submit"
+                                class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
+                                id="create-job-btn">
+                            <i class="fas fa-play mr-2"></i>Create Job
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Jobs Tab -->
+        <div id="jobs-tab" class="tab-content">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-semibold">Embedding Jobs</h2>
+                    <button onclick="refreshJobs()"
+                            class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors">
+                        <i class="fas fa-sync-alt mr-2"></i>Refresh
+                    </button>
+                </div>
+                
+                <div id="jobs-list" class="space-y-4">
+                    <!-- Jobs will be loaded here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Search Tab -->
+        <div id="search-tab" class="tab-content">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-2xl font-semibold mb-6">Search Documents</h2>
+                
+                <form id="search-form" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Search Query</label>
+                        <input type="text" id="search-query" required
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="Enter your search query...">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Collection</label>
+                            <select id="search-collection"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="">Default Collection</option>
+                                <!-- Job collections will be loaded here -->
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Results</label>
+                            <input type="number" id="search-k" value="10" min="1" max="100"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+
+                    <button type="submit"
+                            class="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
+                        <i class="fas fa-search mr-2"></i>Search
+                    </button>
+                </form>
+
+                <div id="search-results" class="mt-8 hidden">
+                    <h3 class="text-lg font-medium mb-4">Search Results</h3>
+                    <div id="results-container" class="space-y-4">
+                        <!-- Results will be displayed here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Job Progress Modal -->
+    <div id="progress-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-lg p-6 max-w-lg w-full">
+            <h3 class="text-xl font-semibold mb-4">Job Progress</h3>
+            <div id="progress-info" class="space-y-4">
+                <!-- Progress details will be shown here -->
+            </div>
+            <button onclick="closeProgressModal()"
+                    class="mt-6 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

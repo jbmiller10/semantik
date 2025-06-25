@@ -1,0 +1,17 @@
+[Unit]
+Description=Document Search API Service
+After=network.target
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/python3 /root/document-embedding-project/vecpipe/search_api.py
+User=root
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Environment="QDRANT_HOST=192.168.1.173"
+Environment="QDRANT_PORT=6333"
+
+[Install]
+WantedBy=multi-user.target

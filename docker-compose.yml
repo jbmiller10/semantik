@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  webui:
+    build:
+      context: .
+      dockerfile: Dockerfile.webui
+    container_name: document-embedding-webui
+    ports:
+      - "8080:8080"
+    environment:
+      - QDRANT_HOST=192.168.1.173
+      - QDRANT_PORT=6333
+      - CUDA_VISIBLE_DEVICES=0  # For GPU support
+    volumes:
+      # Mount document directories (read-only)
+      - /mnt/zfs/docs:/mnt/docs:ro
+      # Mount working directories
+      - /var/embeddings:/var/embeddings
+      - /opt/vecpipe:/opt/vecpipe
+      # Optional: Mount cache for HuggingFace models
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - embedding-network
+
+  # Optional: Local Qdrant instance for testing
+  # qdrant:
+  #   image: qdrant/qdrant:v1.8.0
+  #   container_name: qdrant-local
+  #   ports:
+  #     - "6333:6333"
+  #   volumes:
+  #     - ./qdrant_data:/qdrant/storage
+  #   networks:
+  #     - embedding-network
+
+networks:
+  embedding-network:
+    driver: bridge

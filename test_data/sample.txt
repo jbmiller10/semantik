@@ -1,0 +1,9 @@
+This is a sample document for testing the extraction and chunking pipeline.
+
+The document contains multiple paragraphs with various content. Each paragraph should be properly extracted and chunked according to our specifications.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+
+This is another paragraph that contains important information. The chunking algorithm should handle overlapping segments properly to maintain context between chunks. This ensures that no important information is lost at chunk boundaries.
+
+Final paragraph with concluding remarks. The extraction system should handle various file formats including PDF, DOCX, and plain text files.
