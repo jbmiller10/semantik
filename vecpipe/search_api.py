@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
 QDRANT_HOST = os.getenv("QDRANT_HOST", "192.168.1.173")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 COLLECTION_NAME = "work_docs"
-VECTOR_DIM = 1024
 DEFAULT_K = 10
 
 # Response models
@@ -69,8 +68,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-def generate_mock_embedding(text: str) -> List[float]:
+def generate_mock_embedding(text: str, vector_dim: int = None) -> List[float]:
     """Generate mock embedding for testing (same as in embed_chunks_simple.py)"""
+    # If vector_dim not specified, try to get from collection info
+    if vector_dim is None:
+        vector_dim = 1024  # Default fallback
+    
     # Generate deterministic "embedding" from text hash
     hash_bytes = hashlib.sha256(text.encode()).digest()
     values = []
@@ -81,16 +84,19 @@ def generate_mock_embedding(text: str) -> List[float]:
             val = int.from_bytes(chunk, byteorder='big') / (2**32)
             values.append(val * 2 - 1)
     
-    # Pad or truncate to VECTOR_DIM
-    if len(values) < VECTOR_DIM:
-        values.extend([0.0] * (VECTOR_DIM - len(values)))
+    # Pad or truncate to vector_dim
+    if len(values) < vector_dim:
+        values.extend([0.0] * (vector_dim - len(values)))
     else:
-        values = values[:VECTOR_DIM]
+        values = values[:vector_dim]
     
-    # Normalize
+    # Normalize to unit length for proper cosine similarity
     norm = sum(v**2 for v in values) ** 0.5
     if norm > 0:
         values = [v / norm for v in values]
+    else:
+        # Handle edge case of all zeros
+        values[0] = 1.0  # Set first element to 1 to ensure unit vector
     
     return values
 
@@ -124,9 +130,20 @@ async def search(
     - **k**: Number of results to return (1-100, default 10)
     """
     try:
+        # Get collection info to determine vector dimension
+        vector_dim = 1024  # default
+        try:
+            response = await qdrant_client.get(f"/collections/{COLLECTION_NAME}")
+            response.raise_for_status()
+            collection_info = response.json()['result']
+            if 'config' in collection_info and 'params' in collection_info['config']:
+                vector_dim = collection_info['config']['params']['vectors']['size']
+        except Exception as e:
+            logger.warning(f"Could not get collection info, using default dimension: {e}")
+        
         # Generate query embedding
-        logger.info(f"Processing search query: '{q}' (k={k})")
-        query_vector = generate_mock_embedding(q)
+        logger.info(f"Processing search query: '{q}' (k={k}, vector_dim={vector_dim})")
+        query_vector = generate_mock_embedding(q, vector_dim)
         
         # Search in Qdrant
         search_request = {

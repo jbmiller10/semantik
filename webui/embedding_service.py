@@ -140,6 +140,20 @@ embedding_service = EmbeddingService()
 
 # Popular models with their dimensions
 POPULAR_MODELS = {
+    # Qwen3 Embedding Models
+    "Qwen/Qwen3-Embedding-0.6B": {
+        "dim": 1024,
+        "description": "Qwen3 small model, instruction-aware (1024d)"
+    },
+    "Qwen/Qwen3-Embedding-4B": {
+        "dim": 2560,
+        "description": "Qwen3 medium model, MTEB top performer (2560d)"
+    },
+    "Qwen/Qwen3-Embedding-8B": {
+        "dim": 4096,
+        "description": "Qwen3 large model, MTEB #1 (4096d)"
+    },
+    # BGE Models
     "BAAI/bge-large-en-v1.5": {
         "dim": 1024,
         "description": "High-quality general purpose embeddings (1024d)"

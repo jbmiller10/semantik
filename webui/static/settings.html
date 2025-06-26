@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Document Embedding System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-gray-50">
+    <nav class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex">
+                    <div class="flex-shrink-0 flex items-center">
+                        <h1 class="text-xl font-semibold">Document Embedding System</h1>
+                    </div>
+                    <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+                        <a href="/" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            Home
+                        </a>
+                        <a href="/settings" class="border-indigo-500 text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            Settings
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div class="px-4 py-6 sm:px-0">
+            <h2 class="text-2xl font-bold mb-6">System Settings</h2>
+            
+            <!-- Database Statistics -->
+            <div class="bg-white shadow rounded-lg p-6 mb-6">
+                <h3 class="text-lg font-semibold mb-4">Database Statistics</h3>
+                <div id="stats-loading" class="text-gray-500">Loading statistics...</div>
+                <div id="stats-content" class="hidden">
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div class="bg-gray-50 p-4 rounded">
+                            <div class="text-sm text-gray-600">Total Jobs</div>
+                            <div class="text-2xl font-semibold" id="job-count">-</div>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded">
+                            <div class="text-sm text-gray-600">Total Files</div>
+                            <div class="text-2xl font-semibold" id="file-count">-</div>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded">
+                            <div class="text-sm text-gray-600">Database Size</div>
+                            <div class="text-2xl font-semibold" id="db-size">-</div>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded">
+                            <div class="text-sm text-gray-600">Parquet Files</div>
+                            <div class="text-2xl font-semibold" id="parquet-count">-</div>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded">
+                            <div class="text-sm text-gray-600">Parquet Size</div>
+                            <div class="text-2xl font-semibold" id="parquet-size">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Danger Zone -->
+            <div class="bg-white shadow rounded-lg p-6 border-2 border-red-200">
+                <h3 class="text-lg font-semibold mb-4 text-red-600">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>Danger Zone
+                </h3>
+                
+                <div class="space-y-4">
+                    <div>
+                        <h4 class="font-medium mb-2">Reset Database</h4>
+                        <p class="text-sm text-gray-600 mb-3">
+                            This will delete all jobs, files, and associated data from the database. 
+                            All Qdrant collections and parquet files will also be removed. This action cannot be undone.
+                        </p>
+                        <button id="reset-btn" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">
+                            <i class="fas fa-trash-alt mr-2"></i>Reset Database
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Confirmation Modal -->
+    <div id="confirmation-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3 text-center">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                    <i class="fas fa-exclamation-triangle text-red-600"></i>
+                </div>
+                <h3 class="text-lg leading-6 font-medium text-gray-900 mt-4">Confirm Database Reset</h3>
+                <div class="mt-2 px-7 py-3">
+                    <p class="text-sm text-gray-500">
+                        Are you sure you want to reset the database? This will permanently delete all jobs, files, and embeddings.
+                    </p>
+                    <p class="text-sm text-red-600 font-semibold mt-2">
+                        Type "RESET" to confirm:
+                    </p>
+                    <input type="text" id="confirm-input" class="mt-2 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500" placeholder="Type RESET">
+                </div>
+                <div class="items-center px-4 py-3">
+                    <button id="confirm-reset" class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        Reset Database
+                    </button>
+                    <button id="cancel-reset" class="mt-3 px-4 py-2 bg-gray-100 text-gray-700 text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Load statistics
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/settings/stats');
+                const data = await response.json();
+                
+                document.getElementById('job-count').textContent = data.job_count;
+                document.getElementById('file-count').textContent = data.file_count;
+                document.getElementById('db-size').textContent = `${data.database_size_mb} MB`;
+                document.getElementById('parquet-count').textContent = data.parquet_files_count;
+                document.getElementById('parquet-size').textContent = `${data.parquet_size_mb} MB`;
+                
+                document.getElementById('stats-loading').classList.add('hidden');
+                document.getElementById('stats-content').classList.remove('hidden');
+            } catch (error) {
+                console.error('Failed to load statistics:', error);
+                document.getElementById('stats-loading').textContent = 'Failed to load statistics';
+            }
+        }
+
+        // Reset database functionality
+        const resetBtn = document.getElementById('reset-btn');
+        const modal = document.getElementById('confirmation-modal');
+        const confirmInput = document.getElementById('confirm-input');
+        const confirmBtn = document.getElementById('confirm-reset');
+        const cancelBtn = document.getElementById('cancel-reset');
+
+        resetBtn.addEventListener('click', () => {
+            modal.classList.remove('hidden');
+            confirmInput.value = '';
+            confirmBtn.disabled = true;
+        });
+
+        cancelBtn.addEventListener('click', () => {
+            modal.classList.add('hidden');
+        });
+
+        confirmInput.addEventListener('input', (e) => {
+            confirmBtn.disabled = e.target.value !== 'RESET';
+        });
+
+        confirmBtn.addEventListener('click', async () => {
+            if (confirmInput.value !== 'RESET') return;
+            
+            confirmBtn.disabled = true;
+            confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Resetting...';
+            
+            try {
+                const response = await fetch('/api/settings/reset-database', {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    alert('Database reset successfully!');
+                    modal.classList.add('hidden');
+                    loadStats(); // Reload statistics
+                } else {
+                    const error = await response.json();
+                    alert(`Failed to reset database: ${error.detail}`);
+                }
+            } catch (error) {
+                console.error('Reset failed:', error);
+                alert('Failed to reset database. Check console for details.');
+            } finally {
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = 'Reset Database';
+            }
+        });
+
+        // Load stats on page load
+        loadStats();
+    </script>
+</body>
+</html>

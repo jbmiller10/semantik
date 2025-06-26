@@ -28,13 +28,12 @@ logger = logging.getLogger(__name__)
 
 # Constants
 MODEL_NAME = "BAAI/bge-large-en-v1.5"
-VECTOR_DIM = 1024
 INPUT_DIR = "/opt/vecpipe/extract"
 OUTPUT_DIR = "/var/embeddings/ingest"
 BATCH_SIZE = 8  # Small batch for testing
 
 # Mock embedding function for testing
-def generate_mock_embeddings(texts: List[str]) -> List[List[float]]:
+def generate_mock_embeddings(texts: List[str], vector_dim: int = 1024) -> List[List[float]]:
     """Generate mock embeddings for testing without GPU"""
     import hashlib
     embeddings = []
@@ -51,16 +50,19 @@ def generate_mock_embeddings(texts: List[str]) -> List[List[float]]:
                 val = int.from_bytes(chunk, byteorder='big') / (2**32)
                 values.append(val * 2 - 1)  # Scale to [-1, 1]
         
-        # Pad or truncate to VECTOR_DIM
-        if len(values) < VECTOR_DIM:
-            values.extend([0.0] * (VECTOR_DIM - len(values)))
+        # Pad or truncate to vector_dim
+        if len(values) < vector_dim:
+            values.extend([0.0] * (vector_dim - len(values)))
         else:
-            values = values[:VECTOR_DIM]
+            values = values[:vector_dim]
         
-        # Normalize
+        # Normalize to unit length for proper cosine similarity
         norm = sum(v**2 for v in values) ** 0.5
         if norm > 0:
             values = [v / norm for v in values]
+        else:
+            # Handle edge case of all zeros
+            values[0] = 1.0  # Set first element to 1 to ensure unit vector
         
         embeddings.append(values)
     

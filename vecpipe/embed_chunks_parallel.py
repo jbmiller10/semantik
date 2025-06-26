@@ -37,7 +37,6 @@ logger = logging.getLogger(__name__)
 MODEL_NAME = "BAAI/bge-large-en-v1.5"
 BATCH_SIZE = 96
 MIN_BATCH_SIZE = 4
-VECTOR_DIM = 1024
 INPUT_DIR = "/opt/vecpipe/extract"
 OUTPUT_DIR = "/var/embeddings/ingest"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -59,10 +58,13 @@ class ParallelEmbeddingService:
         self.model_name = model_name
         self.device = device
         self.batch_size = batch_size
+        self.original_batch_size = batch_size  # Store original for restoration
         self.model = None
+        self.vector_dim = None  # Will be set after model loads
         self.embedding_queue = queue.Queue(maxsize=EMBEDDING_QUEUE_SIZE)
         self.gpu_thread = None
         self.stop_event = threading.Event()
+        self.successful_batches = 0  # Track successful batches for restoration
         self._initialize()
     
     def _initialize(self):
@@ -83,13 +85,9 @@ class ParallelEmbeddingService:
         # Load model in GPU thread
         self.model = SentenceTransformer(self.model_name, device=self.device)
         
-        # Verify model dimensions
-        test_embedding = self.model.encode("test", normalize_embeddings=True)
-        if len(test_embedding) != VECTOR_DIM:
-            logger.error(f"Model produces {len(test_embedding)}-dim vectors, expected {VECTOR_DIM}")
-            return
-        
-        logger.info(f"Model loaded successfully on {self.device}")
+        # Get model dimensions dynamically
+        self.vector_dim = self.model.get_sentence_embedding_dimension()
+        logger.info(f"Model loaded successfully on {self.device}, embedding dimension: {self.vector_dim}")
         
         # Process tasks from queue
         while not self.stop_event.is_set():
@@ -113,7 +111,7 @@ class ParallelEmbeddingService:
                 logger.error(f"GPU worker error: {e}")
     
     def _generate_embeddings_batch(self, texts: List[str]) -> np.ndarray:
-        """Generate embeddings with OOM handling"""
+        """Generate embeddings with OOM handling and batch size restoration"""
         current_batch_size = self.batch_size
         
         while current_batch_size >= MIN_BATCH_SIZE:
@@ -135,6 +133,16 @@ class ParallelEmbeddingService:
                     
                     all_embeddings.append(embeddings)
                 
+                # Success! Track it for potential restoration
+                if current_batch_size == self.batch_size:
+                    self.successful_batches += 1
+                    # Try to restore batch size after 10 successful batches
+                    if self.successful_batches > 10 and self.batch_size < self.original_batch_size:
+                        new_size = min(self.batch_size * 2, self.original_batch_size)
+                        logger.info(f"Restoring batch size from {self.batch_size} to {new_size}")
+                        self.batch_size = new_size
+                        self.successful_batches = 0
+                
                 # Concatenate all embeddings
                 return np.vstack(all_embeddings)
                 
@@ -143,9 +151,10 @@ class ParallelEmbeddingService:
                 current_batch_size = current_batch_size // 2
                 torch.cuda.empty_cache()
                 
-                # Update for future batches
+                # Update for future batches and reset success counter
                 if current_batch_size < self.batch_size:
                     self.batch_size = current_batch_size
+                    self.successful_batches = 0
         
         raise RuntimeError("Unable to process batch even with minimum batch size")
     

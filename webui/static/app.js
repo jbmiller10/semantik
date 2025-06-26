@@ -1,6 +1,71 @@
 // Global state
 let scannedFiles = [];
 let activeWebSocket = null;
+let scanWebSocket = null;
+let currentScanId = null;
+
+// Helper function to show toast notifications
+function showToast(message, type = 'info') {
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg transform transition-all duration-300 z-50`;
+    
+    // Set color based on type
+    const colors = {
+        'success': 'bg-green-600 text-white',
+        'error': 'bg-red-600 text-white',
+        'warning': 'bg-yellow-600 text-white',
+        'info': 'bg-blue-600 text-white'
+    };
+    
+    toast.className += ` ${colors[type] || colors.info}`;
+    toast.textContent = message;
+    
+    // Add to body
+    document.body.appendChild(toast);
+    
+    // Animate in
+    setTimeout(() => toast.classList.add('translate-x-0'), 10);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+        toast.classList.add('translate-x-full');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+// Helper function to update job progress without full refresh
+function updateJobProgress(jobId, data) {
+    const jobCard = document.querySelector(`[data-job-id="${jobId}"]`);
+    if (!jobCard) return;
+    
+    // Update progress bar
+    const progressBar = jobCard.querySelector('.progress-bar');
+    if (progressBar && data.processed_files !== undefined && data.total_files) {
+        const percentage = Math.round((data.processed_files / data.total_files) * 100);
+        progressBar.style.width = `${percentage}%`;
+        
+        const percentText = jobCard.querySelector('.progress-percentage');
+        if (percentText) {
+            percentText.textContent = `${percentage}%`;
+        }
+    }
+    
+    // Update current file
+    const currentFileElement = jobCard.querySelector('.current-file');
+    if (currentFileElement && data.current_file) {
+        currentFileElement.innerHTML = `
+            <i class="fas fa-spinner fa-spin mr-1"></i>
+            ${data.status || 'Processing'}: ${data.current_file.split('/').pop()}
+        `;
+    }
+    
+    // Update processed count
+    const processedElement = jobCard.querySelector('.processed-count');
+    if (processedElement && data.processed_files !== undefined) {
+        processedElement.textContent = data.processed_files;
+    }
+}
 
 // Tab switching
 function switchTab(tabName) {
@@ -43,7 +108,7 @@ document.getElementById('model-name').addEventListener('change', function(e) {
     }
 });
 
-// Scan directory
+// Scan directory with WebSocket progress
 async function scanDirectory() {
     const path = document.getElementById('directory-path').value;
     if (!path) {
@@ -51,23 +116,130 @@ async function scanDirectory() {
         return;
     }
     
-    try {
-        const response = await fetch('/api/scan-directory', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: path, recursive: true })
-        });
-        
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail);
-        }
-        
-        const data = await response.json();
-        scannedFiles = data.files;
-        displayScanResults(data);
-    } catch (error) {
-        alert(`Scan failed: ${error.message}`);
+    // Generate unique scan ID
+    currentScanId = Date.now().toString();
+    
+    // Show progress UI
+    showScanProgress();
+    
+    // Close existing WebSocket if any
+    if (scanWebSocket && scanWebSocket.readyState === WebSocket.OPEN) {
+        scanWebSocket.close();
+    }
+    
+    // Create WebSocket connection
+    const wsUrl = `ws://${window.location.host}/ws/scan/${currentScanId}`;
+    scanWebSocket = new WebSocket(wsUrl);
+    
+    scanWebSocket.onopen = () => {
+        // Send scan request
+        scanWebSocket.send(JSON.stringify({
+            action: 'scan',
+            path: path,
+            recursive: true
+        }));
+    };
+    
+    scanWebSocket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        handleScanProgress(data);
+    };
+    
+    scanWebSocket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        hideScanProgress();
+        alert('Scan failed: Connection error');
+    };
+    
+    scanWebSocket.onclose = () => {
+        console.log('Scan WebSocket closed');
+    };
+}
+
+// Cancel scan
+function cancelScan() {
+    if (scanWebSocket && scanWebSocket.readyState === WebSocket.OPEN) {
+        scanWebSocket.send(JSON.stringify({ action: 'cancel' }));
+        scanWebSocket.close();
+    }
+    hideScanProgress();
+}
+
+// Show scan progress UI
+function showScanProgress() {
+    const scanButton = document.getElementById('scan-button');
+    const resultsDiv = document.getElementById('scan-results');
+    
+    // Hide results if shown
+    resultsDiv.classList.add('hidden');
+    
+    // Replace scan button with progress UI
+    scanButton.outerHTML = `
+        <div id="scan-progress" class="space-y-3">
+            <div class="flex items-center space-x-3">
+                <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                <span id="scan-status" class="text-sm">Starting scan...</span>
+                <button onclick="cancelScan()" class="text-red-600 hover:text-red-800 text-sm">
+                    <i class="fas fa-times-circle mr-1"></i>Cancel
+                </button>
+            </div>
+            <div class="bg-gray-200 rounded-full h-2">
+                <div id="scan-progress-bar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+            <div id="scan-details" class="text-xs text-gray-600"></div>
+        </div>
+    `;
+}
+
+// Hide scan progress UI
+function hideScanProgress() {
+    const progressDiv = document.getElementById('scan-progress');
+    if (progressDiv) {
+        progressDiv.outerHTML = `
+            <button id="scan-button" onclick="scanDirectory()" 
+                    class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                <i class="fas fa-folder-open mr-2"></i>Scan Directory
+            </button>
+        `;
+    }
+}
+
+// Handle scan progress updates
+function handleScanProgress(data) {
+    const statusEl = document.getElementById('scan-status');
+    const progressBar = document.getElementById('scan-progress-bar');
+    const detailsEl = document.getElementById('scan-details');
+    
+    switch (data.type) {
+        case 'started':
+            statusEl.textContent = `Scanning ${data.path}...`;
+            break;
+            
+        case 'counting':
+            statusEl.textContent = `Counting files... (${data.count} found)`;
+            break;
+            
+        case 'progress':
+            const percent = Math.round((data.scanned / data.total) * 100);
+            statusEl.textContent = `Scanning files... (${data.scanned}/${data.total})`;
+            progressBar.style.width = `${percent}%`;
+            detailsEl.textContent = `Current: ${data.current_path}`;
+            break;
+            
+        case 'completed':
+            scannedFiles = data.files;
+            hideScanProgress();
+            displayScanResults({ files: data.files, count: data.count });
+            break;
+            
+        case 'error':
+            hideScanProgress();
+            alert(`Scan failed: ${data.error}`);
+            break;
+            
+        case 'cancelled':
+            hideScanProgress();
+            break;
     }
 }
 
@@ -111,6 +283,8 @@ document.getElementById('create-job-form').addEventListener('submit', async (e) 
         ? document.getElementById('custom-model').value 
         : modelSelect.value;
     
+    const vectorDimValue = document.getElementById('vector-dim').value;
+    const instructionValue = document.getElementById('instruction').value;
     const jobData = {
         name: document.getElementById('job-name').value,
         description: document.getElementById('job-description').value,
@@ -118,7 +292,10 @@ document.getElementById('create-job-form').addEventListener('submit', async (e) 
         model_name: modelName,
         chunk_size: parseInt(document.getElementById('chunk-size').value),
         chunk_overlap: parseInt(document.getElementById('chunk-overlap').value),
-        batch_size: 96
+        batch_size: 96,
+        vector_dim: vectorDimValue ? parseInt(vectorDimValue) : null,
+        quantization: document.getElementById('quantization').value,
+        instruction: instructionValue || null
     };
     
     try {
@@ -160,16 +337,23 @@ async function refreshJobs() {
             return;
         }
         
-        jobsList.innerHTML = jobs.map(job => `
-            <div class="border border-gray-200 rounded-lg p-4">
+        jobsList.innerHTML = jobs.map(job => {
+            const progress = job.total_files > 0 ? (job.processed_files / job.total_files * 100).toFixed(1) : 0;
+            const isRunning = job.status === 'processing' || job.status === 'scanning';
+            
+            return `
+            <div class="border ${isRunning ? 'border-blue-300 shadow-lg' : 'border-gray-200'} rounded-lg p-4 ${isRunning ? 'job-card-running' : ''} transition-all duration-300" data-job-id="${job.id}">
                 <div class="flex justify-between items-start mb-2">
                     <div>
                         <h3 class="font-semibold text-lg">${job.name}</h3>
                         <p class="text-sm text-gray-600">${job.directory_path}</p>
                     </div>
-                    <span class="px-3 py-1 rounded-full text-sm ${getStatusBadgeClass(job.status)}">
-                        ${job.status}
-                    </span>
+                    <div class="flex items-center space-x-2">
+                        ${getStatusIndicator(job.status)}
+                        <span class="px-3 py-1 rounded-full text-sm ${getStatusBadgeClass(job.status)} ${isRunning ? 'animate-pulse' : ''}">
+                            ${job.status}
+                        </span>
+                    </div>
                 </div>
                 
                 <div class="grid grid-cols-3 gap-4 mb-3">
@@ -179,23 +363,40 @@ async function refreshJobs() {
                     </div>
                     <div>
                         <p class="text-sm text-gray-500">Processed</p>
-                        <p class="font-medium">${job.processed_files}</p>
+                        <p class="font-medium ${isRunning ? 'text-blue-600' : ''} processed-count">${job.processed_files}</p>
                     </div>
                     <div>
                         <p class="text-sm text-gray-500">Failed</p>
-                        <p class="font-medium">${job.failed_files}</p>
+                        <p class="font-medium ${job.failed_files > 0 ? 'text-red-600' : ''}">${job.failed_files}</p>
                     </div>
                 </div>
                 
-                ${job.status === 'processing' ? `
+                ${job.status === 'processing' || job.status === 'scanning' ? `
                     <div class="mb-3">
-                        <div class="w-full bg-gray-200 rounded-full h-2">
-                            <div class="bg-blue-600 h-2 rounded-full progress-bar" 
-                                 style="width: ${(job.processed_files / job.total_files * 100).toFixed(1)}%"></div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <span class="text-gray-600">Progress</span>
+                            <span class="font-medium text-blue-600 progress-percentage">${progress}%</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                            <div class="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full progress-bar-animated transition-all duration-500 ease-out progress-bar" 
+                                 style="width: ${progress}%">
+                                <div class="h-full bg-white/20 animate-shimmer"></div>
+                            </div>
                         </div>
                         ${job.current_file ? `
-                            <p class="text-sm text-gray-600 mt-1">Processing: ${job.current_file.split('/').pop()}</p>
+                            <div class="mt-2 flex items-center space-x-2">
+                                <div class="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+                                <p class="text-sm text-gray-600 truncate current-file">Processing: ${job.current_file.split('/').pop()}</p>
+                            </div>
                         ` : ''}
+                    </div>
+                ` : ''}
+                
+                ${job.status === 'completed' ? `
+                    <div class="mb-3">
+                        <div class="w-full bg-green-100 rounded-full h-3">
+                            <div class="bg-green-500 h-3 rounded-full" style="width: 100%"></div>
+                        </div>
                     </div>
                 ` : ''}
                 
@@ -205,30 +406,65 @@ async function refreshJobs() {
                     </div>
                 ` : ''}
                 
-                <div class="flex justify-between items-center text-sm text-gray-500">
-                    <span>Model: ${job.model_name}</span>
-                    <span>Created: ${new Date(job.created_at).toLocaleString()}</span>
+                <div class="grid grid-cols-2 gap-2 text-sm text-gray-500 mb-2">
+                    <div>Model: ${job.model_name}</div>
+                    <div>Created: ${new Date(job.created_at).toLocaleString()}</div>
+                    ${job.vector_size ? `<div>Vector size: ${job.vector_size}d</div>` : ''}
+                    ${job.quantization ? `<div>Quantization: ${job.quantization}</div>` : ''}
                 </div>
                 
                 <div class="mt-3 flex space-x-2">
                     ${job.status === 'processing' ? `
                         <button onclick="connectToJobWebSocket('${job.id}')"
-                                class="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                                class="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors">
                             <i class="fas fa-chart-line mr-1"></i>Monitor
+                        </button>
+                    ` : ''}
+                    ${job.status === 'processing' || job.status === 'scanning' ? `
+                        <button onclick="cancelJob('${job.id}')"
+                                class="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 transition-colors">
+                            <i class="fas fa-times-circle mr-1"></i>Cancel
                         </button>
                     ` : ''}
                     ${job.status === 'completed' ? `
                         <button onclick="useJobForSearch('${job.id}', '${job.name}')"
-                                class="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700">
+                                class="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition-colors">
                             <i class="fas fa-search mr-1"></i>Search
                         </button>
                     ` : ''}
                 </div>
             </div>
-        `).join('');
+        `}).join('');
         
     } catch (error) {
         console.error('Failed to load jobs:', error);
+    }
+}
+
+// Cancel a job
+async function cancelJob(jobId) {
+    if (!confirm('Are you sure you want to cancel this job?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/jobs/${jobId}/cancel`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to cancel job');
+        }
+        
+        const result = await response.json();
+        alert(result.message || 'Job cancellation requested');
+        
+        // Refresh the jobs list to show updated status
+        refreshJobs();
+        
+    } catch (error) {
+        alert(`Failed to cancel job: ${error.message}`);
     }
 }
 
@@ -244,15 +480,33 @@ function connectToJobWebSocket(jobId) {
     ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
         
-        if (data.type === 'progress') {
-            // Update job progress in UI
+        if (data.type === 'job_started') {
+            console.log(`Job ${jobId} started processing ${data.total_files} files`);
             refreshJobs();
-        } else if (data.type === 'completed') {
-            alert('Job completed successfully!');
+        } else if (data.type === 'file_processing') {
+            // Update specific job card with detailed status
+            updateJobProgress(jobId, data);
+        } else if (data.type === 'file_completed') {
+            // Update progress without full refresh
+            updateJobProgress(jobId, data);
+        } else if (data.type === 'job_completed') {
+            showToast('Job completed successfully!', 'success');
+            refreshJobs();
+            ws.close();
+        } else if (data.type === 'job_cancelled') {
+            showToast('Job cancelled', 'warning');
             refreshJobs();
             ws.close();
         } else if (data.type === 'error') {
-            alert(`Job error: ${data.message}`);
+            showToast(`Job error: ${data.message}`, 'error');
+            refreshJobs();
+            ws.close();
+        } else if (data.type === 'progress') {
+            // Legacy progress update
+            refreshJobs();
+        } else if (data.type === 'completed') {
+            // Legacy completed
+            alert('Job completed successfully!');
             refreshJobs();
             ws.close();
         }
@@ -388,6 +642,29 @@ function getStatusBadgeClass(status) {
         'failed': 'bg-red-100 text-red-800'
     };
     return classes[status] || 'bg-gray-100 text-gray-800';
+}
+
+function getStatusIndicator(status) {
+    switch(status) {
+        case 'processing':
+            return `<div class="relative">
+                        <div class="animate-ping absolute inline-flex h-3 w-3 rounded-full bg-blue-400 opacity-75"></div>
+                        <div class="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></div>
+                    </div>`;
+        case 'scanning':
+            return `<div class="relative">
+                        <div class="animate-ping absolute inline-flex h-3 w-3 rounded-full bg-yellow-400 opacity-75"></div>
+                        <div class="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></div>
+                    </div>`;
+        case 'completed':
+            return `<div class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></div>`;
+        case 'failed':
+            return `<div class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></div>`;
+        case 'created':
+            return `<div class="relative inline-flex rounded-full h-3 w-3 bg-gray-400"></div>`;
+        default:
+            return '';
+    }
 }
 
 function resetForm() {

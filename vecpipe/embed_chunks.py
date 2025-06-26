@@ -30,7 +30,6 @@ logger = logging.getLogger(__name__)
 MODEL_NAME = "BAAI/bge-large-en-v1.5"
 BATCH_SIZE = 96  # Initial batch size
 MIN_BATCH_SIZE = 4  # Minimum batch size on OOM
-VECTOR_DIM = 1024
 INPUT_DIR = "/opt/vecpipe/extract"
 OUTPUT_DIR = "/var/embeddings/ingest"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -42,16 +41,15 @@ class EmbeddingGenerator:
         self.model = SentenceTransformer(model_name, device=device)
         self.device = device
         self.batch_size = BATCH_SIZE
+        self.original_batch_size = BATCH_SIZE  # Store original for restoration
+        self.successful_batches = 0  # Track successful batches for restoration
         
-        # Verify model dimensions
-        test_embedding = self.model.encode("test", normalize_embeddings=True)
-        if len(test_embedding) != VECTOR_DIM:
-            raise ValueError(f"Model produces {len(test_embedding)}-dim vectors, expected {VECTOR_DIM}")
-        
-        logger.info(f"Model loaded successfully, vector dimension: {VECTOR_DIM}")
+        # Get model dimensions dynamically
+        self.vector_dim = self.model.get_sentence_embedding_dimension()
+        logger.info(f"Model loaded successfully, embedding dimension: {self.vector_dim}")
     
     def encode_batch(self, texts: List[str]) -> np.ndarray:
-        """Encode a batch of texts with OOM handling"""
+        """Encode a batch of texts with OOM handling and batch size restoration"""
         current_batch_size = self.batch_size
         
         while current_batch_size >= MIN_BATCH_SIZE:
@@ -73,6 +71,16 @@ class EmbeddingGenerator:
                     
                     all_embeddings.append(embeddings)
                 
+                # Success! Track it for potential restoration
+                if current_batch_size == self.batch_size:
+                    self.successful_batches += 1
+                    # Try to restore batch size after 10 successful batches
+                    if self.successful_batches > 10 and self.batch_size < self.original_batch_size:
+                        new_size = min(self.batch_size * 2, self.original_batch_size)
+                        logger.info(f"Restoring batch size from {self.batch_size} to {new_size}")
+                        self.batch_size = new_size
+                        self.successful_batches = 0
+                
                 # Concatenate all embeddings
                 return np.vstack(all_embeddings)
                 
@@ -81,9 +89,10 @@ class EmbeddingGenerator:
                 current_batch_size = current_batch_size // 2
                 torch.cuda.empty_cache()
                 
-                # Update for future batches
+                # Update for future batches and reset success counter
                 if current_batch_size < self.batch_size:
                     self.batch_size = current_batch_size
+                    self.successful_batches = 0
         
         raise RuntimeError("Unable to process batch even with minimum batch size")
 

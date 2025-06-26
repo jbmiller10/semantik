@@ -10,5 +10,5 @@ echo "Starting Document Embedding Web UI..."
 echo "Access the interface at: http://localhost:8080"
 echo ""
 
-# Run the simplified version (no SQLite dependency)
-python3 webui/app_simple.py
+# Run the web UI with SQLite-based job tracking
+python3 -m uvicorn webui.app:app --host 0.0.0.0 --port 8080

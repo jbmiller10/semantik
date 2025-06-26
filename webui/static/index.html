@@ -10,13 +10,69 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
         .progress-bar { transition: width 0.3s ease; }
+        
+        /* Shimmer animation for progress bars */
+        @keyframes shimmer {
+            0% {
+                transform: translateX(-100%);
+            }
+            100% {
+                transform: translateX(100%);
+            }
+        }
+        
+        .animate-shimmer {
+            animation: shimmer 2s infinite;
+            background: linear-gradient(to right, transparent, rgba(255,255,255,0.4), transparent);
+        }
+        
+        /* Progress bar animation */
+        .progress-bar-animated {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        /* Job card running animation */
+        @keyframes breathe {
+            0%, 100% {
+                border-color: rgb(147, 197, 253);
+                box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.1), 0 4px 6px -2px rgba(59, 130, 246, 0.05);
+            }
+            50% {
+                border-color: rgb(96, 165, 250);
+                box-shadow: 0 20px 25px -5px rgba(59, 130, 246, 0.2), 0 10px 10px -5px rgba(59, 130, 246, 0.04);
+            }
+        }
+        
+        .job-card-running {
+            animation: breathe 3s ease-in-out infinite;
+        }
+        
+        /* Enhanced status badge pulse */
+        @keyframes enhanced-pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.8;
+            }
+        }
+        
+        .animate-pulse {
+            animation: enhanced-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
     </style>
 </head>
 <body class="bg-gray-100">
     <div class="container mx-auto px-4 py-8">
-        <h1 class="text-3xl font-bold mb-8 text-gray-800">
-            <i class="fas fa-database mr-2"></i>Document Embedding System
-        </h1>
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">
+                <i class="fas fa-database mr-2"></i>Document Embedding System
+            </h1>
+            <a href="/settings" class="text-gray-600 hover:text-gray-800">
+                <i class="fas fa-cog text-2xl"></i>
+            </a>
+        </div>
 
         <!-- Tabs -->
         <div class="mb-8">
@@ -62,7 +118,7 @@
                             <input type="text" id="directory-path" required
                                    class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                    placeholder="/path/to/documents">
-                            <button type="button" onclick="scanDirectory()"
+                            <button type="button" id="scan-button" onclick="scanDirectory()"
                                     class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors">
                                 <i class="fas fa-folder-open mr-2"></i>Scan
                             </button>
@@ -87,14 +143,50 @@
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Chunk Size (tokens)</label>
-                            <input type="number" id="chunk-size" value="600" min="100" max="2000"
+                            <input type="number" id="chunk-size" value="600" min="100" max="32000"
                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <p class="mt-1 text-xs text-gray-500">Qwen3 supports up to 32K tokens</p>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Chunk Overlap (tokens)</label>
-                            <input type="number" id="chunk-overlap" value="200" min="0" max="500"
+                            <input type="number" id="chunk-overlap" value="200" min="0" max="8000"
                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Vector Dimension
+                                <span class="text-xs text-gray-500">(leave empty for auto)</span>
+                            </label>
+                            <input type="number" id="vector-dim" min="64" max="4096" step="64"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   placeholder="Auto-detect from model">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Quantization</label>
+                            <select id="quantization"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="float32" selected>Float32 (Full precision)</option>
+                                <option value="float16">Float16 (Half precision, 50% storage)</option>
+                                <option value="int8">Int8 (Quantized, 75% storage saving)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Instruction field for instruction-aware models -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Instruction
+                            <span class="text-xs text-gray-500">(Optional - for instruction-aware models like Qwen3)</span>
+                        </label>
+                        <textarea id="instruction" rows="3"
+                                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  placeholder="E.g., Given a web search query, retrieve relevant passages that answer the query"></textarea>
+                        <p class="mt-1 text-xs text-gray-500">
+                            Provide a task description to guide embedding generation. Recommended for Qwen3 models for 1-5% performance boost.
+                        </p>
                     </div>
 
                     <!-- File scan results -->
