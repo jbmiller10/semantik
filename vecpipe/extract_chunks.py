@@ -217,6 +217,17 @@ class FileChangeTracker:
                 })
         
         return removed_files
+    
+    def remove_file(self, filepath: str):
+        """Remove a file from tracking"""
+        file_key = str(Path(filepath).absolute()) if not os.path.isabs(filepath) else filepath
+        if file_key in self.tracking_data["files"]:
+            del self.tracking_data["files"][file_key]
+            logger.info(f"Removed file from tracking: {file_key}")
+    
+    def save(self):
+        """Save tracking data to disk"""
+        self._save_tracking_data()
 
 def extract_text_pdf(filepath: str) -> str:
     """Extract text from PDF file"""
