@@ -676,7 +676,7 @@ async def get_models():
     return {
         "models": POPULAR_MODELS,
         "current_device": embedding_service.device,
-        "using_real_embeddings": USE_ENHANCED_EMBEDDINGS
+        "using_real_embeddings": True  # Always true with unified service
     }
 
 @app.get("/api/jobs", response_model=List[JobStatus])

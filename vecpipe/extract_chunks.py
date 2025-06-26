@@ -351,6 +351,24 @@ def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, track
             f.write(f"{filepath}\t{str(e)}\n")
         return None
 
+# Compatibility wrappers for old API
+_default_chunker = None
+
+def chunk_text(text: str, doc_id: str) -> List[Dict]:
+    """Compatibility wrapper for old chunk_text function"""
+    global _default_chunker
+    if _default_chunker is None:
+        _default_chunker = TokenChunker()
+    return _default_chunker.chunk_text(text, doc_id)
+
+def process_file(filepath: str, output_dir: str) -> Optional[str]:
+    """Compatibility wrapper for old process_file function"""
+    global _default_chunker
+    if _default_chunker is None:
+        _default_chunker = TokenChunker()
+    tracker = FileChangeTracker()
+    return process_file_v2(filepath, output_dir, _default_chunker, tracker)
+
 def main():
     parser = argparse.ArgumentParser(description="Extract and chunk documents (V2)")
     parser.add_argument('--input', '-i', required=True, help='Input file list (null-delimited)')
