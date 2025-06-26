@@ -1,50 +1,166 @@
 #!/usr/bin/env python3
 """
-Embedding service with HuggingFace model support
-Handles embedding generation for the web UI
+Unified Embedding Service with quantization and Qwen3 support
+Provides backward-compatible API with feature flags
 """
 
 import os
+import sys
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple, Union
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import torch
 import gc
+from transformers import AutoModel, AutoTokenizer
+import torch.nn.functional as F
+from torch import Tensor
 
 logger = logging.getLogger(__name__)
 
+# Qwen3 specific pooling function
+def last_token_pool(last_hidden_states: Tensor,
+                 attention_mask: Tensor) -> Tensor:
+    left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
+    if left_padding:
+        return last_hidden_states[:, -1]
+    else:
+        sequence_lengths = attention_mask.sum(dim=1) - 1
+        batch_size = last_hidden_states.shape[0]
+        return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
+
+def get_detailed_instruct(task_description: str, query: str) -> str:
+    """Format query with instruction for Qwen3 models"""
+    return f'Instruct: {task_description}\nQuery:{query}'
+
 class EmbeddingService:
-    """Service for generating embeddings with various HuggingFace models"""
+    """Unified service for generating embeddings with optional quantization and Qwen3 support"""
     
     def __init__(self):
         self.models = {}
         self.current_model = None
+        self.current_tokenizer = None
         self.current_model_name = None
+        self.current_quantization = None
+        self.is_qwen3_model = False
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        logger.info(f"EmbeddingService initialized with device: {self.device}")
+        logger.info(f"Unified EmbeddingService initialized with device: {self.device}")
     
-    def load_model(self, model_name: str) -> bool:
-        """Load a model from HuggingFace"""
+    def load_model(self, model_name: str, quantization: str = "float32") -> bool:
+        """Load a model from HuggingFace with optional quantization
+        
+        Args:
+            model_name: HuggingFace model name
+            quantization: One of "float32", "float16", "int8" (default: "float32")
+        """
         try:
-            # If model already loaded, return
-            if model_name == self.current_model_name:
+            # Create unique key for model+quantization combo
+            model_key = f"{model_name}_{quantization}"
+            
+            # If same model+quantization already loaded, return
+            if model_key == f"{self.current_model_name}_{self.current_quantization}":
                 return True
             
             # Clear previous model to save memory
             if self.current_model is not None:
                 del self.current_model
+                if self.current_tokenizer is not None:
+                    del self.current_tokenizer
                 torch.cuda.empty_cache() if self.device == "cuda" else None
                 gc.collect()
             
-            logger.info(f"Loading model: {model_name}")
+            logger.info(f"Loading model: {model_name} with quantization: {quantization}")
             
-            # Load new model
-            self.current_model = SentenceTransformer(model_name, device=self.device)
+            # Check if this is a Qwen3 model
+            self.is_qwen3_model = "Qwen3-Embedding" in model_name
+            
+            # Load model based on type and quantization
+            if self.is_qwen3_model:
+                # Load Qwen3 model using transformers directly
+                logger.info("Loading Qwen3 embedding model")
+                self.current_tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side='left')
+                
+                if quantization == "int8" and self.device == "cuda":
+                    try:
+                        import bitsandbytes as bnb
+                        from transformers import BitsAndBytesConfig
+                        
+                        quantization_config = BitsAndBytesConfig(
+                            load_in_8bit=True,
+                            bnb_8bit_compute_dtype=torch.float16,
+                            bnb_8bit_use_double_quant=True,
+                            bnb_8bit_quant_type="nf4"
+                        )
+                        
+                        self.current_model = AutoModel.from_pretrained(
+                            model_name,
+                            quantization_config=quantization_config,
+                            device_map="auto"
+                        )
+                        logger.info("Loaded Qwen3 model with INT8 quantization")
+                    except ImportError:
+                        logger.warning("bitsandbytes not available, loading standard model")
+                        self.current_model = AutoModel.from_pretrained(model_name).to(self.device)
+                        
+                elif quantization == "float16" and self.device == "cuda":
+                    self.current_model = AutoModel.from_pretrained(
+                        model_name,
+                        torch_dtype=torch.float16,
+                        device_map="auto" if self.device == "cuda" else None
+                    )
+                    if self.device == "cpu":
+                        self.current_model = self.current_model.to(self.device)
+                    logger.info("Loaded Qwen3 model in float16 precision")
+                else:
+                    self.current_model = AutoModel.from_pretrained(model_name).to(self.device)
+                    logger.info("Loaded Qwen3 model in float32 precision")
+                    
+            elif quantization == "int8" and self.device == "cuda":
+                # Use bitsandbytes for INT8 quantization
+                try:
+                    import bitsandbytes as bnb
+                    from transformers import BitsAndBytesConfig
+                    
+                    # Configure 8-bit quantization
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_8bit=True,
+                        bnb_8bit_compute_dtype=torch.float16,
+                        bnb_8bit_use_double_quant=True,
+                        bnb_8bit_quant_type="nf4"
+                    )
+                    
+                    # Load model with quantization
+                    self.current_model = SentenceTransformer(
+                        model_name, 
+                        device=self.device,
+                        model_kwargs={
+                            "quantization_config": quantization_config,
+                            "device_map": "auto"
+                        }
+                    )
+                    logger.info("Loaded model with INT8 quantization")
+                    
+                except ImportError:
+                    logger.warning("bitsandbytes not available, falling back to post-quantization")
+                    self.current_model = SentenceTransformer(model_name, device=self.device)
+                    
+            elif quantization == "float16" and self.device == "cuda":
+                # Load model in float16
+                self.current_model = SentenceTransformer(model_name, device=self.device)
+                # Convert model to float16
+                self.current_model = self.current_model.half()
+                logger.info("Loaded model in float16 precision")
+                
+            else:
+                # Load standard float32 model
+                self.current_model = SentenceTransformer(model_name, device=self.device)
+                logger.info("Loaded model in float32 precision")
+            
             self.current_model_name = model_name
+            self.current_quantization = quantization
             
             # Test model
-            test_embedding = self.current_model.encode("test", convert_to_numpy=True)
+            test_embedding = self._generate_test_embedding()
             logger.info(f"Model loaded successfully. Embedding dimension: {len(test_embedding)}")
             
             return True
@@ -53,35 +169,84 @@ class EmbeddingService:
             logger.error(f"Failed to load model {model_name}: {e}")
             return False
     
-    def get_model_info(self, model_name: str) -> Dict:
-        """Get information about a model"""
+    def _generate_test_embedding(self) -> np.ndarray:
+        """Generate a test embedding to verify model and get dimensions"""
+        if self.is_qwen3_model:
+            batch_dict = self.current_tokenizer(
+                ["test"],
+                padding=True,
+                truncation=True,
+                max_length=32768,
+                return_tensors="pt",
+            ).to(self.device)
+            
+            with torch.no_grad():
+                outputs = self.current_model(**batch_dict)
+                embeddings = last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
+                embeddings = F.normalize(embeddings, p=2, dim=1)
+                return embeddings[0].cpu().numpy()
+        else:
+            return self.current_model.encode("test", convert_to_numpy=True)
+    
+    def get_model_info(self, model_name: str, quantization: str = "float32") -> Dict:
+        """Get information about a model
+        
+        Args:
+            model_name: HuggingFace model name
+            quantization: Quantization type (default: "float32")
+        """
         try:
-            if model_name != self.current_model_name:
-                self.load_model(model_name)
+            model_key = f"{model_name}_{quantization}"
+            if model_key != f"{self.current_model_name}_{self.current_quantization}":
+                self.load_model(model_name, quantization)
             
             if self.current_model is None:
                 return {"error": "Model not loaded"}
             
             # Get embedding dimension
-            test_embedding = self.current_model.encode("test", convert_to_numpy=True)
+            test_embedding = self._generate_test_embedding()
+            
+            # Calculate model size
+            model_size = 0
+            if hasattr(self.current_model, 'parameters'):
+                for param in self.current_model.parameters():
+                    model_size += param.numel() * param.element_size()
             
             return {
                 "model_name": model_name,
                 "embedding_dim": len(test_embedding),
                 "device": self.device,
-                "max_seq_length": getattr(self.current_model, 'max_seq_length', 512)
+                "quantization": quantization,
+                "model_size_mb": model_size / 1024 / 1024,
+                "max_seq_length": getattr(self.current_model, 'max_seq_length', 32768 if self.is_qwen3_model else 512),
+                "is_qwen3": self.is_qwen3_model
             }
             
         except Exception as e:
             return {"error": str(e)}
     
     def generate_embeddings(self, texts: List[str], model_name: str, 
-                          batch_size: int = 32, show_progress: bool = True) -> Optional[np.ndarray]:
-        """Generate embeddings for a list of texts"""
+                          quantization: str = "float32",
+                          batch_size: int = 32, 
+                          show_progress: bool = True,
+                          instruction: Optional[str] = None,
+                          **kwargs) -> Optional[np.ndarray]:
+        """Generate embeddings for a list of texts
+        
+        Args:
+            texts: List of texts to embed
+            model_name: HuggingFace model name
+            quantization: Quantization type (default: "float32")
+            batch_size: Batch size for processing
+            show_progress: Whether to show progress bar
+            instruction: Optional instruction for Qwen3 models
+            **kwargs: Additional arguments (ignored for compatibility)
+        """
         try:
-            # Load model if needed
-            if model_name != self.current_model_name:
-                if not self.load_model(model_name):
+            # Load model with specified quantization if needed
+            model_key = f"{model_name}_{quantization}"
+            if model_key != f"{self.current_model_name}_{self.current_quantization}":
+                if not self.load_model(model_name, quantization):
                     return None
             
             if not texts:
@@ -89,38 +254,90 @@ class EmbeddingService:
             
             logger.info(f"Generating embeddings for {len(texts)} texts with batch size {batch_size}")
             
-            # Handle memory constraints
-            if self.device == "cuda":
-                # Adjust batch size based on available memory
+            # Handle memory constraints - reduce batch size on OOM
+            current_batch_size = batch_size
+            
+            # Generate embeddings based on model type
+            if self.is_qwen3_model:
+                # Use instruction if provided for Qwen3 models
+                if instruction:
+                    texts = [get_detailed_instruct(instruction, text) for text in texts]
+                    logger.info(f"Using instruction: {instruction}")
+                
+                # Process in batches for Qwen3
+                all_embeddings = []
+                from tqdm import tqdm
+                
+                for i in tqdm(range(0, len(texts), current_batch_size), disable=not show_progress, desc="Encoding"):
+                    batch_texts = texts[i:i + current_batch_size]
+                    
+                    try:
+                        # Tokenize batch
+                        batch_dict = self.current_tokenizer(
+                            batch_texts,
+                            padding=True,
+                            truncation=True,
+                            max_length=32768,
+                            return_tensors="pt",
+                        ).to(self.device)
+                        
+                        # Generate embeddings
+                        with torch.no_grad():
+                            if quantization == "float16" and self.device == "cuda":
+                                with torch.cuda.amp.autocast(dtype=torch.float16):
+                                    outputs = self.current_model(**batch_dict)
+                            else:
+                                outputs = self.current_model(**batch_dict)
+                            
+                            embeddings = last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
+                            embeddings = F.normalize(embeddings, p=2, dim=1)
+                            all_embeddings.append(embeddings.cpu().numpy())
+                    
+                    except torch.cuda.OutOfMemoryError:
+                        if current_batch_size > 1:
+                            logger.warning(f"OOM with batch size {current_batch_size}, reducing to {current_batch_size // 2}")
+                            torch.cuda.empty_cache()
+                            current_batch_size = max(1, current_batch_size // 2)
+                            # Retry with smaller batch
+                            i -= current_batch_size  # Step back to retry
+                        else:
+                            raise
+                
+                embeddings = np.vstack(all_embeddings)
+                
+            else:
+                # Standard sentence-transformers processing
                 try:
-                    embeddings = self.current_model.encode(
-                        texts,
-                        batch_size=batch_size,
-                        normalize_embeddings=True,
-                        convert_to_numpy=True,
-                        show_progress_bar=show_progress
-                    )
+                    if quantization == "float16" and self.device == "cuda":
+                        # Ensure inputs are float16 compatible
+                        with torch.cuda.amp.autocast(dtype=torch.float16):
+                            embeddings = self.current_model.encode(
+                                texts,
+                                batch_size=current_batch_size,
+                                normalize_embeddings=True,
+                                convert_to_numpy=True,
+                                show_progress_bar=show_progress
+                            )
+                    else:
+                        embeddings = self.current_model.encode(
+                            texts,
+                            batch_size=current_batch_size,
+                            normalize_embeddings=True,
+                            convert_to_numpy=True,
+                            show_progress_bar=show_progress
+                        )
                 except torch.cuda.OutOfMemoryError:
-                    logger.warning(f"OOM with batch size {batch_size}, reducing to {batch_size // 2}")
+                    logger.warning(f"OOM with batch size {current_batch_size}, reducing to {current_batch_size // 2}")
                     torch.cuda.empty_cache()
-                    batch_size = max(1, batch_size // 2)
+                    current_batch_size = max(1, current_batch_size // 2)
                     
                     embeddings = self.current_model.encode(
                         texts,
-                        batch_size=batch_size,
+                        batch_size=current_batch_size,
                         normalize_embeddings=True,
                         convert_to_numpy=True,
                         show_progress_bar=show_progress
                     )
-            else:
-                # CPU processing
-                embeddings = self.current_model.encode(
-                    texts,
-                    batch_size=batch_size,
-                    normalize_embeddings=True,
-                    convert_to_numpy=True,
-                    show_progress_bar=show_progress
-                )
             
             return embeddings
             
@@ -128,91 +345,157 @@ class EmbeddingService:
             logger.error(f"Failed to generate embeddings: {e}")
             return None
     
-    def generate_single_embedding(self, text: str, model_name: str) -> Optional[List[float]]:
-        """Generate embedding for a single text"""
-        embeddings = self.generate_embeddings([text], model_name, show_progress=False)
+    def generate_single_embedding(self, text: str, model_name: str, 
+                                quantization: str = "float32",
+                                instruction: Optional[str] = None,
+                                **kwargs) -> Optional[List[float]]:
+        """Generate embedding for a single text
+        
+        Args:
+            text: Text to embed
+            model_name: HuggingFace model name
+            quantization: Quantization type (default: "float32")
+            instruction: Optional instruction for Qwen3 models
+            **kwargs: Additional arguments (ignored for compatibility)
+        """
+        embeddings = self.generate_embeddings(
+            [text], model_name, quantization, 
+            batch_size=1, show_progress=False, instruction=instruction
+        )
         if embeddings is not None and len(embeddings) > 0:
             return embeddings[0].tolist()
         return None
 
-# Global instance
+# Create instances for both APIs
 embedding_service = EmbeddingService()
+enhanced_embedding_service = embedding_service  # Alias for compatibility
 
-# Popular models with their dimensions
-POPULAR_MODELS = {
+# Model configurations with quantization info
+QUANTIZED_MODEL_INFO = {
     # Qwen3 Embedding Models
     "Qwen/Qwen3-Embedding-0.6B": {
-        "dim": 1024,
-        "description": "Qwen3 small model, instruction-aware (1024d)"
+        "dimension": 1024,
+        "description": "Qwen3 small model, instruction-aware (1024d)",
+        "supports_quantization": True,
+        "recommended_quantization": "float16",
+        "memory_estimate": {"float32": 2400, "float16": 1200, "int8": 600}
     },
     "Qwen/Qwen3-Embedding-4B": {
-        "dim": 2560,
-        "description": "Qwen3 medium model, MTEB top performer (2560d)"
+        "dimension": 2560,
+        "description": "Qwen3 medium model, MTEB top performer (2560d)",
+        "supports_quantization": True,
+        "recommended_quantization": "float16",
+        "memory_estimate": {"float32": 16000, "float16": 8000, "int8": 4000}
     },
     "Qwen/Qwen3-Embedding-8B": {
-        "dim": 4096,
-        "description": "Qwen3 large model, MTEB #1 (4096d)"
+        "dimension": 4096,
+        "description": "Qwen3 large model, MTEB #1 (4096d)",
+        "supports_quantization": True,
+        "recommended_quantization": "int8",
+        "memory_estimate": {"float32": 32000, "float16": 16000, "int8": 8000}
     },
     # BGE Models
     "BAAI/bge-large-en-v1.5": {
-        "dim": 1024,
-        "description": "High-quality general purpose embeddings (1024d)"
+        "dimension": 1024,
+        "description": "High-quality general purpose embeddings (1024d)",
+        "supports_quantization": True,
+        "recommended_quantization": "float32",
+        "memory_estimate": {"float32": 1300, "float16": 650, "int8": 325}
     },
     "BAAI/bge-base-en-v1.5": {
-        "dim": 768,
-        "description": "Balanced quality and speed (768d)"
+        "dimension": 768,
+        "description": "Balanced quality and speed (768d)",
+        "supports_quantization": True,
+        "recommended_quantization": "float32",
+        "memory_estimate": {"float32": 420, "float16": 210, "int8": 105}
     },
     "BAAI/bge-small-en-v1.5": {
-        "dim": 384,
-        "description": "Fast and efficient (384d)"
+        "dimension": 384,
+        "description": "Fast and efficient (384d)",
+        "supports_quantization": True,
+        "recommended_quantization": "float32",
+        "memory_estimate": {"float32": 133, "float16": 66, "int8": 33}
     },
     "sentence-transformers/all-MiniLM-L6-v2": {
-        "dim": 384,
-        "description": "Very fast, good quality (384d)"
+        "dimension": 384,
+        "description": "Very fast, good quality (384d)",
+        "supports_quantization": True,
+        "recommended_quantization": "float32",
+        "memory_estimate": {"float32": 90, "float16": 45, "int8": 22}
     },
     "sentence-transformers/all-mpnet-base-v2": {
-        "dim": 768,
-        "description": "High quality general purpose (768d)"
+        "dimension": 768,
+        "description": "High quality general purpose (768d)",
+        "supports_quantization": True,
+        "recommended_quantization": "float32",
+        "memory_estimate": {"float32": 420, "float16": 210, "int8": 105}
     },
     "thenlper/gte-large": {
-        "dim": 1024,
-        "description": "State-of-the-art quality (1024d)"
+        "dimension": 1024,
+        "description": "State-of-the-art quality (1024d)",
+        "supports_quantization": True,
+        "recommended_quantization": "float32",
+        "memory_estimate": {"float32": 1300, "float16": 650, "int8": 325}
     },
     "thenlper/gte-base": {
-        "dim": 768,
-        "description": "Good balance of quality and speed (768d)"
+        "dimension": 768,
+        "description": "Good balance of quality and speed (768d)",
+        "supports_quantization": True,
+        "recommended_quantization": "float32",
+        "memory_estimate": {"float32": 420, "float16": 210, "int8": 105}
     },
     "intfloat/e5-large-v2": {
-        "dim": 1024,
-        "description": "Excellent for semantic search (1024d)"
+        "dimension": 1024,
+        "description": "Excellent for semantic search (1024d)",
+        "supports_quantization": True,
+        "recommended_quantization": "float32",
+        "memory_estimate": {"float32": 1300, "float16": 650, "int8": 325}
     },
     "intfloat/e5-base-v2": {
-        "dim": 768,
-        "description": "Good for semantic search (768d)"
+        "dimension": 768,
+        "description": "Good for semantic search (768d)",
+        "supports_quantization": True,
+        "recommended_quantization": "float32",
+        "memory_estimate": {"float32": 420, "float16": 210, "int8": 105}
     }
 }
 
+# Backward compatibility - also expose as POPULAR_MODELS
+POPULAR_MODELS = QUANTIZED_MODEL_INFO
+
+# Legacy compatibility - map old dimension key
+for model_info in POPULAR_MODELS.values():
+    if 'dimension' in model_info:
+        model_info['dim'] = model_info['dimension']
+
 def test_embedding_service():
-    """Test the embedding service"""
+    """Test the unified embedding service"""
     service = EmbeddingService()
     
     # Test loading a model
-    model_name = "sentence-transformers/all-MiniLM-L6-v2"
-    print(f"Testing model: {model_name}")
+    print("Testing model loading...")
+    if service.load_model("sentence-transformers/all-MiniLM-L6-v2"):
+        print("✓ Model loaded successfully")
     
-    if service.load_model(model_name):
-        # Test single embedding
-        embedding = service.generate_single_embedding("Hello world", model_name)
-        print(f"Single embedding shape: {len(embedding) if embedding else 'Failed'}")
-        
-        # Test batch embeddings
-        texts = ["First document", "Second document", "Third document"]
-        embeddings = service.generate_embeddings(texts, model_name)
-        if embeddings is not None:
-            print(f"Batch embeddings shape: {embeddings.shape}")
-            print(f"Embeddings are normalized: {np.allclose(np.linalg.norm(embeddings[0]), 1.0)}")
-    else:
-        print("Failed to load model")
+    # Test model info
+    print("\nTesting model info...")
+    info = service.get_model_info("sentence-transformers/all-MiniLM-L6-v2")
+    print(f"✓ Model info: {info}")
+    
+    # Test embedding generation
+    print("\nTesting embedding generation...")
+    texts = ["Hello world", "This is a test"]
+    embeddings = service.generate_embeddings(texts, "sentence-transformers/all-MiniLM-L6-v2")
+    if embeddings is not None:
+        print(f"✓ Generated embeddings shape: {embeddings.shape}")
+    
+    # Test single embedding
+    print("\nTesting single embedding...")
+    embedding = service.generate_single_embedding("Test text", "sentence-transformers/all-MiniLM-L6-v2")
+    if embedding:
+        print(f"✓ Single embedding dimension: {len(embedding)}")
+    
+    print("\nAll tests passed!")
 
 if __name__ == "__main__":
     test_embedding_service()

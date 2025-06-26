@@ -36,18 +36,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 from vecpipe.extract_chunks import extract_text, chunk_text, process_file
-from vecpipe.embed_chunks_simple import generate_mock_embeddings
 from vecpipe.ingest_qdrant import QdrantClient
 
-# Try to import enhanced embedding service with quantization support
-try:
-    from webui.embedding_service_v2 import enhanced_embedding_service as embedding_service, QUANTIZED_MODEL_INFO as POPULAR_MODELS
-    USE_ENHANCED_EMBEDDINGS = True
-    logger.info("Using enhanced embedding service with quantization support")
-except Exception as e:
-    logger.warning(f"Could not load enhanced embedding service: {e}. Using standard service.")
-    from webui.embedding_service import embedding_service, POPULAR_MODELS
-    USE_ENHANCED_EMBEDDINGS = False
+# Import the unified embedding service
+from webui.embedding_service import embedding_service, POPULAR_MODELS
 
 # Constants
 DB_PATH = "/var/embeddings/webui.db"
@@ -379,23 +371,15 @@ async def process_embedding_job(job_id: str):
                 # Generate embeddings
                 texts = [chunk['text'] for chunk in chunks]
                 
-                # Use real embedding service with quantization if available
-                if USE_ENHANCED_EMBEDDINGS:
-                    embeddings_array = embedding_service.generate_embeddings(
-                        texts, 
-                        job['model_name'],
-                        quantization=job['quantization'] or 'float32',
-                        batch_size=job['batch_size'],
-                        show_progress=False,
-                        instruction=job['instruction']
-                    )
-                else:
-                    embeddings_array = embedding_service.generate_embeddings(
-                        texts, 
-                        job['model_name'],
-                        batch_size=job['batch_size'],
-                        instruction=job['instruction']
-                    )
+                # Use unified embedding service
+                embeddings_array = embedding_service.generate_embeddings(
+                    texts, 
+                    job['model_name'],
+                    quantization=job['quantization'] or 'float32',
+                    batch_size=job['batch_size'],
+                    show_progress=False,
+                    instruction=job['instruction']
+                )
                 
                 if embeddings_array is None:
                     raise Exception("Failed to generate embeddings")
@@ -850,12 +834,9 @@ async def search(request: SearchRequest):
             conn.close()
         
         # Generate query embedding with same settings as job
-        if USE_ENHANCED_EMBEDDINGS:
-            query_vector = embedding_service.generate_single_embedding(
-                request.query, model_name, quantization=quantization, instruction=instruction
-            )
-        else:
-            query_vector = embedding_service.generate_single_embedding(request.query, model_name, instruction=instruction)
+        query_vector = embedding_service.generate_single_embedding(
+            request.query, model_name, quantization=quantization, instruction=instruction
+        )
             
         if not query_vector:
             raise HTTPException(status_code=500, detail="Failed to generate query embedding")
