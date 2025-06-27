@@ -14,7 +14,7 @@ A production-ready vector search system for document retrieval using Qdrant 1.8.
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.12+
 - Qdrant instance running (default: 192.168.1.173:6333)
 - Access to document directories
 
@@ -25,7 +25,7 @@ A production-ready vector search system for document retrieval using Qdrant 1.8.
 cd /root/document-embedding-project
 
 # Install dependencies
-pip install -r requirements.txt
+poetry install
 
 # Create required directories
 mkdir -p /opt/vecpipe/{extract,embed,tmp}

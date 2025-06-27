@@ -93,11 +93,13 @@ python test_search_integration.py
 To migrate from mock to real embeddings:
 
 1. Ensure GPU is available (or use CPU with longer latencies)
-2. Ensure required dependencies: `pip install transformers>=4.51.0 torch accelerate`
+2. Ensure required dependencies are installed: `poetry install`
 3. Set `USE_MOCK_EMBEDDINGS=false` (or remove it, as false is default)
 4. Restart the API
 5. The API will fail to start if the model cannot be loaded
 6. Once started successfully, the first query will be slightly slower as the model warms up
+
+Note: Ensure all dependencies are installed with: `poetry install`
 
 ## Troubleshooting
 

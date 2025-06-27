@@ -16,11 +16,10 @@ help:
 	@echo "  docker-run     Run Docker container"
 
 install:
-	pip install -r requirements.txt
+	poetry install --no-dev
 
 dev-install:
-	pip install -r requirements.txt
-	pip install ruff black isort mypy pytest pytest-asyncio pytest-cov
+	poetry install
 
 format:
 	black vecpipe webui tests
