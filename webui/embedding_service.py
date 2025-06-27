@@ -36,7 +36,7 @@ def get_detailed_instruct(task_description: str, query: str) -> str:
 class EmbeddingService:
     """Unified service for generating embeddings with optional quantization and Qwen3 support"""
     
-    def __init__(self):
+    def __init__(self, mock_mode: bool = False):
         self.models = {}
         self.current_model = None
         self.current_tokenizer = None
@@ -44,7 +44,13 @@ class EmbeddingService:
         self.current_quantization = None
         self.is_qwen3_model = False
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        logger.info(f"Unified EmbeddingService initialized with device: {self.device}")
+        self.mock_mode = mock_mode
+        # Adaptive batch sizing
+        self.original_batch_size = None
+        self.current_batch_size = None
+        self.successful_batches = 0
+        self.min_batch_size = 4
+        logger.info(f"Unified EmbeddingService initialized with device: {self.device}, mock_mode: {self.mock_mode}")
     
     def load_model(self, model_name: str, quantization: str = "float32") -> bool:
         """Load a model from HuggingFace with optional quantization
@@ -54,6 +60,13 @@ class EmbeddingService:
             quantization: One of "float32", "float16", "int8" (default: "float32")
         """
         try:
+            # Mock mode - skip actual model loading
+            if self.mock_mode:
+                logger.info(f"Mock mode: Simulating load of {model_name} with {quantization}")
+                self.current_model_name = model_name
+                self.current_quantization = quantization
+                return True
+            
             # Create unique key for model+quantization combo
             model_key = f"{model_name}_{quantization}"
             
@@ -171,6 +184,9 @@ class EmbeddingService:
     
     def _generate_test_embedding(self) -> np.ndarray:
         """Generate a test embedding to verify model and get dimensions"""
+        if self.mock_mode:
+            return np.random.randn(1024)  # Default mock dimension
+        
         if self.is_qwen3_model:
             batch_dict = self.current_tokenizer(
                 ["test"],
@@ -187,6 +203,30 @@ class EmbeddingService:
                 return embeddings[0].cpu().numpy()
         else:
             return self.current_model.encode("test", convert_to_numpy=True)
+    
+    def _generate_mock_embeddings(self, texts: List[str]) -> np.ndarray:
+        """Generate deterministic mock embeddings based on text hash"""
+        import hashlib
+        
+        # Determine embedding dimension
+        vector_dim = 1024  # Default dimension
+        if self.current_model_name:
+            # Try to get dimension from model info
+            model_info = QUANTIZED_MODEL_INFO.get(self.current_model_name, {})
+            vector_dim = model_info.get('dimension', 1024)
+        
+        embeddings = []
+        for text in texts:
+            # Create deterministic embedding from text hash
+            text_hash = hashlib.sha256(text.encode()).digest()
+            # Convert hash to float array (using first bytes)
+            embedding = np.frombuffer(text_hash, dtype=np.float32)[:vector_dim // 4]
+            # Repeat and normalize to get correct dimension
+            embedding = np.tile(embedding, (vector_dim // len(embedding) + 1))[:vector_dim]
+            embedding = embedding / np.linalg.norm(embedding)
+            embeddings.append(embedding)
+        
+        return np.array(embeddings)
     
     def get_model_info(self, model_name: str, quantization: str = "float32") -> Dict:
         """Get information about a model
@@ -243,6 +283,11 @@ class EmbeddingService:
             **kwargs: Additional arguments (ignored for compatibility)
         """
         try:
+            # Mock mode handling
+            if self.mock_mode:
+                logger.info(f"Generating mock embeddings for {len(texts)} texts")
+                return self._generate_mock_embeddings(texts)
+            
             # Load model with specified quantization if needed
             model_key = f"{model_name}_{quantization}"
             if model_key != f"{self.current_model_name}_{self.current_quantization}":
@@ -254,8 +299,13 @@ class EmbeddingService:
             
             logger.info(f"Generating embeddings for {len(texts)} texts with batch size {batch_size}")
             
-            # Handle memory constraints - reduce batch size on OOM
-            current_batch_size = batch_size
+            # Initialize adaptive batch sizing
+            if self.original_batch_size is None:
+                self.original_batch_size = batch_size
+                self.current_batch_size = batch_size
+            
+            # Use current batch size from adaptive sizing
+            current_batch_size = self.current_batch_size
             
             # Generate embeddings based on model type
             if self.is_qwen3_model:
@@ -292,12 +342,25 @@ class EmbeddingService:
                             embeddings = last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
                             embeddings = F.normalize(embeddings, p=2, dim=1)
                             all_embeddings.append(embeddings.cpu().numpy())
+                        
+                        # Track successful batches for restoration
+                        if current_batch_size == self.current_batch_size:
+                            self.successful_batches += 1
+                            # Try to restore batch size after 10 successful batches
+                            if self.successful_batches > 10 and self.current_batch_size < self.original_batch_size:
+                                new_size = min(self.current_batch_size * 2, self.original_batch_size)
+                                logger.info(f"Restoring batch size from {self.current_batch_size} to {new_size}")
+                                self.current_batch_size = new_size
+                                current_batch_size = new_size
+                                self.successful_batches = 0
                     
                     except torch.cuda.OutOfMemoryError:
-                        if current_batch_size > 1:
+                        if current_batch_size > self.min_batch_size:
                             logger.warning(f"OOM with batch size {current_batch_size}, reducing to {current_batch_size // 2}")
                             torch.cuda.empty_cache()
-                            current_batch_size = max(1, current_batch_size // 2)
+                            current_batch_size = max(self.min_batch_size, current_batch_size // 2)
+                            self.current_batch_size = current_batch_size
+                            self.successful_batches = 0  # Reset success counter
                             # Retry with smaller batch
                             i -= current_batch_size  # Step back to retry
                         else:
@@ -307,10 +370,19 @@ class EmbeddingService:
                 
             else:
                 # Standard sentence-transformers processing
-                try:
-                    if quantization == "float16" and self.device == "cuda":
-                        # Ensure inputs are float16 compatible
-                        with torch.cuda.amp.autocast(dtype=torch.float16):
+                while current_batch_size >= self.min_batch_size:
+                    try:
+                        if quantization == "float16" and self.device == "cuda":
+                            # Ensure inputs are float16 compatible
+                            with torch.cuda.amp.autocast(dtype=torch.float16):
+                                embeddings = self.current_model.encode(
+                                    texts,
+                                    batch_size=current_batch_size,
+                                    normalize_embeddings=True,
+                                    convert_to_numpy=True,
+                                    show_progress_bar=show_progress
+                                )
+                        else:
                             embeddings = self.current_model.encode(
                                 texts,
                                 batch_size=current_batch_size,
@@ -318,26 +390,28 @@ class EmbeddingService:
                                 convert_to_numpy=True,
                                 show_progress_bar=show_progress
                             )
-                    else:
-                        embeddings = self.current_model.encode(
-                            texts,
-                            batch_size=current_batch_size,
-                            normalize_embeddings=True,
-                            convert_to_numpy=True,
-                            show_progress_bar=show_progress
-                        )
-                except torch.cuda.OutOfMemoryError:
-                    logger.warning(f"OOM with batch size {current_batch_size}, reducing to {current_batch_size // 2}")
-                    torch.cuda.empty_cache()
-                    current_batch_size = max(1, current_batch_size // 2)
-                    
-                    embeddings = self.current_model.encode(
-                        texts,
-                        batch_size=current_batch_size,
-                        normalize_embeddings=True,
-                        convert_to_numpy=True,
-                        show_progress_bar=show_progress
-                    )
+                        
+                        # Success! Track it for potential restoration
+                        if current_batch_size == self.current_batch_size:
+                            self.successful_batches += 1
+                            # Try to restore batch size after 10 successful batches
+                            if self.successful_batches > 10 and self.current_batch_size < self.original_batch_size:
+                                new_size = min(self.current_batch_size * 2, self.original_batch_size)
+                                logger.info(f"Restoring batch size from {self.current_batch_size} to {new_size}")
+                                self.current_batch_size = new_size
+                                self.successful_batches = 0
+                        
+                        break  # Success, exit the retry loop
+                        
+                    except torch.cuda.OutOfMemoryError:
+                        logger.warning(f"OOM with batch size {current_batch_size}, reducing to {current_batch_size // 2}")
+                        torch.cuda.empty_cache()
+                        current_batch_size = max(self.min_batch_size, current_batch_size // 2)
+                        self.current_batch_size = current_batch_size
+                        self.successful_batches = 0  # Reset success counter
+                        
+                        if current_batch_size < self.min_batch_size:
+                            raise RuntimeError("Unable to process batch even with minimum batch size")
             
             return embeddings
             

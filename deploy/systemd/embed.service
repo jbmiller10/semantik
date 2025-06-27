@@ -4,7 +4,7 @@ After=extract.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /root/document-embedding-project/vecpipe/embed_chunks_simple.py \
+ExecStart=/usr/bin/python3 /root/document-embedding-project/vecpipe/embed_chunks_unified.py \
     --input /opt/vecpipe/extract \
     --output /var/embeddings/ingest
 User=root
