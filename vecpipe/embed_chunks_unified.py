@@ -107,9 +107,10 @@ async def process_file_async(file_path: str, output_dir: str, embedding_service:
                 {
                     'doc_id': doc_id,
                     'chunk_id': chunk_id,
-                    'path': path
+                    'path': path,
+                    'content': text  # Add full text content for hybrid search
                 }
-                for doc_id, chunk_id, path in zip(data['doc_ids'], data['chunk_ids'], data['paths'])
+                for doc_id, chunk_id, path, text in zip(data['doc_ids'], data['chunk_ids'], data['paths'], texts)
             ]
         }
         

@@ -255,14 +255,54 @@
                             <label class="block text-sm font-medium text-gray-700 mb-2">Collection</label>
                             <select id="search-collection"
                                     class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <option value="">Default Collection</option>
                                 <!-- Job collections will be loaded here -->
                             </select>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Results</label>
-                            <input type="number" id="search-k" value="10" min="1" max="100"
+                            <input type="number" id="search-k" value="100" min="1" max="100"
                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+
+                    <!-- Search Mode Toggle -->
+                    <div class="bg-gray-50 rounded-lg p-4 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <label class="text-sm font-medium text-gray-700">Search Mode</label>
+                            <div class="flex items-center space-x-2">
+                                <input type="checkbox" id="use-hybrid-search" checked
+                                       class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                                       onchange="toggleSearchMode()">
+                                <label for="use-hybrid-search" class="text-sm text-gray-700">
+                                    Use Hybrid Search
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- Hybrid Search Options (shown by default) -->
+                        <div id="hybrid-search-options" class="space-y-3">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Hybrid Mode</label>
+                                    <select id="hybrid-mode"
+                                            class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                        <option value="rerank">Rerank (More Accurate)</option>
+                                        <option value="filter">Filter (Faster)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Keyword Matching</label>
+                                    <select id="keyword-mode"
+                                            class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                        <option value="any">Any Keywords</option>
+                                        <option value="all">All Keywords</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <p class="text-xs text-gray-500">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                Hybrid search combines vector similarity with keyword matching for better results
+                            </p>
                         </div>
                     </div>
 

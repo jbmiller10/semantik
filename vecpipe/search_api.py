@@ -22,6 +22,7 @@ import uvicorn
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from webui.embedding_service import EmbeddingService
 from vecpipe.search_utils import search_qdrant, parse_search_results
+from vecpipe.hybrid_search import HybridSearchEngine
 
 # Configure logging
 logging.basicConfig(
@@ -50,6 +51,22 @@ class SearchResponse(BaseModel):
     query: str
     results: List[SearchResult]
     num_results: int
+
+class HybridSearchResult(BaseModel):
+    path: str
+    chunk_id: str
+    score: float
+    doc_id: Optional[str] = None
+    matched_keywords: List[str] = []
+    keyword_score: Optional[float] = None
+    combined_score: Optional[float] = None
+
+class HybridSearchResponse(BaseModel):
+    query: str
+    results: List[HybridSearchResult]
+    num_results: int
+    keywords_extracted: List[str]
+    search_mode: str
 
 # Global resources
 qdrant_client = None
@@ -265,6 +282,162 @@ async def search(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.get("/hybrid_search", response_model=HybridSearchResponse)
+async def hybrid_search(
+    q: str = Query(..., description="Search query"),
+    k: int = Query(DEFAULT_K, ge=1, le=100, description="Number of results to return"),
+    collection: Optional[str] = Query(None, description="Collection name (e.g., job_123)"),
+    mode: str = Query("filter", description="Hybrid search mode: 'filter' or 'rerank'"),
+    keyword_mode: str = Query("any", description="Keyword matching: 'any' or 'all'"),
+    score_threshold: Optional[float] = Query(None, description="Minimum similarity score threshold")
+):
+    """
+    Perform hybrid search combining vector similarity and text matching
+    
+    - **q**: The search query text
+    - **k**: Number of results to return (1-100, default 10)
+    - **collection**: Optional collection name (defaults to work_docs)
+    - **mode**: Hybrid search mode - 'filter' uses Qdrant filters, 'rerank' does post-processing
+    - **keyword_mode**: How to match keywords - 'any' matches any keyword, 'all' requires all keywords
+    - **score_threshold**: Optional minimum similarity score threshold
+    """
+    try:
+        # Determine collection name
+        collection_name = collection if collection else COLLECTION_NAME
+        
+        # Initialize hybrid search engine
+        hybrid_engine = HybridSearchEngine(QDRANT_HOST, QDRANT_PORT, collection_name)
+        
+        # Extract keywords for response
+        keywords = hybrid_engine.extract_keywords(q)
+        
+        # Generate query embedding
+        logger.info(f"Processing hybrid search query: '{q}' (k={k}, collection={collection_name}, mode={mode})")
+        
+        if not USE_MOCK_EMBEDDINGS:
+            query_vector = await generate_embedding_async(q)
+        else:
+            # Get vector dimension from collection
+            vector_dim = 1024  # default
+            try:
+                response = await qdrant_client.get(f"/collections/{collection_name}")
+                response.raise_for_status()
+                collection_info = response.json()['result']
+                if 'config' in collection_info and 'params' in collection_info['config']:
+                    vector_dim = collection_info['config']['params']['vectors']['size']
+            except Exception as e:
+                logger.warning(f"Could not get collection info for {collection_name}, using default dimension: {e}")
+            
+            query_vector = generate_mock_embedding(q, vector_dim)
+        
+        # Perform hybrid search
+        results = hybrid_engine.hybrid_search(
+            query_vector=query_vector,
+            query_text=q,
+            limit=k,
+            keyword_mode=keyword_mode,
+            score_threshold=score_threshold,
+            hybrid_mode=mode
+        )
+        
+        # Convert results to response format
+        hybrid_results = []
+        for r in results:
+            result = HybridSearchResult(
+                path=r['payload'].get('path', ''),
+                chunk_id=r['payload'].get('chunk_id', ''),
+                score=r['score'],
+                doc_id=r['payload'].get('doc_id'),
+                matched_keywords=r.get('matched_keywords', []),
+                keyword_score=r.get('keyword_score'),
+                combined_score=r.get('combined_score')
+            )
+            hybrid_results.append(result)
+        
+        logger.info(f"Found {len(hybrid_results)} results for hybrid query: '{q}'")
+        
+        return HybridSearchResponse(
+            query=q,
+            results=hybrid_results,
+            num_results=len(hybrid_results),
+            keywords_extracted=keywords,
+            search_mode=mode
+        )
+        
+    except Exception as e:
+        logger.error(f"Hybrid search error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Hybrid search error: {str(e)}")
+    finally:
+        if 'hybrid_engine' in locals():
+            hybrid_engine.close()
+
+@app.get("/keyword_search", response_model=HybridSearchResponse)
+async def keyword_search(
+    q: str = Query(..., description="Keywords to search for"),
+    k: int = Query(DEFAULT_K, ge=1, le=100, description="Number of results to return"),
+    collection: Optional[str] = Query(None, description="Collection name (e.g., job_123)"),
+    mode: str = Query("any", description="Keyword matching: 'any' or 'all'")
+):
+    """
+    Search using only keywords (no vector similarity)
+    
+    - **q**: Keywords to search for (space-separated)
+    - **k**: Number of results to return (1-100, default 10)
+    - **collection**: Optional collection name (defaults to work_docs)
+    - **mode**: How to match keywords - 'any' matches any keyword, 'all' requires all keywords
+    """
+    try:
+        # Determine collection name
+        collection_name = collection if collection else COLLECTION_NAME
+        
+        # Initialize hybrid search engine
+        hybrid_engine = HybridSearchEngine(QDRANT_HOST, QDRANT_PORT, collection_name)
+        
+        # Extract keywords
+        keywords = hybrid_engine.extract_keywords(q)
+        
+        logger.info(f"Processing keyword search: '{q}' -> {keywords} (k={k}, collection={collection_name}, mode={mode})")
+        
+        # Perform keyword-only search
+        results = hybrid_engine.search_by_keywords(
+            keywords=keywords,
+            limit=k,
+            mode=mode
+        )
+        
+        # Convert results to response format
+        hybrid_results = []
+        for r in results:
+            result = HybridSearchResult(
+                path=r['payload'].get('path', ''),
+                chunk_id=r['payload'].get('chunk_id', ''),
+                score=0.0,  # No vector score for keyword-only search
+                doc_id=r['payload'].get('doc_id'),
+                matched_keywords=r.get('matched_keywords', [])
+            )
+            hybrid_results.append(result)
+        
+        logger.info(f"Found {len(hybrid_results)} results for keyword search: '{q}'")
+        
+        return HybridSearchResponse(
+            query=q,
+            results=hybrid_results,
+            num_results=len(hybrid_results),
+            keywords_extracted=keywords,
+            search_mode="keywords_only"
+        )
+        
+    except Exception as e:
+        logger.error(f"Keyword search error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Keyword search error: {str(e)}")
+    finally:
+        if 'hybrid_engine' in locals():
+            hybrid_engine.close()
 
 @app.get("/collection/info")
 async def collection_info():

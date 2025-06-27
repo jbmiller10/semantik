@@ -631,7 +631,7 @@ async function loadJobCollections() {
         const jobs = await response.json();
         
         const select = document.getElementById('search-collection');
-        select.innerHTML = '<option value="">Default Collection</option>';
+        select.innerHTML = '';
         
         jobs.filter(job => job.status === 'completed').forEach(job => {
             const option = document.createElement('option');
@@ -653,33 +653,78 @@ function useJobForSearch(jobId, jobName) {
     }, 100);
 }
 
+// Toggle search mode
+function toggleSearchMode() {
+    const useHybridSearch = document.getElementById('use-hybrid-search').checked;
+    const hybridOptions = document.getElementById('hybrid-search-options');
+    
+    if (useHybridSearch) {
+        hybridOptions.classList.remove('hidden');
+    } else {
+        hybridOptions.classList.add('hidden');
+    }
+}
+
 // Search form submission
 document.getElementById('search-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    const searchData = {
-        query: document.getElementById('search-query').value,
-        k: parseInt(document.getElementById('search-k').value),
-        job_id: document.getElementById('search-collection').value || null
-    };
+    const useHybridSearch = document.getElementById('use-hybrid-search').checked;
     
-    try {
-        const response = await fetch('/api/search', {
-            method: 'POST',
-            headers: auth.getHeaders(),
-            body: JSON.stringify(searchData)
-        });
+    if (!useHybridSearch) {
+        // Vector search
+        const searchData = {
+            query: document.getElementById('search-query').value,
+            k: parseInt(document.getElementById('search-k').value),
+            job_id: document.getElementById('search-collection').value || null
+        };
         
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail);
+        try {
+            const response = await fetch('/api/search', {
+                method: 'POST',
+                headers: auth.getHeaders(),
+                body: JSON.stringify(searchData)
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail);
+            }
+            
+            const results = await response.json();
+            displaySearchResults(results);
+            
+        } catch (error) {
+            alert(`Search failed: ${error.message}`);
         }
+    } else {
+        // Hybrid search
+        const searchData = {
+            query: document.getElementById('search-query').value,
+            k: parseInt(document.getElementById('search-k').value),
+            job_id: document.getElementById('search-collection').value || null,
+            mode: document.getElementById('hybrid-mode').value,
+            keyword_mode: document.getElementById('keyword-mode').value
+        };
         
-        const results = await response.json();
-        displaySearchResults(results);
-        
-    } catch (error) {
-        alert(`Search failed: ${error.message}`);
+        try {
+            const response = await fetch('/api/hybrid_search', {
+                method: 'POST',
+                headers: auth.getHeaders(),
+                body: JSON.stringify(searchData)
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail);
+            }
+            
+            const results = await response.json();
+            displayHybridSearchResults(results);
+            
+        } catch (error) {
+            alert(`Hybrid search failed: ${error.message}`);
+        }
     }
 });
 
@@ -722,6 +767,103 @@ function toggleDocument(docId) {
 }
 
 // Display search results
+function displayHybridSearchResults(data) {
+    const resultsDiv = document.getElementById('search-results');
+    const container = document.getElementById('results-container');
+    
+    resultsDiv.classList.remove('hidden');
+    
+    if (data.results.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-center py-8">No results found</p>';
+        return;
+    }
+    
+    // Convert hybrid results format to match regular results for grouping
+    const convertedResults = data.results.map(result => ({
+        payload: {
+            path: result.path || result.payload?.path,
+            chunk_id: result.chunk_id || result.payload?.chunk_id,
+            doc_id: result.doc_id || result.payload?.doc_id,
+            text: result.payload?.content?.substring(0, 200) || result.payload?.text,
+            matched_keywords: result.matched_keywords
+        },
+        score: result.combined_score || result.score,
+        keyword_score: result.keyword_score
+    }));
+    
+    // Group results by document
+    const groupedDocs = groupResultsByDocument(convertedResults);
+    
+    container.innerHTML = groupedDocs.map((doc, docIdx) => {
+        // Sort chunks within each document by score
+        const sortedChunks = doc.chunks.sort((a, b) => b.score - a.score);
+        
+        return `
+        <div class="border border-gray-200 rounded-lg overflow-hidden mb-4 transition-shadow hover:shadow-lg">
+            <!-- Document Header (Always Visible) -->
+            <div class="bg-gray-50 p-4 cursor-pointer hover:bg-gray-100 transition-colors"
+                 onclick="toggleDocument(${docIdx})">
+                <div class="flex justify-between items-start">
+                    <div class="flex items-center flex-1">
+                        <i id="doc-icon-${docIdx}" class="fas fa-chevron-right mr-2 text-gray-500 transition-transform"></i>
+                        <div class="flex-1">
+                            <h4 class="font-semibold text-lg">
+                                <i class="fas fa-file-alt mr-2 text-gray-500"></i>
+                                ${doc.filename}
+                            </h4>
+                            <p class="text-sm text-gray-600 mt-1">${doc.path}</p>
+                        </div>
+                    </div>
+                    <div class="flex flex-col items-end ml-4">
+                        <span class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
+                            ${doc.chunks.length} ${doc.chunks.length === 1 ? 'chunk' : 'chunks'}
+                        </span>
+                        <span class="text-xs text-gray-500 mt-1">
+                            Max score: ${doc.maxScore.toFixed(3)}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Document Chunks (Collapsible) -->
+            <div id="doc-content-${docIdx}" class="hidden border-t border-gray-200">
+                <div class="p-4 space-y-3">
+                    ${sortedChunks.map((chunk, chunkIdx) => `
+                        <div class="border border-gray-200 rounded-lg p-4 bg-white hover:bg-gray-50 transition-colors">
+                            <div class="flex justify-between items-start mb-2">
+                                <h5 class="font-medium text-gray-700">
+                                    Chunk ${chunkIdx + 1}
+                                </h5>
+                                <div class="flex gap-2">
+                                    <span class="bg-green-100 text-green-800 px-2 py-1 rounded text-sm">
+                                        Score: ${chunk.score.toFixed(3)}
+                                    </span>
+                                    ${chunk.keyword_score !== undefined ? `
+                                        <span class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-sm">
+                                            Keywords: ${chunk.keyword_score.toFixed(3)}
+                                        </span>
+                                    ` : ''}
+                                </div>
+                            </div>
+                            
+                            ${chunk.payload.text ? `
+                                <div class="bg-gray-50 rounded p-3 mt-2">
+                                    <p class="text-sm text-gray-700">${chunk.payload.text}...</p>
+                                </div>
+                            ` : ''}
+                            
+                            <div class="mt-2 text-xs text-gray-500">
+                                Chunk ID: ${chunk.payload.chunk_id}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        </div>
+        `;
+    }).join('');
+}
+
 function displaySearchResults(data) {
     const resultsDiv = document.getElementById('search-results');
     const container = document.getElementById('results-container');

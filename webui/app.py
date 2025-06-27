@@ -38,7 +38,8 @@ logger = logging.getLogger(__name__)
 
 from vecpipe.extract_chunks import extract_text, chunk_text, process_file, extract_text_pdf, extract_text_docx, extract_text_txt
 from vecpipe.ingest_qdrant import QdrantClient
-from vecpipe.search_utils import search_qdrant, parse_search_results
+from vecpipe.search_utils import search_qdrant
+from vecpipe.hybrid_search import HybridSearchEngine
 
 # Import the unified embedding service
 from webui.embedding_service import embedding_service, POPULAR_MODELS
@@ -132,6 +133,14 @@ class SearchRequest(BaseModel):
     query: str
     k: int = Field(default=10, ge=1, le=100)
     job_id: Optional[str] = None
+
+class HybridSearchRequest(BaseModel):
+    query: str
+    k: int = Field(default=10, ge=1, le=100)
+    job_id: Optional[str] = None
+    mode: str = Field(default="filter", description="Hybrid search mode: 'filter' or 'rerank'")
+    keyword_mode: str = Field(default="any", description="Keyword matching: 'any' or 'all'")
+    score_threshold: Optional[float] = None
 
 # Database initialization
 def init_db():
@@ -540,7 +549,7 @@ async def process_embedding_job(job_id: str):
                                 "doc_id": doc_id,
                                 "chunk_id": chunk['chunk_id'],
                                 "path": file_row['path'],
-                                "text": chunk['text'][:200]  # Store preview
+                                "content": chunk['text']  # Store full text for hybrid search
                             }
                         }
                         points.append(point)
@@ -1082,6 +1091,79 @@ async def search(request: SearchRequest, current_user: Dict[str, Any] = Depends(
         if e.response.status_code == 404:
             raise HTTPException(status_code=404, detail="Collection not found")
         raise HTTPException(status_code=502, detail="Search failed")
+
+@app.post("/api/hybrid_search")
+async def hybrid_search(request: HybridSearchRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Perform hybrid search combining vector similarity and text matching"""
+    try:
+        # Determine collection name
+        collection_name = f"job_{request.job_id}" if request.job_id else "work_docs"
+        
+        # Initialize hybrid search engine
+        hybrid_engine = HybridSearchEngine(QDRANT_HOST, QDRANT_PORT, collection_name)
+        
+        # Get model name and settings from job if specified
+        model_name = "BAAI/bge-large-en-v1.5"  # default
+        quantization = "float32"  # default
+        instruction = None  # default
+        
+        if request.job_id:
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            job = c.execute("SELECT model_name, quantization, instruction FROM jobs WHERE id=?", 
+                           (request.job_id,)).fetchone()
+            if job:
+                if job[0]:
+                    model_name = job[0]
+                if job[1]:
+                    quantization = job[1]
+                if job[2]:
+                    instruction = job[2]
+            conn.close()
+        
+        # Generate query embedding with same settings as job
+        query_vector = embedding_service.generate_single_embedding(
+            request.query, model_name, quantization=quantization, instruction=instruction
+        )
+            
+        if not query_vector:
+            raise HTTPException(status_code=500, detail="Failed to generate query embedding")
+        
+        # Extract keywords
+        keywords = hybrid_engine.extract_keywords(request.query)
+        
+        # Convert query_vector to list if it's a numpy array
+        if hasattr(query_vector, 'tolist'):
+            query_vector_list = query_vector.tolist()
+        else:
+            query_vector_list = query_vector
+        
+        # Perform hybrid search
+        results = hybrid_engine.hybrid_search(
+            query_vector=query_vector_list,
+            query_text=request.query,
+            limit=request.k,
+            keyword_mode=request.keyword_mode,
+            score_threshold=request.score_threshold,
+            hybrid_mode=request.mode
+        )
+        
+        # Close the engine
+        hybrid_engine.close()
+        
+        return {
+            "query": request.query,
+            "results": results,
+            "collection": collection_name,
+            "keywords_extracted": keywords,
+            "search_mode": request.mode
+        }
+        
+    except Exception as e:
+        logger.error(f"Hybrid search failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Hybrid search failed: {str(e)}")
 
 @app.websocket("/ws/{job_id}")
 async def websocket_endpoint(websocket: WebSocket, job_id: str):
