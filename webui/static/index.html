@@ -69,9 +69,18 @@
             <h1 class="text-3xl font-bold text-gray-800">
                 <i class="fas fa-database mr-2"></i>Document Embedding System
             </h1>
-            <a href="/settings" class="text-gray-600 hover:text-gray-800">
-                <i class="fas fa-cog text-2xl"></i>
-            </a>
+            <div class="flex items-center space-x-4">
+                <span class="text-gray-600">
+                    <i class="fas fa-user mr-2"></i>
+                    <span id="current-user">Loading...</span>
+                </span>
+                <a href="/settings" class="text-gray-600 hover:text-gray-800">
+                    <i class="fas fa-cog text-2xl"></i>
+                </a>
+                <button onclick="auth.logout()" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors">
+                    <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                </button>
+            </div>
         </div>
 
         <!-- Tabs -->

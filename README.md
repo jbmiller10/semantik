@@ -187,20 +187,11 @@ The project includes a comprehensive web interface for managing embeddings.
 
 ### Running the Web UI
 
-#### Option 1: Direct Python
 ```bash
 cd /root/document-embedding-project
 python -m uvicorn webui.app:app --host 0.0.0.0 --port 8080
 ```
 
-#### Option 2: Docker
-```bash
-# Build and run with Docker Compose
-docker-compose up -d webui
-
-# View logs
-docker-compose logs -f webui
-```
 
 ### Accessing the UI
 

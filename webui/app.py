@@ -16,7 +16,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 import gc
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel, Field, validator
@@ -38,9 +38,17 @@ logger = logging.getLogger(__name__)
 
 from vecpipe.extract_chunks import extract_text, chunk_text, process_file
 from vecpipe.ingest_qdrant import QdrantClient
+from vecpipe.search_utils import search_qdrant, parse_search_results
 
 # Import the unified embedding service
 from webui.embedding_service import embedding_service, POPULAR_MODELS
+
+# Import authentication
+from webui.auth import (
+    UserCreate, UserLogin, Token, User, get_current_user,
+    create_user, authenticate_user, create_access_token, create_refresh_token,
+    save_refresh_token, verify_refresh_token, get_user, revoke_refresh_token
+)
 
 # Constants
 DB_PATH = "/var/embeddings/webui.db"
@@ -551,12 +559,93 @@ async def process_embedding_job(job_id: str):
         qdrant.close()
         conn.close()
 
-# API Routes
+# Authentication Routes
+@app.post("/api/auth/register", response_model=User)
+async def register(user_data: UserCreate):
+    """Register a new user"""
+    try:
+        user = create_user(user_data)
+        return user
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Registration error: {e}")
+        raise HTTPException(status_code=500, detail="Registration failed")
+
+@app.post("/api/auth/login", response_model=Token)
+async def login(login_data: UserLogin):
+    """Login and receive access token"""
+    user = authenticate_user(login_data.username, login_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect username or password"
+        )
+    
+    # Create tokens
+    access_token = create_access_token(data={"sub": user["username"]})
+    refresh_token = create_refresh_token(data={"sub": user["username"]})
+    
+    # Save refresh token
+    from datetime import timedelta
+    expires_at = datetime.utcnow() + timedelta(days=30)
+    save_refresh_token(user["id"], refresh_token, expires_at)
+    
+    return Token(access_token=access_token, refresh_token=refresh_token)
+
+@app.post("/api/auth/refresh", response_model=Token)
+async def refresh_token(refresh_token: str):
+    """Refresh access token using refresh token"""
+    user_id = verify_refresh_token(refresh_token)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+    
+    # Get user
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    user = c.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    
+    # Create new tokens
+    access_token = create_access_token(data={"sub": user["username"]})
+    new_refresh_token = create_refresh_token(data={"sub": user["username"]})
+    
+    # Revoke old refresh token and save new one
+    revoke_refresh_token(refresh_token)
+    from datetime import timedelta
+    expires_at = datetime.utcnow() + timedelta(days=30)
+    save_refresh_token(user["id"], new_refresh_token, expires_at)
+    
+    return Token(access_token=access_token, refresh_token=new_refresh_token)
+
+@app.post("/api/auth/logout")
+async def logout(refresh_token: str = None, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Logout and revoke refresh token"""
+    if refresh_token:
+        revoke_refresh_token(refresh_token)
+    return {"message": "Logged out successfully"}
+
+@app.get("/api/auth/me", response_model=User)
+async def get_me(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Get current user info"""
+    return User(**current_user)
+
+# API Routes (Public - no auth required for root pages)
 @app.get("/")
 async def root():
     """Serve the main UI"""
     base_dir = os.path.dirname(os.path.abspath(__file__))
     return FileResponse(os.path.join(base_dir, 'static', 'index.html'))
+
+@app.get("/login.html")
+async def login_page():
+    """Serve the login page"""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    return FileResponse(os.path.join(base_dir, 'static', 'login.html'))
 
 @app.get("/settings")
 async def settings_page():
@@ -565,7 +654,7 @@ async def settings_page():
     return FileResponse(os.path.join(base_dir, 'static', 'settings.html'))
 
 @app.post("/api/settings/reset-database")
-async def reset_database_endpoint():
+async def reset_database_endpoint(current_user: Dict[str, Any] = Depends(get_current_user)):
     """Reset the database"""
     try:
         # Get all job IDs before reset
@@ -605,7 +694,7 @@ async def reset_database_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/settings/stats")
-async def get_database_stats():
+async def get_database_stats(current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get database statistics"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -633,7 +722,7 @@ async def get_database_stats():
         conn.close()
 
 @app.post("/api/scan-directory")
-async def scan_directory_endpoint(request: ScanDirectoryRequest):
+async def scan_directory_endpoint(request: ScanDirectoryRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Scan a directory for supported files"""
     try:
         files = scan_directory(request.path, request.recursive)
@@ -642,7 +731,7 @@ async def scan_directory_endpoint(request: ScanDirectoryRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/jobs", response_model=JobStatus)
-async def create_job(request: CreateJobRequest, background_tasks: BackgroundTasks):
+async def create_job(request: CreateJobRequest, background_tasks: BackgroundTasks, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Create a new embedding job"""
     job_id = str(uuid.uuid4())
     
@@ -752,7 +841,7 @@ async def create_job(request: CreateJobRequest, background_tasks: BackgroundTask
         conn.close()
 
 @app.get("/api/models")
-async def get_models():
+async def get_models(current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get available embedding models"""
     return {
         "models": POPULAR_MODELS,
@@ -761,7 +850,7 @@ async def get_models():
     }
 
 @app.get("/api/jobs", response_model=List[JobStatus])
-async def list_jobs():
+async def list_jobs(current_user: Dict[str, Any] = Depends(get_current_user)):
     """List all jobs"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -790,7 +879,7 @@ async def list_jobs():
     return result
 
 @app.post("/api/jobs/{job_id}/cancel")
-async def cancel_job(job_id: str):
+async def cancel_job(job_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Cancel a running job"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -820,7 +909,7 @@ async def cancel_job(job_id: str):
         conn.close()
 
 @app.delete("/api/jobs/{job_id}")
-async def delete_job(job_id: str):
+async def delete_job(job_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Delete a job and its associated collection"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -854,7 +943,7 @@ async def delete_job(job_id: str):
         conn.close()
 
 @app.get("/api/jobs/{job_id}", response_model=JobStatus)
-async def get_job(job_id: str):
+async def get_job(job_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get job details"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -883,7 +972,7 @@ async def get_job(job_id: str):
     )
 
 @app.post("/api/search")
-async def search(request: SearchRequest):
+async def search(request: SearchRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Search for similar documents"""
     try:
         # Determine collection name
@@ -922,22 +1011,14 @@ async def search(request: SearchRequest):
         if not query_vector:
             raise HTTPException(status_code=500, detail="Failed to generate query embedding")
         
-        # Search via HTTP API
-        search_request = {
-            "vector": query_vector,
-            "limit": request.k,
-            "with_payload": True
-        }
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"http://{QDRANT_HOST}:{QDRANT_PORT}/collections/{collection_name}/points/search",
-                json=search_request,
-                timeout=30.0
-            )
-            response.raise_for_status()
-        
-        results = response.json()['result']
+        # Search using shared utility
+        results = await search_qdrant(
+            QDRANT_HOST,
+            QDRANT_PORT,
+            collection_name,
+            query_vector,
+            request.k
+        )
         
         return {
             "query": request.query,

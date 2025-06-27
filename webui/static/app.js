@@ -1,3 +1,67 @@
+// Authentication helper
+const auth = {
+    getToken: () => localStorage.getItem('access_token'),
+    
+    getHeaders: () => ({
+        'Authorization': `Bearer ${auth.getToken()}`,
+        'Content-Type': 'application/json'
+    }),
+    
+    checkAuth: async () => {
+        const token = auth.getToken();
+        if (!token) {
+            window.location.href = '/login.html';
+            return false;
+        }
+        
+        try {
+            const response = await fetch('/api/auth/me', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            if (!response.ok) {
+                throw new Error('Invalid token');
+            }
+            
+            const user = await response.json();
+            // Update UI with user info if needed
+            const userElement = document.getElementById('current-user');
+            if (userElement) {
+                userElement.textContent = user.username;
+            }
+            
+            return true;
+        } catch (error) {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            window.location.href = '/login.html';
+            return false;
+        }
+    },
+    
+    logout: () => {
+        const refreshToken = localStorage.getItem('refresh_token');
+        fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: auth.getHeaders(),
+            body: JSON.stringify({ refresh_token: refreshToken })
+        }).finally(() => {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            window.location.href = '/login.html';
+        });
+    }
+};
+
+// Check authentication on page load
+window.addEventListener('DOMContentLoaded', async () => {
+    const isAuthenticated = await auth.checkAuth();
+    if (isAuthenticated) {
+        // Load models only after authentication is confirmed
+        loadModels();
+    }
+});
+
 // Global state
 let scannedFiles = [];
 let activeWebSocket = null;
@@ -301,7 +365,7 @@ document.getElementById('create-job-form').addEventListener('submit', async (e) 
     try {
         const response = await fetch('/api/jobs', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: auth.getHeaders(),
             body: JSON.stringify(jobData)
         });
         
@@ -327,7 +391,9 @@ document.getElementById('create-job-form').addEventListener('submit', async (e) 
 // Refresh jobs list
 async function refreshJobs() {
     try {
-        const response = await fetch('/api/jobs');
+        const response = await fetch('/api/jobs', {
+            headers: { 'Authorization': `Bearer ${auth.getToken()}` }
+        });
         const jobs = await response.json();
         
         const jobsList = document.getElementById('jobs-list');
@@ -449,7 +515,8 @@ async function cancelJob(jobId) {
     
     try {
         const response = await fetch(`/api/jobs/${jobId}/cancel`, {
-            method: 'POST'
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${auth.getToken()}` }
         });
         
         if (!response.ok) {
@@ -524,7 +591,9 @@ function connectToJobWebSocket(jobId) {
 // Load job collections for search
 async function loadJobCollections() {
     try {
-        const response = await fetch('/api/jobs');
+        const response = await fetch('/api/jobs', {
+            headers: { 'Authorization': `Bearer ${auth.getToken()}` }
+        });
         const jobs = await response.json();
         
         const select = document.getElementById('search-collection');
@@ -563,7 +632,7 @@ document.getElementById('search-form').addEventListener('submit', async (e) => {
     try {
         const response = await fetch('/api/search', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: auth.getHeaders(),
             body: JSON.stringify(searchData)
         });
         
@@ -757,7 +826,9 @@ function closeProgressModal() {
 // Load available models
 async function loadModels() {
     try {
-        const response = await fetch('/api/models');
+        const response = await fetch('/api/models', {
+            headers: { 'Authorization': `Bearer ${auth.getToken()}` }
+        });
         const data = await response.json();
         
         const select = document.getElementById('model-name');
@@ -805,9 +876,7 @@ async function loadModels() {
 
 // Initialize on load
 document.addEventListener('DOMContentLoaded', () => {
-    // Load models
-    loadModels();
-    
+    // Models are loaded after authentication check
     // Set default tab
     switchTab('create');
 });
