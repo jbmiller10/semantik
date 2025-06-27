@@ -349,20 +349,42 @@ document.getElementById('create-job-form').addEventListener('submit', async (e) 
     
     const vectorDimValue = document.getElementById('vector-dim').value;
     const instructionValue = document.getElementById('instruction').value;
-    const jobData = {
-        name: document.getElementById('job-name').value,
-        description: document.getElementById('job-description').value,
-        directory_path: document.getElementById('directory-path').value,
-        model_name: modelName,
-        chunk_size: parseInt(document.getElementById('chunk-size').value),
-        chunk_overlap: parseInt(document.getElementById('chunk-overlap').value),
-        batch_size: 96,
-        vector_dim: vectorDimValue ? parseInt(vectorDimValue) : null,
-        quantization: document.getElementById('quantization').value,
-        instruction: instructionValue || null
-    };
     
     try {
+        // First, get a new job ID
+        const idResponse = await fetch('/api/jobs/new-id', {
+            headers: auth.getHeaders()
+        });
+        
+        if (!idResponse.ok) {
+            throw new Error('Failed to generate job ID');
+        }
+        
+        const { job_id } = await idResponse.json();
+        
+        // Show scanning progress modal
+        showScanningProgress();
+        
+        // Connect to scan WebSocket with the actual job ID
+        const scanWs = connectToScanWebSocket(job_id);
+        
+        // Small delay to ensure WebSocket connection is established
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        const jobData = {
+            name: document.getElementById('job-name').value,
+            description: document.getElementById('job-description').value,
+            directory_path: document.getElementById('directory-path').value,
+            model_name: modelName,
+            chunk_size: parseInt(document.getElementById('chunk-size').value),
+            chunk_overlap: parseInt(document.getElementById('chunk-overlap').value),
+            batch_size: 96,
+            vector_dim: vectorDimValue ? parseInt(vectorDimValue) : null,
+            quantization: document.getElementById('quantization').value,
+            instruction: instructionValue || null,
+            job_id: job_id  // Include the pre-generated job ID
+        };
+        
         const response = await fetch('/api/jobs', {
             method: 'POST',
             headers: auth.getHeaders(),
@@ -375,6 +397,13 @@ document.getElementById('create-job-form').addEventListener('submit', async (e) 
         }
         
         const job = await response.json();
+        
+        // Close scan WebSocket and hide scanning progress
+        if (scanWs && scanWs.readyState === WebSocket.OPEN) {
+            scanWs.close();
+        }
+        hideScanningProgress();
+        
         alert(`Job created successfully! ID: ${job.id}`);
         
         // Switch to jobs tab
@@ -384,6 +413,11 @@ document.getElementById('create-job-form').addEventListener('submit', async (e) 
         connectToJobWebSocket(job.id);
         
     } catch (error) {
+        // Close scan WebSocket and hide scanning progress on error
+        if (scanWs && scanWs.readyState === WebSocket.OPEN) {
+            scanWs.close();
+        }
+        hideScanningProgress();
         alert(`Failed to create job: ${error.message}`);
     }
 });
@@ -872,6 +906,75 @@ async function loadModels() {
     } catch (error) {
         console.error('Failed to load models:', error);
     }
+}
+
+// Scanning progress functions
+function showScanningProgress() {
+    // Create modal overlay
+    const modal = document.createElement('div');
+    modal.id = 'scanning-modal';
+    modal.className = 'fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50';
+    modal.innerHTML = `
+        <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+            <h3 class="text-lg font-semibold mb-4">Scanning Directory...</h3>
+            <div class="space-y-4">
+                <div id="scan-status" class="text-sm text-gray-600">
+                    Initializing scan...
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div id="scan-progress-bar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+                <div id="scan-details" class="text-xs text-gray-500">
+                    <span id="scan-current-path"></span>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+function hideScanningProgress() {
+    const modal = document.getElementById('scanning-modal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+function connectToScanWebSocket(scanId) {
+    const ws = new WebSocket(`ws://${window.location.host}/ws/scan/${scanId}`);
+    
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        
+        const statusEl = document.getElementById('scan-status');
+        const progressBar = document.getElementById('scan-progress-bar');
+        const currentPathEl = document.getElementById('scan-current-path');
+        
+        if (!statusEl || !progressBar) return;
+        
+        if (data.type === 'counting') {
+            statusEl.textContent = `Counting files... (${data.count} found)`;
+        } else if (data.type === 'progress') {
+            const percentage = (data.scanned / data.total * 100).toFixed(1);
+            statusEl.textContent = `Scanning files: ${data.scanned} / ${data.total}`;
+            progressBar.style.width = `${percentage}%`;
+            if (currentPathEl && data.current_path) {
+                // Truncate long paths
+                const path = data.current_path;
+                const maxLength = 60;
+                const displayPath = path.length > maxLength 
+                    ? '...' + path.slice(-(maxLength - 3))
+                    : path;
+                currentPathEl.textContent = displayPath;
+            }
+        }
+    };
+    
+    ws.onerror = (error) => {
+        console.error('Scan WebSocket error:', error);
+    };
+    
+    return ws;
 }
 
 // Initialize on load

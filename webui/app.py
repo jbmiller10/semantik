@@ -36,7 +36,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from vecpipe.extract_chunks import extract_text, chunk_text, process_file
+from vecpipe.extract_chunks import extract_text, chunk_text, process_file, extract_text_pdf, extract_text_docx, extract_text_txt
 from vecpipe.ingest_qdrant import QdrantClient
 from vecpipe.search_utils import search_qdrant, parse_search_results
 
@@ -86,6 +86,7 @@ class CreateJobRequest(BaseModel):
     vector_dim: Optional[int] = None
     quantization: str = "float32"
     instruction: Optional[str] = None
+    job_id: Optional[str] = None  # Allow pre-generated job_id for WebSocket connection
     
     @validator('chunk_size')
     def validate_chunk_size(cls, v):
@@ -264,8 +265,24 @@ manager = ConnectionManager()
 # Global task tracking for cancellation support
 active_job_tasks: Dict[str, asyncio.Task] = {}
 
-# Background task executor
-executor = ThreadPoolExecutor(max_workers=4)
+# Background task executor - increased workers for parallel processing
+executor = ThreadPoolExecutor(max_workers=8)
+
+def extract_text_thread_safe(filepath: str) -> str:
+    """Thread-safe version of extract_text that doesn't use signals"""
+    from pathlib import Path
+    ext = Path(filepath).suffix.lower()
+    file_size_mb = os.path.getsize(filepath) / 1024 / 1024
+    logger.info(f"Extracting from {ext} file: {filepath} ({file_size_mb:.2f} MB)")
+    
+    if ext == '.pdf':
+        return extract_text_pdf(filepath)
+    elif ext in ['.docx', '.doc']:
+        return extract_text_docx(filepath)
+    elif ext in ['.txt', '.text']:
+        return extract_text_txt(filepath)
+    else:
+        raise ValueError(f"Unsupported file type: {ext}")
 
 def scan_directory(path: str, recursive: bool = True) -> List[FileInfo]:
     """Scan directory for supported files"""
@@ -393,6 +410,9 @@ async def process_embedding_job(job_id: str):
                     "total": len(files)
                 })
                 
+                # Yield control to event loop to keep UI responsive
+                await asyncio.sleep(0)
+                
                 # Extract text and create chunks
                 logger.info(f"Processing file: {file_row['path']}")
                 
@@ -403,7 +423,21 @@ async def process_embedding_job(job_id: str):
                 logger.info(f"Memory before extraction: {initial_memory:.2f} MB")
                 
                 logger.info(f"Starting text extraction for: {file_row['path']}")
-                text = extract_text(file_row['path'])
+                # Run text extraction in thread pool to avoid blocking
+                # Note: extract_text uses signals which don't work in threads,
+                # so we need to handle this differently
+                try:
+                    loop = asyncio.get_event_loop()
+                    # Use asyncio timeout instead of signal-based timeout
+                    text = await asyncio.wait_for(
+                        loop.run_in_executor(
+                            executor,
+                            lambda: extract_text_thread_safe(file_row['path'])
+                        ),
+                        timeout=300  # 5 minute timeout
+                    )
+                except asyncio.TimeoutError:
+                    raise TimeoutError(f"Text extraction timed out after 300 seconds for {file_row['path']}")
                 
                 memory_after_extract = process.memory_info().rss / 1024 / 1024  # MB
                 logger.info(f"Memory after extraction: {memory_after_extract:.2f} MB (delta: {memory_after_extract - initial_memory:.2f} MB)")
@@ -419,7 +453,13 @@ async def process_embedding_job(job_id: str):
                     chunk_size=job['chunk_size'] or 600,
                     chunk_overlap=job['chunk_overlap'] or 200
                 )
-                chunks = chunker.chunk_text(text, doc_id)
+                # Run chunking in thread pool to avoid blocking
+                chunks = await loop.run_in_executor(
+                    executor,
+                    chunker.chunk_text,
+                    text,
+                    doc_id
+                )
                 
                 memory_after_chunk = process.memory_info().rss / 1024 / 1024  # MB
                 logger.info(f"Memory after chunking: {memory_after_chunk:.2f} MB (delta: {memory_after_chunk - memory_after_extract:.2f} MB)")
@@ -435,14 +475,17 @@ async def process_embedding_job(job_id: str):
                 # Generate embeddings
                 texts = [chunk['text'] for chunk in chunks]
                 
-                # Use unified embedding service
-                embeddings_array = embedding_service.generate_embeddings(
+                # Use unified embedding service - run in thread pool to avoid blocking
+                loop = asyncio.get_event_loop()
+                embeddings_array = await loop.run_in_executor(
+                    executor,
+                    embedding_service.generate_embeddings,
                     texts, 
                     job['model_name'],
-                    quantization=job['quantization'] or 'float32',
-                    batch_size=job['batch_size'],
-                    show_progress=False,
-                    instruction=job['instruction']
+                    job['quantization'] or 'float32',
+                    job['batch_size'],
+                    False,  # show_progress
+                    job['instruction']
                 )
                 
                 # Free texts list after embedding generation
@@ -525,6 +568,9 @@ async def process_embedding_job(job_id: str):
                 # Force garbage collection after each file
                 import gc
                 gc.collect()
+                
+                # Yield control to event loop after processing each file
+                await asyncio.sleep(0)
                 
             except Exception as e:
                 logger.error(f"Failed to process file {file_row['path']}: {e}")
@@ -730,17 +776,23 @@ async def scan_directory_endpoint(request: ScanDirectoryRequest, current_user: D
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.get("/api/jobs/new-id")
+async def get_new_job_id(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Generate a new job ID for WebSocket connection"""
+    return {"job_id": str(uuid.uuid4())}
+
 @app.post("/api/jobs", response_model=JobStatus)
 async def create_job(request: CreateJobRequest, background_tasks: BackgroundTasks, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Create a new embedding job"""
-    job_id = str(uuid.uuid4())
+    # Accept job_id from request if provided, otherwise generate new one
+    job_id = request.job_id if request.job_id else str(uuid.uuid4())
     
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     
     try:
-        # Scan directory first
-        files = scan_directory(request.directory_path, recursive=True)
+        # Scan directory first - use async version to avoid blocking UI
+        files = await scan_directory_async(request.directory_path, recursive=True, scan_id=job_id)
         
         if not files:
             raise HTTPException(status_code=400, detail="No supported files found in directory")
