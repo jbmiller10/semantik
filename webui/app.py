@@ -14,11 +14,12 @@ from pathlib import Path
 from typing import List, Dict, Optional, Any
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+import gc
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 import httpx
 from tqdm import tqdm
 import sqlite3
@@ -77,6 +78,32 @@ class CreateJobRequest(BaseModel):
     vector_dim: Optional[int] = None
     quantization: str = "float32"
     instruction: Optional[str] = None
+    
+    @validator('chunk_size')
+    def validate_chunk_size(cls, v):
+        if v <= 0:
+            raise ValueError('chunk_size must be positive')
+        if v < 100:
+            raise ValueError('chunk_size must be at least 100 tokens')
+        if v > 50000:
+            raise ValueError('chunk_size must not exceed 50000 tokens')
+        return v
+    
+    @validator('chunk_overlap')
+    def validate_chunk_overlap(cls, v, values):
+        if v < 0:
+            raise ValueError('chunk_overlap cannot be negative')
+        if 'chunk_size' in values and v >= values['chunk_size']:
+            raise ValueError(f'chunk_overlap ({v}) must be less than chunk_size ({values["chunk_size"]})')
+        return v
+    
+    @validator('batch_size')
+    def validate_batch_size(cls, v):
+        if v <= 0:
+            raise ValueError('batch_size must be positive')
+        if v > 1000:
+            raise ValueError('batch_size must not exceed 1000')
+        return v
 
 class JobStatus(BaseModel):
     id: str
@@ -360,9 +387,38 @@ async def process_embedding_job(job_id: str):
                 
                 # Extract text and create chunks
                 logger.info(f"Processing file: {file_row['path']}")
+                
+                # Add memory tracking
+                import psutil
+                process = psutil.Process()
+                initial_memory = process.memory_info().rss / 1024 / 1024  # MB
+                logger.info(f"Memory before extraction: {initial_memory:.2f} MB")
+                
+                logger.info(f"Starting text extraction for: {file_row['path']}")
                 text = extract_text(file_row['path'])
+                
+                memory_after_extract = process.memory_info().rss / 1024 / 1024  # MB
+                logger.info(f"Memory after extraction: {memory_after_extract:.2f} MB (delta: {memory_after_extract - initial_memory:.2f} MB)")
+                logger.info(f"Extracted text length: {len(text)} characters")
+                
                 doc_id = hashlib.md5(file_row['path'].encode()).hexdigest()[:16]
-                chunks = chunk_text(text, doc_id)
+                
+                logger.info(f"Starting chunking for: {file_row['path']} with chunk_size={job['chunk_size']}, overlap={job['chunk_overlap']}")
+                
+                # Create a chunker with job-specific settings
+                from vecpipe.extract_chunks import TokenChunker
+                chunker = TokenChunker(
+                    chunk_size=job['chunk_size'] or 600,
+                    chunk_overlap=job['chunk_overlap'] or 200
+                )
+                chunks = chunker.chunk_text(text, doc_id)
+                
+                memory_after_chunk = process.memory_info().rss / 1024 / 1024  # MB
+                logger.info(f"Memory after chunking: {memory_after_chunk:.2f} MB (delta: {memory_after_chunk - memory_after_extract:.2f} MB)")
+                logger.info(f"Created {len(chunks)} chunks")
+                
+                # Free the original text immediately after chunking
+                del text
                 
                 # Update chunks created
                 c.execute("UPDATE files SET chunks_created=? WHERE id=?",
@@ -381,10 +437,16 @@ async def process_embedding_job(job_id: str):
                     instruction=job['instruction']
                 )
                 
+                # Free texts list after embedding generation
+                del texts
+                
                 if embeddings_array is None:
                     raise Exception("Failed to generate embeddings")
                 
                 embeddings = embeddings_array.tolist()
+                
+                # Free the numpy array after conversion
+                del embeddings_array
                 
                 # Handle dimension override if specified
                 target_dim = job['vector_dim']
@@ -408,34 +470,53 @@ async def process_embedding_job(job_id: str):
                             adjusted_embeddings.append(adjusted)
                         embeddings = adjusted_embeddings
                 
-                # Prepare points for Qdrant
-                points = []
-                for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
-                    point = {
-                        "id": str(uuid.uuid4()),
-                        "vector": embedding,
-                        "payload": {
-                            "job_id": job_id,
-                            "doc_id": doc_id,
-                            "chunk_id": chunk['chunk_id'],
-                            "path": file_row['path'],
-                            "text": chunk['text'][:200]  # Store preview
+                # Prepare points for Qdrant in batches to avoid memory spikes
+                UPLOAD_BATCH_SIZE = 100
+                total_points = len(chunks)
+                
+                for batch_start in range(0, total_points, UPLOAD_BATCH_SIZE):
+                    batch_end = min(batch_start + UPLOAD_BATCH_SIZE, total_points)
+                    points = []
+                    
+                    for i in range(batch_start, batch_end):
+                        chunk = chunks[i]
+                        embedding = embeddings[i]
+                        point = {
+                            "id": str(uuid.uuid4()),
+                            "vector": embedding,
+                            "payload": {
+                                "job_id": job_id,
+                                "doc_id": doc_id,
+                                "chunk_id": chunk['chunk_id'],
+                                "path": file_row['path'],
+                                "text": chunk['text'][:200]  # Store preview
+                            }
                         }
-                    }
-                    points.append(point)
+                        points.append(point)
+                    
+                    # Upload batch to Qdrant
+                    if points:
+                        success = qdrant.upload_points(f"job_{job_id}", points)
+                        if not success:
+                            raise Exception("Failed to upload to Qdrant")
+                    
+                    # Free the points batch
+                    del points
                 
-                # Upload to Qdrant
-                if points:
-                    success = qdrant.upload_points(f"job_{job_id}", points)
-                    if success:
-                        c.execute("UPDATE files SET status='completed', vectors_created=? WHERE id=?",
-                                 (len(points), file_row['id']))
-                        c.execute("UPDATE jobs SET processed_files = processed_files + 1 WHERE id=?",
-                                 (job_id,))
-                    else:
-                        raise Exception("Failed to upload to Qdrant")
-                
+                # Update database after all batches uploaded
+                c.execute("UPDATE files SET status='completed', vectors_created=? WHERE id=?",
+                         (total_points, file_row['id']))
+                c.execute("UPDATE jobs SET processed_files = processed_files + 1 WHERE id=?",
+                         (job_id,))
                 conn.commit()
+                
+                # Free chunks and embeddings after upload
+                del chunks
+                del embeddings
+                
+                # Force garbage collection after each file
+                import gc
+                gc.collect()
                 
             except Exception as e:
                 logger.error(f"Failed to process file {file_row['path']}: {e}")

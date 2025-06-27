@@ -580,6 +580,44 @@ document.getElementById('search-form').addEventListener('submit', async (e) => {
     }
 });
 
+// Group search results by document path
+function groupResultsByDocument(results) {
+    const grouped = {};
+    
+    results.forEach(result => {
+        const path = result.payload.path;
+        if (!grouped[path]) {
+            grouped[path] = {
+                path: path,
+                filename: path.split('/').pop(),
+                chunks: [],
+                maxScore: 0
+            };
+        }
+        grouped[path].chunks.push(result);
+        grouped[path].maxScore = Math.max(grouped[path].maxScore, result.score);
+    });
+    
+    // Sort documents by their highest chunk score
+    return Object.values(grouped).sort((a, b) => b.maxScore - a.maxScore);
+}
+
+// Toggle document expansion
+function toggleDocument(docId) {
+    const content = document.getElementById(`doc-content-${docId}`);
+    const icon = document.getElementById(`doc-icon-${docId}`);
+    
+    if (content.classList.contains('hidden')) {
+        content.classList.remove('hidden');
+        icon.classList.remove('fa-chevron-right');
+        icon.classList.add('fa-chevron-down');
+    } else {
+        content.classList.add('hidden');
+        icon.classList.remove('fa-chevron-down');
+        icon.classList.add('fa-chevron-right');
+    }
+}
+
 // Display search results
 function displaySearchResults(data) {
     const resultsDiv = document.getElementById('search-results');
@@ -592,31 +630,70 @@ function displaySearchResults(data) {
         return;
     }
     
-    container.innerHTML = data.results.map((result, idx) => `
-        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-            <div class="flex justify-between items-start mb-2">
-                <h4 class="font-medium">
-                    <i class="fas fa-file-alt mr-1 text-gray-400"></i>
-                    ${result.payload.path.split('/').pop()}
-                </h4>
-                <span class="bg-green-100 text-green-800 px-2 py-1 rounded text-sm">
-                    Score: ${result.score.toFixed(3)}
-                </span>
+    // Group results by document
+    const groupedDocs = groupResultsByDocument(data.results);
+    
+    container.innerHTML = groupedDocs.map((doc, docIdx) => {
+        // Sort chunks within each document by score
+        const sortedChunks = doc.chunks.sort((a, b) => b.score - a.score);
+        
+        return `
+        <div class="border border-gray-200 rounded-lg overflow-hidden mb-4 transition-shadow hover:shadow-lg">
+            <!-- Document Header (Always Visible) -->
+            <div class="bg-gray-50 p-4 cursor-pointer hover:bg-gray-100 transition-colors"
+                 onclick="toggleDocument(${docIdx})">
+                <div class="flex justify-between items-start">
+                    <div class="flex items-center flex-1">
+                        <i id="doc-icon-${docIdx}" class="fas fa-chevron-right mr-2 text-gray-500 transition-transform"></i>
+                        <div class="flex-1">
+                            <h4 class="font-semibold text-lg">
+                                <i class="fas fa-file-alt mr-2 text-gray-500"></i>
+                                ${doc.filename}
+                            </h4>
+                            <p class="text-sm text-gray-600 mt-1">${doc.path}</p>
+                        </div>
+                    </div>
+                    <div class="flex flex-col items-end ml-4">
+                        <span class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
+                            ${doc.chunks.length} ${doc.chunks.length === 1 ? 'chunk' : 'chunks'}
+                        </span>
+                        <span class="text-xs text-gray-500 mt-1">
+                            Max score: ${doc.maxScore.toFixed(3)}
+                        </span>
+                    </div>
+                </div>
             </div>
             
-            <p class="text-sm text-gray-600 mb-2">${result.payload.path}</p>
-            
-            ${result.payload.text ? `
-                <div class="bg-gray-50 rounded p-3">
-                    <p class="text-sm text-gray-700">${result.payload.text}...</p>
+            <!-- Document Chunks (Collapsible) -->
+            <div id="doc-content-${docIdx}" class="hidden border-t border-gray-200">
+                <div class="p-4 space-y-3">
+                    ${sortedChunks.map((chunk, chunkIdx) => `
+                        <div class="border border-gray-200 rounded-lg p-4 bg-white hover:bg-gray-50 transition-colors">
+                            <div class="flex justify-between items-start mb-2">
+                                <h5 class="font-medium text-gray-700">
+                                    Chunk ${chunkIdx + 1}
+                                </h5>
+                                <span class="bg-green-100 text-green-800 px-2 py-1 rounded text-sm">
+                                    Score: ${chunk.score.toFixed(3)}
+                                </span>
+                            </div>
+                            
+                            ${chunk.payload.text ? `
+                                <div class="bg-gray-50 rounded p-3 mt-2">
+                                    <p class="text-sm text-gray-700">${chunk.payload.text}...</p>
+                                </div>
+                            ` : ''}
+                            
+                            <div class="mt-2 text-xs text-gray-500">
+                                Chunk ID: ${chunk.payload.chunk_id}
+                            </div>
+                        </div>
+                    `).join('')}
                 </div>
-            ` : ''}
-            
-            <div class="mt-2 text-xs text-gray-500">
-                Chunk ID: ${result.payload.chunk_id}
             </div>
         </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 // Utility functions

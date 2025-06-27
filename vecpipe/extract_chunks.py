@@ -44,6 +44,14 @@ class TokenChunker:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         
+        # Validate parameters to prevent infinite loops
+        if self.chunk_overlap >= self.chunk_size:
+            logger.warning(f"chunk_overlap ({chunk_overlap}) >= chunk_size ({chunk_size}), setting overlap to chunk_size/2")
+            self.chunk_overlap = self.chunk_size // 2
+        
+        if self.chunk_size <= 0:
+            raise ValueError(f"chunk_size must be positive, got {chunk_size}")
+        
         # Use tiktoken for accurate token counting
         try:
             self.tokenizer = tiktoken.get_encoding(model_name)
@@ -51,34 +59,44 @@ class TokenChunker:
             # Fallback to default encoding
             self.tokenizer = tiktoken.get_encoding("cl100k_base")
         
-        logger.info(f"Initialized tokenizer: {model_name}, chunk_size: {chunk_size}, overlap: {chunk_overlap}")
+        logger.info(f"Initialized tokenizer: {model_name}, chunk_size: {self.chunk_size}, overlap: {self.chunk_overlap}")
     
     def chunk_text(self, text: str, doc_id: str) -> List[Dict]:
         """Split text into overlapping chunks by token count"""
         if not text.strip():
             return []
         
-        # Tokenize entire text
-        tokens = self.tokenizer.encode(text)
+        logger.info(f"Starting tokenization for doc_id: {doc_id}, text length: {len(text)} chars")
         
-        if len(tokens) <= self.chunk_size:
+        # Tokenize entire text
+        import time
+        start_time = time.time()
+        tokens = self.tokenizer.encode(text)
+        tokenize_time = time.time() - start_time
+        total_tokens = len(tokens)
+        
+        logger.info(f"Tokenization complete in {tokenize_time:.2f}s: {total_tokens} tokens from {len(text)} chars")
+        
+        if total_tokens <= self.chunk_size:
             # Text fits in single chunk
             return [{
                 'doc_id': doc_id,
                 'chunk_id': f"{doc_id}_0000",
                 'text': text.strip(),
-                'token_count': len(tokens),
+                'token_count': total_tokens,
                 'start_token': 0,
-                'end_token': len(tokens)
+                'end_token': total_tokens
             }]
         
         chunks = []
         chunk_id = 0
         start = 0
         
-        while start < len(tokens):
+        logger.info(f"Starting chunking: {total_tokens} tokens, chunk_size: {self.chunk_size}, overlap: {self.chunk_overlap}")
+        
+        while start < total_tokens:
             # Determine chunk boundaries
-            end = min(start + self.chunk_size, len(tokens))
+            end = min(start + self.chunk_size, total_tokens)
             
             # Extract chunk tokens
             chunk_tokens = tokens[start:end]
@@ -87,7 +105,7 @@ class TokenChunker:
             chunk_text = self.tokenizer.decode(chunk_tokens)
             
             # Try to break at sentence boundary if not at end
-            if end < len(tokens):
+            if end < total_tokens:
                 # Look for sentence end in last 10% of chunk
                 search_start = int(len(chunk_tokens) * 0.9)
                 best_break = len(chunk_tokens)
@@ -113,16 +131,31 @@ class TokenChunker:
                 'end_token': end
             })
             
+            # Free chunk_tokens reference
+            del chunk_tokens
+            
             chunk_id += 1
             
             # Move start position with overlap
-            start = end - self.chunk_overlap
+            next_start = end - self.chunk_overlap
             
-            # Ensure progress
-            if start <= end - self.chunk_size:
-                start = end
+            # Ensure progress - this is normal at the end of the document
+            if next_start <= start:
+                # We've reached the end of the document or overlap is too large
+                # Just move to the end position
+                next_start = end
+            
+            start = next_start
+            
+            # Safety check for actual infinite loops
+            if chunk_id > 10000:
+                logger.error(f"Too many chunks created ({chunk_id}), stopping to prevent infinite loop")
+                break
         
-        logger.debug(f"Created {len(chunks)} chunks from {len(tokens)} tokens")
+        # Free the tokens list after processing
+        del tokens
+        
+        logger.debug(f"Created {len(chunks)} chunks from {total_tokens} tokens")
         return chunks
 
 class FileChangeTracker:
@@ -229,21 +262,36 @@ class FileChangeTracker:
         """Save tracking data to disk"""
         self._save_tracking_data()
 
-def extract_text_pdf(filepath: str) -> str:
-    """Extract text from PDF file"""
+def extract_text_pdf(filepath: str, max_chars: int = 10_000_000) -> str:
+    """Extract text from PDF file with size limit"""
     try:
+        logger.info(f"Opening PDF file: {filepath}")
         reader = PdfReader(filepath)
+        total_pages = len(reader.pages)
+        logger.info(f"PDF has {total_pages} pages")
         text_parts = []
+        total_chars = 0
         
         for page_num, page in enumerate(reader.pages):
             try:
+                logger.debug(f"Extracting page {page_num + 1}/{total_pages}")
                 text = page.extract_text()
                 if text:
+                    # Check if adding this page would exceed limit
+                    if total_chars + len(text) > max_chars:
+                        logger.warning(f"Text size limit reached at page {page_num + 1}, stopping extraction")
+                        text_parts.append(f"\n\n[Text truncated at {max_chars} characters]")
+                        break
+                    
                     text_parts.append(text)
+                    total_chars += len(text)
+                    logger.debug(f"Page {page_num + 1} extracted: {len(text)} chars, total: {total_chars}")
             except Exception as e:
                 logger.warning(f"Failed to extract page {page_num} from {filepath}: {e}")
         
-        return "\n\n".join(text_parts)
+        result = "\n\n".join(text_parts)
+        logger.info(f"PDF extraction complete: {len(result)} total chars from {len(text_parts)} pages")
+        return result
     except Exception as e:
         logger.error(f"Failed to extract PDF {filepath}: {e}")
         raise
@@ -282,18 +330,38 @@ def extract_text_txt(filepath: str) -> str:
         logger.error(f"Failed to extract TXT {filepath}: {e}")
         raise
 
-def extract_text(filepath: str) -> str:
-    """Extract text from file based on extension"""
-    ext = Path(filepath).suffix.lower()
+def extract_text(filepath: str, timeout: int = 300) -> str:
+    """Extract text from file based on extension with timeout"""
+    import signal
+    import os
     
-    if ext == '.pdf':
-        return extract_text_pdf(filepath)
-    elif ext in ['.docx', '.doc']:
-        return extract_text_docx(filepath)
-    elif ext in ['.txt', '.text']:
-        return extract_text_txt(filepath)
-    else:
-        raise ValueError(f"Unsupported file type: {ext}")
+    def timeout_handler(signum, frame):
+        raise TimeoutError(f"Text extraction timed out after {timeout} seconds")
+    
+    # Set up timeout for Unix-like systems
+    if hasattr(signal, 'SIGALRM'):
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(timeout)
+    
+    try:
+        ext = Path(filepath).suffix.lower()
+        file_size_mb = os.path.getsize(filepath) / 1024 / 1024
+        logger.info(f"Extracting from {ext} file: {filepath} ({file_size_mb:.2f} MB)")
+        
+        if ext == '.pdf':
+            result = extract_text_pdf(filepath)
+        elif ext in ['.docx', '.doc']:
+            result = extract_text_docx(filepath)
+        elif ext in ['.txt', '.text']:
+            result = extract_text_txt(filepath)
+        else:
+            raise ValueError(f"Unsupported file type: {ext}")
+        
+        return result
+    finally:
+        # Cancel timeout
+        if hasattr(signal, 'SIGALRM'):
+            signal.alarm(0)
 
 def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, tracker: FileChangeTracker) -> Optional[str]:
     """Process a single file with change tracking"""
