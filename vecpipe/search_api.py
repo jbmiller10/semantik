@@ -21,6 +21,7 @@ import uvicorn
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from vecpipe.config import settings
 from webui.embedding_service import EmbeddingService
 from vecpipe.search_utils import search_qdrant, parse_search_results
 from vecpipe.hybrid_search import HybridSearchEngine
@@ -72,13 +73,7 @@ embedding_generation_latency = get_or_create_metric(
 )
 
 # Constants
-QDRANT_HOST = os.getenv("QDRANT_HOST", "192.168.1.173")
-QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
-COLLECTION_NAME = os.getenv("COLLECTION_NAME", "work_docs")
 DEFAULT_K = 10
-USE_MOCK_EMBEDDINGS = os.getenv("USE_MOCK_EMBEDDINGS", "false").lower() == "true"
-DEFAULT_MODEL = os.getenv("DEFAULT_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B")
-DEFAULT_QUANTIZATION = os.getenv("DEFAULT_QUANTIZATION", "float16")
 METRICS_PORT = int(os.getenv("METRICS_PORT", "9091"))
 
 # Search instructions for different use cases
@@ -160,20 +155,20 @@ async def lifespan(app: FastAPI):
     logger.info(f"Metrics server started on port {METRICS_PORT}")
     
     qdrant_client = httpx.AsyncClient(
-        base_url=f"http://{QDRANT_HOST}:{QDRANT_PORT}",
+        base_url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
         timeout=60.0
     )
-    logger.info(f"Connected to Qdrant at {QDRANT_HOST}:{QDRANT_PORT}")
+    logger.info(f"Connected to Qdrant at {settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
     
     # Initialize embedding service if not using mock
-    if not USE_MOCK_EMBEDDINGS:
+    if not settings.USE_MOCK_EMBEDDINGS:
         embedding_service = EmbeddingService()
         # Pre-load default model
-        if not embedding_service.load_model(DEFAULT_MODEL, DEFAULT_QUANTIZATION):
-            logger.error(f"Failed to load embedding model: {DEFAULT_MODEL}")
-            raise RuntimeError(f"Cannot start API: Failed to load embedding model {DEFAULT_MODEL}. "
+        if not embedding_service.load_model(settings.DEFAULT_EMBEDDING_MODEL, settings.DEFAULT_QUANTIZATION):
+            logger.error(f"Failed to load embedding model: {settings.DEFAULT_EMBEDDING_MODEL}")
+            raise RuntimeError(f"Cannot start API: Failed to load embedding model {settings.DEFAULT_EMBEDDING_MODEL}. "
                              f"Either fix the model loading issue or set USE_MOCK_EMBEDDINGS=true")
-        logger.info(f"Successfully loaded embedding model: {DEFAULT_MODEL} with {DEFAULT_QUANTIZATION}")
+        logger.info(f"Successfully loaded embedding model: {settings.DEFAULT_EMBEDDING_MODEL} with {settings.DEFAULT_QUANTIZATION}")
         # Create thread pool for CPU-bound operations
         executor = ThreadPoolExecutor(max_workers=4)
     else:
@@ -229,7 +224,7 @@ def generate_mock_embedding(text: str, vector_dim: int = None) -> List[float]:
 
 async def generate_embedding_async(text: str, model_name: str = None, quantization: str = None, instruction: str = None) -> List[float]:
     """Generate embedding using the embedding service"""
-    if USE_MOCK_EMBEDDINGS:
+    if settings.USE_MOCK_EMBEDDINGS:
         return generate_mock_embedding(text)
     
     if embedding_service is None:
@@ -271,21 +266,21 @@ async def root():
     """Health check endpoint with detailed status"""
     try:
         # Check Qdrant connection
-        response = await qdrant_client.get(f"/collections/{COLLECTION_NAME}")
+        response = await qdrant_client.get(f"/collections/{settings.DEFAULT_COLLECTION}")
         response.raise_for_status()
         info = response.json()['result']
         
         health_info = {
             "status": "healthy",
             "collection": {
-                "name": COLLECTION_NAME,
+                "name": settings.DEFAULT_COLLECTION,
                 "points_count": info['points_count'],
                 "vector_size": info['config']['params']['vectors']['size'] if 'config' in info else None
             },
-            "embedding_mode": "mock" if USE_MOCK_EMBEDDINGS else "real"
+            "embedding_mode": "mock" if settings.USE_MOCK_EMBEDDINGS else "real"
         }
         
-        if not USE_MOCK_EMBEDDINGS and embedding_service:
+        if not settings.USE_MOCK_EMBEDDINGS and embedding_service:
             model_info = embedding_service.get_model_info(
                 embedding_service.current_model_name or DEFAULT_MODEL,
                 embedding_service.current_quantization or DEFAULT_QUANTIZATION
@@ -351,7 +346,7 @@ async def search_post(request: SearchRequest = Body(...)):
     
     try:
         # Determine collection name
-        collection_name = request.collection if request.collection else COLLECTION_NAME
+        collection_name = request.collection if request.collection else settings.DEFAULT_COLLECTION
         
         # Get collection info to determine vector dimension
         vector_dim = 1024  # default
@@ -365,8 +360,8 @@ async def search_post(request: SearchRequest = Body(...)):
             logger.warning(f"Could not get collection info for {collection_name}, using default dimension: {e}")
         
         # Select model and quantization
-        model_name = request.model_name or DEFAULT_MODEL
-        quantization = request.quantization or DEFAULT_QUANTIZATION
+        model_name = request.model_name or settings.DEFAULT_EMBEDDING_MODEL
+        quantization = request.quantization or settings.DEFAULT_QUANTIZATION
         
         # Get appropriate instruction for search type
         instruction = SEARCH_INSTRUCTIONS.get(request.search_type, SEARCH_INSTRUCTIONS["semantic"])
@@ -375,7 +370,7 @@ async def search_post(request: SearchRequest = Body(...)):
         embed_start = time.time()
         logger.info(f"Processing search query: '{request.query}' (k={request.k}, collection={collection_name}, type={request.search_type})")
         
-        if not USE_MOCK_EMBEDDINGS:
+        if not settings.USE_MOCK_EMBEDDINGS:
             query_vector = await generate_embedding_async(request.query, model_name, quantization, instruction)
         else:
             query_vector = generate_mock_embedding(request.query, vector_dim)
@@ -405,8 +400,8 @@ async def search_post(request: SearchRequest = Body(...)):
         else:
             # Use shared utility for regular search
             qdrant_results = await search_qdrant(
-                QDRANT_HOST,
-                QDRANT_PORT,
+                settings.QDRANT_HOST,
+                settings.QDRANT_PORT,
                 collection_name,
                 query_vector,
                 request.k
@@ -456,7 +451,7 @@ async def search_post(request: SearchRequest = Body(...)):
             results=results,
             num_results=len(results),
             search_type=request.search_type,
-            model_used=f"{model_name}/{quantization}" if not USE_MOCK_EMBEDDINGS else "mock",
+            model_used=f"{model_name}/{quantization}" if not settings.USE_MOCK_EMBEDDINGS else "mock",
             embedding_time_ms=embed_time,
             search_time_ms=search_time
         )
@@ -506,10 +501,10 @@ async def hybrid_search(
     
     try:
         # Determine collection name
-        collection_name = collection if collection else COLLECTION_NAME
+        collection_name = collection if collection else settings.DEFAULT_COLLECTION
         
         # Initialize hybrid search engine
-        hybrid_engine = HybridSearchEngine(QDRANT_HOST, QDRANT_PORT, collection_name)
+        hybrid_engine = HybridSearchEngine(settings.QDRANT_HOST, settings.QDRANT_PORT, collection_name)
         
         # Extract keywords for response
         keywords = hybrid_engine.extract_keywords(q)
@@ -517,7 +512,7 @@ async def hybrid_search(
         # Generate query embedding
         logger.info(f"Processing hybrid search query: '{q}' (k={k}, collection={collection_name}, mode={mode}, model={model_name}, quantization={quantization})")
         
-        if not USE_MOCK_EMBEDDINGS:
+        if not settings.USE_MOCK_EMBEDDINGS:
             query_vector = await generate_embedding_async(q, model_name, quantization)
         else:
             # Get vector dimension from collection
@@ -590,9 +585,9 @@ async def batch_search(request: BatchSearchRequest = Body(...)):
     start_time = time.time()
     
     try:
-        collection_name = request.collection if request.collection else COLLECTION_NAME
-        model_name = request.model_name or DEFAULT_MODEL
-        quantization = request.quantization or DEFAULT_QUANTIZATION
+        collection_name = request.collection if request.collection else settings.DEFAULT_COLLECTION
+        model_name = request.model_name or settings.DEFAULT_EMBEDDING_MODEL
+        quantization = request.quantization or settings.DEFAULT_QUANTIZATION
         instruction = SEARCH_INSTRUCTIONS.get(request.search_type, SEARCH_INSTRUCTIONS["semantic"])
         
         # Generate embeddings for all queries in batch
@@ -610,8 +605,8 @@ async def batch_search(request: BatchSearchRequest = Body(...)):
         # Create search tasks
         search_tasks = [
             search_qdrant(
-                QDRANT_HOST,
-                QDRANT_PORT,
+                settings.QDRANT_HOST,
+                settings.QDRANT_PORT,
                 collection_name,
                 vector,
                 request.k
@@ -652,7 +647,7 @@ async def batch_search(request: BatchSearchRequest = Body(...)):
                 results=parsed_results,
                 num_results=len(parsed_results),
                 search_type=request.search_type,
-                model_used=f"{model_name}/{quantization}" if not USE_MOCK_EMBEDDINGS else "mock"
+                model_used=f"{model_name}/{quantization}" if not settings.USE_MOCK_EMBEDDINGS else "mock"
             ))
         
         total_time = (time.time() - start_time) * 1000
@@ -684,10 +679,10 @@ async def keyword_search(
     """
     try:
         # Determine collection name
-        collection_name = collection if collection else COLLECTION_NAME
+        collection_name = collection if collection else settings.DEFAULT_COLLECTION
         
         # Initialize hybrid search engine
-        hybrid_engine = HybridSearchEngine(QDRANT_HOST, QDRANT_PORT, collection_name)
+        hybrid_engine = HybridSearchEngine(settings.QDRANT_HOST, settings.QDRANT_PORT, collection_name)
         
         # Extract keywords
         keywords = hybrid_engine.extract_keywords(q)
@@ -736,7 +731,7 @@ async def keyword_search(
 async def collection_info():
     """Get information about the vector collection"""
     try:
-        response = await qdrant_client.get(f"/collections/{COLLECTION_NAME}")
+        response = await qdrant_client.get(f"/collections/{settings.DEFAULT_COLLECTION}")
         response.raise_for_status()
         return response.json()['result']
     except Exception as e:
@@ -802,11 +797,11 @@ async def load_model(
 async def embedding_info():
     """Get information about the embedding configuration"""
     info = {
-        "mode": "mock" if USE_MOCK_EMBEDDINGS else "real",
-        "available": not USE_MOCK_EMBEDDINGS and embedding_service is not None
+        "mode": "mock" if settings.USE_MOCK_EMBEDDINGS else "real",
+        "available": not settings.USE_MOCK_EMBEDDINGS and embedding_service is not None
     }
     
-    if not USE_MOCK_EMBEDDINGS and embedding_service:
+    if not settings.USE_MOCK_EMBEDDINGS and embedding_service:
         info.update({
             "current_model": embedding_service.current_model_name,
             "quantization": embedding_service.current_quantization,

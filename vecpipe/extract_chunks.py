@@ -7,6 +7,7 @@ Now uses unstructured library for unified document parsing
 """
 
 import os
+import sys
 import hashlib
 import logging
 import json
@@ -18,6 +19,10 @@ import pyarrow.parquet as pq
 from tqdm import tqdm
 import argparse
 import tiktoken
+
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from vecpipe.config import settings
 
 # Unstructured for document parsing
 from unstructured.partition.auto import partition
@@ -32,9 +37,6 @@ logger = logging.getLogger(__name__)
 # Constants
 DEFAULT_CHUNK_SIZE = 600  # tokens
 DEFAULT_CHUNK_OVERLAP = 200  # tokens
-OUTPUT_DIR = "/opt/vecpipe/extract"
-ERROR_LOG = "/tmp/error_extract.log"
-FILE_TRACKING_DB = "/var/embeddings/file_tracking.json"
 
 class TokenChunker:
     """Chunk text by token count using tiktoken"""
@@ -168,7 +170,9 @@ class TokenChunker:
 class FileChangeTracker:
     """Track file changes using SHA256 and SCD-like approach"""
     
-    def __init__(self, db_path: str = FILE_TRACKING_DB):
+    def __init__(self, db_path: str = None):
+        if db_path is None:
+            db_path = str(settings.FILE_TRACKING_DB)
         self.db_path = db_path
         self.tracking_data = self._load_tracking_data()
     

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Simple test of Qdrant connection using official qdrant-client"""
 
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance
+from vecpipe.config import settings
 
-QDRANT_HOST = "192.168.1.173"
-QDRANT_PORT = 6333
-COLLECTION_NAME = "work_docs"
 VECTOR_SIZE = 1024
 
 def test_connection():
@@ -14,12 +16,12 @@ def test_connection():
     
     try:
         # Initialize client
-        client = QdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
+        client = QdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
         
         # Test basic connectivity
         collections = client.get_collections()
         
-        print(f"✓ Connected to Qdrant at {QDRANT_HOST}:{QDRANT_PORT}")
+        print(f"✓ Connected to Qdrant at {settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
         print(f"  Collections: {[c.name for c in collections.collections]}")
         
         return True
@@ -32,20 +34,20 @@ def create_collection():
     
     try:
         # Initialize client
-        client = QdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
+        client = QdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
         
         # Check if collection exists
         try:
-            client.get_collection(COLLECTION_NAME)
-            print(f"  Collection '{COLLECTION_NAME}' exists, deleting...")
-            client.delete_collection(COLLECTION_NAME)
+            client.get_collection(settings.DEFAULT_COLLECTION)
+            print(f"  Collection '{settings.DEFAULT_COLLECTION}' exists, deleting...")
+            client.delete_collection(settings.DEFAULT_COLLECTION)
             print(f"  Deleted existing collection")
         except:
             pass  # Collection doesn't exist
         
         # Create collection
         client.create_collection(
-            collection_name=COLLECTION_NAME,
+            collection_name=settings.DEFAULT_COLLECTION,
             vectors_config=VectorParams(
                 size=VECTOR_SIZE,
                 distance=Distance.COSINE
@@ -62,14 +64,14 @@ def create_collection():
             on_disk_payload=True
         )
         
-        print(f"✓ Created collection '{COLLECTION_NAME}' with:")
+        print(f"✓ Created collection '{settings.DEFAULT_COLLECTION}' with:")
         print(f"  - Vector size: {VECTOR_SIZE}")
         print(f"  - Distance metric: Cosine")
         print(f"  - HNSW index: m=32, ef_construct=200")
         print(f"  - Disk-based storage enabled")
         
         # Verify collection
-        info = client.get_collection(COLLECTION_NAME)
+        info = client.get_collection(settings.DEFAULT_COLLECTION)
         print(f"✓ Collection verified: {info.points_count} points")
         
         return True

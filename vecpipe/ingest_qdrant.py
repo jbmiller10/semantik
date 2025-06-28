@@ -17,6 +17,10 @@ import time
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance
 
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from vecpipe.config import settings
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -25,14 +29,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-QDRANT_HOST = "192.168.1.173"
-QDRANT_PORT = 6333
-COLLECTION_NAME = "work_docs"
 BATCH_SIZE = 4000
 # PARALLEL_WORKERS = 4  # Not currently used
-INPUT_DIR = "/var/embeddings/ingest"
-LOADED_DIR = "/var/embeddings/loaded"
-REJECT_DIR = "/var/embeddings/rejects"
 MAX_RETRIES = 5
 RETRY_DELAY = 2  # seconds
 
@@ -74,7 +72,7 @@ def process_parquet_file(file_path: str, client: QdrantClient,
             for retry in range(MAX_RETRIES):
                 try:
                     client.upsert(
-                        collection_name=COLLECTION_NAME,
+                        collection_name=settings.DEFAULT_COLLECTION,
                         points=batch_points
                     )
                     successful_batches += 1
@@ -109,19 +107,19 @@ def move_file(src: str, dst_dir: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Ingest embeddings into Qdrant")
-    parser.add_argument('--input', '-i', default=INPUT_DIR, 
+    parser.add_argument('--input', '-i', default=str(settings.INGEST_DIR), 
                        help='Input directory with embedded parquet files')
-    parser.add_argument('--loaded', '-l', default=LOADED_DIR,
+    parser.add_argument('--loaded', '-l', default=str(settings.LOADED_DIR),
                        help='Directory for successfully loaded files')
-    parser.add_argument('--rejects', '-r', default=REJECT_DIR,
+    parser.add_argument('--rejects', '-r', default=str(settings.REJECT_DIR),
                        help='Directory for rejected files')
     parser.add_argument('--pattern', '-p', default='*_embedded.parquet',
                        help='File pattern to match')
     parser.add_argument('--batch-size', '-b', type=int, default=BATCH_SIZE,
                        help='Batch size for uploads')
-    parser.add_argument('--host', default=QDRANT_HOST,
+    parser.add_argument('--host', default=settings.QDRANT_HOST,
                        help='Qdrant host')
-    parser.add_argument('--port', type=int, default=QDRANT_PORT,
+    parser.add_argument('--port', type=int, default=settings.QDRANT_PORT,
                        help='Qdrant port')
     
     args = parser.parse_args()
@@ -135,10 +133,10 @@ def main():
     
     # Get collection info
     try:
-        info = client.get_collection(COLLECTION_NAME)
-        logger.info(f"Collection '{COLLECTION_NAME}' has {info.points_count} points")
+        info = client.get_collection(settings.DEFAULT_COLLECTION)
+        logger.info(f"Collection '{settings.DEFAULT_COLLECTION}' has {info.points_count} points")
     except Exception as e:
-        logger.error(f"Collection '{COLLECTION_NAME}' not found: {e}")
+        logger.error(f"Collection '{settings.DEFAULT_COLLECTION}' not found: {e}")
         sys.exit(1)
     
     # Find input files
@@ -164,7 +162,7 @@ def main():
     
     # Get final collection info
     try:
-        final_info = client.get_collection(COLLECTION_NAME)
+        final_info = client.get_collection(settings.DEFAULT_COLLECTION)
         logger.info(f"Collection now has {final_info.points_count} points")
     except Exception as e:
         logger.error(f"Failed to get final collection info: {e}")

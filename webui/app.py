@@ -28,6 +28,8 @@ import glob
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from vecpipe.config import settings
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -56,8 +58,6 @@ from webui import database
 JOBS_DIR = "/var/embeddings/jobs"
 OUTPUT_DIR = "/var/embeddings/output"
 SUPPORTED_EXTENSIONS = ['.pdf', '.docx', '.doc', '.txt', '.text', '.pptx', '.eml', '.md', '.html']
-QDRANT_HOST = os.getenv("QDRANT_HOST", "192.168.1.173")
-QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 
 # Create necessary directories
 os.makedirs(JOBS_DIR, exist_ok=True)
@@ -350,7 +350,7 @@ async def process_embedding_job(job_id: str):
         })
         
         # Initialize Qdrant client
-        qdrant = QdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
+        qdrant = QdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
         
         for file_idx, file_row in enumerate(files):
             try:
@@ -717,7 +717,7 @@ async def reset_database_endpoint(current_user: Dict[str, Any] = Depends(get_cur
         job_ids = [job['id'] for job in jobs]
         
         # Delete Qdrant collections for all jobs
-        async_client = AsyncQdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
+        async_client = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
         for job_id in job_ids:
             collection_name = f"job_{job_id}"
             try:
@@ -821,7 +821,7 @@ async def create_job(request: CreateJobRequest, current_user: Dict[str, Any] = D
         database.add_files_to_job(job_id, file_records)
         
         # Create Qdrant collection for this job
-        qdrant = QdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
+        qdrant = QdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
         
         # Determine vector size
         vector_size = request.vector_dim
@@ -946,7 +946,7 @@ async def delete_job(job_id: str, current_user: Dict[str, Any] = Depends(get_cur
     # Delete from Qdrant
     collection_name = f"job_{job_id}"
     try:
-        async_client = AsyncQdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
+        async_client = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
         await async_client.delete_collection(collection_name)
     except Exception as e:
         logger.warning(f"Failed to delete Qdrant collection: {e}")

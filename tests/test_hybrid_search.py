@@ -4,9 +4,13 @@ Test script for hybrid search functionality
 Tests both the search API and direct hybrid search
 """
 
+import os
 import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import requests
 import logging
+from vecpipe.config import settings
 
 # Configure logging
 logging.basicConfig(
@@ -135,7 +139,7 @@ def test_direct_hybrid_search():
         from webui.embedding_service import EmbeddingService
         
         # Initialize services
-        hybrid_engine = HybridSearchEngine("192.168.1.173", 6333, "work_docs")
+        hybrid_engine = HybridSearchEngine(settings.QDRANT_HOST, settings.QDRANT_PORT, settings.DEFAULT_COLLECTION)
         embedding_service = EmbeddingService(mock_mode=True)
         
         # Test query

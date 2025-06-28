@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Test hybrid search functionality (vector + keyword search)"""
 
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import httpx
 import json
-import sys
 import numpy as np
 from typing import List, Dict
+from vecpipe.config import settings
 
-QDRANT_HOST = "192.168.1.173"
-QDRANT_PORT = 6333
 COLLECTION_NAME = "test_hybrid"
 VECTOR_SIZE = 384  # Using smaller vector for testing
 

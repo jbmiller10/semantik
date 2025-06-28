@@ -3,7 +3,12 @@
 Test the unified search implementation
 """
 
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import asyncio
+from vecpipe.config import settings
 from vecpipe.search_utils import search_qdrant, parse_search_results
 
 async def test_search_utils():
@@ -18,9 +23,9 @@ async def test_search_utils():
         # Test search_qdrant function
         print("\n1. Testing search_qdrant function...")
         results = await search_qdrant(
-            qdrant_host="192.168.1.173",
-            qdrant_port=6333,
-            collection_name="work_docs",
+            qdrant_host=settings.QDRANT_HOST,
+            qdrant_port=settings.QDRANT_PORT,
+            collection_name=settings.DEFAULT_COLLECTION,
             query_vector=test_vector,
             k=5
         )

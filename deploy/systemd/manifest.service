@@ -4,11 +4,13 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/root/document-embedding-project/scripts/build_manifest.sh
+WorkingDirectory=/root/document-embedding-project
+ExecStart=scripts/build_manifest.sh
 User=root
 StandardOutput=journal
 StandardError=journal
 TimeoutStartSec=600
+EnvironmentFile=/etc/vecpipe/config.env
 
 [Install]
 WantedBy=multi-user.target

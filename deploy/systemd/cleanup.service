@@ -11,8 +11,7 @@ WorkingDirectory=/opt/vecpipe
 
 # Environment
 Environment="PYTHONPATH=/opt/vecpipe"
-Environment="QDRANT_HOST=192.168.1.173"
-Environment="QDRANT_PORT=6333"
+EnvironmentFile=/etc/vecpipe/config.env
 
 # Execute cleanup script
 ExecStart=/usr/bin/python3 /opt/vecpipe/cleanup.py --file-list /var/embeddings/filelist.null

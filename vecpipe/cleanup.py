@@ -19,6 +19,7 @@ from qdrant_client.models import Filter, FieldCondition, MatchValue, FilterSelec
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from vecpipe.config import settings
 from vecpipe.extract_chunks import FileChangeTracker
 
 # Configure logging
@@ -29,17 +30,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-QDRANT_HOST = os.getenv("QDRANT_HOST", "192.168.1.173")
-QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
-WEBUI_DB = "/var/embeddings/webui.db"
-FILE_LIST_PATH = "/var/embeddings/filelist.null"
-DEFAULT_COLLECTION = "work_docs"
-CLEANUP_LOG = "/var/embeddings/cleanup.log"
+# Using settings for some values, keeping others as constants for now
 
 class QdrantCleanupService:
     """Service to clean up vectors for deleted documents"""
     
-    def __init__(self, qdrant_host: str = QDRANT_HOST, qdrant_port: int = QDRANT_PORT):
+    def __init__(self, qdrant_host: str = None, qdrant_port: int = None):
+        if qdrant_host is None:
+            qdrant_host = settings.QDRANT_HOST
+        if qdrant_port is None:
+            qdrant_port = settings.QDRANT_PORT
         self.client = QdrantClient(url=f"http://{qdrant_host}:{qdrant_port}")
         self.tracker = FileChangeTracker()
         
@@ -60,14 +60,14 @@ class QdrantCleanupService:
     
     def get_job_collections(self) -> List[str]:
         """Get all job collection names from webui database"""
-        collections = [DEFAULT_COLLECTION]
+        collections = [settings.DEFAULT_COLLECTION]
         
-        if not os.path.exists(WEBUI_DB):
-            logger.warning(f"WebUI database not found: {WEBUI_DB}")
+        if not os.path.exists(settings.WEBUI_DB):
+            logger.warning(f"WebUI database not found: {settings.WEBUI_DB}")
             return collections
             
         try:
-            conn = sqlite3.connect(WEBUI_DB)
+            conn = sqlite3.connect(str(settings.WEBUI_DB))
             c = conn.cursor()
             
             # Get all job IDs
@@ -193,7 +193,7 @@ class QdrantCleanupService:
         
         # Write to cleanup log
         try:
-            with open(CLEANUP_LOG, 'a') as f:
+            with open(settings.CLEANUP_LOG, 'a') as f:
                 f.write(json.dumps(summary) + '\n')
         except Exception as e:
             logger.error(f"Failed to write cleanup log: {e}")
@@ -203,7 +203,7 @@ class QdrantCleanupService:
 
 def main():
     parser = argparse.ArgumentParser(description="Clean up vectors for deleted documents")
-    parser.add_argument('--file-list', '-f', default=FILE_LIST_PATH, 
+    parser.add_argument('--file-list', '-f', default=str(settings.MANIFEST_FILE), 
                        help='Path to null-delimited file list')
     parser.add_argument('--dry-run', '-n', action='store_true',
                        help='Perform dry run without deleting')

@@ -1,6 +1,13 @@
 #!/bin/bash
 # Script to run the Web UI with proper CUDA setup
 
+# Load environment variables from .env file if it exists
+if [ -f .env ]; then
+  set -a # automatically export all variables
+  source .env
+  set +a
+fi
+
 # Create symlink for CUDA library if it doesn't exist
 CUDA_LIB_PATH="/root/.pyenv/versions/3.12.11/envs/embeddingdocs/lib/python3.12/site-packages/nvidia/cuda_runtime/lib"
 if [ -f "$CUDA_LIB_PATH/libcudart.so.12" ] && [ ! -f "$CUDA_LIB_PATH/libcudart.so" ]; then
@@ -15,5 +22,7 @@ export LD_LIBRARY_PATH="$CUDA_LIB_PATH:$LD_LIBRARY_PATH"
 export LD_LIBRARY_PATH="/root/.pyenv/versions/3.12.11/envs/embeddingdocs/lib/python3.12/site-packages/nvidia:$LD_LIBRARY_PATH"
 
 # Run the web UI with poetry
-cd /root/document-embedding-project
+# Use PROJECT_ROOT if set, otherwise use current directory
+PROJECT_ROOT="${PROJECT_ROOT:-$(dirname $(readlink -f $0))}"
+cd "$PROJECT_ROOT"
 poetry run python -m uvicorn webui.app:app --host 0.0.0.0 --port 8080 --reload

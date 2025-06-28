@@ -6,16 +6,21 @@ Centralizes all database operations for jobs, files, users, and tokens
 
 import sqlite3
 import os
+import sys
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from passlib.context import CryptContext
 
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from vecpipe.config import settings
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
 # Database configuration
-DB_PATH = "/var/embeddings/webui.db"
+DB_PATH = str(settings.WEBUI_DB)
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 # Password hashing context for auth functions

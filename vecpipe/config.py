@@ -1,0 +1,52 @@
+# vecpipe/config.py
+
+import os
+from pathlib import Path
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class Settings(BaseSettings):
+    """
+    Centralized application configuration.
+    Settings are loaded from a .env file or environment variables.
+    """
+    # Project root directory, calculated automatically
+    PROJECT_ROOT: Path = Path(__file__).parent.parent.resolve()
+
+    # Qdrant Configuration
+    QDRANT_HOST: str
+    QDRANT_PORT: int = 6333
+    DEFAULT_COLLECTION: str = "work_docs"
+    
+    # Embedding Model Configuration
+    USE_MOCK_EMBEDDINGS: bool = False
+    DEFAULT_EMBEDDING_MODEL: str = "Qwen/Qwen3-Embedding-0.6B"
+    DEFAULT_QUANTIZATION: str = "float16"
+
+    # JWT Authentication Configuration
+    JWT_SECRET_KEY: str
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+    ALGORITHM: str = "HS256"
+
+    # Data & Processing Paths
+    # Use paths relative to the project root for portability
+    FILE_TRACKING_DB: Path = PROJECT_ROOT / "data" / "file_tracking.json"
+    WEBUI_DB: Path = PROJECT_ROOT / "data" / "webui.db"
+    EXTRACT_DIR: Path = PROJECT_ROOT / "data" / "extract"
+    INGEST_DIR: Path = PROJECT_ROOT / "data" / "ingest"
+    LOADED_DIR: Path = PROJECT_ROOT / "data" / "loaded"
+    REJECT_DIR: Path = PROJECT_ROOT / "data" / "rejects"
+    MANIFEST_FILE: Path = PROJECT_ROOT / "data" / "filelist.null"
+    
+    # Logging
+    ERROR_LOG: Path = PROJECT_ROOT / "logs" / "error_extract.log"
+    CLEANUP_LOG: Path = PROJECT_ROOT / "logs" / "cleanup.log"
+
+    # Pydantic model config
+    model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
+
+# Instantiate settings once and export
+settings = Settings()
+
+# Create data/log directories if they don't exist
+os.makedirs(settings.PROJECT_ROOT / "data", exist_ok=True)
+os.makedirs(settings.PROJECT_ROOT / "logs", exist_ok=True)
