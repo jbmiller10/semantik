@@ -36,21 +36,40 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Create metrics for search API
-search_latency = Histogram('search_api_latency_seconds', 'Search API request latency',
-                          ['endpoint', 'search_type'], 
-                          buckets=(.01, .05, .1, .25, .5, 1, 2.5, 5, 10),
-                          registry=registry)
-search_requests = Counter('search_api_requests_total', 'Total search API requests', 
-                         ['endpoint', 'search_type'],
-                         registry=registry)
-search_errors = Counter('search_api_errors_total', 'Total search API errors',
-                       ['endpoint', 'error_type'],
-                       registry=registry)
-embedding_generation_latency = Histogram('search_api_embedding_latency_seconds', 
-                                       'Embedding generation latency for search queries',
-                                       buckets=(.01, .05, .1, .25, .5, 1, 2),
-                                       registry=registry)
+# Create or get metrics for search API
+def get_or_create_metric(metric_class, name, description, labels=None, **kwargs):
+    """Create a metric or return existing one if already registered"""
+    from prometheus_client import REGISTRY
+    
+    # Check if metric already exists
+    if name in REGISTRY._names_to_collectors:
+        return REGISTRY._names_to_collectors[name]
+    
+    # Create new metric
+    if labels:
+        return metric_class(name, description, labels, registry=registry, **kwargs)
+    else:
+        return metric_class(name, description, registry=registry, **kwargs)
+
+# Create metrics with duplicate protection
+search_latency = get_or_create_metric(
+    Histogram, 'search_api_latency_seconds', 'Search API request latency',
+    ['endpoint', 'search_type'], 
+    buckets=(.01, .05, .1, .25, .5, 1, 2.5, 5, 10)
+)
+search_requests = get_or_create_metric(
+    Counter, 'search_api_requests_total', 'Total search API requests', 
+    ['endpoint', 'search_type']
+)
+search_errors = get_or_create_metric(
+    Counter, 'search_api_errors_total', 'Total search API errors',
+    ['endpoint', 'error_type']
+)
+embedding_generation_latency = get_or_create_metric(
+    Histogram, 'search_api_embedding_latency_seconds', 
+    'Embedding generation latency for search queries',
+    buckets=(.01, .05, .1, .25, .5, 1, 2)
+)
 
 # Constants
 QDRANT_HOST = os.getenv("QDRANT_HOST", "192.168.1.173")
@@ -468,7 +487,9 @@ async def hybrid_search(
     collection: Optional[str] = Query(None, description="Collection name (e.g., job_123)"),
     mode: str = Query("filter", description="Hybrid search mode: 'filter' or 'rerank'"),
     keyword_mode: str = Query("any", description="Keyword matching: 'any' or 'all'"),
-    score_threshold: Optional[float] = Query(None, description="Minimum similarity score threshold")
+    score_threshold: Optional[float] = Query(None, description="Minimum similarity score threshold"),
+    model_name: Optional[str] = Query(None, description="Override embedding model"),
+    quantization: Optional[str] = Query(None, description="Override quantization")
 ):
     """
     Perform hybrid search combining vector similarity and text matching
@@ -494,10 +515,10 @@ async def hybrid_search(
         keywords = hybrid_engine.extract_keywords(q)
         
         # Generate query embedding
-        logger.info(f"Processing hybrid search query: '{q}' (k={k}, collection={collection_name}, mode={mode})")
+        logger.info(f"Processing hybrid search query: '{q}' (k={k}, collection={collection_name}, mode={mode}, model={model_name}, quantization={quantization})")
         
         if not USE_MOCK_EMBEDDINGS:
-            query_vector = await generate_embedding_async(q)
+            query_vector = await generate_embedding_async(q, model_name, quantization)
         else:
             # Get vector dimension from collection
             vector_dim = 1024  # default
@@ -807,9 +828,9 @@ async def embedding_info():
 if __name__ == "__main__":
     # Run the server
     uvicorn.run(
-        "search_api:app",
+        app,
         host="0.0.0.0",
         port=8000,
-        reload=True,
+        reload=False,  # Disable reload to avoid metrics registration issues
         log_level="info"
     )

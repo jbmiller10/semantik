@@ -36,8 +36,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 from vecpipe.extract_chunks import extract_text, chunk_text, process_file
-from vecpipe.search_utils import search_qdrant
-from vecpipe.hybrid_search import HybridSearchEngine
 from qdrant_client import QdrantClient, AsyncQdrantClient
 from qdrant_client.models import VectorParams, Distance, PointStruct
 
@@ -983,16 +981,14 @@ async def get_job(job_id: str, current_user: Dict[str, Any] = Depends(get_curren
 
 @app.post("/api/search")
 async def search(request: SearchRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
-    """Search for similar documents"""
+    """Search for similar documents - proxies to REST API"""
     try:
         # Determine collection name
         collection_name = f"job_{request.job_id}" if request.job_id else "work_docs"
         
-        # Generate query embedding using the appropriate model
-        # Get model name from job if specified
-        model_name = "BAAI/bge-large-en-v1.5"  # default
-        quantization = "float32"  # default
-        instruction = None  # default
+        # Get model name and settings from job if specified
+        model_name = None  # Will use REST API default if not specified
+        quantization = None  # Will use REST API default if not specified
         
         if request.job_id:
             job = database.get_job(request.job_id)
@@ -1001,51 +997,74 @@ async def search(request: SearchRequest, current_user: Dict[str, Any] = Depends(
                     model_name = job['model_name']
                 if job.get('quantization'):
                     quantization = job['quantization']
-                if job.get('instruction'):
-                    instruction = job['instruction']
         
-        # Generate query embedding with same settings as job
-        query_vector = embedding_service.generate_single_embedding(
-            request.query, model_name, quantization=quantization, instruction=instruction
-        )
+        # Prepare search request for REST API
+        search_params = {
+            "query": request.query,
+            "k": request.k,
+            "collection": collection_name,
+            "search_type": "semantic"
+        }
+        
+        # Add optional parameters if specified
+        if model_name:
+            search_params["model_name"] = model_name
+        if quantization:
+            search_params["quantization"] = quantization
+        
+        # Call REST API search endpoint
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "http://localhost:8000/search",
+                json=search_params,
+                timeout=30.0
+            )
+            response.raise_for_status()
             
-        if not query_vector:
-            raise HTTPException(status_code=500, detail="Failed to generate query embedding")
+        # Transform REST API response to match WebUI JavaScript expectations
+        api_response = response.json()
         
-        # Search using shared utility
-        results = await search_qdrant(
-            QDRANT_HOST,
-            QDRANT_PORT,
-            collection_name,
-            query_vector,
-            request.k
-        )
+        # Convert flat results to payload format expected by JS
+        transformed_results = []
+        for result in api_response.get("results", []):
+            transformed_results.append({
+                "id": result.get("doc_id", ""),
+                "score": result["score"],
+                "payload": {
+                    "path": result["path"],
+                    "chunk_id": result["chunk_id"],
+                    "doc_id": result.get("doc_id"),
+                    "text": result.get("content", "")
+                }
+            })
         
         return {
-            "query": request.query,
-            "results": results,
+            "query": api_response["query"],
+            "results": transformed_results,
             "collection": collection_name
         }
         
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
             raise HTTPException(status_code=404, detail="Collection not found")
-        raise HTTPException(status_code=502, detail="Search failed")
+        raise HTTPException(status_code=502, detail=f"Search failed: {str(e)}")
+    except httpx.RequestError as e:
+        logger.error(f"Failed to connect to search API: {e}")
+        raise HTTPException(status_code=503, detail="Search service unavailable")
+    except Exception as e:
+        logger.error(f"Search error: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @app.post("/api/hybrid_search")
 async def hybrid_search(request: HybridSearchRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
-    """Perform hybrid search combining vector similarity and text matching"""
+    """Perform hybrid search combining vector similarity and text matching - proxies to REST API"""
     try:
         # Determine collection name
         collection_name = f"job_{request.job_id}" if request.job_id else "work_docs"
         
-        # Initialize hybrid search engine
-        hybrid_engine = HybridSearchEngine(QDRANT_HOST, QDRANT_PORT, collection_name)
-        
         # Get model name and settings from job if specified
-        model_name = "BAAI/bge-large-en-v1.5"  # default
-        quantization = "float32"  # default
-        instruction = None  # default
+        model_name = None
+        quantization = None
         
         if request.job_id:
             job = database.get_job(request.job_id)
@@ -1054,51 +1073,45 @@ async def hybrid_search(request: HybridSearchRequest, current_user: Dict[str, An
                     model_name = job['model_name']
                 if job.get('quantization'):
                     quantization = job['quantization']
-                if job.get('instruction'):
-                    instruction = job['instruction']
         
-        # Generate query embedding with same settings as job
-        query_vector = embedding_service.generate_single_embedding(
-            request.query, model_name, quantization=quantization, instruction=instruction
-        )
-            
-        if not query_vector:
-            raise HTTPException(status_code=500, detail="Failed to generate query embedding")
-        
-        # Extract keywords
-        keywords = hybrid_engine.extract_keywords(request.query)
-        
-        # Convert query_vector to list if it's a numpy array
-        if hasattr(query_vector, 'tolist'):
-            query_vector_list = query_vector.tolist()
-        else:
-            query_vector_list = query_vector
-        
-        # Perform hybrid search
-        results = hybrid_engine.hybrid_search(
-            query_vector=query_vector_list,
-            query_text=request.query,
-            limit=request.k,
-            keyword_mode=request.keyword_mode,
-            score_threshold=request.score_threshold,
-            hybrid_mode=request.mode
-        )
-        
-        # Close the engine
-        hybrid_engine.close()
-        
-        return {
-            "query": request.query,
-            "results": results,
+        # Prepare hybrid search params for REST API
+        search_params = {
+            "q": request.query,
+            "k": request.k,
             "collection": collection_name,
-            "keywords_extracted": keywords,
-            "search_mode": request.mode
+            "mode": request.mode,
+            "keyword_mode": request.keyword_mode
         }
         
+        # Add optional parameters if specified
+        if model_name:
+            search_params["model_name"] = model_name
+        if quantization:
+            search_params["quantization"] = quantization
+        if request.score_threshold is not None:
+            search_params["score_threshold"] = request.score_threshold
+        
+        # Call REST API hybrid search endpoint
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "http://localhost:8000/hybrid_search",
+                params=search_params,
+                timeout=30.0
+            )
+            response.raise_for_status()
+            
+        # The REST API returns the response in the format we need
+        return response.json()
+        
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Collection not found")
+        raise HTTPException(status_code=502, detail=f"Hybrid search failed: {str(e)}")
+    except httpx.RequestError as e:
+        logger.error(f"Failed to connect to search API: {e}")
+        raise HTTPException(status_code=503, detail="Search service unavailable")
     except Exception as e:
-        logger.error(f"Hybrid search failed: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Hybrid search error: {e}")
         raise HTTPException(status_code=500, detail=f"Hybrid search failed: {str(e)}")
 
 @app.websocket("/ws/{job_id}")

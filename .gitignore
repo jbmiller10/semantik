@@ -119,3 +119,7 @@ logs/
 data/
 models/
 repopackpy-output.txt
+
+# Logging
+*.pid
+*.log
