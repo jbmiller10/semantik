@@ -1,6 +1,6 @@
-# Qwen3 Search Optimization Guide
+# Qwen3 Embedding Models Guide
 
-This document outlines the optimizations implemented for using Qwen3 embedding models for search applications.
+Comprehensive guide for using Qwen3 embedding models in the document embedding system.
 
 ## Key Optimizations Implemented
 
@@ -158,22 +158,23 @@ config = {
 }
 ```
 
-## Running the Optimized Search API
+## Quick Start with Qwen3
 
-1. **Start the optimized API server:**
+1. **Configure Qwen3 in your .env file:**
 ```bash
-python vecpipe/search_api_optimized.py
+DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
+DEFAULT_QUANTIZATION=float16
 ```
 
-2. **Test the optimizations:**
+2. **Start services:**
 ```bash
-python test_qwen3_search.py
+./start_all_services.sh
 ```
 
-3. **Monitor performance:**
-- Check `/` endpoint for health and model status
-- Use `/models` to list available models
-- Monitor embedding and search times in response
+3. **Create a job with Qwen3:**
+- Access Web UI at http://localhost:8080
+- Select Qwen3 model when creating job
+- Add instruction: "Represent this document for retrieval:"
 
 ## Best Practices
 
@@ -200,25 +201,42 @@ python test_qwen3_search.py
 
 ## Troubleshooting
 
-### Out of Memory Errors
-- Reduce batch size
-- Use more aggressive quantization (int8)
-- Switch to smaller model (0.6B)
+### Common Issues and Solutions
 
-### Slow Performance
-- Enable float16 quantization
-- Increase batch size if GPU allows
-- Use parallel batch processing
+#### Out of Memory Errors
+- The embedding service automatically handles OOM with adaptive batch sizing
+- For persistent issues, use more aggressive quantization (int8)
+- Switch to smaller model (0.6B instead of 4B/8B)
 
-### Poor Search Quality
-- Use larger model (4B or 8B)
-- Ensure proper instructions are used
-- Consider implementing reranking
+#### Slow Performance
+- Qwen3-0.6B with float16 provides best speed/quality balance
+- Enable GPU acceleration if available
+- Use batch search endpoint for multiple queries
 
-## Future Enhancements
+#### Search Quality
+- Always use task-specific instructions
+- For highest quality, use Qwen3-8B with float16
+- Consider hybrid search for better precision
 
-1. **Hybrid Search**: Combine vector search with keyword matching
-2. **Reranking**: Add cross-encoder reranking for top results
-3. **Caching Layer**: Implement Redis-based embedding cache
-4. **Multi-lingual Support**: Add support for multilingual Qwen models
-5. **Fine-tuning**: Domain-specific fine-tuning for better results
+## Integration with System Features
+
+### With Hybrid Search
+Qwen3 embeddings work seamlessly with hybrid search:
+```bash
+GET /hybrid_search?q=your+query&mode=filter
+```
+
+### With Batch Processing
+Efficiently process multiple queries:
+```bash
+POST /search/batch
+{
+    "queries": ["query1", "query2"],
+    "model_name": "Qwen/Qwen3-Embedding-0.6B"
+}
+```
+
+### With Web UI
+- All Qwen3 models available in model dropdown
+- Quantization options in job creation
+- Custom instructions support
