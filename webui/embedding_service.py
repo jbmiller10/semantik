@@ -109,7 +109,7 @@ class EmbeddingService:
                         self.current_model = AutoModel.from_pretrained(
                             model_name,
                             quantization_config=quantization_config,
-                            device_map={"": 0} if torch.cuda.is_available() else None
+                            device_map="auto"
                         )
                         logger.info("Loaded Qwen3 model with INT8 quantization")
                     except Exception as e:
@@ -149,8 +149,7 @@ class EmbeddingService:
                         model_name, 
                         device=self.device,
                         model_kwargs={
-                            "quantization_config": quantization_config,
-                            "device_map": {"": 0} if torch.cuda.is_available() else None
+                            "quantization_config": quantization_config
                         }
                     )
                     logger.info("Loaded model with INT8 quantization")

@@ -59,6 +59,37 @@ python3 vecpipe/ingest_qdrant.py
 python3 vecpipe/search_api.py
 ```
 
+### Search API Examples
+
+Basic search:
+```bash
+curl "http://localhost:8000/search?q=machine+learning&k=5"
+```
+
+Advanced search with options:
+```bash
+curl -X POST "http://localhost:8000/search" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "What are transformers in AI?",
+    "k": 10,
+    "search_type": "question",
+    "model_name": "Qwen/Qwen3-Embedding-0.6B",
+    "quantization": "float16"
+  }'
+```
+
+Batch search:
+```bash
+curl -X POST "http://localhost:8000/search/batch" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "queries": ["What is BERT?", "How does GPT work?", "Explain attention mechanism"],
+    "k": 5,
+    "search_type": "question"
+  }'
+```
+
 ## Components
 
 ### 1. Manifest Generation (`scripts/build_manifest.sh`)
@@ -82,11 +113,22 @@ python3 vecpipe/search_api.py
 - Moves processed files to loaded/rejects directories
 
 ### 5. Search API (`vecpipe/search_api.py`)
-- FastAPI service for vector similarity search
+- Unified FastAPI service for vector similarity search with advanced features
 - Endpoints:
-  - `GET /` - Health check
-  - `GET /search?q=query&k=10` - Search documents
+  - `GET /` - Detailed health check with service status
+  - `GET /search?q=query&k=10` - Basic search (GET for compatibility)
+  - `POST /search` - Advanced search with options:
+    - Multiple search types: semantic, question, code, hybrid
+    - Model and quantization selection
+    - Metadata filters
+    - Include content in results
+  - `POST /search/batch` - Batch search for multiple queries
+  - `GET /hybrid_search` - Hybrid search combining vector and keyword matching
+  - `GET /keyword_search` - Keyword-only search
   - `GET /collection/info` - Collection statistics
+  - `GET /models` - List available embedding models
+  - `POST /models/load` - Dynamically load different models
+  - `GET /embedding/info` - Current embedding configuration
 
 ## Deployment
 

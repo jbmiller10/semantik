@@ -29,10 +29,11 @@ python-dotenv = "^1.0.1"
 torch = "*"
 transformers = "^4.51.0"
 bitsandbytes = "^0.46.0"
-accelerate = "^0.25.0"
+accelerate = ">=0.26.0"
 passlib = {extras = ["bcrypt"], version = "^1.7.4"}
 python-jose = {extras = ["cryptography"], version = "^3.3.0"}
 email-validator = "^2.1.0"
+numpy = "<2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

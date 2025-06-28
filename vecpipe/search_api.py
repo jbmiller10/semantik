@@ -7,13 +7,14 @@ REST API for vector similarity search with Qwen3 support
 import os
 import sys
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 from contextlib import asynccontextmanager
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+import time
 
-from fastapi import FastAPI, Query, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI, Query, HTTPException, Body
+from pydantic import BaseModel, Field
 import httpx
 import hashlib
 import uvicorn
@@ -34,11 +35,19 @@ logger = logging.getLogger(__name__)
 # Constants
 QDRANT_HOST = os.getenv("QDRANT_HOST", "192.168.1.173")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
-COLLECTION_NAME = "work_docs"
+COLLECTION_NAME = os.getenv("COLLECTION_NAME", "work_docs")
 DEFAULT_K = 10
 USE_MOCK_EMBEDDINGS = os.getenv("USE_MOCK_EMBEDDINGS", "false").lower() == "true"
 DEFAULT_MODEL = os.getenv("DEFAULT_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B")
 DEFAULT_QUANTIZATION = os.getenv("DEFAULT_QUANTIZATION", "float16")
+
+# Search instructions for different use cases
+SEARCH_INSTRUCTIONS = {
+    "semantic": "Represent this sentence for searching relevant passages:",
+    "question": "Represent this question for retrieving supporting documents:",
+    "code": "Represent this code query for finding similar code snippets:",
+    "hybrid": "Generate a comprehensive embedding for multi-modal search:"
+}
 
 # Response models
 class SearchResult(BaseModel):
@@ -46,11 +55,39 @@ class SearchResult(BaseModel):
     chunk_id: str
     score: float
     doc_id: Optional[str] = None
+    content: Optional[str] = None
+    metadata: Optional[Dict] = None
+
+class SearchRequest(BaseModel):
+    query: str = Field(..., description="Search query text")
+    k: int = Field(DEFAULT_K, ge=1, le=100, description="Number of results")
+    search_type: str = Field("semantic", description="Type of search: semantic, question, code, hybrid")
+    model_name: Optional[str] = Field(None, description="Override embedding model")
+    quantization: Optional[str] = Field(None, description="Override quantization: float32, float16, int8")
+    filters: Optional[Dict] = Field(None, description="Metadata filters for search")
+    include_content: bool = Field(False, description="Include chunk content in results")
+    collection: Optional[str] = Field(None, description="Collection name (e.g., job_123)")
+
+class BatchSearchRequest(BaseModel):
+    queries: List[str] = Field(..., description="List of search queries")
+    k: int = Field(DEFAULT_K, ge=1, le=100, description="Number of results per query")
+    search_type: str = Field("semantic", description="Type of search")
+    model_name: Optional[str] = Field(None, description="Override embedding model")
+    quantization: Optional[str] = Field(None, description="Override quantization")
+    collection: Optional[str] = Field(None, description="Collection name")
 
 class SearchResponse(BaseModel):
     query: str
     results: List[SearchResult]
     num_results: int
+    search_type: Optional[str] = None
+    model_used: Optional[str] = None
+    embedding_time_ms: Optional[float] = None
+    search_time_ms: Optional[float] = None
+
+class BatchSearchResponse(BaseModel):
+    responses: List[SearchResponse]
+    total_time_ms: float
 
 class HybridSearchResult(BaseModel):
     path: str
@@ -80,7 +117,7 @@ async def lifespan(app: FastAPI):
     # Startup
     qdrant_client = httpx.AsyncClient(
         base_url=f"http://{QDRANT_HOST}:{QDRANT_PORT}",
-        timeout=30.0
+        timeout=60.0
     )
     logger.info(f"Connected to Qdrant at {QDRANT_HOST}:{QDRANT_PORT}")
     
@@ -109,8 +146,8 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="Document Vector Search API",
-    description="Search documents using vector similarity with Qwen3 support",
-    version="1.1.0",
+    description="Unified search API with vector similarity, hybrid search, and Qwen3 support",
+    version="2.0.0",
     lifespan=lifespan
 )
 
@@ -146,7 +183,7 @@ def generate_mock_embedding(text: str, vector_dim: int = None) -> List[float]:
     
     return values
 
-async def generate_embedding_async(text: str, instruction: str = None) -> List[float]:
+async def generate_embedding_async(text: str, model_name: str = None, quantization: str = None, instruction: str = None) -> List[float]:
     """Generate embedding using the embedding service"""
     if USE_MOCK_EMBEDDINGS:
         return generate_mock_embedding(text)
@@ -157,6 +194,10 @@ async def generate_embedding_async(text: str, instruction: str = None) -> List[f
     # Use real embeddings
     loop = asyncio.get_event_loop()
     
+    # Use provided model/quantization or defaults
+    model = model_name or DEFAULT_MODEL
+    quant = quantization or DEFAULT_QUANTIZATION
+    
     # Determine instruction for search queries
     if instruction is None:
         instruction = "Represent this sentence for searching relevant passages:"
@@ -165,8 +206,8 @@ async def generate_embedding_async(text: str, instruction: str = None) -> List[f
         executor,
         embedding_service.generate_single_embedding,
         text,
-        DEFAULT_MODEL,
-        DEFAULT_QUANTIZATION,
+        model,
+        quant,
         instruction
     )
     
@@ -177,7 +218,7 @@ async def generate_embedding_async(text: str, instruction: str = None) -> List[f
 
 @app.get("/")
 async def root():
-    """Health check endpoint"""
+    """Health check endpoint with detailed status"""
     try:
         # Check Qdrant connection
         response = await qdrant_client.get(f"/collections/{COLLECTION_NAME}")
@@ -186,36 +227,78 @@ async def root():
         
         health_info = {
             "status": "healthy",
-            "collection": COLLECTION_NAME,
-            "points_count": info['points_count'],
+            "collection": {
+                "name": COLLECTION_NAME,
+                "points_count": info['points_count'],
+                "vector_size": info['config']['params']['vectors']['size'] if 'config' in info else None
+            },
             "embedding_mode": "mock" if USE_MOCK_EMBEDDINGS else "real"
         }
         
         if not USE_MOCK_EMBEDDINGS and embedding_service:
-            health_info["embedding_model"] = embedding_service.current_model_name
-            health_info["quantization"] = embedding_service.current_quantization
+            model_info = embedding_service.get_model_info(
+                embedding_service.current_model_name or DEFAULT_MODEL,
+                embedding_service.current_quantization or DEFAULT_QUANTIZATION
+            )
+            
+            health_info["embedding_service"] = {
+                "current_model": embedding_service.current_model_name,
+                "quantization": embedding_service.current_quantization,
+                "device": embedding_service.device,
+                "model_info": model_info
+            }
         
         return health_info
     except Exception as e:
         logger.error(f"Health check failed: {e}")
-        raise HTTPException(status_code=503, detail="Service unavailable")
+        raise HTTPException(status_code=503, detail=f"Service unavailable: {str(e)}")
 
 @app.get("/search", response_model=SearchResponse)
 async def search(
     q: str = Query(..., description="Search query"),
     k: int = Query(DEFAULT_K, ge=1, le=100, description="Number of results to return"),
-    collection: Optional[str] = Query(None, description="Collection name (e.g., job_123)")
+    collection: Optional[str] = Query(None, description="Collection name (e.g., job_123)"),
+    search_type: str = Query("semantic", description="Type of search: semantic, question, code, hybrid"),
+    model_name: Optional[str] = Query(None, description="Override embedding model"),
+    quantization: Optional[str] = Query(None, description="Override quantization")
 ):
     """
-    Search for similar documents
+    Search for similar documents (GET endpoint for compatibility)
     
     - **q**: The search query text
     - **k**: Number of results to return (1-100, default 10)
     - **collection**: Optional collection name (defaults to work_docs)
+    - **search_type**: Type of search (semantic, question, code, hybrid)
+    - **model_name**: Override default embedding model
+    - **quantization**: Override default quantization
     """
+    # Create request object for unified handling
+    request = SearchRequest(
+        query=q,
+        k=k,
+        search_type=search_type,
+        model_name=model_name,
+        quantization=quantization,
+        collection=collection
+    )
+    return await search_post(request)
+
+@app.post("/search", response_model=SearchResponse)
+async def search_post(request: SearchRequest = Body(...)):
+    """
+    Search for similar documents with advanced options
+    
+    Supports different search types:
+    - **semantic**: General semantic search
+    - **question**: Question-answering search
+    - **code**: Code similarity search
+    - **hybrid**: Multi-modal search
+    """
+    start_time = time.time()
+    
     try:
         # Determine collection name
-        collection_name = collection if collection else COLLECTION_NAME
+        collection_name = request.collection if request.collection else COLLECTION_NAME
         
         # Get collection info to determine vector dimension
         vector_dim = 1024  # default
@@ -228,43 +311,95 @@ async def search(
         except Exception as e:
             logger.warning(f"Could not get collection info for {collection_name}, using default dimension: {e}")
         
-        # Generate query embedding
-        logger.info(f"Processing search query: '{q}' (k={k}, collection={collection_name}, vector_dim={vector_dim})")
+        # Select model and quantization
+        model_name = request.model_name or DEFAULT_MODEL
+        quantization = request.quantization or DEFAULT_QUANTIZATION
+        
+        # Get appropriate instruction for search type
+        instruction = SEARCH_INSTRUCTIONS.get(request.search_type, SEARCH_INSTRUCTIONS["semantic"])
         
         # Generate query embedding
+        embed_start = time.time()
+        logger.info(f"Processing search query: '{request.query}' (k={request.k}, collection={collection_name}, type={request.search_type})")
+        
         if not USE_MOCK_EMBEDDINGS:
-            query_vector = await generate_embedding_async(q)
+            query_vector = await generate_embedding_async(request.query, model_name, quantization, instruction)
         else:
-            query_vector = generate_mock_embedding(q, vector_dim)
+            query_vector = generate_mock_embedding(request.query, vector_dim)
         
-        # Search in Qdrant using shared utility
-        qdrant_results = await search_qdrant(
-            QDRANT_HOST,
-            QDRANT_PORT,
-            collection_name,
-            query_vector,
-            k
-        )
+        embed_time = (time.time() - embed_start) * 1000
         
-        # Parse results using shared utility
-        parsed_results = parse_search_results(qdrant_results)
+        # Search in Qdrant
+        search_start = time.time()
         
-        results = []
-        for r in parsed_results:
-            result = SearchResult(
-                path=r['path'],
-                chunk_id=r['chunk_id'],
-                score=r['score'],
-                doc_id=r.get('doc_id')
+        # Handle filters if provided
+        if request.filters:
+            # Direct Qdrant search with filters
+            search_request = {
+                "vector": query_vector,
+                "limit": request.k,
+                "with_payload": True,
+                "with_vector": False,
+                "filter": request.filters
+            }
+            
+            response = await qdrant_client.post(
+                f"/collections/{collection_name}/points/search",
+                json=search_request
             )
+            response.raise_for_status()
+            qdrant_results = response.json()['result']
+        else:
+            # Use shared utility for regular search
+            qdrant_results = await search_qdrant(
+                QDRANT_HOST,
+                QDRANT_PORT,
+                collection_name,
+                query_vector,
+                request.k
+            )
+        
+        search_time = (time.time() - search_start) * 1000
+        
+        # Parse results
+        results = []
+        for point in qdrant_results:
+            if isinstance(point, dict) and 'payload' in point:
+                # Direct Qdrant response format
+                payload = point['payload']
+                result = SearchResult(
+                    path=payload.get('path', ''),
+                    chunk_id=payload.get('chunk_id', ''),
+                    score=point['score'],
+                    doc_id=payload.get('doc_id'),
+                    content=payload.get('content') if request.include_content else None,
+                    metadata=payload.get('metadata')
+                )
+            else:
+                # Parsed format from search_utils
+                parsed_results = parse_search_results(qdrant_results)
+                for r in parsed_results:
+                    result = SearchResult(
+                        path=r['path'],
+                        chunk_id=r['chunk_id'],
+                        score=r['score'],
+                        doc_id=r.get('doc_id')
+                    )
+                    results.append(result)
+                break
             results.append(result)
         
-        logger.info(f"Found {len(results)} results for query: '{q}'")
+        total_time = (time.time() - start_time) * 1000
+        logger.info(f"Search completed in {total_time:.2f}ms (embed: {embed_time:.2f}ms, search: {search_time:.2f}ms)")
         
         return SearchResponse(
-            query=q,
+            query=request.query,
             results=results,
-            num_results=len(results)
+            num_results=len(results),
+            search_type=request.search_type,
+            model_used=f"{model_name}/{quantization}" if not USE_MOCK_EMBEDDINGS else "mock",
+            embedding_time_ms=embed_time,
+            search_time_ms=search_time
         )
         
     except httpx.HTTPStatusError as e:
@@ -374,6 +509,93 @@ async def hybrid_search(
         if 'hybrid_engine' in locals():
             hybrid_engine.close()
 
+@app.post("/search/batch", response_model=BatchSearchResponse)
+async def batch_search(request: BatchSearchRequest = Body(...)):
+    """
+    Batch search for multiple queries
+    
+    Efficiently processes multiple search queries in parallel
+    """
+    start_time = time.time()
+    
+    try:
+        collection_name = request.collection if request.collection else COLLECTION_NAME
+        model_name = request.model_name or DEFAULT_MODEL
+        quantization = request.quantization or DEFAULT_QUANTIZATION
+        instruction = SEARCH_INSTRUCTIONS.get(request.search_type, SEARCH_INSTRUCTIONS["semantic"])
+        
+        # Generate embeddings for all queries in batch
+        logger.info(f"Generating embeddings for {len(request.queries)} queries")
+        
+        # Create tasks for parallel embedding generation
+        embedding_tasks = [
+            generate_embedding_async(query, model_name, quantization, instruction)
+            for query in request.queries
+        ]
+        
+        # Wait for all embeddings
+        query_vectors = await asyncio.gather(*embedding_tasks)
+        
+        # Create search tasks
+        search_tasks = [
+            search_qdrant(
+                QDRANT_HOST,
+                QDRANT_PORT,
+                collection_name,
+                vector,
+                request.k
+            )
+            for vector in query_vectors
+        ]
+        
+        # Execute searches in parallel
+        all_results = await asyncio.gather(*search_tasks)
+        
+        # Build responses
+        responses = []
+        for query, results in zip(request.queries, all_results):
+            parsed_results = []
+            for point in results:
+                if isinstance(point, dict) and 'payload' in point:
+                    payload = point['payload']
+                    parsed_results.append(SearchResult(
+                        path=payload.get('path', ''),
+                        chunk_id=payload.get('chunk_id', ''),
+                        score=point['score'],
+                        doc_id=payload.get('doc_id')
+                    ))
+                else:
+                    # Handle parsed format
+                    parsed = parse_search_results(results)
+                    for r in parsed:
+                        parsed_results.append(SearchResult(
+                            path=r['path'],
+                            chunk_id=r['chunk_id'],
+                            score=r['score'],
+                            doc_id=r.get('doc_id')
+                        ))
+                    break
+            
+            responses.append(SearchResponse(
+                query=query,
+                results=parsed_results,
+                num_results=len(parsed_results),
+                search_type=request.search_type,
+                model_used=f"{model_name}/{quantization}" if not USE_MOCK_EMBEDDINGS else "mock"
+            ))
+        
+        total_time = (time.time() - start_time) * 1000
+        logger.info(f"Batch search completed in {total_time:.2f}ms for {len(request.queries)} queries")
+        
+        return BatchSearchResponse(
+            responses=responses,
+            total_time_ms=total_time
+        )
+        
+    except Exception as e:
+        logger.error(f"Batch search error: {e}")
+        raise HTTPException(status_code=500, detail=f"Batch search failed: {str(e)}")
+
 @app.get("/keyword_search", response_model=HybridSearchResponse)
 async def keyword_search(
     q: str = Query(..., description="Keywords to search for"),
@@ -449,6 +671,61 @@ async def collection_info():
     except Exception as e:
         logger.error(f"Failed to get collection info: {e}")
         raise HTTPException(status_code=502, detail="Failed to get collection info")
+
+@app.get("/models")
+async def list_models():
+    """List available embedding models and their properties"""
+    from webui.embedding_service import QUANTIZED_MODEL_INFO
+    
+    models = []
+    for model_name, info in QUANTIZED_MODEL_INFO.items():
+        models.append({
+            "name": model_name,
+            "description": info.get("description", ""),
+            "dimension": info.get("dimension"),
+            "supports_quantization": info.get("supports_quantization", True),
+            "recommended_quantization": info.get("recommended_quantization", "float32"),
+            "memory_estimate": info.get("memory_estimate", {}),
+            "is_qwen3": "Qwen3-Embedding" in model_name
+        })
+    
+    return {
+        "models": models,
+        "current_model": embedding_service.current_model_name if embedding_service else None,
+        "current_quantization": embedding_service.current_quantization if embedding_service else None
+    }
+
+@app.post("/models/load")
+async def load_model(
+    model_name: str = Body(..., description="Model name to load"),
+    quantization: str = Body("float32", description="Quantization type")
+):
+    """Load a specific embedding model"""
+    if USE_MOCK_EMBEDDINGS:
+        raise HTTPException(status_code=400, detail="Cannot load models when using mock embeddings")
+    
+    try:
+        success = await asyncio.get_event_loop().run_in_executor(
+            executor,
+            embedding_service.load_model,
+            model_name,
+            quantization
+        )
+        
+        if success:
+            model_info = embedding_service.get_model_info(model_name, quantization)
+            return {
+                "status": "success",
+                "model": model_name,
+                "quantization": quantization,
+                "info": model_info
+            }
+        else:
+            raise HTTPException(status_code=400, detail="Failed to load model")
+            
+    except Exception as e:
+        logger.error(f"Model load error: {e}")
+        raise HTTPException(status_code=500, detail=f"Model load failed: {str(e)}")
 
 @app.get("/embedding/info")
 async def embedding_info():
