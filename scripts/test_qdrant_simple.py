@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Simple test of Qdrant connection using HTTP API"""
+"""Simple test of Qdrant connection using official qdrant-client"""
 
-import httpx
-import json
+from qdrant_client import QdrantClient
+from qdrant_client.models import VectorParams, Distance
 
 QDRANT_HOST = "192.168.1.173"
 QDRANT_PORT = 6333
@@ -11,17 +11,16 @@ VECTOR_SIZE = 1024
 
 def test_connection():
     """Test basic connection to Qdrant"""
-    base_url = f"http://{QDRANT_HOST}:{QDRANT_PORT}"
     
     try:
-        # Test basic connectivity
-        response = httpx.get(f"{base_url}/collections")
-        response.raise_for_status()
+        # Initialize client
+        client = QdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
         
-        data = response.json()
+        # Test basic connectivity
+        collections = client.get_collections()
+        
         print(f"✓ Connected to Qdrant at {QDRANT_HOST}:{QDRANT_PORT}")
-        print(f"  Status: {data['status']}")
-        print(f"  Collections: {[c['name'] for c in data['result']['collections']]}")
+        print(f"  Collections: {[c.name for c in collections.collections]}")
         
         return True
     except Exception as e:
@@ -29,42 +28,39 @@ def test_connection():
         return False
 
 def create_collection():
-    """Create the work_docs collection via HTTP API"""
-    base_url = f"http://{QDRANT_HOST}:{QDRANT_PORT}"
+    """Create the work_docs collection using official client"""
     
     try:
+        # Initialize client
+        client = QdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
+        
         # Check if collection exists
-        response = httpx.get(f"{base_url}/collections/{COLLECTION_NAME}")
-        if response.status_code == 200:
+        try:
+            client.get_collection(COLLECTION_NAME)
             print(f"  Collection '{COLLECTION_NAME}' exists, deleting...")
-            delete_response = httpx.delete(f"{base_url}/collections/{COLLECTION_NAME}")
-            delete_response.raise_for_status()
+            client.delete_collection(COLLECTION_NAME)
             print(f"  Deleted existing collection")
+        except:
+            pass  # Collection doesn't exist
         
         # Create collection
-        collection_config = {
-            "vectors": {
-                "size": VECTOR_SIZE,
-                "distance": "Cosine"
-            },
-            "hnsw_config": {
+        client.create_collection(
+            collection_name=COLLECTION_NAME,
+            vectors_config=VectorParams(
+                size=VECTOR_SIZE,
+                distance=Distance.COSINE
+            ),
+            hnsw_config={
                 "m": 32,
                 "ef_construct": 200,
                 "full_scan_threshold": 10000
             },
-            "optimizers_config": {
+            optimizers_config={
                 "indexing_threshold": 100000,
                 "memmap_threshold": 0
             },
-            "on_disk_payload": True
-        }
-        
-        response = httpx.put(
-            f"{base_url}/collections/{COLLECTION_NAME}",
-            json=collection_config,
-            timeout=30.0
+            on_disk_payload=True
         )
-        response.raise_for_status()
         
         print(f"✓ Created collection '{COLLECTION_NAME}' with:")
         print(f"  - Vector size: {VECTOR_SIZE}")
@@ -73,10 +69,8 @@ def create_collection():
         print(f"  - Disk-based storage enabled")
         
         # Verify collection
-        verify_response = httpx.get(f"{base_url}/collections/{COLLECTION_NAME}")
-        verify_response.raise_for_status()
-        info = verify_response.json()['result']
-        print(f"✓ Collection verified: {info['points_count']} points")
+        info = client.get_collection(COLLECTION_NAME)
+        print(f"✓ Collection verified: {info.points_count} points")
         
         return True
     except Exception as e:

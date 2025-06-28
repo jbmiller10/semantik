@@ -36,9 +36,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 from vecpipe.extract_chunks import extract_text, chunk_text, process_file, extract_text_pdf, extract_text_docx, extract_text_txt
-from vecpipe.ingest_qdrant import QdrantClient
 from vecpipe.search_utils import search_qdrant
 from vecpipe.hybrid_search import HybridSearchEngine
+from qdrant_client import QdrantClient, AsyncQdrantClient
+from qdrant_client.models import VectorParams, Distance, PointStruct
 
 # Import the unified embedding service
 from webui.embedding_service import embedding_service, POPULAR_MODELS
@@ -308,7 +309,7 @@ async def process_embedding_job(job_id: str):
         files = database.get_job_files(job_id, status='pending')
         
         # Initialize Qdrant client
-        qdrant = QdrantClient(QDRANT_HOST, QDRANT_PORT)
+        qdrant = QdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
         
         for file_idx, file_row in enumerate(files):
             try:
@@ -458,9 +459,18 @@ async def process_embedding_job(job_id: str):
                     
                     # Upload batch to Qdrant
                     if points:
-                        success = qdrant.upload_points(f"job_{job_id}", points)
-                        if not success:
-                            raise Exception("Failed to upload to Qdrant")
+                        point_structs = [
+                            PointStruct(
+                                id=point["id"],
+                                vector=point["vector"],
+                                payload=point["payload"]
+                            )
+                            for point in points
+                        ]
+                        qdrant.upsert(
+                            collection_name=f"job_{job_id}",
+                            points=point_structs
+                        )
                     
                     # Free the points batch
                     del points
@@ -619,15 +629,11 @@ async def reset_database_endpoint(current_user: Dict[str, Any] = Depends(get_cur
         job_ids = [job['id'] for job in jobs]
         
         # Delete Qdrant collections for all jobs
+        async_client = AsyncQdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
         for job_id in job_ids:
             collection_name = f"job_{job_id}"
             try:
-                async with httpx.AsyncClient() as client:
-                    response = await client.delete(
-                        f"http://{QDRANT_HOST}:{QDRANT_PORT}/collections/{collection_name}",
-                        timeout=30.0
-                    )
-                    response.raise_for_status()
+                await async_client.delete_collection(collection_name)
             except Exception as e:
                 logger.warning(f"Failed to delete collection {collection_name}: {e}")
         
@@ -727,7 +733,7 @@ async def create_job(request: CreateJobRequest, background_tasks: BackgroundTask
         database.add_files_to_job(job_id, file_records)
         
         # Create Qdrant collection for this job
-        qdrant = QdrantClient(QDRANT_HOST, QDRANT_PORT)
+        qdrant = QdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
         
         # Determine vector size
         vector_size = request.vector_dim
@@ -752,29 +758,21 @@ async def create_job(request: CreateJobRequest, background_tasks: BackgroundTask
         # Update job with actual vector dimension
         database.update_job(job_id, {'vector_dim': vector_size})
             
-        # Create collection via HTTP API
-        collection_config = {
-            "vectors": {
-                "size": vector_size,
-                "distance": "Cosine"
-            },
-            "optimizers_config": {
-                "indexing_threshold": 20000,
-                "memmap_threshold": 0
-            }
-        }
-        
+        # Create collection using official client
         try:
-            response = httpx.put(
-                f"http://{QDRANT_HOST}:{QDRANT_PORT}/collections/job_{job_id}",
-                json=collection_config,
-                timeout=30.0
+            qdrant.create_collection(
+                collection_name=f"job_{job_id}",
+                vectors_config=VectorParams(
+                    size=vector_size,
+                    distance=Distance.COSINE
+                ),
+                optimizers_config={
+                    "indexing_threshold": 20000,
+                    "memmap_threshold": 0
+                }
             )
-            response.raise_for_status()
-        except:
-            logger.warning(f"Collection job_{job_id} might already exist")
-        
-        qdrant.close()
+        except Exception as e:
+            logger.warning(f"Collection job_{job_id} might already exist: {e}")
         
         # Start processing in background with cancellation support
         task = asyncio.create_task(process_embedding_job(job_id))
@@ -860,12 +858,8 @@ async def delete_job(job_id: str, current_user: Dict[str, Any] = Depends(get_cur
     # Delete from Qdrant
     collection_name = f"job_{job_id}"
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.delete(
-                f"http://{QDRANT_HOST}:{QDRANT_PORT}/collections/{collection_name}",
-                timeout=30.0
-            )
-            response.raise_for_status()
+        async_client = AsyncQdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
+        await async_client.delete_collection(collection_name)
     except Exception as e:
         logger.warning(f"Failed to delete Qdrant collection: {e}")
     

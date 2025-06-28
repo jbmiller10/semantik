@@ -12,8 +12,9 @@ import sqlite3
 import argparse
 from typing import List, Dict, Set
 from pathlib import Path
-import httpx
 from datetime import datetime
+from qdrant_client import QdrantClient
+from qdrant_client.models import Filter, FieldCondition, MatchValue, FilterSelector
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -39,9 +40,8 @@ class QdrantCleanupService:
     """Service to clean up vectors for deleted documents"""
     
     def __init__(self, qdrant_host: str = QDRANT_HOST, qdrant_port: int = QDRANT_PORT):
-        self.qdrant_url = f"http://{qdrant_host}:{qdrant_port}"
+        self.client = QdrantClient(url=f"http://{qdrant_host}:{qdrant_port}")
         self.tracker = FileChangeTracker()
-        self.client = httpx.Client(timeout=30.0)
         
     def get_current_files(self, file_list_path: str) -> List[str]:
         """Read current file list from null-delimited file"""
@@ -88,10 +88,10 @@ class QdrantCleanupService:
     def collection_exists(self, collection_name: str) -> bool:
         """Check if a collection exists in Qdrant"""
         try:
-            response = self.client.get(f"{self.qdrant_url}/collections/{collection_name}")
-            return response.status_code == 200
+            self.client.get_collection(collection_name)
+            return True
         except Exception as e:
-            logger.error(f"Failed to check collection {collection_name}: {e}")
+            # Collection doesn't exist or other error
             return False
     
     def delete_points_by_doc_id(self, collection_name: str, doc_id: str) -> int:
@@ -102,48 +102,33 @@ class QdrantCleanupService:
             
         try:
             # First, check how many points we're about to delete
-            count_response = self.client.post(
-                f"{self.qdrant_url}/collections/{collection_name}/points/count",
-                json={
-                    "filter": {
-                        "must": [
-                            {
-                                "key": "doc_id",
-                                "match": {"value": doc_id}
-                            }
-                        ]
-                    }
-                }
+            count_filter = Filter(
+                must=[
+                    FieldCondition(
+                        key="doc_id",
+                        match=MatchValue(value=doc_id)
+                    )
+                ]
             )
             
-            if count_response.status_code != 200:
-                logger.error(f"Failed to count points in {collection_name}: {count_response.text}")
-                return 0
-                
-            count = count_response.json().get("result", {}).get("count", 0)
+            count_result = self.client.count(
+                collection_name=collection_name,
+                count_filter=count_filter
+            )
+            
+            count = count_result.count
             
             if count == 0:
                 return 0
                 
             # Delete the points
-            delete_response = self.client.post(
-                f"{self.qdrant_url}/collections/{collection_name}/points/delete",
-                json={
-                    "filter": {
-                        "must": [
-                            {
-                                "key": "doc_id",
-                                "match": {"value": doc_id}
-                            }
-                        ]
-                    }
-                }
+            self.client.delete(
+                collection_name=collection_name,
+                points_selector=FilterSelector(
+                    filter=count_filter
+                )
             )
             
-            if delete_response.status_code != 200:
-                logger.error(f"Failed to delete points from {collection_name}: {delete_response.text}")
-                return 0
-                
             logger.info(f"Deleted {count} points with doc_id={doc_id} from {collection_name}")
             return count
             
@@ -215,9 +200,6 @@ class QdrantCleanupService:
             
         return summary
     
-    def close(self):
-        """Close HTTP client"""
-        self.client.close()
 
 def main():
     parser = argparse.ArgumentParser(description="Clean up vectors for deleted documents")
@@ -252,9 +234,6 @@ def main():
     except Exception as e:
         logger.error(f"Cleanup failed: {e}")
         return 1
-        
-    finally:
-        service.close()
 
 if __name__ == "__main__":
     sys.exit(main())

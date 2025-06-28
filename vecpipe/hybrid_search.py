@@ -22,7 +22,7 @@ class HybridSearchEngine:
     """Hybrid search engine combining vector and text search"""
     
     def __init__(self, host: str, port: int, collection_name: str = "work_docs"):
-        self.client = QdrantClient(host=host, port=port)
+        self.client = QdrantClient(url=f"http://{host}:{port}")
         self.collection_name = collection_name
     
     def extract_keywords(self, query: str) -> List[str]:

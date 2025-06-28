@@ -14,8 +14,9 @@ from typing import List, Dict, Optional, Any
 import pyarrow.parquet as pq
 from tqdm import tqdm
 import argparse
-import httpx
 import time
+from qdrant_client import QdrantClient
+from qdrant_client.models import PointStruct, VectorParams, Distance
 
 # Configure logging
 logging.basicConfig(
@@ -36,40 +37,6 @@ REJECT_DIR = "/var/embeddings/rejects"
 MAX_RETRIES = 5
 RETRY_DELAY = 2  # seconds
 
-class QdrantClient:
-    """Simple HTTP client for Qdrant"""
-    
-    def __init__(self, host: str, port: int, timeout: int = 600):
-        self.base_url = f"http://{host}:{port}"
-        self.timeout = httpx.Timeout(timeout=timeout)
-        self.client = httpx.Client(timeout=self.timeout)
-    
-    def upload_points(self, collection_name: str, points: List[Dict[str, Any]]) -> bool:
-        """Upload points to collection"""
-        try:
-            response = self.client.put(
-                f"{self.base_url}/collections/{collection_name}/points",
-                json={"points": points}
-            )
-            response.raise_for_status()
-            return True
-        except Exception as e:
-            logger.error(f"Failed to upload points: {e}")
-            return False
-    
-    def get_collection_info(self, collection_name: str) -> Optional[Dict]:
-        """Get collection information"""
-        try:
-            response = self.client.get(f"{self.base_url}/collections/{collection_name}")
-            response.raise_for_status()
-            return response.json()['result']
-        except Exception as e:
-            logger.error(f"Failed to get collection info: {e}")
-            return None
-    
-    def close(self):
-        """Close the client"""
-        self.client.close()
 
 def process_parquet_file(file_path: str, client: QdrantClient, 
                         batch_size: int = BATCH_SIZE) -> bool:
@@ -96,24 +63,30 @@ def process_parquet_file(file_path: str, client: QdrantClient,
             # Prepare batch
             batch_points = []
             for j in range(i, batch_end):
-                point = {
-                    "id": ids[j],
-                    "vector": vectors[j],
-                    "payload": payloads[j]
-                }
+                point = PointStruct(
+                    id=ids[j],
+                    vector=vectors[j],
+                    payload=payloads[j]
+                )
                 batch_points.append(point)
             
             # Upload with retry
             success = False
             for retry in range(MAX_RETRIES):
-                if client.upload_points(COLLECTION_NAME, batch_points):
+                try:
+                    client.upsert(
+                        collection_name=COLLECTION_NAME,
+                        points=batch_points
+                    )
                     successful_batches += 1
                     success = True
                     break
-                else:
+                except Exception as e:
                     if retry < MAX_RETRIES - 1:
-                        logger.warning(f"Retry {retry + 1}/{MAX_RETRIES} for batch {i//batch_size + 1}")
+                        logger.warning(f"Retry {retry + 1}/{MAX_RETRIES} for batch {i//batch_size + 1}: {e}")
                         time.sleep(RETRY_DELAY * (2 ** retry))  # Exponential backoff
+                    else:
+                        logger.error(f"Failed to upload batch after {MAX_RETRIES} retries: {e}")
             
             if not success:
                 logger.error(f"Failed to upload batch {i//batch_size + 1} after {MAX_RETRIES} retries")
@@ -159,14 +132,14 @@ def main():
     os.makedirs(args.rejects, exist_ok=True)
     
     # Initialize client
-    client = QdrantClient(args.host, args.port)
+    client = QdrantClient(url=f"http://{args.host}:{args.port}")
     
     # Get collection info
-    info = client.get_collection_info(COLLECTION_NAME)
-    if info:
-        logger.info(f"Collection '{COLLECTION_NAME}' has {info['points_count']} points")
-    else:
-        logger.error(f"Collection '{COLLECTION_NAME}' not found!")
+    try:
+        info = client.get_collection(COLLECTION_NAME)
+        logger.info(f"Collection '{COLLECTION_NAME}' has {info.points_count} points")
+    except Exception as e:
+        logger.error(f"Collection '{COLLECTION_NAME}' not found: {e}")
         sys.exit(1)
     
     # Find input files
@@ -191,14 +164,13 @@ def main():
             failed += 1
     
     # Get final collection info
-    final_info = client.get_collection_info(COLLECTION_NAME)
-    if final_info:
-        logger.info(f"Collection now has {final_info['points_count']} points")
+    try:
+        final_info = client.get_collection(COLLECTION_NAME)
+        logger.info(f"Collection now has {final_info.points_count} points")
+    except Exception as e:
+        logger.error(f"Failed to get final collection info: {e}")
     
     logger.info(f"Ingestion complete: {successful} successful, {failed} failed")
-    
-    # Cleanup
-    client.close()
 
 if __name__ == "__main__":
     main()

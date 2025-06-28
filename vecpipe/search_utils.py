@@ -4,7 +4,7 @@ Shared search utilities for both search API and web UI
 
 import logging
 from typing import List, Dict, Optional
-import httpx
+from qdrant_client import AsyncQdrantClient
 
 logger = logging.getLogger(__name__)
 
@@ -30,19 +30,26 @@ async def search_qdrant(
     Returns:
         List of search results from Qdrant
     """
-    search_request = {
-        "vector": query_vector,
-        "limit": k,
-        "with_payload": with_payload
-    }
+    # Initialize async client
+    client = AsyncQdrantClient(url=f"http://{qdrant_host}:{qdrant_port}")
     
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            f"http://{qdrant_host}:{qdrant_port}/collections/{collection_name}/points/search",
-            json=search_request
-        )
-        response.raise_for_status()
-        return response.json()['result']
+    # Perform search
+    results = await client.search(
+        collection_name=collection_name,
+        query_vector=query_vector,
+        limit=k,
+        with_payload=with_payload
+    )
+    
+    # Convert results to dictionary format for backward compatibility
+    return [
+        {
+            "id": point.id,
+            "score": point.score,
+            "payload": point.payload if with_payload else None
+        }
+        for point in results
+    ]
 
 def parse_search_results(qdrant_results: List[Dict]) -> List[Dict]:
     """
