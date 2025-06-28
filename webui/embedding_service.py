@@ -15,6 +15,7 @@ import gc
 from transformers import AutoModel, AutoTokenizer
 import torch.nn.functional as F
 from torch import Tensor
+import accelerate
 
 logger = logging.getLogger(__name__)
 
@@ -108,18 +109,19 @@ class EmbeddingService:
                         self.current_model = AutoModel.from_pretrained(
                             model_name,
                             quantization_config=quantization_config,
-                            device_map="auto"
+                            device_map={"": 0} if torch.cuda.is_available() else None
                         )
                         logger.info("Loaded Qwen3 model with INT8 quantization")
-                    except ImportError:
-                        logger.warning("bitsandbytes not available, loading standard model")
-                        self.current_model = AutoModel.from_pretrained(model_name).to(self.device)
+                    except Exception as e:
+                        error_msg = f"Failed to load model with INT8 quantization: {str(e)}"
+                        logger.error(error_msg)
+                        raise RuntimeError(error_msg)
                         
                 elif quantization == "float16" and self.device == "cuda":
                     self.current_model = AutoModel.from_pretrained(
                         model_name,
                         torch_dtype=torch.float16,
-                        device_map="auto" if self.device == "cuda" else None
+                        device_map={"": 0} if self.device == "cuda" else None
                     )
                     if self.device == "cpu":
                         self.current_model = self.current_model.to(self.device)
@@ -148,7 +150,7 @@ class EmbeddingService:
                         device=self.device,
                         model_kwargs={
                             "quantization_config": quantization_config,
-                            "device_map": "auto"
+                            "device_map": {"": 0} if torch.cuda.is_available() else None
                         }
                     )
                     logger.info("Loaded model with INT8 quantization")
@@ -186,6 +188,9 @@ class EmbeddingService:
         """Generate a test embedding to verify model and get dimensions"""
         if self.mock_mode:
             return np.random.randn(1024)  # Default mock dimension
+        
+        if not hasattr(self, 'current_model') or self.current_model is None:
+            raise RuntimeError("Model not loaded")
         
         if self.is_qwen3_model:
             batch_dict = self.current_tokenizer(
@@ -238,9 +243,10 @@ class EmbeddingService:
         try:
             model_key = f"{model_name}_{quantization}"
             if model_key != f"{self.current_model_name}_{self.current_quantization}":
-                self.load_model(model_name, quantization)
+                if not self.load_model(model_name, quantization):
+                    return {"error": f"Failed to load model {model_name}"}
             
-            if self.current_model is None:
+            if not hasattr(self, 'current_model') or self.current_model is None:
                 return {"error": "Model not loaded"}
             
             # Get embedding dimension
@@ -293,6 +299,10 @@ class EmbeddingService:
             if model_key != f"{self.current_model_name}_{self.current_quantization}":
                 if not self.load_model(model_name, quantization):
                     return None
+            
+            if not hasattr(self, 'current_model') or self.current_model is None:
+                logger.error("Model not properly loaded")
+                return None
             
             if not texts:
                 return np.array([])

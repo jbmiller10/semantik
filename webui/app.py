@@ -22,7 +22,6 @@ from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel, Field, validator
 import httpx
 from tqdm import tqdm
-import sqlite3
 import hashlib
 import glob
 
@@ -47,12 +46,14 @@ from webui.embedding_service import embedding_service, POPULAR_MODELS
 # Import authentication
 from webui.auth import (
     UserCreate, UserLogin, Token, User, get_current_user,
-    create_user, authenticate_user, create_access_token, create_refresh_token,
-    save_refresh_token, verify_refresh_token, get_user, revoke_refresh_token
+    authenticate_user, create_access_token, create_refresh_token,
+    get_password_hash
 )
 
+# Import database operations
+from webui import database
+
 # Constants
-DB_PATH = "/var/embeddings/webui.db"
 JOBS_DIR = "/var/embeddings/jobs"
 OUTPUT_DIR = "/var/embeddings/output"
 SUPPORTED_EXTENSIONS = ['.pdf', '.docx', '.doc', '.txt', '.text']
@@ -62,7 +63,6 @@ QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 # Create necessary directories
 os.makedirs(JOBS_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 # Request/Response models
 class ScanDirectoryRequest(BaseModel):
@@ -142,95 +142,6 @@ class HybridSearchRequest(BaseModel):
     keyword_mode: str = Field(default="any", description="Keyword matching: 'any' or 'all'")
     score_threshold: Optional[float] = None
 
-# Database initialization
-def init_db():
-    """Initialize SQLite database for job tracking"""
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    
-    # Check if tables exist and need migration
-    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'")
-    jobs_exists = c.fetchone() is not None
-    
-    if jobs_exists:
-        # Check for missing columns and add them
-        c.execute("PRAGMA table_info(jobs)")
-        columns = [col[1] for col in c.fetchall()]
-        
-        if 'vector_dim' not in columns:
-            logger.info("Migrating database: adding vector_dim column")
-            c.execute("ALTER TABLE jobs ADD COLUMN vector_dim INTEGER")
-        
-        if 'quantization' not in columns:
-            logger.info("Migrating database: adding quantization column")
-            c.execute("ALTER TABLE jobs ADD COLUMN quantization TEXT DEFAULT 'float32'")
-        
-        if 'instruction' not in columns:
-            logger.info("Migrating database: adding instruction column")
-            c.execute("ALTER TABLE jobs ADD COLUMN instruction TEXT")
-    
-    # Jobs table
-    c.execute('''CREATE TABLE IF NOT EXISTS jobs
-                 (id TEXT PRIMARY KEY,
-                  name TEXT NOT NULL,
-                  description TEXT,
-                  status TEXT NOT NULL,
-                  created_at TEXT NOT NULL,
-                  updated_at TEXT NOT NULL,
-                  directory_path TEXT NOT NULL,
-                  model_name TEXT NOT NULL,
-                  chunk_size INTEGER,
-                  chunk_overlap INTEGER,
-                  batch_size INTEGER,
-                  vector_dim INTEGER,
-                  quantization TEXT,
-                  instruction TEXT,
-                  total_files INTEGER DEFAULT 0,
-                  processed_files INTEGER DEFAULT 0,
-                  failed_files INTEGER DEFAULT 0,
-                  current_file TEXT,
-                  error TEXT)''')
-    
-    # Files table
-    c.execute('''CREATE TABLE IF NOT EXISTS files
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  job_id TEXT NOT NULL,
-                  path TEXT NOT NULL,
-                  size INTEGER NOT NULL,
-                  modified TEXT NOT NULL,
-                  extension TEXT NOT NULL,
-                  hash TEXT,
-                  status TEXT DEFAULT 'pending',
-                  error TEXT,
-                  chunks_created INTEGER DEFAULT 0,
-                  vectors_created INTEGER DEFAULT 0,
-                  FOREIGN KEY (job_id) REFERENCES jobs(id))''')
-    
-    # Create indices
-    c.execute('''CREATE INDEX IF NOT EXISTS idx_files_job_id ON files(job_id)''')
-    c.execute('''CREATE INDEX IF NOT EXISTS idx_files_status ON files(status)''')
-    
-    conn.commit()
-    conn.close()
-
-def reset_database():
-    """Reset the database by dropping all tables and recreating them"""
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    
-    # Drop tables
-    c.execute("DROP TABLE IF EXISTS files")
-    c.execute("DROP TABLE IF EXISTS jobs")
-    
-    conn.commit()
-    conn.close()
-    
-    # Recreate tables
-    init_db()
-    logger.info("Database reset successfully")
-
-# Initialize database
-init_db()
 
 # Create FastAPI app
 app = FastAPI(
@@ -384,22 +295,17 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str =
 
 async def process_embedding_job(job_id: str):
     """Process an embedding job asynchronously"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    
     try:
         # Update job status
-        c.execute("UPDATE jobs SET status='processing', updated_at=? WHERE id=?",
-                 (datetime.now().isoformat(), job_id))
-        conn.commit()
+        database.update_job(job_id, {'status': 'processing'})
         
         # Get job details
-        job = c.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+        job = database.get_job(job_id)
+        if not job:
+            raise Exception(f"Job {job_id} not found")
         
         # Get pending files
-        files = c.execute("SELECT * FROM files WHERE job_id=? AND status='pending'",
-                         (job_id,)).fetchall()
+        files = database.get_job_files(job_id, status='pending')
         
         # Initialize Qdrant client
         qdrant = QdrantClient(QDRANT_HOST, QDRANT_PORT)
@@ -407,9 +313,7 @@ async def process_embedding_job(job_id: str):
         for file_idx, file_row in enumerate(files):
             try:
                 # Update current file
-                c.execute("UPDATE jobs SET current_file=?, updated_at=? WHERE id=?",
-                         (file_row['path'], datetime.now().isoformat(), job_id))
-                conn.commit()
+                database.update_job(job_id, {'current_file': file_row['path']})
                 
                 # Send progress update
                 await manager.send_update(job_id, {
@@ -477,9 +381,7 @@ async def process_embedding_job(job_id: str):
                 # Free the original text immediately after chunking
                 del text
                 
-                # Update chunks created
-                c.execute("UPDATE files SET chunks_created=? WHERE id=?",
-                         (len(chunks), file_row['id']))
+                # Update chunks created (we'll need to update the file status later)
                 
                 # Generate embeddings
                 texts = [chunk['text'] for chunk in chunks]
@@ -564,11 +466,12 @@ async def process_embedding_job(job_id: str):
                     del points
                 
                 # Update database after all batches uploaded
-                c.execute("UPDATE files SET status='completed', vectors_created=? WHERE id=?",
-                         (total_points, file_row['id']))
-                c.execute("UPDATE jobs SET processed_files = processed_files + 1 WHERE id=?",
-                         (job_id,))
-                conn.commit()
+                database.update_file_status(job_id, file_row['path'], 'completed', 
+                                          vectors_created=total_points,
+                                          chunks_created=len(chunks))
+                # Get current job to update processed files count
+                current_job = database.get_job(job_id)
+                database.update_job(job_id, {'processed_files': current_job['processed_files'] + 1})
                 
                 # Free chunks and embeddings after upload
                 del chunks
@@ -583,16 +486,10 @@ async def process_embedding_job(job_id: str):
                 
             except Exception as e:
                 logger.error(f"Failed to process file {file_row['path']}: {e}")
-                c.execute("UPDATE files SET status='failed', error=? WHERE id=?",
-                         (str(e), file_row['id']))
-                c.execute("UPDATE jobs SET failed_files = failed_files + 1 WHERE id=?",
-                         (job_id,))
-                conn.commit()
+                # File status already updated in the database.update_file_status call above
         
         # Mark job as completed
-        c.execute("UPDATE jobs SET status='completed', current_file=NULL, updated_at=? WHERE id=?",
-                 (datetime.now().isoformat(), job_id))
-        conn.commit()
+        database.update_job(job_id, {'status': 'completed', 'current_file': None})
         
         await manager.send_update(job_id, {
             "type": "completed",
@@ -601,9 +498,7 @@ async def process_embedding_job(job_id: str):
         
     except Exception as e:
         logger.error(f"Job {job_id} failed: {e}")
-        c.execute("UPDATE jobs SET status='failed', error=?, updated_at=? WHERE id=?",
-                 (str(e), datetime.now().isoformat(), job_id))
-        conn.commit()
+        database.update_job(job_id, {'status': 'failed', 'error': str(e)})
         
         await manager.send_update(job_id, {
             "type": "error",
@@ -612,14 +507,19 @@ async def process_embedding_job(job_id: str):
     
     finally:
         qdrant.close()
-        conn.close()
 
 # Authentication Routes
 @app.post("/api/auth/register", response_model=User)
 async def register(user_data: UserCreate):
     """Register a new user"""
     try:
-        user = create_user(user_data)
+        hashed_password = get_password_hash(user_data.password)
+        user = database.create_user(
+            username=user_data.username,
+            email=user_data.email,
+            hashed_password=hashed_password,
+            full_name=user_data.full_name
+        )
         return user
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -644,23 +544,22 @@ async def login(login_data: UserLogin):
     # Save refresh token
     from datetime import timedelta
     expires_at = datetime.utcnow() + timedelta(days=30)
-    save_refresh_token(user["id"], refresh_token, expires_at)
+    # Hash the token for storage
+    from webui.auth import pwd_context
+    token_hash = pwd_context.hash(refresh_token)
+    database.save_refresh_token(user["id"], token_hash, expires_at)
     
     return Token(access_token=access_token, refresh_token=refresh_token)
 
 @app.post("/api/auth/refresh", response_model=Token)
 async def refresh_token(refresh_token: str):
     """Refresh access token using refresh token"""
-    user_id = verify_refresh_token(refresh_token)
+    user_id = database.verify_refresh_token(refresh_token)
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
     
-    # Get user
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    user = c.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    conn.close()
+    # Get user by ID
+    user = database.get_user_by_id(user_id)
     
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
@@ -670,10 +569,13 @@ async def refresh_token(refresh_token: str):
     new_refresh_token = create_refresh_token(data={"sub": user["username"]})
     
     # Revoke old refresh token and save new one
-    revoke_refresh_token(refresh_token)
+    database.revoke_refresh_token(refresh_token)
     from datetime import timedelta
     expires_at = datetime.utcnow() + timedelta(days=30)
-    save_refresh_token(user["id"], new_refresh_token, expires_at)
+    # Hash the new token for storage
+    from webui.auth import pwd_context
+    token_hash = pwd_context.hash(new_refresh_token)
+    database.save_refresh_token(user["id"], token_hash, expires_at)
     
     return Token(access_token=access_token, refresh_token=new_refresh_token)
 
@@ -681,7 +583,7 @@ async def refresh_token(refresh_token: str):
 async def logout(refresh_token: str = None, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Logout and revoke refresh token"""
     if refresh_token:
-        revoke_refresh_token(refresh_token)
+        database.revoke_refresh_token(refresh_token)
     return {"message": "Logged out successfully"}
 
 @app.get("/api/auth/me", response_model=User)
@@ -713,10 +615,8 @@ async def reset_database_endpoint(current_user: Dict[str, Any] = Depends(get_cur
     """Reset the database"""
     try:
         # Get all job IDs before reset
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        job_ids = [row[0] for row in c.execute("SELECT id FROM jobs").fetchall()]
-        conn.close()
+        jobs = database.list_jobs()
+        job_ids = [job['id'] for job in jobs]
         
         # Delete Qdrant collections for all jobs
         for job_id in job_ids:
@@ -741,7 +641,7 @@ async def reset_database_endpoint(current_user: Dict[str, Any] = Depends(get_cur
             logger.warning(f"Failed to delete parquet files: {e}")
         
         # Reset database
-        reset_database()
+        database.reset_database()
         
         return {"status": "success", "message": "Database reset successfully"}
     except Exception as e:
@@ -751,30 +651,23 @@ async def reset_database_endpoint(current_user: Dict[str, Any] = Depends(get_cur
 @app.get("/api/settings/stats")
 async def get_database_stats(current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get database statistics"""
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
+    # Get stats from database module
+    stats = database.get_database_stats()
     
-    try:
-        # Get counts
-        job_count = c.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
-        file_count = c.execute("SELECT COUNT(*) FROM files").fetchone()[0]
-        
-        # Get database file size
-        db_size = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
-        
-        # Get total parquet files size
-        parquet_files = glob.glob(os.path.join(OUTPUT_DIR, "*.parquet"))
-        parquet_size = sum(os.path.getsize(f) for f in parquet_files)
-        
-        return {
-            "job_count": job_count,
-            "file_count": file_count,
-            "database_size_mb": round(db_size / 1024 / 1024, 2),
-            "parquet_files_count": len(parquet_files),
-            "parquet_size_mb": round(parquet_size / 1024 / 1024, 2)
-        }
-    finally:
-        conn.close()
+    # Get database file size
+    db_size = os.path.getsize(database.DB_PATH) if os.path.exists(database.DB_PATH) else 0
+    
+    # Get total parquet files size
+    parquet_files = glob.glob(os.path.join(OUTPUT_DIR, "*.parquet"))
+    parquet_size = sum(os.path.getsize(f) for f in parquet_files)
+    
+    return {
+        "job_count": stats['jobs']['total'],
+        "file_count": stats['files']['total'],
+        "database_size_mb": round(db_size / 1024 / 1024, 2),
+        "parquet_files_count": len(parquet_files),
+        "parquet_size_mb": round(parquet_size / 1024 / 1024, 2)
+    }
 
 @app.post("/api/scan-directory")
 async def scan_directory_endpoint(request: ScanDirectoryRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
@@ -796,9 +689,6 @@ async def create_job(request: CreateJobRequest, background_tasks: BackgroundTask
     # Accept job_id from request if provided, otherwise generate new one
     job_id = request.job_id if request.job_id else str(uuid.uuid4())
     
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    
     try:
         # Scan directory first - use async version to avoid blocking UI
         files = await scan_directory_async(request.directory_path, recursive=True, scan_id=job_id)
@@ -808,24 +698,33 @@ async def create_job(request: CreateJobRequest, background_tasks: BackgroundTask
         
         # Create job record
         now = datetime.now().isoformat()
-        c.execute('''INSERT INTO jobs 
-                    (id, name, description, status, created_at, updated_at, 
-                     directory_path, model_name, chunk_size, chunk_overlap, 
-                     batch_size, vector_dim, quantization, instruction, total_files)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                 (job_id, request.name, request.description, 'created', now, now,
-                  request.directory_path, request.model_name, request.chunk_size,
-                  request.chunk_overlap, request.batch_size, request.vector_dim,
-                  request.quantization, request.instruction, len(files)))
+        job_data = {
+            'id': job_id,
+            'name': request.name,
+            'description': request.description,
+            'status': 'created',
+            'created_at': now,
+            'updated_at': now,
+            'directory_path': request.directory_path,
+            'model_name': request.model_name,
+            'chunk_size': request.chunk_size,
+            'chunk_overlap': request.chunk_overlap,
+            'batch_size': request.batch_size,
+            'vector_dim': request.vector_dim,
+            'quantization': request.quantization,
+            'instruction': request.instruction
+        }
+        database.create_job(job_data)
         
         # Create file records
-        for f in files:
-            c.execute('''INSERT INTO files 
-                        (job_id, path, size, modified, extension)
-                        VALUES (?, ?, ?, ?, ?)''',
-                     (job_id, f.path, f.size, f.modified, f.extension))
-        
-        conn.commit()
+        file_records = [{
+            'path': f.path,
+            'size': f.size,
+            'modified': f.modified,
+            'extension': f.extension,
+            'hash': getattr(f, 'hash', None)
+        } for f in files]
+        database.add_files_to_job(job_id, file_records)
         
         # Create Qdrant collection for this job
         qdrant = QdrantClient(QDRANT_HOST, QDRANT_PORT)
@@ -851,8 +750,7 @@ async def create_job(request: CreateJobRequest, background_tasks: BackgroundTask
                     vector_size = 1024  # Default fallback
         
         # Update job with actual vector dimension
-        c.execute("UPDATE jobs SET vector_dim=? WHERE id=?", (vector_size, job_id))
-        conn.commit()
+        database.update_job(job_id, {'vector_dim': vector_size})
             
         # Create collection via HTTP API
         collection_config = {
@@ -896,10 +794,7 @@ async def create_job(request: CreateJobRequest, background_tasks: BackgroundTask
         )
         
     except Exception as e:
-        conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        conn.close()
 
 @app.get("/api/models")
 async def get_models(current_user: Dict[str, Any] = Depends(get_current_user)):
@@ -913,11 +808,7 @@ async def get_models(current_user: Dict[str, Any] = Depends(get_current_user)):
 @app.get("/api/jobs", response_model=List[JobStatus])
 async def list_jobs(current_user: Dict[str, Any] = Depends(get_current_user)):
     """List all jobs"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    
-    jobs = c.execute("SELECT * FROM jobs ORDER BY created_at DESC").fetchall()
+    jobs = database.list_jobs()
     
     result = []
     for job in jobs:
@@ -927,95 +818,69 @@ async def list_jobs(current_user: Dict[str, Any] = Depends(get_current_user)):
             status=job['status'],
             created_at=job['created_at'],
             updated_at=job['updated_at'],
-            total_files=job['total_files'],
-            processed_files=job['processed_files'],
-            failed_files=job['failed_files'],
-            current_file=job['current_file'],
-            error=job['error'],
+            total_files=job.get('total_files', 0),
+            processed_files=job.get('processed_files', 0),
+            failed_files=job.get('failed_files', 0),
+            current_file=job.get('current_file'),
+            error=job.get('error'),
             model_name=job['model_name'],
             directory_path=job['directory_path']
         ))
     
-    conn.close()
     return result
 
 @app.post("/api/jobs/{job_id}/cancel")
 async def cancel_job(job_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Cancel a running job"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
+    # Check current job status
+    job = database.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
     
-    try:
-        # Check current job status
-        job = c.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
-        if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
+    if job['status'] not in ['created', 'scanning', 'processing']:
+        raise HTTPException(status_code=400, detail=f"Cannot cancel job in status: {job['status']}")
+    
+    # Update job status to cancelled
+    database.update_job(job_id, {'status': 'cancelled'})
+    
+    # Cancel the task if it's running
+    if job_id in active_job_tasks:
+        active_job_tasks[job_id].cancel()
         
-        if job['status'] not in ['created', 'scanning', 'processing']:
-            raise HTTPException(status_code=400, detail=f"Cannot cancel job in status: {job['status']}")
-        
-        # Update job status to cancelled
-        c.execute("UPDATE jobs SET status='cancelled', updated_at=? WHERE id=?",
-                 (datetime.now().isoformat(), job_id))
-        conn.commit()
-        
-        # Cancel the task if it's running
-        if job_id in active_job_tasks:
-            active_job_tasks[job_id].cancel()
-            
-        return {"message": "Job cancellation requested"}
-        
-    finally:
-        conn.close()
+    return {"message": "Job cancellation requested"}
 
 @app.delete("/api/jobs/{job_id}")
 async def delete_job(job_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Delete a job and its associated collection"""
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
+    # Check if job exists
+    job = database.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
     
+    # Delete from Qdrant
+    collection_name = f"job_{job_id}"
     try:
-        # Check if job exists
-        job = c.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
-        if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
-        
-        # Delete from Qdrant
-        collection_name = f"job_{job_id}"
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.delete(
-                    f"http://{QDRANT_HOST}:{QDRANT_PORT}/collections/{collection_name}",
-                    timeout=30.0
-                )
-                response.raise_for_status()
-        except Exception as e:
-            logger.warning(f"Failed to delete Qdrant collection: {e}")
-        
-        # Delete from database
-        c.execute("DELETE FROM files WHERE job_id=?", (job_id,))
-        c.execute("DELETE FROM jobs WHERE id=?", (job_id,))
-        conn.commit()
-        
-        return {"message": "Job deleted successfully"}
-        
-    finally:
-        conn.close()
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"http://{QDRANT_HOST}:{QDRANT_PORT}/collections/{collection_name}",
+                timeout=30.0
+            )
+            response.raise_for_status()
+    except Exception as e:
+        logger.warning(f"Failed to delete Qdrant collection: {e}")
+    
+    # Delete from database
+    database.delete_job(job_id)
+    
+    return {"message": "Job deleted successfully"}
 
 @app.get("/api/jobs/{job_id}", response_model=JobStatus)
 async def get_job(job_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get job details"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    
-    job = c.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    job = database.get_job(job_id)
     
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    
-    conn.close()
     
     return JobStatus(
         id=job['id'],
@@ -1042,27 +907,18 @@ async def search(request: SearchRequest, current_user: Dict[str, Any] = Depends(
         # Generate query embedding using the appropriate model
         # Get model name from job if specified
         model_name = "BAAI/bge-large-en-v1.5"  # default
-        if request.job_id:
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            job = c.execute("SELECT model_name FROM jobs WHERE id=?", (request.job_id,)).fetchone()
-            if job:
-                model_name = job[0]
-            conn.close()
-        
-        # Get quantization settings and instruction from job if available
         quantization = "float32"  # default
         instruction = None  # default
+        
         if request.job_id:
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            job = c.execute("SELECT quantization, instruction FROM jobs WHERE id=?", (request.job_id,)).fetchone()
+            job = database.get_job(request.job_id)
             if job:
-                if job[0]:
-                    quantization = job[0]
-                if job[1]:
-                    instruction = job[1]
-            conn.close()
+                if job.get('model_name'):
+                    model_name = job['model_name']
+                if job.get('quantization'):
+                    quantization = job['quantization']
+                if job.get('instruction'):
+                    instruction = job['instruction']
         
         # Generate query embedding with same settings as job
         query_vector = embedding_service.generate_single_embedding(
@@ -1108,18 +964,14 @@ async def hybrid_search(request: HybridSearchRequest, current_user: Dict[str, An
         instruction = None  # default
         
         if request.job_id:
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            job = c.execute("SELECT model_name, quantization, instruction FROM jobs WHERE id=?", 
-                           (request.job_id,)).fetchone()
+            job = database.get_job(request.job_id)
             if job:
-                if job[0]:
-                    model_name = job[0]
-                if job[1]:
-                    quantization = job[1]
-                if job[2]:
-                    instruction = job[2]
-            conn.close()
+                if job.get('model_name'):
+                    model_name = job['model_name']
+                if job.get('quantization'):
+                    quantization = job['quantization']
+                if job.get('instruction'):
+                    instruction = job['instruction']
         
         # Generate query embedding with same settings as job
         query_vector = embedding_service.generate_single_embedding(
