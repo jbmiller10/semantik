@@ -68,6 +68,39 @@ let activeWebSocket = null;
 let scanWebSocket = null;
 let currentScanId = null;
 
+// Rolling average calculator for metrics
+class RollingAverage {
+    constructor(windowSize = 5) {
+        this.values = [];
+        this.windowSize = windowSize;
+    }
+    
+    add(value) {
+        this.values.push(value);
+        if (this.values.length > this.windowSize) {
+            this.values.shift();
+        }
+    }
+    
+    getAverage() {
+        if (this.values.length === 0) return 0;
+        const sum = this.values.reduce((a, b) => a + b, 0);
+        return sum / this.values.length;
+    }
+    
+    clear() {
+        this.values = [];
+    }
+}
+
+// Store rolling averages for resource metrics
+const resourceMetricsAverages = {
+    cpu: new RollingAverage(5),
+    memory: new RollingAverage(5),
+    gpuMemory: new RollingAverage(5),
+    gpuUtil: new RollingAverage(5)
+};
+
 // Helper function to show toast notifications
 function showToast(message, type = 'info') {
     // Create toast element
@@ -515,7 +548,7 @@ async function refreshJobs() {
                 
                 <div class="mt-3 flex space-x-2">
                     ${job.status === 'processing' ? `
-                        <button onclick="connectToJobWebSocket('${job.id}')"
+                        <button onclick="showJobMetrics('${job.id}')"
                                 class="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors">
                             <i class="fas fa-chart-line mr-1"></i>Monitor
                         </button>
@@ -1117,6 +1150,374 @@ function connectToScanWebSocket(scanId) {
     };
     
     return ws;
+}
+
+// Show job metrics modal
+async function showJobMetrics(jobId) {
+    // First connect to WebSocket for real-time updates
+    connectToJobWebSocket(jobId);
+    
+    // Create metrics modal
+    const modal = document.createElement('div');
+    modal.id = 'metrics-modal';
+    modal.className = 'fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50';
+    modal.innerHTML = `
+        <div class="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold">Job Metrics - ${jobId}</h3>
+                <button onclick="closeMetricsModal()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="space-y-6">
+                <!-- Real-time Progress -->
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h4 class="font-semibold text-blue-900 mb-2">Real-time Progress</h4>
+                    <div id="metrics-progress" class="space-y-2">
+                        <div class="text-sm text-gray-600">Connecting to job...</div>
+                    </div>
+                </div>
+                
+                <!-- Performance Metrics -->
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <h4 class="font-semibold text-green-900 mb-2">Performance Metrics</h4>
+                    <div id="metrics-performance" class="grid grid-cols-2 gap-4">
+                        <div class="text-sm text-gray-600">Loading metrics...</div>
+                    </div>
+                </div>
+                
+                <!-- Resource Usage -->
+                <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                    <h4 class="font-semibold text-purple-900 mb-2">Resource Usage</h4>
+                    <div id="metrics-resources" class="grid grid-cols-2 gap-4">
+                        <div class="text-sm text-gray-600">Loading resource data...</div>
+                    </div>
+                </div>
+                
+                <!-- Error Tracking -->
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <h4 class="font-semibold text-red-900 mb-2">Error Tracking</h4>
+                    <div id="metrics-errors" class="space-y-2">
+                        <div class="text-sm text-gray-600">Loading error data...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    
+    // Fetch and display metrics
+    await updateMetricsDisplay(jobId);
+    
+    // Set up periodic refresh
+    const metricsInterval = setInterval(() => {
+        updateMetricsDisplay(jobId);
+    }, 1000); // Update every 1 second for smoother metrics
+    
+    // Store interval ID for cleanup
+    modal.dataset.intervalId = metricsInterval;
+}
+
+// Close metrics modal
+function closeMetricsModal() {
+    const modal = document.getElementById('metrics-modal');
+    if (modal) {
+        // Clear refresh interval
+        const intervalId = modal.dataset.intervalId;
+        if (intervalId) {
+            clearInterval(intervalId);
+        }
+        modal.remove();
+        
+        // Clear rolling averages
+        Object.values(resourceMetricsAverages).forEach(avg => avg.clear());
+    }
+}
+
+// Update metrics display
+async function updateMetricsDisplay(jobId) {
+    try {
+        // Fetch job details
+        const jobResponse = await fetch(`/api/jobs/${jobId}`, {
+            headers: auth.getHeaders()
+        });
+        
+        if (!jobResponse.ok) {
+            throw new Error('Failed to fetch job details');
+        }
+        
+        const job = await jobResponse.json();
+        
+        // Update progress section
+        const progressDiv = document.getElementById('metrics-progress');
+        if (progressDiv) {
+            const progress = job.total_files > 0 ? (job.processed_files / job.total_files * 100).toFixed(1) : 0;
+            progressDiv.innerHTML = `
+                <div class="space-y-2">
+                    <div class="flex justify-between text-sm">
+                        <span>Files Processed:</span>
+                        <span class="font-medium">${job.processed_files} / ${job.total_files}</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: ${progress}%"></div>
+                    </div>
+                    ${job.current_file ? `
+                        <div class="text-sm text-gray-600">
+                            <i class="fas fa-spinner fa-spin mr-1"></i>
+                            Current: ${job.current_file.split('/').pop()}
+                        </div>
+                    ` : ''}
+                    ${job.failed_files > 0 ? `
+                        <div class="text-sm text-red-600">
+                            <i class="fas fa-exclamation-triangle mr-1"></i>
+                            Failed files: ${job.failed_files}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+        
+        // Fetch metrics from the API endpoint
+        try {
+            const metricsResponse = await fetch('/api/metrics', {
+                headers: auth.getHeaders()
+            });
+            
+            if (metricsResponse.ok) {
+                const metricsData = await metricsResponse.json();
+                if (metricsData.available && metricsData.data) {
+                    parseAndDisplayMetrics(metricsData.data, job);
+                } else {
+                    displayJobBasedMetrics(job);
+                }
+            } else {
+                displayJobBasedMetrics(job);
+            }
+        } catch (error) {
+            console.log('Failed to fetch metrics:', error);
+            displayJobBasedMetrics(job);
+        }
+        
+    } catch (error) {
+        console.error('Failed to update metrics:', error);
+    }
+}
+
+// Parse Prometheus metrics and display relevant ones
+function parseAndDisplayMetrics(metricsText, job) {
+    // Parse relevant metrics from Prometheus format
+    const lines = metricsText.split('\n');
+    const metrics = {};
+    
+    lines.forEach(line => {
+        if (line.startsWith('#') || !line.trim()) return;
+        
+        // More precise regex for Prometheus metrics
+        const match = line.match(/^([a-zA-Z_:][a-zA-Z0-9_:]*)\{?(.*?)\}?\s+(.+)$/);
+        if (match) {
+            const [, name, labels, value] = match;
+            
+            if (!metrics[name]) metrics[name] = [];
+            metrics[name].push({ labels, value: parseFloat(value) });
+        }
+    });
+    
+    // Debug: Log available metrics
+    console.log('Available metrics:', Object.keys(metrics).filter(k => k.includes('embedding')));
+    
+    // Update performance metrics
+    const performanceDiv = document.getElementById('metrics-performance');
+    if (performanceDiv) {
+        const embedRate = calculateEmbeddingRate(job);
+        
+        // Calculate average from sum and count for histograms
+        const embedSum = getMetricValue(metrics, 'embedding_batch_duration_seconds_sum', 'last', 0);
+        const embedCount = getMetricValue(metrics, 'embedding_batch_duration_seconds_count', 'last', 0);
+        const avgEmbedTime = embedCount > 0 ? (embedSum / embedCount * 1000) : 0;
+        
+        // Debug log
+        console.log('Embedding metrics:', { embedSum, embedCount, avgEmbedTime });
+        
+        performanceDiv.innerHTML = `
+            <div>
+                <div class="text-sm text-gray-600">Processing Rate</div>
+                <div class="text-lg font-semibold">${embedRate} files/min</div>
+            </div>
+            <div>
+                <div class="text-sm text-gray-600">Avg Embedding Time</div>
+                <div class="text-lg font-semibold">${avgEmbedTime.toFixed(1)} ms</div>
+            </div>
+            <div>
+                <div class="text-sm text-gray-600">Total Chunks</div>
+                <div class="text-lg font-semibold">${getMetricValue(metrics, 'embedding_chunks_created_total', 'sum')}</div>
+            </div>
+            <div>
+                <div class="text-sm text-gray-600">Vectors Generated</div>
+                <div class="text-lg font-semibold">${getMetricValue(metrics, 'embedding_vectors_generated_total', 'sum')}</div>
+            </div>
+        `;
+    }
+    
+    // Update resource metrics
+    const resourcesDiv = document.getElementById('metrics-resources');
+    if (resourcesDiv) {
+        const cpuUsage = getMetricValue(metrics, 'embedding_cpu_utilization_percent', 'last');
+        const memUsage = getMetricValue(metrics, 'embedding_memory_utilization_percent', 'last');
+        const gpuMemoryBytes = getMetricValue(metrics, 'embedding_gpu_memory_used_bytes', 'last', 0);
+        const gpuMemoryTotalBytes = getMetricValue(metrics, 'embedding_gpu_memory_total_bytes', 'last', 0);
+        const gpuMemoryGB = gpuMemoryBytes / (1024 * 1024 * 1024);
+        const gpuMemoryTotalGB = gpuMemoryTotalBytes / (1024 * 1024 * 1024);
+        const gpuUtil = getMetricValue(metrics, 'embedding_gpu_utilization_percent', 'last', 0);
+        
+        // Calculate GPU memory percentage
+        const gpuMemoryPercent = gpuMemoryTotalBytes > 0 ? (gpuMemoryBytes / gpuMemoryTotalBytes) * 100 : 0;
+        
+        // Add to rolling averages
+        resourceMetricsAverages.cpu.add(cpuUsage);
+        resourceMetricsAverages.memory.add(memUsage);
+        resourceMetricsAverages.gpuMemory.add(gpuMemoryPercent);
+        resourceMetricsAverages.gpuUtil.add(gpuUtil);
+        
+        // Get averaged values
+        const avgCpuUsage = resourceMetricsAverages.cpu.getAverage();
+        const avgMemUsage = resourceMetricsAverages.memory.getAverage();
+        const avgGpuUtil = resourceMetricsAverages.gpuUtil.getAverage();
+        
+        resourcesDiv.innerHTML = `
+            <div>
+                <div class="text-sm text-gray-600">CPU Usage</div>
+                <div class="text-lg font-semibold">${avgCpuUsage.toFixed(1)}%</div>
+                <div class="text-xs text-gray-400">5s avg</div>
+            </div>
+            <div>
+                <div class="text-sm text-gray-600">System Memory</div>
+                <div class="text-lg font-semibold">${avgMemUsage.toFixed(1)}%</div>
+                <div class="text-xs text-gray-400">5s avg</div>
+            </div>
+            <div>
+                <div class="text-sm text-gray-600">GPU Memory</div>
+                <div class="text-lg font-semibold">${gpuMemoryGB.toFixed(2)} / ${gpuMemoryTotalGB.toFixed(1)} GB</div>
+                <div class="text-xs text-gray-500">${gpuMemoryPercent.toFixed(1)}% used</div>
+            </div>
+            <div>
+                <div class="text-sm text-gray-600">GPU Utilization</div>
+                <div class="text-lg font-semibold">${avgGpuUtil.toFixed(1)}%</div>
+                <div class="text-xs text-gray-400">5s avg</div>
+            </div>
+        `;
+    }
+    
+    // Update error metrics
+    const errorsDiv = document.getElementById('metrics-errors');
+    if (errorsDiv) {
+        const oomErrors = getMetricValue(metrics, 'embedding_oom_errors_total', 'sum');
+        const batchReductions = getMetricValue(metrics, 'embedding_batch_size_reductions_total', 'sum');
+        
+        errorsDiv.innerHTML = `
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <div class="text-sm text-gray-600">OOM Errors</div>
+                    <div class="text-lg font-semibold ${oomErrors > 0 ? 'text-red-600' : ''}">${oomErrors}</div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-600">Batch Size Reductions</div>
+                    <div class="text-lg font-semibold ${batchReductions > 0 ? 'text-yellow-600' : ''}">${batchReductions}</div>
+                </div>
+            </div>
+            ${oomErrors > 0 || batchReductions > 0 ? `
+                <div class="mt-2 text-sm text-yellow-700 bg-yellow-50 p-2 rounded">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    The system has automatically adjusted batch sizes to handle memory constraints.
+                </div>
+            ` : ''}
+        `;
+    }
+}
+
+// Display metrics based on job data when Prometheus is not available
+function displayJobBasedMetrics(job) {
+    const performanceDiv = document.getElementById('metrics-performance');
+    if (performanceDiv) {
+        const embedRate = calculateEmbeddingRate(job);
+        performanceDiv.innerHTML = `
+            <div>
+                <div class="text-sm text-gray-600">Processing Rate</div>
+                <div class="text-lg font-semibold">${embedRate} files/min</div>
+            </div>
+            <div>
+                <div class="text-sm text-gray-600">Batch Size</div>
+                <div class="text-lg font-semibold">${job.batch_size || 96}</div>
+            </div>
+            <div>
+                <div class="text-sm text-gray-600">Model</div>
+                <div class="text-sm font-medium">${job.model_name}</div>
+            </div>
+            <div>
+                <div class="text-sm text-gray-600">Quantization</div>
+                <div class="text-lg font-semibold">${job.quantization || 'float32'}</div>
+            </div>
+        `;
+    }
+    
+    const resourcesDiv = document.getElementById('metrics-resources');
+    if (resourcesDiv) {
+        resourcesDiv.innerHTML = `
+            <div class="col-span-2 text-sm text-gray-500">
+                <i class="fas fa-info-circle mr-1"></i>
+                Resource metrics require Prometheus integration.
+                <br>Metrics will be available once the job starts processing.
+            </div>
+        `;
+    }
+    
+    const errorsDiv = document.getElementById('metrics-errors');
+    if (errorsDiv) {
+        errorsDiv.innerHTML = `
+            <div class="text-sm">
+                <div class="text-gray-600">Failed Files</div>
+                <div class="text-lg font-semibold ${job.failed_files > 0 ? 'text-red-600' : ''}">${job.failed_files}</div>
+            </div>
+        `;
+    }
+}
+
+// Helper function to calculate embedding rate
+function calculateEmbeddingRate(job) {
+    console.log('Job data:', { start_time: job.start_time, processed_files: job.processed_files });
+    
+    if (!job.start_time || job.processed_files === 0) return '0';
+    
+    const startTime = new Date(job.start_time);
+    const currentTime = new Date();
+    const elapsedMinutes = (currentTime - startTime) / (1000 * 60);
+    
+    console.log('Time calculation:', { startTime, currentTime, elapsedMinutes });
+    
+    if (elapsedMinutes < 0.1) return '0';
+    
+    const rate = job.processed_files / elapsedMinutes;
+    return rate.toFixed(1);
+}
+
+// Helper function to extract metric value
+function getMetricValue(metrics, metricName, aggregation = 'last', defaultValue = 0) {
+    if (!metrics[metricName] || metrics[metricName].length === 0) {
+        return defaultValue;
+    }
+    
+    const values = metrics[metricName].map(m => m.value);
+    
+    switch (aggregation) {
+        case 'sum':
+            return values.reduce((a, b) => a + b, 0);
+        case 'avg':
+            return values.reduce((a, b) => a + b, 0) / values.length;
+        case 'last':
+            return values[values.length - 1];
+        default:
+            return defaultValue;
+    }
 }
 
 // Initialize on load

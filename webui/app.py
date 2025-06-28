@@ -151,6 +151,20 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Start metrics server if metrics port is configured
+METRICS_PORT = int(os.getenv("WEBUI_METRICS_PORT", "9092"))
+METRICS_AVAILABLE = False
+generate_latest = None
+registry = None
+if METRICS_PORT:
+    try:
+        from vecpipe.metrics import start_metrics_server, generate_latest, registry
+        start_metrics_server(METRICS_PORT)
+        logger.info(f"Metrics server started on port {METRICS_PORT}")
+        METRICS_AVAILABLE = True
+    except Exception as e:
+        logger.warning(f"Failed to start metrics server: {e}")
+
 # WebSocket manager for real-time updates
 class ConnectionManager:
     def __init__(self):
@@ -294,11 +308,44 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str =
     
     return files
 
+async def update_metrics_continuously():
+    """Background task to update resource metrics continuously"""
+    while True:
+        try:
+            from vecpipe.metrics import metrics_collector
+            metrics_collector.last_update = 0  # Force update
+            metrics_collector.update_resource_metrics()
+        except:
+            pass
+        await asyncio.sleep(.5)  # Update every 1 second for smoother metrics
+
 async def process_embedding_job(job_id: str):
     """Process an embedding job asynchronously"""
+    metrics_task = None  # Initialize to avoid undefined reference
+    
+    # Import metrics if available
     try:
-        # Update job status
-        database.update_job(job_id, {'status': 'processing'})
+        from vecpipe.metrics import (
+            record_file_processed, record_file_failed,
+            record_chunks_created, record_embeddings_generated,
+            metrics_collector, TimingContext, embedding_batch_duration
+        )
+        METRICS_TRACKING = True
+        # Set shorter update interval for webui
+        metrics_collector.update_interval = .5  # 1 second for smoother updates
+        
+        # Start background metrics updater
+        metrics_task = asyncio.create_task(update_metrics_continuously())
+    except ImportError:
+        METRICS_TRACKING = False
+        logger.warning("Metrics tracking not available for embedding job")
+    
+    try:
+        # Update job status and set start time
+        database.update_job(job_id, {
+            'status': 'processing',
+            'start_time': datetime.now().isoformat()
+        })
         
         # Get job details
         job = database.get_job(job_id)
@@ -307,6 +354,12 @@ async def process_embedding_job(job_id: str):
         
         # Get pending files
         files = database.get_job_files(job_id, status='pending')
+        
+        # Send initial update with total files
+        await manager.send_update(job_id, {
+            "type": "job_started",
+            "total_files": len(files)
+        })
         
         # Initialize Qdrant client
         qdrant = QdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
@@ -318,10 +371,11 @@ async def process_embedding_job(job_id: str):
                 
                 # Send progress update
                 await manager.send_update(job_id, {
-                    "type": "progress",
+                    "type": "file_processing",
                     "current_file": file_row['path'],
-                    "processed": file_idx,
-                    "total": len(files)
+                    "processed_files": file_idx,
+                    "total_files": len(files),
+                    "status": "Processing"
                 })
                 
                 # Yield control to event loop to keep UI responsive
@@ -379,6 +433,10 @@ async def process_embedding_job(job_id: str):
                 logger.info(f"Memory after chunking: {memory_after_chunk:.2f} MB (delta: {memory_after_chunk - memory_after_extract:.2f} MB)")
                 logger.info(f"Created {len(chunks)} chunks")
                 
+                # Record chunks created
+                if METRICS_TRACKING:
+                    record_chunks_created(len(chunks))
+                
                 # Free the original text immediately after chunking
                 del text
                 
@@ -389,6 +447,11 @@ async def process_embedding_job(job_id: str):
                 
                 # Use unified embedding service - run in thread pool to avoid blocking
                 loop = asyncio.get_event_loop()
+                
+                # Time the embedding generation
+                import time
+                embed_start_time = time.time()
+                
                 embeddings_array = await loop.run_in_executor(
                     executor,
                     embedding_service.generate_embeddings,
@@ -400,11 +463,21 @@ async def process_embedding_job(job_id: str):
                     job['instruction']
                 )
                 
+                # Record embedding time
+                if METRICS_TRACKING:
+                    embed_duration = time.time() - embed_start_time
+                    logger.info(f"Embedding generation took {embed_duration:.3f} seconds for {len(texts)} texts")
+                    embedding_batch_duration.observe(embed_duration)
+                
                 # Free texts list after embedding generation
                 del texts
                 
                 if embeddings_array is None:
                     raise Exception("Failed to generate embeddings")
+                
+                # Record embeddings generated
+                if METRICS_TRACKING:
+                    record_embeddings_generated(len(embeddings_array))
                 
                 embeddings = embeddings_array.tolist()
                 
@@ -483,6 +556,17 @@ async def process_embedding_job(job_id: str):
                 current_job = database.get_job(job_id)
                 database.update_job(job_id, {'processed_files': current_job['processed_files'] + 1})
                 
+                # Record file processed
+                if METRICS_TRACKING:
+                    record_file_processed('embedding')
+                
+                # Send file completed update
+                await manager.send_update(job_id, {
+                    "type": "file_completed",
+                    "processed_files": current_job['processed_files'] + 1,
+                    "total_files": len(files)
+                })
+                
                 # Free chunks and embeddings after upload
                 del chunks
                 del embeddings
@@ -491,18 +575,27 @@ async def process_embedding_job(job_id: str):
                 import gc
                 gc.collect()
                 
+                # Update resource metrics periodically (force update)
+                if METRICS_TRACKING:
+                    # Force update by resetting the last update time
+                    metrics_collector.last_update = 0
+                    metrics_collector.update_resource_metrics()
+                
                 # Yield control to event loop after processing each file
                 await asyncio.sleep(0)
                 
             except Exception as e:
                 logger.error(f"Failed to process file {file_row['path']}: {e}")
+                # Record file failed
+                if METRICS_TRACKING:
+                    record_file_failed('embedding', type(e).__name__)
                 # File status already updated in the database.update_file_status call above
         
         # Mark job as completed
         database.update_job(job_id, {'status': 'completed', 'current_file': None})
         
         await manager.send_update(job_id, {
-            "type": "completed",
+            "type": "job_completed",
             "message": "Job completed successfully"
         })
         
@@ -517,6 +610,13 @@ async def process_embedding_job(job_id: str):
     
     finally:
         qdrant.close()
+        # Cancel metrics updater task if it exists
+        if metrics_task:
+            metrics_task.cancel()
+            try:
+                await metrics_task
+            except asyncio.CancelledError:
+                pass
 
 # Authentication Routes
 @app.post("/api/auth/register", response_model=User)
@@ -1062,6 +1162,25 @@ async def scan_websocket(websocket: WebSocket, scan_id: str):
                 break
     except WebSocketDisconnect:
         manager.disconnect(websocket, f"scan_{scan_id}")
+
+# Metrics endpoint
+@app.get("/api/metrics")
+async def get_metrics(current_user: User = Depends(get_current_user)):
+    """Get current Prometheus metrics"""
+    if not METRICS_AVAILABLE:
+        return {"error": "Metrics not available", "metrics_port": METRICS_PORT}
+    
+    try:
+        # Generate metrics in Prometheus format
+        metrics_data = generate_latest(registry)
+        return {
+            "available": True,
+            "metrics_port": METRICS_PORT,
+            "data": metrics_data.decode('utf-8')
+        }
+    except Exception as e:
+        logger.error(f"Failed to generate metrics: {e}")
+        return {"error": str(e), "metrics_port": METRICS_PORT}
 
 # Mount static files with proper path resolution
 base_dir = os.path.dirname(os.path.abspath(__file__))

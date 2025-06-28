@@ -55,6 +55,8 @@ ingestion_duration = Histogram('embedding_ingestion_duration_seconds', 'Qdrant i
 # Resource Metrics
 gpu_memory_used = Gauge('embedding_gpu_memory_used_bytes', 'GPU memory used', 
                        ['gpu_index'], registry=registry)
+gpu_memory_total = Gauge('embedding_gpu_memory_total_bytes', 'GPU memory total', 
+                        ['gpu_index'], registry=registry)
 gpu_utilization = Gauge('embedding_gpu_utilization_percent', 'GPU utilization percentage', 
                        ['gpu_index'], registry=registry)
 cpu_utilization = Gauge('embedding_cpu_utilization_percent', 'CPU utilization percentage', registry=registry)
@@ -80,7 +82,7 @@ class MetricsCollector:
         
         try:
             # CPU and Memory
-            cpu_utilization.set(psutil.cpu_percent())
+            cpu_utilization.set(psutil.cpu_percent(interval=0.1))  # 0.1 second sampling
             memory_utilization.set(psutil.virtual_memory().percent)
             
             # GPU metrics (if available)
@@ -88,6 +90,7 @@ class MetricsCollector:
                 gpus = GPUtil.getGPUs()
                 for i, gpu in enumerate(gpus):
                     gpu_memory_used.labels(gpu_index=str(i)).set(gpu.memoryUsed * 1024 * 1024 * 1024)  # Convert to bytes
+                    gpu_memory_total.labels(gpu_index=str(i)).set(gpu.memoryTotal * 1024 * 1024 * 1024)  # Convert to bytes
                     gpu_utilization.labels(gpu_index=str(i)).set(gpu.load * 100)
             except:
                 pass  # No GPU available

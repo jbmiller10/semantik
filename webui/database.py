@@ -48,6 +48,10 @@ def init_db():
         if 'instruction' not in columns:
             logger.info("Migrating database: adding instruction column")
             c.execute("ALTER TABLE jobs ADD COLUMN instruction TEXT")
+        
+        if 'start_time' not in columns:
+            logger.info("Migrating database: adding start_time column")
+            c.execute("ALTER TABLE jobs ADD COLUMN start_time TEXT")
     
     # Jobs table
     c.execute('''CREATE TABLE IF NOT EXISTS jobs
@@ -69,6 +73,7 @@ def init_db():
                   processed_files INTEGER DEFAULT 0,
                   failed_files INTEGER DEFAULT 0,
                   current_file TEXT,
+                  start_time TEXT,
                   error TEXT)''')
     
     # Files table

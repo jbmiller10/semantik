@@ -17,6 +17,26 @@ import torch.nn.functional as F
 from torch import Tensor
 import accelerate
 
+# Import metrics tracking if available
+try:
+    from vecpipe.metrics import Counter, registry
+    oom_errors = Counter('embedding_oom_errors_total', 'Total OOM errors during embedding generation',
+                        ['model', 'quantization'], registry=registry)
+    batch_size_reductions = Counter('embedding_batch_size_reductions_total', 
+                                  'Total batch size reductions due to OOM',
+                                  ['model', 'quantization'], registry=registry)
+    METRICS_AVAILABLE = True
+except ImportError:
+    # Metrics not available, create dummy functions
+    METRICS_AVAILABLE = False
+    class DummyCounter:
+        def labels(self, **kwargs):
+            return self
+        def inc(self):
+            pass
+    oom_errors = DummyCounter()
+    batch_size_reductions = DummyCounter()
+
 logger = logging.getLogger(__name__)
 
 # Qwen3 specific pooling function
@@ -366,6 +386,10 @@ class EmbeddingService:
                     except torch.cuda.OutOfMemoryError:
                         if current_batch_size > self.min_batch_size:
                             logger.warning(f"OOM with batch size {current_batch_size}, reducing to {current_batch_size // 2}")
+                            # Record OOM error
+                            oom_errors.labels(model=self.current_model_name, quantization=self.current_quantization).inc()
+                            batch_size_reductions.labels(model=self.current_model_name, quantization=self.current_quantization).inc()
+                            
                             torch.cuda.empty_cache()
                             current_batch_size = max(self.min_batch_size, current_batch_size // 2)
                             self.current_batch_size = current_batch_size
@@ -414,6 +438,10 @@ class EmbeddingService:
                         
                     except torch.cuda.OutOfMemoryError:
                         logger.warning(f"OOM with batch size {current_batch_size}, reducing to {current_batch_size // 2}")
+                        # Record OOM error
+                        oom_errors.labels(model=self.current_model_name, quantization=self.current_quantization).inc()
+                        batch_size_reductions.labels(model=self.current_model_name, quantization=self.current_quantization).inc()
+                        
                         torch.cuda.empty_cache()
                         current_batch_size = max(self.min_batch_size, current_batch_size // 2)
                         self.current_batch_size = current_batch_size

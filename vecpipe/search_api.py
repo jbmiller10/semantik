@@ -24,6 +24,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from webui.embedding_service import EmbeddingService
 from vecpipe.search_utils import search_qdrant, parse_search_results
 from vecpipe.hybrid_search import HybridSearchEngine
+from vecpipe.metrics import (
+    start_metrics_server, metrics_collector, registry
+)
+from prometheus_client import Histogram, Counter
 
 # Configure logging
 logging.basicConfig(
@@ -31,6 +35,22 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Create metrics for search API
+search_latency = Histogram('search_api_latency_seconds', 'Search API request latency',
+                          ['endpoint', 'search_type'], 
+                          buckets=(.01, .05, .1, .25, .5, 1, 2.5, 5, 10),
+                          registry=registry)
+search_requests = Counter('search_api_requests_total', 'Total search API requests', 
+                         ['endpoint', 'search_type'],
+                         registry=registry)
+search_errors = Counter('search_api_errors_total', 'Total search API errors',
+                       ['endpoint', 'error_type'],
+                       registry=registry)
+embedding_generation_latency = Histogram('search_api_embedding_latency_seconds', 
+                                       'Embedding generation latency for search queries',
+                                       buckets=(.01, .05, .1, .25, .5, 1, 2),
+                                       registry=registry)
 
 # Constants
 QDRANT_HOST = os.getenv("QDRANT_HOST", "192.168.1.173")
@@ -40,6 +60,7 @@ DEFAULT_K = 10
 USE_MOCK_EMBEDDINGS = os.getenv("USE_MOCK_EMBEDDINGS", "false").lower() == "true"
 DEFAULT_MODEL = os.getenv("DEFAULT_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B")
 DEFAULT_QUANTIZATION = os.getenv("DEFAULT_QUANTIZATION", "float16")
+METRICS_PORT = int(os.getenv("METRICS_PORT", "9091"))
 
 # Search instructions for different use cases
 SEARCH_INSTRUCTIONS = {
@@ -115,6 +136,10 @@ async def lifespan(app: FastAPI):
     """Manage application lifecycle"""
     global qdrant_client, embedding_service, executor
     # Startup
+    # Start metrics server
+    start_metrics_server(METRICS_PORT)
+    logger.info(f"Metrics server started on port {METRICS_PORT}")
+    
     qdrant_client = httpx.AsyncClient(
         base_url=f"http://{QDRANT_HOST}:{QDRANT_PORT}",
         timeout=60.0
@@ -202,6 +227,9 @@ async def generate_embedding_async(text: str, model_name: str = None, quantizati
     if instruction is None:
         instruction = "Represent this sentence for searching relevant passages:"
     
+    # Time the embedding generation
+    start_time = time.time()
+    
     embedding = await loop.run_in_executor(
         executor,
         embedding_service.generate_single_embedding,
@@ -210,6 +238,9 @@ async def generate_embedding_async(text: str, model_name: str = None, quantizati
         quant,
         instruction
     )
+    
+    # Record embedding generation latency
+    embedding_generation_latency.observe(time.time() - start_time)
     
     if embedding is None:
         raise RuntimeError(f"Failed to generate embedding for text: {text[:100]}...")
@@ -295,6 +326,9 @@ async def search_post(request: SearchRequest = Body(...)):
     - **hybrid**: Multi-modal search
     """
     start_time = time.time()
+    
+    # Record request
+    search_requests.labels(endpoint='/search', search_type=request.search_type).inc()
     
     try:
         # Determine collection name
@@ -392,6 +426,12 @@ async def search_post(request: SearchRequest = Body(...)):
         total_time = (time.time() - start_time) * 1000
         logger.info(f"Search completed in {total_time:.2f}ms (embed: {embed_time:.2f}ms, search: {search_time:.2f}ms)")
         
+        # Record search latency
+        search_latency.labels(endpoint='/search', search_type=request.search_type).observe(time.time() - start_time)
+        
+        # Update resource metrics periodically
+        metrics_collector.update_resource_metrics()
+        
         return SearchResponse(
             query=request.query,
             results=results,
@@ -404,16 +444,19 @@ async def search_post(request: SearchRequest = Body(...)):
         
     except httpx.HTTPStatusError as e:
         logger.error(f"Qdrant error: {e}")
+        search_errors.labels(endpoint='/search', error_type='qdrant_error').inc()
         raise HTTPException(status_code=502, detail="Vector database error")
     except RuntimeError as e:
         # Specific handling for embedding failures
         logger.error(f"Embedding generation failed: {e}")
+        search_errors.labels(endpoint='/search', error_type='embedding_error').inc()
         raise HTTPException(
             status_code=503, 
             detail=f"Embedding service error: {str(e)}. Check logs for details."
         )
     except Exception as e:
         logger.error(f"Search error: {e}")
+        search_errors.labels(endpoint='/search', error_type='unknown_error').inc()
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
@@ -437,6 +480,9 @@ async def hybrid_search(
     - **keyword_mode**: How to match keywords - 'any' matches any keyword, 'all' requires all keywords
     - **score_threshold**: Optional minimum similarity score threshold
     """
+    start_time = time.time()
+    search_requests.labels(endpoint='/hybrid_search', search_type='hybrid').inc()
+    
     try:
         # Determine collection name
         collection_name = collection if collection else COLLECTION_NAME
@@ -492,6 +538,9 @@ async def hybrid_search(
         
         logger.info(f"Found {len(hybrid_results)} results for hybrid query: '{q}'")
         
+        # Record search latency
+        search_latency.labels(endpoint='/hybrid_search', search_type='hybrid').observe(time.time() - start_time)
+        
         return HybridSearchResponse(
             query=q,
             results=hybrid_results,
@@ -502,6 +551,7 @@ async def hybrid_search(
         
     except Exception as e:
         logger.error(f"Hybrid search error: {e}")
+        search_errors.labels(endpoint='/hybrid_search', error_type='search_error').inc()
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Hybrid search error: {str(e)}")

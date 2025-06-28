@@ -22,6 +22,12 @@ import uuid
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from webui.embedding_service import EmbeddingService
+from vecpipe.metrics import (
+    TimingContext, record_file_processed, record_file_failed,
+    record_chunks_created, record_embeddings_generated,
+    extraction_duration, embedding_batch_duration, ingestion_duration,
+    metrics_collector, start_metrics_server
+)
 
 # Configure logging
 logging.basicConfig(
@@ -42,14 +48,15 @@ async def read_parquet_async(file_path: str) -> Dict[str, Any]:
     loop = asyncio.get_event_loop()
     
     def _read():
-        table = pq.read_table(file_path)
-        return {
-            'doc_ids': table.column('doc_id').to_pylist(),
-            'chunk_ids': table.column('chunk_id').to_pylist(),
-            'paths': table.column('path').to_pylist(),
-            'texts': table.column('text').to_pylist(),
-            'file_path': file_path
-        }
+        with TimingContext(extraction_duration):
+            table = pq.read_table(file_path)
+            return {
+                'doc_ids': table.column('doc_id').to_pylist(),
+                'chunk_ids': table.column('chunk_id').to_pylist(),
+                'paths': table.column('path').to_pylist(),
+                'texts': table.column('text').to_pylist(),
+                'file_path': file_path
+            }
     
     return await loop.run_in_executor(None, _read)
 
@@ -58,8 +65,9 @@ async def write_parquet_async(output_path: str, data: Dict[str, Any]):
     loop = asyncio.get_event_loop()
     
     def _write():
-        output_table = pa.table(data)
-        pq.write_table(output_table, output_path)
+        with TimingContext(ingestion_duration):
+            output_table = pa.table(data)
+            pq.write_table(output_table, output_path)
     
     await loop.run_in_executor(None, _write)
 
@@ -83,18 +91,26 @@ async def process_file_async(file_path: str, output_dir: str, embedding_service:
         texts = data['texts']
         logger.info(f"Generating embeddings for {len(texts)} chunks...")
         
-        # Generate embeddings using the unified service
-        embeddings = embedding_service.generate_embeddings(
-            texts=texts,
-            model_name=args.model,
-            quantization=args.quantization,
-            batch_size=args.batch_size,
-            show_progress=False  # Disable per-file progress since we have overall progress
-        )
+        # Record chunks created
+        record_chunks_created(len(texts))
+        
+        # Generate embeddings using the unified service with timing
+        with TimingContext(embedding_batch_duration):
+            embeddings = embedding_service.generate_embeddings(
+                texts=texts,
+                model_name=args.model,
+                quantization=args.quantization,
+                batch_size=args.batch_size,
+                show_progress=False  # Disable per-file progress since we have overall progress
+            )
         
         if embeddings is None:
             logger.error(f"Failed to generate embeddings for {file_path}")
+            record_file_failed('embedding', 'generation_error')
             return None
+        
+        # Record embeddings generated
+        record_embeddings_generated(len(embeddings))
         
         # Generate unique IDs for each point
         point_ids = [str(uuid.uuid4()) for _ in range(len(texts))]
@@ -118,10 +134,12 @@ async def process_file_async(file_path: str, output_dir: str, embedding_service:
         await write_parquet_async(output_path, output_data)
         
         logger.info(f"Saved embeddings to: {output_path}")
+        record_file_processed('embedding')
         return output_path
         
     except Exception as e:
         logger.error(f"Failed to process {file_path}: {e}")
+        record_file_failed('embedding', type(e).__name__)
         return None
 
 async def process_files_parallel(file_paths: List[str], output_dir: str, embedding_service: EmbeddingService, args):
@@ -146,6 +164,11 @@ async def process_files_parallel(file_paths: List[str], output_dir: str, embeddi
 
 async def main_async(args):
     """Main async function"""
+    # Start metrics server if requested
+    if args.metrics_port:
+        start_metrics_server(args.metrics_port)
+        logger.info(f"Metrics server started on port {args.metrics_port}")
+    
     # Ensure output directory exists
     os.makedirs(args.output, exist_ok=True)
     
@@ -177,6 +200,9 @@ async def main_async(args):
         successful = sum(1 for r in results if r is not None)
         logger.info(f"Successfully processed {successful}/{len(input_files)} files")
         
+        # Update metrics periodically
+        metrics_collector.update_resource_metrics()
+        
         # Log GPU usage if available
         if args.device == "cuda" and not args.mock:
             import torch
@@ -198,6 +224,7 @@ def main():
     parser.add_argument('--quantization', '-q', default='float32', choices=['float32', 'float16', 'int8'], 
                        help='Model quantization (float32, float16, int8)')
     parser.add_argument('--mock', action='store_true', help='Use mock embeddings for testing (no GPU required)')
+    parser.add_argument('--metrics-port', type=int, default=None, help='Port for Prometheus metrics server')
     
     args = parser.parse_args()
     
