@@ -27,6 +27,10 @@ cd /root/document-embedding-project
 # Install dependencies
 poetry install
 
+# Copy environment configuration
+cp .env.example .env
+# Edit .env with your local configuration
+
 # Create required directories
 mkdir -p /opt/vecpipe/{extract,embed,tmp}
 mkdir -p /var/embeddings/{ingest,loaded,rejects}
@@ -95,7 +99,6 @@ curl -X POST "http://localhost:8000/search/batch" \
 ### 1. Manifest Generation (`scripts/build_manifest.sh`)
 - Scans configured directories for PDF, DOCX, and TXT files
 - Creates null-delimited file list for processing
-- Runs hourly via systemd timer
 
 ### 2. Document Extraction (`vecpipe/extract_chunks.py`)
 - Parses documents using pypdf and python-docx
@@ -132,47 +135,38 @@ curl -X POST "http://localhost:8000/search/batch" \
 
 ## Deployment
 
-### Systemd Services
+### Running Services
 
-Copy service files to systemd directory:
+For development, use the provided shell scripts:
 ```bash
-sudo cp deploy/systemd/*.service /etc/systemd/system/
-sudo cp deploy/systemd/*.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-```
+# Start all services
+poetry run ./start_all_services.sh
 
-Enable and start services:
-```bash
-# Enable timers
-sudo systemctl enable --now manifest.timer
-sudo systemctl enable --now extract.timer
-sudo systemctl enable --now embed.timer
-sudo systemctl enable --now ingest.timer
+# Check service status
+./status_services.sh
 
-# Enable API service
-sudo systemctl enable --now search-api.service
+# Stop all services
+./stop_all_services.sh
 ```
 
 ### Environment Variables
 
+Configure your environment by editing the `.env` file:
 - `QDRANT_HOST`: Qdrant server address (default: 192.168.1.173)
 - `QDRANT_PORT`: Qdrant server port (default: 6333)
+- `JWT_SECRET_KEY`: Secret key for JWT authentication
+- See `.env.example` for all available configuration options
 
 ## Monitoring
 
-Check service status:
-```bash
-systemctl status manifest.timer extract.timer embed.timer ingest.timer
-systemctl status search-api.service
-```
+When running services with the shell scripts:
 
-View logs:
 ```bash
-journalctl -u manifest.service -f
-journalctl -u extract.service -f
-journalctl -u embed.service -f
-journalctl -u ingest.service -f
-journalctl -u search-api.service -f
+# Check service status
+./status_services.sh
+
+# View logs (services log to console when run via shell scripts)
+# Each service runs in its own terminal/screen session
 ```
 
 ## Performance Tuning
