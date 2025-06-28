@@ -50,13 +50,24 @@ async def read_parquet_async(file_path: str) -> Dict[str, Any]:
     def _read():
         with TimingContext(extraction_duration):
             table = pq.read_table(file_path)
-            return {
+            result = {
                 'doc_ids': table.column('doc_id').to_pylist(),
                 'chunk_ids': table.column('chunk_id').to_pylist(),
                 'paths': table.column('path').to_pylist(),
                 'texts': table.column('text').to_pylist(),
                 'file_path': file_path
             }
+            
+            # Check if metadata column exists
+            if 'metadata' in table.column_names:
+                import json
+                # Parse JSON metadata strings
+                metadata_strs = table.column('metadata').to_pylist()
+                result['metadata'] = [json.loads(m) if m else {} for m in metadata_strs]
+            else:
+                result['metadata'] = [{}] * len(result['doc_ids'])
+            
+            return result
     
     return await loop.run_in_executor(None, _read)
 
@@ -124,9 +135,12 @@ async def process_file_async(file_path: str, output_dir: str, embedding_service:
                     'doc_id': doc_id,
                     'chunk_id': chunk_id,
                     'path': path,
-                    'content': text  # Add full text content for hybrid search
+                    'content': text,  # Add full text content for hybrid search
+                    'metadata': metadata  # Include metadata from extraction
                 }
-                for doc_id, chunk_id, path, text in zip(data['doc_ids'], data['chunk_ids'], data['paths'], texts)
+                for doc_id, chunk_id, path, text, metadata in zip(
+                    data['doc_ids'], data['chunk_ids'], data['paths'], texts, data['metadata']
+                )
             ]
         }
         

@@ -35,7 +35,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from vecpipe.extract_chunks import extract_text, chunk_text, process_file, extract_text_pdf, extract_text_docx, extract_text_txt
+from vecpipe.extract_chunks import extract_text, chunk_text, process_file
 from vecpipe.search_utils import search_qdrant
 from vecpipe.hybrid_search import HybridSearchEngine
 from qdrant_client import QdrantClient, AsyncQdrantClient
@@ -57,7 +57,7 @@ from webui import database
 # Constants
 JOBS_DIR = "/var/embeddings/jobs"
 OUTPUT_DIR = "/var/embeddings/output"
-SUPPORTED_EXTENSIONS = ['.pdf', '.docx', '.doc', '.txt', '.text']
+SUPPORTED_EXTENSIONS = ['.pdf', '.docx', '.doc', '.txt', '.text', '.pptx', '.eml', '.md', '.html']
 QDRANT_HOST = os.getenv("QDRANT_HOST", "192.168.1.173")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 
@@ -204,20 +204,10 @@ active_job_tasks: Dict[str, asyncio.Task] = {}
 executor = ThreadPoolExecutor(max_workers=8)
 
 def extract_text_thread_safe(filepath: str) -> str:
-    """Thread-safe version of extract_text that doesn't use signals"""
-    from pathlib import Path
-    ext = Path(filepath).suffix.lower()
-    file_size_mb = os.path.getsize(filepath) / 1024 / 1024
-    logger.info(f"Extracting from {ext} file: {filepath} ({file_size_mb:.2f} MB)")
-    
-    if ext == '.pdf':
-        return extract_text_pdf(filepath)
-    elif ext in ['.docx', '.doc']:
-        return extract_text_docx(filepath)
-    elif ext in ['.txt', '.text']:
-        return extract_text_txt(filepath)
-    else:
-        raise ValueError(f"Unsupported file type: {ext}")
+    """Thread-safe version of extract_text that uses the unified extraction"""
+    # The new extract_text function in extract_chunks.py is already thread-safe
+    # as it doesn't use signals in the unstructured implementation
+    return extract_text(filepath)
 
 def scan_directory(path: str, recursive: bool = True) -> List[FileInfo]:
     """Scan directory for supported files"""

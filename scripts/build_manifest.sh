@@ -26,7 +26,8 @@ log "Starting manifest generation..."
 # Using -print0 for null-delimited output
 # Case-insensitive matching for extensions
 find "${ROOTS[@]}" -type f \
-    \( -iname '*.pdf' -o -iname '*.docx' -o -iname '*.doc' -o -iname '*.txt' -o -iname '*.text' \) \
+    \( -iname '*.pdf' -o -iname '*.docx' -o -iname '*.doc' -o -iname '*.txt' -o -iname '*.text' \
+       -o -iname '*.pptx' -o -iname '*.eml' -o -iname '*.md' -o -iname '*.html' \) \
     -print0 > "$TEMP_FILE" 2>/dev/null || true
 
 # Count files

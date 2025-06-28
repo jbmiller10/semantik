@@ -23,7 +23,7 @@ gputil = "^1.4.0"
 pypdf = "^5.0.0"
 python-docx = "^1.1.0"
 websockets = "^11.0.3"
-unstructured = "*"
+unstructured = {extras = ["all-docs"], version = "^0.18.1"}
 python-multipart = "^0.0.9"
 python-dotenv = "^1.0.1"
 torch = "*"

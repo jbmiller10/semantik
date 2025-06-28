@@ -3,6 +3,7 @@
 Document extraction and chunking module V2
 Uses tiktoken for accurate token counting
 Implements file change tracking with SHA256
+Now uses unstructured library for unified document parsing
 """
 
 import os
@@ -10,7 +11,7 @@ import hashlib
 import logging
 import json
 from pathlib import Path
-from typing import List, Dict, Optional, Generator, Tuple
+from typing import List, Dict, Optional, Generator, Tuple, Any
 from datetime import datetime
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -18,9 +19,8 @@ from tqdm import tqdm
 import argparse
 import tiktoken
 
-# Document parsing libraries
-from pypdf import PdfReader
-from docx import Document as DocxDocument
+# Unstructured for document parsing
+from unstructured.partition.auto import partition
 
 # Configure logging
 logging.basicConfig(
@@ -61,7 +61,7 @@ class TokenChunker:
         
         logger.info(f"Initialized tokenizer: {model_name}, chunk_size: {self.chunk_size}, overlap: {self.chunk_overlap}")
     
-    def chunk_text(self, text: str, doc_id: str) -> List[Dict]:
+    def chunk_text(self, text: str, doc_id: str, metadata: Optional[Dict] = None) -> List[Dict]:
         """Split text into overlapping chunks by token count"""
         if not text.strip():
             return []
@@ -79,14 +79,17 @@ class TokenChunker:
         
         if total_tokens <= self.chunk_size:
             # Text fits in single chunk
-            return [{
+            chunk_data = {
                 'doc_id': doc_id,
                 'chunk_id': f"{doc_id}_0000",
                 'text': text.strip(),
                 'token_count': total_tokens,
                 'start_token': 0,
                 'end_token': total_tokens
-            }]
+            }
+            if metadata:
+                chunk_data['metadata'] = metadata
+            return [chunk_data]
         
         chunks = []
         chunk_id = 0
@@ -122,14 +125,18 @@ class TokenChunker:
                     chunk_text = self.tokenizer.decode(chunk_tokens)
                     end = start + best_break
             
-            chunks.append({
+            chunk_data = {
                 'doc_id': doc_id,
                 'chunk_id': f"{doc_id}_{chunk_id:04d}",
                 'text': chunk_text.strip(),
                 'token_count': len(chunk_tokens),
                 'start_token': start,
                 'end_token': end
-            })
+            }
+            if metadata:
+                chunk_data['metadata'] = metadata
+            
+            chunks.append(chunk_data)
             
             # Free chunk_tokens reference
             del chunk_tokens
@@ -262,109 +269,72 @@ class FileChangeTracker:
         """Save tracking data to disk"""
         self._save_tracking_data()
 
-def extract_text_pdf(filepath: str, max_chars: int = 10_000_000) -> str:
-    """Extract text from PDF file with size limit"""
+def extract_and_serialize(filepath: str) -> List[Tuple[str, Dict[str, Any]]]:
+    """Uses unstructured to partition a file and serializes structured data.
+    Returns list of (text, metadata) tuples."""
+    ext = Path(filepath).suffix.lower()
+    
+    # Use unstructured for all file types
     try:
-        logger.info(f"Opening PDF file: {filepath}")
-        reader = PdfReader(filepath)
-        total_pages = len(reader.pages)
-        logger.info(f"PDF has {total_pages} pages")
-        text_parts = []
-        total_chars = 0
+        elements = partition(
+            filename=filepath,
+            strategy="auto",  # Let unstructured determine the best strategy
+            include_page_breaks=True,
+            infer_table_structure=True
+        )
         
-        for page_num, page in enumerate(reader.pages):
-            try:
-                logger.debug(f"Extracting page {page_num + 1}/{total_pages}")
-                text = page.extract_text()
-                if text:
-                    # Check if adding this page would exceed limit
-                    if total_chars + len(text) > max_chars:
-                        logger.warning(f"Text size limit reached at page {page_num + 1}, stopping extraction")
-                        text_parts.append(f"\n\n[Text truncated at {max_chars} characters]")
-                        break
-                    
-                    text_parts.append(text)
-                    total_chars += len(text)
-                    logger.debug(f"Page {page_num + 1} extracted: {len(text)} chars, total: {total_chars}")
-            except Exception as e:
-                logger.warning(f"Failed to extract page {page_num} from {filepath}: {e}")
+        results = []
+        current_page = 1
         
-        result = "\n\n".join(text_parts)
-        logger.info(f"PDF extraction complete: {len(result)} total chars from {len(text_parts)} pages")
-        return result
+        for element in elements:
+            # Extract text content
+            text = str(element)
+            if not text.strip():
+                continue
+            
+            # Build metadata
+            metadata = {
+                "filename": os.path.basename(filepath),
+                "file_type": ext[1:] if ext else "unknown"
+            }
+            
+            # Add element-specific metadata
+            if hasattr(element, 'metadata'):
+                elem_meta = element.metadata
+                if hasattr(elem_meta, 'page_number') and elem_meta.page_number:
+                    metadata['page_number'] = elem_meta.page_number
+                    current_page = elem_meta.page_number
+                else:
+                    metadata['page_number'] = current_page
+                
+                if hasattr(elem_meta, 'category'):
+                    metadata['element_type'] = elem_meta.category
+                
+                # Add any coordinates if available
+                if hasattr(elem_meta, 'coordinates'):
+                    metadata['has_coordinates'] = True
+            
+            results.append((text, metadata))
+        
+        return results
+        
     except Exception as e:
-        logger.error(f"Failed to extract PDF {filepath}: {e}")
-        raise
-
-def extract_text_docx(filepath: str) -> str:
-    """Extract text from DOCX file"""
-    try:
-        doc = DocxDocument(filepath)
-        paragraphs = []
-        
-        for para in doc.paragraphs:
-            if para.text.strip():
-                paragraphs.append(para.text)
-        
-        # Also extract text from tables
-        for table in doc.tables:
-            for row in table.rows:
-                row_text = []
-                for cell in row.cells:
-                    if cell.text.strip():
-                        row_text.append(cell.text.strip())
-                if row_text:
-                    paragraphs.append(" | ".join(row_text))
-        
-        return "\n\n".join(paragraphs)
-    except Exception as e:
-        logger.error(f"Failed to extract DOCX {filepath}: {e}")
-        raise
-
-def extract_text_txt(filepath: str) -> str:
-    """Extract text from TXT file"""
-    try:
-        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
-            return f.read()
-    except Exception as e:
-        logger.error(f"Failed to extract TXT {filepath}: {e}")
+        logger.error(f"Failed to extract from {filepath} using unstructured: {e}")
         raise
 
 def extract_text(filepath: str, timeout: int = 300) -> str:
-    """Extract text from file based on extension with timeout"""
-    import signal
-    import os
-    
-    def timeout_handler(signum, frame):
-        raise TimeoutError(f"Text extraction timed out after {timeout} seconds")
-    
-    # Set up timeout for Unix-like systems
-    if hasattr(signal, 'SIGALRM'):
-        signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(timeout)
-    
+    """Legacy function for backward compatibility - extracts text without metadata"""
     try:
-        ext = Path(filepath).suffix.lower()
-        file_size_mb = os.path.getsize(filepath) / 1024 / 1024
-        logger.info(f"Extracting from {ext} file: {filepath} ({file_size_mb:.2f} MB)")
-        
-        if ext == '.pdf':
-            result = extract_text_pdf(filepath)
-        elif ext in ['.docx', '.doc']:
-            result = extract_text_docx(filepath)
-        elif ext in ['.txt', '.text']:
-            result = extract_text_txt(filepath)
-        else:
-            raise ValueError(f"Unsupported file type: {ext}")
-        
-        return result
-    finally:
-        # Cancel timeout
-        if hasattr(signal, 'SIGALRM'):
-            signal.alarm(0)
+        results = extract_and_serialize(filepath)
+        # Concatenate all text parts
+        text_parts = [text for text, _ in results]
+        return "\n\n".join(text_parts)
+    except Exception as e:
+        logger.error(f"Failed to extract text from {filepath}: {e}")
+        raise
 
 def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, tracker: FileChangeTracker) -> Optional[str]:
-    """Process a single file with change tracking"""
+    """Process a single file with change tracking and metadata preservation"""
     try:
         # Check if file needs processing
         should_process, file_hash = tracker.should_process_file(filepath)
@@ -389,35 +359,55 @@ def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, track
             except:
                 logger.warning(f"Invalid existing output, reprocessing: {filepath}")
         
-        # Extract text
+        # Extract text and metadata
         logger.info(f"Extracting: {filepath}")
-        text = extract_text(filepath)
+        text_blocks = extract_and_serialize(filepath)
         
-        if not text.strip():
+        if not text_blocks:
             logger.warning(f"No text extracted from: {filepath}")
             tracker.update_file_tracking(filepath, file_hash, doc_id, 0)
             return None
         
-        # Chunk text using token-based chunking
-        chunks = chunker.chunk_text(text, doc_id)
-        logger.info(f"Created {len(chunks)} chunks from: {filepath}")
+        # Process each text block
+        all_chunks = []
+        for text, metadata in text_blocks:
+            if not text.strip():
+                continue
+            
+            # Chunk text using token-based chunking
+            chunks = chunker.chunk_text(text, doc_id, metadata)
+            all_chunks.extend(chunks)
         
-        # Convert to parquet
-        if chunks:
+        logger.info(f"Created {len(all_chunks)} chunks from: {filepath}")
+        
+        # Convert to parquet with metadata
+        if all_chunks:
+            # Prepare data for parquet
             df_data = {
-                'doc_id': [c['doc_id'] for c in chunks],
-                'chunk_id': [c['chunk_id'] for c in chunks],
-                'path': [filepath] * len(chunks),
-                'text': [c['text'] for c in chunks],
-                'token_count': [c['token_count'] for c in chunks],
-                'file_hash': [file_hash] * len(chunks)
+                'doc_id': [],
+                'chunk_id': [],
+                'path': [],
+                'text': [],
+                'token_count': [],
+                'file_hash': [],
+                'metadata': []
             }
+            
+            for chunk in all_chunks:
+                df_data['doc_id'].append(chunk['doc_id'])
+                df_data['chunk_id'].append(chunk['chunk_id'])
+                df_data['path'].append(filepath)
+                df_data['text'].append(chunk['text'])
+                df_data['token_count'].append(chunk['token_count'])
+                df_data['file_hash'].append(file_hash)
+                # Store metadata as JSON string for parquet compatibility
+                df_data['metadata'].append(json.dumps(chunk.get('metadata', {})))
             
             table = pa.table(df_data)
             pq.write_table(table, output_path)
             
             # Update tracking
-            tracker.update_file_tracking(filepath, file_hash, doc_id, len(chunks))
+            tracker.update_file_tracking(filepath, file_hash, doc_id, len(all_chunks))
             
             return output_path
         
