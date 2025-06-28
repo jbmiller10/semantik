@@ -5,7 +5,6 @@ Quick test to compare original vs optimized search API
 
 import httpx
 import time
-import json
 
 def test_original_api():
     """Test the original search API (mock embeddings)"""

@@ -16,7 +16,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 import gc
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, Depends
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel, Field, validator
@@ -780,7 +780,7 @@ async def get_new_job_id(current_user: Dict[str, Any] = Depends(get_current_user
     return {"job_id": str(uuid.uuid4())}
 
 @app.post("/api/jobs", response_model=JobStatus)
-async def create_job(request: CreateJobRequest, background_tasks: BackgroundTasks, current_user: Dict[str, Any] = Depends(get_current_user)):
+async def create_job(request: CreateJobRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Create a new embedding job"""
     # Accept job_id from request if provided, otherwise generate new one
     job_id = request.job_id if request.job_id else str(uuid.uuid4())

@@ -8,7 +8,7 @@ import sqlite3
 import os
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any
 from passlib.context import CryptContext
 
 # Configure logging
@@ -374,17 +374,8 @@ def get_user(username: str) -> Optional[Dict[str, Any]]:
     return dict(user) if user else None
 
 
-def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
-    """Get user by email"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    
-    c.execute("SELECT * FROM users WHERE email = ?", (email,))
-    user = c.fetchone()
-    conn.close()
-    
-    return dict(user) if user else None
+# Removed unused function: get_user_by_email
+# This function was defined but never called in the codebase
 
 
 def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:

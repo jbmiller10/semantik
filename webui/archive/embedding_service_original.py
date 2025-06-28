@@ -6,11 +6,10 @@ Handles embedding generation for the web UI
 
 import os
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import torch
-import gc
 
 logger = logging.getLogger(__name__)
 

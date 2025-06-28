@@ -10,7 +10,7 @@ import logging
 import json
 import sqlite3
 import argparse
-from typing import List, Dict, Set
+from typing import List, Dict
 from pathlib import Path
 from datetime import datetime
 from qdrant_client import QdrantClient

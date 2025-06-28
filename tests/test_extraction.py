@@ -5,7 +5,6 @@ Tests for document extraction module
 import os
 import tempfile
 import pytest
-from pathlib import Path
 
 from vecpipe.extract_chunks_v2 import (
     TokenChunker,

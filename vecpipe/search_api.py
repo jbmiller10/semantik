@@ -7,7 +7,7 @@ REST API for vector similarity search with Qwen3 support
 import os
 import sys
 import logging
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional
 from contextlib import asynccontextmanager
 import asyncio
 from concurrent.futures import ThreadPoolExecutor

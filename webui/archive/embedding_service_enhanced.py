@@ -7,7 +7,7 @@ Handles embedding generation with various HuggingFace models and quantization
 import os
 import sys
 import logging
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import torch

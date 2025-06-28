@@ -166,10 +166,6 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     
     return user
 
-# Optional: Create admin dependency
-async def get_current_admin_user(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
-    """Get current admin user (for future use)"""
-    # For now, all authenticated users have full access
-    # In the future, you could add an is_admin field to the users table
-    return current_user
+# Removed unused function: get_current_admin_user
+# This function was defined for future admin functionality but is not currently used
 

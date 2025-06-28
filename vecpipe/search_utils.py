@@ -3,7 +3,7 @@ Shared search utilities for both search API and web UI
 """
 
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict
 from qdrant_client import AsyncQdrantClient
 
 logger = logging.getLogger(__name__)

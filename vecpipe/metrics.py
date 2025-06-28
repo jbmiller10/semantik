@@ -7,7 +7,6 @@ Provides observability into system performance
 from prometheus_client import Counter, Gauge, Histogram, Info, CollectorRegistry
 from prometheus_client import start_http_server, generate_latest
 import time
-from typing import Optional
 import psutil
 import GPUtil
 
@@ -157,13 +156,8 @@ def update_processing_lag(stage: str, lag_seconds: float):
     """Update processing lag for a stage"""
     processing_lag.labels(stage=stage).set(lag_seconds)
 
-def update_qdrant_points(collection: str, count: int):
-    """Update Qdrant points count"""
-    qdrant_points.labels(collection=collection).set(count)
-
-def record_qdrant_error():
-    """Record Qdrant upload error"""
-    qdrant_upload_errors.inc()
+# Removed unused functions: update_qdrant_points and record_qdrant_error
+# These were defined but never called in the codebase
 
 def start_metrics_server(port: int = 9090):
     """Start Prometheus metrics server"""

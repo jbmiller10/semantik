@@ -8,6 +8,7 @@ import logging
 import psutil
 import time
 import traceback
+import gc
 from pathlib import Path
 
 # Add parent directory to path
@@ -105,8 +106,7 @@ def main():
                 break
             
             # Force garbage collection between files
-            import gc
-            gc.collect()
+                    gc.collect()
             logger.info(f"Memory after GC: {monitor_memory()}")
             
             # Small delay to let system stabilize

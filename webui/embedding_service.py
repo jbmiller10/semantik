@@ -7,7 +7,7 @@ Provides backward-compatible API with feature flags
 import os
 import sys
 import logging
-from typing import List, Dict, Optional, Tuple, Union
+from typing import List, Dict, Optional
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import torch
@@ -15,7 +15,6 @@ import gc
 from transformers import AutoModel, AutoTokenizer
 import torch.nn.functional as F
 from torch import Tensor
-import accelerate
 
 # Import metrics tracking if available
 try:

@@ -10,7 +10,6 @@ import logging
 import glob
 import asyncio
 from pathlib import Path
-from typing import List, Dict, Optional, Any
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq

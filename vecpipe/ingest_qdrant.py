@@ -8,9 +8,8 @@ import os
 import sys
 import logging
 import glob
-import json
 from pathlib import Path
-from typing import List, Dict, Optional, Any
+from typing import List, Dict
 import pyarrow.parquet as pq
 from tqdm import tqdm
 import argparse
@@ -30,7 +29,7 @@ QDRANT_HOST = "192.168.1.173"
 QDRANT_PORT = 6333
 COLLECTION_NAME = "work_docs"
 BATCH_SIZE = 4000
-PARALLEL_WORKERS = 4
+# PARALLEL_WORKERS = 4  # Not currently used
 INPUT_DIR = "/var/embeddings/ingest"
 LOADED_DIR = "/var/embeddings/loaded"
 REJECT_DIR = "/var/embeddings/rejects"

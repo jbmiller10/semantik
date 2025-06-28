@@ -11,7 +11,7 @@ import hashlib
 import logging
 import json
 from pathlib import Path
-from typing import List, Dict, Optional, Generator, Tuple, Any
+from typing import List, Dict, Optional, Tuple, Any
 from datetime import datetime
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -323,7 +323,8 @@ def extract_and_serialize(filepath: str) -> List[Tuple[str, Dict[str, Any]]]:
         raise
 
 def extract_text(filepath: str, timeout: int = 300) -> str:
-    """Legacy function for backward compatibility - extracts text without metadata"""
+    """Legacy function for backward compatibility - extracts text without metadata
+    Note: timeout parameter is kept for backward compatibility but not used"""
     try:
         results = extract_and_serialize(filepath)
         # Concatenate all text parts

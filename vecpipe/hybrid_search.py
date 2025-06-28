@@ -6,9 +6,9 @@ Combines vector similarity search with text-based filtering
 
 import re
 import logging
-from typing import List, Dict, Optional, Any, Tuple
+from typing import List, Dict, Optional, Any
 from qdrant_client import QdrantClient
-from qdrant_client.models import Filter, FieldCondition, MatchText, MatchAny, SearchRequest
+from qdrant_client.models import Filter, FieldCondition, MatchText
 
 # Configure logging
 logging.basicConfig(
