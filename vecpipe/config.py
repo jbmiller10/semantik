@@ -41,6 +41,18 @@ class Settings(BaseSettings):
     ERROR_LOG: Path = PROJECT_ROOT / "logs" / "error_extract.log"
     CLEANUP_LOG: Path = PROJECT_ROOT / "logs" / "cleanup.log"
 
+    # Service Ports
+    SEARCH_API_PORT: int = 8000
+    WEBUI_PORT: int = 8080
+    
+    # Service URLs (for internal API calls)
+    SEARCH_API_URL: str = "http://localhost:8000"
+    WEBUI_URL: str = "http://localhost:8080"
+    
+    # Additional Paths
+    JOBS_DIR: Path = PROJECT_ROOT / "data" / "jobs"
+    OUTPUT_DIR: Path = PROJECT_ROOT / "data" / "output"
+
     # Pydantic model config
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
 

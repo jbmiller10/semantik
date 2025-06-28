@@ -55,8 +55,8 @@ from webui.auth import (
 from webui import database
 
 # Constants
-JOBS_DIR = "/var/embeddings/jobs"
-OUTPUT_DIR = "/var/embeddings/output"
+JOBS_DIR = str(settings.JOBS_DIR)
+OUTPUT_DIR = str(settings.OUTPUT_DIR)
 SUPPORTED_EXTENSIONS = ['.pdf', '.docx', '.doc', '.txt', '.text', '.pptx', '.eml', '.md', '.html']
 
 # Create necessary directories
@@ -1015,7 +1015,7 @@ async def search(request: SearchRequest, current_user: Dict[str, Any] = Depends(
         # Call REST API search endpoint
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "http://localhost:8000/search",
+                f"{settings.SEARCH_API_URL}/search",
                 json=search_params,
                 timeout=30.0
             )
@@ -1094,7 +1094,7 @@ async def hybrid_search(request: HybridSearchRequest, current_user: Dict[str, An
         # Call REST API hybrid search endpoint
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                "http://localhost:8000/hybrid_search",
+                f"{settings.SEARCH_API_URL}/hybrid_search",
                 params=search_params,
                 timeout=30.0
             )
@@ -1191,4 +1191,4 @@ app.mount("/static", StaticFiles(directory=os.path.join(base_dir, "static")), na
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=settings.WEBUI_PORT)
