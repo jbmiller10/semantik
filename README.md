@@ -2,6 +2,10 @@
 
 A production-ready document embedding and vector search system with web interface, REST API, and advanced search capabilities.
 
+### Internal improvements
+
+- **Modular Web UI Architecture**: Refactored `webui/app.py` (~2.4k LOC) into a clean modular structure with separate routers for auth, jobs, files, metrics, and settings. Each module is focused and maintainable (all under 400 LOC except jobs.py which contains the core processing logic).
+
 ## Features
 
 - 🚀 **High-Performance Vector Search**: Powered by Qdrant with support for semantic, keyword, and hybrid search

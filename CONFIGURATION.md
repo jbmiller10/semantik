@@ -22,6 +22,7 @@ DEFAULT_COLLECTION=work_docs   # Default collection name
 USE_MOCK_EMBEDDINGS=false     # Use mock embeddings for testing (true/false)
 DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B  # Default model
 DEFAULT_QUANTIZATION=float16  # Quantization mode: float32, float16, int8
+MODEL_UNLOAD_AFTER_SECONDS=300  # Unload models after N seconds of inactivity (default: 300)
 ```
 
 #### Authentication
