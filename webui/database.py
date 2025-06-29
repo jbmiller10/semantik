@@ -8,6 +8,7 @@ import sqlite3
 import os
 import sys
 import logging
+import hashlib
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from passlib.context import CryptContext
@@ -90,6 +91,7 @@ def init_db():
                   modified TEXT NOT NULL,
                   extension TEXT NOT NULL,
                   hash TEXT,
+                  doc_id TEXT,
                   status TEXT DEFAULT 'pending',
                   error TEXT,
                   chunks_created INTEGER DEFAULT 0,
@@ -99,6 +101,7 @@ def init_db():
     # Create indices
     c.execute('''CREATE INDEX IF NOT EXISTS idx_files_job_id ON files(job_id)''')
     c.execute('''CREATE INDEX IF NOT EXISTS idx_files_status ON files(status)''')
+    c.execute('''CREATE INDEX IF NOT EXISTS idx_files_doc_id ON files(doc_id)''')
     
     # Initialize auth tables
     init_auth_tables(conn, c)
@@ -321,10 +324,13 @@ def add_files_to_job(job_id: str, files: List[Dict[str, Any]]):
     c = conn.cursor()
     
     for file in files:
-        c.execute('''INSERT INTO files (job_id, path, size, modified, extension, hash)
-                     VALUES (?, ?, ?, ?, ?, ?)''',
+        # Generate doc_id as MD5 hash of file path
+        doc_id = hashlib.md5(file['path'].encode()).hexdigest()[:16]
+        
+        c.execute('''INSERT INTO files (job_id, path, size, modified, extension, hash, doc_id)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)''',
                   (job_id, file['path'], file['size'], file['modified'],
-                   file['extension'], file.get('hash')))
+                   file['extension'], file.get('hash'), doc_id))
     
     # Update job total files count
     c.execute("UPDATE jobs SET total_files = ? WHERE id = ?", (len(files), job_id))
