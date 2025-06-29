@@ -9,10 +9,11 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import mimetypes
 
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from webui import database
 from webui.auth import get_current_user
+from webui.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 # Supported file extensions for document viewer
 SUPPORTED_EXTENSIONS = {'.pdf', '.docx', '.doc', '.txt', '.text', '.pptx', '.eml', '.md', '.html'}
+MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
 
 def validate_file_access(job_id: str, doc_id: str, current_user: Dict[str, Any]) -> Dict[str, Any]:
     """Validate that the user has access to the requested document"""
@@ -59,18 +61,34 @@ def validate_file_access(job_id: str, doc_id: str, current_user: Dict[str, Any])
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found on disk")
     
+    # Check file size
+    if file_path.stat().st_size > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="File is too large to preview")
+
     return file_record
 
 @router.get("/{job_id}/{doc_id}")
+@limiter.limit("10/minute")
 async def get_document(
+    request: Request,
     job_id: str,
     doc_id: str,
     current_user: Dict[str, Any] = Depends(get_current_user),
     range: Optional[str] = Header(None)
 ):
     """
-    Retrieve a document by job_id and doc_id
-    Supports HTTP Range requests for streaming large files
+    Retrieve a document by job_id and doc_id.
+
+    This endpoint serves the raw file content for a given document, identified by its `job_id` and `doc_id`.
+    It performs security checks to ensure the user has access to the file and that the file is within the job's directory.
+    It supports HTTP Range requests for efficient streaming of large files, which is essential for PDF viewing and other large documents.
+
+    - **job_id**: The ID of the ingestion job.
+    - **doc_id**: The unique ID of the document within the job.
+    - **current_user**: The authenticated user, injected by Depends.
+    - **range**: The HTTP Range header, used for partial content requests.
+
+    Returns a `FileResponse` or `StreamingResponse` for the document.
     """
     # Validate access and get file info
     file_record = validate_file_access(job_id, doc_id, current_user)
@@ -173,12 +191,25 @@ async def get_document(
     )
 
 @router.get("/{job_id}/{doc_id}/info")
+@limiter.limit("30/minute")
 async def get_document_info(
+    request: Request,
     job_id: str,
     doc_id: str,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Get document metadata without downloading the file"""
+    """
+    Get document metadata without downloading the file.
+
+    This endpoint provides metadata about a document, such as its filename, size, and whether it's supported by the viewer.
+    It's a lightweight alternative to downloading the entire file.
+
+    - **job_id**: The ID of the ingestion job.
+    - **doc_id**: The unique ID of the document within the job.
+    - **current_user**: The authenticated user, injected by Depends.
+
+    Returns a JSON object with document metadata.
+    """
     # Validate access and get file info
     file_record = validate_file_access(job_id, doc_id, current_user)
     file_path = Path(file_record['path'])

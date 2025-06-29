@@ -20,11 +20,26 @@ class DocumentViewer {
     }
     
     /**
-     * Load required JavaScript libraries from CDN
+     * Load required JavaScript libraries from CDN with local fallback
      */
     loadLibraries() {
-        // Libraries are now loaded directly in index.html
-        // This function is kept for future use if needed
+        const libraries = [
+            { name: 'pdfjsLib', check: () => window.pdfjsLib, cdn: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js', local: '/static/libs/pdf.min.js' },
+            { name: 'mammoth', check: () => window.mammoth, cdn: 'https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js', local: '/static/libs/mammoth.browser.min.js' },
+            { name: 'marked', check: () => window.marked, cdn: 'https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js', local: '/static/libs/marked.min.js' },
+            { name: 'DOMPurify', check: () => window.DOMPurify, cdn: 'https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js', local: '/static/libs/purify.min.js' },
+            { name: 'Mark', check: () => window.Mark, cdn: 'https://cdn.jsdelivr.net/npm/mark.js@8.11.1/dist/mark.min.js', local: '/static/libs/mark.min.js' },
+            { name: 'PptxGenJS', check: () => window.PptxGenJS, cdn: 'https://cdn.jsdelivr.net/npm/pptxjs@0.1.2/dist/pptx.min.js', local: '/static/libs/pptx.min.js' },
+            { name: 'emlFormat', check: () => window.emlFormat, cdn: 'https://cdn.jsdelivr.net/npm/eml-format@1.0.4/dist/eml-format.browser.min.js', local: '/static/libs/eml-format.browser.min.js' },
+        ];
+
+        libraries.forEach(lib => {
+            if (!lib.check()) {
+                document.write(`<script src="${lib.cdn}" integrity="sha384-..." crossorigin="anonymous"></script>`);
+                document.write(`<script>!${lib.check.toString().replace(/ /g,'')} && document.write(String.raw`<script src="${lib.local}"></script>`)</script>`);
+            }
+        });
+
         if (window.pdfjsLib) {
             window.pdfjsLib.GlobalWorkerOptions.workerSrc = 
                 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -565,8 +580,8 @@ class DocumentViewer {
         // Clear previous highlights
         marker.unmark();
         
-        // Split search query into words
-        const words = this.searchQuery.split(/\s+/).filter(word => word.length > 0);
+        // Split search query into words (safer regex)
+        const words = this.searchQuery.split(/[\s,.-;:]+/).filter(word => word.length > 0);
         
         // Apply highlights
         words.forEach(word => {
@@ -663,7 +678,7 @@ class DocumentViewer {
      */
     async goToPage(pageNumber) {
         pageNumber = parseInt(pageNumber);
-        if (pageNumber >= 1 && pageNumber <= this.totalPages) {
+        if (pageNumber > 0 && pageNumber <= this.totalPages) {
             this.currentPage = pageNumber;
             await this.renderPDFPage(this.pdfDocument, this.currentPage);
             this.updatePageControls();
