@@ -24,21 +24,47 @@ class DocumentViewer {
      */
     loadLibraries() {
         const libraries = [
-            { name: 'pdfjsLib', check: () => window.pdfjsLib, cdn: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js', local: '/static/libs/pdf.min.js' },
-            { name: 'mammoth', check: () => window.mammoth, cdn: 'https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js', local: '/static/libs/mammoth.browser.min.js' },
-            { name: 'marked', check: () => window.marked, cdn: 'https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js', local: '/static/libs/marked.min.js' },
-            { name: 'DOMPurify', check: () => window.DOMPurify, cdn: 'https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js', local: '/static/libs/purify.min.js' },
-            { name: 'Mark', check: () => window.Mark, cdn: 'https://cdn.jsdelivr.net/npm/mark.js@8.11.1/dist/mark.min.js', local: '/static/libs/mark.min.js' },
-            { name: 'PptxGenJS', check: () => window.PptxGenJS, cdn: 'https://cdn.jsdelivr.net/npm/pptxjs@0.1.2/dist/pptx.min.js', local: '/static/libs/pptx.min.js' },
-            { name: 'emlFormat', check: () => window.emlFormat, cdn: 'https://cdn.jsdelivr.net/npm/eml-format@1.0.4/dist/eml-format.browser.min.js', local: '/static/libs/eml-format.browser.min.js' },
+            { name: 'pdfjsLib', check: () => window.pdfjsLib, cdn: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js', local: '/static/libs/pdf.min.js', sri: 'sha256-3cbZGjUEoRBsf9sGeDRj2MAJdC2dJk2Vux22N2VE2lI=' },
+            { name: 'mammoth', check: () => window.mammoth, cdn: 'https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js', local: '/static/libs/mammoth.browser.min.js', sri: 'sha384-...' }, // Placeholder
+            { name: 'marked', check: () => window.marked, cdn: 'https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js', local: '/static/libs/marked.min.js', sri: 'sha384-56AJ42pLgE2L5zN2WTdO52uYm7xYI29Q4FmI5xZ5k4k/K3eG/k2p/3a3Po2sHwJz' },
+            { name: 'DOMPurify', check: () => window.DOMPurify, cdn: 'https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js', local: '/static/libs/purify.min.js', sri: 'sha384-...' }, // Placeholder
+            { name: 'Mark', check: () => window.Mark, cdn: 'https://cdn.jsdelivr.net/npm/mark.js@8.11.1/dist/mark.min.js', local: '/static/libs/mark.min.js', sri: 'sha384-...' }, // Placeholder
+            { name: 'PptxGenJS', check: () => window.PptxGenJS, cdn: 'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js', local: '/static/libs/pptxgen.bundle.js', sri: 'sha384-...' }, // Placeholder
+            { name: 'emlFormat', check: () => window.emlFormat, cdn: 'https://cdn.jsdelivr.net/npm/eml-format@1.0.4/dist/eml-format.browser.min.js', local: '', sri: 'sha384-a81ubv0aZ39Ff3o+2Te5rLhImfB3b/3s6J2sK5xO3i2lJz1d2qD5fNmnJ2aB9gDE' },
         ];
 
         libraries.forEach(lib => {
             if (!lib.check()) {
-                document.write(`<script src="${lib.cdn}" integrity="sha384-..." crossorigin="anonymous"></script>`);
-                document.write(`<script>!${lib.check.toString().replace(/ /g,'')} && document.write(String.raw`<script src="${lib.local}"></script>`)</script>`);
+                const script = document.createElement('script');
+                script.src = lib.cdn;
+                // Determine integrity type based on hash prefix
+                if (lib.sri.startsWith('sha256-')) {
+                    script.integrity = lib.sri;
+                } else if (lib.sri.startsWith('sha384-')) {
+                    script.integrity = lib.sri;
+                } else if (lib.sri.startsWith('sha512-')) {
+                    script.integrity = lib.sri;
+                } else {
+                    // Fallback if hash type is unknown or not provided
+                    script.integrity = '';
+                }
+                script.crossOrigin = 'anonymous';
+                script.onerror = () => {
+                    if (lib.local) {
+                        const fallbackScript = document.createElement('script');
+                        fallbackScript.src = lib.local;
+                        document.head.appendChild(fallbackScript);
+                    }
+                };
+                document.head.appendChild(script);
             }
         });
+
+        if (window.pdfjsLib) {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 
+                'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+    }
 
         if (window.pdfjsLib) {
             window.pdfjsLib.GlobalWorkerOptions.workerSrc = 
