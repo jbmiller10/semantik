@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from webui.api import auth, jobs, files, metrics, root, settings, models, search
+from webui.api import auth, jobs, files, metrics, root, settings, models, search, documents
 from webui.api.jobs import websocket_endpoint
 from webui.api.files import scan_websocket
 
@@ -31,6 +31,7 @@ def create_app() -> FastAPI:
     app.include_router(settings.router)
     app.include_router(models.router)
     app.include_router(search.router)
+    app.include_router(documents.router)
     app.include_router(root.router)  # No prefix for static + root
     
     # Mount WebSocket endpoints at the app level
