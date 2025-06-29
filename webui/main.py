@@ -5,12 +5,14 @@ Creates and configures the FastAPI application
 
 import os
 import sys
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, Request
 from fastapi.staticfiles import StaticFiles
+from slowapi.errors import RateLimitExceeded
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from webui.rate_limiter import limiter, _rate_limit_exceeded_handler
 from webui.api import auth, jobs, files, metrics, root, settings, models, search, documents
 from webui.api.jobs import websocket_endpoint
 from webui.api.files import scan_websocket
@@ -22,6 +24,9 @@ def create_app() -> FastAPI:
         description="Create and search document embeddings",
         version="1.1.0"
     )
+    
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     
     # Include routers with their specific prefixes
     app.include_router(auth.router)

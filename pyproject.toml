@@ -35,6 +35,7 @@ python-jose = {extras = ["cryptography"], version = "^3.3.0"}
 email-validator = "^2.1.0"
 numpy = "<2"
 pydantic-settings = "^2.10.1"
+slowapi = "^0.1.9"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
