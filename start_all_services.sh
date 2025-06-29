@@ -35,7 +35,7 @@ fi
 
 # Start WebUI
 echo "Starting WebUI on port 8080..."
-poetry run python webui/app.py > webui.log 2>&1 &
+poetry run uvicorn webui.app:app --host 0.0.0.0 --port 8080 > webui.log 2>&1 &
 WEBUI_PID=$!
 echo "WebUI started with PID: $WEBUI_PID"
 
