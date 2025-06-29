@@ -143,11 +143,13 @@ class HybridSearchResponse(BaseModel):
 # Global resources
 qdrant_client = None
 model_manager = None
+embedding_service = None
+executor = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifecycle"""
-    global qdrant_client, model_manager
+    global qdrant_client, model_manager, embedding_service, executor
     # Startup
     # Start metrics server
     start_metrics_server(METRICS_PORT)
@@ -165,12 +167,21 @@ async def lifespan(app: FastAPI):
     model_manager = ModelManager(unload_after_seconds=unload_after)
     logger.info(f"Initialized model manager with {unload_after}s inactivity timeout")
     
+    # Initialize embedding service for backward compatibility
+    embedding_service = EmbeddingService(mock_mode=settings.USE_MOCK_EMBEDDINGS)
+    logger.info(f"Initialized embedding service (mock_mode={settings.USE_MOCK_EMBEDDINGS})")
+    
+    # Initialize thread pool executor for async operations
+    executor = ThreadPoolExecutor(max_workers=4)
+    
     yield
     
     # Shutdown
     await qdrant_client.aclose()
     if model_manager:
         model_manager.shutdown()
+    if executor:
+        executor.shutdown(wait=True)
     logger.info("Disconnected from Qdrant")
 
 # Create FastAPI app
@@ -222,8 +233,8 @@ async def generate_embedding_async(text: str, model_name: str = None, quantizati
         raise RuntimeError("Model manager not initialized")
     
     # Use provided model/quantization or defaults
-    model = model_name or DEFAULT_MODEL
-    quant = quantization or DEFAULT_QUANTIZATION
+    model = model_name or settings.DEFAULT_EMBEDDING_MODEL
+    quant = quantization or settings.DEFAULT_QUANTIZATION
     
     # Determine instruction for search queries
     if instruction is None:
@@ -272,8 +283,8 @@ async def root():
         
         if not settings.USE_MOCK_EMBEDDINGS and embedding_service:
             model_info = embedding_service.get_model_info(
-                embedding_service.current_model_name or DEFAULT_MODEL,
-                embedding_service.current_quantization or DEFAULT_QUANTIZATION
+                embedding_service.current_model_name or settings.DEFAULT_EMBEDDING_MODEL,
+                embedding_service.current_quantization or settings.DEFAULT_QUANTIZATION
             )
             
             health_info["embedding_service"] = {
@@ -813,7 +824,7 @@ async def load_model(
     quantization: str = Body("float32", description="Quantization type")
 ):
     """Load a specific embedding model"""
-    if USE_MOCK_EMBEDDINGS:
+    if settings.USE_MOCK_EMBEDDINGS:
         raise HTTPException(status_code=400, detail="Cannot load models when using mock embeddings")
     
     try:
@@ -852,8 +863,8 @@ async def embedding_info():
             "current_model": embedding_service.current_model_name,
             "quantization": embedding_service.current_quantization,
             "device": embedding_service.device,
-            "default_model": DEFAULT_MODEL,
-            "default_quantization": DEFAULT_QUANTIZATION
+            "default_model": settings.DEFAULT_EMBEDDING_MODEL,
+            "default_quantization": settings.DEFAULT_QUANTIZATION
         })
         
         # Get model details
