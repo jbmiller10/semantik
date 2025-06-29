@@ -142,13 +142,12 @@ class HybridSearchResponse(BaseModel):
 
 # Global resources
 qdrant_client = None
-embedding_service = None
-executor = None
+model_manager = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifecycle"""
-    global qdrant_client, embedding_service, executor
+    global qdrant_client, model_manager
     # Startup
     # Start metrics server
     start_metrics_server(METRICS_PORT)
@@ -160,26 +159,18 @@ async def lifespan(app: FastAPI):
     )
     logger.info(f"Connected to Qdrant at {settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
     
-    # Initialize embedding service if not using mock
-    if not settings.USE_MOCK_EMBEDDINGS:
-        embedding_service = EmbeddingService()
-        # Pre-load default model
-        if not embedding_service.load_model(settings.DEFAULT_EMBEDDING_MODEL, settings.DEFAULT_QUANTIZATION):
-            logger.error(f"Failed to load embedding model: {settings.DEFAULT_EMBEDDING_MODEL}")
-            raise RuntimeError(f"Cannot start API: Failed to load embedding model {settings.DEFAULT_EMBEDDING_MODEL}. "
-                             f"Either fix the model loading issue or set USE_MOCK_EMBEDDINGS=true")
-        logger.info(f"Successfully loaded embedding model: {settings.DEFAULT_EMBEDDING_MODEL} with {settings.DEFAULT_QUANTIZATION}")
-        # Create thread pool for CPU-bound operations
-        executor = ThreadPoolExecutor(max_workers=4)
-    else:
-        logger.info("Using mock embeddings (USE_MOCK_EMBEDDINGS=true)")
+    # Initialize model manager with lazy loading
+    from vecpipe.model_manager import ModelManager
+    unload_after = int(os.getenv("MODEL_UNLOAD_AFTER_SECONDS", "300"))  # 5 minutes default
+    model_manager = ModelManager(unload_after_seconds=unload_after)
+    logger.info(f"Initialized model manager with {unload_after}s inactivity timeout")
     
     yield
     
     # Shutdown
     await qdrant_client.aclose()
-    if executor:
-        executor.shutdown(wait=True)
+    if model_manager:
+        model_manager.shutdown()
     logger.info("Disconnected from Qdrant")
 
 # Create FastAPI app
@@ -223,15 +214,12 @@ def generate_mock_embedding(text: str, vector_dim: int = None) -> List[float]:
     return values
 
 async def generate_embedding_async(text: str, model_name: str = None, quantization: str = None, instruction: str = None) -> List[float]:
-    """Generate embedding using the embedding service"""
+    """Generate embedding using the model manager"""
     if settings.USE_MOCK_EMBEDDINGS:
         return generate_mock_embedding(text)
     
-    if embedding_service is None:
-        raise RuntimeError("Embedding service not initialized")
-    
-    # Use real embeddings
-    loop = asyncio.get_event_loop()
+    if model_manager is None:
+        raise RuntimeError("Model manager not initialized")
     
     # Use provided model/quantization or defaults
     model = model_name or DEFAULT_MODEL
@@ -244,14 +232,8 @@ async def generate_embedding_async(text: str, model_name: str = None, quantizati
     # Time the embedding generation
     start_time = time.time()
     
-    embedding = await loop.run_in_executor(
-        executor,
-        embedding_service.generate_single_embedding,
-        text,
-        model,
-        quant,
-        instruction
-    )
+    # Use model manager for lazy loading and automatic unloading
+    embedding = await model_manager.generate_embedding_async(text, model, quant, instruction)
     
     # Record embedding generation latency
     embedding_generation_latency.observe(time.time() - start_time)
@@ -260,6 +242,14 @@ async def generate_embedding_async(text: str, model_name: str = None, quantizati
         raise RuntimeError(f"Failed to generate embedding for text: {text[:100]}...")
     
     return embedding
+
+@app.get("/model/status")
+async def model_status():
+    """Get model manager status"""
+    if model_manager:
+        return model_manager.get_status()
+    else:
+        return {"error": "Model manager not initialized"}
 
 @app.get("/")
 async def root():
@@ -359,12 +349,42 @@ async def search_post(request: SearchRequest = Body(...)):
         except Exception as e:
             logger.warning(f"Could not get collection info for {collection_name}, using default dimension: {e}")
         
-        # Select model and quantization
-        model_name = request.model_name or settings.DEFAULT_EMBEDDING_MODEL
-        quantization = request.quantization or settings.DEFAULT_QUANTIZATION
+        # Try to get collection metadata to determine the correct model
+        collection_model = None
+        collection_quantization = None
+        collection_instruction = None
+        
+        try:
+            # Check if this is a job collection and get metadata
+            from qdrant_client import QdrantClient
+            sync_client = QdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
+            from webui.api.collection_metadata import get_collection_metadata
+            
+            metadata = get_collection_metadata(sync_client, collection_name)
+            if metadata:
+                collection_model = metadata.get('model_name')
+                collection_quantization = metadata.get('quantization')
+                collection_instruction = metadata.get('instruction')
+                logger.info(f"Found metadata for collection {collection_name}: model={collection_model}, quantization={collection_quantization}")
+        except Exception as e:
+            logger.warning(f"Could not get collection metadata: {e}")
+        
+        # Use collection's model if found, otherwise fall back to request or defaults
+        model_name = request.model_name or collection_model or settings.DEFAULT_EMBEDDING_MODEL
+        quantization = request.quantization or collection_quantization or settings.DEFAULT_QUANTIZATION
+        
+        # Log warning if using different model than collection was created with
+        if collection_model and model_name != collection_model:
+            logger.warning(f"Collection {collection_name} was created with model {collection_model} but searching with {model_name}")
+        if collection_quantization and quantization != collection_quantization:
+            logger.warning(f"Collection {collection_name} was created with quantization {collection_quantization} but searching with {quantization}")
         
         # Get appropriate instruction for search type
-        instruction = SEARCH_INSTRUCTIONS.get(request.search_type, SEARCH_INSTRUCTIONS["semantic"])
+        # Use collection's instruction if available and no specific search type requested
+        if collection_instruction and request.search_type == "semantic":
+            instruction = collection_instruction
+        else:
+            instruction = SEARCH_INSTRUCTIONS.get(request.search_type, SEARCH_INSTRUCTIONS["semantic"])
         
         # Generate query embedding
         embed_start = time.time()
@@ -502,6 +522,32 @@ async def hybrid_search(
     try:
         # Determine collection name
         collection_name = collection if collection else settings.DEFAULT_COLLECTION
+        
+        # Try to get collection metadata to determine the correct model
+        collection_model = None
+        collection_quantization = None
+        
+        try:
+            # Check if this is a job collection and get metadata
+            from qdrant_client import QdrantClient
+            sync_client = QdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
+            from webui.api.collection_metadata import get_collection_metadata
+            
+            metadata = get_collection_metadata(sync_client, collection_name)
+            if metadata:
+                collection_model = metadata.get('model_name')
+                collection_quantization = metadata.get('quantization')
+                logger.info(f"Found metadata for collection {collection_name}: model={collection_model}, quantization={collection_quantization}")
+        except Exception as e:
+            logger.warning(f"Could not get collection metadata: {e}")
+        
+        # Use collection's model if found, otherwise fall back to request or defaults
+        model_name = model_name or collection_model or settings.DEFAULT_EMBEDDING_MODEL
+        quantization = quantization or collection_quantization or settings.DEFAULT_QUANTIZATION
+        
+        # Log warning if using different model than collection was created with
+        if collection_model and model_name != collection_model:
+            logger.warning(f"Collection {collection_name} was created with model {collection_model} but searching with {model_name}")
         
         # Initialize hybrid search engine
         hybrid_engine = HybridSearchEngine(settings.QDRANT_HOST, settings.QDRANT_PORT, collection_name)

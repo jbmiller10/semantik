@@ -10,6 +10,7 @@ import logging
 import glob
 import asyncio
 from pathlib import Path
+from typing import Dict, Any, List, Optional
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -179,8 +180,12 @@ async def main_async(args):
     """Main async function"""
     # Start metrics server if requested
     if args.metrics_port:
-        start_metrics_server(args.metrics_port)
-        logger.info(f"Metrics server started on port {args.metrics_port}")
+        try:
+            start_metrics_server(args.metrics_port)
+            logger.info(f"Metrics server started on port {args.metrics_port}")
+        except OSError as e:
+            logger.warning(f"Failed to start metrics server on port {args.metrics_port}: {e}")
+            logger.info("Continuing without metrics server")
     
     # Ensure output directory exists
     os.makedirs(args.output, exist_ok=True)
