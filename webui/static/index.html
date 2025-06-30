@@ -50,6 +50,31 @@
             animation: breathe 3s ease-in-out infinite;
         }
         
+        /* Custom styles for select dropdowns with optgroups */
+        select optgroup {
+            font-weight: bold;
+            color: #374151;
+            background-color: #f3f4f6;
+        }
+        
+        select option {
+            padding-left: 1rem;
+            font-weight: normal;
+        }
+        
+        select option.text-green-700 {
+            color: #047857;
+        }
+        
+        select option.text-red-600 {
+            color: #dc2626;
+        }
+        
+        select option:disabled {
+            color: #9ca3af;
+            font-style: italic;
+        }
+        
         /* Enhanced status badge pulse */
         @keyframes enhanced-pulse {
             0%, 100% {
@@ -110,10 +135,14 @@
                 
                 <form id="create-job-form" class="space-y-6">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Job Name</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Job Name <span class="text-red-500">*</span>
+                        </label>
                         <input type="text" id="job-name" required
                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                               placeholder="My Document Collection">
+                               placeholder="My Document Collection"
+                               value="My Document Collection">
+                        <p class="mt-1 text-xs text-gray-500">Give your embedding job a descriptive name</p>
                     </div>
 
                     <div>
@@ -153,15 +182,28 @@
 
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Chunk Size (tokens)</label>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Chunk Size (tokens)
+                                <span class="inline-block ml-1 text-gray-500 hover:text-gray-700 cursor-help" 
+                                      title="The size of text chunks to create. Larger chunks provide more context but may be less focused. Recommended: 400-800 tokens.">
+                                    <i class="fas fa-question-circle text-xs"></i>
+                                </span>
+                            </label>
                             <input type="number" id="chunk-size" value="600" min="100" max="32000"
                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1 text-xs text-gray-500">Qwen3 supports up to 32K tokens</p>
+                            <p class="mt-1 text-xs text-gray-500">Qwen3 supports up to 32K tokens. Typical: 400-800</p>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Chunk Overlap (tokens)</label>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Chunk Overlap (tokens)
+                                <span class="inline-block ml-1 text-gray-500 hover:text-gray-700 cursor-help" 
+                                      title="The number of tokens that overlap between consecutive chunks. Helps maintain context across chunk boundaries. Recommended: 20-30% of chunk size.">
+                                    <i class="fas fa-question-circle text-xs"></i>
+                                </span>
+                            </label>
                             <input type="number" id="chunk-overlap" value="200" min="0" max="8000"
                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <p class="mt-1 text-xs text-gray-500">Typically 20-30% of chunk size</p>
                         </div>
                     </div>
 
@@ -176,13 +218,20 @@
                                    placeholder="Auto-detect from model">
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Quantization</label>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Quantization
+                                <span class="inline-block ml-1 text-gray-500 hover:text-gray-700 cursor-help" 
+                                      title="Reduces model precision to save memory and storage. Float16 offers good balance between quality and efficiency. Int8 maximizes compression but may slightly reduce quality.">
+                                    <i class="fas fa-question-circle text-xs"></i>
+                                </span>
+                            </label>
                             <select id="quantization"
                                     class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <option value="float32" selected>Float32 (Full precision)</option>
-                                <option value="float16">Float16 (Half precision, 50% storage)</option>
-                                <option value="int8">Int8 (Quantized, 75% storage saving)</option>
+                                <option value="float32">Float32 (Full precision - Best quality)</option>
+                                <option value="float16" selected>Float16 (Recommended - 50% smaller)</option>
+                                <option value="int8">Int8 (Smallest - 75% smaller, slight quality loss)</option>
                             </select>
+                            <p class="mt-1 text-xs text-gray-500">Float16 recommended for most use cases</p>
                         </div>
                     </div>
 
@@ -250,15 +299,32 @@
                         <input type="text" id="search-query" required
                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                placeholder="Enter your search query...">
+                        <div class="mt-2 text-xs text-gray-600">
+                            <p class="font-medium mb-1">Search Tips:</p>
+                            <ul class="list-disc list-inside space-y-1 text-gray-500">
+                                <li>Use natural language questions: "How do I configure authentication?"</li>
+                                <li>Search for concepts: "machine learning algorithms"</li>
+                                <li>Find specific topics: "database optimization techniques"</li>
+                                <li>Hybrid search combines semantic understanding with keyword matching</li>
+                            </ul>
+                        </div>
                     </div>
 
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Collection</label>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Collection
+                                <button type="button" onclick="loadJobCollections()" 
+                                        class="ml-2 text-blue-600 hover:text-blue-800 text-xs"
+                                        title="Refresh collections">
+                                    <i class="fas fa-sync-alt"></i>
+                                </button>
+                            </label>
                             <select id="search-collection"
                                     class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                                 <!-- Job collections will be loaded here -->
                             </select>
+                            <p class="mt-1 text-xs text-gray-500">Only collections with vectors are available for search</p>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Results</label>

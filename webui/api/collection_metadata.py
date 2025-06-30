@@ -3,6 +3,7 @@ Collection metadata management for tracking model information
 """
 
 import logging
+import uuid
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
@@ -52,10 +53,13 @@ def store_collection_metadata(
     }
 
     try:
-        # Use collection name as ID for easy lookup
+        # Use UUID for point ID to avoid validation errors
         qdrant.upsert(
             collection_name=METADATA_COLLECTION,
-            points=[PointStruct(id=collection_name, vector=[0.0] * 4, payload=metadata)],  # Dummy vector
+            points=[PointStruct(
+                id=str(uuid.uuid4()),  # Use UUID instead of collection name
+                vector=[0.0] * 4,
+                payload={**metadata, "id": collection_name})],  # Store collection name in payload
         )
         logger.info(f"Stored metadata for collection {collection_name}: {metadata}")
     except Exception as e:
