@@ -342,5 +342,4 @@ poetry run mypy .
 ```
 
 ## License
-
-This project is proprietary and confidential.
+AGPL
