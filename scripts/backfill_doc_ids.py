@@ -1,6 +1,6 @@
-import sqlite3
 import hashlib
 import os
+import sqlite3
 import sys
 
 # Add parent directory to path
@@ -8,6 +8,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from vecpipe.config import settings
 
 DB_PATH = str(settings.WEBUI_DB)
+
 
 def backfill_doc_ids():
     conn = sqlite3.connect(DB_PATH)
@@ -24,6 +25,7 @@ def backfill_doc_ids():
     conn.close()
 
     print(f"Updated {len(files_to_update)} files with doc_ids.")
+
 
 if __name__ == "__main__":
     backfill_doc_ids()
