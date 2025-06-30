@@ -1,6 +1,6 @@
 """Test authentication endpoints and functionality."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from jose import jwt
@@ -36,7 +36,7 @@ class TestJWTTokens:
 
         assert decoded["sub"] == "testuser"
         assert "exp" in decoded
-        assert datetime.fromtimestamp(decoded["exp"], tz=timezone.utc) > datetime.now(timezone.utc)
+        assert datetime.fromtimestamp(decoded["exp"], tz=UTC) > datetime.now(UTC)
 
     def test_create_access_token_with_expiry(self):
         """Test access token with custom expiry."""
@@ -51,8 +51,8 @@ class TestJWTTokens:
         # Check that expiry is set correctly
         assert "exp" in decoded
         # Verify that the token has the correct expiry time (approximately 15 minutes)
-        current_time = datetime.now(timezone.utc)
-        exp_time = datetime.fromtimestamp(decoded["exp"], tz=timezone.utc)
+        current_time = datetime.now(UTC)
+        exp_time = datetime.fromtimestamp(decoded["exp"], tz=UTC)
         time_diff = (exp_time - current_time).total_seconds()
         # Should be approximately 15 minutes (900 seconds), allow some tolerance
         assert 890 < time_diff < 910
@@ -85,7 +85,7 @@ class TestAuthEndpoints:
                 "email": email,
                 "full_name": full_name,
                 "disabled": False,
-                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_at": datetime.now(UTC).isoformat(),
             }
 
         monkeypatch.setattr("webui.database.get_user", mock_get_user)
