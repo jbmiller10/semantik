@@ -350,11 +350,5 @@
     <!-- Application Scripts (load after libraries) -->
     <script src="/static/app.js"></script>
     <script src="/static/DocumentViewer.js"></script>
-    <script>
-        // Set PDF.js worker path after library loads
-        if (window.pdfjsLib) {
-            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        }
-    </script>
 </body>
 </html>
