@@ -93,22 +93,22 @@ class TestDocumentSecurity:
 
                     assert exc_info.value.status_code == 413
                     assert exc_info.value.detail == "File is too large to preview"
-    
+
     def test_validate_file_access_unauthorized_user(self):
         """Test that users cannot access jobs they don't own"""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a test file
             test_file = Path(tmpdir) / "test.pdf"
             test_file.write_text("test content")
-            
+
             with patch("webui.api.documents.database") as mock_db:
                 # Job belongs to user_id 2, but current user has id 1
                 mock_db.get_job.return_value = {"directory_path": tmpdir, "user_id": 2}
                 mock_db.get_job_files.return_value = [{"doc_id": "test123", "path": str(test_file)}]
-                
+
                 with pytest.raises(HTTPException) as exc_info:
                     validate_file_access("job123", "test123", {"id": 1, "user": "test"})
-                
+
                 assert exc_info.value.status_code == 403
                 assert exc_info.value.detail == "Access denied"
 
@@ -140,7 +140,7 @@ class TestDocumentEndpoints:
                     "name": "test.pdf",
                     "size": len("test content"),
                     "extension": ".pdf",
-                    "modified": "2024-01-01T00:00:00"
+                    "modified": "2024-01-01T00:00:00",
                 }
 
                 response = test_client.get("/api/documents/job123/test123/info")
