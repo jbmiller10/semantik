@@ -2976,6 +2976,23 @@ redis = ["redis"]
 tests = ["pytest (>=5.4.1)", "pytest-cov (>=2.8.1)", "pytest-mypy (>=0.8.0)", "pytest-timeout (>=2.1.0)", "redis", "sphinx (>=6.0.0)", "types-redis"]
 
 [[package]]
+name = "pptx2md"
+version = "0.7.9"
+description = "convert pptx to markdown"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "pptx2md-0.7.9-py3-none-any.whl", hash = "sha256:aa613dc38fb6bf5ba5d819ab87d4581ae679fe2c0c838d20fc9387c66b7b661d"},
+    {file = "pptx2md-0.7.9.tar.gz", hash = "sha256:3b07a8d4723d5eafda05eeed8853296df7f69593e437f11a063c1d43b6cfbbdb"},
+]
+
+[package.dependencies]
+pillow = "*"
+python-pptx = "*"
+rapidfuzz = "*"
+
+[[package]]
 name = "prometheus-client"
 version = "0.19.0"
 description = "Python client for the Prometheus monitoring system."
@@ -5190,4 +5207,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "09e88fc4a3e5689ef9e65423a46e9e67c00fcdb223906a51830de4a2eef26fe9"
+content-hash = "01ac6d99331d696e9b3c53c3a6792fa2fba7a9c38e844c21626ed2326c9ddbd3"

@@ -822,7 +822,8 @@ function displayHybridSearchResults(data) {
             chunk_id: result.chunk_id || result.payload?.chunk_id,
             doc_id: result.doc_id || result.payload?.doc_id,
             text: result.payload?.content?.substring(0, 200) || result.payload?.text,
-            matched_keywords: result.matched_keywords
+            matched_keywords: result.matched_keywords,
+            metadata: result.metadata || result.payload?.metadata
         },
         score: result.combined_score || result.score,
         keyword_score: result.keyword_score
@@ -880,8 +881,8 @@ function displayHybridSearchResults(data) {
                                             Keywords: ${chunk.keyword_score.toFixed(3)}
                                         </span>
                                     ` : ''}
-                                    ${chunk.payload.doc_id && chunk.payload.metadata ? `
-                                        <button onclick="viewDocument('${currentJobId || ''}', '${chunk.payload.doc_id}', '${doc.filename.replace(/'/g, "\\'")}', '${searchQuery.replace(/'/g, "\\'")}', ${chunk.payload.metadata.page_number || 1})"
+                                    ${((chunk.payload && chunk.payload.doc_id && chunk.payload.metadata) || (chunk.doc_id && chunk.metadata)) ? `
+                                        <button onclick="viewDocument('${currentJobId || ''}', '${chunk.payload?.doc_id || chunk.doc_id}', '${doc.filename.replace(/'/g, "\\'")}', '${searchQuery.replace(/'/g, "\\'")}', ${chunk.payload?.metadata?.page_number || chunk.metadata?.page_number || 1})"
                                                 class="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm transition-colors">
                                             <i class="fas fa-eye mr-1"></i>View
                                         </button>
@@ -969,8 +970,8 @@ function displaySearchResults(data) {
                                     <span class="bg-green-100 text-green-800 px-2 py-1 rounded text-sm">
                                         Score: ${chunk.score.toFixed(3)}
                                     </span>
-                                    ${chunk.payload.doc_id && chunk.payload.metadata ? `
-                                        <button onclick="viewDocument('${currentJobId || ''}', '${chunk.payload.doc_id}', '${doc.filename.replace(/'/g, "\\'")}', '${searchQuery.replace(/'/g, "\\'")}', ${chunk.payload.metadata.page_number || 1})"
+                                    ${((chunk.payload && chunk.payload.doc_id && chunk.payload.metadata) || (chunk.doc_id && chunk.metadata)) ? `
+                                        <button onclick="viewDocument('${currentJobId || ''}', '${chunk.payload?.doc_id || chunk.doc_id}', '${doc.filename.replace(/'/g, "\\'")}', '${searchQuery.replace(/'/g, "\\'")}', ${chunk.payload?.metadata?.page_number || chunk.metadata?.page_number || 1})"
                                                 class="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm transition-colors">
                                             <i class="fas fa-eye mr-1"></i>View
                                         </button>
