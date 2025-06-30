@@ -3,11 +3,11 @@ Model lifecycle manager with lazy loading and automatic unloading
 """
 
 import asyncio
-import time
 import logging
-from typing import Optional, Dict, Any
-from threading import Lock
+import time
 from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
+from typing import Any
 
 from webui.embedding_service import EmbeddingService
 
@@ -24,13 +24,13 @@ class ModelManager:
         Args:
             unload_after_seconds: Unload model after this many seconds of inactivity
         """
-        self.embedding_service: Optional[EmbeddingService] = None
-        self.executor: Optional[ThreadPoolExecutor] = None
+        self.embedding_service: EmbeddingService | None = None
+        self.executor: ThreadPoolExecutor | None = None
         self.unload_after_seconds = unload_after_seconds
         self.last_used = 0
-        self.current_model_key: Optional[str] = None
+        self.current_model_key: str | None = None
         self.lock = Lock()
-        self.unload_task: Optional[asyncio.Task] = None
+        self.unload_task: asyncio.Task | None = None
         self.is_mock_mode = False
 
     def _get_model_key(self, model_name: str, quantization: str) -> str:
@@ -120,8 +120,8 @@ class ModelManager:
                     pass
 
     async def generate_embedding_async(
-        self, text: str, model_name: str, quantization: str, instruction: Optional[str] = None
-    ) -> Optional[list]:
+        self, text: str, model_name: str, quantization: str, instruction: str | None = None
+    ) -> list | None:
         """
         Generate embedding with lazy model loading
 
@@ -166,7 +166,7 @@ class ModelManager:
 
         return embedding
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Get current status of the model manager"""
         return {
             "model_loaded": self.current_model_key is not None,

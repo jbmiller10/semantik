@@ -2,12 +2,12 @@
 Metrics and monitoring routes for the Web UI
 """
 
-import os
 import logging
+import os
 
 from fastapi import APIRouter, Depends
 
-from webui.auth import get_current_user, User
+from webui.auth import User, get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ registry = None
 
 if METRICS_PORT:
     try:
-        from vecpipe.metrics import start_metrics_server, generate_latest, registry
+        from vecpipe.metrics import generate_latest, registry, start_metrics_server
 
         start_metrics_server(METRICS_PORT)
         logger.info(f"Metrics server started on port {METRICS_PORT}")

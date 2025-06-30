@@ -2,18 +2,18 @@
 Model management routes for the Web UI
 """
 
-from typing import Dict, Any
+from typing import Any
 
 from fastapi import APIRouter, Depends
 
 from webui.auth import get_current_user
-from webui.embedding_service import embedding_service, POPULAR_MODELS
+from webui.embedding_service import POPULAR_MODELS, embedding_service
 
 router = APIRouter(prefix="/api", tags=["models"])
 
 
 @router.get("/models")
-async def get_models(current_user: Dict[str, Any] = Depends(get_current_user)):
+async def get_models(current_user: dict[str, Any] = Depends(get_current_user)):
     """Get available embedding models"""
     return {
         "models": POPULAR_MODELS,

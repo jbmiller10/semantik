@@ -3,11 +3,10 @@
 Test script for cleanup service
 """
 
+import logging
 import os
 import sys
-import logging
 import tempfile
-from pathlib import Path
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

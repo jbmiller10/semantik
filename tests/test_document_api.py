@@ -2,33 +2,34 @@
 Unit tests for Document API endpoints
 """
 
-import pytest
-import tempfile
 import shutil
-from pathlib import Path
-from fastapi.testclient import TestClient
-from unittest.mock import Mock, patch, MagicMock
+import tempfile
 import time
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+from fastapi.testclient import TestClient
 
 # Mock dependencies before imports
 with patch("webui.auth.get_current_user"):
-    from webui.api.documents import router, IMAGE_SESSIONS, TEMP_IMAGE_DIR
+    from webui.api.documents import IMAGE_SESSIONS, TEMP_IMAGE_DIR
     from webui.app import app
 
 
-@pytest.fixture
+@pytest.fixture()
 def client():
     """Create test client"""
     return TestClient(app)
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_user():
     """Mock authenticated user"""
     return {"id": 1, "username": "testuser", "email": "test@example.com"}
 
 
-@pytest.fixture
+@pytest.fixture()
 def temp_test_dir():
     """Create temporary directory for tests"""
     temp_dir = tempfile.mkdtemp()
@@ -115,8 +116,7 @@ class TestDocumentAPI:
         IMAGE_SESSIONS[session_id] = (1, time.time() - 7200, test_dir)  # user_id  # 2 hours ago
 
         # Manually trigger cleanup logic (since cleanup_temp_images runs in a thread)
-        import threading
-        from webui.api.documents import cleanup_lock, TEMP_IMAGE_TTL
+        from webui.api.documents import TEMP_IMAGE_TTL, cleanup_lock
 
         with cleanup_lock:
             current_time = time.time()

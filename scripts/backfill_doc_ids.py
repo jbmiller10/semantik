@@ -1,6 +1,6 @@
-import sqlite3
 import hashlib
 import os
+import sqlite3
 import sys
 
 # Add parent directory to path

@@ -30,10 +30,16 @@ jobs:
     - name: Lint with Ruff
       run: |
         poetry run ruff check .
+      env:
+        QDRANT_HOST: localhost
+        JWT_SECRET_KEY: test-secret-key
     
     - name: Type check with Mypy
       run: |
         poetry run mypy vecpipe webui
+      env:
+        QDRANT_HOST: localhost
+        JWT_SECRET_KEY: test-secret-key
 
   test:
     runs-on: ubuntu-latest
@@ -78,6 +84,7 @@ jobs:
       env:
         QDRANT_HOST: localhost
         QDRANT_PORT: 6333
+        JWT_SECRET_KEY: test-secret-key
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3

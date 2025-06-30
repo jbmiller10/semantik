@@ -4,17 +4,16 @@ Document cleanup service for Qdrant vector database
 Removes vectors for deleted documents from all collections
 """
 
-import os
-import sys
-import logging
-import json
-import sqlite3
 import argparse
-from typing import List, Dict
-from pathlib import Path
+import json
+import logging
+import os
+import sqlite3
+import sys
 from datetime import datetime
+
 from qdrant_client import QdrantClient
-from qdrant_client.models import Filter, FieldCondition, MatchValue, FilterSelector
+from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -41,7 +40,7 @@ class QdrantCleanupService:
         self.client = QdrantClient(url=f"http://{qdrant_host}:{qdrant_port}")
         self.tracker = FileChangeTracker()
 
-    def get_current_files(self, file_list_path: str) -> List[str]:
+    def get_current_files(self, file_list_path: str) -> list[str]:
         """Read current file list from null-delimited file"""
         if not os.path.exists(file_list_path):
             logger.error(f"File list not found: {file_list_path}")
@@ -56,7 +55,7 @@ class QdrantCleanupService:
         logger.info(f"Found {len(files)} current files")
         return files
 
-    def get_job_collections(self) -> List[str]:
+    def get_job_collections(self) -> list[str]:
         """Get all job collection names from webui database"""
         collections = [settings.DEFAULT_COLLECTION]
 
@@ -88,7 +87,7 @@ class QdrantCleanupService:
         try:
             self.client.get_collection(collection_name)
             return True
-        except Exception as e:
+        except Exception:
             # Collection doesn't exist or other error
             return False
 
@@ -119,7 +118,7 @@ class QdrantCleanupService:
             logger.error(f"Error deleting points from {collection_name}: {e}")
             return 0
 
-    def cleanup_removed_files(self, current_files: List[str], dry_run: bool = False) -> Dict:
+    def cleanup_removed_files(self, current_files: list[str], dry_run: bool = False) -> dict:
         """Main cleanup logic"""
         # Get removed files
         removed_files = self.tracker.get_removed_files(current_files)

@@ -4,18 +4,18 @@ Qdrant ingestion script (VS-030)
 Bulk loads vectors from parquet files into Qdrant collection
 """
 
+import argparse
+import glob
+import logging
 import os
 import sys
-import logging
-import glob
-from pathlib import Path
-from typing import List, Dict
-import pyarrow.parquet as pq
-from tqdm import tqdm
-import argparse
 import time
+from pathlib import Path
+
+import pyarrow.parquet as pq
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, VectorParams, Distance
+from qdrant_client.models import PointStruct
+from tqdm import tqdm
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

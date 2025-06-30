@@ -4,13 +4,14 @@ Database access layer for Document Embedding Web UI
 Centralizes all database operations for jobs, files, users, and tokens
 """
 
-import sqlite3
-import os
-import sys
-import logging
 import hashlib
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
+import logging
+import os
+import sqlite3
+import sys
+from datetime import datetime
+from typing import Any
+
 from passlib.context import CryptContext
 
 # Add parent directory to path for imports
@@ -181,7 +182,7 @@ def reset_database():
     logger.info("Database reset successfully")
 
 
-def get_database_stats() -> Dict[str, Any]:
+def get_database_stats() -> dict[str, Any]:
     """Get database statistics"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -215,7 +216,7 @@ def get_database_stats() -> Dict[str, Any]:
 
 
 # Job-related database operations
-def create_job(job_data: Dict[str, Any]) -> str:
+def create_job(job_data: dict[str, Any]) -> str:
     """Create a new job in the database"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -250,7 +251,7 @@ def create_job(job_data: Dict[str, Any]) -> str:
     return job_data["id"]
 
 
-def update_job(job_id: str, updates: Dict[str, Any]):
+def update_job(job_id: str, updates: dict[str, Any]):
     """Update job information"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -276,7 +277,7 @@ def update_job(job_id: str, updates: Dict[str, Any]):
     conn.close()
 
 
-def get_job(job_id: str) -> Optional[Dict[str, Any]]:
+def get_job(job_id: str) -> dict[str, Any] | None:
     """Get job by ID"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -299,7 +300,7 @@ def get_job(job_id: str) -> Optional[Dict[str, Any]]:
     return job_dict if job else None
 
 
-def list_jobs() -> List[Dict[str, Any]]:
+def list_jobs() -> list[dict[str, Any]]:
     """List all jobs"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -341,7 +342,7 @@ def delete_job(job_id: str):
 
 
 # File-related database operations
-def add_files_to_job(job_id: str, files: List[Dict[str, Any]]):
+def add_files_to_job(job_id: str, files: list[dict[str, Any]]):
     """Add multiple files to a job"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -367,7 +368,7 @@ def update_file_status(
     job_id: str,
     file_path: str,
     status: str,
-    error: Optional[str] = None,
+    error: str | None = None,
     chunks_created: int = 0,
     vectors_created: int = 0,
 ):
@@ -386,7 +387,7 @@ def update_file_status(
     conn.close()
 
 
-def get_job_files(job_id: str, status: Optional[str] = None) -> List[Dict[str, Any]]:
+def get_job_files(job_id: str, status: str | None = None) -> list[dict[str, Any]]:
     """Get files for a job, optionally filtered by status"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -404,7 +405,7 @@ def get_job_files(job_id: str, status: Optional[str] = None) -> List[Dict[str, A
 
 
 # User-related database operations
-def get_user(username: str) -> Optional[Dict[str, Any]]:
+def get_user(username: str) -> dict[str, Any] | None:
     """Get user by username"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -421,7 +422,7 @@ def get_user(username: str) -> Optional[Dict[str, Any]]:
 # This function was defined but never called in the codebase
 
 
-def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
+def get_user_by_id(user_id: int) -> dict[str, Any] | None:
     """Get user by ID"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -434,7 +435,7 @@ def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
     return dict(user) if user else None
 
 
-def create_user(username: str, email: str, hashed_password: str, full_name: Optional[str] = None) -> Dict[str, Any]:
+def create_user(username: str, email: str, hashed_password: str, full_name: str | None = None) -> dict[str, Any]:
     """Create a new user"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -494,7 +495,7 @@ def save_refresh_token(user_id: int, token_hash: str, expires_at: datetime):
     conn.close()
 
 
-def verify_refresh_token(token: str) -> Optional[int]:
+def verify_refresh_token(token: str) -> int | None:
     """Verify refresh token and return user_id if valid"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row

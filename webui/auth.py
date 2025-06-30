@@ -4,17 +4,16 @@ Authentication system for the Document Embedding Web UI
 Provides JWT-based authentication with user management
 """
 
+import logging
 import os
 import sys
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
-import secrets
-import logging
+from typing import Any
 
-from passlib.context import CryptContext
-from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError, jwt
+from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, validator
 
 # Add parent directory to path for imports
@@ -42,7 +41,7 @@ class UserCreate(BaseModel):
     username: str
     email: EmailStr
     password: str
-    full_name: Optional[str] = None
+    full_name: str | None = None
 
     @validator("username")
     def validate_username(cls, v):
@@ -72,17 +71,17 @@ class Token(BaseModel):
 
 
 class TokenData(BaseModel):
-    username: Optional[str] = None
+    username: str | None = None
 
 
 class User(BaseModel):
     id: int
     username: str
     email: str
-    full_name: Optional[str] = None
+    full_name: str | None = None
     is_active: bool = True
     created_at: str
-    last_login: Optional[str] = None
+    last_login: str | None = None
 
 
 # Password hashing functions
@@ -97,7 +96,7 @@ def get_password_hash(password: str) -> str:
 
 
 # Token functions
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
     """Create a JWT access token"""
     to_encode = data.copy()
     if expires_delta:
@@ -109,7 +108,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return encoded_jwt
 
 
-def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_refresh_token(data: dict, expires_delta: timedelta | None = None):
     """Create a JWT refresh token"""
     to_encode = data.copy()
     if expires_delta:
@@ -121,7 +120,7 @@ def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None):
     return encoded_jwt
 
 
-def verify_token(token: str, token_type: str = "access") -> Optional[str]:
+def verify_token(token: str, token_type: str = "access") -> str | None:
     """Verify and decode a JWT token"""
     try:
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.ALGORITHM])
@@ -135,7 +134,7 @@ def verify_token(token: str, token_type: str = "access") -> Optional[str]:
         return None
 
 
-def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
+def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
     """Authenticate a user"""
     user = database.get_user(username)
     if not user:
@@ -150,7 +149,7 @@ def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
 
 
 # FastAPI dependency
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict[str, Any]:
     """Get current authenticated user"""
     token = credentials.credentials
     username = verify_token(token, "access")

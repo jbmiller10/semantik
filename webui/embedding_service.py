@@ -4,17 +4,15 @@ Unified Embedding Service with quantization and Qwen3 support
 Provides backward-compatible API with feature flags
 """
 
-import os
-import sys
-import logging
-from typing import List, Dict, Optional
-import numpy as np
-from sentence_transformers import SentenceTransformer
-import torch
 import gc
-from transformers import AutoModel, AutoTokenizer
+import logging
+
+import numpy as np
+import torch
 import torch.nn.functional as F
+from sentence_transformers import SentenceTransformer
 from torch import Tensor
+from transformers import AutoModel, AutoTokenizer
 
 # Import metrics tracking if available
 try:
@@ -232,7 +230,7 @@ class EmbeddingService:
         else:
             return self.current_model.encode("test", convert_to_numpy=True)
 
-    def _generate_mock_embeddings(self, texts: List[str]) -> np.ndarray:
+    def _generate_mock_embeddings(self, texts: list[str]) -> np.ndarray:
         """Generate deterministic mock embeddings based on text hash"""
         import hashlib
 
@@ -256,7 +254,7 @@ class EmbeddingService:
 
         return np.array(embeddings)
 
-    def get_model_info(self, model_name: str, quantization: str = "float32") -> Dict:
+    def get_model_info(self, model_name: str, quantization: str = "float32") -> dict:
         """Get information about a model
 
         Args:
@@ -296,14 +294,14 @@ class EmbeddingService:
 
     def generate_embeddings(
         self,
-        texts: List[str],
+        texts: list[str],
         model_name: str,
         quantization: str = "float32",
         batch_size: int = 32,
         show_progress: bool = True,
-        instruction: Optional[str] = None,
+        instruction: str | None = None,
         **kwargs,
-    ) -> Optional[np.ndarray]:
+    ) -> np.ndarray | None:
         """Generate embeddings for a list of texts
 
         Args:
@@ -475,8 +473,8 @@ class EmbeddingService:
             return None
 
     def generate_single_embedding(
-        self, text: str, model_name: str, quantization: str = "float32", instruction: Optional[str] = None, **kwargs
-    ) -> Optional[List[float]]:
+        self, text: str, model_name: str, quantization: str = "float32", instruction: str | None = None, **kwargs
+    ) -> list[float] | None:
         """Generate embedding for a single text
 
         Args:

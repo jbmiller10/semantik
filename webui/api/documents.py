@@ -7,24 +7,23 @@ Provides secure access to original documents with support for:
 - Multi-format document preview (PDF, DOCX, TXT, MD, HTML, PPTX, EML)
 """
 
-import os
-import sys
 import logging
-from pathlib import Path
-from typing import Dict, Any, Optional
 import mimetypes
-import tempfile
-from io import BytesIO
-import subprocess
-import shutil
-import uuid
-import time
-import threading
 import re
-from datetime import datetime, timedelta
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Depends, Header, Request
-from fastapi.responses import FileResponse, StreamingResponse, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi.responses import FileResponse, Response, StreamingResponse
+
 from webui import database
 from webui.auth import get_current_user
 from webui.rate_limiter import limiter
@@ -127,7 +126,7 @@ def start_cleanup_thread():
 start_cleanup_thread()
 
 
-def validate_file_access(job_id: str, doc_id: str, current_user: Dict[str, Any]) -> Dict[str, Any]:
+def validate_file_access(job_id: str, doc_id: str, current_user: dict[str, Any]) -> dict[str, Any]:
     """Validate that the user has access to the requested document"""
     # Get job to verify it exists and user has access
     job = database.get_job(job_id)
@@ -178,8 +177,8 @@ async def get_document(
     request: Request,
     job_id: str,
     doc_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    range: Optional[str] = Header(None),
+    current_user: dict[str, Any] = Depends(get_current_user),
+    range: str | None = Header(None),
 ):
     """
     Retrieve a document by job_id and doc_id.
@@ -238,7 +237,7 @@ async def get_document(
 
                 if result.returncode == 0 and output_path.exists():
                     # Read the converted markdown
-                    with open(output_path, "r", encoding="utf-8") as f:
+                    with open(output_path, encoding="utf-8") as f:
                         markdown_content = f.read()
 
                     # Update image paths in markdown to use our temp image endpoint
@@ -295,7 +294,6 @@ async def get_document(
         except Exception as e:
             logger.error(f"Error converting PPTX to Markdown: {e}")
             # Fall back to serving the original file
-            pass
 
     # Get file size for range requests
     file_size = file_path.stat().st_size
@@ -392,7 +390,7 @@ async def get_document(
 @router.get("/{job_id}/{doc_id}/info")
 @limiter.limit("30/minute")
 async def get_document_info(
-    request: Request, job_id: str, doc_id: str, current_user: Dict[str, Any] = Depends(get_current_user)
+    request: Request, job_id: str, doc_id: str, current_user: dict[str, Any] = Depends(get_current_user)
 ):
     """
     Get document metadata without downloading the file.
@@ -427,8 +425,8 @@ async def get_temp_image(
     request: Request,
     session_id: str,
     filename: str,
-    token: Optional[str] = None,
-    current_user: Optional[Dict[str, Any]] = None,
+    token: str | None = None,
+    current_user: dict[str, Any] | None = None,
 ):
     """
     Serve temporary images extracted from documents (e.g., PPTX slides).

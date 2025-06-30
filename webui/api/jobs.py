@@ -2,30 +2,30 @@
 Job management routes and WebSocket handlers for the Web UI
 """
 
+import asyncio
+import gc
+import hashlib
+import logging
 import os
 import sys
-import logging
-import asyncio
 import uuid
-import hashlib
-import gc
-from datetime import datetime
-from typing import List, Dict, Optional, Any, Tuple
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, validator
-from qdrant_client import QdrantClient, AsyncQdrantClient
-from qdrant_client.models import VectorParams, Distance, PointStruct
+from qdrant_client import AsyncQdrantClient, QdrantClient
+from qdrant_client.models import Distance, PointStruct, VectorParams
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from vecpipe.config import settings
-from vecpipe.extract_chunks import extract_text, TokenChunker
+from vecpipe.extract_chunks import TokenChunker, extract_text
 from webui import database
 from webui.auth import get_current_user
-from webui.embedding_service import embedding_service, POPULAR_MODELS
+from webui.embedding_service import POPULAR_MODELS, embedding_service
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +50,10 @@ class CreateJobRequest(BaseModel):
     chunk_size: int = 600
     chunk_overlap: int = 200
     batch_size: int = 96
-    vector_dim: Optional[int] = None
+    vector_dim: int | None = None
     quantization: str = "float32"
-    instruction: Optional[str] = None
-    job_id: Optional[str] = None  # Allow pre-generated job_id for WebSocket connection
+    instruction: str | None = None
+    job_id: str | None = None  # Allow pre-generated job_id for WebSocket connection
 
     @validator("chunk_size")
     def validate_chunk_size(cls, v):
@@ -91,20 +91,20 @@ class JobStatus(BaseModel):
     total_files: int = 0
     processed_files: int = 0
     failed_files: int = 0
-    current_file: Optional[str] = None
-    error: Optional[str] = None
+    current_file: str | None = None
+    error: str | None = None
     model_name: str
     directory_path: str
-    quantization: Optional[str] = None
-    batch_size: Optional[int] = None
-    chunk_size: Optional[int] = None
-    chunk_overlap: Optional[int] = None
+    quantization: str | None = None
+    batch_size: int | None = None
+    chunk_size: int | None = None
+    chunk_overlap: int | None = None
 
 
 # WebSocket manager for real-time updates
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: Dict[str, List[WebSocket]] = {}
+        self.active_connections: dict[str, list[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, job_id: str):
         await websocket.accept()
@@ -135,7 +135,7 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 # Global task tracking for cancellation support
-active_job_tasks: Dict[str, asyncio.Task] = {}
+active_job_tasks: dict[str, asyncio.Task] = {}
 
 # Background task executor - increased workers for parallel processing
 executor = ThreadPoolExecutor(max_workers=8)
@@ -146,15 +146,14 @@ def extract_text_thread_safe(filepath: str) -> str:
     return extract_text(filepath)
 
 
-def extract_and_serialize_thread_safe(filepath: str) -> List[Tuple[str, Dict[str, Any]]]:
+def extract_and_serialize_thread_safe(filepath: str) -> list[tuple[str, dict[str, Any]]]:
     """Thread-safe version of extract_and_serialize that preserves metadata"""
     from vecpipe.extract_chunks import extract_and_serialize
 
     return extract_and_serialize(filepath)
 
 
-# Import scan function from files module to avoid circular import
-from webui.api.files import scan_directory_async
+# Import will be done inside functions to avoid circular import
 
 
 async def update_metrics_continuously():
@@ -177,12 +176,12 @@ async def process_embedding_job(job_id: str):
     # Import metrics if available
     try:
         from vecpipe.metrics import (
-            record_file_processed,
-            record_file_failed,
+            embedding_batch_duration,
+            metrics_collector,
             record_chunks_created,
             record_embeddings_generated,
-            metrics_collector,
-            embedding_batch_duration,
+            record_file_failed,
+            record_file_processed,
         )
 
         METRICS_TRACKING = True
@@ -252,7 +251,7 @@ async def process_embedding_job(job_id: str):
                         loop.run_in_executor(executor, lambda: extract_and_serialize_thread_safe(file_row["path"])),
                         timeout=300,  # 5 minute timeout
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     raise TimeoutError(f"Text extraction timed out after 300 seconds for {file_row['path']}")
 
                 memory_after_extract = process.memory_info().rss / 1024 / 1024  # MB
@@ -465,18 +464,21 @@ async def process_embedding_job(job_id: str):
 
 # API Routes
 @router.get("/new-id")
-async def get_new_job_id(current_user: Dict[str, Any] = Depends(get_current_user)):
+async def get_new_job_id(current_user: dict[str, Any] = Depends(get_current_user)):
     """Generate a new job ID for WebSocket connection"""
     return {"job_id": str(uuid.uuid4())}
 
 
 @router.post("", response_model=JobStatus)
-async def create_job(request: CreateJobRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = Depends(get_current_user)):
     """Create a new embedding job"""
     # Accept job_id from request if provided, otherwise generate new one
     job_id = request.job_id if request.job_id else str(uuid.uuid4())
 
     try:
+        # Import here to avoid circular import
+        from webui.api.files import scan_directory_async
+        
         # Scan directory first - use async version to avoid blocking UI
         files = await scan_directory_async(request.directory_path, recursive=True, scan_id=job_id)
 
@@ -595,8 +597,8 @@ async def create_job(request: CreateJobRequest, current_user: Dict[str, Any] = D
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("", response_model=List[JobStatus])
-async def list_jobs(current_user: Dict[str, Any] = Depends(get_current_user)):
+@router.get("", response_model=list[JobStatus])
+async def list_jobs(current_user: dict[str, Any] = Depends(get_current_user)):
     """List all jobs"""
     jobs = database.list_jobs()
 
@@ -627,7 +629,7 @@ async def list_jobs(current_user: Dict[str, Any] = Depends(get_current_user)):
 
 
 @router.post("/{job_id}/cancel")
-async def cancel_job(job_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+async def cancel_job(job_id: str, current_user: dict[str, Any] = Depends(get_current_user)):
     """Cancel a running job"""
     # Check current job status
     job = database.get_job(job_id)
@@ -648,7 +650,7 @@ async def cancel_job(job_id: str, current_user: Dict[str, Any] = Depends(get_cur
 
 
 @router.delete("/{job_id}")
-async def delete_job(job_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+async def delete_job(job_id: str, current_user: dict[str, Any] = Depends(get_current_user)):
     """Delete a job and its associated collection"""
     # Check if job exists
     job = database.get_job(job_id)
@@ -670,7 +672,7 @@ async def delete_job(job_id: str, current_user: Dict[str, Any] = Depends(get_cur
 
 
 @router.get("/{job_id}", response_model=JobStatus)
-async def get_job(job_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+async def get_job(job_id: str, current_user: dict[str, Any] = Depends(get_current_user)):
     """Get job details"""
     job = database.get_job(job_id)
 

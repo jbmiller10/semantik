@@ -2,16 +2,16 @@
 Tests for the document viewer functionality
 """
 
-import pytest
-import os
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
-from fastapi.testclient import TestClient
+from unittest.mock import Mock, patch
+
+import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
 # Import the modules to test
-from webui.api.documents import validate_file_access, router
+from webui.api.documents import validate_file_access
 from webui.main import app
 
 
@@ -98,12 +98,12 @@ class TestDocumentSecurity:
 class TestDocumentEndpoints:
     """Test the document serving endpoints"""
 
-    @pytest.fixture
+    @pytest.fixture()
     def client(self):
         """Create test client"""
         return TestClient(app)
 
-    @pytest.fixture
+    @pytest.fixture()
     def auth_headers(self):
         """Mock authentication headers"""
         return {"Authorization": "Bearer test-token"}
@@ -163,7 +163,7 @@ class TestDocumentViewerConstants:
 
     def test_constants_defined(self):
         """Verify all constants are properly defined"""
-        from webui.api.documents import SUPPORTED_EXTENSIONS, MAX_FILE_SIZE, CHUNK_SIZE
+        from webui.api.documents import CHUNK_SIZE, MAX_FILE_SIZE, SUPPORTED_EXTENSIONS
 
         # Check SUPPORTED_EXTENSIONS
         assert isinstance(SUPPORTED_EXTENSIONS, set)

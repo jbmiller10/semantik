@@ -6,26 +6,27 @@ Implements file change tracking with SHA256
 Now uses unstructured library for unified document parsing
 """
 
+import argparse
+import hashlib
+import json
+import logging
 import os
 import sys
-import hashlib
-import logging
-import json
-from pathlib import Path
-from typing import List, Dict, Optional, Tuple, Any
 from datetime import datetime
+from pathlib import Path
+from typing import Any
+
 import pyarrow as pa
 import pyarrow.parquet as pq
-from tqdm import tqdm
-import argparse
 import tiktoken
+from tqdm import tqdm
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from vecpipe.config import settings
-
 # Unstructured for document parsing
 from unstructured.partition.auto import partition
+
+from vecpipe.config import settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -65,7 +66,7 @@ class TokenChunker:
             f"Initialized tokenizer: {model_name}, chunk_size: {self.chunk_size}, overlap: {self.chunk_overlap}"
         )
 
-    def chunk_text(self, text: str, doc_id: str, metadata: Optional[Dict] = None) -> List[Dict]:
+    def chunk_text(self, text: str, doc_id: str, metadata: dict | None = None) -> list[dict]:
         """Split text into overlapping chunks by token count"""
         if not text.strip():
             return []
@@ -182,11 +183,11 @@ class FileChangeTracker:
         self.db_path = db_path
         self.tracking_data = self._load_tracking_data()
 
-    def _load_tracking_data(self) -> Dict:
+    def _load_tracking_data(self) -> dict:
         """Load tracking data from JSON file"""
         if os.path.exists(self.db_path):
             try:
-                with open(self.db_path, "r") as f:
+                with open(self.db_path) as f:
                     return json.load(f)
             except:
                 logger.warning(f"Failed to load tracking data from {self.db_path}")
@@ -206,7 +207,7 @@ class FileChangeTracker:
                 sha256_hash.update(byte_block)
         return sha256_hash.hexdigest()
 
-    def should_process_file(self, filepath: str) -> Tuple[bool, Optional[str]]:
+    def should_process_file(self, filepath: str) -> tuple[bool, str | None]:
         """Check if file should be processed based on hash"""
         current_hash = self.get_file_hash(filepath)
         file_key = str(Path(filepath).absolute())
@@ -253,7 +254,7 @@ class FileChangeTracker:
 
         self._save_tracking_data()
 
-    def get_removed_files(self, current_files: List[str]) -> List[Dict]:
+    def get_removed_files(self, current_files: list[str]) -> list[dict]:
         """Find files that were tracked but no longer exist"""
         current_file_keys = {str(Path(f).absolute()) for f in current_files}
         removed_files = []
@@ -278,7 +279,7 @@ class FileChangeTracker:
         self._save_tracking_data()
 
 
-def extract_and_serialize(filepath: str) -> List[Tuple[str, Dict[str, Any]]]:
+def extract_and_serialize(filepath: str) -> list[tuple[str, dict[str, Any]]]:
     """Uses unstructured to partition a file and serializes structured data.
     Returns list of (text, metadata) tuples."""
     ext = Path(filepath).suffix.lower()
@@ -343,7 +344,7 @@ def extract_text(filepath: str, timeout: int = 300) -> str:
         raise
 
 
-def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, tracker: FileChangeTracker) -> Optional[str]:
+def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, tracker: FileChangeTracker) -> str | None:
     """Process a single file with change tracking and metadata preservation"""
     try:
         # Check if file needs processing
@@ -435,7 +436,7 @@ def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, track
 _default_chunker = None
 
 
-def chunk_text(text: str, doc_id: str) -> List[Dict]:
+def chunk_text(text: str, doc_id: str) -> list[dict]:
     """Compatibility wrapper for old chunk_text function"""
     global _default_chunker
     if _default_chunker is None:
@@ -443,7 +444,7 @@ def chunk_text(text: str, doc_id: str) -> List[Dict]:
     return _default_chunker.chunk_text(text, doc_id)
 
 
-def process_file(filepath: str, output_dir: str) -> Optional[str]:
+def process_file(filepath: str, output_dir: str) -> str | None:
     """Compatibility wrapper for old process_file function"""
     global _default_chunker
     if _default_chunker is None:
