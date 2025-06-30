@@ -20,10 +20,33 @@ os.environ.setdefault("USE_MOCK_EMBEDDINGS", "true")
 
 
 @pytest.fixture
-def test_client():
-    """Create a test client for the FastAPI app."""
+def test_client(test_user):
+    """Create a test client for the FastAPI app with auth mocked."""
     from webui.main import app
+    from webui.auth import get_current_user
 
+    # Override the authentication dependency
+    async def override_get_current_user():
+        return test_user
+
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    
+    client = TestClient(app)
+    
+    # Ensure we clean up after the test
+    yield client
+    
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def unauthenticated_test_client():
+    """Create a test client without authentication override."""
+    from webui.main import app
+    
+    # Clear any existing overrides
+    app.dependency_overrides.clear()
+    
     return TestClient(app)
 
 
@@ -40,13 +63,14 @@ def mock_qdrant_client():
 def test_user():
     """Test user data."""
     from datetime import datetime
+
     return {
         "id": 1,
         "username": "testuser",
         "email": "test@example.com",
         "full_name": "Test User",
         "disabled": False,
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.utcnow().isoformat(),
     }
 
 

@@ -9,24 +9,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi.testclient import TestClient
 
-# Mock dependencies before imports
-with patch("webui.auth.get_current_user"):
-    from webui.api.documents import IMAGE_SESSIONS, TEMP_IMAGE_DIR
-    from webui.app import app
-
-
-@pytest.fixture()
-def client():
-    """Create test client"""
-    return TestClient(app)
-
-
-@pytest.fixture()
-def mock_user():
-    """Mock authenticated user"""
-    return {"id": 1, "username": "testuser", "email": "test@example.com"}
+from webui.api.documents import IMAGE_SESSIONS, TEMP_IMAGE_DIR
 
 
 @pytest.fixture()
@@ -40,54 +24,45 @@ def temp_test_dir():
 class TestDocumentAPI:
     """Test document serving API endpoints"""
 
-    @patch("webui.auth.get_current_user")
     @patch("webui.database.get_job_files")
     @patch("webui.database.get_job")
-    def test_get_document_success(self, mock_get_job, mock_get_files, mock_auth, client, mock_user, temp_test_dir):
+    def test_get_document_success(self, mock_get_job, mock_get_files, test_client, test_user, temp_test_dir):
         """Test successful document retrieval"""
         # Setup
-        mock_auth.return_value = mock_user
         test_file = temp_test_dir / "test.pdf"
         test_file.write_text("PDF content")
 
-        mock_get_job.return_value = {"id": "test-job", "user_id": mock_user["id"], "directory_path": str(temp_test_dir)}
+        mock_get_job.return_value = {"id": "test-job", "user_id": test_user["id"], "directory_path": str(temp_test_dir)}
 
         mock_get_files.return_value = [
             {"id": 1, "job_id": "test-job", "doc_id": "test-doc", "path": str(test_file), "filename": "test.pdf"}
         ]
 
         # Test
-        response = client.get("/api/documents/test-job/test-doc", headers={"Authorization": "Bearer test-token"})
+        response = test_client.get("/api/documents/test-job/test-doc")
 
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/pdf"
         assert "cache-control" in response.headers
         assert "etag" in response.headers
 
-    @patch("webui.auth.get_current_user")
-    def test_path_traversal_prevention(self, mock_auth, client, mock_user):
+    def test_path_traversal_prevention(self, test_client):
         """Test that path traversal attacks are prevented"""
-        mock_auth.return_value = mock_user
-
         # Attempt path traversal
-        response = client.get(
-            "/api/documents/test-job/../../../etc/passwd", headers={"Authorization": "Bearer test-token"}
-        )
+        response = test_client.get("/api/documents/test-job/../../../etc/passwd")
 
         assert response.status_code == 404
 
-    @patch("webui.auth.get_current_user")
     @patch("webui.database.get_job_files")
     @patch("webui.database.get_job")
-    def test_file_size_limit(self, mock_get_job, mock_get_files, mock_auth, client, mock_user, temp_test_dir):
+    def test_file_size_limit(self, mock_get_job, mock_get_files, test_client, test_user, temp_test_dir):
         """Test file size limit enforcement"""
-        mock_auth.return_value = mock_user
 
         # Create a mock file that exceeds size limit
         test_file = temp_test_dir / "large.pdf"
         test_file.write_text("x" * 1000)
 
-        mock_get_job.return_value = {"id": "test-job", "user_id": mock_user["id"], "directory_path": str(temp_test_dir)}
+        mock_get_job.return_value = {"id": "test-job", "user_id": test_user["id"], "directory_path": str(temp_test_dir)}
 
         mock_get_files.return_value = [
             {"id": 1, "job_id": "test-job", "doc_id": "test-doc", "path": str(test_file), "filename": "large.pdf"}
@@ -97,7 +72,7 @@ class TestDocumentAPI:
         with patch("pathlib.Path.stat") as mock_stat:
             mock_stat.return_value = MagicMock(st_size=600 * 1024 * 1024)  # 600MB
 
-            response = client.get("/api/documents/test-job/test-doc", headers={"Authorization": "Bearer test-token"})
+            response = test_client.get("/api/documents/test-job/test-doc")
 
             assert response.status_code == 413
 
@@ -139,20 +114,15 @@ class TestDocumentAPI:
 class TestDocumentViewer:
     """Test document viewer security"""
 
-    @patch("webui.auth.get_current_user")
-    def test_authentication_required(self, mock_auth, client):
+    def test_authentication_required(self, unauthenticated_test_client):
         """Test that authentication is required"""
-        mock_auth.side_effect = Exception("Not authenticated")
+        response = unauthenticated_test_client.get("/api/documents/test-job/test-doc")
+        assert response.status_code == 401
 
-        response = client.get("/api/documents/test-job/test-doc")
-        assert response.status_code == 403
-
-    @patch("webui.auth.get_current_user")
     @patch("webui.database.get_job_files")
     @patch("webui.database.get_job")
-    def test_authorization_check(self, mock_get_job, mock_get_files, mock_auth, client, mock_user, temp_test_dir):
+    def test_authorization_check(self, mock_get_job, mock_get_files, test_client, test_user, temp_test_dir):
         """Test that user authorization is checked"""
-        mock_auth.return_value = mock_user
 
         # Create test file
         test_file = temp_test_dir / "test.pdf"
@@ -167,7 +137,7 @@ class TestDocumentViewer:
 
         mock_get_files.return_value = [{"job_id": "test-job", "doc_id": "test-doc", "path": str(test_file)}]
 
-        response = client.get("/api/documents/test-job/test-doc", headers={"Authorization": "Bearer test-token"})
+        response = test_client.get("/api/documents/test-job/test-doc")
 
         assert response.status_code == 403
 
@@ -177,20 +147,18 @@ class TestPPTXConversion:
 
     @patch("webui.api.documents.PPTX2MD_AVAILABLE", True)
     @patch("subprocess.run")
-    @patch("webui.auth.get_current_user")
     @patch("webui.database.get_job_files")
     @patch("webui.database.get_job")
     def test_pptx_conversion_success(
-        self, mock_get_job, mock_get_files, mock_auth, mock_run, client, mock_user, temp_test_dir
+        self, mock_get_job, mock_get_files, mock_run, test_client, test_user, temp_test_dir
     ):
         """Test successful PPTX to Markdown conversion"""
-        mock_auth.return_value = mock_user
 
         # Setup test files
         test_pptx = temp_test_dir / "test.pptx"
         test_pptx.write_bytes(b"PPTX content")
 
-        mock_get_job.return_value = {"id": "test-job", "user_id": mock_user["id"], "directory_path": str(temp_test_dir)}
+        mock_get_job.return_value = {"id": "test-job", "user_id": test_user["id"], "directory_path": str(temp_test_dir)}
 
         mock_get_files.return_value = [
             {"id": 1, "job_id": "test-job", "doc_id": "test-doc", "path": str(test_pptx), "filename": "test.pptx"}
@@ -205,7 +173,7 @@ class TestPPTXConversion:
             output_file = temp_test_dir / "test.md"
             output_file.write_text("# Slide 1\\n\\nContent")
 
-            response = client.get("/api/documents/test-job/test-doc", headers={"Authorization": "Bearer test-token"})
+            response = test_client.get("/api/documents/test-job/test-doc")
 
             assert response.status_code == 200
             assert response.headers["content-type"] == "text/markdown; charset=utf-8"
