@@ -17,7 +17,7 @@ import tempfile
 import threading
 import time
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -386,7 +386,7 @@ async def get_document(
             "Content-Disposition": f'inline; filename="{file_path.name}"',
             "Cache-Control": "private, max-age=3600",  # Cache for 1 hour
             "ETag": etag,
-            "Last-Modified": datetime.utcfromtimestamp(file_stat.st_mtime).strftime("%a, %d %b %Y %H:%M:%S GMT"),
+            "Last-Modified": datetime.fromtimestamp(file_stat.st_mtime, UTC).strftime("%a, %d %b %Y %H:%M:%S GMT"),
         },
     )
 
