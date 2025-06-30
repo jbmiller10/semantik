@@ -7,7 +7,7 @@ REST API for vector similarity search with Qwen3 support
 import os
 import sys
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from contextlib import asynccontextmanager
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
@@ -132,6 +132,7 @@ class HybridSearchResult(BaseModel):
     matched_keywords: List[str] = []
     keyword_score: Optional[float] = None
     combined_score: Optional[float] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 class HybridSearchResponse(BaseModel):
     query: str
@@ -462,7 +463,8 @@ async def search_post(request: SearchRequest = Body(...)):
                         path=r['path'],
                         chunk_id=r['chunk_id'],
                         score=r['score'],
-                        doc_id=r.get('doc_id')
+                        doc_id=r.get('doc_id'),
+                        metadata=r.get('metadata')
                     )
                     results.append(result)
                 break
@@ -605,7 +607,8 @@ async def hybrid_search(
                 doc_id=r['payload'].get('doc_id'),
                 matched_keywords=r.get('matched_keywords', []),
                 keyword_score=r.get('keyword_score'),
-                combined_score=r.get('combined_score')
+                combined_score=r.get('combined_score'),
+                metadata=r['payload'].get('metadata')
             )
             hybrid_results.append(result)
         

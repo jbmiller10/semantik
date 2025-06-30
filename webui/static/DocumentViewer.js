@@ -24,12 +24,11 @@ class DocumentViewer {
      */
     loadLibraries() {
         const libraries = [
-            { name: 'pdfjsLib', check: () => window.pdfjsLib, cdn: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js', local: '/static/libs/pdf.min.js', sri: 'sha256-3cbZGjUEoRBsf9sGeDRj2MAJdC2dJk2Vux22N2VE2lI=' },
-            { name: 'mammoth', check: () => window.mammoth, cdn: 'https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js', local: '/static/libs/mammoth.browser.min.js', sri: 'sha384-...' }, // Placeholder
-            { name: 'marked', check: () => window.marked, cdn: 'https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js', local: '/static/libs/marked.min.js', sri: 'sha384-56AJ42pLgE2L5zN2WTdO52uYm7xYI29Q4FmI5xZ5k4k/K3eG/k2p/3a3Po2sHwJz' },
-            { name: 'DOMPurify', check: () => window.DOMPurify, cdn: 'https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js', local: '/static/libs/purify.min.js', sri: 'sha384-...' }, // Placeholder
-            { name: 'Mark', check: () => window.Mark, cdn: 'https://cdn.jsdelivr.net/npm/mark.js@8.11.1/dist/mark.min.js', local: '/static/libs/mark.min.js', sri: 'sha384-...' }, // Placeholder
-            { name: 'PptxGenJS', check: () => window.PptxGenJS, cdn: 'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js', local: '/static/libs/pptxgen.bundle.js', sri: 'sha384-...' }, // Placeholder
+            { name: 'pdfjsLib', check: () => window.pdfjsLib, cdn: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js', local: '/static/libs/pdf.min.js', sri: 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=' },
+            { name: 'mammoth', check: () => window.mammoth, cdn: 'https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js', local: '/static/libs/mammoth.browser.min.js', sri: 'sha384-nFoSjZIoH3CCp8W639jJyQkuPHinJ2NHe7on1xvlUA7SuGfJAfvMldrsoAVm6ECz' },
+            { name: 'marked', check: () => window.marked, cdn: 'https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js', local: '/static/libs/marked.min.js', sri: 'sha384-odPBjvtXVM/5hOYIr3A1dB+flh0c3wAT3bSesIOqEGmyUA4JoKf/YTWy0XKOYAY7' },
+            { name: 'DOMPurify', check: () => window.DOMPurify, cdn: 'https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js', local: '/static/libs/purify.min.js', sri: 'sha384-cwS6YdhLI7XS60eoDiC+egV0qHp8zI+Cms46R0nbn8JrmoAzV9uFL60etMZhAnSu' },
+            { name: 'Mark', check: () => window.Mark, cdn: 'https://cdn.jsdelivr.net/npm/mark.js@8.11.1/dist/mark.min.js', local: '/static/libs/mark.min.js', sri: 'sha384-t9DGTa+HJ3fETmsPZ37+56VRxK0NsOgFTQ1B4fxaxA+BM48rM5oXrg0/ncF/B3VX' },
             { name: 'emlFormat', check: () => window.emlFormat, cdn: 'https://cdn.jsdelivr.net/npm/eml-format@1.0.4/dist/eml-format.browser.min.js', local: '', sri: 'sha384-a81ubv0aZ39Ff3o+2Te5rLhImfB3b/3s6J2sK5xO3i2lJz1d2qD5fNmnJ2aB9gDE' },
         ];
 
@@ -59,12 +58,6 @@ class DocumentViewer {
                 document.head.appendChild(script);
             }
         });
-
-        if (window.pdfjsLib) {
-            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 
-                'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        }
-    }
 
         if (window.pdfjsLib) {
             window.pdfjsLib.GlobalWorkerOptions.workerSrc = 
@@ -454,62 +447,104 @@ class DocumentViewer {
     }
     
     /**
-     * Render PowerPoint presentations (simplified view)
+     * Render PowerPoint presentations by converting to Markdown server-side
      */
     async renderPPTX() {
-        const { jobId, docId } = this.currentDocument;
-        const response = await fetch(`/api/documents/${jobId}/${docId}`, {
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-            }
-        });
-        const arrayBuffer = await response.arrayBuffer();
-
+        // Wait for Marked to load (we'll use it to render the converted markdown)
+        while (!window.marked) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        const { jobId, docId, filename } = this.currentDocument;
         const container = document.getElementById('viewer-content');
+        
+        // Show loading state
         container.innerHTML = `
-            <div class="flex h-full">
-                <div id="pptx-slides" class="w-1/4 bg-gray-200 overflow-y-auto p-2"></div>
-                <div id="pptx-slide-view" class="w-3/4 p-4 bg-white shadow-inner overflow-auto"></div>
+            <div class="text-center p-8">
+                <i class="fas fa-spinner fa-spin text-4xl text-blue-500 mb-4"></i>
+                <p class="text-gray-600">Converting presentation...</p>
             </div>
         `;
-
-        const pptx = new PptxGenJS();
-        pptx.load(arrayBuffer).then(() => {
-            const slideList = document.getElementById('pptx-slides');
-            pptx.slides.forEach((slide, index) => {
-                const slideElement = document.createElement('div');
-                slideElement.className = 'p-2 mb-2 bg-white rounded shadow cursor-pointer hover:bg-blue-100';
-                slideElement.textContent = `Slide ${index + 1}`;
-                slideElement.onclick = () => this.renderPPTXSlide(slide, index + 1);
-                slideList.appendChild(slideElement);
+        
+        try {
+            const response = await fetch(`/api/documents/${jobId}/${docId}`, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                }
             });
-
-            if (pptx.slides.length > 0) {
-                this.renderPPTXSlide(pptx.slides[0], 1);
+            
+            if (!response.ok) {
+                throw new Error('Failed to load presentation');
             }
-        });
-
+            
+            // Check if the server converted it to markdown
+            const contentType = response.headers.get('content-type');
+            const isConverted = response.headers.get('X-Converted-From') === 'pptx';
+            const imageSessionId = response.headers.get('X-Image-Session-Id');
+            
+            
+            if (contentType && contentType.includes('text/markdown') && isConverted) {
+                // Server converted to markdown, render it
+                const markdown = await response.text();
+                const html = marked.parse(markdown);
+                
+                container.innerHTML = `
+                    <div class="max-w-4xl mx-auto bg-white p-8 shadow-lg">
+                        <div class="bg-orange-50 border-l-4 border-orange-400 p-4 mb-6">
+                            <p class="text-sm text-orange-700">
+                                <i class="fas fa-info-circle mr-2"></i>
+                                This is a converted preview of the PowerPoint presentation. 
+                                <button onclick="documentViewer.downloadDocument()" 
+                                        class="ml-2 underline hover:text-orange-900">
+                                    Download original
+                                </button>
+                            </p>
+                        </div>
+                        <div class="prose prose-sm max-w-none">
+                            ${DOMPurify.sanitize(html)}
+                        </div>
+                    </div>
+                `;
+                
+                // Apply highlights
+                this.applyHighlights();
+            } else {
+                // Fallback: Show download option if conversion failed
+                container.innerHTML = `
+                    <div class="max-w-4xl mx-auto bg-white p-8 shadow-lg">
+                        <div class="text-center py-8">
+                            <i class="fas fa-file-powerpoint text-6xl text-orange-500 mb-4"></i>
+                            <h3 class="text-lg font-semibold mb-2">PowerPoint Presentation</h3>
+                            <p class="text-gray-600 mb-4">
+                                Preview is not available. Please download the file to view it.
+                            </p>
+                            <button onclick="documentViewer.downloadDocument()" 
+                                    class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded">
+                                <i class="fas fa-download mr-2"></i>Download File
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error loading PPTX:', error);
+            container.innerHTML = `
+                <div class="max-w-4xl mx-auto bg-white p-8 shadow-lg">
+                    <div class="text-center py-8">
+                        <i class="fas fa-exclamation-triangle text-4xl text-red-500 mb-4"></i>
+                        <h3 class="text-lg font-semibold mb-2">Error Loading Presentation</h3>
+                        <p class="text-gray-600 mb-4">${this.escapeHtml(error.message)}</p>
+                        <button onclick="documentViewer.downloadDocument()" 
+                                class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded">
+                            <i class="fas fa-download mr-2"></i>Download File
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Hide page navigation
         document.getElementById('viewer-footer').style.display = 'none';
-    }
-    
-    /**
-     * Render a specific PPTX slide
-     */
-    renderPPTXSlide(slide, slideNumber) {
-        const slideView = document.getElementById('pptx-slide-view');
-        let slideContent = '';
-        slide.objects.forEach(object => {
-            if (object.text) {
-                slideContent += `<p>${object.text.text}</p>`;
-            }
-        });
-
-        slideView.innerHTML = `
-            <h3 class="text-xl font-semibold mb-4">Slide ${slideNumber}</h3>
-            <div class="prose">${slideContent}</div>
-        `;
-
-        this.applyHighlights();
     }
 
     /**
@@ -792,11 +827,35 @@ class DocumentViewer {
      * Close the viewer
      */
     close() {
+        // Hide the modal
         document.getElementById('document-viewer-modal').classList.add('hidden');
+        
+        // Clean up PDF resources
+        if (this.pdfDocument) {
+            this.pdfDocument.cleanup();
+            this.pdfDocument.destroy();
+            this.pdfDocument = null;
+        }
+        
+        
+        // Clear content from DOM
+        const contentElement = document.getElementById('viewer-content');
+        if (contentElement) {
+            contentElement.innerHTML = '';
+        }
+        
+        // Reset all properties
         this.currentDocument = null;
-        this.pdfDocument = null;
+        this.currentPage = 1;
+        this.totalPages = 1;
+        this.searchQuery = '';
         this.highlights = [];
         this.currentHighlightIndex = 0;
+        
+        // Force garbage collection hint (browser may ignore)
+        if (window.gc) {
+            window.gc();
+        }
     }
     
     /**

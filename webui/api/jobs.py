@@ -10,7 +10,7 @@ import uuid
 import hashlib
 import gc
 from datetime import datetime
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends

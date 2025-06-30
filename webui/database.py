@@ -59,6 +59,19 @@ def init_db():
             logger.info("Migrating database: adding start_time column")
             c.execute("ALTER TABLE jobs ADD COLUMN start_time TEXT")
     
+    # Check if files table exists and needs migration
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='files'")
+    files_exists = c.fetchone() is not None
+    
+    if files_exists:
+        # Check for missing columns and add them
+        c.execute("PRAGMA table_info(files)")
+        columns = [col[1] for col in c.fetchall()]
+        
+        if 'doc_id' not in columns:
+            logger.info("Migrating database: adding doc_id column to files table")
+            c.execute("ALTER TABLE files ADD COLUMN doc_id TEXT")
+    
     # Jobs table
     c.execute('''CREATE TABLE IF NOT EXISTS jobs
                  (id TEXT PRIMARY KEY,
