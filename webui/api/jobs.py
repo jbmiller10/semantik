@@ -478,7 +478,7 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
     try:
         # Import here to avoid circular import
         from webui.api.files import scan_directory_async
-        
+
         # Scan directory first - use async version to avoid blocking UI
         files = await scan_directory_async(request.directory_path, recursive=True, scan_id=job_id)
 

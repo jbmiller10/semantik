@@ -30,16 +30,10 @@ jobs:
     - name: Lint with Ruff
       run: |
         poetry run ruff check .
-      env:
-        QDRANT_HOST: localhost
-        JWT_SECRET_KEY: test-secret-key
     
     - name: Type check with Mypy
       run: |
         poetry run mypy vecpipe webui
-      env:
-        QDRANT_HOST: localhost
-        JWT_SECRET_KEY: test-secret-key
 
   test:
     runs-on: ubuntu-latest
@@ -70,7 +64,7 @@ jobs:
     - name: Wait for Qdrant to be ready
       run: |
         for i in {1..30}; do
-          if curl -f http://localhost:6333/health 2>/dev/null; then
+          if curl -f http://localhost:6333/ 2>/dev/null; then
             echo "Qdrant is ready!"
             break
           fi
