@@ -204,9 +204,9 @@ class TestAuthEndpoints:
         assert data["username"] == test_user["username"]
         assert data["email"] == test_user["email"]
 
-    def test_unauthorized_access(self, test_client):
+    def test_unauthorized_access(self, unauthenticated_test_client):
         """Test accessing protected endpoint without auth."""
-        response = test_client.get("/api/auth/me")
+        response = unauthenticated_test_client.get("/api/auth/me")
 
         assert response.status_code == 403
         assert "Not authenticated" in response.json()["detail"]

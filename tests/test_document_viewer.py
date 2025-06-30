@@ -86,7 +86,7 @@ class TestDocumentSecurity:
 
                 # Mock the file size check
                 with patch("pathlib.Path.stat") as mock_stat:
-                    mock_stat.return_value = Mock(st_size=101 * 1024 * 1024)  # 101 MB
+                    mock_stat.return_value = Mock(st_size=501 * 1024 * 1024)  # 501 MB
 
                     with pytest.raises(HTTPException) as exc_info:
                         validate_file_access("job123", "test123", {"user": "test"})
@@ -98,50 +98,34 @@ class TestDocumentSecurity:
 class TestDocumentEndpoints:
     """Test the document serving endpoints"""
 
-    @pytest.fixture()
-    def client(self):
-        """Create test client"""
-        return TestClient(app)
-
-    @pytest.fixture()
-    def auth_headers(self):
-        """Mock authentication headers"""
-        return {"Authorization": "Bearer test-token"}
-
-    def test_get_document_unsupported_extension(self, client, auth_headers):
+    def test_get_document_unsupported_extension(self, test_client):
         """Test that unsupported file extensions are rejected"""
-        with patch("webui.api.documents.get_current_user") as mock_auth:
-            mock_auth.return_value = {"user": "test"}
+        with patch("webui.api.documents.validate_file_access") as mock_validate:
+            mock_validate.return_value = {"doc_id": "test123", "path": "/path/to/file.exe"}  # Unsupported extension
 
-            with patch("webui.api.documents.validate_file_access") as mock_validate:
-                mock_validate.return_value = {"doc_id": "test123", "path": "/path/to/file.exe"}  # Unsupported extension
+            response = test_client.get("/api/documents/job123/test123")
 
-                response = client.get("/api/documents/job123/test123", headers=auth_headers)
+            assert response.status_code == 415
+            assert "Unsupported file type" in response.json()["detail"]
 
-                assert response.status_code == 415
-                assert "Unsupported file type" in response.json()["detail"]
-
-    def test_get_document_info_success(self, client, auth_headers):
+    def test_get_document_info_success(self, test_client):
         """Test successful document info retrieval"""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a test file
             test_file = Path(tmpdir) / "test.pdf"
             test_file.write_text("test content")
 
-            with patch("webui.api.documents.get_current_user") as mock_auth:
-                mock_auth.return_value = {"user": "test"}
+            with patch("webui.api.documents.validate_file_access") as mock_validate:
+                mock_validate.return_value = {"doc_id": "test123", "path": str(test_file), "name": "test.pdf"}
 
-                with patch("webui.api.documents.validate_file_access") as mock_validate:
-                    mock_validate.return_value = {"doc_id": "test123", "path": str(test_file), "name": "test.pdf"}
+                response = test_client.get("/api/documents/job123/test123/info")
 
-                    response = client.get("/api/documents/job123/test123/info", headers=auth_headers)
-
-                    assert response.status_code == 200
-                    data = response.json()
-                    assert data["filename"] == "test.pdf"
-                    assert data["size"] == len("test content")
-                    assert data["extension"] == ".pdf"
-                    assert data["mime_type"] == "application/pdf"
+                assert response.status_code == 200
+                data = response.json()
+                assert data["filename"] == "test.pdf"
+                assert data["size"] == len("test content")
+                assert data["extension"] == ".pdf"
+                assert data["mime_type"] == "application/pdf"
 
     def test_range_request_parsing(self):
         """Test HTTP Range header parsing"""
@@ -172,7 +156,7 @@ class TestDocumentViewerConstants:
         assert ".txt" in SUPPORTED_EXTENSIONS
 
         # Check MAX_FILE_SIZE
-        assert MAX_FILE_SIZE == 100 * 1024 * 1024  # 100 MB
+        assert MAX_FILE_SIZE == 500 * 1024 * 1024  # 500 MB
 
         # Check CHUNK_SIZE
         assert CHUNK_SIZE == 8192  # 8KB
