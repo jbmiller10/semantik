@@ -3,7 +3,7 @@ Authentication routes for the Web UI
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -58,7 +58,7 @@ async def login(login_data: UserLogin):
     refresh_token = create_refresh_token(data={"sub": user["username"]})
 
     # Save refresh token
-    expires_at = datetime.utcnow() + timedelta(days=30)
+    expires_at = datetime.now(UTC) + timedelta(days=30)
     # Hash the token for storage
     token_hash = pwd_context.hash(refresh_token)
     database.save_refresh_token(user["id"], token_hash, expires_at)
@@ -85,7 +85,7 @@ async def refresh_token(refresh_token: str):
 
     # Revoke old refresh token and save new one
     database.revoke_refresh_token(refresh_token)
-    expires_at = datetime.utcnow() + timedelta(days=30)
+    expires_at = datetime.now(UTC) + timedelta(days=30)
     # Hash the new token for storage
     token_hash = pwd_context.hash(new_refresh_token)
     database.save_refresh_token(user["id"], token_hash, expires_at)

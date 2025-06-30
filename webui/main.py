@@ -8,6 +8,7 @@ import sys
 
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 # Add parent directory to path
@@ -16,7 +17,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from webui.api import auth, documents, files, jobs, metrics, models, root, search, settings
 from webui.api.files import scan_websocket
 from webui.api.jobs import websocket_endpoint
-from webui.rate_limiter import _rate_limit_exceeded_handler, limiter
+from webui.rate_limiter import limiter
 
 
 def create_app() -> FastAPI:
