@@ -371,7 +371,15 @@ document.getElementById('create-job-form').addEventListener('submit', async (e) 
     e.preventDefault();
     
     if (scannedFiles.length === 0) {
-        alert('Please scan a directory first');
+        // Highlight the scan button instead of alert
+        const scanButton = document.getElementById('scan-button');
+        scanButton.classList.add('animate-pulse', 'bg-red-600', 'text-white');
+        scanButton.innerHTML = '<i class="fas fa-exclamation-circle mr-2"></i>Scan Required';
+        setTimeout(() => {
+            scanButton.classList.remove('animate-pulse', 'bg-red-600', 'text-white');
+            scanButton.classList.add('bg-gray-600');
+            scanButton.innerHTML = '<i class="fas fa-folder-open mr-2"></i>Scan';
+        }, 3000);
         return;
     }
     
@@ -382,6 +390,12 @@ document.getElementById('create-job-form').addEventListener('submit', async (e) 
     
     const vectorDimValue = document.getElementById('vector-dim').value;
     const instructionValue = document.getElementById('instruction').value;
+    
+    // Get the submit button and disable it
+    const submitButton = e.target.querySelector('button[type="submit"]');
+    const originalButtonText = submitButton.innerHTML;
+    submitButton.disabled = true;
+    submitButton.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Creating Job...';
     
     try {
         // First, get a new job ID
@@ -451,17 +465,44 @@ document.getElementById('create-job-form').addEventListener('submit', async (e) 
             scanWs.close();
         }
         hideScanningProgress();
-        alert(`Failed to create job: ${error.message}`);
+        
+        // Show error in a more user-friendly way
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'bg-red-50 border border-red-200 rounded-lg p-4 mb-4';
+        errorDiv.innerHTML = `
+            <h4 class="text-red-800 font-semibold mb-2">
+                <i class="fas fa-exclamation-circle mr-2"></i>Failed to Create Job
+            </h4>
+            <p class="text-red-700">${error.message}</p>
+        `;
+        
+        // Insert error message at the top of the form
+        const form = document.getElementById('create-job-form');
+        form.insertBefore(errorDiv, form.firstChild);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => errorDiv.remove(), 5000);
+    } finally {
+        // Restore submit button
+        submitButton.disabled = false;
+        submitButton.innerHTML = originalButtonText;
     }
 });
 
 // Refresh jobs list
 async function refreshJobs() {
     try {
-        const response = await fetch('/api/jobs', {
-            headers: { 'Authorization': `Bearer ${auth.getToken()}` }
-        });
-        const jobs = await response.json();
+        const [jobsResponse, collectionsResponse] = await Promise.all([
+            fetch('/api/jobs', {
+                headers: { 'Authorization': `Bearer ${auth.getToken()}` }
+            }),
+            fetch('/api/jobs/collections-status', {
+                headers: { 'Authorization': `Bearer ${auth.getToken()}` }
+            })
+        ]);
+        
+        const jobs = await jobsResponse.json();
+        const collectionsStatus = await collectionsResponse.json();
         
         const jobsList = document.getElementById('jobs-list');
         
@@ -473,6 +514,8 @@ async function refreshJobs() {
         jobsList.innerHTML = jobs.map(job => {
             const progress = job.total_files > 0 ? (job.processed_files / job.total_files * 100).toFixed(1) : 0;
             const isRunning = job.status === 'processing' || job.status === 'scanning';
+            const collectionInfo = collectionsStatus[job.id];
+            const hasCollection = collectionInfo && collectionInfo.exists && collectionInfo.point_count > 0;
             
             return `
             <div class="border ${isRunning ? 'border-blue-300 shadow-lg' : 'border-gray-200'} rounded-lg p-4 ${isRunning ? 'job-card-running' : ''} transition-all duration-300" data-job-id="${job.id}">
@@ -486,6 +529,17 @@ async function refreshJobs() {
                         <span class="px-3 py-1 rounded-full text-sm ${getStatusBadgeClass(job.status)} ${isRunning ? 'animate-pulse' : ''}">
                             ${job.status}
                         </span>
+                        ${job.status === 'completed' ? `
+                            ${hasCollection ? `
+                                <span class="px-2 py-1 rounded-full text-xs bg-green-100 text-green-800" title="${collectionInfo.point_count.toLocaleString()} vectors available">
+                                    <i class="fas fa-database mr-1"></i>Ready
+                                </span>
+                            ` : `
+                                <span class="px-2 py-1 rounded-full text-xs bg-red-100 text-red-800" title="Collection missing or empty">
+                                    <i class="fas fa-exclamation-triangle mr-1"></i>No Data
+                                </span>
+                            `}
+                        ` : ''}
                     </div>
                 </div>
                 
@@ -560,10 +614,18 @@ async function refreshJobs() {
                         </button>
                     ` : ''}
                     ${job.status === 'completed' ? `
-                        <button onclick="useJobForSearch('${job.id}', '${job.name}')"
-                                class="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition-colors">
-                            <i class="fas fa-search mr-1"></i>Search
-                        </button>
+                        ${hasCollection ? `
+                            <button onclick="useJobForSearch('${job.id}', '${job.name}')"
+                                    class="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition-colors">
+                                <i class="fas fa-search mr-1"></i>Search
+                            </button>
+                        ` : `
+                            <button disabled
+                                    class="px-3 py-1 bg-gray-400 text-white rounded text-sm cursor-not-allowed"
+                                    title="Collection not available">
+                                <i class="fas fa-search mr-1"></i>Search
+                            </button>
+                        `}
                     ` : ''}
                 </div>
             </div>
@@ -657,24 +719,105 @@ function connectToJobWebSocket(jobId) {
 
 // Load job collections for search
 async function loadJobCollections() {
+    // Add loading animation to refresh button if it exists
+    const refreshButton = document.querySelector('button[onclick="loadJobCollections()"]');
+    if (refreshButton) {
+        const icon = refreshButton.querySelector('i');
+        icon.classList.add('fa-spin');
+    }
+    
     try {
-        const response = await fetch('/api/jobs', {
-            headers: { 'Authorization': `Bearer ${auth.getToken()}` }
-        });
-        const jobs = await response.json();
+        // First get all jobs
+        const [jobsResponse, collectionsResponse] = await Promise.all([
+            fetch('/api/jobs', {
+                headers: { 'Authorization': `Bearer ${auth.getToken()}` }
+            }),
+            fetch('/api/jobs/collections-status', {
+                headers: { 'Authorization': `Bearer ${auth.getToken()}` }
+            })
+        ]);
+        
+        const jobs = await jobsResponse.json();
+        const collectionsStatus = await collectionsResponse.json();
         
         const select = document.getElementById('search-collection');
-        select.innerHTML = '';
+        select.innerHTML = '<option value="">Select a collection...</option>';
         
-        jobs.filter(job => job.status === 'completed').forEach(job => {
-            const option = document.createElement('option');
-            option.value = job.id;
-            option.textContent = job.name;
-            select.appendChild(option);
+        // Group jobs by availability
+        const availableJobs = [];
+        const unavailableJobs = [];
+        
+        jobs.forEach(job => {
+            const collectionInfo = collectionsStatus[job.id];
+            if (collectionInfo && collectionInfo.exists && collectionInfo.point_count > 0) {
+                availableJobs.push({ job, collectionInfo });
+            } else if (job.status === 'completed') {
+                // Job is completed but collection doesn't exist or is empty
+                unavailableJobs.push({ job, collectionInfo });
+            }
         });
+        
+        // Add available collections first
+        if (availableJobs.length > 0) {
+            const availableGroup = document.createElement('optgroup');
+            availableGroup.label = 'Available Collections';
+            
+            availableJobs.forEach(({ job, collectionInfo }) => {
+                const option = document.createElement('option');
+                option.value = job.id;
+                option.textContent = `${job.name} (${collectionInfo.point_count.toLocaleString()} vectors)`;
+                option.className = 'text-green-700';
+                availableGroup.appendChild(option);
+            });
+            
+            select.appendChild(availableGroup);
+        }
+        
+        // Add unavailable collections with warning
+        if (unavailableJobs.length > 0) {
+            const unavailableGroup = document.createElement('optgroup');
+            unavailableGroup.label = 'Unavailable Collections';
+            
+            unavailableJobs.forEach(({ job, collectionInfo }) => {
+                const option = document.createElement('option');
+                option.value = job.id;
+                option.disabled = true;
+                
+                if (collectionInfo && !collectionInfo.exists) {
+                    option.textContent = `${job.name} ⚠️ (collection missing)`;
+                } else if (collectionInfo && collectionInfo.point_count === 0) {
+                    option.textContent = `${job.name} ⚠️ (no vectors)`;
+                } else {
+                    option.textContent = `${job.name} ⚠️ (unavailable)`;
+                }
+                
+                option.className = 'text-red-600';
+                unavailableGroup.appendChild(option);
+            });
+            
+            select.appendChild(unavailableGroup);
+        }
+        
+        // If no available collections, show a helpful message
+        if (availableJobs.length === 0) {
+            const messageOption = document.createElement('option');
+            messageOption.textContent = 'No collections available for search';
+            messageOption.disabled = true;
+            select.appendChild(messageOption);
+        }
         
     } catch (error) {
         console.error('Failed to load collections:', error);
+        
+        // Show error in dropdown
+        const select = document.getElementById('search-collection');
+        select.innerHTML = '<option value="">Error loading collections</option>';
+    } finally {
+        // Remove loading animation from refresh button
+        if (refreshButton) {
+            const icon = refreshButton.querySelector('i');
+            icon.classList.remove('fa-spin');
+        }
     }
 }
 
@@ -703,6 +846,17 @@ document.getElementById('search-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     
     const useHybridSearch = document.getElementById('use-hybrid-search').checked;
+    const searchButton = e.target.querySelector('button[type="submit"]');
+    const originalButtonText = searchButton.innerHTML;
+    
+    // Show loading state
+    searchButton.disabled = true;
+    searchButton.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Searching...';
+    
+    // Clear previous results
+    const resultsDiv = document.getElementById('search-results');
+    const container = document.getElementById('results-container');
+    resultsDiv.classList.add('hidden');
     
     if (!useHybridSearch) {
         // Vector search
@@ -721,14 +875,31 @@ document.getElementById('search-form').addEventListener('submit', async (e) => {
             
             if (!response.ok) {
                 const error = await response.json();
-                throw new Error(error.detail);
+                throw new Error(error.detail || 'Search request failed');
             }
             
             const results = await response.json();
             displaySearchResults(results);
             
         } catch (error) {
-            alert(`Search failed: ${error.message}`);
+            // Display error in results area instead of alert
+            resultsDiv.classList.remove('hidden');
+            container.innerHTML = `
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <h4 class="text-red-800 font-semibold mb-2">
+                        <i class="fas fa-exclamation-circle mr-2"></i>Search Error
+                    </h4>
+                    <p class="text-red-700">${error.message}</p>
+                    ${error.message.includes('Collection not found') ? 
+                        '<p class="text-red-600 text-sm mt-2">The selected collection may not exist. Please ensure the embedding job completed successfully.</p>' : ''}
+                    ${error.message.includes('failed') && !error.message.includes('Collection') ? 
+                        '<p class="text-red-600 text-sm mt-2">The search service may be unavailable. Please check if all services are running.</p>' : ''}
+                </div>
+            `;
+        } finally {
+            // Restore button state
+            searchButton.disabled = false;
+            searchButton.innerHTML = originalButtonText;
         }
     } else {
         // Hybrid search
@@ -749,14 +920,31 @@ document.getElementById('search-form').addEventListener('submit', async (e) => {
             
             if (!response.ok) {
                 const error = await response.json();
-                throw new Error(error.detail);
+                throw new Error(error.detail || 'Hybrid search request failed');
             }
             
             const results = await response.json();
             displayHybridSearchResults(results);
             
         } catch (error) {
-            alert(`Hybrid search failed: ${error.message}`);
+            // Display error in results area instead of alert
+            resultsDiv.classList.remove('hidden');
+            container.innerHTML = `
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <h4 class="text-red-800 font-semibold mb-2">
+                        <i class="fas fa-exclamation-circle mr-2"></i>Hybrid Search Error
+                    </h4>
+                    <p class="text-red-700">${error.message}</p>
+                    ${error.message.includes('Collection not found') ? 
+                        '<p class="text-red-600 text-sm mt-2">The selected collection may not exist. Please ensure the embedding job completed successfully.</p>' : ''}
+                    ${error.message.includes('failed') && !error.message.includes('Collection') ? 
+                        '<p class="text-red-600 text-sm mt-2">The search service may be unavailable. Please check if all services are running.</p>' : ''}
+                </div>
+            `;
+        } finally {
+            // Restore button state
+            searchButton.disabled = false;
+            searchButton.innerHTML = originalButtonText;
         }
     }
 });
