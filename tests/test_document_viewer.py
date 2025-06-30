@@ -22,14 +22,14 @@ class TestDocumentSecurity:
         """Test that path traversal attempts are blocked"""
         # Mock database responses
         with patch("webui.api.documents.database") as mock_db:
-            mock_db.get_job.return_value = {"directory_path": "/safe/job/directory"}
+            mock_db.get_job.return_value = {"directory_path": "/safe/job/directory", "user_id": 1}
             mock_db.get_job_files.return_value = [
                 {"doc_id": "test123", "path": "/safe/job/directory/../../../etc/passwd"}
             ]
 
             # Should raise HTTPException for path traversal
             with pytest.raises(HTTPException) as exc_info:
-                validate_file_access("job123", "test123", {"user": "test"})
+                validate_file_access("job123", "test123", {"id": 1, "user": "test"})
 
             assert exc_info.value.status_code == 403
             assert exc_info.value.detail == "Access denied"
@@ -42,11 +42,11 @@ class TestDocumentSecurity:
             test_file.write_text("test content")
 
             with patch("webui.api.documents.database") as mock_db:
-                mock_db.get_job.return_value = {"directory_path": tmpdir}
+                mock_db.get_job.return_value = {"directory_path": tmpdir, "user_id": 1}
                 mock_db.get_job_files.return_value = [{"doc_id": "test123", "path": str(test_file)}]
 
                 # Should not raise exception for valid path
-                result = validate_file_access("job123", "test123", {"user": "test"})
+                result = validate_file_access("job123", "test123", {"id": 1, "user": "test"})
                 assert result["doc_id"] == "test123"
                 assert result["path"] == str(test_file)
 
@@ -56,7 +56,7 @@ class TestDocumentSecurity:
             mock_db.get_job.return_value = None
 
             with pytest.raises(HTTPException) as exc_info:
-                validate_file_access("job123", "test123", {"user": "test"})
+                validate_file_access("job123", "test123", {"id": 1, "user": "test"})
 
             assert exc_info.value.status_code == 404
             assert exc_info.value.detail == "Job not found"
@@ -64,11 +64,11 @@ class TestDocumentSecurity:
     def test_validate_file_access_nonexistent_document(self):
         """Test handling of nonexistent document"""
         with patch("webui.api.documents.database") as mock_db:
-            mock_db.get_job.return_value = {"directory_path": "/safe/job/directory"}
+            mock_db.get_job.return_value = {"directory_path": "/safe/job/directory", "user_id": 1}
             mock_db.get_job_files.return_value = []
 
             with pytest.raises(HTTPException) as exc_info:
-                validate_file_access("job123", "test123", {"user": "test"})
+                validate_file_access("job123", "test123", {"id": 1, "user": "test"})
 
             assert exc_info.value.status_code == 404
             assert exc_info.value.detail == "Document not found"
@@ -81,7 +81,7 @@ class TestDocumentSecurity:
             test_file.write_text("x" * 1024)  # Small file for testing
 
             with patch("webui.api.documents.database") as mock_db:
-                mock_db.get_job.return_value = {"directory_path": tmpdir}
+                mock_db.get_job.return_value = {"directory_path": tmpdir, "user_id": 1}
                 mock_db.get_job_files.return_value = [{"doc_id": "test123", "path": str(test_file)}]
 
                 # Mock the file size check
@@ -89,10 +89,28 @@ class TestDocumentSecurity:
                     mock_stat.return_value = Mock(st_size=501 * 1024 * 1024)  # 501 MB
 
                     with pytest.raises(HTTPException) as exc_info:
-                        validate_file_access("job123", "test123", {"user": "test"})
+                        validate_file_access("job123", "test123", {"id": 1, "user": "test"})
 
                     assert exc_info.value.status_code == 413
                     assert exc_info.value.detail == "File is too large to preview"
+    
+    def test_validate_file_access_unauthorized_user(self):
+        """Test that users cannot access jobs they don't own"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a test file
+            test_file = Path(tmpdir) / "test.pdf"
+            test_file.write_text("test content")
+            
+            with patch("webui.api.documents.database") as mock_db:
+                # Job belongs to user_id 2, but current user has id 1
+                mock_db.get_job.return_value = {"directory_path": tmpdir, "user_id": 2}
+                mock_db.get_job_files.return_value = [{"doc_id": "test123", "path": str(test_file)}]
+                
+                with pytest.raises(HTTPException) as exc_info:
+                    validate_file_access("job123", "test123", {"id": 1, "user": "test"})
+                
+                assert exc_info.value.status_code == 403
+                assert exc_info.value.detail == "Access denied"
 
 
 class TestDocumentEndpoints:
@@ -116,7 +134,14 @@ class TestDocumentEndpoints:
             test_file.write_text("test content")
 
             with patch("webui.api.documents.validate_file_access") as mock_validate:
-                mock_validate.return_value = {"doc_id": "test123", "path": str(test_file), "name": "test.pdf"}
+                mock_validate.return_value = {
+                    "doc_id": "test123",
+                    "path": str(test_file),
+                    "name": "test.pdf",
+                    "size": len("test content"),
+                    "extension": ".pdf",
+                    "modified": "2024-01-01T00:00:00"
+                }
 
                 response = test_client.get("/api/documents/job123/test123/info")
 
@@ -125,7 +150,7 @@ class TestDocumentEndpoints:
                 assert data["filename"] == "test.pdf"
                 assert data["size"] == len("test content")
                 assert data["extension"] == ".pdf"
-                assert data["mime_type"] == "application/pdf"
+                assert data["supported"] is True
 
     def test_range_request_parsing(self):
         """Test HTTP Range header parsing"""

@@ -30,12 +30,12 @@ def test_client(test_user):
         return test_user
 
     app.dependency_overrides[get_current_user] = override_get_current_user
-    
+
     client = TestClient(app)
-    
+
     # Ensure we clean up after the test
     yield client
-    
+
     app.dependency_overrides.clear()
 
 
@@ -43,10 +43,10 @@ def test_client(test_user):
 def unauthenticated_test_client():
     """Create a test client without authentication override."""
     from webui.main import app
-    
+
     # Clear any existing overrides
     app.dependency_overrides.clear()
-    
+
     return TestClient(app)
 
 

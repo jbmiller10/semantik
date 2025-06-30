@@ -117,7 +117,7 @@ class TestDocumentViewer:
     def test_authentication_required(self, unauthenticated_test_client):
         """Test that authentication is required"""
         response = unauthenticated_test_client.get("/api/documents/test-job/test-doc")
-        assert response.status_code == 401
+        assert response.status_code == 403
 
     @patch("webui.database.get_job_files")
     @patch("webui.database.get_job")
