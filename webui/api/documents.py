@@ -133,6 +133,10 @@ def validate_file_access(job_id: str, doc_id: str, current_user: dict[str, Any])
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
+    # Check if the current user owns the job
+    if job.get("user_id") != current_user.get("id"):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Get file record from database
     files = database.get_job_files(job_id)
     file_record = None
