@@ -9,7 +9,7 @@ import logging
 import os
 import sqlite3
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from passlib.context import CryptContext
@@ -128,7 +128,7 @@ def init_db():
     conn.close()
 
 
-def init_auth_tables(conn: sqlite3.Connection, c: sqlite3.Cursor):
+def init_auth_tables(_conn: sqlite3.Connection, c: sqlite3.Cursor):
     """Initialize authentication tables in the database"""
     # Users table
     c.execute(
@@ -222,9 +222,9 @@ def create_job(job_data: dict[str, Any]) -> str:
     c = conn.cursor()
 
     c.execute(
-        """INSERT INTO jobs 
+        """INSERT INTO jobs
                  (id, name, description, status, created_at, updated_at,
-                  directory_path, model_name, chunk_size, chunk_overlap, 
+                  directory_path, model_name, chunk_size, chunk_overlap,
                   batch_size, vector_dim, quantization, instruction)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
@@ -265,7 +265,7 @@ def update_job(job_id: str, updates: dict[str, Any]):
 
     # Always update the updated_at timestamp
     update_fields.append("updated_at = ?")
-    values.append(datetime.utcnow().isoformat())
+    values.append(datetime.now(timezone.utc).isoformat())
 
     # Add job_id for WHERE clause
     values.append(job_id)
@@ -377,7 +377,7 @@ def update_file_status(
     c = conn.cursor()
 
     c.execute(
-        """UPDATE files 
+        """UPDATE files
                  SET status = ?, error = ?, chunks_created = ?, vectors_created = ?
                  WHERE job_id = ? AND path = ?""",
         (status, error, chunks_created, vectors_created, job_id, file_path),
@@ -447,7 +447,7 @@ def create_user(username: str, email: str, hashed_password: str, full_name: str 
         raise ValueError("User with this username or email already exists")
 
     # Create user
-    created_at = datetime.utcnow().isoformat()
+    created_at = datetime.now(timezone.utc).isoformat()
 
     c.execute(
         """INSERT INTO users (username, email, full_name, hashed_password, created_at)
@@ -474,7 +474,7 @@ def update_user_last_login(user_id: int):
     """Update user's last login timestamp"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("UPDATE users SET last_login = ? WHERE id = ?", (datetime.utcnow().isoformat(), user_id))
+    c.execute("UPDATE users SET last_login = ? WHERE id = ?", (datetime.now(timezone.utc).isoformat(), user_id))
     conn.commit()
     conn.close()
 
@@ -488,7 +488,7 @@ def save_refresh_token(user_id: int, token_hash: str, expires_at: datetime):
     c.execute(
         """INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at)
                  VALUES (?, ?, ?, ?)""",
-        (user_id, token_hash, expires_at.isoformat(), datetime.utcnow().isoformat()),
+        (user_id, token_hash, expires_at.isoformat(), datetime.now(timezone.utc).isoformat()),
     )
 
     conn.commit()
@@ -503,9 +503,9 @@ def verify_refresh_token(token: str) -> int | None:
 
     # Get all non-revoked, non-expired tokens
     c.execute(
-        """SELECT * FROM refresh_tokens 
+        """SELECT * FROM refresh_tokens
                  WHERE is_revoked = 0 AND expires_at > ?""",
-        (datetime.utcnow().isoformat(),),
+        (datetime.now(timezone.utc).isoformat(),),
     )
 
     tokens = c.fetchall()
@@ -519,14 +519,14 @@ def verify_refresh_token(token: str) -> int | None:
     return None
 
 
-def revoke_refresh_token(token: str):
+def revoke_refresh_token(_token: str):
     """Revoke a refresh token"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
     # Find and revoke the token
     c.execute(
-        """UPDATE refresh_tokens SET is_revoked = 1 
+        """UPDATE refresh_tokens SET is_revoked = 1
                  WHERE token_hash IN (SELECT token_hash FROM refresh_tokens WHERE is_revoked = 0)"""
     )
 

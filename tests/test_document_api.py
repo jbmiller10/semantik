@@ -97,7 +97,7 @@ class TestDocumentAPI:
             current_time = time.time()
             expired_sessions = []
 
-            for sid, (user_id, created_time, image_dir) in IMAGE_SESSIONS.items():
+            for sid, (_user_id, created_time, image_dir) in IMAGE_SESSIONS.items():
                 if current_time - created_time > TEMP_IMAGE_TTL:
                     expired_sessions.append(sid)
                     if image_dir.exists():
@@ -121,7 +121,7 @@ class TestDocumentViewer:
 
     @patch("webui.database.get_job_files")
     @patch("webui.database.get_job")
-    def test_authorization_check(self, mock_get_job, mock_get_files, test_client, test_user, temp_test_dir):
+    def test_authorization_check(self, mock_get_job, mock_get_files, test_client, temp_test_dir):
         """Test that user authorization is checked"""
 
         # Create test file
