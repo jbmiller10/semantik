@@ -1,12 +1,11 @@
 """Test authentication endpoints and functionality."""
 
-import pytest
-from datetime import datetime, timedelta
-from jose import jwt
-from fastapi import status
+from datetime import datetime, timedelta, timezone
 
-from webui.auth import pwd_context, create_access_token, verify_password, UserCreate
-from webui.database import get_user, create_user
+import pytest
+from jose import jwt
+
+from webui.auth import create_access_token, pwd_context, verify_password
 
 
 class TestPasswordHashing:
@@ -37,7 +36,7 @@ class TestJWTTokens:
 
         assert decoded["sub"] == "testuser"
         assert "exp" in decoded
-        assert datetime.fromtimestamp(decoded["exp"]) > datetime.utcnow()
+        assert datetime.fromtimestamp(decoded["exp"], tz=timezone.utc) > datetime.now(timezone.utc)
 
     def test_create_access_token_with_expiry(self):
         """Test access token with custom expiry."""
@@ -52,8 +51,8 @@ class TestJWTTokens:
         # Check that expiry is set correctly
         assert "exp" in decoded
         # Verify that the token has the correct expiry time (approximately 15 minutes)
-        current_time = datetime.utcnow()
-        exp_time = datetime.utcfromtimestamp(decoded["exp"])
+        current_time = datetime.now(timezone.utc)
+        exp_time = datetime.fromtimestamp(decoded["exp"], tz=timezone.utc)
         time_diff = (exp_time - current_time).total_seconds()
         # Should be approximately 15 minutes (900 seconds), allow some tolerance
         assert 890 < time_diff < 910
@@ -62,7 +61,7 @@ class TestJWTTokens:
 class TestAuthEndpoints:
     """Test authentication API endpoints."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def test_user_data(self):
         """Test user registration data."""
         return {
@@ -76,17 +75,17 @@ class TestAuthEndpoints:
         """Test user registration endpoint."""
 
         # Mock database functions
-        def mock_get_user(username):
+        def mock_get_user(_username):
             return None
 
-        def mock_create_user(username, email, hashed_password, full_name=None):
+        def mock_create_user(username, email, hashed_password, full_name=None):  # noqa: ARG001
             return {
                 "id": 1,
                 "username": username,
                 "email": email,
                 "full_name": full_name,
                 "disabled": False,
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }
 
         monkeypatch.setattr("webui.database.get_user", mock_get_user)
@@ -103,7 +102,7 @@ class TestAuthEndpoints:
     def test_register_duplicate_user(self, test_client, test_user_data, monkeypatch):
         """Test registering a duplicate user."""
 
-        def mock_create_user(username, email, hashed_password, full_name=None):
+        def mock_create_user(username, email, hashed_password, full_name=None):  # noqa: ARG001
             raise ValueError("User with this username or email already exists")
 
         monkeypatch.setattr("webui.database.create_user", mock_create_user)
@@ -127,10 +126,10 @@ class TestAuthEndpoints:
                 "disabled": False,
             }
 
-        def mock_update_last_login(user_id):
+        def mock_update_last_login(_user_id):
             pass
 
-        def mock_save_refresh_token(user_id, token_hash, expires_at):
+        def mock_save_refresh_token(_user_id, _token_hash, _expires_at):
             pass
 
         monkeypatch.setattr("webui.database.get_user", mock_get_user)
@@ -171,10 +170,10 @@ class TestAuthEndpoints:
         def mock_get_user(username):
             return {"id": 1, "username": username, "hashed_password": hashed_password, "disabled": True}
 
-        def mock_update_last_login(user_id):
+        def mock_update_last_login(_user_id):
             pass
 
-        def mock_save_refresh_token(user_id, token_hash, expires_at):
+        def mock_save_refresh_token(_user_id, _token_hash, _expires_at):
             pass
 
         monkeypatch.setattr("webui.database.get_user", mock_get_user)
@@ -192,7 +191,7 @@ class TestAuthEndpoints:
     def test_get_current_user(self, test_client, auth_headers, test_user, monkeypatch):
         """Test getting current user info."""
 
-        def mock_get_user(username):
+        def mock_get_user(_username):
             return test_user
 
         monkeypatch.setattr("webui.database.get_user", mock_get_user)

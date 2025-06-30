@@ -19,11 +19,11 @@ os.environ.setdefault("DEFAULT_COLLECTION", "test_collection")
 os.environ.setdefault("USE_MOCK_EMBEDDINGS", "true")
 
 
-@pytest.fixture
+@pytest.fixture()
 def test_client(test_user):
     """Create a test client for the FastAPI app with auth mocked."""
-    from webui.main import app
     from webui.auth import get_current_user
+    from webui.main import app
 
     # Override the authentication dependency
     async def override_get_current_user():
@@ -39,7 +39,7 @@ def test_client(test_user):
     app.dependency_overrides.clear()
 
 
-@pytest.fixture
+@pytest.fixture()
 def unauthenticated_test_client():
     """Create a test client without authentication override."""
     from webui.main import app
@@ -50,7 +50,7 @@ def unauthenticated_test_client():
     return TestClient(app)
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_qdrant_client():
     """Mock Qdrant client for testing."""
     mock = MagicMock()
@@ -59,10 +59,10 @@ def mock_qdrant_client():
     return mock
 
 
-@pytest.fixture
+@pytest.fixture()
 def test_user():
     """Test user data."""
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     return {
         "id": 1,
@@ -70,11 +70,11 @@ def test_user():
         "email": "test@example.com",
         "full_name": "Test User",
         "disabled": False,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
-@pytest.fixture
+@pytest.fixture()
 def auth_headers(test_user):
     """Create authorization headers with a test JWT token."""
     from webui.auth import create_access_token
@@ -83,7 +83,7 @@ def auth_headers(test_user):
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.fixture
+@pytest.fixture()
 def temp_test_file(tmp_path):
     """Create a temporary test file."""
     test_file = tmp_path / "test_document.txt"
@@ -91,7 +91,7 @@ def temp_test_file(tmp_path):
     return test_file
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_embedding_service():
     """Mock embedding service."""
     mock = MagicMock()
@@ -101,8 +101,8 @@ def mock_embedding_service():
 
 
 @pytest.fixture(autouse=True)
-def reset_singletons():
+def _reset_singletons():
     """Reset any singleton instances between tests."""
     # This helps ensure test isolation
-    yield
+    return
     # Cleanup code here if needed

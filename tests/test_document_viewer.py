@@ -8,11 +8,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 from fastapi import HTTPException
-from fastapi.testclient import TestClient
 
 # Import the modules to test
 from webui.api.documents import validate_file_access
-from webui.main import app
 
 
 class TestDocumentSecurity:
@@ -157,14 +155,13 @@ class TestDocumentEndpoints:
         from webui.api.documents import get_document
 
         # Test valid range header
-        with patch("webui.api.documents.validate_file_access"):
-            with patch("pathlib.Path.exists") as mock_exists:
-                mock_exists.return_value = True
+        with patch("webui.api.documents.validate_file_access"), patch("pathlib.Path.exists") as mock_exists:
+            mock_exists.return_value = True
 
-                # This would need more setup to fully test
-                # For now, just verify the endpoint exists
-                assert hasattr(get_document, "__name__")
-                assert get_document.__name__ == "get_document"
+            # This would need more setup to fully test
+            # For now, just verify the endpoint exists
+            assert hasattr(get_document, "__name__")
+            assert get_document.__name__ == "get_document"
 
 
 class TestDocumentViewerConstants:
