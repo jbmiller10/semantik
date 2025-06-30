@@ -4,29 +4,30 @@ FastAPI search service (VS-040)
 REST API for vector similarity search with Qwen3 support
 """
 
+import asyncio
+import hashlib
+import logging
 import os
 import sys
-import logging
-from typing import List, Dict, Optional, Any
-from contextlib import asynccontextmanager
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
 import time
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
+from typing import Any
 
-from fastapi import FastAPI, Query, HTTPException, Body
-from pydantic import BaseModel, Field
 import httpx
-import hashlib
 import uvicorn
+from fastapi import Body, FastAPI, HTTPException, Query
+from pydantic import BaseModel, Field
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from prometheus_client import Counter, Histogram
+
 from vecpipe.config import settings
-from webui.embedding_service import EmbeddingService
-from vecpipe.search_utils import search_qdrant, parse_search_results
 from vecpipe.hybrid_search import HybridSearchEngine
-from vecpipe.metrics import start_metrics_server, metrics_collector, registry
-from prometheus_client import Histogram, Counter
+from vecpipe.metrics import metrics_collector, registry, start_metrics_server
+from vecpipe.search_utils import parse_search_results, search_qdrant
+from webui.embedding_service import EmbeddingService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -88,43 +89,43 @@ class SearchResult(BaseModel):
     path: str
     chunk_id: str
     score: float
-    doc_id: Optional[str] = None
-    content: Optional[str] = None
-    metadata: Optional[Dict] = None
+    doc_id: str | None = None
+    content: str | None = None
+    metadata: dict | None = None
 
 
 class SearchRequest(BaseModel):
     query: str = Field(..., description="Search query text")
     k: int = Field(DEFAULT_K, ge=1, le=100, description="Number of results")
     search_type: str = Field("semantic", description="Type of search: semantic, question, code, hybrid")
-    model_name: Optional[str] = Field(None, description="Override embedding model")
-    quantization: Optional[str] = Field(None, description="Override quantization: float32, float16, int8")
-    filters: Optional[Dict] = Field(None, description="Metadata filters for search")
+    model_name: str | None = Field(None, description="Override embedding model")
+    quantization: str | None = Field(None, description="Override quantization: float32, float16, int8")
+    filters: dict | None = Field(None, description="Metadata filters for search")
     include_content: bool = Field(False, description="Include chunk content in results")
-    collection: Optional[str] = Field(None, description="Collection name (e.g., job_123)")
+    collection: str | None = Field(None, description="Collection name (e.g., job_123)")
 
 
 class BatchSearchRequest(BaseModel):
-    queries: List[str] = Field(..., description="List of search queries")
+    queries: list[str] = Field(..., description="List of search queries")
     k: int = Field(DEFAULT_K, ge=1, le=100, description="Number of results per query")
     search_type: str = Field("semantic", description="Type of search")
-    model_name: Optional[str] = Field(None, description="Override embedding model")
-    quantization: Optional[str] = Field(None, description="Override quantization")
-    collection: Optional[str] = Field(None, description="Collection name")
+    model_name: str | None = Field(None, description="Override embedding model")
+    quantization: str | None = Field(None, description="Override quantization")
+    collection: str | None = Field(None, description="Collection name")
 
 
 class SearchResponse(BaseModel):
     query: str
-    results: List[SearchResult]
+    results: list[SearchResult]
     num_results: int
-    search_type: Optional[str] = None
-    model_used: Optional[str] = None
-    embedding_time_ms: Optional[float] = None
-    search_time_ms: Optional[float] = None
+    search_type: str | None = None
+    model_used: str | None = None
+    embedding_time_ms: float | None = None
+    search_time_ms: float | None = None
 
 
 class BatchSearchResponse(BaseModel):
-    responses: List[SearchResponse]
+    responses: list[SearchResponse]
     total_time_ms: float
 
 
@@ -132,18 +133,18 @@ class HybridSearchResult(BaseModel):
     path: str
     chunk_id: str
     score: float
-    doc_id: Optional[str] = None
-    matched_keywords: List[str] = []
-    keyword_score: Optional[float] = None
-    combined_score: Optional[float] = None
-    metadata: Optional[Dict[str, Any]] = None
+    doc_id: str | None = None
+    matched_keywords: list[str] = []
+    keyword_score: float | None = None
+    combined_score: float | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class HybridSearchResponse(BaseModel):
     query: str
-    results: List[HybridSearchResult]
+    results: list[HybridSearchResult]
     num_results: int
-    keywords_extracted: List[str]
+    keywords_extracted: list[str]
     search_mode: str
 
 
@@ -200,7 +201,7 @@ app = FastAPI(
 )
 
 
-def generate_mock_embedding(text: str, vector_dim: int = None) -> List[float]:
+def generate_mock_embedding(text: str, vector_dim: int = None) -> list[float]:
     """Generate mock embedding for testing (fallback when real embeddings unavailable)"""
     # If vector_dim not specified, try to get from collection info
     if vector_dim is None:
@@ -235,7 +236,7 @@ def generate_mock_embedding(text: str, vector_dim: int = None) -> List[float]:
 
 async def generate_embedding_async(
     text: str, model_name: str = None, quantization: str = None, instruction: str = None
-) -> List[float]:
+) -> list[float]:
     """Generate embedding using the model manager"""
     if settings.USE_MOCK_EMBEDDINGS:
         return generate_mock_embedding(text)
@@ -317,10 +318,10 @@ async def root():
 async def search(
     q: str = Query(..., description="Search query"),
     k: int = Query(DEFAULT_K, ge=1, le=100, description="Number of results to return"),
-    collection: Optional[str] = Query(None, description="Collection name (e.g., job_123)"),
+    collection: str | None = Query(None, description="Collection name (e.g., job_123)"),
     search_type: str = Query("semantic", description="Type of search: semantic, question, code, hybrid"),
-    model_name: Optional[str] = Query(None, description="Override embedding model"),
-    quantization: Optional[str] = Query(None, description="Override quantization"),
+    model_name: str | None = Query(None, description="Override embedding model"),
+    quantization: str | None = Query(None, description="Override quantization"),
 ):
     """
     Search for similar documents (GET endpoint for compatibility)
@@ -522,12 +523,12 @@ async def search_post(request: SearchRequest = Body(...)):
 async def hybrid_search(
     q: str = Query(..., description="Search query"),
     k: int = Query(DEFAULT_K, ge=1, le=100, description="Number of results to return"),
-    collection: Optional[str] = Query(None, description="Collection name (e.g., job_123)"),
+    collection: str | None = Query(None, description="Collection name (e.g., job_123)"),
     mode: str = Query("filter", description="Hybrid search mode: 'filter' or 'rerank'"),
     keyword_mode: str = Query("any", description="Keyword matching: 'any' or 'all'"),
-    score_threshold: Optional[float] = Query(None, description="Minimum similarity score threshold"),
-    model_name: Optional[str] = Query(None, description="Override embedding model"),
-    quantization: Optional[str] = Query(None, description="Override quantization"),
+    score_threshold: float | None = Query(None, description="Minimum similarity score threshold"),
+    model_name: str | None = Query(None, description="Override embedding model"),
+    quantization: str | None = Query(None, description="Override quantization"),
 ):
     """
     Perform hybrid search combining vector similarity and text matching
@@ -691,7 +692,7 @@ async def batch_search(request: BatchSearchRequest = Body(...)):
 
         # Build responses
         responses = []
-        for query, results in zip(request.queries, all_results):
+        for query, results in zip(request.queries, all_results, strict=False):
             parsed_results = []
             for point in results:
                 if isinstance(point, dict) and "payload" in point:
@@ -739,7 +740,7 @@ async def batch_search(request: BatchSearchRequest = Body(...)):
 async def keyword_search(
     q: str = Query(..., description="Keywords to search for"),
     k: int = Query(DEFAULT_K, ge=1, le=100, description="Number of results to return"),
-    collection: Optional[str] = Query(None, description="Collection name (e.g., job_123)"),
+    collection: str | None = Query(None, description="Collection name (e.g., job_123)"),
     mode: str = Query("any", description="Keyword matching: 'any' or 'all'"),
 ):
     """

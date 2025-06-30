@@ -4,11 +4,12 @@ Hybrid search implementation for Qdrant
 Combines vector similarity search with text-based filtering
 """
 
-import re
 import logging
-from typing import List, Dict, Optional, Any
+import re
+from typing import Any
+
 from qdrant_client import QdrantClient
-from qdrant_client.models import Filter, FieldCondition, MatchText
+from qdrant_client.models import FieldCondition, Filter, MatchText
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -22,7 +23,7 @@ class HybridSearchEngine:
         self.client = QdrantClient(url=f"http://{host}:{port}")
         self.collection_name = collection_name
 
-    def extract_keywords(self, query: str) -> List[str]:
+    def extract_keywords(self, query: str) -> list[str]:
         """Extract meaningful keywords from query"""
         # Remove common stop words
         stop_words = {
@@ -68,7 +69,7 @@ class HybridSearchEngine:
 
         return keywords
 
-    def build_text_filter(self, keywords: List[str], mode: str = "any") -> Optional[Filter]:
+    def build_text_filter(self, keywords: list[str], mode: str = "any") -> Filter | None:
         """Build Qdrant filter for text matching"""
         if not keywords:
             return None
@@ -88,13 +89,13 @@ class HybridSearchEngine:
 
     def hybrid_search(
         self,
-        query_vector: List[float],
+        query_vector: list[float],
         query_text: str,
         limit: int = 10,
         keyword_mode: str = "any",
-        score_threshold: Optional[float] = None,
+        score_threshold: float | None = None,
         hybrid_mode: str = "filter",  # "filter" or "rerank"
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Perform hybrid search combining vector similarity and text matching
 
@@ -193,7 +194,7 @@ class HybridSearchEngine:
             logger.error(f"Hybrid search failed: {e}")
             raise
 
-    def search_by_keywords(self, keywords: List[str], limit: int = 10, mode: str = "any") -> List[Dict[str, Any]]:
+    def search_by_keywords(self, keywords: list[str], limit: int = 10, mode: str = "any") -> list[dict[str, Any]]:
         """
         Search using only keywords (no vector similarity)
 

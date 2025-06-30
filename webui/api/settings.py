@@ -2,13 +2,13 @@
 Settings and database management routes for the Web UI
 """
 
-import os
-import sys
 import glob
 import logging
-from typing import Dict, Any
+import os
+import sys
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from qdrant_client import AsyncQdrantClient
 
 # Add parent directory to path
@@ -27,7 +27,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
 @router.post("/reset-database")
-async def reset_database_endpoint(current_user: Dict[str, Any] = Depends(get_current_user)):
+async def reset_database_endpoint(current_user: dict[str, Any] = Depends(get_current_user)):
     """Reset the database"""
     try:
         # Get all job IDs before reset
@@ -69,7 +69,7 @@ async def reset_database_endpoint(current_user: Dict[str, Any] = Depends(get_cur
 
 
 @router.get("/stats")
-async def get_database_stats(current_user: Dict[str, Any] = Depends(get_current_user)):
+async def get_database_stats(current_user: dict[str, Any] = Depends(get_current_user)):
     """Get database statistics"""
     # Get stats from database module
     stats = database.get_database_stats()

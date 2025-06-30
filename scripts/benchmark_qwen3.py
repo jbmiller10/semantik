@@ -4,19 +4,18 @@ Test script for Qwen3 search optimizations
 Demonstrates performance improvements and best practices
 """
 
-import sys
-import os
-import time
-import asyncio
 import logging
-from typing import List, Dict
+import os
+import sys
+import time
+
 import numpy as np
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+from vecpipe.qwen3_search_config import DOMAIN_INSTRUCTIONS, get_optimal_config
 from webui.embedding_service import EmbeddingService
-from vecpipe.qwen3_search_config import QWEN3_MODEL_RECOMMENDATIONS, DOMAIN_INSTRUCTIONS, get_optimal_config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -29,12 +28,12 @@ class SearchBenchmark:
         self.embedding_service = EmbeddingService()
         self.results = []
 
-    def benchmark_embedding_generation(self, texts: List[str], model_config: Dict):
+    def benchmark_embedding_generation(self, texts: list[str], model_config: dict):
         """Benchmark embedding generation with different configurations"""
 
         model_name = model_config["model"]
         quantization = model_config.get("quantization", "float32")
-        instruction = model_config.get("instruction", None)
+        instruction = model_config.get("instruction")
 
         # Load model
         logger.info(f"Loading model: {model_name} with {quantization}")
@@ -74,7 +73,7 @@ class SearchBenchmark:
             logger.error("Failed to generate embeddings")
             return None
 
-    def compare_search_quality(self, query: str, documents: List[str], configs: List[Dict]):
+    def compare_search_quality(self, query: str, documents: list[str], configs: list[dict]):
         """Compare search quality across different configurations"""
 
         results = []
@@ -126,7 +125,7 @@ class SearchBenchmark:
             results.append(result)
 
             logger.info(f"Top 5 results for {config['name']}:")
-            for idx, score in zip(top_indices, top_scores):
+            for idx, score in zip(top_indices, top_scores, strict=False):
                 logger.info(f"  Doc {idx}: {documents[idx][:50]}... (score: {score:.4f})")
 
         return results

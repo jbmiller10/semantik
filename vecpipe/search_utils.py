@@ -3,7 +3,7 @@ Shared search utilities for both search API and web UI
 """
 
 import logging
-from typing import List, Dict
+
 from qdrant_client import AsyncQdrantClient
 
 logger = logging.getLogger(__name__)
@@ -13,10 +13,10 @@ async def search_qdrant(
     qdrant_host: str,
     qdrant_port: int,
     collection_name: str,
-    query_vector: List[float],
+    query_vector: list[float],
     k: int,
     with_payload: bool = True,
-) -> List[Dict]:
+) -> list[dict]:
     """
     Perform vector search in Qdrant
 
@@ -45,7 +45,7 @@ async def search_qdrant(
     ]
 
 
-def parse_search_results(qdrant_results: List[Dict]) -> List[Dict]:
+def parse_search_results(qdrant_results: list[dict]) -> list[dict]:
     """
     Parse Qdrant search results into a standard format
 

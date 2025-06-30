@@ -4,10 +4,11 @@ Validate search API setup before starting
 Helps diagnose configuration and model loading issues
 """
 
+import logging
 import os
 import sys
+
 import torch
-import logging
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -97,7 +98,7 @@ def test_model_loading(model_name, quantization, has_gpu):
         service = EmbeddingService()
 
         if service.load_model(model_name, quantization):
-            print(f"   ✓ Model loaded successfully")
+            print("   ✓ Model loaded successfully")
 
             # Test embedding generation
             test_text = "This is a test"
@@ -107,10 +108,10 @@ def test_model_loading(model_name, quantization, has_gpu):
                 print(f"   ✓ Test embedding generated (dimension: {len(embedding)})")
                 return True
             else:
-                print(f"   ✗ Failed to generate test embedding")
+                print("   ✗ Failed to generate test embedding")
                 return False
         else:
-            print(f"   ✗ Failed to load model")
+            print("   ✗ Failed to load model")
             return False
 
     except Exception as e:

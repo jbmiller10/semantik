@@ -4,12 +4,10 @@ Manual cleanup script for temporary image directories
 Can be run via cron or manually to clean up expired sessions
 """
 
-import os
-import sys
 import shutil
 import time
+from datetime import datetime
 from pathlib import Path
-from datetime import datetime, timedelta
 
 # Configuration
 TEMP_IMAGE_DIR = Path("/tmp/webui_temp_images")
@@ -61,7 +59,7 @@ def cleanup_old_directories():
             print(f"  ✗ Error cleaning {session_dir.name}: {e}")
 
     # Summary
-    print(f"\nCleanup complete:")
+    print("\nCleanup complete:")
     print(f"  Directories removed: {cleaned_count}")
     print(f"  Total space freed: {total_size:,} bytes ({total_size / 1024 / 1024:.1f} MB)")
     if error_count > 0:
@@ -70,8 +68,8 @@ def cleanup_old_directories():
 
 def main():
     """Main function"""
-    print(f"Temporary Image Cleanup Script")
-    print(f"==============================")
+    print("Temporary Image Cleanup Script")
+    print("==============================")
     print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"TTL: {TTL_HOURS} hour(s)")
     print()

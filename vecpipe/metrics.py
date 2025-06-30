@@ -4,11 +4,11 @@ Prometheus metrics for document embedding pipeline
 Provides observability into system performance
 """
 
-from prometheus_client import Counter, Gauge, Histogram, Info, CollectorRegistry
-from prometheus_client import start_http_server, generate_latest
 import time
-import psutil
+
 import GPUtil
+import psutil
+from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, Info, start_http_server
 
 # Create custom registry
 registry = CollectorRegistry()

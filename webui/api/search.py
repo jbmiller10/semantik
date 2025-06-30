@@ -3,11 +3,11 @@ Search routes for the Web UI
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, Field
 import httpx
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from vecpipe.config import settings
 from webui import database
@@ -22,20 +22,20 @@ router = APIRouter(prefix="/api", tags=["search"])
 class SearchRequest(BaseModel):
     query: str
     k: int = Field(default=10, ge=1, le=100)
-    job_id: Optional[str] = None
+    job_id: str | None = None
 
 
 class HybridSearchRequest(BaseModel):
     query: str
     k: int = Field(default=10, ge=1, le=100)
-    job_id: Optional[str] = None
+    job_id: str | None = None
     mode: str = Field(default="filter", description="Hybrid search mode: 'filter' or 'rerank'")
     keyword_mode: str = Field(default="any", description="Keyword matching: 'any' or 'all'")
-    score_threshold: Optional[float] = None
+    score_threshold: float | None = None
 
 
 @router.post("/search")
-async def search(request: SearchRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(get_current_user)):
     """Search for similar documents - proxies to REST API"""
     try:
         # Determine collection name
@@ -107,7 +107,7 @@ async def search(request: SearchRequest, current_user: Dict[str, Any] = Depends(
 
 
 @router.post("/hybrid_search")
-async def hybrid_search(request: HybridSearchRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+async def hybrid_search(request: HybridSearchRequest, current_user: dict[str, Any] = Depends(get_current_user)):
     """Perform hybrid search combining vector similarity and text matching - proxies to REST API"""
     try:
         # Determine collection name

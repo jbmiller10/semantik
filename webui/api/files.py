@@ -5,13 +5,13 @@ File and directory scanning routes for the Web UI
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+from webui.api.jobs import SUPPORTED_EXTENSIONS, manager
 from webui.auth import get_current_user
-from webui.api.jobs import manager, SUPPORTED_EXTENSIONS
 from webui.schemas import FileInfo
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ class ScanDirectoryRequest(BaseModel):
     recursive: bool = True
 
 
-def scan_directory(path: str, recursive: bool = True) -> List[FileInfo]:
+def scan_directory(path: str, recursive: bool = True) -> list[FileInfo]:
     """Scan directory for supported files"""
     files = []
     path_obj = Path(path)
@@ -60,7 +60,7 @@ def scan_directory(path: str, recursive: bool = True) -> List[FileInfo]:
     return files
 
 
-async def scan_directory_async(path: str, recursive: bool = True, scan_id: str = None) -> List[FileInfo]:
+async def scan_directory_async(path: str, recursive: bool = True, scan_id: str = None) -> list[FileInfo]:
     """Scan directory for supported files with progress updates"""
     files = []
     path_obj = Path(path)
@@ -117,7 +117,7 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str =
 
 @router.post("/scan-directory")
 async def scan_directory_endpoint(
-    request: ScanDirectoryRequest, current_user: Dict[str, Any] = Depends(get_current_user)
+    request: ScanDirectoryRequest, current_user: dict[str, Any] = Depends(get_current_user)
 ):
     """Scan a directory for supported files"""
     try:

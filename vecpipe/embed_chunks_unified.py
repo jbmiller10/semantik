@@ -4,36 +4,36 @@ Unified CLI entry point for embedding generation
 Uses the webui.embedding_service.EmbeddingService for all embedding operations
 """
 
+import argparse
+import asyncio
+import glob
+import logging
 import os
 import sys
-import logging
-import glob
-import asyncio
+import uuid
 from pathlib import Path
-from typing import Dict, Any, List, Optional
-import numpy as np
+from typing import Any
+
 import pyarrow as pa
 import pyarrow.parquet as pq
 from tqdm.asyncio import tqdm
-import argparse
-import uuid
 
 # Add parent directory to path to import webui module
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from webui.embedding_service import EmbeddingService
 from vecpipe.metrics import (
     TimingContext,
-    record_file_processed,
-    record_file_failed,
-    record_chunks_created,
-    record_embeddings_generated,
-    extraction_duration,
     embedding_batch_duration,
+    extraction_duration,
     ingestion_duration,
     metrics_collector,
+    record_chunks_created,
+    record_embeddings_generated,
+    record_file_failed,
+    record_file_processed,
     start_metrics_server,
 )
+from webui.embedding_service import EmbeddingService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -47,7 +47,7 @@ OUTPUT_DIR = "/var/embeddings/ingest"
 MAX_CONCURRENT_IO = 4
 
 
-async def read_parquet_async(file_path: str) -> Dict[str, Any]:
+async def read_parquet_async(file_path: str) -> dict[str, Any]:
     """Async read parquet file"""
     loop = asyncio.get_event_loop()
 
@@ -77,7 +77,7 @@ async def read_parquet_async(file_path: str) -> Dict[str, Any]:
     return await loop.run_in_executor(None, _read)
 
 
-async def write_parquet_async(output_path: str, data: Dict[str, Any]):
+async def write_parquet_async(output_path: str, data: dict[str, Any]):
     """Async write parquet file"""
     loop = asyncio.get_event_loop()
 
@@ -91,7 +91,7 @@ async def write_parquet_async(output_path: str, data: Dict[str, Any]):
 
 async def process_file_async(
     file_path: str, output_dir: str, embedding_service: EmbeddingService, args
-) -> Optional[str]:
+) -> str | None:
     """Process a single file asynchronously"""
     try:
         # Generate output filename
@@ -148,7 +148,7 @@ async def process_file_async(
                     "metadata": metadata,  # Include metadata from extraction
                 }
                 for doc_id, chunk_id, path, text, metadata in zip(
-                    data["doc_ids"], data["chunk_ids"], data["paths"], texts, data["metadata"]
+                    data["doc_ids"], data["chunk_ids"], data["paths"], texts, data["metadata"], strict=False
                 )
             ],
         }
@@ -166,7 +166,7 @@ async def process_file_async(
         return None
 
 
-async def process_files_parallel(file_paths: List[str], output_dir: str, embedding_service: EmbeddingService, args):
+async def process_files_parallel(file_paths: list[str], output_dir: str, embedding_service: EmbeddingService, args):
     """Process multiple files in parallel"""
     # Create semaphore to limit concurrent I/O operations
     io_semaphore = asyncio.Semaphore(MAX_CONCURRENT_IO)

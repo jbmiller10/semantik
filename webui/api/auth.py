@@ -4,20 +4,20 @@ Authentication routes for the Web UI
 
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from webui import database
 from webui.auth import (
-    UserCreate,
-    UserLogin,
     Token,
     User,
-    get_current_user,
+    UserCreate,
+    UserLogin,
     authenticate_user,
     create_access_token,
     create_refresh_token,
+    get_current_user,
     get_password_hash,
     pwd_context,
 )
@@ -94,7 +94,7 @@ async def refresh_token(refresh_token: str):
 
 
 @router.post("/logout")
-async def logout(refresh_token: str = None, current_user: Dict[str, Any] = Depends(get_current_user)):
+async def logout(refresh_token: str = None, current_user: dict[str, Any] = Depends(get_current_user)):
     """Logout and revoke refresh token"""
     if refresh_token:
         database.revoke_refresh_token(refresh_token)
@@ -102,6 +102,6 @@ async def logout(refresh_token: str = None, current_user: Dict[str, Any] = Depen
 
 
 @router.get("/me", response_model=User)
-async def get_me(current_user: Dict[str, Any] = Depends(get_current_user)):
+async def get_me(current_user: dict[str, Any] = Depends(get_current_user)):
     """Get current user info"""
     return User(**current_user)

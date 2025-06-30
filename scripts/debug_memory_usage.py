@@ -2,19 +2,20 @@
 """
 Test script to debug memory issues with embedding jobs
 """
-import sys
-import os
+import gc
 import logging
-import psutil
+import os
+import sys
 import time
 import traceback
-import gc
 from pathlib import Path
+
+import psutil
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from vecpipe.extract_chunks import extract_text, chunk_text, TokenChunker
+from vecpipe.extract_chunks import TokenChunker, extract_text
 
 # Configure detailed logging
 logging.basicConfig(

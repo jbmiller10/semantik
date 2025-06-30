@@ -3,6 +3,7 @@ Root and static file routes for the Web UI
 """
 
 import os
+
 from fastapi import APIRouter
 from fastapi.responses import FileResponse
 
