@@ -284,7 +284,8 @@ def extract_and_serialize(filepath: str) -> List[Tuple[str, Dict[str, Any]]]:
             filename=filepath,
             strategy="auto",  # Let unstructured determine the best strategy
             include_page_breaks=True,
-            infer_table_structure=True
+            infer_table_structure=True,
+            chunking_strategy='by_title'
         )
         
         results = []

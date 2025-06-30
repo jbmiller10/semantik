@@ -5,13 +5,15 @@ Creates and configures the FastAPI application
 
 import os
 import sys
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, Request
 from fastapi.staticfiles import StaticFiles
+from slowapi.errors import RateLimitExceeded
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from webui.api import auth, jobs, files, metrics, root, settings, models, search
+from webui.rate_limiter import limiter, _rate_limit_exceeded_handler
+from webui.api import auth, jobs, files, metrics, root, settings, models, search, documents
 from webui.api.jobs import websocket_endpoint
 from webui.api.files import scan_websocket
 
@@ -23,6 +25,9 @@ def create_app() -> FastAPI:
         version="1.1.0"
     )
     
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    
     # Include routers with their specific prefixes
     app.include_router(auth.router)
     app.include_router(jobs.router)
@@ -31,6 +36,7 @@ def create_app() -> FastAPI:
     app.include_router(settings.router)
     app.include_router(models.router)
     app.include_router(search.router)
+    app.include_router(documents.router)
     app.include_router(root.router)  # No prefix for static + root
     
     # Mount WebSocket endpoints at the app level

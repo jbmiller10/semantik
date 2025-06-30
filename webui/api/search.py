@@ -86,7 +86,8 @@ async def search(request: SearchRequest, current_user: Dict[str, Any] = Depends(
                     "path": result["path"],
                     "chunk_id": result["chunk_id"],
                     "doc_id": result.get("doc_id"),
-                    "text": result.get("content", "")
+                    "text": result.get("content", ""),
+                    "metadata": result.get("metadata", {})  # Include metadata with page_number
                 }
             })
         
