@@ -46,11 +46,6 @@ jobs:
         image: qdrant/qdrant:latest
         ports:
           - 6333:6333
-        options: >-
-          --health-cmd "curl -f http://localhost:6333/health || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
     - uses: actions/checkout@v4
@@ -65,6 +60,17 @@ jobs:
         python -m pip install --upgrade pip
         pip install poetry
         poetry install
+    
+    - name: Wait for Qdrant to be ready
+      run: |
+        for i in {1..30}; do
+          if curl -f http://localhost:6333/health 2>/dev/null; then
+            echo "Qdrant is ready!"
+            break
+          fi
+          echo "Waiting for Qdrant... ($i/30)"
+          sleep 2
+        done
     
     - name: Run tests with pytest
       run: |
