@@ -2,11 +2,39 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install poetry
+        poetry install
+    
+    - name: Check code formatting with Black
+      run: |
+        poetry run black --check .
+    
+    - name: Lint with Ruff
+      run: |
+        poetry run ruff check .
+    
+    - name: Type check with Mypy
+      run: |
+        poetry run mypy vecpipe webui
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -38,21 +66,16 @@ jobs:
         pip install poetry
         poetry install
     
-    - name: Check code formatting with Black
-      run: |
-        poetry run black --check .
-    
-    - name: Lint with Ruff
-      run: |
-        poetry run ruff check .
-    
-    - name: Type check with Mypy
-      run: |
-        poetry run mypy vecpipe webui
-    
     - name: Run tests with pytest
       run: |
-        poetry run pytest
+        poetry run pytest --cov=vecpipe --cov=webui --cov-report=xml
       env:
         QDRANT_HOST: localhost
         QDRANT_PORT: 6333
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
