@@ -2,6 +2,7 @@
 
 import os
 import sys
+from datetime import UTC
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -62,7 +63,7 @@ def mock_qdrant_client():
 @pytest.fixture()
 def test_user():
     """Test user data."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     return {
         "id": 1,
@@ -70,7 +71,7 @@ def test_user():
         "email": "test@example.com",
         "full_name": "Test User",
         "disabled": False,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
 

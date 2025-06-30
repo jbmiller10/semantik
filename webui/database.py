@@ -9,7 +9,7 @@ import logging
 import os
 import sqlite3
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from passlib.context import CryptContext
@@ -265,7 +265,7 @@ def update_job(job_id: str, updates: dict[str, Any]):
 
     # Always update the updated_at timestamp
     update_fields.append("updated_at = ?")
-    values.append(datetime.now(timezone.utc).isoformat())
+    values.append(datetime.now(UTC).isoformat())
 
     # Add job_id for WHERE clause
     values.append(job_id)
@@ -447,7 +447,7 @@ def create_user(username: str, email: str, hashed_password: str, full_name: str 
         raise ValueError("User with this username or email already exists")
 
     # Create user
-    created_at = datetime.now(timezone.utc).isoformat()
+    created_at = datetime.now(UTC).isoformat()
 
     c.execute(
         """INSERT INTO users (username, email, full_name, hashed_password, created_at)
@@ -474,7 +474,7 @@ def update_user_last_login(user_id: int):
     """Update user's last login timestamp"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("UPDATE users SET last_login = ? WHERE id = ?", (datetime.now(timezone.utc).isoformat(), user_id))
+    c.execute("UPDATE users SET last_login = ? WHERE id = ?", (datetime.now(UTC).isoformat(), user_id))
     conn.commit()
     conn.close()
 
@@ -488,7 +488,7 @@ def save_refresh_token(user_id: int, token_hash: str, expires_at: datetime):
     c.execute(
         """INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at)
                  VALUES (?, ?, ?, ?)""",
-        (user_id, token_hash, expires_at.isoformat(), datetime.now(timezone.utc).isoformat()),
+        (user_id, token_hash, expires_at.isoformat(), datetime.now(UTC).isoformat()),
     )
 
     conn.commit()
@@ -505,7 +505,7 @@ def verify_refresh_token(token: str) -> int | None:
     c.execute(
         """SELECT * FROM refresh_tokens
                  WHERE is_revoked = 0 AND expires_at > ?""",
-        (datetime.now(timezone.utc).isoformat(),),
+        (datetime.now(UTC).isoformat(),),
     )
 
     tokens = c.fetchall()
