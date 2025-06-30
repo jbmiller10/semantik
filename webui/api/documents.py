@@ -376,13 +376,20 @@ async def get_document(
             pass
     
     # Return full file
+    # Generate ETag based on file metadata
+    file_stat = file_path.stat()
+    etag = f'"{file_stat.st_mtime}-{file_stat.st_size}"'
+    
     return FileResponse(
         path=str(file_path),
         media_type=content_type,
         headers={
             'Accept-Ranges': 'bytes',
             'Content-Length': str(file_size),
-            'Content-Disposition': f'inline; filename="{file_path.name}"'
+            'Content-Disposition': f'inline; filename="{file_path.name}"',
+            'Cache-Control': 'private, max-age=3600',  # Cache for 1 hour
+            'ETag': etag,
+            'Last-Modified': datetime.utcfromtimestamp(file_stat.st_mtime).strftime('%a, %d %b %Y %H:%M:%S GMT')
         }
     )
 

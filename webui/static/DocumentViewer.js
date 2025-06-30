@@ -837,11 +837,19 @@ class DocumentViewer {
             this.pdfDocument = null;
         }
         
-        
-        // Clear content from DOM
+        // Clear any remaining event listeners
         const contentElement = document.getElementById('viewer-content');
         if (contentElement) {
-            contentElement.innerHTML = '';
+            // Remove all child nodes to clear event listeners
+            while (contentElement.firstChild) {
+                contentElement.removeChild(contentElement.firstChild);
+            }
+        }
+        
+        // Clear Mark.js instances to prevent memory leaks
+        if (this.markInstance) {
+            this.markInstance.unmark();
+            this.markInstance = null;
         }
         
         // Reset all properties
@@ -851,6 +859,12 @@ class DocumentViewer {
         this.searchQuery = '';
         this.highlights = [];
         this.currentHighlightIndex = 0;
+        
+        // Clear any blob URLs that might have been created
+        if (this.currentBlobUrl) {
+            URL.revokeObjectURL(this.currentBlobUrl);
+            this.currentBlobUrl = null;
+        }
         
         // Force garbage collection hint (browser may ignore)
         if (window.gc) {
