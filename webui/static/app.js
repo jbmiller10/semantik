@@ -1,3 +1,57 @@
+/**
+ * Simple cache implementation with TTL (Time To Live)
+ * Used to reduce API calls by caching frequently accessed data
+ */
+class SimpleCache {
+    /**
+     * Create a new cache instance
+     * @param {number} ttlSeconds - Time to live in seconds (default: 30)
+     */
+    constructor(ttlSeconds = 30) {
+        this.cache = new Map();
+        this.ttl = ttlSeconds * 1000; // Convert to milliseconds
+    }
+    
+    /**
+     * Store a value in the cache
+     * @param {string} key - Cache key
+     * @param {*} value - Value to cache
+     */
+    set(key, value) {
+        this.cache.set(key, {
+            value: value,
+            timestamp: Date.now()
+        });
+    }
+    
+    /**
+     * Retrieve a value from the cache
+     * @param {string} key - Cache key
+     * @returns {*|null} Cached value or null if expired/not found
+     */
+    get(key) {
+        const item = this.cache.get(key);
+        if (!item) return null;
+        
+        if (Date.now() - item.timestamp > this.ttl) {
+            this.cache.delete(key);
+            return null;
+        }
+        
+        return item.value;
+    }
+    
+    /**
+     * Clear all cached values
+     */
+    clear() {
+        this.cache.clear();
+    }
+}
+
+// Collection status cache with 30 second TTL
+const collectionStatusCache = new SimpleCache(30);
+
 // Authentication helper
 const auth = {
     getToken: () => localStorage.getItem('access_token'),
@@ -481,7 +535,7 @@ document.getElementById('create-job-form').addEventListener('submit', async (e) 
         form.insertBefore(errorDiv, form.firstChild);
         
         // Auto-remove after 5 seconds
-        setTimeout(() => errorDiv.remove(), 5000);
+        setTimeout(() => errorDiv.remove(), 10000); // 10 seconds for better readability
     } finally {
         // Restore submit button
         submitButton.disabled = false;
@@ -492,17 +546,25 @@ document.getElementById('create-job-form').addEventListener('submit', async (e) 
 // Refresh jobs list
 async function refreshJobs() {
     try {
-        const [jobsResponse, collectionsResponse] = await Promise.all([
-            fetch('/api/jobs', {
-                headers: { 'Authorization': `Bearer ${auth.getToken()}` }
-            }),
-            fetch('/api/jobs/collections-status', {
-                headers: { 'Authorization': `Bearer ${auth.getToken()}` }
-            })
-        ]);
-        
+        // Fetch jobs
+        const jobsResponse = await fetch('/api/jobs', {
+            headers: { 'Authorization': `Bearer ${auth.getToken()}` }
+        });
         const jobs = await jobsResponse.json();
-        const collectionsStatus = await collectionsResponse.json();
+        
+        // Check cache for collections status
+        let collectionsStatus = collectionStatusCache.get('collections');
+        
+        if (!collectionsStatus) {
+            // Cache miss - fetch from API
+            const collectionsResponse = await fetch('/api/jobs/collections-status', {
+                headers: { 'Authorization': `Bearer ${auth.getToken()}` }
+            });
+            collectionsStatus = await collectionsResponse.json();
+            
+            // Cache the result
+            collectionStatusCache.set('collections', collectionsStatus);
+        }
         
         const jobsList = document.getElementById('jobs-list');
         
@@ -636,9 +698,16 @@ async function refreshJobs() {
     }
 }
 
-// Cancel a job
+/**
+ * Cancel a running job with confirmation dialog
+ * @param {string} jobId - ID of the job to cancel
+ */
 async function cancelJob(jobId) {
-    if (!confirm('Are you sure you want to cancel this job?')) {
+    // Get job name from the job card
+    const jobCard = document.querySelector(`[data-job-id="${jobId}"]`);
+    const jobName = jobCard ? jobCard.querySelector('h3')?.textContent || 'this job' : 'this job';
+    
+    if (!confirm(`Are you sure you want to cancel "${jobName}"?\n\nThis action cannot be undone.`)) {
         return;
     }
     
@@ -656,7 +725,8 @@ async function cancelJob(jobId) {
         const result = await response.json();
         alert(result.message || 'Job cancellation requested');
         
-        // Refresh the jobs list to show updated status
+        // Clear cache and refresh the jobs list to show updated status
+        collectionStatusCache.clear();
         refreshJobs();
         
     } catch (error) {
@@ -687,14 +757,17 @@ function connectToJobWebSocket(jobId) {
             updateJobProgress(jobId, data);
         } else if (data.type === 'job_completed') {
             showToast('Job completed successfully!', 'success');
+            collectionStatusCache.clear();
             refreshJobs();
             ws.close();
         } else if (data.type === 'job_cancelled') {
             showToast('Job cancelled', 'warning');
+            collectionStatusCache.clear();
             refreshJobs();
             ws.close();
         } else if (data.type === 'error') {
             showToast(`Job error: ${data.message}`, 'error');
+            collectionStatusCache.clear();
             refreshJobs();
             ws.close();
         } else if (data.type === 'progress') {
@@ -728,17 +801,25 @@ async function loadJobCollections() {
     
     try {
         // First get all jobs
-        const [jobsResponse, collectionsResponse] = await Promise.all([
-            fetch('/api/jobs', {
-                headers: { 'Authorization': `Bearer ${auth.getToken()}` }
-            }),
-            fetch('/api/jobs/collections-status', {
-                headers: { 'Authorization': `Bearer ${auth.getToken()}` }
-            })
-        ]);
-        
+        // Fetch jobs
+        const jobsResponse = await fetch('/api/jobs', {
+            headers: { 'Authorization': `Bearer ${auth.getToken()}` }
+        });
         const jobs = await jobsResponse.json();
-        const collectionsStatus = await collectionsResponse.json();
+        
+        // Check cache for collections status
+        let collectionsStatus = collectionStatusCache.get('collections');
+        
+        if (!collectionsStatus) {
+            // Cache miss - fetch from API
+            const collectionsResponse = await fetch('/api/jobs/collections-status', {
+                headers: { 'Authorization': `Bearer ${auth.getToken()}` }
+            });
+            collectionsStatus = await collectionsResponse.json();
+            
+            // Cache the result
+            collectionStatusCache.set('collections', collectionsStatus);
+        }
         
         const select = document.getElementById('search-collection');
         select.innerHTML = '<option value="">Select a collection...</option>';
@@ -821,7 +902,11 @@ async function loadJobCollections() {
     }
 }
 
-// Use job for search
+/**
+ * Switch to search tab with a specific job pre-selected
+ * @param {string} jobId - ID of the job to use for search
+ * @param {string} jobName - Name of the job (for display)
+ */
 function useJobForSearch(jobId, jobName) {
     switchTab('search');
     setTimeout(() => {
