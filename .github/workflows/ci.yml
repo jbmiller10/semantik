@@ -2,55 +2,57 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, master ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, master ]
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install ruff black isort mypy
-    - name: Lint with ruff
-      run: ruff check .
-    - name: Format check with black
-      run: black --check .
-    - name: Import sort check with isort
-      run: isort --check-only .
-    - name: Type check with mypy
-      run: mypy vecpipe webui
-
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11']
+        python-version: ["3.12"]
+    
+    services:
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6333:6333
+        options: >-
+          --health-cmd "curl -f http://localhost:6333/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
     - uses: actions/checkout@v4
+    
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
+    
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install poetry
         poetry install
-    - name: Test with pytest
+    
+    - name: Check code formatting with Black
       run: |
-        poetry run pytest --cov=vecpipe --cov=webui --cov-report=xml
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage.xml
-        flags: unittests
-        name: codecov-umbrella
-
+        poetry run black --check .
+    
+    - name: Lint with Ruff
+      run: |
+        poetry run ruff check .
+    
+    - name: Type check with Mypy
+      run: |
+        poetry run mypy vecpipe webui
+    
+    - name: Run tests with pytest
+      run: |
+        poetry run pytest
+      env:
+        QDRANT_HOST: localhost
+        QDRANT_PORT: 6333
