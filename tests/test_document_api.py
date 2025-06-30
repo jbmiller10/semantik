@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch, MagicMock
 import time
 
 # Mock dependencies before imports
-with patch('webui.auth.get_current_user'):
+with patch("webui.auth.get_current_user"):
     from webui.api.documents import router, IMAGE_SESSIONS, TEMP_IMAGE_DIR
     from webui.app import app
 
@@ -25,11 +25,7 @@ def client():
 @pytest.fixture
 def mock_user():
     """Mock authenticated user"""
-    return {
-        'id': 1,
-        'username': 'testuser',
-        'email': 'test@example.com'
-    }
+    return {"id": 1, "username": "testuser", "email": "test@example.com"}
 
 
 @pytest.fixture
@@ -42,126 +38,99 @@ def temp_test_dir():
 
 class TestDocumentAPI:
     """Test document serving API endpoints"""
-    
-    @patch('webui.auth.get_current_user')
-    @patch('webui.database.get_job_files')
-    @patch('webui.database.get_job')
+
+    @patch("webui.auth.get_current_user")
+    @patch("webui.database.get_job_files")
+    @patch("webui.database.get_job")
     def test_get_document_success(self, mock_get_job, mock_get_files, mock_auth, client, mock_user, temp_test_dir):
         """Test successful document retrieval"""
         # Setup
         mock_auth.return_value = mock_user
         test_file = temp_test_dir / "test.pdf"
         test_file.write_text("PDF content")
-        
-        mock_get_job.return_value = {
-            'id': 'test-job',
-            'user_id': mock_user['id'],
-            'directory_path': str(temp_test_dir)
-        }
-        
-        mock_get_files.return_value = [{
-            'id': 1,
-            'job_id': 'test-job',
-            'doc_id': 'test-doc',
-            'path': str(test_file),
-            'filename': 'test.pdf'
-        }]
-        
+
+        mock_get_job.return_value = {"id": "test-job", "user_id": mock_user["id"], "directory_path": str(temp_test_dir)}
+
+        mock_get_files.return_value = [
+            {"id": 1, "job_id": "test-job", "doc_id": "test-doc", "path": str(test_file), "filename": "test.pdf"}
+        ]
+
         # Test
-        response = client.get(
-            "/api/documents/test-job/test-doc",
-            headers={"Authorization": "Bearer test-token"}
-        )
-        
+        response = client.get("/api/documents/test-job/test-doc", headers={"Authorization": "Bearer test-token"})
+
         assert response.status_code == 200
-        assert response.headers['content-type'] == 'application/pdf'
-        assert 'cache-control' in response.headers
-        assert 'etag' in response.headers
-    
-    @patch('webui.auth.get_current_user')
+        assert response.headers["content-type"] == "application/pdf"
+        assert "cache-control" in response.headers
+        assert "etag" in response.headers
+
+    @patch("webui.auth.get_current_user")
     def test_path_traversal_prevention(self, mock_auth, client, mock_user):
         """Test that path traversal attacks are prevented"""
         mock_auth.return_value = mock_user
-        
+
         # Attempt path traversal
         response = client.get(
-            "/api/documents/test-job/../../../etc/passwd",
-            headers={"Authorization": "Bearer test-token"}
+            "/api/documents/test-job/../../../etc/passwd", headers={"Authorization": "Bearer test-token"}
         )
-        
+
         assert response.status_code == 404
-    
-    @patch('webui.auth.get_current_user')
-    @patch('webui.database.get_job_files')
-    @patch('webui.database.get_job')
+
+    @patch("webui.auth.get_current_user")
+    @patch("webui.database.get_job_files")
+    @patch("webui.database.get_job")
     def test_file_size_limit(self, mock_get_job, mock_get_files, mock_auth, client, mock_user, temp_test_dir):
         """Test file size limit enforcement"""
         mock_auth.return_value = mock_user
-        
+
         # Create a mock file that exceeds size limit
         test_file = temp_test_dir / "large.pdf"
         test_file.write_text("x" * 1000)
-        
-        mock_get_job.return_value = {
-            'id': 'test-job',
-            'user_id': mock_user['id'],
-            'directory_path': str(temp_test_dir)
-        }
-        
-        mock_get_files.return_value = [{
-            'id': 1,
-            'job_id': 'test-job',
-            'doc_id': 'test-doc',
-            'path': str(test_file),
-            'filename': 'large.pdf'
-        }]
-        
+
+        mock_get_job.return_value = {"id": "test-job", "user_id": mock_user["id"], "directory_path": str(temp_test_dir)}
+
+        mock_get_files.return_value = [
+            {"id": 1, "job_id": "test-job", "doc_id": "test-doc", "path": str(test_file), "filename": "large.pdf"}
+        ]
+
         # Mock file size to exceed limit
-        with patch('pathlib.Path.stat') as mock_stat:
-            mock_stat.return_value = MagicMock(st_size=600*1024*1024)  # 600MB
-            
-            response = client.get(
-                "/api/documents/test-job/test-doc",
-                headers={"Authorization": "Bearer test-token"}
-            )
-            
+        with patch("pathlib.Path.stat") as mock_stat:
+            mock_stat.return_value = MagicMock(st_size=600 * 1024 * 1024)  # 600MB
+
+            response = client.get("/api/documents/test-job/test-doc", headers={"Authorization": "Bearer test-token"})
+
             assert response.status_code == 413
-    
+
     def test_temp_image_cleanup(self):
         """Test that temporary images are cleaned up"""
         # Create test session
         session_id = "test-session"
         test_dir = TEMP_IMAGE_DIR / session_id
         test_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Create a test file in the directory
         test_file = test_dir / "test.png"
         test_file.write_text("test image")
-        
+
         # Add to sessions with expired time
-        IMAGE_SESSIONS[session_id] = (
-            1,  # user_id
-            time.time() - 7200,  # 2 hours ago
-            test_dir
-        )
-        
+        IMAGE_SESSIONS[session_id] = (1, time.time() - 7200, test_dir)  # user_id  # 2 hours ago
+
         # Manually trigger cleanup logic (since cleanup_temp_images runs in a thread)
         import threading
         from webui.api.documents import cleanup_lock, TEMP_IMAGE_TTL
-        
+
         with cleanup_lock:
             current_time = time.time()
             expired_sessions = []
-            
+
             for sid, (user_id, created_time, image_dir) in IMAGE_SESSIONS.items():
                 if current_time - created_time > TEMP_IMAGE_TTL:
                     expired_sessions.append(sid)
                     if image_dir.exists():
                         shutil.rmtree(image_dir)
-            
+
             for sid in expired_sessions:
                 del IMAGE_SESSIONS[sid]
-        
+
         # Check cleanup
         assert session_id not in IMAGE_SESSIONS
         assert not test_dir.exists()
@@ -169,98 +138,78 @@ class TestDocumentAPI:
 
 class TestDocumentViewer:
     """Test document viewer security"""
-    
-    @patch('webui.auth.get_current_user')
+
+    @patch("webui.auth.get_current_user")
     def test_authentication_required(self, mock_auth, client):
         """Test that authentication is required"""
         mock_auth.side_effect = Exception("Not authenticated")
-        
+
         response = client.get("/api/documents/test-job/test-doc")
         assert response.status_code == 403
-    
-    @patch('webui.auth.get_current_user')
-    @patch('webui.database.get_job_files')
-    @patch('webui.database.get_job')
+
+    @patch("webui.auth.get_current_user")
+    @patch("webui.database.get_job_files")
+    @patch("webui.database.get_job")
     def test_authorization_check(self, mock_get_job, mock_get_files, mock_auth, client, mock_user, temp_test_dir):
         """Test that user authorization is checked"""
         mock_auth.return_value = mock_user
-        
+
         # Create test file
         test_file = temp_test_dir / "test.pdf"
         test_file.write_text("PDF content")
-        
+
         # Return job with different user_id
         mock_get_job.return_value = {
-            'id': 'test-job',
-            'user_id': 999,  # Different user
-            'directory_path': str(temp_test_dir)
+            "id": "test-job",
+            "user_id": 999,  # Different user
+            "directory_path": str(temp_test_dir),
         }
-        
-        mock_get_files.return_value = [{
-            'job_id': 'test-job',
-            'doc_id': 'test-doc',
-            'path': str(test_file)
-        }]
-        
-        response = client.get(
-            "/api/documents/test-job/test-doc",
-            headers={"Authorization": "Bearer test-token"}
-        )
-        
+
+        mock_get_files.return_value = [{"job_id": "test-job", "doc_id": "test-doc", "path": str(test_file)}]
+
+        response = client.get("/api/documents/test-job/test-doc", headers={"Authorization": "Bearer test-token"})
+
         assert response.status_code == 403
 
 
 class TestPPTXConversion:
     """Test PPTX conversion functionality"""
-    
-    @patch('webui.api.documents.PPTX2MD_AVAILABLE', True)
-    @patch('subprocess.run')
-    @patch('webui.auth.get_current_user')
-    @patch('webui.database.get_job_files')
-    @patch('webui.database.get_job')
-    def test_pptx_conversion_success(self, mock_get_job, mock_get_files, mock_auth, mock_run, client, mock_user, temp_test_dir):
+
+    @patch("webui.api.documents.PPTX2MD_AVAILABLE", True)
+    @patch("subprocess.run")
+    @patch("webui.auth.get_current_user")
+    @patch("webui.database.get_job_files")
+    @patch("webui.database.get_job")
+    def test_pptx_conversion_success(
+        self, mock_get_job, mock_get_files, mock_auth, mock_run, client, mock_user, temp_test_dir
+    ):
         """Test successful PPTX to Markdown conversion"""
         mock_auth.return_value = mock_user
-        
+
         # Setup test files
         test_pptx = temp_test_dir / "test.pptx"
         test_pptx.write_bytes(b"PPTX content")
-        
-        mock_get_job.return_value = {
-            'id': 'test-job',
-            'user_id': mock_user['id'],
-            'directory_path': str(temp_test_dir)
-        }
-        
-        mock_get_files.return_value = [{
-            'id': 1,
-            'job_id': 'test-job',
-            'doc_id': 'test-doc',
-            'path': str(test_pptx),
-            'filename': 'test.pptx'
-        }]
-        
+
+        mock_get_job.return_value = {"id": "test-job", "user_id": mock_user["id"], "directory_path": str(temp_test_dir)}
+
+        mock_get_files.return_value = [
+            {"id": 1, "job_id": "test-job", "doc_id": "test-doc", "path": str(test_pptx), "filename": "test.pptx"}
+        ]
+
         # Mock conversion output
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="",
-            stderr=""
-        )
-        
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
         # Create expected output file
-        with patch('tempfile.TemporaryDirectory') as mock_temp:
+        with patch("tempfile.TemporaryDirectory") as mock_temp:
             mock_temp.return_value.__enter__.return_value = str(temp_test_dir)
             output_file = temp_test_dir / "test.md"
             output_file.write_text("# Slide 1\\n\\nContent")
-            
-            response = client.get(
-                "/api/documents/test-job/test-doc",
-                headers={"Authorization": "Bearer test-token"}
-            )
-            
+
+            response = client.get("/api/documents/test-job/test-doc", headers={"Authorization": "Bearer test-token"})
+
             assert response.status_code == 200
-            assert response.headers['content-type'] == 'text/markdown; charset=utf-8'
-            assert response.headers['x-converted-from'] == 'pptx'
+            assert response.headers["content-type"] == "text/markdown; charset=utf-8"
+            assert response.headers["x-converted-from"] == "pptx"
 
 
 if __name__ == "__main__":

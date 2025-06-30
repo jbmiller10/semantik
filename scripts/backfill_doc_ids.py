@@ -9,6 +9,7 @@ from vecpipe.config import settings
 
 DB_PATH = str(settings.WEBUI_DB)
 
+
 def backfill_doc_ids():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -24,6 +25,7 @@ def backfill_doc_ids():
     conn.close()
 
     print(f"Updated {len(files_to_update)} files with doc_ids.")
+
 
 if __name__ == "__main__":
     backfill_doc_ids()

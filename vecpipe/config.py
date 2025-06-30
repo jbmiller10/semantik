@@ -4,11 +4,13 @@ import os
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     """
     Centralized application configuration.
     Settings are loaded from a .env file or environment variables.
     """
+
     # Project root directory, calculated automatically
     PROJECT_ROOT: Path = Path(__file__).parent.parent.resolve()
 
@@ -16,7 +18,7 @@ class Settings(BaseSettings):
     QDRANT_HOST: str
     QDRANT_PORT: int = 6333
     DEFAULT_COLLECTION: str = "work_docs"
-    
+
     # Embedding Model Configuration
     USE_MOCK_EMBEDDINGS: bool = False
     DEFAULT_EMBEDDING_MODEL: str = "Qwen/Qwen3-Embedding-0.6B"
@@ -36,7 +38,7 @@ class Settings(BaseSettings):
     LOADED_DIR: Path = PROJECT_ROOT / "data" / "loaded"
     REJECT_DIR: Path = PROJECT_ROOT / "data" / "rejects"
     MANIFEST_FILE: Path = PROJECT_ROOT / "data" / "filelist.null"
-    
+
     # Logging
     ERROR_LOG: Path = PROJECT_ROOT / "logs" / "error_extract.log"
     CLEANUP_LOG: Path = PROJECT_ROOT / "logs" / "cleanup.log"
@@ -44,17 +46,18 @@ class Settings(BaseSettings):
     # Service Ports
     SEARCH_API_PORT: int = 8000
     WEBUI_PORT: int = 8080
-    
+
     # Service URLs (for internal API calls)
     SEARCH_API_URL: str = "http://localhost:8000"
     WEBUI_URL: str = "http://localhost:8080"
-    
+
     # Additional Paths
     JOBS_DIR: Path = PROJECT_ROOT / "data" / "jobs"
     OUTPUT_DIR: Path = PROJECT_ROOT / "data" / "output"
 
     # Pydantic model config
-    model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
 
 # Instantiate settings once and export
 settings = Settings()
