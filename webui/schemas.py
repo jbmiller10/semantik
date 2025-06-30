@@ -2,7 +2,6 @@
 Shared Pydantic models for the Web UI
 """
 
-
 from pydantic import BaseModel
 
 

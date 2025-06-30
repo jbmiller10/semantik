@@ -89,9 +89,7 @@ async def write_parquet_async(output_path: str, data: dict[str, Any]):
     await loop.run_in_executor(None, _write)
 
 
-async def process_file_async(
-    file_path: str, output_dir: str, embedding_service: EmbeddingService, args
-) -> str | None:
+async def process_file_async(file_path: str, output_dir: str, embedding_service: EmbeddingService, args) -> str | None:
     """Process a single file asynchronously"""
     try:
         # Generate output filename

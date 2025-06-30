@@ -23,6 +23,7 @@ os.environ.setdefault("USE_MOCK_EMBEDDINGS", "true")
 def test_client():
     """Create a test client for the FastAPI app."""
     from webui.main import app
+
     return TestClient(app)
 
 
@@ -38,11 +39,14 @@ def mock_qdrant_client():
 @pytest.fixture
 def test_user():
     """Test user data."""
+    from datetime import datetime
     return {
+        "id": 1,
         "username": "testuser",
         "email": "test@example.com",
         "full_name": "Test User",
-        "disabled": False
+        "disabled": False,
+        "created_at": datetime.utcnow().isoformat()
     }
 
 
@@ -50,6 +54,7 @@ def test_user():
 def auth_headers(test_user):
     """Create authorization headers with a test JWT token."""
     from webui.auth import create_access_token
+
     token = create_access_token(data={"sub": test_user["username"]})
     return {"Authorization": f"Bearer {token}"}
 
