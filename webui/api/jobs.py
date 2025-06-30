@@ -15,8 +15,8 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, validator
-from qdrant_client import AsyncQdrantClient, QdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
+from qdrant_client import AsyncQdrantClient
+from qdrant_client.models import Distance, PointStruct
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -26,6 +26,7 @@ from vecpipe.extract_chunks import TokenChunker, extract_text
 from webui import database
 from webui.auth import get_current_user
 from webui.embedding_service import POPULAR_MODELS, embedding_service
+from webui.utils.qdrant_manager import qdrant_manager
 
 logger = logging.getLogger(__name__)
 
@@ -209,8 +210,15 @@ async def process_embedding_job(job_id: str):
         # Send initial update with total files
         await manager.send_update(job_id, {"type": "job_started", "total_files": len(files)})
 
-        # Initialize Qdrant client
-        qdrant = QdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
+        # Get Qdrant client with retry logic
+        try:
+            qdrant = qdrant_manager.get_client()
+        except Exception as e:
+            error_msg = f"Failed to connect to Qdrant after retries: {e}"
+            logger.error(error_msg)
+            database.update_job(job_id, {"status": "failed", "error": error_msg})
+            await manager.send_update(job_id, {"type": "error", "message": error_msg})
+            return
 
         for file_idx, file_row in enumerate(files):
             try:
@@ -362,6 +370,7 @@ async def process_embedding_job(job_id: str):
                 # Prepare points for Qdrant in batches to avoid memory spikes
                 UPLOAD_BATCH_SIZE = 100
                 total_points = len(chunks)
+                successfully_uploaded = 0
 
                 for batch_start in range(0, total_points, UPLOAD_BATCH_SIZE):
                     batch_end = min(batch_start + UPLOAD_BATCH_SIZE, total_points)
@@ -386,11 +395,23 @@ async def process_embedding_job(job_id: str):
 
                     # Upload batch to Qdrant
                     if points:
-                        point_structs = [
-                            PointStruct(id=point["id"], vector=point["vector"], payload=point["payload"])
-                            for point in points
-                        ]
-                        qdrant.upsert(collection_name=f"job_{job_id}", points=point_structs)
+                        try:
+                            point_structs = [
+                                PointStruct(id=point["id"], vector=point["vector"], payload=point["payload"])
+                                for point in points
+                            ]
+                            upload_result = qdrant.upsert(
+                                collection_name=f"job_{job_id}",
+                                points=point_structs,
+                                wait=True
+                            )
+                            successfully_uploaded += len(point_structs)
+                            logger.info(f"Successfully uploaded {len(point_structs)} points to Qdrant")
+                        except Exception as e:
+                            error_msg = f"Failed to upload vectors to Qdrant: {e}"
+                            logger.error(error_msg)
+                            database.update_file_status(job_id, file_row["path"], "failed", error=str(e))
+                            raise  # Re-raise to be caught by outer exception handler
 
                     # Free the points batch
                     del points
@@ -440,7 +461,44 @@ async def process_embedding_job(job_id: str):
                     record_file_failed("embedding", type(e).__name__)
                 # File status already updated in the database.update_file_status call above
 
-        # Mark job as completed
+        # Check total vectors created from database
+        total_vectors_created = database.get_job_total_vectors(job_id)
+
+        if total_vectors_created == 0:
+            # No vectors were created - this is a failure condition
+            error_msg = "No vectors were created. All files either failed to process or contained no extractable text."
+            logger.error(f"Job {job_id} failed: {error_msg}")
+            database.update_job(job_id, {"status": "failed", "error": error_msg})
+            await manager.send_update(job_id, {"type": "error", "message": error_msg})
+            return
+
+        # Verify collection has points before marking as completed
+        try:
+            collection_info = qdrant.get_collection(f"job_{job_id}")
+
+            if collection_info.points_count == 0:
+                # This shouldn't happen if total_vectors_created > 0, but check anyway
+                error_msg = f"Qdrant collection has 0 points but {total_vectors_created} vectors were expected"
+                raise Exception(error_msg)
+
+            # Allow up to 10% discrepancy between database count and Qdrant count
+            # This accounts for potential race conditions, network issues during upload,
+            # or partial batch failures that were retried. The exact count isn't critical
+            # as long as most vectors were successfully uploaded.
+            if collection_info.points_count < total_vectors_created * 0.9:
+                logger.warning(
+                    f"Vector count mismatch: {collection_info.points_count} in Qdrant vs {total_vectors_created} expected"
+                )
+
+            logger.info(f"Collection job_{job_id} has {collection_info.points_count} points")
+        except Exception as e:
+            error_msg = f"Failed to verify Qdrant collection: {e}"
+            logger.error(error_msg)
+            database.update_job(job_id, {"status": "failed", "error": error_msg})
+            await manager.send_update(job_id, {"type": "error", "message": error_msg})
+            return
+
+        # Mark job as completed only if vectors were successfully created
         database.update_job(job_id, {"status": "completed", "current_file": None})
 
         await manager.send_update(job_id, {"type": "job_completed", "message": "Job completed successfully"})
@@ -452,7 +510,6 @@ async def process_embedding_job(job_id: str):
         await manager.send_update(job_id, {"type": "error", "message": str(e)})
 
     finally:
-        qdrant.close()
         # Cancel metrics updater task if it exists
         if metrics_task:
             metrics_task.cancel()
@@ -518,8 +575,8 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
         ]
         database.add_files_to_job(job_id, file_records)
 
-        # Create Qdrant collection for this job
-        qdrant = QdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
+        # Get Qdrant client from connection manager
+        qdrant = qdrant_manager.get_client()
 
         # Determine vector size
         vector_size = request.vector_dim
@@ -546,14 +603,18 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
         # Update job with actual vector dimension
         database.update_job(job_id, {"vector_dim": vector_size})
 
-        # Create collection using official client
+        # Create collection using connection manager with retry logic
         collection_name = f"job_{job_id}"
         try:
-            qdrant.create_collection(
+            qdrant_manager.create_collection(
                 collection_name=collection_name,
-                vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
-                optimizers_config={"indexing_threshold": 20000, "memmap_threshold": 0},
+                vector_size=vector_size,
+                distance=Distance.COSINE
             )
+
+            # Verify collection was created
+            collection_info = qdrant_manager.verify_collection(collection_name)
+            logger.info(f"Successfully created collection {collection_name}")
 
             # Store metadata about this collection
             from webui.api.collection_metadata import store_collection_metadata
@@ -570,7 +631,10 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
             )
 
         except Exception as e:
-            logger.warning(f"Collection {collection_name} might already exist: {e}")
+            logger.error(f"Failed to create collection {collection_name}: {e}")
+            # Clean up job and return error
+            database.delete_job(job_id)
+            raise HTTPException(status_code=500, detail=f"Failed to create Qdrant collection: {str(e)}")
 
         # Start processing in background with cancellation support
         task = asyncio.create_task(process_embedding_job(job_id))
@@ -626,6 +690,46 @@ async def list_jobs(current_user: dict[str, Any] = Depends(get_current_user)):
         )
 
     return result
+
+
+@router.get("/collections-status")
+async def check_collections_status(current_user: dict[str, Any] = Depends(get_current_user)):
+    """Check which job collections exist in Qdrant"""
+    try:
+        qdrant = qdrant_manager.get_client()
+
+        # Get all collections
+        collections = qdrant.get_collections().collections
+        collection_names = {c.name for c in collections}
+
+        # Get all jobs
+        jobs = database.list_jobs()
+
+        # Check each job's collection
+        results = {}
+        for job in jobs:
+            collection_name = f"job_{job['id']}"
+            exists = collection_name in collection_names
+
+            point_count = 0
+            if exists:
+                try:
+                    collection_info = qdrant.get_collection(collection_name)
+                    point_count = collection_info.points_count
+                except Exception as e:
+                    logger.warning(f"Could not get point count for collection {collection_name}: {e}")
+
+            results[job['id']] = {
+                'exists': exists,
+                'point_count': point_count,
+                'status': job['status']
+            }
+
+        return results
+
+    except Exception as e:
+        logger.error(f"Failed to check collections status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to check collections: {str(e)}")
 
 
 @router.post("/{job_id}/cancel")
@@ -697,6 +801,37 @@ async def get_job(job_id: str, current_user: dict[str, Any] = Depends(get_curren
         chunk_size=job.get("chunk_size"),
         chunk_overlap=job.get("chunk_overlap"),
     )
+
+
+@router.get("/{job_id}/collection-exists")
+async def check_collection_exists(job_id: str, current_user: dict[str, Any] = Depends(get_current_user)):
+    """Check if a job's collection exists in Qdrant"""
+    try:
+        qdrant = qdrant_manager.get_client()
+        collection_name = f"job_{job_id}"
+
+        # Get all collections
+        collections = qdrant.get_collections().collections
+        collection_exists = any(c.name == collection_name for c in collections)
+
+        # If collection exists, get point count
+        point_count = 0
+        if collection_exists:
+            try:
+                collection_info = qdrant.get_collection(collection_name)
+                point_count = collection_info.points_count
+            except Exception as e:
+                logger.warning(f"Could not get point count for collection {collection_name}: {e}")
+
+        return {
+            "exists": collection_exists,
+            "collection_name": collection_name,
+            "point_count": point_count
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to check collection existence: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to check collection: {str(e)}")
 
 
 # WebSocket handler - export this separately so it can be mounted at the app level

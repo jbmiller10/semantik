@@ -404,6 +404,24 @@ def get_job_files(job_id: str, status: str | None = None) -> list[dict[str, Any]
     return [dict(file) for file in files]
 
 
+def get_job_total_vectors(job_id: str) -> int:
+    """Get total vectors created for a job"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    c.execute(
+        """SELECT COALESCE(SUM(vectors_created), 0) as total 
+           FROM files 
+           WHERE job_id = ? AND status = 'completed'""",
+        (job_id,)
+    )
+
+    result = c.fetchone()
+    conn.close()
+
+    return result[0] if result else 0
+
+
 # User-related database operations
 def get_user(username: str) -> dict[str, Any] | None:
     """Get user by username"""
