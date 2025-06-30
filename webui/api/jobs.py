@@ -10,7 +10,7 @@ import uuid
 import hashlib
 import gc
 from datetime import datetime
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends
@@ -141,6 +141,11 @@ def extract_text_thread_safe(filepath: str) -> str:
     """Thread-safe version of extract_text that uses the unified extraction"""
     return extract_text(filepath)
 
+def extract_and_serialize_thread_safe(filepath: str) -> List[Tuple[str, Dict[str, Any]]]:
+    """Thread-safe version of extract_and_serialize that preserves metadata"""
+    from vecpipe.extract_chunks import extract_and_serialize
+    return extract_and_serialize(filepath)
+
 # Import scan function from files module to avoid circular import  
 from webui.api.files import scan_directory_async
 
@@ -232,10 +237,10 @@ async def process_embedding_job(job_id: str):
                 try:
                     loop = asyncio.get_event_loop()
                     # Use asyncio timeout instead of signal-based timeout
-                    text = await asyncio.wait_for(
+                    text_blocks = await asyncio.wait_for(
                         loop.run_in_executor(
                             executor,
-                            lambda: extract_text_thread_safe(file_row['path'])
+                            lambda: extract_and_serialize_thread_safe(file_row['path'])
                         ),
                         timeout=300  # 5 minute timeout
                     )
@@ -244,7 +249,7 @@ async def process_embedding_job(job_id: str):
                 
                 memory_after_extract = process.memory_info().rss / 1024 / 1024  # MB
                 logger.info(f"Memory after extraction: {memory_after_extract:.2f} MB (delta: {memory_after_extract - initial_memory:.2f} MB)")
-                logger.info(f"Extracted text length: {len(text)} characters")
+                logger.info(f"Extracted {len(text_blocks)} text blocks")
                 
                 doc_id = hashlib.md5(file_row['path'].encode()).hexdigest()[:16]
                 
@@ -255,24 +260,33 @@ async def process_embedding_job(job_id: str):
                     chunk_size=job['chunk_size'] or 600,
                     chunk_overlap=job['chunk_overlap'] or 200
                 )
-                # Run chunking in thread pool to avoid blocking
-                chunks = await loop.run_in_executor(
-                    executor,
-                    chunker.chunk_text,
-                    text,
-                    doc_id
-                )
+                
+                # Process each text block with its metadata
+                all_chunks = []
+                for text, metadata in text_blocks:
+                    if not text.strip():
+                        continue
+                    
+                    # Run chunking in thread pool to avoid blocking
+                    chunks = await loop.run_in_executor(
+                        executor,
+                        chunker.chunk_text,
+                        text,
+                        doc_id,
+                        metadata  # Pass metadata to preserve page numbers
+                    )
+                    all_chunks.extend(chunks)
                 
                 memory_after_chunk = process.memory_info().rss / 1024 / 1024  # MB
                 logger.info(f"Memory after chunking: {memory_after_chunk:.2f} MB (delta: {memory_after_chunk - memory_after_extract:.2f} MB)")
-                logger.info(f"Created {len(chunks)} chunks")
+                logger.info(f"Created {len(all_chunks)} chunks")
                 
                 # Record chunks created
                 if METRICS_TRACKING:
-                    record_chunks_created(len(chunks))
+                    record_chunks_created(len(all_chunks))
                 
-                # Free the original text immediately after chunking
-                del text
+                # Update chunks variable to use all_chunks
+                chunks = all_chunks
                 
                 # Generate embeddings
                 texts = [chunk['text'] for chunk in chunks]
@@ -357,7 +371,8 @@ async def process_embedding_job(job_id: str):
                                 "doc_id": doc_id,
                                 "chunk_id": chunk['chunk_id'],
                                 "path": file_row['path'],
-                                "content": chunk['text']  # Store full text for hybrid search
+                                "content": chunk['text'],  # Store full text for hybrid search
+                                "metadata": chunk.get('metadata', {})  # Store metadata including page_number
                             }
                         }
                         points.append(point)

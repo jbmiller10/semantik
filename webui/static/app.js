@@ -804,6 +804,10 @@ function displayHybridSearchResults(data) {
     const resultsDiv = document.getElementById('search-results');
     const container = document.getElementById('results-container');
     
+    // Store search context for view button
+    const searchQuery = document.getElementById('search-query').value;
+    const currentJobId = document.getElementById('search-collection').value;
+    
     resultsDiv.classList.remove('hidden');
     
     if (data.results.length === 0) {
@@ -818,7 +822,8 @@ function displayHybridSearchResults(data) {
             chunk_id: result.chunk_id || result.payload?.chunk_id,
             doc_id: result.doc_id || result.payload?.doc_id,
             text: result.payload?.content?.substring(0, 200) || result.payload?.text,
-            matched_keywords: result.matched_keywords
+            matched_keywords: result.matched_keywords,
+            metadata: result.metadata || result.payload?.metadata
         },
         score: result.combined_score || result.score,
         keyword_score: result.keyword_score
@@ -876,6 +881,12 @@ function displayHybridSearchResults(data) {
                                             Keywords: ${chunk.keyword_score.toFixed(3)}
                                         </span>
                                     ` : ''}
+                                    ${((chunk.payload && chunk.payload.doc_id && chunk.payload.metadata) || (chunk.doc_id && chunk.metadata)) ? `
+                                        <button onclick="viewDocument('${currentJobId || ''}', '${chunk.payload?.doc_id || chunk.doc_id}', '${doc.filename.replace(/'/g, "\\'")}', '${searchQuery.replace(/'/g, "\\'")}', ${chunk.payload?.metadata?.page_number || chunk.metadata?.page_number || 1})"
+                                                class="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm transition-colors">
+                                            <i class="fas fa-eye mr-1"></i>View
+                                        </button>
+                                    ` : ''}
                                 </div>
                             </div>
                             
@@ -900,6 +911,10 @@ function displayHybridSearchResults(data) {
 function displaySearchResults(data) {
     const resultsDiv = document.getElementById('search-results');
     const container = document.getElementById('results-container');
+    
+    // Store search context for view button
+    const searchQuery = document.getElementById('search-query').value;
+    const currentJobId = document.getElementById('search-collection').value;
     
     resultsDiv.classList.remove('hidden');
     
@@ -951,9 +966,17 @@ function displaySearchResults(data) {
                                 <h5 class="font-medium text-gray-700">
                                     Chunk ${chunkIdx + 1}
                                 </h5>
-                                <span class="bg-green-100 text-green-800 px-2 py-1 rounded text-sm">
-                                    Score: ${chunk.score.toFixed(3)}
-                                </span>
+                                <div class="flex items-center space-x-2">
+                                    <span class="bg-green-100 text-green-800 px-2 py-1 rounded text-sm">
+                                        Score: ${chunk.score.toFixed(3)}
+                                    </span>
+                                    ${((chunk.payload && chunk.payload.doc_id && chunk.payload.metadata) || (chunk.doc_id && chunk.metadata)) ? `
+                                        <button onclick="viewDocument('${currentJobId || ''}', '${chunk.payload?.doc_id || chunk.doc_id}', '${doc.filename.replace(/'/g, "\\'")}', '${searchQuery.replace(/'/g, "\\'")}', ${chunk.payload?.metadata?.page_number || chunk.metadata?.page_number || 1})"
+                                                class="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm transition-colors">
+                                            <i class="fas fa-eye mr-1"></i>View
+                                        </button>
+                                    ` : ''}
+                                </div>
                             </div>
                             
                             ${chunk.payload.text ? `
@@ -1518,6 +1541,21 @@ function getMetricValue(metrics, metricName, aggregation = 'last', defaultValue 
         default:
             return defaultValue;
     }
+}
+
+// Document viewer function
+function viewDocument(jobId, docId, filename, searchQuery, pageNumber) {
+    // Ensure the document viewer is loaded
+    if (!window.documentViewer) {
+        console.error('Document viewer not loaded');
+        return;
+    }
+    
+    // Open the document viewer with the specified parameters
+    window.documentViewer.open(jobId, docId, filename, {
+        searchQuery: searchQuery,
+        pageNumber: pageNumber || 1
+    });
 }
 
 // Initialize on load
