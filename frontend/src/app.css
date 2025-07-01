@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom animations from the original app */
+@keyframes shimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+.animate-shimmer {
+    animation: shimmer 2s infinite;
+    background: linear-gradient(to right, transparent, rgba(255,255,255,0.4), transparent);
+}
+
+@keyframes breathe {
+    0%, 100% {
+        border-color: rgb(147, 197, 253);
+        box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.1), 0 4px 6px -2px rgba(59, 130, 246, 0.05);
+    }
+    50% {
+        border-color: rgb(96, 165, 250);
+        box-shadow: 0 20px 25px -5px rgba(59, 130, 246, 0.2), 0 10px 10px -5px rgba(59, 130, 246, 0.04);
+    }
+}
+
+.job-card-running {
+    animation: breathe 3s ease-in-out infinite;
+}
+
+@keyframes enhanced-pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.8;
+    }
+}
+
+.animate-pulse {
+    animation: enhanced-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

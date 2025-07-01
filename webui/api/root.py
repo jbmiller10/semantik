@@ -17,11 +17,11 @@ async def root():
     return FileResponse(os.path.join(base_dir, "static", "index.html"))
 
 
-@router.get("/login.html")
+@router.get("/login")
 async def login_page():
-    """Serve the login page"""
+    """Serve the login page (SvelteKit handles routing)"""
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return FileResponse(os.path.join(base_dir, "static", "login.html"))
+    return FileResponse(os.path.join(base_dir, "static", "index.html"))
 
 
 @router.get("/settings")

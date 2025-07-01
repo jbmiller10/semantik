@@ -21,6 +21,12 @@ export LD_LIBRARY_PATH="$CUDA_LIB_PATH:$LD_LIBRARY_PATH"
 # Also add the parent nvidia directory for other CUDA libraries
 export LD_LIBRARY_PATH="/root/.pyenv/versions/3.12.11/envs/embeddingdocs/lib/python3.12/site-packages/nvidia:$LD_LIBRARY_PATH"
 
+# Build frontend if needed
+if [ -d "frontend" ] && [ ! -d "frontend/build" ]; then
+    echo "Building frontend..."
+    make frontend-build
+fi
+
 # Run the web UI with poetry
 # Use PROJECT_ROOT if set, otherwise use current directory
 PROJECT_ROOT="${PROJECT_ROOT:-$(dirname $(readlink -f $0))}"

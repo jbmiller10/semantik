@@ -51,7 +51,8 @@ def create_app() -> FastAPI:
 
     # Mount static files with proper path resolution
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    app.mount("/static", StaticFiles(directory=os.path.join(base_dir, "static")), name="static")
+    # Mount the SvelteKit build output at root for proper asset loading
+    app.mount("/", StaticFiles(directory=os.path.join(base_dir, "static"), html=True), name="static")
 
     return app
 

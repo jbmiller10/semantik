@@ -1,6 +1,6 @@
 # Makefile for Document Embedding System
 
-.PHONY: help install dev-install format lint type-check test test-coverage clean docker-build docker-run
+.PHONY: help install dev-install format lint type-check test test-coverage clean docker-build docker-run frontend-install frontend-build frontend-dev
 
 help:
 	@echo "Available commands:"
@@ -14,6 +14,9 @@ help:
 	@echo "  clean          Clean up generated files"
 	@echo "  docker-build   Build Docker image"
 	@echo "  docker-run     Run Docker container"
+	@echo "  frontend-install  Install frontend dependencies"
+	@echo "  frontend-build    Build frontend for production"
+	@echo "  frontend-dev      Run frontend development server"
 
 install:
 	poetry install --no-dev
@@ -42,6 +45,20 @@ clean:
 	find . -type f -name "*.pyc" -delete
 	rm -rf .coverage htmlcov .pytest_cache .mypy_cache .ruff_cache
 	rm -rf *.egg-info dist build
+	rm -rf frontend/build frontend/.svelte-kit frontend/node_modules
+
+frontend-install:
+	cd frontend && npm install
+
+frontend-build: frontend-install
+	cd frontend && npm run build
+	# Copy built files to webui/static
+	rm -rf webui/static_old
+	mv webui/static webui/static_old || true
+	cp -r frontend/build webui/static
+
+frontend-dev:
+	cd frontend && npm run dev
 
 docker-build:
 	docker build -f Dockerfile.webui -t document-embedding-webui:latest .
