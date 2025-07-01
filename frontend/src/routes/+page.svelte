@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { auth } from '$lib/stores/auth';
+	import { goto } from '$app/navigation';
 	import Tabs from '$lib/components/ui/Tabs.svelte';
 	import CreateJobForm from '$lib/components/CreateJobForm.svelte';
 	import JobList from '$lib/components/JobList.svelte';
@@ -12,6 +13,10 @@
 	];
 
 	let activeTab = 'create';
+	
+	function goToSettings() {
+		goto('/settings');
+	}
 </script>
 
 <div class="container mx-auto px-4 py-8">
@@ -25,9 +30,9 @@
 				<i class="fas fa-user mr-2"></i>
 				<span>{$auth.user?.username || 'Loading...'}</span>
 			</span>
-			<a href="/settings" class="text-gray-600 hover:text-gray-800">
+			<button on:click={goToSettings} class="text-gray-600 hover:text-gray-800">
 				<i class="fas fa-cog text-2xl"></i>
-			</a>
+			</button>
 			<button
 				on:click={() => auth.logout()}
 				class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
