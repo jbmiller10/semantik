@@ -413,7 +413,7 @@ def get_job_total_vectors(job_id: str) -> int:
         """SELECT COALESCE(SUM(vectors_created), 0) as total 
            FROM files 
            WHERE job_id = ? AND status = 'completed'""",
-        (job_id,)
+        (job_id,),
     )
 
     result = c.fetchone()

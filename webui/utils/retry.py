@@ -11,7 +11,7 @@ from typing import TypeVar
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 def exponential_backoff_retry(
@@ -19,7 +19,7 @@ def exponential_backoff_retry(
     initial_delay: float = 1.0,
     max_delay: float = 60.0,
     exponential_base: float = 2.0,
-    exceptions: tuple = (Exception,)
+    exceptions: tuple = (Exception,),
 ) -> Callable:
     """
     Decorator for retrying functions with exponential backoff.
@@ -34,6 +34,7 @@ def exponential_backoff_retry(
     Returns:
         Decorated function that retries on failure
     """
+
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @functools.wraps(func)
         def sync_wrapper(*args, **kwargs) -> T:
@@ -49,11 +50,8 @@ def exponential_backoff_retry(
                         logger.error(f"Failed after {max_retries + 1} attempts: {e}")
                         raise
 
-                    delay = min(initial_delay * (exponential_base ** attempt), max_delay)
-                    logger.warning(
-                        f"Attempt {attempt + 1} failed: {e}. "
-                        f"Retrying in {delay:.1f} seconds..."
-                    )
+                    delay = min(initial_delay * (exponential_base**attempt), max_delay)
+                    logger.warning(f"Attempt {attempt + 1} failed: {e}. " f"Retrying in {delay:.1f} seconds...")
                     time.sleep(delay)
 
             raise last_exception
@@ -72,11 +70,8 @@ def exponential_backoff_retry(
                         logger.error(f"Failed after {max_retries + 1} attempts: {e}")
                         raise
 
-                    delay = min(initial_delay * (exponential_base ** attempt), max_delay)
-                    logger.warning(
-                        f"Attempt {attempt + 1} failed: {e}. "
-                        f"Retrying in {delay:.1f} seconds..."
-                    )
+                    delay = min(initial_delay * (exponential_base**attempt), max_delay)
+                    logger.warning(f"Attempt {attempt + 1} failed: {e}. " f"Retrying in {delay:.1f} seconds...")
                     await asyncio.sleep(delay)
 
             raise last_exception

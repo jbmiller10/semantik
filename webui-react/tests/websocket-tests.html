@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Feature Tests</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .status {
+            padding: 5px 10px;
+            border-radius: 4px;
+            display: inline-block;
+            margin: 5px 0;
+        }
+        .status.connected {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .status.disconnected {
+            background-color: #f44336;
+            color: white;
+        }
+        .status.pending {
+            background-color: #ff9800;
+            color: white;
+        }
+        .log {
+            background-color: #f5f5f5;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        button {
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #1976D2;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        input {
+            padding: 8px;
+            margin-right: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebSocket Feature Tests</h1>
+    
+    <!-- Test 1: Job Progress WebSocket -->
+    <div class="test-section">
+        <h2>Test 1: Job Progress WebSocket</h2>
+        <div>
+            <label>Job ID: <input type="text" id="jobId" placeholder="Enter job ID" /></label>
+            <button onclick="testJobProgress()">Connect to Job Progress</button>
+            <button onclick="disconnectJobProgress()">Disconnect</button>
+        </div>
+        <div>Status: <span id="jobStatus" class="status disconnected">Disconnected</span></div>
+        <div class="log" id="jobLog"></div>
+    </div>
+    
+    <!-- Test 2: Directory Scan WebSocket -->
+    <div class="test-section">
+        <h2>Test 2: Directory Scan WebSocket</h2>
+        <div>
+            <label>Path: <input type="text" id="scanPath" placeholder="/path/to/scan" value="/tmp" /></label>
+            <button onclick="testDirectoryScan()">Start Directory Scan</button>
+            <button onclick="disconnectDirectoryScan()">Disconnect</button>
+        </div>
+        <div>Status: <span id="scanStatus" class="status disconnected">Disconnected</span></div>
+        <div class="log" id="scanLog"></div>
+    </div>
+    
+    <!-- Test 3: WebSocket Connection Tests -->
+    <div class="test-section">
+        <h2>Test 3: WebSocket Connection Tests</h2>
+        <button onclick="runConnectionTests()">Run All Connection Tests</button>
+        <div class="log" id="connectionLog"></div>
+    </div>
+    
+    <!-- Test 4: Message Handling Tests -->
+    <div class="test-section">
+        <h2>Test 4: Message Handling Tests</h2>
+        <button onclick="testMessageHandling()">Test Message Handling</button>
+        <div class="log" id="messageLog"></div>
+    </div>
+
+    <script>
+        let jobWs = null;
+        let scanWs = null;
+        const API_BASE = window.location.origin;
+        const WS_BASE = API_BASE.replace(/^http/, 'ws');
+        
+        function log(logId, message, type = 'info') {
+            const logElement = document.getElementById(logId);
+            const timestamp = new Date().toISOString();
+            const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : 'ℹ️';
+            logElement.innerHTML += `${prefix} [${timestamp}] ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+        
+        function updateStatus(statusId, status, text) {
+            const statusElement = document.getElementById(statusId);
+            statusElement.className = `status ${status}`;
+            statusElement.textContent = text;
+        }
+        
+        // Test 1: Job Progress WebSocket
+        function testJobProgress() {
+            const jobId = document.getElementById('jobId').value;
+            if (!jobId) {
+                log('jobLog', 'Please enter a job ID', 'error');
+                return;
+            }
+            
+            if (jobWs) {
+                jobWs.close();
+            }
+            
+            const wsUrl = `${WS_BASE}/api/jobs/${jobId}/progress`;
+            log('jobLog', `Connecting to: ${wsUrl}`);
+            updateStatus('jobStatus', 'pending', 'Connecting...');
+            
+            try {
+                jobWs = new WebSocket(wsUrl);
+                
+                jobWs.onopen = () => {
+                    log('jobLog', 'WebSocket connected successfully', 'success');
+                    updateStatus('jobStatus', 'connected', 'Connected');
+                };
+                
+                jobWs.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        log('jobLog', `Message received: ${JSON.stringify(data, null, 2)}`);
+                    } catch (e) {
+                        log('jobLog', `Raw message: ${event.data}`);
+                    }
+                };
+                
+                jobWs.onerror = (error) => {
+                    log('jobLog', `WebSocket error: ${error}`, 'error');
+                    updateStatus('jobStatus', 'disconnected', 'Error');
+                };
+                
+                jobWs.onclose = (event) => {
+                    log('jobLog', `WebSocket closed. Code: ${event.code}, Reason: ${event.reason || 'No reason provided'}`);
+                    updateStatus('jobStatus', 'disconnected', 'Disconnected');
+                };
+            } catch (error) {
+                log('jobLog', `Failed to create WebSocket: ${error.message}`, 'error');
+                updateStatus('jobStatus', 'disconnected', 'Failed');
+            }
+        }
+        
+        function disconnectJobProgress() {
+            if (jobWs) {
+                jobWs.close();
+                jobWs = null;
+                log('jobLog', 'Disconnected manually');
+            }
+        }
+        
+        // Test 2: Directory Scan WebSocket
+        function testDirectoryScan() {
+            const path = document.getElementById('scanPath').value;
+            if (!path) {
+                log('scanLog', 'Please enter a path', 'error');
+                return;
+            }
+            
+            if (scanWs) {
+                scanWs.close();
+            }
+            
+            const wsUrl = `${WS_BASE}/api/scan-directory`;
+            log('scanLog', `Connecting to: ${wsUrl}`);
+            updateStatus('scanStatus', 'pending', 'Connecting...');
+            
+            try {
+                scanWs = new WebSocket(wsUrl);
+                
+                scanWs.onopen = () => {
+                    log('scanLog', 'WebSocket connected successfully', 'success');
+                    updateStatus('scanStatus', 'connected', 'Connected');
+                    
+                    // Send scan request
+                    const request = { path: path };
+                    log('scanLog', `Sending scan request: ${JSON.stringify(request)}`);
+                    scanWs.send(JSON.stringify(request));
+                };
+                
+                scanWs.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        log('scanLog', `Message received: ${JSON.stringify(data, null, 2)}`);
+                    } catch (e) {
+                        log('scanLog', `Raw message: ${event.data}`);
+                    }
+                };
+                
+                scanWs.onerror = (error) => {
+                    log('scanLog', `WebSocket error: ${error}`, 'error');
+                    updateStatus('scanStatus', 'disconnected', 'Error');
+                };
+                
+                scanWs.onclose = (event) => {
+                    log('scanLog', `WebSocket closed. Code: ${event.code}, Reason: ${event.reason || 'No reason provided'}`);
+                    updateStatus('scanStatus', 'disconnected', 'Disconnected');
+                };
+            } catch (error) {
+                log('scanLog', `Failed to create WebSocket: ${error.message}`, 'error');
+                updateStatus('scanStatus', 'disconnected', 'Failed');
+            }
+        }
+        
+        function disconnectDirectoryScan() {
+            if (scanWs) {
+                scanWs.close();
+                scanWs = null;
+                log('scanLog', 'Disconnected manually');
+            }
+        }
+        
+        // Test 3: Connection Tests
+        async function runConnectionTests() {
+            const tests = [
+                { endpoint: '/api/jobs/test-123/progress', name: 'Job Progress Endpoint' },
+                { endpoint: '/api/scan-directory', name: 'Directory Scan Endpoint' },
+                { endpoint: '/api/ws/invalid', name: 'Invalid Endpoint (should fail)' }
+            ];
+            
+            log('connectionLog', 'Starting connection tests...');
+            
+            for (const test of tests) {
+                await testConnection(test.endpoint, test.name);
+            }
+            
+            log('connectionLog', 'Connection tests completed', 'success');
+        }
+        
+        async function testConnection(endpoint, name) {
+            return new Promise((resolve) => {
+                const wsUrl = `${WS_BASE}${endpoint}`;
+                log('connectionLog', `Testing ${name}: ${wsUrl}`);
+                
+                const ws = new WebSocket(wsUrl);
+                const timeout = setTimeout(() => {
+                    ws.close();
+                    log('connectionLog', `${name}: Timeout after 5 seconds`, 'error');
+                    resolve();
+                }, 5000);
+                
+                ws.onopen = () => {
+                    clearTimeout(timeout);
+                    log('connectionLog', `${name}: Connected successfully`, 'success');
+                    ws.close();
+                    resolve();
+                };
+                
+                ws.onerror = (error) => {
+                    clearTimeout(timeout);
+                    log('connectionLog', `${name}: Connection failed`, 'error');
+                    resolve();
+                };
+                
+                ws.onclose = () => {
+                    clearTimeout(timeout);
+                    resolve();
+                };
+            });
+        }
+        
+        // Test 4: Message Handling
+        function testMessageHandling() {
+            log('messageLog', 'Testing message handling scenarios...');
+            
+            // Create a test WebSocket
+            const wsUrl = `${WS_BASE}/api/scan-directory`;
+            const ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                log('messageLog', 'Connected, sending test messages...');
+                
+                // Test 1: Valid JSON message
+                const validMessage = { path: '/tmp', type: 'scan_request' };
+                log('messageLog', `Sending valid JSON: ${JSON.stringify(validMessage)}`);
+                ws.send(JSON.stringify(validMessage));
+                
+                // Test 2: Invalid JSON
+                setTimeout(() => {
+                    log('messageLog', 'Sending invalid JSON...');
+                    ws.send('{invalid json}');
+                }, 1000);
+                
+                // Test 3: Empty message
+                setTimeout(() => {
+                    log('messageLog', 'Sending empty message...');
+                    ws.send('');
+                }, 2000);
+                
+                // Test 4: Large message
+                setTimeout(() => {
+                    const largeMessage = { data: 'x'.repeat(10000) };
+                    log('messageLog', 'Sending large message (10KB)...');
+                    ws.send(JSON.stringify(largeMessage));
+                }, 3000);
+                
+                // Close after tests
+                setTimeout(() => {
+                    ws.close();
+                    log('messageLog', 'Test completed', 'success');
+                }, 5000);
+            };
+            
+            ws.onmessage = (event) => {
+                log('messageLog', `Response: ${event.data}`);
+            };
+            
+            ws.onerror = (error) => {
+                log('messageLog', `Error: ${error}`, 'error');
+            };
+        }
+        
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', () => {
+            log('connectionLog', `API Base: ${API_BASE}`);
+            log('connectionLog', `WebSocket Base: ${WS_BASE}`);
+        });
+    </script>
+</body>
+</html>

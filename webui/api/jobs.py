@@ -8,6 +8,7 @@ import hashlib
 import logging
 import os
 import sys
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -158,16 +159,20 @@ def extract_and_serialize_thread_safe(filepath: str) -> list[tuple[str, dict[str
 
 
 async def update_metrics_continuously():
-    """Background task to update resource metrics continuously"""
+    """Background task to update resource metrics during job processing"""
+    # Since webui/api/metrics.py already has a background thread updating metrics,
+    # we only need to ensure metrics are being updated, not force updates
     while True:
         try:
             from vecpipe.metrics import metrics_collector
 
-            metrics_collector.last_update = 0  # Force update
-            metrics_collector.update_resource_metrics()
-        except:
-            pass
-        await asyncio.sleep(0.5)  # Update every 1 second for smoother metrics
+            # Only update if it's been more than 0.5 seconds since last update
+            current_time = time.time()
+            if current_time - metrics_collector.last_update > 0.5:
+                metrics_collector.update_resource_metrics()
+        except Exception as e:
+            logger.warning(f"Error updating metrics in job: {e}")
+        await asyncio.sleep(1)  # Check every 1 second
 
 
 async def process_embedding_job(job_id: str):
@@ -186,9 +191,6 @@ async def process_embedding_job(job_id: str):
         )
 
         METRICS_TRACKING = True
-        # Set shorter update interval for webui
-        metrics_collector.update_interval = 0.5  # 1 second for smoother updates
-
         # Start background metrics updater
         metrics_task = asyncio.create_task(update_metrics_continuously())
     except ImportError:
@@ -401,9 +403,7 @@ async def process_embedding_job(job_id: str):
                                 for point in points
                             ]
                             upload_result = qdrant.upsert(
-                                collection_name=f"job_{job_id}",
-                                points=point_structs,
-                                wait=True
+                                collection_name=f"job_{job_id}", points=point_structs, wait=True
                             )
                             successfully_uploaded += len(point_structs)
                             logger.info(f"Successfully uploaded {len(point_structs)} points to Qdrant")
@@ -607,9 +607,7 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
         collection_name = f"job_{job_id}"
         try:
             qdrant_manager.create_collection(
-                collection_name=collection_name,
-                vector_size=vector_size,
-                distance=Distance.COSINE
+                collection_name=collection_name, vector_size=vector_size, distance=Distance.COSINE
             )
 
             # Verify collection was created
@@ -719,11 +717,7 @@ async def check_collections_status(current_user: dict[str, Any] = Depends(get_cu
                 except Exception as e:
                     logger.warning(f"Could not get point count for collection {collection_name}: {e}")
 
-            results[job['id']] = {
-                'exists': exists,
-                'point_count': point_count,
-                'status': job['status']
-            }
+            results[job["id"]] = {"exists": exists, "point_count": point_count, "status": job["status"]}
 
         return results
 
@@ -823,11 +817,7 @@ async def check_collection_exists(job_id: str, current_user: dict[str, Any] = De
             except Exception as e:
                 logger.warning(f"Could not get point count for collection {collection_name}: {e}")
 
-        return {
-            "exists": collection_exists,
-            "collection_name": collection_name,
-            "point_count": point_count
-        }
+        return {"exists": collection_exists, "collection_name": collection_name, "point_count": point_count}
 
     except Exception as e:
         logger.error(f"Failed to check collection existence: {e}")

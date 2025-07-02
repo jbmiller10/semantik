@@ -4,11 +4,12 @@ Prometheus metrics for document embedding pipeline
 Provides observability into system performance
 """
 
+import threading
 import time
 
 import GPUtil
 import psutil
-from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, Info, start_http_server
+from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, Info, generate_latest, start_http_server
 
 # Create custom registry
 registry = CollectorRegistry()
@@ -72,6 +73,8 @@ gpu_utilization = Gauge(
 )
 cpu_utilization = Gauge("embedding_cpu_utilization_percent", "CPU utilization percentage", registry=registry)
 memory_utilization = Gauge("embedding_memory_utilization_percent", "Memory utilization percentage", registry=registry)
+memory_used = Gauge("embedding_memory_used_bytes", "System memory used", registry=registry)
+memory_total = Gauge("embedding_memory_total_bytes", "System memory total", registry=registry)
 
 # Qdrant Metrics
 qdrant_points = Gauge("embedding_qdrant_points_total", "Total points in Qdrant", ["collection"], registry=registry)
@@ -83,36 +86,69 @@ class MetricsCollector:
 
     def __init__(self):
         self.last_update = 0
-        self.update_interval = 10  # seconds
+        self.update_interval = 1  # seconds - reduced for more responsive metrics
+        self.lock = threading.Lock()
+        self.first_cpu_call = True
 
-    def update_resource_metrics(self):
+    def update_resource_metrics(self, force=False):
         """Update resource utilization metrics"""
         current_time = time.time()
-        if current_time - self.last_update < self.update_interval:
+
+        # Check if update is needed (without lock for performance)
+        if not force and current_time - self.last_update < self.update_interval:
             return
 
-        try:
-            # CPU and Memory
-            cpu_utilization.set(psutil.cpu_percent(interval=0.1))  # 0.1 second sampling
-            memory_utilization.set(psutil.virtual_memory().percent)
+        # Acquire lock for thread safety
+        with self.lock:
+            # Double-check after acquiring lock
+            if not force and current_time - self.last_update < self.update_interval:
+                return
 
-            # GPU metrics (if available)
             try:
-                gpus = GPUtil.getGPUs()
-                for i, gpu in enumerate(gpus):
-                    gpu_memory_used.labels(gpu_index=str(i)).set(
-                        gpu.memoryUsed * 1024 * 1024 * 1024
-                    )  # Convert to bytes
-                    gpu_memory_total.labels(gpu_index=str(i)).set(
-                        gpu.memoryTotal * 1024 * 1024 * 1024
-                    )  # Convert to bytes
-                    gpu_utilization.labels(gpu_index=str(i)).set(gpu.load * 100)
-            except:
-                pass  # No GPU available
+                # CPU and Memory
+                # Use interval=None for non-blocking, but handle first call
+                if self.first_cpu_call:
+                    # First call needs to establish baseline
+                    cpu_percent = psutil.cpu_percent(interval=0.1)
+                    self.first_cpu_call = False
+                else:
+                    # Subsequent calls use accumulated data (non-blocking)
+                    cpu_percent = psutil.cpu_percent(interval=None)
 
-            self.last_update = current_time
-        except Exception as e:
-            print(f"Error updating resource metrics: {e}")
+                mem_info = psutil.virtual_memory()
+
+                # Debug logging
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.debug(f"Updating metrics: CPU={cpu_percent}%, Memory={mem_info.percent}%")
+
+                cpu_utilization.set(cpu_percent)
+                memory_utilization.set(mem_info.percent)
+                memory_used.set(mem_info.used)
+                memory_total.set(mem_info.total)
+
+                # GPU metrics (if available)
+                try:
+                    gpus = GPUtil.getGPUs()
+                    for i, gpu in enumerate(gpus):
+                        gpu_memory_used.labels(gpu_index=str(i)).set(
+                            gpu.memoryUsed * 1024 * 1024 * 1024
+                        )  # Convert to bytes
+                        gpu_memory_total.labels(gpu_index=str(i)).set(
+                            gpu.memoryTotal * 1024 * 1024 * 1024
+                        )  # Convert to bytes
+                        gpu_utilization.labels(gpu_index=str(i)).set(gpu.load * 100)
+                        logger.debug(f"GPU {i}: Load={gpu.load * 100}%, Memory Used={gpu.memoryUsed}GB")
+                except Exception as gpu_err:
+                    logger.debug(f"No GPU available or error reading GPU: {gpu_err}")
+
+                self.last_update = current_time
+            except Exception as e:
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error updating resource metrics: {e}")
 
 
 # Global metrics collector

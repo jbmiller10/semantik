@@ -98,7 +98,7 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
         if e.response.status_code == 404:
             raise HTTPException(
                 status_code=404,
-                detail="Collection not found. The embedding job may not have created any vectors yet. Please check the job status."
+                detail="Collection not found. The embedding job may not have created any vectors yet. Please check the job status.",
             )
         raise HTTPException(status_code=502, detail=f"Search failed: {str(e)}")
     except httpx.RequestError as e:
