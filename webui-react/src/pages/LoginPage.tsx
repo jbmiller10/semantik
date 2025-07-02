@@ -32,7 +32,7 @@ function LoginPage() {
           headers: { Authorization: `Bearer ${response.data.access_token}` }
         });
         
-        setAuth(response.data.access_token, userResponse.data);
+        setAuth(response.data.access_token, userResponse.data, response.data.refresh_token);
         addToast({
           type: 'success',
           message: isLogin ? 'Logged in successfully' : 'Registered successfully',
