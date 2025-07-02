@@ -1,7 +1,16 @@
 #!/usr/bin/env python3
 """Test metrics directly from the registry"""
 import time
-from vecpipe.metrics import metrics_collector, cpu_utilization, memory_utilization, memory_used, memory_total, generate_latest, registry
+
+from vecpipe.metrics import (
+    cpu_utilization,
+    generate_latest,
+    memory_total,
+    memory_used,
+    memory_utilization,
+    metrics_collector,
+    registry,
+)
 
 print("Testing direct metrics update...")
 
@@ -19,14 +28,14 @@ print(f"Memory total gauge value: {memory_total._value.get()}")
 
 # Generate metrics
 print("\nGenerating metrics from registry...")
-metrics_data = generate_latest(registry).decode('utf-8')
-lines = metrics_data.split('\n')
+metrics_data = generate_latest(registry).decode("utf-8")
+lines = metrics_data.split("\n")
 for line in lines:
-    if 'embedding_cpu_utilization_percent' in line and not line.startswith('#'):
+    if "embedding_cpu_utilization_percent" in line and not line.startswith("#"):
         print(f"Registry CPU metric: {line}")
-    elif 'embedding_memory_utilization_percent' in line and not line.startswith('#'):
+    elif "embedding_memory_utilization_percent" in line and not line.startswith("#"):
         print(f"Registry Memory metric: {line}")
-    elif 'embedding_memory_used_bytes' in line and not line.startswith('#'):
+    elif "embedding_memory_used_bytes" in line and not line.startswith("#"):
         print(f"Registry Memory used: {line}")
-    elif 'embedding_memory_total_bytes' in line and not line.startswith('#'):
+    elif "embedding_memory_total_bytes" in line and not line.startswith("#"):
         print(f"Registry Memory total: {line}")

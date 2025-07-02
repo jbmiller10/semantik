@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Manually update metrics in a loop"""
 import time
+
 from vecpipe.metrics import metrics_collector
 
 print("Starting metrics update loop...")
