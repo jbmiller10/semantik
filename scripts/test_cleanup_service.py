@@ -11,8 +11,8 @@ import tempfile
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from vecpipe.cleanup import QdrantCleanupService
-from vecpipe.extract_chunks import FileChangeTracker
+from packages.vecpipe.cleanup import QdrantCleanupService
+from packages.vecpipe.extract_chunks import FileChangeTracker
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

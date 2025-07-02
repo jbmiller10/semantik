@@ -2,7 +2,7 @@
 """Test metrics directly from the registry"""
 import time
 
-from vecpipe.metrics import (
+from packages.vecpipe.metrics import (
     cpu_utilization,
     generate_latest,
     memory_total,

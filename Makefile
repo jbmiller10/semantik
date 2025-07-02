@@ -1,6 +1,7 @@
 # Makefile for Document Embedding System
 
 .PHONY: help install dev-install format lint type-check test test-coverage clean docker-build docker-run
+.PHONY: frontend-install frontend-build frontend-dev frontend-test build dev
 
 help:
 	@echo "Available commands:"
@@ -14,6 +15,16 @@ help:
 	@echo "  clean          Clean up generated files"
 	@echo "  docker-build   Build Docker image"
 	@echo "  docker-run     Run Docker container"
+	@echo ""
+	@echo "Frontend commands:"
+	@echo "  frontend-install  Install frontend dependencies"
+	@echo "  frontend-build    Build frontend for production"
+	@echo "  frontend-dev      Start frontend dev server"
+	@echo "  frontend-test     Run frontend tests"
+	@echo ""
+	@echo "Integrated commands:"
+	@echo "  build          Build entire project"
+	@echo "  dev            Start development environment"
 
 install:
 	poetry install --no-dev
@@ -22,20 +33,20 @@ dev-install:
 	poetry install
 
 format:
-	black vecpipe webui tests
-	isort vecpipe webui tests
+	black packages/vecpipe packages/webui tests
+	isort packages/vecpipe packages/webui tests
 
 lint:
-	ruff check vecpipe webui tests
+	ruff check packages/vecpipe packages/webui tests
 
 type-check:
-	mypy vecpipe webui --ignore-missing-imports
+	mypy packages/vecpipe packages/webui --ignore-missing-imports
 
 test:
 	pytest tests -v
 
 test-coverage:
-	pytest tests -v --cov=vecpipe --cov=webui --cov-report=html --cov-report=term
+	pytest tests -v --cov=packages.vecpipe --cov=packages.webui --cov-report=html --cov-report=term
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
@@ -64,4 +75,23 @@ fix: format
 check: lint type-check test
 
 run:
-	python -m uvicorn webui.app_simple:app --host 0.0.0.0 --port 8080 --reload
+	cd packages/webui && python -m uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+
+# Frontend commands
+frontend-install:
+	cd apps/webui-react && npm install
+
+frontend-build:
+	cd apps/webui-react && npm run build
+
+frontend-dev:
+	cd apps/webui-react && npm run dev
+
+frontend-test:
+	cd apps/webui-react && npm test
+
+# Integrated commands
+build: frontend-build
+
+dev:
+	./scripts/dev.sh

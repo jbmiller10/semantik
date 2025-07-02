@@ -13,7 +13,7 @@ os.environ["WEBUI_METRICS_PORT"] = "9092"
 
 from prometheus_client import generate_latest
 
-from vecpipe.metrics import (
+from packages.vecpipe.metrics import (
     chunks_created,
     embeddings_generated,
     files_failed,
