@@ -22,8 +22,21 @@ router = APIRouter(prefix="/api", tags=["search"])
 # Request models
 class SearchRequest(BaseModel):
     query: str
-    k: int = Field(default=10, ge=1, le=100)
+    collection: str | None = None
     job_id: str | None = None
+    top_k: int = Field(default=10, ge=1, le=100, alias="k")  # Frontend sends top_k
+    score_threshold: float = 0.0
+    search_type: str = Field(default="vector", pattern="^(vector|hybrid)$")
+    # Hybrid search specific parameters
+    rerank_model: str | None = None
+    hybrid_alpha: float = Field(default=0.7, ge=0.0, le=1.0)
+    hybrid_mode: str = Field(default="rerank", pattern="^(rerank|filter)$")
+    keyword_mode: str = Field(default="any", pattern="^(any|all)$")
+
+    @property
+    def k(self) -> int:
+        """Property to access k value for backward compatibility"""
+        return self.top_k
 
 
 class HybridSearchRequest(BaseModel):
@@ -37,14 +50,27 @@ class HybridSearchRequest(BaseModel):
 
 @router.post("/search")
 async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(get_current_user)):
-    """Search for similar documents - proxies to REST API"""
+    """Unified search endpoint - handles both vector and hybrid search"""
+    logger.info(
+        f"Search request received: query='{request.query}', type={request.search_type}, "
+        f"collection={request.collection}, top_k={request.top_k}, threshold={request.score_threshold}"
+    )
+
     try:
-        # Determine collection name
-        collection_name = f"job_{request.job_id}" if request.job_id else "work_docs"
+        # Determine collection name and job_id
+        if request.collection:
+            collection_name = request.collection
+            # Extract job_id from collection name if it follows the pattern
+            if request.collection.startswith("job_") and not request.job_id:
+                request.job_id = request.collection.replace("job_", "")
+        elif request.job_id:
+            collection_name = f"job_{request.job_id}"
+        else:
+            collection_name = "work_docs"
 
         # Get model name and settings from job if specified
-        model_name = None  # Will use REST API default if not specified
-        quantization = None  # Will use REST API default if not specified
+        model_name = None
+        quantization = None
 
         if request.job_id:
             job = database.get_job(request.job_id)
@@ -54,47 +80,143 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
                 if job.get("quantization"):
                     quantization = job["quantization"]
 
-        # Prepare search request for REST API
-        search_params = {
-            "query": request.query,
-            "k": request.k,
-            "collection": collection_name,
-            "search_type": "semantic",
-        }
+        # Route based on search type
+        if request.search_type == "hybrid":
+            # Call hybrid search endpoint
+            search_params = {
+                "q": request.query,  # Hybrid endpoint expects 'q' not 'query'
+                "k": request.k,
+                "collection": collection_name,
+                "mode": request.hybrid_mode,
+                "keyword_mode": request.keyword_mode,
+                "alpha": request.hybrid_alpha,
+            }
 
-        # Add optional parameters if specified
-        if model_name:
-            search_params["model_name"] = model_name
-        if quantization:
-            search_params["quantization"] = quantization
+            # Add optional parameters
+            if model_name:
+                search_params["model_name"] = model_name
+            if quantization:
+                search_params["quantization"] = quantization
+            if request.score_threshold > 0:
+                search_params["score_threshold"] = request.score_threshold
 
-        # Call REST API search endpoint
-        async with httpx.AsyncClient() as client:
-            response = await client.post(f"{settings.SEARCH_API_URL}/search", json=search_params, timeout=30.0)
-            response.raise_for_status()
+            # Call REST API hybrid search endpoint with GET
+            logger.info(f"Calling hybrid search API with params: {search_params}")
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{settings.SEARCH_API_URL}/hybrid_search", params=search_params, timeout=30.0
+                )
+                response.raise_for_status()
 
-        # Transform REST API response to match WebUI JavaScript expectations
-        api_response = response.json()
+            # Transform hybrid search results to match frontend expectations
+            api_response = response.json()
+            logger.info(f"Hybrid search returned {len(api_response.get('results', []))} results")
 
-        # Convert flat results to payload format expected by JS
-        transformed_results = []
-        for result in api_response.get("results", []):
-            print(result["score"])
-            transformed_results.append(
-                {
-                    "id": result.get("doc_id", ""),
-                    "score": result["score"],
+            # Convert to format expected by frontend
+            transformed_results = []
+            for result in api_response.get("results", []):
+                # Extract file name from path
+                path = result.get("path", "")
+                file_name = path.split("/")[-1] if path else "Unknown"
+
+                # Get metadata
+                metadata = result.get("metadata", {})
+
+                # Create result in format expected by SearchResults component
+                transformed_result = {
+                    "doc_id": result.get("doc_id", ""),
+                    "chunk_id": result.get("chunk_id", ""),
+                    "score": result.get("score", 0.0),
+                    "content": result.get("content", ""),  # Hybrid search might not include content
+                    "file_path": path,
+                    "file_name": file_name,
+                    "chunk_index": metadata.get("chunk_index", 0),
+                    "total_chunks": metadata.get("total_chunks", 1),
+                    "job_id": request.job_id,
+                    # Hybrid-specific fields
+                    "matched_keywords": result.get("matched_keywords", []),
+                    "keyword_score": result.get("keyword_score"),
+                    "combined_score": result.get("combined_score"),
+                }
+                transformed_results.append(transformed_result)
+
+            return {
+                "query": api_response.get("query", request.query),
+                "results": transformed_results,
+                "collection": collection_name,
+                "num_results": len(transformed_results),
+                "search_type": request.search_type,
+                "keywords_extracted": api_response.get("keywords_extracted", []),
+                "search_mode": api_response.get("search_mode", request.hybrid_mode),
+            }
+
+        else:
+            # Vector search
+            search_params = {
+                "query": request.query,
+                "k": request.k,
+                "collection": collection_name,
+                "search_type": "semantic",
+                "include_content": True,
+            }
+
+            # Add optional parameters
+            if model_name:
+                search_params["model_name"] = model_name
+            if quantization:
+                search_params["quantization"] = quantization
+            if request.score_threshold > 0:
+                search_params["score_threshold"] = request.score_threshold
+
+            # Call REST API search endpoint with POST
+            logger.info(f"Calling vector search API with params: {search_params}")
+            async with httpx.AsyncClient() as client:
+                response = await client.post(f"{settings.SEARCH_API_URL}/search", json=search_params, timeout=30.0)
+                response.raise_for_status()
+
+            # Transform REST API response to match WebUI JavaScript expectations
+            api_response = response.json()
+            logger.info(f"Vector search returned {len(api_response.get('results', []))} results")
+
+            # Convert to format expected by frontend
+            transformed_results = []
+            for result in api_response.get("results", []):
+                # Extract file name from path
+                path = result.get("path", "")
+                file_name = path.split("/")[-1] if path else "Unknown"
+
+                # Get metadata
+                metadata = result.get("metadata", {})
+
+                # Create result in format expected by SearchResults component
+                transformed_result = {
+                    "doc_id": result.get("doc_id", ""),
+                    "chunk_id": result.get("chunk_id", ""),
+                    "score": result.get("score", 0.0),
+                    "content": result.get("content", ""),
+                    "file_path": path,
+                    "file_name": file_name,
+                    "chunk_index": metadata.get("chunk_index", 0),
+                    "total_chunks": metadata.get("total_chunks", 1),
+                    "job_id": request.job_id,
+                    # Keep the payload format for backward compatibility
                     "payload": {
-                        "path": result["path"],
-                        "chunk_id": result["chunk_id"],
-                        "doc_id": result.get("doc_id"),
+                        "path": path,
+                        "chunk_id": result.get("chunk_id", ""),
+                        "doc_id": result.get("doc_id", ""),
                         "text": result.get("content", ""),
-                        "metadata": result.get("metadata", {}),  # Include metadata with page_number
+                        "metadata": metadata,
                     },
                 }
-            )
+                transformed_results.append(transformed_result)
 
-        return {"query": api_response["query"], "results": transformed_results, "collection": collection_name}
+            return {
+                "query": api_response["query"],
+                "results": transformed_results,
+                "collection": collection_name,
+                "num_results": len(transformed_results),
+                "search_type": request.search_type,
+            }
 
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
