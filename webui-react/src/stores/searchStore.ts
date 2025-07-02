@@ -46,7 +46,7 @@ export const useSearchStore = create<SearchState>((set) => ({
     query: '',
     collection: '',
     topK: 10,
-    scoreThreshold: 0.5,
+    scoreThreshold: 0.0,
     searchType: 'vector',
     hybridMode: 'rerank',
     keywordMode: 'any',
