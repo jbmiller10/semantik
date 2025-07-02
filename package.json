@@ -1,0 +1,20 @@
+{
+  "name": "document-embedding-project",
+  "version": "1.0.0",
+  "description": "VecPipe: High-performance semantic search engine monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "./scripts/dev.sh",
+    "build": "./scripts/build.sh",
+    "build:frontend": "cd apps/webui-react && npm run build",
+    "dev:frontend": "cd apps/webui-react && npm run dev",
+    "test:frontend": "cd apps/webui-react && npm test",
+    "clean": "rm -rf apps/*/dist apps/*/node_modules node_modules"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

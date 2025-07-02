@@ -3,7 +3,7 @@ import time
 
 import psutil
 
-from vecpipe.metrics import cpu_utilization, memory_utilization, metrics_collector
+from packages.vecpipe.metrics import cpu_utilization, memory_utilization, metrics_collector
 
 # First, let's check current system metrics
 print(f"Actual CPU: {psutil.cpu_percent(interval=0.1)}%")

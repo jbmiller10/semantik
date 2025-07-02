@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from webui.api.documents import IMAGE_SESSIONS, TEMP_IMAGE_DIR
+from packages.webui.api.documents import IMAGE_SESSIONS, TEMP_IMAGE_DIR
 
 
 @pytest.fixture()

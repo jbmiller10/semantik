@@ -129,3 +129,25 @@ repopackpy-output.txt
 # Logging
 *.pid
 *.log
+
+# Node modules (for frontend)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Frontend build outputs
+apps/*/dist/
+apps/*/.vite/
+
+# React/Vite specific
+*.local
+
+# Production builds
+packages/webui/static/assets/
+packages/webui/static/index.html
+packages/webui/static/*.js
+packages/webui/static/*.css
+packages/webui/static/*.map

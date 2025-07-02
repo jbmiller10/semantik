@@ -4,7 +4,7 @@ version = "2.0.0"
 description = "Production-ready document embedding system with Qdrant"
 authors = ["Your Name <you@example.com>"]
 readme = "README.md"
-packages = [{include = "vecpipe"}, {include = "webui"}]
+packages = [{include = "vecpipe", from = "packages"}, {include = "webui", from = "packages"}]
 
 [tool.poetry.dependencies]
 python = "^3.12"
@@ -102,7 +102,8 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --cov=vecpipe --cov=webui --cov-report=html --cov-report=term"
+addopts = "-v --cov=packages.vecpipe --cov=packages.webui --cov-report=html --cov-report=term"
+pythonpath = ["."]
 
 [build-system]
 requires = ["poetry-core"]

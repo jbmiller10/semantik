@@ -10,7 +10,7 @@ import pytest
 from fastapi import HTTPException
 
 # Import the modules to test
-from webui.api.documents import validate_file_access
+from packages.webui.api.documents import validate_file_access
 
 
 class TestDocumentSecurity:
@@ -19,7 +19,7 @@ class TestDocumentSecurity:
     def test_validate_file_access_path_traversal_attempt(self):
         """Test that path traversal attempts are blocked"""
         # Mock database responses
-        with patch("webui.api.documents.database") as mock_db:
+        with patch("packages.webui.api.documents.database") as mock_db:
             mock_db.get_job.return_value = {"directory_path": "/safe/job/directory", "user_id": 1}
             mock_db.get_job_files.return_value = [
                 {"doc_id": "test123", "path": "/safe/job/directory/../../../etc/passwd"}
@@ -39,7 +39,7 @@ class TestDocumentSecurity:
             test_file = Path(tmpdir) / "test.pdf"
             test_file.write_text("test content")
 
-            with patch("webui.api.documents.database") as mock_db:
+            with patch("packages.webui.api.documents.database") as mock_db:
                 mock_db.get_job.return_value = {"directory_path": tmpdir, "user_id": 1}
                 mock_db.get_job_files.return_value = [{"doc_id": "test123", "path": str(test_file)}]
 
@@ -50,7 +50,7 @@ class TestDocumentSecurity:
 
     def test_validate_file_access_nonexistent_job(self):
         """Test handling of nonexistent job"""
-        with patch("webui.api.documents.database") as mock_db:
+        with patch("packages.webui.api.documents.database") as mock_db:
             mock_db.get_job.return_value = None
 
             with pytest.raises(HTTPException) as exc_info:
@@ -61,7 +61,7 @@ class TestDocumentSecurity:
 
     def test_validate_file_access_nonexistent_document(self):
         """Test handling of nonexistent document"""
-        with patch("webui.api.documents.database") as mock_db:
+        with patch("packages.webui.api.documents.database") as mock_db:
             mock_db.get_job.return_value = {"directory_path": "/safe/job/directory", "user_id": 1}
             mock_db.get_job_files.return_value = []
 
@@ -78,7 +78,7 @@ class TestDocumentSecurity:
             test_file = Path(tmpdir) / "large.pdf"
             test_file.write_text("x" * 1024)  # Small file for testing
 
-            with patch("webui.api.documents.database") as mock_db:
+            with patch("packages.webui.api.documents.database") as mock_db:
                 mock_db.get_job.return_value = {"directory_path": tmpdir, "user_id": 1}
                 mock_db.get_job_files.return_value = [{"doc_id": "test123", "path": str(test_file)}]
 
@@ -99,7 +99,7 @@ class TestDocumentSecurity:
             test_file = Path(tmpdir) / "test.pdf"
             test_file.write_text("test content")
 
-            with patch("webui.api.documents.database") as mock_db:
+            with patch("packages.webui.api.documents.database") as mock_db:
                 # Job belongs to user_id 2, but current user has id 1
                 mock_db.get_job.return_value = {"directory_path": tmpdir, "user_id": 2}
                 mock_db.get_job_files.return_value = [{"doc_id": "test123", "path": str(test_file)}]
