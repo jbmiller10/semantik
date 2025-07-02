@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import time
+
 import psutil
-from vecpipe.metrics import metrics_collector, cpu_utilization, memory_utilization
+
+from vecpipe.metrics import cpu_utilization, memory_utilization, metrics_collector
 
 # First, let's check current system metrics
 print(f"Actual CPU: {psutil.cpu_percent(interval=0.1)}%")
@@ -19,18 +21,19 @@ for metric in cpu_utilization.collect():
     for sample in metric.samples:
         if sample.name == "embedding_cpu_utilization_percent":
             print(f"CPU gauge value: {sample.value}")
-            
+
 for metric in memory_utilization.collect():
     for sample in metric.samples:
         if sample.name == "embedding_memory_utilization_percent":
             print(f"Memory gauge value: {sample.value}")
 
 # Also check using the registry
-from vecpipe.metrics import registry, generate_latest
-metrics_text = generate_latest(registry).decode('utf-8')
+from vecpipe.metrics import generate_latest, registry
+
+metrics_text = generate_latest(registry).decode("utf-8")
 print("\nMetrics from registry:")
-for line in metrics_text.split('\n'):
-    if 'cpu_utilization_percent' in line and not line.startswith('#'):
+for line in metrics_text.split("\n"):
+    if "cpu_utilization_percent" in line and not line.startswith("#"):
         print(f"CPU line: {line}")
-    if 'memory_utilization_percent' in line and not line.startswith('#'):
+    if "memory_utilization_percent" in line and not line.startswith("#"):
         print(f"Memory line: {line}")

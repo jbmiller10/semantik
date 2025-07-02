@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Test metrics update functionality"""
 import time
+
 import psutil
+
 from vecpipe.metrics import metrics_collector
 
 print("Testing metrics update...")
@@ -21,18 +23,19 @@ time.sleep(2)
 
 # Check metrics via Prometheus
 import requests
+
 try:
     response = requests.get("http://localhost:9092/metrics")
     if response.status_code == 200:
-        lines = response.text.split('\n')
+        lines = response.text.split("\n")
         for line in lines:
-            if 'embedding_cpu_utilization_percent' in line and not line.startswith('#'):
+            if "embedding_cpu_utilization_percent" in line and not line.startswith("#"):
                 print(f"Prometheus CPU metric: {line}")
-            elif 'embedding_memory_utilization_percent' in line and not line.startswith('#'):
+            elif "embedding_memory_utilization_percent" in line and not line.startswith("#"):
                 print(f"Prometheus Memory metric: {line}")
-            elif 'embedding_memory_used_bytes' in line and not line.startswith('#'):
+            elif "embedding_memory_used_bytes" in line and not line.startswith("#"):
                 print(f"Prometheus Memory used: {line}")
-            elif 'embedding_memory_total_bytes' in line and not line.startswith('#'):
+            elif "embedding_memory_total_bytes" in line and not line.startswith("#"):
                 print(f"Prometheus Memory total: {line}")
 except Exception as e:
     print(f"Error fetching metrics: {e}")
