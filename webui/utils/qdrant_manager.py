@@ -22,10 +22,10 @@ class QdrantConnectionManager:
     Reuses connections and provides retry logic for operations.
     """
 
-    _instance: Optional['QdrantConnectionManager'] = None
+    _instance: Optional["QdrantConnectionManager"] = None
     _lock = Lock()
 
-    def __new__(cls) -> 'QdrantConnectionManager':
+    def __new__(cls) -> "QdrantConnectionManager":
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -55,12 +55,7 @@ class QdrantConnectionManager:
             logger.error(f"Failed to verify Qdrant connection: {e}")
             return False
 
-    @exponential_backoff_retry(
-        max_retries=3,
-        initial_delay=1.0,
-        max_delay=8.0,
-        exceptions=(Exception,)
-    )
+    @exponential_backoff_retry(max_retries=3, initial_delay=1.0, max_delay=8.0, exceptions=(Exception,))
     def get_client(self) -> QdrantClient:
         """
         Get a Qdrant client with connection verification and retry logic.
@@ -89,18 +84,13 @@ class QdrantConnectionManager:
         logger.info(f"Successfully connected to Qdrant at {self._url}")
         return client
 
-    @exponential_backoff_retry(
-        max_retries=3,
-        initial_delay=1.0,
-        max_delay=8.0,
-        exceptions=(Exception,)
-    )
+    @exponential_backoff_retry(max_retries=3, initial_delay=1.0, max_delay=8.0, exceptions=(Exception,))
     def create_collection(
         self,
         collection_name: str,
         vector_size: int,
         distance: Distance = Distance.COSINE,
-        optimizers_config: dict | None = None
+        optimizers_config: dict | None = None,
     ) -> None:
         """
         Create a Qdrant collection with retry logic.
@@ -119,16 +109,11 @@ class QdrantConnectionManager:
         client.create_collection(
             collection_name=collection_name,
             vectors_config=VectorParams(size=vector_size, distance=distance),
-            optimizers_config=optimizers_config
+            optimizers_config=optimizers_config,
         )
         logger.info(f"Successfully created collection {collection_name}")
 
-    @exponential_backoff_retry(
-        max_retries=3,
-        initial_delay=1.0,
-        max_delay=8.0,
-        exceptions=(Exception,)
-    )
+    @exponential_backoff_retry(max_retries=3, initial_delay=1.0, max_delay=8.0, exceptions=(Exception,))
     def verify_collection(self, collection_name: str) -> dict:
         """
         Verify a collection exists and get its info with retry logic.

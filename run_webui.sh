@@ -25,4 +25,4 @@ export LD_LIBRARY_PATH="/root/.pyenv/versions/3.12.11/envs/embeddingdocs/lib/pyt
 # Use PROJECT_ROOT if set, otherwise use current directory
 PROJECT_ROOT="${PROJECT_ROOT:-$(dirname $(readlink -f $0))}"
 cd "$PROJECT_ROOT"
-poetry run python -m uvicorn webui.app:app --host 0.0.0.0 --port 8080 --reload
+poetry run python -m uvicorn webui.main:app --host 0.0.0.0 --port 8080 --reload

@@ -42,16 +42,22 @@ def create_app() -> FastAPI:
 
     # Mount WebSocket endpoints at the app level
     @app.websocket("/ws/{job_id}")
-    async def job_websocket(websocket: WebSocket, job_id: str):
+    async def job_websocket(websocket: WebSocket, job_id: str) -> None:
         await websocket_endpoint(websocket, job_id)
 
     @app.websocket("/ws/scan/{scan_id}")
-    async def scan_ws(websocket: WebSocket, scan_id: str):
+    async def scan_ws(websocket: WebSocket, scan_id: str) -> None:
         await scan_websocket(websocket, scan_id)
 
     # Mount static files with proper path resolution
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    app.mount("/static", StaticFiles(directory=os.path.join(base_dir, "static")), name="static")
+    static_dir = os.path.join(base_dir, "static")
+
+    # Mount assets directory for React build
+    app.mount("/assets", StaticFiles(directory=os.path.join(static_dir, "assets")), name="assets")
+
+    # Mount static files
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     return app
 
