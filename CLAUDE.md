@@ -16,7 +16,6 @@ The system is a monorepo with two primary packages. Understanding their separati
 
 *   **`vecpipe/` (The Core Engine):** Headless data processing and search API.
     *   `extract_chunks.py`: Document parsing/chunking.
-    *   `embedding_service.py`: **The heart of embedding generation.** Handles models, quantization, and adaptive batching. It is shared with `webui`.
     *   `model_manager.py`: GPU memory management via model lazy-loading and unloading.
     *   `search_api.py`: FastAPI service exposing search functionality. This is the **only** entry point for search logic.
 
@@ -24,6 +23,7 @@ The system is a monorepo with two primary packages. Understanding their separati
     *   `main.py`: The main FastAPI app that serves the UI and its API.
     *   `api/`: Routers for jobs, users, search proxying, etc.
     *   `database.py`: Manages the **SQLite database** (jobs, users).
+    *   `embedding_service.py`: **The heart of embedding generation.** Handles models, quantization, and adaptive batching. Shared between webui and vecpipe.
     *   `static/` or `webui-react/`: The frontend code.
 
 *   **Why this architecture?** The separation allows the `vecpipe` engine to be used independently (e.g., in other data pipelines), while the `webui` acts as a sophisticated, user-friendly control plane. **You must maintain this separation.**
