@@ -560,6 +560,7 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
             "vector_dim": request.vector_dim,
             "quantization": request.quantization,
             "instruction": request.instruction,
+            "user_id": current_user["id"],
         }
         database.create_job(job_data)
 
@@ -662,8 +663,8 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
 
 @router.get("", response_model=list[JobStatus])
 async def list_jobs(current_user: dict[str, Any] = Depends(get_current_user)):
-    """List all jobs"""
-    jobs = database.list_jobs()
+    """List all jobs for the current user"""
+    jobs = database.list_jobs(user_id=current_user["id"])
 
     result = []
     for job in jobs:
