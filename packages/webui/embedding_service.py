@@ -18,18 +18,32 @@ from transformers import AutoModel, AutoTokenizer
 try:
     from packages.vecpipe.metrics import Counter, registry
 
-    oom_errors = Counter(
-        "embedding_oom_errors_total",
-        "Total OOM errors during embedding generation",
-        ["model", "quantization"],
-        registry=registry,
-    )
-    batch_size_reductions = Counter(
-        "embedding_batch_size_reductions_total",
-        "Total batch size reductions due to OOM",
-        ["model", "quantization"],
-        registry=registry,
-    )
+    # Check if metrics already exist in registry to avoid duplicates
+    try:
+        oom_errors = Counter(
+            "embedding_oom_errors_total",
+            "Total OOM errors during embedding generation",
+            ["model", "quantization"],
+            registry=registry,
+        )
+        batch_size_reductions = Counter(
+            "embedding_batch_size_reductions_total",
+            "Total batch size reductions due to OOM",
+            ["model", "quantization"],
+            registry=registry,
+        )
+    except ValueError as e:
+        # Metrics already registered, get them from registry
+        if "Duplicated timeseries" in str(e):
+            # Find existing metrics in registry
+            for collector in registry._collector_to_names:
+                if hasattr(collector, "_name"):
+                    if collector._name == "embedding_oom_errors_total":
+                        oom_errors = collector
+                    elif collector._name == "embedding_batch_size_reductions_total":
+                        batch_size_reductions = collector
+        else:
+            raise
     METRICS_AVAILABLE = True
 except ImportError:
     # Metrics not available, create dummy functions
