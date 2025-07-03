@@ -6,6 +6,11 @@ interface ScanResult {
   files: string[];
   total_files: number;
   total_size: number;
+  warnings?: Array<{
+    type: string;
+    message: string;
+    severity: string;
+  }>;
 }
 
 interface ScanProgress {
@@ -65,8 +70,19 @@ export function useDirectoryScanWebSocket(scanId?: string) {
               files: data.files.map((f: any) => typeof f === 'string' ? f : f.path),
               total_files: data.count || data.files.length,
               total_size: data.total_size || 0,
+              warnings: data.warnings || [],
             });
             setScanProgress(null);
+            break;
+            
+          case 'warning':
+            // Handle warning messages during scan
+            if (data.warning) {
+              setScanResult(prev => prev ? {
+                ...prev,
+                warnings: [...(prev.warnings || []), data.warning]
+              } : null);
+            }
             break;
 
           case 'error':
@@ -109,15 +125,16 @@ export function useDirectoryScanWebSocket(scanId?: string) {
           scan_id: scanIdRef.current,
         });
 
-        const { files, count } = response.data;
+        const { files, count, total_size, warnings } = response.data;
         
-        // Calculate total size
-        const totalSize = files.reduce((sum: number, file: any) => sum + file.size, 0);
+        // Calculate total size if not provided
+        const totalSize = total_size || files.reduce((sum: number, file: any) => sum + file.size, 0);
         
         setScanResult({
           files: files.map((f: any) => f.path),
           total_files: count,
           total_size: totalSize,
+          warnings: warnings || [],
         });
         setError(null);
       } catch (err: any) {

@@ -59,10 +59,18 @@ def init_db():
         if "start_time" not in columns:
             logger.info("Migrating database: adding start_time column")
             c.execute("ALTER TABLE jobs ADD COLUMN start_time TEXT")
-        
+
         if "user_id" not in columns:
             logger.info("Migrating database: adding user_id column")
             c.execute("ALTER TABLE jobs ADD COLUMN user_id INTEGER")
+
+        if "parent_job_id" not in columns:
+            logger.info("Migrating database: adding parent_job_id column")
+            c.execute("ALTER TABLE jobs ADD COLUMN parent_job_id TEXT")
+
+        if "mode" not in columns:
+            logger.info("Migrating database: adding mode column")
+            c.execute("ALTER TABLE jobs ADD COLUMN mode TEXT DEFAULT 'create'")
 
     # Check if files table exists and needs migration
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='files'")
@@ -76,6 +84,21 @@ def init_db():
         if "doc_id" not in columns:
             logger.info("Migrating database: adding doc_id column to files table")
             c.execute("ALTER TABLE files ADD COLUMN doc_id TEXT")
+
+        if "content_hash" not in columns:
+            logger.info("Migrating database: adding content_hash column to files table")
+            c.execute("ALTER TABLE files ADD COLUMN content_hash TEXT")
+
+    # Check for missing indexes and add them
+    c.execute("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_files_content_hash'")
+    if not c.fetchone():
+        logger.info("Creating index on files.content_hash for faster duplicate detection")
+        c.execute("CREATE INDEX idx_files_content_hash ON files(content_hash)")
+
+    c.execute("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_files_job_content_hash'")
+    if not c.fetchone():
+        logger.info("Creating composite index on files(job_id, content_hash)")
+        c.execute("CREATE INDEX idx_files_job_content_hash ON files(job_id, content_hash)")
 
     # Jobs table
     c.execute(
@@ -100,7 +123,9 @@ def init_db():
                   current_file TEXT,
                   start_time TEXT,
                   error TEXT,
-                  user_id INTEGER)"""
+                  user_id INTEGER,
+                  parent_job_id TEXT,
+                  mode TEXT DEFAULT 'create')"""
     )
 
     # Files table
@@ -114,6 +139,7 @@ def init_db():
                   extension TEXT NOT NULL,
                   hash TEXT,
                   doc_id TEXT,
+                  content_hash TEXT,
                   status TEXT DEFAULT 'pending',
                   error TEXT,
                   chunks_created INTEGER DEFAULT 0,
@@ -125,6 +151,8 @@ def init_db():
     c.execute("""CREATE INDEX IF NOT EXISTS idx_files_job_id ON files(job_id)""")
     c.execute("""CREATE INDEX IF NOT EXISTS idx_files_status ON files(status)""")
     c.execute("""CREATE INDEX IF NOT EXISTS idx_files_doc_id ON files(doc_id)""")
+    c.execute("""CREATE INDEX IF NOT EXISTS idx_files_content_hash ON files(content_hash)""")
+    c.execute("""CREATE INDEX IF NOT EXISTS idx_files_job_content_hash ON files(job_id, content_hash)""")
 
     # Initialize auth tables
     init_auth_tables(conn, c)
@@ -230,8 +258,9 @@ def create_job(job_data: dict[str, Any]) -> str:
         """INSERT INTO jobs
                  (id, name, description, status, created_at, updated_at,
                   directory_path, model_name, chunk_size, chunk_overlap,
-                  batch_size, vector_dim, quantization, instruction, user_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  batch_size, vector_dim, quantization, instruction, user_id,
+                  parent_job_id, mode)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             job_data["id"],
             job_data["name"],
@@ -248,6 +277,8 @@ def create_job(job_data: dict[str, Any]) -> str:
             job_data.get("quantization", "float32"),
             job_data.get("instruction"),
             job_data.get("user_id"),
+            job_data.get("parent_job_id"),
+            job_data.get("mode", "create"),
         ),
     )
 
@@ -362,9 +393,18 @@ def add_files_to_job(job_id: str, files: list[dict[str, Any]]):
         doc_id = hashlib.md5(file["path"].encode()).hexdigest()[:16]
 
         c.execute(
-            """INSERT INTO files (job_id, path, size, modified, extension, hash, doc_id)
-                     VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (job_id, file["path"], file["size"], file["modified"], file["extension"], file.get("hash"), doc_id),
+            """INSERT INTO files (job_id, path, size, modified, extension, hash, doc_id, content_hash)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                job_id,
+                file["path"],
+                file["size"],
+                file["modified"],
+                file["extension"],
+                file.get("hash"),
+                doc_id,
+                file.get("content_hash"),
+            ),
         )
 
     # Update job total files count
@@ -430,6 +470,62 @@ def get_job_total_vectors(job_id: str) -> int:
     conn.close()
 
     return result[0] if result else 0
+
+
+def get_duplicate_files_in_collection(collection_name: str, content_hashes: list[str]) -> set[str]:
+    """Check which content hashes already exist in a collection"""
+    if not content_hashes:
+        return set()
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    # Find all jobs for this collection
+    c.execute("""SELECT id FROM jobs WHERE name = ? AND status = 'completed'""", (collection_name,))
+    job_ids = [row[0] for row in c.fetchall()]
+
+    if not job_ids:
+        conn.close()
+        return set()
+
+    # Check which content hashes exist in these jobs
+    placeholders = ",".join("?" * len(content_hashes))
+    job_placeholders = ",".join("?" * len(job_ids))
+
+    query = f"""SELECT DISTINCT content_hash 
+                FROM files 
+                WHERE job_id IN ({job_placeholders}) 
+                AND content_hash IN ({placeholders})
+                AND content_hash IS NOT NULL"""
+
+    c.execute(query, job_ids + content_hashes)
+
+    existing_hashes = {row[0] for row in c.fetchall()}
+    conn.close()
+
+    return existing_hashes
+
+
+def get_collection_metadata(collection_name: str) -> dict[str, Any] | None:
+    """Get the metadata from the first (parent) job of a collection"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+
+    # Find the original job (mode='create' or no parent_job_id)
+    c.execute(
+        """SELECT * FROM jobs 
+           WHERE name = ? 
+           AND (mode = 'create' OR parent_job_id IS NULL)
+           ORDER BY created_at ASC 
+           LIMIT 1""",
+        (collection_name,),
+    )
+
+    job = c.fetchone()
+    conn.close()
+
+    return dict(job) if job else None
 
 
 # User-related database operations
