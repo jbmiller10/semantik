@@ -2,9 +2,6 @@
 
 A production-ready document embedding and vector search system with web interface, REST API, and advanced search capabilities.
 
-### Internal improvements
-
-- **Modular Web UI Architecture**: Refactored `webui/app.py` (~2.4k LOC) into a clean modular structure with separate routers for auth, jobs, files, metrics, and settings. Each module is focused and maintainable (all under 400 LOC except jobs.py which contains the core processing logic).
 
 ## Features
 
@@ -14,8 +11,7 @@ A production-ready document embedding and vector search system with web interfac
 - 🌐 **Web Interface**: Full-featured UI for job management, directory scanning, and search
 - 🔧 **REST API**: Comprehensive API for programmatic access
 - 📊 **Real-time Progress**: WebSocket-based progress tracking for embedding jobs
-- 🔐 **Authentication**: JWT-based authentication system
-- 🧪 **Mock Mode**: Test without GPU resources
+
 
 ## Quick Start
 
