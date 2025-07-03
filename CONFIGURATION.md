@@ -104,7 +104,7 @@ The Search API (`vecpipe/search_api.py`) uses these environment variables:
 
 ### Web UI
 
-The Web UI (`webui/app.py`) additionally uses:
+The Web UI (`webui/main.py`) additionally uses:
 
 - `JWT_SECRET_KEY`: Required for authentication
 - `ACCESS_TOKEN_EXPIRE_MINUTES`: Session duration
@@ -216,7 +216,7 @@ Services write to these log files:
 
 ### CORS Settings
 
-Configure allowed origins in `webui/app.py`:
+Configure allowed origins in `webui/main.py`:
 
 ```python
 app.add_middleware(
