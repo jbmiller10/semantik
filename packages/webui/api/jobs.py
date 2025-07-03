@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Body, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, validator
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Distance, PointStruct
@@ -76,13 +76,12 @@ class CreateJobRequest(BaseModel):
             raise ValueError(f'chunk_overlap ({v}) must be less than chunk_size ({values["chunk_size"]})')
         return v
 
-    @validator("batch_size")
-    def validate_batch_size(cls, v):
-        if v <= 0:
-            raise ValueError("batch_size must be positive")
-        if v > 1000:
-            raise ValueError("batch_size must not exceed 1000")
-        return v
+
+class AddToCollectionRequest(BaseModel):
+    collection_name: str
+    directory_path: str
+    description: str = ""
+    job_id: str | None = None  # Allow pre-generated job_id for WebSocket connection
 
 
 class JobStatus(BaseModel):
@@ -207,6 +206,14 @@ async def process_embedding_job(job_id: str):
         if not job:
             raise Exception(f"Job {job_id} not found")
 
+        # Determine collection name based on mode
+        if job.get("mode") == "append" and job.get("parent_job_id"):
+            # For append mode, use the parent job's collection
+            collection_name = f"job_{job['parent_job_id']}"
+        else:
+            # For create mode, use this job's ID
+            collection_name = f"job_{job_id}"
+
         # Get pending files
         files = database.get_job_files(job_id, status="pending")
 
@@ -225,6 +232,25 @@ async def process_embedding_job(job_id: str):
 
         for file_idx, file_row in enumerate(files):
             try:
+                # For append mode, check if file already exists in collection
+                if job.get("mode") == "append" and file_row.get("content_hash"):
+                    # Check if this content hash already exists in the collection
+                    existing_hashes = database.get_duplicate_files_in_collection(
+                        job["name"], [file_row["content_hash"]]
+                    )
+                    if file_row["content_hash"] in existing_hashes:
+                        logger.info(
+                            f"Skipping duplicate file: {file_row['path']} (content_hash: {file_row['content_hash']})"
+                        )
+                        # Mark as completed since it already exists
+                        database.update_file_status(
+                            job_id, file_row["path"], "completed", chunks_created=0, vectors_created=0
+                        )
+                        # Update processed files count
+                        current_job = database.get_job(job_id)
+                        database.update_job(job_id, {"processed_files": current_job["processed_files"] + 1})
+                        continue
+
                 # Update current file
                 database.update_job(job_id, {"current_file": file_row["path"]})
 
@@ -404,7 +430,7 @@ async def process_embedding_job(job_id: str):
                                 for point in points
                             ]
                             upload_result = qdrant.upsert(
-                                collection_name=f"job_{job_id}", points=point_structs, wait=True
+                                collection_name=collection_name, points=point_structs, wait=True
                             )
                             successfully_uploaded += len(point_structs)
                             logger.info(f"Successfully uploaded {len(point_structs)} points to Qdrant")
@@ -475,7 +501,8 @@ async def process_embedding_job(job_id: str):
 
         # Verify collection has points before marking as completed
         try:
-            collection_info = qdrant.get_collection(f"job_{job_id}")
+            # Use the correct collection name (considering append mode)
+            collection_info = qdrant.get_collection(collection_name)
 
             if collection_info.points_count == 0:
                 # This shouldn't happen if total_vectors_created > 0, but check anyway
@@ -491,7 +518,7 @@ async def process_embedding_job(job_id: str):
                     f"Vector count mismatch: {collection_info.points_count} in Qdrant vs {total_vectors_created} expected"
                 )
 
-            logger.info(f"Collection job_{job_id} has {collection_info.points_count} points")
+            logger.info(f"Collection {collection_name} has {collection_info.points_count} points")
         except Exception as e:
             error_msg = f"Failed to verify Qdrant collection: {e}"
             logger.error(error_msg)
@@ -572,6 +599,7 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
                 "modified": f.modified,
                 "extension": f.extension,
                 "hash": getattr(f, "hash", None),
+                "content_hash": getattr(f, "content_hash", None),
             }
             for f in files
         ]
@@ -661,6 +689,152 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/add-to-collection", response_model=JobStatus)
+async def add_to_collection(request: AddToCollectionRequest, current_user: dict[str, Any] = Depends(get_current_user)):
+    """Add new documents to an existing collection"""
+    # Accept job_id from request if provided, otherwise generate new one
+    job_id = request.job_id if request.job_id else str(uuid.uuid4())
+
+    try:
+        # Import here to avoid circular import
+        from .files import scan_directory_async
+
+        # Get parent collection metadata
+        collection_metadata = database.get_collection_metadata(request.collection_name)
+        if not collection_metadata:
+            raise HTTPException(status_code=404, detail=f"Collection '{request.collection_name}' not found")
+
+        # Scan directory for new files
+        scan_result = await scan_directory_async(request.directory_path, recursive=True, scan_id=job_id)
+        files = scan_result["files"]
+
+        if not files:
+            raise HTTPException(status_code=400, detail="No supported files found in directory")
+
+        # Check for duplicates
+        content_hashes = [f.content_hash for f in files if f.content_hash]
+        existing_hashes = database.get_duplicate_files_in_collection(request.collection_name, content_hashes)
+
+        # Filter out duplicates
+        new_files = [f for f in files if f.content_hash not in existing_hashes]
+
+        if not new_files:
+            raise HTTPException(status_code=400, detail=f"All {len(files)} files already exist in the collection")
+
+        # Get the actual Qdrant collection to verify vector dimensions
+        qdrant = qdrant_manager.get_client()
+        parent_collection_name = f"job_{collection_metadata['id']}"
+
+        try:
+            collection_info = qdrant.get_collection(parent_collection_name)
+            # Get the actual vector dimension from Qdrant
+            actual_vector_dim = collection_info.config.params.vectors.size
+
+            # Verify that the stored metadata matches the actual collection
+            if actual_vector_dim != collection_metadata["vector_dim"]:
+                logger.warning(
+                    f"Vector dimension mismatch: Qdrant has {actual_vector_dim}, "
+                    f"metadata has {collection_metadata['vector_dim']}. Using Qdrant value."
+                )
+                # Use the actual dimension from Qdrant
+                collection_metadata["vector_dim"] = actual_vector_dim
+
+            # Verify the model can generate embeddings of the required dimension
+            model_name = collection_metadata["model_name"]
+            expected_dim = actual_vector_dim
+
+            # Get the model's natural dimension
+            model_natural_dim = None
+            if model_name in POPULAR_MODELS:
+                model_natural_dim = POPULAR_MODELS[model_name].get("dim") or POPULAR_MODELS[model_name].get("dimension")
+
+            if not model_natural_dim:
+                try:
+                    model_info = embedding_service.get_model_info(model_name, collection_metadata["quantization"])
+                    if not model_info.get("error"):
+                        model_natural_dim = model_info["embedding_dim"]
+                except Exception as e:
+                    logger.warning(f"Could not get model dimension info: {e}")
+
+            # Check if dimension adjustment would be needed
+            if model_natural_dim and model_natural_dim != expected_dim:
+                logger.info(
+                    f"Model {model_name} naturally produces {model_natural_dim}-dimensional embeddings, "
+                    f"but collection expects {expected_dim}. Embeddings will be adjusted."
+                )
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to verify collection dimensions: {str(e)}")
+
+        # Create job record with inherited settings
+        now = datetime.now().isoformat()
+        job_data = {
+            "id": job_id,
+            "name": request.collection_name,  # Use same collection name
+            "description": request.description
+            or f"Adding {len(new_files)} new files (skipped {len(files) - len(new_files)} duplicates)",
+            "status": "created",
+            "created_at": now,
+            "updated_at": now,
+            "directory_path": request.directory_path,
+            "model_name": collection_metadata["model_name"],
+            "chunk_size": collection_metadata["chunk_size"],
+            "chunk_overlap": collection_metadata["chunk_overlap"],
+            "batch_size": collection_metadata["batch_size"],
+            "vector_dim": collection_metadata["vector_dim"],
+            "quantization": collection_metadata["quantization"],
+            "instruction": collection_metadata["instruction"],
+            "user_id": current_user["id"],
+            "parent_job_id": collection_metadata["id"],
+            "mode": "append",
+        }
+        database.create_job(job_data)
+
+        # Create file records for new files only
+        file_records = [
+            {
+                "path": f.path,
+                "size": f.size,
+                "modified": f.modified,
+                "extension": f.extension,
+                "hash": getattr(f, "hash", None),
+                "content_hash": getattr(f, "content_hash", None),
+            }
+            for f in new_files
+        ]
+        database.add_files_to_job(job_id, file_records)
+
+        # Update total files count
+        database.update_job(job_id, {"total_files": len(new_files)})
+
+        # Start processing in background with cancellation support
+        task = asyncio.create_task(process_embedding_job(job_id))
+        active_job_tasks[job_id] = task
+
+        # Return job status
+        return JobStatus(
+            id=job_id,
+            name=request.collection_name,
+            status="created",
+            created_at=now,
+            updated_at=now,
+            total_files=len(new_files),
+            processed_files=0,
+            failed_files=0,
+            model_name=collection_metadata["model_name"],
+            directory_path=request.directory_path,
+            quantization=collection_metadata["quantization"],
+            batch_size=collection_metadata["batch_size"],
+            chunk_size=collection_metadata["chunk_size"],
+            chunk_overlap=collection_metadata["chunk_overlap"],
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("", response_model=list[JobStatus])
 async def list_jobs(current_user: dict[str, Any] = Depends(get_current_user)):
     """List all jobs for the current user"""
@@ -690,6 +864,38 @@ async def list_jobs(current_user: dict[str, Any] = Depends(get_current_user)):
         )
 
     return result
+
+
+@router.get("/collection-metadata/{collection_name}")
+async def get_collection_metadata(collection_name: str, current_user: dict[str, Any] = Depends(get_current_user)):
+    """Get metadata for a specific collection"""
+    metadata = database.get_collection_metadata(collection_name)
+    if not metadata:
+        raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
+
+    # Only return necessary fields
+    return {
+        "id": metadata["id"],
+        "name": metadata["name"],
+        "model_name": metadata["model_name"],
+        "chunk_size": metadata["chunk_size"],
+        "chunk_overlap": metadata["chunk_overlap"],
+        "batch_size": metadata["batch_size"],
+        "quantization": metadata["quantization"],
+        "instruction": metadata.get("instruction"),
+        "vector_dim": metadata["vector_dim"],
+    }
+
+
+@router.post("/check-duplicates")
+async def check_duplicates(
+    collection_name: str = Body(...),
+    content_hashes: list[str] = Body(...),
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    """Check which content hashes already exist in a collection"""
+    existing_hashes = database.get_duplicate_files_in_collection(collection_name, content_hashes)
+    return {"existing_hashes": list(existing_hashes)}
 
 
 @router.get("/collections-status")
