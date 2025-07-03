@@ -117,18 +117,6 @@ curl "http://localhost:8000/hybrid_search?q=python+docker&mode=filter"
                         └──────────────────┘
 ```
 
-## 📈 Performance Benchmarks
-
-| Operation | VecPipe | Elasticsearch | ChromaDB | Improvement |
-|-----------|---------|---------------|----------|-------------|
-| Index 10K docs | 3.2 min | 8.5 min | 5.1 min | **2.6x faster** |
-| Semantic Search (p95) | 96ms | N/A | 142ms | **1.5x faster** |
-| Hybrid Search (p95) | 79ms | 124ms | N/A | **1.6x faster** |
-| GPU Memory (4B model) | 2.1GB | N/A | 4.8GB | **56% less** |
-| Idle Memory | 0GB* | 2GB | 4GB | **100% less** |
-
-*With automatic model unloading
-
 ## 🚀 Deployment Options
 
 ### Docker Compose (Recommended)
