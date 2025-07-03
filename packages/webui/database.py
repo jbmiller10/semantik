@@ -59,6 +59,10 @@ def init_db():
         if "start_time" not in columns:
             logger.info("Migrating database: adding start_time column")
             c.execute("ALTER TABLE jobs ADD COLUMN start_time TEXT")
+        
+        if "user_id" not in columns:
+            logger.info("Migrating database: adding user_id column")
+            c.execute("ALTER TABLE jobs ADD COLUMN user_id INTEGER")
 
     # Check if files table exists and needs migration
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='files'")
@@ -95,7 +99,8 @@ def init_db():
                   failed_files INTEGER DEFAULT 0,
                   current_file TEXT,
                   start_time TEXT,
-                  error TEXT)"""
+                  error TEXT,
+                  user_id INTEGER)"""
     )
 
     # Files table
@@ -225,8 +230,8 @@ def create_job(job_data: dict[str, Any]) -> str:
         """INSERT INTO jobs
                  (id, name, description, status, created_at, updated_at,
                   directory_path, model_name, chunk_size, chunk_overlap,
-                  batch_size, vector_dim, quantization, instruction)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  batch_size, vector_dim, quantization, instruction, user_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             job_data["id"],
             job_data["name"],
@@ -242,6 +247,7 @@ def create_job(job_data: dict[str, Any]) -> str:
             job_data.get("vector_dim"),
             job_data.get("quantization", "float32"),
             job_data.get("instruction"),
+            job_data.get("user_id"),
         ),
     )
 
@@ -300,13 +306,17 @@ def get_job(job_id: str) -> dict[str, Any] | None:
     return job_dict if job else None
 
 
-def list_jobs() -> list[dict[str, Any]]:
-    """List all jobs"""
+def list_jobs(user_id: int | None = None) -> list[dict[str, Any]]:
+    """List all jobs, optionally filtered by user"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
 
-    c.execute("SELECT * FROM jobs ORDER BY created_at DESC")
+    if user_id is not None:
+        # Show jobs owned by user OR jobs without user_id (legacy jobs)
+        c.execute("SELECT * FROM jobs WHERE user_id = ? OR user_id IS NULL ORDER BY created_at DESC", (user_id,))
+    else:
+        c.execute("SELECT * FROM jobs ORDER BY created_at DESC")
     jobs = c.fetchall()
 
     result = []

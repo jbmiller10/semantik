@@ -14,9 +14,13 @@ declare global {
 }
 
 interface DocumentInfo {
-  file_name: string;
-  file_path: string;
-  mime_type: string;
+  doc_id: string;
+  filename: string;
+  path: string;
+  size: number;
+  extension: string;
+  modified: string;
+  supported: boolean;
 }
 
 interface DocumentViewerProps {
@@ -93,7 +97,7 @@ function DocumentViewer({ jobId, docId, query, onClose }: DocumentViewerProps) {
 
     const loadDocument = async () => {
       try {
-        const fileExt = documentInfo.file_name.split('.').pop()?.toLowerCase() || '';
+        const fileExt = documentInfo.filename.split('.').pop()?.toLowerCase() || '';
         
         switch (fileExt) {
           case 'pdf':
@@ -366,7 +370,7 @@ function DocumentViewer({ jobId, docId, query, onClose }: DocumentViewerProps) {
   const handleDownload = () => {
     const link = document.createElement('a');
     link.href = `/api/documents/${jobId}/${docId}`;
-    link.download = documentInfo?.file_name || 'document';
+    link.download = documentInfo?.filename || 'document';
     link.click();
   };
 
@@ -391,7 +395,7 @@ function DocumentViewer({ jobId, docId, query, onClose }: DocumentViewerProps) {
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b">
             <h3 className="text-lg font-medium text-gray-900">
-              {documentInfo?.file_name || 'Document Viewer'}
+              {documentInfo?.filename || 'Document Viewer'}
             </h3>
             
             <div className="flex items-center space-x-2">
@@ -462,7 +466,7 @@ function DocumentViewer({ jobId, docId, query, onClose }: DocumentViewerProps) {
           </div>
 
           {/* Footer - PDF Navigation */}
-          {documentInfo?.file_name.endsWith('.pdf') && totalPages > 1 && (
+          {documentInfo?.filename.endsWith('.pdf') && totalPages > 1 && (
             <div className="flex items-center justify-center p-4 border-t">
               <button
                 onClick={() => handlePageChange(currentPage - 1)}
