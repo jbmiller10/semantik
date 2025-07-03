@@ -74,11 +74,18 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
 
         if request.job_id:
             job = database.get_job(request.job_id)
-            if job:
-                if job.get("model_name"):
-                    model_name = job["model_name"]
-                if job.get("quantization"):
-                    quantization = job["quantization"]
+            if not job:
+                raise HTTPException(status_code=404, detail="Job not found")
+
+            # Check if the current user owns the job
+            # Allow access to legacy jobs without user_id
+            if job.get("user_id") is not None and job.get("user_id") != current_user.get("id"):
+                raise HTTPException(status_code=403, detail="Access denied to this collection")
+
+            if job.get("model_name"):
+                model_name = job["model_name"]
+            if job.get("quantization"):
+                quantization = job["quantization"]
 
         # Route based on search type
         if request.search_type == "hybrid":
@@ -102,11 +109,31 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
 
             # Call REST API hybrid search endpoint with GET
             logger.info(f"Calling hybrid search API with params: {search_params}")
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{settings.SEARCH_API_URL}/hybrid_search", params=search_params, timeout=30.0
-                )
-                response.raise_for_status()
+            
+            # Use longer timeout for hybrid search as well
+            timeout = httpx.Timeout(
+                timeout=60.0,  # Total timeout increased to 60 seconds
+                connect=5.0,   # Connection timeout
+                read=60.0,     # Read timeout for model loading
+                write=5.0      # Write timeout
+            )
+            
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                try:
+                    response = await client.get(
+                        f"{settings.SEARCH_API_URL}/hybrid_search", params=search_params
+                    )
+                    response.raise_for_status()
+                except httpx.ReadTimeout:
+                    # If first attempt times out, it might be due to model loading
+                    # Log warning and retry with even longer timeout
+                    logger.warning("Hybrid search request timed out, likely due to model loading. Retrying with longer timeout...")
+                    extended_timeout = httpx.Timeout(timeout=120.0, connect=5.0, read=120.0, write=5.0)
+                    async with httpx.AsyncClient(timeout=extended_timeout) as retry_client:
+                        response = await retry_client.get(
+                            f"{settings.SEARCH_API_URL}/hybrid_search", params=search_params
+                        )
+                        response.raise_for_status()
 
             # Transform hybrid search results to match frontend expectations
             api_response = response.json()
@@ -122,6 +149,9 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
                 # Get metadata
                 metadata = result.get("metadata", {})
 
+                # Extract job_id from collection name (format: job_{job_id})
+                job_id_from_collection = collection_name.replace("job_", "") if collection_name.startswith("job_") else request.job_id
+                
                 # Create result in format expected by SearchResults component
                 transformed_result = {
                     "doc_id": result.get("doc_id", ""),
@@ -132,7 +162,7 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
                     "file_name": file_name,
                     "chunk_index": metadata.get("chunk_index", 0),
                     "total_chunks": metadata.get("total_chunks", 1),
-                    "job_id": request.job_id,
+                    "job_id": job_id_from_collection,
                     # Hybrid-specific fields
                     "matched_keywords": result.get("matched_keywords", []),
                     "keyword_score": result.get("keyword_score"),
@@ -170,9 +200,28 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
 
             # Call REST API search endpoint with POST
             logger.info(f"Calling vector search API with params: {search_params}")
-            async with httpx.AsyncClient() as client:
-                response = await client.post(f"{settings.SEARCH_API_URL}/search", json=search_params, timeout=30.0)
-                response.raise_for_status()
+            
+            # Use longer timeout for first request after model might be unloaded
+            # This handles the case where model needs to be reloaded
+            timeout = httpx.Timeout(
+                timeout=60.0,  # Total timeout increased to 60 seconds
+                connect=5.0,   # Connection timeout
+                read=60.0,     # Read timeout for model loading
+                write=5.0      # Write timeout
+            )
+            
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                try:
+                    response = await client.post(f"{settings.SEARCH_API_URL}/search", json=search_params)
+                    response.raise_for_status()
+                except httpx.ReadTimeout:
+                    # If first attempt times out, it might be due to model loading
+                    # Log warning and retry with even longer timeout
+                    logger.warning("Search request timed out, likely due to model loading. Retrying with longer timeout...")
+                    extended_timeout = httpx.Timeout(timeout=120.0, connect=5.0, read=120.0, write=5.0)
+                    async with httpx.AsyncClient(timeout=extended_timeout) as retry_client:
+                        response = await retry_client.post(f"{settings.SEARCH_API_URL}/search", json=search_params)
+                        response.raise_for_status()
 
             # Transform REST API response to match WebUI JavaScript expectations
             api_response = response.json()
@@ -188,6 +237,9 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
                 # Get metadata
                 metadata = result.get("metadata", {})
 
+                # Extract job_id from collection name (format: job_{job_id})
+                job_id_from_collection = collection_name.replace("job_", "") if collection_name.startswith("job_") else request.job_id
+                
                 # Create result in format expected by SearchResults component
                 transformed_result = {
                     "doc_id": result.get("doc_id", ""),
@@ -198,7 +250,7 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
                     "file_name": file_name,
                     "chunk_index": metadata.get("chunk_index", 0),
                     "total_chunks": metadata.get("total_chunks", 1),
-                    "job_id": request.job_id,
+                    "job_id": job_id_from_collection,
                     # Keep the payload format for backward compatibility
                     "payload": {
                         "path": path,
@@ -233,6 +285,53 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 
+class PreloadModelRequest(BaseModel):
+    model_name: str = Field(..., description="Model name to preload")
+    quantization: str = Field(default="float16", description="Quantization type")
+
+
+@router.post("/preload_model")
+async def preload_model(
+    request: PreloadModelRequest,
+    current_user: dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Preload a model to prevent timeout issues on first search.
+    This is useful when you know a search is coming and want to ensure the model is ready.
+    """
+    logger.info(f"Preloading model: {request.model_name} with quantization: {request.quantization}")
+    
+    try:
+        # Call the search API with a dummy query to force model loading
+        preload_params = {
+            "query": "preload",
+            "k": 1,
+            "collection": "work_docs",  # Use default collection
+            "search_type": "semantic",
+            "include_content": False,
+            "model_name": request.model_name,
+            "quantization": request.quantization
+        }
+        
+        # Use extended timeout for model loading
+        timeout = httpx.Timeout(timeout=120.0, connect=5.0, read=120.0, write=5.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(f"{settings.SEARCH_API_URL}/search", json=preload_params)
+            response.raise_for_status()
+        
+        return {"status": "success", "message": f"Model {request.model_name} preloaded successfully"}
+    
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Failed to preload model: {e}")
+        raise HTTPException(status_code=502, detail=f"Failed to preload model: {str(e)}")
+    except httpx.RequestError as e:
+        logger.error(f"Failed to connect to search API: {e}")
+        raise HTTPException(status_code=503, detail="Search service unavailable")
+    except Exception as e:
+        logger.error(f"Preload error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to preload model: {str(e)}")
+
+
 @router.post("/hybrid_search")
 async def hybrid_search(request: HybridSearchRequest, current_user: dict[str, Any] = Depends(get_current_user)):
     """Perform hybrid search combining vector similarity and text matching - proxies to REST API"""
@@ -246,11 +345,18 @@ async def hybrid_search(request: HybridSearchRequest, current_user: dict[str, An
 
         if request.job_id:
             job = database.get_job(request.job_id)
-            if job:
-                if job.get("model_name"):
-                    model_name = job["model_name"]
-                if job.get("quantization"):
-                    quantization = job["quantization"]
+            if not job:
+                raise HTTPException(status_code=404, detail="Job not found")
+
+            # Check if the current user owns the job
+            # Allow access to legacy jobs without user_id
+            if job.get("user_id") is not None and job.get("user_id") != current_user.get("id"):
+                raise HTTPException(status_code=403, detail="Access denied to this collection")
+
+            if job.get("model_name"):
+                model_name = job["model_name"]
+            if job.get("quantization"):
+                quantization = job["quantization"]
 
         # Prepare hybrid search params for REST API
         search_params = {
@@ -270,8 +376,9 @@ async def hybrid_search(request: HybridSearchRequest, current_user: dict[str, An
             search_params["score_threshold"] = request.score_threshold
 
         # Call REST API hybrid search endpoint
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{settings.SEARCH_API_URL}/hybrid_search", params=search_params, timeout=30.0)
+        timeout = httpx.Timeout(timeout=60.0, connect=5.0, read=60.0, write=5.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(f"{settings.SEARCH_API_URL}/hybrid_search", params=search_params)
             response.raise_for_status()
 
         # The REST API returns the response in the format we need
