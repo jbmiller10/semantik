@@ -109,25 +109,25 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
 
             # Call REST API hybrid search endpoint with GET
             logger.info(f"Calling hybrid search API with params: {search_params}")
-            
+
             # Use longer timeout for hybrid search as well
             timeout = httpx.Timeout(
                 timeout=60.0,  # Total timeout increased to 60 seconds
-                connect=5.0,   # Connection timeout
-                read=60.0,     # Read timeout for model loading
-                write=5.0      # Write timeout
+                connect=5.0,  # Connection timeout
+                read=60.0,  # Read timeout for model loading
+                write=5.0,  # Write timeout
             )
-            
+
             async with httpx.AsyncClient(timeout=timeout) as client:
                 try:
-                    response = await client.get(
-                        f"{settings.SEARCH_API_URL}/hybrid_search", params=search_params
-                    )
+                    response = await client.get(f"{settings.SEARCH_API_URL}/hybrid_search", params=search_params)
                     response.raise_for_status()
                 except httpx.ReadTimeout:
                     # If first attempt times out, it might be due to model loading
                     # Log warning and retry with even longer timeout
-                    logger.warning("Hybrid search request timed out, likely due to model loading. Retrying with longer timeout...")
+                    logger.warning(
+                        "Hybrid search request timed out, likely due to model loading. Retrying with longer timeout..."
+                    )
                     extended_timeout = httpx.Timeout(timeout=120.0, connect=5.0, read=120.0, write=5.0)
                     async with httpx.AsyncClient(timeout=extended_timeout) as retry_client:
                         response = await retry_client.get(
@@ -150,8 +150,10 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
                 metadata = result.get("metadata", {})
 
                 # Extract job_id from collection name (format: job_{job_id})
-                job_id_from_collection = collection_name.replace("job_", "") if collection_name.startswith("job_") else request.job_id
-                
+                job_id_from_collection = (
+                    collection_name.replace("job_", "") if collection_name.startswith("job_") else request.job_id
+                )
+
                 # Create result in format expected by SearchResults component
                 transformed_result = {
                     "doc_id": result.get("doc_id", ""),
@@ -200,16 +202,16 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
 
             # Call REST API search endpoint with POST
             logger.info(f"Calling vector search API with params: {search_params}")
-            
+
             # Use longer timeout for first request after model might be unloaded
             # This handles the case where model needs to be reloaded
             timeout = httpx.Timeout(
                 timeout=60.0,  # Total timeout increased to 60 seconds
-                connect=5.0,   # Connection timeout
-                read=60.0,     # Read timeout for model loading
-                write=5.0      # Write timeout
+                connect=5.0,  # Connection timeout
+                read=60.0,  # Read timeout for model loading
+                write=5.0,  # Write timeout
             )
-            
+
             async with httpx.AsyncClient(timeout=timeout) as client:
                 try:
                     response = await client.post(f"{settings.SEARCH_API_URL}/search", json=search_params)
@@ -217,7 +219,9 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
                 except httpx.ReadTimeout:
                     # If first attempt times out, it might be due to model loading
                     # Log warning and retry with even longer timeout
-                    logger.warning("Search request timed out, likely due to model loading. Retrying with longer timeout...")
+                    logger.warning(
+                        "Search request timed out, likely due to model loading. Retrying with longer timeout..."
+                    )
                     extended_timeout = httpx.Timeout(timeout=120.0, connect=5.0, read=120.0, write=5.0)
                     async with httpx.AsyncClient(timeout=extended_timeout) as retry_client:
                         response = await retry_client.post(f"{settings.SEARCH_API_URL}/search", json=search_params)
@@ -238,8 +242,10 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
                 metadata = result.get("metadata", {})
 
                 # Extract job_id from collection name (format: job_{job_id})
-                job_id_from_collection = collection_name.replace("job_", "") if collection_name.startswith("job_") else request.job_id
-                
+                job_id_from_collection = (
+                    collection_name.replace("job_", "") if collection_name.startswith("job_") else request.job_id
+                )
+
                 # Create result in format expected by SearchResults component
                 transformed_result = {
                     "doc_id": result.get("doc_id", ""),
@@ -291,16 +297,13 @@ class PreloadModelRequest(BaseModel):
 
 
 @router.post("/preload_model")
-async def preload_model(
-    request: PreloadModelRequest,
-    current_user: dict[str, Any] = Depends(get_current_user)
-):
+async def preload_model(request: PreloadModelRequest, current_user: dict[str, Any] = Depends(get_current_user)):
     """
     Preload a model to prevent timeout issues on first search.
     This is useful when you know a search is coming and want to ensure the model is ready.
     """
     logger.info(f"Preloading model: {request.model_name} with quantization: {request.quantization}")
-    
+
     try:
         # Call the search API with a dummy query to force model loading
         preload_params = {
@@ -310,17 +313,17 @@ async def preload_model(
             "search_type": "semantic",
             "include_content": False,
             "model_name": request.model_name,
-            "quantization": request.quantization
+            "quantization": request.quantization,
         }
-        
+
         # Use extended timeout for model loading
         timeout = httpx.Timeout(timeout=120.0, connect=5.0, read=120.0, write=5.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(f"{settings.SEARCH_API_URL}/search", json=preload_params)
             response.raise_for_status()
-        
+
         return {"status": "success", "message": f"Model {request.model_name} preloaded successfully"}
-    
+
     except httpx.HTTPStatusError as e:
         logger.error(f"Failed to preload model: {e}")
         raise HTTPException(status_code=502, detail=f"Failed to preload model: {str(e)}")
