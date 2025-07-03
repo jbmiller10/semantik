@@ -19,7 +19,7 @@ fi
 
 # Start Search API in background
 echo "Starting Search API on port 8000..."
-poetry run python vecpipe/search_api.py > search_api.log 2>&1 &
+poetry run python -m packages.vecpipe.search_api > search_api.log 2>&1 &
 SEARCH_PID=$!
 echo "Search API started with PID: $SEARCH_PID"
 
@@ -35,7 +35,7 @@ fi
 
 # Start WebUI
 echo "Starting WebUI on port 8080..."
-poetry run uvicorn webui.app:app --host 0.0.0.0 --port 8080 > webui.log 2>&1 &
+poetry run uvicorn packages.webui.app:app --host 0.0.0.0 --port 8080 > webui.log 2>&1 &
 WEBUI_PID=$!
 echo "WebUI started with PID: $WEBUI_PID"
 

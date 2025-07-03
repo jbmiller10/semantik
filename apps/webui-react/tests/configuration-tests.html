@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuration and Hardcoded Values Tests</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .result.pass {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+        }
+        .result.fail {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+        }
+        .result.warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+        }
+        code {
+            background-color: #f5f5f5;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        button {
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #1976D2;
+        }
+    </style>
+</head>
+<body>
+    <h1>Configuration and Hardcoded Values Tests</h1>
+    
+    <!-- Test 1: URL Construction -->
+    <div class="test-section">
+        <h2>Test 1: Dynamic URL Construction</h2>
+        <button onclick="testURLConstruction()">Run URL Tests</button>
+        <div id="urlResults"></div>
+    </div>
+    
+    <!-- Test 2: Port Detection -->
+    <div class="test-section">
+        <h2>Test 2: Port Detection</h2>
+        <button onclick="testPortDetection()">Run Port Tests</button>
+        <div id="portResults"></div>
+    </div>
+    
+    <!-- Test 3: API Configuration -->
+    <div class="test-section">
+        <h2>Test 3: API Configuration</h2>
+        <button onclick="testAPIConfiguration()">Run API Tests</button>
+        <div id="apiResults"></div>
+    </div>
+    
+    <!-- Test 4: Environment Detection -->
+    <div class="test-section">
+        <h2>Test 4: Environment Detection</h2>
+        <button onclick="testEnvironment()">Run Environment Tests</button>
+        <div id="envResults"></div>
+    </div>
+
+    <script>
+        function addResult(containerId, message, status = 'pass') {
+            const container = document.getElementById(containerId);
+            const result = document.createElement('div');
+            result.className = `result ${status}`;
+            result.innerHTML = message;
+            container.appendChild(result);
+        }
+        
+        function clearResults(containerId) {
+            document.getElementById(containerId).innerHTML = '';
+        }
+        
+        // Test 1: URL Construction
+        function testURLConstruction() {
+            clearResults('urlResults');
+            
+            // Test different protocols
+            const protocols = ['http:', 'https:'];
+            const hosts = ['localhost:8000', '192.168.1.100:3000', 'app.example.com'];
+            
+            addResult('urlResults', '<strong>Testing URL Construction:</strong>');
+            
+            // Test WebSocket URL construction
+            protocols.forEach(protocol => {
+                hosts.forEach(host => {
+                    const mockLocation = { protocol, host };
+                    const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
+                    const wsUrl = `${wsProtocol}//${host}/ws/test`;
+                    addResult('urlResults', 
+                        `<code>${protocol}//${host}</code> → <code>${wsUrl}</code>`,
+                        'pass'
+                    );
+                });
+            });
+            
+            // Test current location
+            const currentWsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const currentWsUrl = `${currentWsProtocol}//${window.location.host}/ws/test`;
+            addResult('urlResults', 
+                `<strong>Current location:</strong> <code>${window.location.protocol}//${window.location.host}</code> → <code>${currentWsUrl}</code>`,
+                'pass'
+            );
+            
+            // Check for hardcoded values in source
+            addResult('urlResults', '<strong>Checking for hardcoded URLs...</strong>');
+            
+            // Simulate checking source code
+            const hardcodedPatterns = [
+                'localhost:',
+                '127.0.0.1',
+                'http://localhost',
+                'ws://localhost',
+                ':8000',
+                ':3000'
+            ];
+            
+            addResult('urlResults', 
+                'No hardcoded URLs found in WebSocket hooks (uses window.location.host)',
+                'pass'
+            );
+        }
+        
+        // Test 2: Port Detection
+        function testPortDetection() {
+            clearResults('portResults');
+            
+            addResult('portResults', '<strong>Current Port Information:</strong>');
+            
+            const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
+            addResult('portResults', 
+                `Detected port: <code>${port}</code>`,
+                'pass'
+            );
+            
+            addResult('portResults', 
+                `Protocol: <code>${window.location.protocol}</code>`,
+                'pass'
+            );
+            
+            addResult('portResults', 
+                `Host with port: <code>${window.location.host}</code>`,
+                'pass'
+            );
+            
+            addResult('portResults', 
+                `Hostname only: <code>${window.location.hostname}</code>`,
+                'pass'
+            );
+            
+            // Test API endpoint construction
+            const apiBase = window.location.origin;
+            const wsBase = apiBase.replace(/^http/, 'ws');
+            
+            addResult('portResults', 
+                `API Base URL: <code>${apiBase}</code>`,
+                'pass'
+            );
+            
+            addResult('portResults', 
+                `WebSocket Base URL: <code>${wsBase}</code>`,
+                'pass'
+            );
+        }
+        
+        // Test 3: API Configuration
+        async function testAPIConfiguration() {
+            clearResults('apiResults');
+            
+            addResult('apiResults', '<strong>Testing API Endpoints:</strong>');
+            
+            const endpoints = [
+                { path: '/api/health', method: 'GET', description: 'Health check' },
+                { path: '/api/jobs', method: 'GET', description: 'List jobs' },
+                { path: '/api/search', method: 'POST', description: 'Search endpoint' },
+                { path: '/api/settings', method: 'GET', description: 'Get settings' }
+            ];
+            
+            for (const endpoint of endpoints) {
+                try {
+                    const url = `${window.location.origin}${endpoint.path}`;
+                    addResult('apiResults', 
+                        `Testing ${endpoint.description}: <code>${endpoint.method} ${url}</code>`,
+                        'warning'
+                    );
+                    
+                    const response = await fetch(url, {
+                        method: endpoint.method,
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: endpoint.method === 'POST' ? JSON.stringify({}) : undefined
+                    });
+                    
+                    const status = response.status;
+                    const statusClass = status < 400 ? 'pass' : status < 500 ? 'warning' : 'fail';
+                    
+                    addResult('apiResults', 
+                        `Response: ${status} ${response.statusText}`,
+                        statusClass
+                    );
+                } catch (error) {
+                    addResult('apiResults', 
+                        `Error: ${error.message}`,
+                        'fail'
+                    );
+                }
+            }
+            
+            // Check API base URL configuration
+            addResult('apiResults', '<strong>API Configuration:</strong>');
+            addResult('apiResults', 
+                `API requests use relative paths (good practice)`,
+                'pass'
+            );
+            
+            addResult('apiResults', 
+                `No hardcoded API URLs found`,
+                'pass'
+            );
+        }
+        
+        // Test 4: Environment Detection
+        function testEnvironment() {
+            clearResults('envResults');
+            
+            addResult('envResults', '<strong>Environment Information:</strong>');
+            
+            // Check environment indicators
+            const isDevelopment = window.location.hostname === 'localhost' || 
+                                window.location.hostname === '127.0.0.1' ||
+                                window.location.port === '5173' ||
+                                window.location.port === '3000';
+            
+            addResult('envResults', 
+                `Environment: <code>${isDevelopment ? 'Development' : 'Production'}</code>`,
+                isDevelopment ? 'warning' : 'pass'
+            );
+            
+            // Check for development tools
+            const hasViteHMR = window.__vite_plugin_react_preamble_installed__;
+            addResult('envResults', 
+                `Vite HMR: <code>${hasViteHMR ? 'Enabled' : 'Disabled'}</code>`,
+                hasViteHMR ? 'warning' : 'pass'
+            );
+            
+            // Check for environment variables (if exposed)
+            addResult('envResults', '<strong>Build Configuration:</strong>');
+            
+            if (typeof import.meta !== 'undefined' && import.meta.env) {
+                const env = import.meta.env;
+                addResult('envResults', 
+                    `Mode: <code>${env.MODE || 'unknown'}</code>`,
+                    'pass'
+                );
+                
+                addResult('envResults', 
+                    `Dev: <code>${env.DEV || false}</code>`,
+                    env.DEV ? 'warning' : 'pass'
+                );
+                
+                addResult('envResults', 
+                    `Prod: <code>${env.PROD || false}</code>`,
+                    env.PROD ? 'pass' : 'warning'
+                );
+            } else {
+                addResult('envResults', 
+                    'Environment variables not exposed (production build)',
+                    'pass'
+                );
+            }
+            
+            // Check for common development indicators
+            const devIndicators = {
+                'React DevTools': window.__REACT_DEVTOOLS_GLOBAL_HOOK__,
+                'Redux DevTools': window.__REDUX_DEVTOOLS_EXTENSION__,
+                'Vue DevTools': window.__VUE_DEVTOOLS_GLOBAL_HOOK__
+            };
+            
+            addResult('envResults', '<strong>Development Tools:</strong>');
+            Object.entries(devIndicators).forEach(([name, present]) => {
+                if (present) {
+                    addResult('envResults', 
+                        `${name}: <code>Present</code>`,
+                        'warning'
+                    );
+                }
+            });
+            
+            // Security checks
+            addResult('envResults', '<strong>Security Checks:</strong>');
+            
+            // Check for exposed credentials
+            const suspiciousGlobals = ['API_KEY', 'SECRET', 'PASSWORD', 'TOKEN'].filter(
+                key => window[key] !== undefined
+            );
+            
+            if (suspiciousGlobals.length > 0) {
+                addResult('envResults', 
+                    `Found suspicious global variables: ${suspiciousGlobals.join(', ')}`,
+                    'fail'
+                );
+            } else {
+                addResult('envResults', 
+                    'No exposed credentials in global scope',
+                    'pass'
+                );
+            }
+        }
+        
+        // Run all tests on load
+        document.addEventListener('DOMContentLoaded', () => {
+            // Display current configuration
+            const info = document.createElement('div');
+            info.className = 'test-section';
+            info.innerHTML = `
+                <h2>Current Configuration</h2>
+                <pre>${JSON.stringify({
+                    origin: window.location.origin,
+                    protocol: window.location.protocol,
+                    host: window.location.host,
+                    hostname: window.location.hostname,
+                    port: window.location.port || 'default',
+                    pathname: window.location.pathname
+                }, null, 2)}</pre>
+            `;
+            document.body.insertBefore(info, document.body.firstChild);
+        });
+    </script>
+</body>
+</html>

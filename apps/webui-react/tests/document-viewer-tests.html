@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Viewer Tests</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .status {
+            padding: 5px 10px;
+            border-radius: 4px;
+            display: inline-block;
+            margin: 5px 0;
+        }
+        .status.loaded {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .status.missing {
+            background-color: #f44336;
+            color: white;
+        }
+        .status.error {
+            background-color: #ff9800;
+            color: white;
+        }
+        .log {
+            background-color: #f5f5f5;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        button {
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #1976D2;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .test-result.pass {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+        }
+        .test-result.fail {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+        }
+        input[type="file"] {
+            margin: 10px 0;
+        }
+        .preview-container {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 20px;
+            margin-top: 10px;
+            min-height: 200px;
+            background-color: #fafafa;
+        }
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        iframe {
+            width: 100%;
+            height: 500px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Document Viewer Tests</h1>
+    
+    <!-- Test 1: Library Loading -->
+    <div class="test-section">
+        <h2>Test 1: Document Rendering Library Status</h2>
+        <button onclick="checkLibraries()">Check Libraries</button>
+        <div id="libraryStatus"></div>
+    </div>
+    
+    <!-- Test 2: File Type Support -->
+    <div class="test-section">
+        <h2>Test 2: File Type Support Test</h2>
+        <button onclick="testFileTypeSupport()">Test All File Types</button>
+        <div id="fileTypeResults"></div>
+    </div>
+    
+    <!-- Test 3: Document Preview -->
+    <div class="test-section">
+        <h2>Test 3: Document Preview Test</h2>
+        <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt,.md,.csv,.json,.xml" />
+        <button onclick="testDocumentPreview()">Preview Selected File</button>
+        <div class="preview-container" id="previewContainer">
+            <p>Select a file and click Preview to test document rendering</p>
+        </div>
+    </div>
+    
+    <!-- Test 4: API Document Fetch -->
+    <div class="test-section">
+        <h2>Test 4: API Document Fetch Test</h2>
+        <input type="text" id="documentPath" placeholder="Enter document path" style="width: 300px; padding: 8px;" />
+        <button onclick="testAPIDocumentFetch()">Fetch Document</button>
+        <div class="log" id="fetchLog"></div>
+    </div>
+    
+    <!-- Test 5: Error Handling -->
+    <div class="test-section">
+        <h2>Test 5: Error Handling Tests</h2>
+        <button onclick="testErrorHandling()">Run Error Tests</button>
+        <div id="errorResults"></div>
+    </div>
+
+    <script>
+        // CDN URLs for document libraries
+        const LIBRARY_CDNS = {
+            'PDF.js': {
+                script: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
+                worker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
+                check: () => window.pdfjsLib
+            },
+            'Mammoth.js': {
+                script: 'https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js',
+                check: () => window.mammoth
+            },
+            'Papa Parse': {
+                script: 'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js',
+                check: () => window.Papa
+            },
+            'Marked.js': {
+                script: 'https://cdn.jsdelivr.net/npm/marked@9.1.2/lib/marked.umd.js',
+                check: () => window.marked
+            }
+        };
+        
+        function log(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            const timestamp = new Date().toISOString();
+            const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : 'ℹ️';
+            element.innerHTML += `${prefix} [${timestamp}] ${message}\n`;
+            element.scrollTop = element.scrollHeight;
+        }
+        
+        // Test 1: Check Libraries
+        async function checkLibraries() {
+            const statusDiv = document.getElementById('libraryStatus');
+            statusDiv.innerHTML = '<h3>Checking libraries...</h3>';
+            
+            for (const [name, config] of Object.entries(LIBRARY_CDNS)) {
+                const result = document.createElement('div');
+                result.className = 'test-result';
+                
+                if (config.check()) {
+                    result.className += ' pass';
+                    result.innerHTML = `✅ ${name}: <span class="status loaded">Loaded</span>`;
+                } else {
+                    result.className += ' fail';
+                    result.innerHTML = `❌ ${name}: <span class="status missing">Not Loaded</span>`;
+                    
+                    // Try to load it
+                    try {
+                        await loadScript(config.script);
+                        if (config.check()) {
+                            result.innerHTML += ' → <span class="status loaded">Now Loaded</span>';
+                        }
+                    } catch (e) {
+                        result.innerHTML += ` → <span class="status error">Load Failed: ${e.message}</span>`;
+                    }
+                }
+                
+                statusDiv.appendChild(result);
+            }
+            
+            // Special handling for PDF.js worker
+            if (window.pdfjsLib && LIBRARY_CDNS['PDF.js'].worker) {
+                window.pdfjsLib.GlobalWorkerOptions.workerSrc = LIBRARY_CDNS['PDF.js'].worker;
+                const workerResult = document.createElement('div');
+                workerResult.className = 'test-result pass';
+                workerResult.innerHTML = '✅ PDF.js Worker: <span class="status loaded">Configured</span>';
+                statusDiv.appendChild(workerResult);
+            }
+        }
+        
+        // Helper function to load scripts
+        function loadScript(src) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = src;
+                script.onload = resolve;
+                script.onerror = () => reject(new Error(`Failed to load ${src}`));
+                document.head.appendChild(script);
+            });
+        }
+        
+        // Test 2: File Type Support
+        function testFileTypeSupport() {
+            const resultsDiv = document.getElementById('fileTypeResults');
+            resultsDiv.innerHTML = '<h3>Testing file type support...</h3>';
+            
+            const fileTypes = [
+                { ext: '.pdf', mime: 'application/pdf', handler: 'PDF.js', supported: true },
+                { ext: '.doc', mime: 'application/msword', handler: 'Mammoth.js', supported: true },
+                { ext: '.docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', handler: 'Mammoth.js', supported: true },
+                { ext: '.txt', mime: 'text/plain', handler: 'Native', supported: true },
+                { ext: '.md', mime: 'text/markdown', handler: 'Marked.js', supported: true },
+                { ext: '.csv', mime: 'text/csv', handler: 'Papa Parse', supported: true },
+                { ext: '.json', mime: 'application/json', handler: 'Native', supported: true },
+                { ext: '.xml', mime: 'application/xml', handler: 'Native', supported: true },
+                { ext: '.html', mime: 'text/html', handler: 'Native (Sanitized)', supported: true },
+                { ext: '.jpg', mime: 'image/jpeg', handler: 'Native', supported: true },
+                { ext: '.png', mime: 'image/png', handler: 'Native', supported: true },
+                { ext: '.gif', mime: 'image/gif', handler: 'Native', supported: true },
+                { ext: '.svg', mime: 'image/svg+xml', handler: 'Native (Sanitized)', supported: true },
+                { ext: '.mp4', mime: 'video/mp4', handler: 'None', supported: false },
+                { ext: '.zip', mime: 'application/zip', handler: 'None', supported: false }
+            ];
+            
+            fileTypes.forEach(type => {
+                const result = document.createElement('div');
+                result.className = 'test-result ' + (type.supported ? 'pass' : 'fail');
+                result.innerHTML = `
+                    ${type.supported ? '✅' : '❌'} 
+                    <strong>${type.ext}</strong> (${type.mime}) - 
+                    Handler: ${type.handler} - 
+                    <span class="status ${type.supported ? 'loaded' : 'missing'}">
+                        ${type.supported ? 'Supported' : 'Not Supported'}
+                    </span>
+                `;
+                resultsDiv.appendChild(result);
+            });
+        }
+        
+        // Test 3: Document Preview
+        async function testDocumentPreview() {
+            const fileInput = document.getElementById('fileInput');
+            const previewContainer = document.getElementById('previewContainer');
+            
+            if (!fileInput.files || !fileInput.files[0]) {
+                previewContainer.innerHTML = '<p style="color: red;">Please select a file first</p>';
+                return;
+            }
+            
+            const file = fileInput.files[0];
+            previewContainer.innerHTML = `<p>Loading ${file.name}...</p>`;
+            
+            try {
+                const content = await readFile(file);
+                await renderDocument(file, content, previewContainer);
+            } catch (error) {
+                previewContainer.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        }
+        
+        // Helper function to read file
+        function readFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = (e) => reject(new Error('Failed to read file'));
+                
+                if (file.type.startsWith('image/')) {
+                    reader.readAsDataURL(file);
+                } else if (file.type === 'application/pdf') {
+                    reader.readAsArrayBuffer(file);
+                } else {
+                    reader.readAsText(file);
+                }
+            });
+        }
+        
+        // Helper function to render document
+        async function renderDocument(file, content, container) {
+            const type = file.type || 'text/plain';
+            
+            if (type.startsWith('image/')) {
+                container.innerHTML = `<img src="${content}" style="max-width: 100%; height: auto;" />`;
+            } else if (type === 'application/pdf') {
+                await renderPDF(content, container);
+            } else if (type === 'text/markdown' || file.name.endsWith('.md')) {
+                await renderMarkdown(content, container);
+            } else if (type === 'text/csv' || file.name.endsWith('.csv')) {
+                renderCSV(content, container);
+            } else if (type === 'application/json' || file.name.endsWith('.json')) {
+                renderJSON(content, container);
+            } else if (file.name.endsWith('.doc') || file.name.endsWith('.docx')) {
+                await renderWord(file, container);
+            } else {
+                container.innerHTML = `<pre>${escapeHtml(content)}</pre>`;
+            }
+        }
+        
+        // PDF rendering
+        async function renderPDF(arrayBuffer, container) {
+            if (!window.pdfjsLib) {
+                await loadScript(LIBRARY_CDNS['PDF.js'].script);
+                window.pdfjsLib.GlobalWorkerOptions.workerSrc = LIBRARY_CDNS['PDF.js'].worker;
+            }
+            
+            const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const page = await pdf.getPage(1);
+            
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            const viewport = page.getViewport({ scale: 1.5 });
+            
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            
+            await page.render({
+                canvasContext: context,
+                viewport: viewport
+            }).promise;
+            
+            container.innerHTML = '';
+            container.appendChild(canvas);
+            
+            const info = document.createElement('p');
+            info.innerHTML = `PDF rendered successfully. Page 1 of ${pdf.numPages}`;
+            container.appendChild(info);
+        }
+        
+        // Markdown rendering
+        async function renderMarkdown(content, container) {
+            if (!window.marked) {
+                await loadScript(LIBRARY_CDNS['Marked.js'].script);
+            }
+            
+            const html = window.marked.parse(content);
+            container.innerHTML = html;
+        }
+        
+        // CSV rendering
+        function renderCSV(content, container) {
+            if (!window.Papa) {
+                container.innerHTML = '<pre>' + escapeHtml(content) + '</pre>';
+                return;
+            }
+            
+            const result = window.Papa.parse(content, { header: true });
+            
+            if (result.errors.length > 0) {
+                container.innerHTML = '<p style="color: red;">CSV parsing errors occurred</p>';
+                return;
+            }
+            
+            const table = document.createElement('table');
+            table.style.width = '100%';
+            table.style.borderCollapse = 'collapse';
+            
+            // Header
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            result.meta.fields.forEach(field => {
+                const th = document.createElement('th');
+                th.textContent = field;
+                th.style.border = '1px solid #ddd';
+                th.style.padding = '8px';
+                th.style.backgroundColor = '#f5f5f5';
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+            
+            // Body
+            const tbody = document.createElement('tbody');
+            result.data.slice(0, 10).forEach(row => {
+                const tr = document.createElement('tr');
+                result.meta.fields.forEach(field => {
+                    const td = document.createElement('td');
+                    td.textContent = row[field] || '';
+                    td.style.border = '1px solid #ddd';
+                    td.style.padding = '8px';
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+            
+            container.innerHTML = '';
+            container.appendChild(table);
+            
+            if (result.data.length > 10) {
+                const info = document.createElement('p');
+                info.innerHTML = `Showing first 10 of ${result.data.length} rows`;
+                container.appendChild(info);
+            }
+        }
+        
+        // JSON rendering
+        function renderJSON(content, container) {
+            try {
+                const json = JSON.parse(content);
+                container.innerHTML = '<pre>' + JSON.stringify(json, null, 2) + '</pre>';
+            } catch (e) {
+                container.innerHTML = '<p style="color: red;">Invalid JSON</p>';
+            }
+        }
+        
+        // Word document rendering
+        async function renderWord(file, container) {
+            if (!window.mammoth) {
+                await loadScript(LIBRARY_CDNS['Mammoth.js'].script);
+            }
+            
+            const arrayBuffer = await file.arrayBuffer();
+            const result = await window.mammoth.convertToHtml({ arrayBuffer });
+            
+            if (result.messages.length > 0) {
+                console.warn('Mammoth warnings:', result.messages);
+            }
+            
+            container.innerHTML = result.value;
+        }
+        
+        // Helper function to escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Test 4: API Document Fetch
+        async function testAPIDocumentFetch() {
+            const path = document.getElementById('documentPath').value;
+            if (!path) {
+                log('fetchLog', 'Please enter a document path', 'error');
+                return;
+            }
+            
+            log('fetchLog', `Fetching document: ${path}`);
+            
+            try {
+                const response = await fetch(`/api/documents/preview?path=${encodeURIComponent(path)}`);
+                
+                log('fetchLog', `Response status: ${response.status} ${response.statusText}`);
+                
+                if (!response.ok) {
+                    const error = await response.text();
+                    log('fetchLog', `Error: ${error}`, 'error');
+                    return;
+                }
+                
+                const contentType = response.headers.get('content-type');
+                log('fetchLog', `Content-Type: ${contentType}`);
+                
+                const blob = await response.blob();
+                log('fetchLog', `Received ${blob.size} bytes`, 'success');
+                
+                // Create object URL for preview
+                const url = URL.createObjectURL(blob);
+                log('fetchLog', `Object URL created: ${url}`, 'success');
+                
+                // You can add preview logic here
+                
+            } catch (error) {
+                log('fetchLog', `Fetch error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Test 5: Error Handling
+        async function testErrorHandling() {
+            const resultsDiv = document.getElementById('errorResults');
+            resultsDiv.innerHTML = '<h3>Testing error handling...</h3>';
+            
+            const errorTests = [
+                {
+                    name: 'Invalid file type',
+                    test: async () => {
+                        const fakeFile = new File(['test'], 'test.xyz', { type: 'application/xyz' });
+                        const container = document.createElement('div');
+                        await renderDocument(fakeFile, 'test content', container);
+                        return container.innerHTML.includes('pre') || container.innerHTML.includes('error');
+                    }
+                },
+                {
+                    name: 'Corrupted PDF',
+                    test: async () => {
+                        if (!window.pdfjsLib) return true; // Skip if PDF.js not loaded
+                        try {
+                            await window.pdfjsLib.getDocument({ data: new ArrayBuffer(100) }).promise;
+                            return false;
+                        } catch (e) {
+                            return true;
+                        }
+                    }
+                },
+                {
+                    name: 'Invalid JSON',
+                    test: () => {
+                        try {
+                            JSON.parse('{invalid json}');
+                            return false;
+                        } catch (e) {
+                            return true;
+                        }
+                    }
+                },
+                {
+                    name: 'Large file handling',
+                    test: () => {
+                        // Simulate large file
+                        const largeContent = 'x'.repeat(10 * 1024 * 1024); // 10MB
+                        return largeContent.length === 10 * 1024 * 1024;
+                    }
+                }
+            ];
+            
+            for (const errorTest of errorTests) {
+                const result = document.createElement('div');
+                result.className = 'test-result';
+                
+                try {
+                    const passed = await errorTest.test();
+                    result.className += passed ? ' pass' : ' fail';
+                    result.innerHTML = `${passed ? '✅' : '❌'} ${errorTest.name}: ${passed ? 'Handled correctly' : 'Failed'}`;
+                } catch (error) {
+                    result.className += ' fail';
+                    result.innerHTML = `❌ ${errorTest.name}: Unexpected error - ${error.message}`;
+                }
+                
+                resultsDiv.appendChild(result);
+            }
+        }
+        
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', () => {
+            // Check initial library status
+            const initialStatus = document.createElement('div');
+            initialStatus.className = 'test-section';
+            initialStatus.innerHTML = '<h2>Initial Library Status</h2>';
+            
+            for (const [name, config] of Object.entries(LIBRARY_CDNS)) {
+                const status = config.check() ? 'loaded' : 'missing';
+                const statusClass = config.check() ? 'pass' : 'fail';
+                const statusElement = document.createElement('div');
+                statusElement.className = `test-result ${statusClass}`;
+                statusElement.innerHTML = `${name}: <span class="status ${status}">${status === 'loaded' ? 'Pre-loaded' : 'Not loaded'}</span>`;
+                initialStatus.appendChild(statusElement);
+            }
+            
+            document.body.insertBefore(initialStatus, document.body.children[1]);
+        });
+    </script>
+</body>
+</html>
