@@ -11,3 +11,4 @@ class FileInfo(BaseModel):
     modified: str
     extension: str
     hash: str | None = None
+    content_hash: str | None = None

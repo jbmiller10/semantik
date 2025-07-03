@@ -2,6 +2,7 @@
 File and directory scanning routes for the Web UI
 """
 
+import hashlib
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +26,19 @@ class ScanDirectoryRequest(BaseModel):
     recursive: bool = True
 
 
+def compute_file_content_hash(file_path: Path, chunk_size: int = 8192) -> str:
+    """Compute SHA256 hash of file content"""
+    sha256_hash = hashlib.sha256()
+    try:
+        with open(file_path, "rb") as f:
+            while chunk := f.read(chunk_size):
+                sha256_hash.update(chunk)
+        return sha256_hash.hexdigest()
+    except Exception as e:
+        logger.warning(f"Failed to compute hash for {file_path}: {e}")
+        return None
+
+
 def scan_directory(path: str, recursive: bool = True) -> list[FileInfo]:
     """Scan directory for supported files"""
     files = []
@@ -46,12 +60,14 @@ def scan_directory(path: str, recursive: bool = True) -> list[FileInfo]:
         if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_EXTENSIONS:
             try:
                 stat = file_path.stat()
+                content_hash = compute_file_content_hash(file_path)
                 files.append(
                     FileInfo(
                         path=str(file_path),
                         size=stat.st_size,
                         modified=datetime.fromtimestamp(stat.st_mtime).isoformat(),
                         extension=file_path.suffix.lower(),
+                        content_hash=content_hash,
                     )
                 )
             except Exception as e:
@@ -101,12 +117,14 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str =
         if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_EXTENSIONS:
             try:
                 stat = file_path.stat()
+                content_hash = compute_file_content_hash(file_path)
                 files.append(
                     FileInfo(
                         path=str(file_path),
                         size=stat.st_size,
                         modified=datetime.fromtimestamp(stat.st_mtime).isoformat(),
                         extension=file_path.suffix.lower(),
+                        content_hash=content_hash,
                     )
                 )
             except Exception as e:
