@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Functionality Tests</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .log {
+            background-color: #f5f5f5;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 4px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        button {
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #1976D2;
+        }
+        input, select {
+            padding: 8px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .result.success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+        }
+        .result.error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+        }
+        .result.warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+        }
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .search-result {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            background-color: #fff;
+        }
+        .search-result h4 {
+            margin-top: 0;
+            color: #1976D2;
+        }
+        .highlight {
+            background-color: #ffeb3b;
+            padding: 2px 4px;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Search Functionality Tests</h1>
+    
+    <!-- Test 1: Search Modes -->
+    <div class="test-section">
+        <h2>Test 1: Search Mode Detection</h2>
+        <button onclick="testSearchModes()">Test Search Modes</button>
+        <div id="searchModeResults"></div>
+    </div>
+    
+    <!-- Test 2: Vector Search -->
+    <div class="test-section">
+        <h2>Test 2: Vector Search</h2>
+        <div>
+            <input type="text" id="vectorQuery" placeholder="Enter search query" style="width: 300px;" />
+            <input type="number" id="topK" placeholder="Top K" value="10" min="1" max="100" />
+            <button onclick="testVectorSearch()">Test Vector Search</button>
+        </div>
+        <div class="log" id="vectorSearchLog"></div>
+    </div>
+    
+    <!-- Test 3: Hybrid Search -->
+    <div class="test-section">
+        <h2>Test 3: Hybrid Search Test</h2>
+        <div>
+            <input type="text" id="hybridQuery" placeholder="Enter search query" style="width: 300px;" />
+            <select id="searchMode">
+                <option value="auto">Auto</option>
+                <option value="vector">Vector Only</option>
+                <option value="hybrid">Hybrid</option>
+                <option value="keyword">Keyword Only</option>
+            </select>
+            <button onclick="testHybridSearch()">Test Hybrid Search</button>
+        </div>
+        <div class="log" id="hybridSearchLog"></div>
+    </div>
+    
+    <!-- Test 4: Search Parameters -->
+    <div class="test-section">
+        <h2>Test 4: Search Parameters Test</h2>
+        <button onclick="testSearchParameters()">Test All Parameters</button>
+        <div id="parameterResults"></div>
+    </div>
+    
+    <!-- Test 5: Search Performance -->
+    <div class="test-section">
+        <h2>Test 5: Search Performance</h2>
+        <button onclick="testSearchPerformance()">Run Performance Tests</button>
+        <div id="performanceResults"></div>
+    </div>
+    
+    <!-- Test 6: Filter Tests -->
+    <div class="test-section">
+        <h2>Test 6: Search Filters</h2>
+        <button onclick="testSearchFilters()">Test Filters</button>
+        <div id="filterResults"></div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        
+        function log(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            const timestamp = new Date().toISOString();
+            const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : 'ℹ️';
+            element.innerHTML += `${prefix} [${timestamp}] ${message}\n`;
+            element.scrollTop = element.scrollHeight;
+        }
+        
+        function addResult(containerId, message, type = 'success') {
+            const container = document.getElementById(containerId);
+            const result = document.createElement('div');
+            result.className = `result ${type}`;
+            result.innerHTML = message;
+            container.appendChild(result);
+        }
+        
+        // Test 1: Search Modes
+        async function testSearchModes() {
+            const resultsDiv = document.getElementById('searchModeResults');
+            resultsDiv.innerHTML = '';
+            
+            addResult('searchModeResults', '<strong>Testing available search modes...</strong>');
+            
+            // Test different search mode parameters
+            const searchModes = [
+                { mode: 'vector', description: 'Vector/Semantic Search' },
+                { mode: 'hybrid', description: 'Hybrid Search (Vector + Keyword)' },
+                { mode: 'keyword', description: 'Keyword/Full-text Search' },
+                { mode: 'auto', description: 'Automatic Mode Selection' }
+            ];
+            
+            for (const searchMode of searchModes) {
+                try {
+                    const response = await fetch(`${API_BASE}/api/search`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            query: 'test query',
+                            mode: searchMode.mode,
+                            top_k: 1
+                        })
+                    });
+                    
+                    const responseData = await response.json();
+                    const status = response.ok ? 'success' : 'error';
+                    const message = response.ok 
+                        ? `✅ ${searchMode.description} (${searchMode.mode}): Available`
+                        : `❌ ${searchMode.description} (${searchMode.mode}): ${responseData.detail || 'Not available'}`;
+                    
+                    addResult('searchModeResults', message, status);
+                    
+                    // Check if mode was accepted in response
+                    if (response.ok && responseData.metadata) {
+                        const usedMode = responseData.metadata.search_mode || responseData.metadata.mode || 'unknown';
+                        if (usedMode !== searchMode.mode && searchMode.mode !== 'auto') {
+                            addResult('searchModeResults', 
+                                `⚠️ Requested mode: ${searchMode.mode}, but used: ${usedMode}`, 
+                                'warning'
+                            );
+                        }
+                    }
+                } catch (error) {
+                    addResult('searchModeResults', 
+                        `❌ ${searchMode.description}: Error - ${error.message}`, 
+                        'error'
+                    );
+                }
+            }
+        }
+        
+        // Test 2: Vector Search
+        async function testVectorSearch() {
+            const query = document.getElementById('vectorQuery').value;
+            const topK = parseInt(document.getElementById('topK').value) || 10;
+            
+            if (!query) {
+                log('vectorSearchLog', 'Please enter a search query', 'error');
+                return;
+            }
+            
+            log('vectorSearchLog', `Testing vector search with query: "${query}", top_k: ${topK}`);
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/search`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        mode: 'vector',
+                        top_k: topK,
+                        include_metadata: true
+                    })
+                });
+                
+                log('vectorSearchLog', `Response status: ${response.status}`);
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    log('vectorSearchLog', `Error: ${data.detail || 'Unknown error'}`, 'error');
+                    return;
+                }
+                
+                log('vectorSearchLog', `Found ${data.results?.length || 0} results`, 'success');
+                
+                // Display search metadata
+                if (data.metadata) {
+                    log('vectorSearchLog', '\nSearch Metadata:');
+                    log('vectorSearchLog', JSON.stringify(data.metadata, null, 2));
+                }
+                
+                // Display top 3 results
+                if (data.results && data.results.length > 0) {
+                    log('vectorSearchLog', '\nTop Results:');
+                    data.results.slice(0, 3).forEach((result, idx) => {
+                        log('vectorSearchLog', `\n${idx + 1}. File: ${result.file_path || result.document_path}`);
+                        log('vectorSearchLog', `   Score: ${result.score || result.similarity_score}`);
+                        log('vectorSearchLog', `   Content: ${(result.content || result.text || '').substring(0, 200)}...`);
+                        
+                        if (result.metadata) {
+                            log('vectorSearchLog', `   Metadata: ${JSON.stringify(result.metadata)}`);
+                        }
+                    });
+                }
+                
+                // Check vector search specific features
+                if (data.results && data.results.length > 0) {
+                    const hasVectorScores = data.results.every(r => 
+                        r.score !== undefined || r.similarity_score !== undefined
+                    );
+                    log('vectorSearchLog', `\nVector scores present: ${hasVectorScores ? 'Yes' : 'No'}`, 
+                        hasVectorScores ? 'success' : 'warning');
+                }
+                
+            } catch (error) {
+                log('vectorSearchLog', `Request failed: ${error.message}`, 'error');
+            }
+        }
+        
+        // Test 3: Hybrid Search
+        async function testHybridSearch() {
+            const query = document.getElementById('hybridQuery').value;
+            const mode = document.getElementById('searchMode').value;
+            
+            if (!query) {
+                log('hybridSearchLog', 'Please enter a search query', 'error');
+                return;
+            }
+            
+            log('hybridSearchLog', `Testing search with mode: "${mode}", query: "${query}"`);
+            
+            const searchParams = {
+                query: query,
+                top_k: 10,
+                include_metadata: true
+            };
+            
+            // Add mode-specific parameters
+            if (mode !== 'auto') {
+                searchParams.mode = mode;
+            }
+            
+            if (mode === 'hybrid') {
+                searchParams.alpha = 0.5; // Balance between vector and keyword
+                searchParams.keyword_weight = 0.5;
+                searchParams.vector_weight = 0.5;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/search`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(searchParams)
+                });
+                
+                log('hybridSearchLog', `Response status: ${response.status}`);
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    log('hybridSearchLog', `Error: ${data.detail || 'Unknown error'}`, 'error');
+                    
+                    // Try alternative hybrid search parameters
+                    if (mode === 'hybrid') {
+                        log('hybridSearchLog', '\nTrying alternative hybrid search approach...');
+                        
+                        // Try without explicit mode
+                        delete searchParams.mode;
+                        searchParams.use_hybrid = true;
+                        
+                        const altResponse = await fetch(`${API_BASE}/api/search`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(searchParams)
+                        });
+                        
+                        const altData = await altResponse.json();
+                        
+                        if (altResponse.ok) {
+                            log('hybridSearchLog', 'Alternative approach successful!', 'success');
+                            displaySearchResults(altData, 'hybridSearchLog');
+                        } else {
+                            log('hybridSearchLog', 'Hybrid search not available', 'warning');
+                        }
+                    }
+                    return;
+                }
+                
+                displaySearchResults(data, 'hybridSearchLog');
+                
+                // Check if hybrid search was actually used
+                if (mode === 'hybrid' && data.metadata) {
+                    const actualMode = data.metadata.search_mode || data.metadata.mode;
+                    if (actualMode && actualMode !== 'hybrid') {
+                        log('hybridSearchLog', 
+                            `\n⚠️ Requested hybrid search but got: ${actualMode}`, 
+                            'warning'
+                        );
+                    } else if (actualMode === 'hybrid') {
+                        log('hybridSearchLog', 
+                            '\n✅ Hybrid search confirmed!', 
+                            'success'
+                        );
+                    }
+                }
+                
+            } catch (error) {
+                log('hybridSearchLog', `Request failed: ${error.message}`, 'error');
+            }
+        }
+        
+        // Helper function to display search results
+        function displaySearchResults(data, logId) {
+            log(logId, `\nFound ${data.results?.length || 0} results`, 'success');
+            
+            if (data.metadata) {
+                log(logId, '\nSearch Metadata:');
+                log(logId, JSON.stringify(data.metadata, null, 2));
+            }
+            
+            if (data.results && data.results.length > 0) {
+                log(logId, '\nTop Results:');
+                data.results.slice(0, 3).forEach((result, idx) => {
+                    log(logId, `\n${idx + 1}. File: ${result.file_path || result.document_path}`);
+                    
+                    // Check for different score types
+                    if (result.score !== undefined) {
+                        log(logId, `   Score: ${result.score}`);
+                    }
+                    if (result.similarity_score !== undefined) {
+                        log(logId, `   Similarity Score: ${result.similarity_score}`);
+                    }
+                    if (result.keyword_score !== undefined) {
+                        log(logId, `   Keyword Score: ${result.keyword_score}`);
+                    }
+                    if (result.hybrid_score !== undefined) {
+                        log(logId, `   Hybrid Score: ${result.hybrid_score}`);
+                    }
+                    
+                    log(logId, `   Content: ${(result.content || result.text || '').substring(0, 200)}...`);
+                });
+            }
+        }
+        
+        // Test 4: Search Parameters
+        async function testSearchParameters() {
+            const resultsDiv = document.getElementById('parameterResults');
+            resultsDiv.innerHTML = '';
+            
+            addResult('parameterResults', '<strong>Testing search parameters...</strong>');
+            
+            const parameterTests = [
+                {
+                    name: 'Basic search',
+                    params: { query: 'test', top_k: 5 }
+                },
+                {
+                    name: 'With metadata',
+                    params: { query: 'test', top_k: 5, include_metadata: true }
+                },
+                {
+                    name: 'With filters',
+                    params: { 
+                        query: 'test', 
+                        top_k: 5,
+                        filters: {
+                            file_type: ['.pdf', '.txt'],
+                            date_range: {
+                                start: '2024-01-01',
+                                end: '2024-12-31'
+                            }
+                        }
+                    }
+                },
+                {
+                    name: 'With threshold',
+                    params: { query: 'test', top_k: 10, score_threshold: 0.5 }
+                },
+                {
+                    name: 'Reranking',
+                    params: { query: 'test', top_k: 20, rerank: true, rerank_top_k: 5 }
+                },
+                {
+                    name: 'Different embedding model',
+                    params: { query: 'test', top_k: 5, embedding_model: 'alternative-model' }
+                }
+            ];
+            
+            for (const test of parameterTests) {
+                try {
+                    const response = await fetch(`${API_BASE}/api/search`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(test.params)
+                    });
+                    
+                    const data = await response.json();
+                    const status = response.ok ? 'success' : 'error';
+                    
+                    addResult('parameterResults', 
+                        `${status === 'success' ? '✅' : '❌'} ${test.name}: ${
+                            response.ok ? 'Accepted' : data.detail || 'Rejected'
+                        }`,
+                        status
+                    );
+                    
+                    // Check if parameters were honored
+                    if (response.ok && data.metadata) {
+                        const warnings = [];
+                        
+                        if (test.params.top_k && data.results?.length > test.params.top_k) {
+                            warnings.push(`Returned ${data.results.length} results instead of ${test.params.top_k}`);
+                        }
+                        
+                        if (test.params.score_threshold && data.results?.some(r => 
+                            (r.score || r.similarity_score || 0) < test.params.score_threshold)) {
+                            warnings.push('Score threshold not applied');
+                        }
+                        
+                        if (warnings.length > 0) {
+                            addResult('parameterResults', 
+                                `⚠️ ${test.name} warnings: ${warnings.join(', ')}`,
+                                'warning'
+                            );
+                        }
+                    }
+                    
+                } catch (error) {
+                    addResult('parameterResults', 
+                        `❌ ${test.name}: Error - ${error.message}`,
+                        'error'
+                    );
+                }
+            }
+        }
+        
+        // Test 5: Search Performance
+        async function testSearchPerformance() {
+            const resultsDiv = document.getElementById('performanceResults');
+            resultsDiv.innerHTML = '';
+            
+            addResult('performanceResults', '<strong>Running performance tests...</strong>');
+            
+            const queries = [
+                'simple query',
+                'complex query with multiple words and specific technical terms',
+                'a'.repeat(100), // Long query
+                'query with special characters !@#$%^&*()',
+                '日本語 query' // Unicode query
+            ];
+            
+            for (const query of queries) {
+                const startTime = performance.now();
+                
+                try {
+                    const response = await fetch(`${API_BASE}/api/search`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            query: query.substring(0, 50) + (query.length > 50 ? '...' : ''),
+                            top_k: 10
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    const endTime = performance.now();
+                    const duration = endTime - startTime;
+                    
+                    const queryDisplay = query.length > 30 
+                        ? query.substring(0, 30) + '...' 
+                        : query;
+                    
+                    addResult('performanceResults',
+                        `Query "${queryDisplay}": ${duration.toFixed(2)}ms - ${
+                            response.ok ? `${data.results?.length || 0} results` : 'Failed'
+                        }`,
+                        duration < 1000 ? 'success' : 'warning'
+                    );
+                    
+                    // Check if timing info is included in response
+                    if (data.metadata?.processing_time_ms) {
+                        addResult('performanceResults',
+                            `  Server processing time: ${data.metadata.processing_time_ms}ms`,
+                            'success'
+                        );
+                    }
+                    
+                } catch (error) {
+                    const endTime = performance.now();
+                    const duration = endTime - startTime;
+                    
+                    addResult('performanceResults',
+                        `Query "${query.substring(0, 30)}...": Failed after ${duration.toFixed(2)}ms`,
+                        'error'
+                    );
+                }
+            }
+            
+            // Test concurrent requests
+            addResult('performanceResults', '\n<strong>Testing concurrent requests...</strong>');
+            
+            const concurrentStart = performance.now();
+            const concurrentPromises = Array(5).fill(null).map((_, i) => 
+                fetch(`${API_BASE}/api/search`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        query: `concurrent test ${i}`,
+                        top_k: 5
+                    })
+                })
+            );
+            
+            try {
+                const results = await Promise.all(concurrentPromises);
+                const concurrentEnd = performance.now();
+                const concurrentDuration = concurrentEnd - concurrentStart;
+                
+                const successCount = results.filter(r => r.ok).length;
+                
+                addResult('performanceResults',
+                    `5 concurrent requests: ${concurrentDuration.toFixed(2)}ms total, ${successCount}/5 successful`,
+                    successCount === 5 ? 'success' : 'warning'
+                );
+            } catch (error) {
+                addResult('performanceResults',
+                    `Concurrent requests failed: ${error.message}`,
+                    'error'
+                );
+            }
+        }
+        
+        // Test 6: Search Filters
+        async function testSearchFilters() {
+            const resultsDiv = document.getElementById('filterResults');
+            resultsDiv.innerHTML = '';
+            
+            addResult('filterResults', '<strong>Testing search filters...</strong>');
+            
+            const filterTests = [
+                {
+                    name: 'File type filter',
+                    filters: {
+                        file_types: ['.pdf', '.txt', '.md']
+                    }
+                },
+                {
+                    name: 'Date range filter',
+                    filters: {
+                        created_after: '2024-01-01',
+                        created_before: '2024-12-31'
+                    }
+                },
+                {
+                    name: 'Size filter',
+                    filters: {
+                        min_size: 1024,
+                        max_size: 1048576 // 1MB
+                    }
+                },
+                {
+                    name: 'Path filter',
+                    filters: {
+                        path_pattern: '/documents/*',
+                        exclude_paths: ['/tmp', '/cache']
+                    }
+                },
+                {
+                    name: 'Combined filters',
+                    filters: {
+                        file_types: ['.pdf'],
+                        created_after: '2024-01-01',
+                        min_size: 1024
+                    }
+                }
+            ];
+            
+            for (const test of filterTests) {
+                try {
+                    const response = await fetch(`${API_BASE}/api/search`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            query: 'test',
+                            top_k: 10,
+                            filters: test.filters
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        addResult('filterResults',
+                            `✅ ${test.name}: Accepted - ${data.results?.length || 0} results`,
+                            'success'
+                        );
+                        
+                        // Verify filters were applied
+                        if (data.results && data.results.length > 0) {
+                            let filtersApplied = true;
+                            
+                            // Check file type filter
+                            if (test.filters.file_types) {
+                                const invalidFiles = data.results.filter(r => {
+                                    const ext = r.file_path?.substring(r.file_path.lastIndexOf('.'));
+                                    return !test.filters.file_types.includes(ext);
+                                });
+                                if (invalidFiles.length > 0) {
+                                    filtersApplied = false;
+                                    addResult('filterResults',
+                                        `⚠️ File type filter not applied correctly`,
+                                        'warning'
+                                    );
+                                }
+                            }
+                            
+                            if (filtersApplied && test.filters.file_types) {
+                                addResult('filterResults',
+                                    `  ✓ File type filter verified`,
+                                    'success'
+                                );
+                            }
+                        }
+                    } else {
+                        // Check if filters are simply not supported
+                        const simpleResponse = await fetch(`${API_BASE}/api/search`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                query: 'test',
+                                top_k: 10
+                            })
+                        });
+                        
+                        if (simpleResponse.ok) {
+                            addResult('filterResults',
+                                `⚠️ ${test.name}: Filters not supported`,
+                                'warning'
+                            );
+                        } else {
+                            addResult('filterResults',
+                                `❌ ${test.name}: Failed - ${data.detail || 'Unknown error'}`,
+                                'error'
+                            );
+                        }
+                    }
+                    
+                } catch (error) {
+                    addResult('filterResults',
+                        `❌ ${test.name}: Error - ${error.message}`,
+                        'error'
+                    );
+                }
+            }
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Add search endpoint info
+            const info = document.createElement('div');
+            info.className = 'test-section';
+            info.innerHTML = `
+                <h2>Search API Information</h2>
+                <p><strong>Endpoint:</strong> <code>${API_BASE}/api/search</code></p>
+                <p><strong>Method:</strong> POST</p>
+                <p><strong>Basic Payload:</strong></p>
+                <pre>{
+  "query": "your search query",
+  "top_k": 10,
+  "mode": "vector|hybrid|keyword|auto"
+}</pre>
+            `;
+            document.body.insertBefore(info, document.body.children[1]);
+        });
+    </script>
+</body>
+</html>

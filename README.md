@@ -2,9 +2,6 @@
 
 A production-ready document embedding and vector search system with web interface, REST API, and advanced search capabilities.
 
-### Internal improvements
-
-- **Modular Web UI Architecture**: Refactored `webui/app.py` (~2.4k LOC) into a clean modular structure with separate routers for auth, jobs, files, metrics, and settings. Each module is focused and maintainable (all under 400 LOC except jobs.py which contains the core processing logic).
 
 ## Features
 
@@ -14,8 +11,7 @@ A production-ready document embedding and vector search system with web interfac
 - 🌐 **Web Interface**: Full-featured UI for job management, directory scanning, and search
 - 🔧 **REST API**: Comprehensive API for programmatic access
 - 📊 **Real-time Progress**: WebSocket-based progress tracking for embedding jobs
-- 🔐 **Authentication**: JWT-based authentication system
-- 🧪 **Mock Mode**: Test without GPU resources
+
 
 ## Quick Start
 
@@ -68,10 +64,10 @@ Services will be available at:
 
 ```bash
 # Start Search API only
-poetry run python vecpipe/search_api.py
+poetry run python -m packages.vecpipe.search_api
 
 # Start Web UI only
-poetry run python webui/app.py
+poetry run uvicorn packages.webui.app:app --host 0.0.0.0 --port 8080
 ```
 
 ## Using the Web Interface
@@ -99,7 +95,7 @@ poetry run python webui/app.py
 
 #### 2. **Search Services**
 - **REST API** (`vecpipe/search_api.py`): FastAPI service for programmatic access
-- **Web UI** (`webui/app.py`): Full-featured web interface with job management
+- **Web UI** (`webui/main.py`): Full-featured web interface with job management
 - **Unified Search** (`vecpipe/search_utils.py`): Core search implementation
 
 #### 3. **Embedding Service**
@@ -330,9 +326,12 @@ poetry run mypy .
 │   ├── search_utils.py
 │   └── hybrid_search.py
 ├── webui/             # Web interface
-│   ├── app.py
+│   ├── main.py        # Main FastAPI application
+│   ├── app.py         # Backward compatibility shim
+│   ├── api/           # API routers
 │   ├── embedding_service.py
 │   ├── auth.py
+│   ├── database.py
 │   └── static/
 ├── tests/             # Test suite
 ├── scripts/           # Utility scripts
