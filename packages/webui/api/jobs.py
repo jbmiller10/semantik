@@ -705,7 +705,8 @@ async def add_to_collection(request: AddToCollectionRequest, current_user: dict[
             raise HTTPException(status_code=404, detail=f"Collection '{request.collection_name}' not found")
 
         # Scan directory for new files
-        files = await scan_directory_async(request.directory_path, recursive=True, scan_id=job_id)
+        scan_result = await scan_directory_async(request.directory_path, recursive=True, scan_id=job_id)
+        files = scan_result["files"]
 
         if not files:
             raise HTTPException(status_code=400, detail="No supported files found in directory")

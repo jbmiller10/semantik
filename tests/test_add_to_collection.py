@@ -303,20 +303,23 @@ class TestSettingsInheritance:
 class TestResourceLimits:
     """Test resource limit enforcement"""
 
-    def test_scan_directory_file_limit(self, tmp_path):
-        """Test that file count limits are enforced"""
+    def test_scan_directory_file_warning(self, tmp_path):
+        """Test that file count warnings are generated"""
         from packages.webui.api.files import scan_directory
 
-        # Create more files than the limit
+        # Create many files
         for i in range(5):
             (tmp_path / f"file{i}.txt").write_text(f"content {i}")
 
-        # Should raise error when limit exceeded
-        with pytest.raises(ValueError, match="Too many files"):
-            scan_directory(str(tmp_path), max_files=3)
+        # Should return warnings instead of raising error
+        result = scan_directory(str(tmp_path))
+        assert len(result["files"]) == 5
+        assert result["total_files"] == 5
+        # No warning for just 5 files
+        assert len(result["warnings"]) == 0
 
-    def test_scan_directory_size_limit(self, tmp_path):
-        """Test that total size limits are enforced"""
+    def test_scan_directory_size_warning(self, tmp_path):
+        """Test that total size warnings are generated"""
         from packages.webui.api.files import scan_directory
 
         # Create a large file (simulate)
@@ -337,8 +340,12 @@ class TestResourceLimits:
             return result
 
         with patch.object(Path, "stat", mock_stat):
-            with pytest.raises(ValueError, match="Total file size exceeds limit"):
-                scan_directory(str(tmp_path))
+            result = scan_directory(str(tmp_path))
+            assert len(result["files"]) == 1
+            assert result["total_size"] == 60 * 1024 * 1024 * 1024
+            # Should have a size warning
+            assert len(result["warnings"]) == 1
+            assert result["warnings"][0]["type"] == "high_total_size"
 
 
 if __name__ == "__main__":

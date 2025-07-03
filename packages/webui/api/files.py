@@ -112,18 +112,21 @@ async def compute_file_content_hash_async(file_path: Path, chunk_size: int = 655
         return None
 
 
-def scan_directory(path: str, recursive: bool = True, max_files: int = 10000) -> list[FileInfo]:
+def scan_directory(path: str, recursive: bool = True) -> dict[str, Any]:
     """Scan directory for supported files
 
     Args:
         path: Directory path to scan
         recursive: Whether to scan subdirectories
-        max_files: Maximum number of files to process (default 10000)
+
+    Returns:
+        Dictionary with files list and any warnings
 
     Raises:
-        ValueError: If path doesn't exist or too many files
+        ValueError: If path doesn't exist or is not a directory
     """
     files = []
+    warnings = []
     path_obj = Path(path)
 
     if not path_obj.exists():
@@ -140,23 +143,14 @@ def scan_directory(path: str, recursive: bool = True, max_files: int = 10000) ->
 
     file_count = 0
     total_size = 0
-    max_total_size = 50 * 1024 * 1024 * 1024  # 50GB limit
+    warning_file_limit = 10000
+    warning_size_limit = 50 * 1024 * 1024 * 1024  # 50GB
 
     for file_path in path_obj.glob(pattern):
         if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_EXTENSIONS:
-            # Check file count limit
-            if file_count >= max_files:
-                raise ValueError(f"Too many files to process. Found {file_count} files, limit is {max_files}")
-
             try:
                 stat = file_path.stat()
-
-                # Check total size limit
                 total_size += stat.st_size
-                if total_size > max_total_size:
-                    raise ValueError(
-                        f"Total file size exceeds limit. Total: {total_size / (1024**3):.2f}GB, limit: {max_total_size / (1024**3):.2f}GB"
-                    )
 
                 content_hash = compute_file_content_hash(file_path)
                 files.append(
@@ -174,24 +168,44 @@ def scan_directory(path: str, recursive: bool = True, max_files: int = 10000) ->
             except Exception as e:
                 logger.error(f"Unexpected error processing file {file_path}: {e}")
 
-    return files
+    # Generate warnings if thresholds exceeded
+    if file_count > warning_file_limit:
+        warnings.append(
+            {
+                "type": "high_file_count",
+                "message": f"Found {file_count:,} files, which exceeds the recommended limit of {warning_file_limit:,} files. Processing this many files may take a long time.",
+                "severity": "warning",
+            }
+        )
+
+    if total_size > warning_size_limit:
+        warnings.append(
+            {
+                "type": "high_total_size",
+                "message": f"Total file size is {total_size / (1024**3):.2f}GB, which exceeds the recommended limit of {warning_size_limit / (1024**3):.0f}GB. Processing this much data may take a long time and consume significant resources.",
+                "severity": "warning",
+            }
+        )
+
+    return {"files": files, "warnings": warnings, "total_files": file_count, "total_size": total_size}
 
 
-async def scan_directory_async(
-    path: str, recursive: bool = True, scan_id: str = None, max_files: int = 10000
-) -> list[FileInfo]:
+async def scan_directory_async(path: str, recursive: bool = True, scan_id: str = None) -> dict[str, Any]:
     """Scan directory for supported files with progress updates
 
     Args:
         path: Directory path to scan
         recursive: Whether to scan subdirectories
         scan_id: Optional scan ID for WebSocket updates
-        max_files: Maximum number of files to process (default 10000)
+
+    Returns:
+        Dictionary with files list and any warnings
 
     Raises:
-        ValueError: If path doesn't exist or too many files
+        ValueError: If path doesn't exist or is not a directory
     """
     files = []
+    warnings = []
     path_obj = Path(path)
 
     if not path_obj.exists():
@@ -216,10 +230,11 @@ async def scan_directory_async(
         if total_files % 100 == 0 and scan_id:
             await manager.send_update(f"scan_{scan_id}", {"type": "counting", "count": total_files})
 
-    # Scan phase with resource limits
+    # Scan phase with warning thresholds
     file_count = 0
     total_size = 0
-    max_total_size = 50 * 1024 * 1024 * 1024  # 50GB limit
+    warning_file_limit = 10000
+    warning_size_limit = 50 * 1024 * 1024 * 1024  # 50GB
 
     for file_path in path_obj.glob(pattern):
         scanned_files += 1
@@ -232,23 +247,9 @@ async def scan_directory_async(
             )
 
         if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_EXTENSIONS:
-            # Check file count limit
-            if file_count >= max_files:
-                error_msg = f"Too many files to process. Found {file_count} files, limit is {max_files}"
-                if scan_id:
-                    await manager.send_update(f"scan_{scan_id}", {"type": "error", "error": error_msg})
-                raise ValueError(error_msg)
-
             try:
                 stat = file_path.stat()
-
-                # Check total size limit
                 total_size += stat.st_size
-                if total_size > max_total_size:
-                    error_msg = f"Total file size exceeds limit. Total: {total_size / (1024**3):.2f}GB, limit: {max_total_size / (1024**3):.2f}GB"
-                    if scan_id:
-                        await manager.send_update(f"scan_{scan_id}", {"type": "error", "error": error_msg})
-                    raise ValueError(error_msg)
 
                 content_hash = await compute_file_content_hash_async(file_path)
                 files.append(
@@ -266,7 +267,28 @@ async def scan_directory_async(
             except Exception as e:
                 logger.error(f"Unexpected error processing file {file_path}: {e}")
 
-    return files
+    # Generate warnings if thresholds exceeded
+    if file_count > warning_file_limit:
+        warning = {
+            "type": "high_file_count",
+            "message": f"Found {file_count:,} files, which exceeds the recommended limit of {warning_file_limit:,} files. Processing this many files may take a long time.",
+            "severity": "warning",
+        }
+        warnings.append(warning)
+        if scan_id:
+            await manager.send_update(f"scan_{scan_id}", {"type": "warning", "warning": warning})
+
+    if total_size > warning_size_limit:
+        warning = {
+            "type": "high_total_size",
+            "message": f"Total file size is {total_size / (1024**3):.2f}GB, which exceeds the recommended limit of {warning_size_limit / (1024**3):.0f}GB. Processing this much data may take a long time and consume significant resources.",
+            "severity": "warning",
+        }
+        warnings.append(warning)
+        if scan_id:
+            await manager.send_update(f"scan_{scan_id}", {"type": "warning", "warning": warning})
+
+    return {"files": files, "warnings": warnings, "total_files": file_count, "total_size": total_size}
 
 
 @router.post("/scan-directory")
@@ -275,8 +297,13 @@ async def scan_directory_endpoint(
 ):
     """Scan a directory for supported files"""
     try:
-        files = scan_directory(request.path, request.recursive)
-        return {"files": files, "count": len(files)}
+        result = scan_directory(request.path, request.recursive)
+        return {
+            "files": result["files"],
+            "count": result["total_files"],
+            "total_size": result["total_size"],
+            "warnings": result["warnings"],
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -297,12 +324,18 @@ async def scan_websocket(websocket: WebSocket, scan_id: str):
                     await manager.send_update(f"scan_{scan_id}", {"type": "started", "path": path})
 
                     # Perform scan with progress updates
-                    files = await scan_directory_async(path, recursive, scan_id)
+                    result = await scan_directory_async(path, recursive, scan_id)
 
                     # Send completion
                     await manager.send_update(
                         f"scan_{scan_id}",
-                        {"type": "completed", "files": [f.dict() for f in files], "count": len(files)},
+                        {
+                            "type": "completed",
+                            "files": [f.dict() for f in result["files"]],
+                            "count": result["total_files"],
+                            "total_size": result["total_size"],
+                            "warnings": result["warnings"],
+                        },
                     )
                 except Exception as e:
                     await manager.send_update(f"scan_{scan_id}", {"type": "error", "error": str(e)})
