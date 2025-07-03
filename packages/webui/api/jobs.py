@@ -705,7 +705,8 @@ async def add_to_collection(request: AddToCollectionRequest, current_user: dict[
             raise HTTPException(status_code=404, detail=f"Collection '{request.collection_name}' not found")
 
         # Scan directory for new files
-        files = await scan_directory_async(request.directory_path, recursive=True, scan_id=job_id)
+        scan_result = await scan_directory_async(request.directory_path, recursive=True, scan_id=job_id)
+        files = scan_result["files"]
 
         if not files:
             raise HTTPException(status_code=400, detail="No supported files found in directory")
@@ -719,6 +720,51 @@ async def add_to_collection(request: AddToCollectionRequest, current_user: dict[
 
         if not new_files:
             raise HTTPException(status_code=400, detail=f"All {len(files)} files already exist in the collection")
+
+        # Get the actual Qdrant collection to verify vector dimensions
+        qdrant = qdrant_manager.get_client()
+        parent_collection_name = f"job_{collection_metadata['id']}"
+
+        try:
+            collection_info = qdrant.get_collection(parent_collection_name)
+            # Get the actual vector dimension from Qdrant
+            actual_vector_dim = collection_info.config.params.vectors.size
+
+            # Verify that the stored metadata matches the actual collection
+            if actual_vector_dim != collection_metadata["vector_dim"]:
+                logger.warning(
+                    f"Vector dimension mismatch: Qdrant has {actual_vector_dim}, "
+                    f"metadata has {collection_metadata['vector_dim']}. Using Qdrant value."
+                )
+                # Use the actual dimension from Qdrant
+                collection_metadata["vector_dim"] = actual_vector_dim
+
+            # Verify the model can generate embeddings of the required dimension
+            model_name = collection_metadata["model_name"]
+            expected_dim = actual_vector_dim
+
+            # Get the model's natural dimension
+            model_natural_dim = None
+            if model_name in POPULAR_MODELS:
+                model_natural_dim = POPULAR_MODELS[model_name].get("dim") or POPULAR_MODELS[model_name].get("dimension")
+
+            if not model_natural_dim:
+                try:
+                    model_info = embedding_service.get_model_info(model_name, collection_metadata["quantization"])
+                    if not model_info.get("error"):
+                        model_natural_dim = model_info["embedding_dim"]
+                except Exception as e:
+                    logger.warning(f"Could not get model dimension info: {e}")
+
+            # Check if dimension adjustment would be needed
+            if model_natural_dim and model_natural_dim != expected_dim:
+                logger.info(
+                    f"Model {model_name} naturally produces {model_natural_dim}-dimensional embeddings, "
+                    f"but collection expects {expected_dim}. Embeddings will be adjusted."
+                )
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to verify collection dimensions: {str(e)}")
 
         # Create job record with inherited settings
         now = datetime.now().isoformat()

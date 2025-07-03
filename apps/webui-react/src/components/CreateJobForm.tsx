@@ -17,6 +17,7 @@ function CreateJobForm() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [mode, setMode] = useState<'create' | 'append'>('create');
   const [selectedCollection, setSelectedCollection] = useState('');
+  const [hasConfirmedWarnings, setHasConfirmedWarnings] = useState(false);
   
   // Advanced parameters
   const [modelName, setModelName] = useState('Qwen/Qwen3-Embedding-0.6B');
@@ -91,6 +92,7 @@ function CreateJobForm() {
   }, [mode, selectedCollection]);
 
   const handleScan = () => {
+    setHasConfirmedWarnings(false); // Reset confirmation when rescanning
     startScan(directory);
   };
 
@@ -105,6 +107,20 @@ function CreateJobForm() {
     if (mode === 'append' && !selectedCollection) {
       addToast({ type: 'error', message: 'Please select a collection to add to' });
       return;
+    }
+
+    // Check if there are warnings and user hasn't confirmed
+    if (scanResult.warnings && scanResult.warnings.length > 0 && !hasConfirmedWarnings) {
+      const warningMessages = scanResult.warnings.map(w => w.message).join('\n\n');
+      const confirmed = window.confirm(
+        `Warning:\n\n${warningMessages}\n\nDo you want to proceed anyway?`
+      );
+      
+      if (!confirmed) {
+        return;
+      }
+      
+      setHasConfirmedWarnings(true);
     }
 
     setCreating(true);
@@ -160,6 +176,7 @@ function CreateJobForm() {
       setQuantization('float32');
       setInstruction('');
       setShowAdvanced(false);
+      setHasConfirmedWarnings(false);
       reset();
     } catch (error: any) {
       addToast({
@@ -376,34 +393,58 @@ function CreateJobForm() {
           )}
 
           {scanResult && (
-            <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h4 className="text-sm font-medium text-blue-900">Scan Complete</h4>
-                  <div className="mt-1 text-sm text-blue-700">
-                    <span className="font-medium">{scanResult.total_files}</span> files found, 
-                    <span className="font-medium ml-1">{formatBytes(scanResult.total_size)}</span> total
+            <>
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h4 className="text-sm font-medium text-blue-900">Scan Complete</h4>
+                    <div className="mt-1 text-sm text-blue-700">
+                      <span className="font-medium">{scanResult.total_files}</span> files found, 
+                      <span className="font-medium ml-1">{formatBytes(scanResult.total_size)}</span> total
+                    </div>
                   </div>
+                  <details className="text-right">
+                    <summary className="cursor-pointer text-sm text-blue-600 hover:text-blue-800">
+                      View files
+                    </summary>
+                  </details>
                 </div>
-                <details className="text-right">
-                  <summary className="cursor-pointer text-sm text-blue-600 hover:text-blue-800">
-                    View files
-                  </summary>
+                <details open={false}>
+                  <summary className="sr-only">File list</summary>
+                  <div className="mt-3 border-t border-blue-200 pt-3">
+                    <ul className="text-xs text-gray-600 max-h-40 overflow-y-auto space-y-1">
+                      {scanResult.files.map((file, index) => (
+                        <li key={index} className="truncate">
+                          {file}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </details>
               </div>
-              <details open={false}>
-                <summary className="sr-only">File list</summary>
-                <div className="mt-3 border-t border-blue-200 pt-3">
-                  <ul className="text-xs text-gray-600 max-h-40 overflow-y-auto space-y-1">
-                    {scanResult.files.map((file, index) => (
-                      <li key={index} className="truncate">
-                        {file}
-                      </li>
+              
+              {/* Display warnings if any */}
+              {scanResult.warnings && scanResult.warnings.length > 0 && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 mt-3">
+                  <h4 className="text-sm font-medium text-yellow-900 mb-2">
+                    <svg className="inline-block w-5 h-5 mr-1 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    Resource Warning
+                  </h4>
+                  <div className="space-y-2">
+                    {scanResult.warnings.map((warning, index) => (
+                      <p key={index} className="text-sm text-yellow-800">
+                        {warning.message}
+                      </p>
                     ))}
-                  </ul>
+                  </div>
+                  <p className="text-xs text-yellow-700 mt-3">
+                    You can still proceed, but the operation may take significant time and resources.
+                  </p>
                 </div>
-              </details>
-            </div>
+              )}
+            </>
           )}
 
           {/* Model Selection - Only show when creating new collection */}
@@ -606,6 +647,7 @@ function CreateJobForm() {
               setQuantization('float32');
               setInstruction('');
               setShowAdvanced(false);
+              setHasConfirmedWarnings(false);
               reset();
             }}
             className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
