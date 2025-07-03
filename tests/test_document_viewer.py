@@ -116,7 +116,7 @@ class TestDocumentEndpoints:
 
     def test_get_document_unsupported_extension(self, test_client):
         """Test that unsupported file extensions are rejected"""
-        with patch("webui.api.documents.validate_file_access") as mock_validate:
+        with patch("packages.webui.api.documents.validate_file_access") as mock_validate:
             mock_validate.return_value = {"doc_id": "test123", "path": "/path/to/file.exe"}  # Unsupported extension
 
             response = test_client.get("/api/documents/job123/test123")
@@ -131,7 +131,7 @@ class TestDocumentEndpoints:
             test_file = Path(tmpdir) / "test.pdf"
             test_file.write_text("test content")
 
-            with patch("webui.api.documents.validate_file_access") as mock_validate:
+            with patch("packages.webui.api.documents.validate_file_access") as mock_validate:
                 mock_validate.return_value = {
                     "doc_id": "test123",
                     "path": str(test_file),
@@ -169,7 +169,7 @@ class TestDocumentViewerConstants:
 
     def test_constants_defined(self):
         """Verify all constants are properly defined"""
-        from webui.api.documents import CHUNK_SIZE, MAX_FILE_SIZE, SUPPORTED_EXTENSIONS
+        from packages.webui.api.documents import CHUNK_SIZE, MAX_FILE_SIZE, SUPPORTED_EXTENSIONS
 
         # Check SUPPORTED_EXTENSIONS
         assert isinstance(SUPPORTED_EXTENSIONS, set)
