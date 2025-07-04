@@ -118,18 +118,6 @@ curl "http://localhost:8000/hybrid_search?q=python+docker&mode=filter"
                         └──────────────────┘
 ```
 
-## 📈 Performance Benchmarks
-
-| Operation | Semantik | Elasticsearch | ChromaDB | Improvement |
-|-----------|---------|---------------|----------|-------------|
-| Index 10K docs | 3.2 min | 8.5 min | 5.1 min | **2.6x faster** |
-| Semantic Search (p95) | 96ms | N/A | 142ms | **1.5x faster** |
-| Hybrid Search (p95) | 79ms | 124ms | N/A | **1.6x faster** |
-| GPU Memory (4B model) | 2.1GB | N/A | 4.8GB | **56% less** |
-| Idle Memory | 0GB* | 2GB | 4GB | **100% less** |
-
-*With automatic model unloading
-
 ## 🚀 Deployment Options
 
 ### Docker Compose (Coming Soon)
@@ -396,8 +384,6 @@ Built with excellent open source projects:
 ---
 
 <p align="center">
-  <b>Ready to take control of your semantic search?</b><br>
-  <a href="https://github.com/yourusername/semantik">⭐ Star us on GitHub</a> •
-  <a href="https://discord.gg/semantik">💬 Join our Discord</a> •
-  <a href="https://semantik.io/docs">📖 Read the Docs</a>
+  <a href="https://github.com/jbmiller10/semantik">⭐ Star us on GitHub</a> •
 </p>
+
