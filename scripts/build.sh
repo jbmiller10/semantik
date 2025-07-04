@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "Building VecPipe project..."
+echo "Building Semantik project..."
 
 # Build the React frontend
 echo "Building frontend..."

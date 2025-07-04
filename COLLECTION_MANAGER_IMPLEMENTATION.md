@@ -1,7 +1,7 @@
 # Collection Manager Implementation Documentation
 
 ## Overview
-This document tracks the implementation of the Collection Manager feature (ticket VEC-123) for the VecPipe project. It includes the implementation plan, a running log of all changes, and troubleshooting steps.
+This document tracks the implementation of the Collection Manager feature (ticket VEC-123) for the Semantik project. It includes the implementation plan, a running log of all changes, and troubleshooting steps.
 
 ## Table of Contents
 1. [Implementation Plan](#implementation-plan)

@@ -1,4 +1,4 @@
-# VecPipe API Architecture Documentation
+# Semantik API Architecture Documentation
 
 ## Table of Contents
 1. [API Architecture Overview](#api-architecture-overview)
@@ -14,7 +14,7 @@
 
 ## API Architecture Overview
 
-VecPipe follows a microservices architecture with two main services:
+Semantik follows a microservices architecture with two main services:
 
 1. **Search API Service** (`vecpipe/search_api.py`) - Core vector search engine
    - Port: 8001 (default)
