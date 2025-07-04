@@ -427,7 +427,7 @@ def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, track
     except Exception as e:
         logger.error(f"Failed to process {filepath}: {e}")
         # Log error to file
-        with open(ERROR_LOG, "a") as f:
+        with open(settings.ERROR_LOG, "a") as f:
             f.write(f"{filepath}\t{str(e)}\n")
         return None
 

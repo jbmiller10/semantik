@@ -19,7 +19,7 @@ The WebUI serves as a control plane for the Semantik semantic search engine. It 
 
 - **User Interface**: React-based frontend for managing embedding jobs and searching
 - **Job Management**: Create, monitor, and manage document embedding jobs
-- **Search Proxy**: Routes search requests to the VecPipe search API
+- **Search Proxy**: Routes search requests to the Semantik search API
 - **Authentication**: JWT-based user authentication and authorization
 - **Real-time Updates**: WebSocket connections for job progress monitoring
 
