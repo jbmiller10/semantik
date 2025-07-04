@@ -4,16 +4,14 @@ Unit tests for add-to-collection functionality
 
 import hashlib
 import os
-import sqlite3
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from packages.webui import database
 from packages.webui.api.files import compute_file_content_hash
-from packages.webui.schemas import FileInfo
 
 
 class TestContentHashing:

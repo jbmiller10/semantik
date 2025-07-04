@@ -100,6 +100,23 @@ export const authApi = {
   logout: () => api.post('/api/auth/logout'),
 };
 
+// Collections API endpoints
+export const collectionsApi = {
+  list: () => api.get('/api/collections'),
+  getDetails: (name: string) => api.get(`/api/collections/${encodeURIComponent(name)}`),
+  rename: (name: string, newName: string) => 
+    api.put(`/api/collections/${encodeURIComponent(name)}`, { new_name: newName }),
+  delete: (name: string) => api.delete(`/api/collections/${encodeURIComponent(name)}`),
+  getFiles: (name: string, page: number = 1, limit: number = 50) => 
+    api.get(`/api/collections/${encodeURIComponent(name)}/files?page=${page}&limit=${limit}`),
+  addData: (collectionName: string, directoryPath: string, description?: string) =>
+    api.post('/api/jobs/add-to-collection', {
+      collection_name: collectionName,
+      directory_path: directoryPath,
+      description: description || `Adding documents to ${collectionName}`,
+    }),
+};
+
 // Models API endpoints
 export const modelsApi = {
   list: () => api.get('/api/models'),

@@ -51,7 +51,7 @@ def exponential_backoff_retry(
                         raise
 
                     delay = min(initial_delay * (exponential_base**attempt), max_delay)
-                    logger.warning(f"Attempt {attempt + 1} failed: {e}. " f"Retrying in {delay:.1f} seconds...")
+                    logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {delay:.1f} seconds...")
                     time.sleep(delay)
 
             raise last_exception
@@ -71,7 +71,7 @@ def exponential_backoff_retry(
                         raise
 
                     delay = min(initial_delay * (exponential_base**attempt), max_delay)
-                    logger.warning(f"Attempt {attempt + 1} failed: {e}. " f"Retrying in {delay:.1f} seconds...")
+                    logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {delay:.1f} seconds...")
                     await asyncio.sleep(delay)
 
             raise last_exception
