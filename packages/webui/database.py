@@ -528,6 +528,281 @@ def get_collection_metadata(collection_name: str) -> dict[str, Any] | None:
     return dict(job) if job else None
 
 
+def list_collections(user_id: int | None = None) -> list[dict[str, Any]]:
+    """Get unique collections with aggregated stats"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+
+    if user_id is not None:
+        # Show collections where user owns at least one job OR legacy collections without user_id
+        query = """
+            SELECT 
+                name,
+                COUNT(DISTINCT id) as job_count,
+                SUM(total_files) as total_files,
+                MAX(created_at) as created_at,
+                MAX(updated_at) as updated_at,
+                MIN(CASE WHEN mode = 'create' OR parent_job_id IS NULL THEN model_name END) as model_name
+            FROM jobs 
+            WHERE status != 'failed' 
+            AND (user_id = ? OR user_id IS NULL)
+            GROUP BY name 
+            ORDER BY MAX(updated_at) DESC
+        """
+        c.execute(query, (user_id,))
+    else:
+        query = """
+            SELECT 
+                name,
+                COUNT(DISTINCT id) as job_count,
+                SUM(total_files) as total_files,
+                MAX(created_at) as created_at,
+                MAX(updated_at) as updated_at,
+                MIN(CASE WHEN mode = 'create' OR parent_job_id IS NULL THEN model_name END) as model_name
+            FROM jobs 
+            WHERE status != 'failed'
+            GROUP BY name 
+            ORDER BY MAX(updated_at) DESC
+        """
+        c.execute(query)
+
+    collections = c.fetchall()
+    result = []
+
+    for collection in collections:
+        collection_dict = dict(collection)
+        # Get total vectors for all jobs in this collection
+        c.execute(
+            """SELECT id FROM jobs WHERE name = ? AND status = 'completed'""",
+            (collection["name"],),
+        )
+        job_ids = [row[0] for row in c.fetchall()]
+
+        total_vectors = 0
+        for job_id in job_ids:
+            c.execute(
+                """SELECT COALESCE(SUM(vectors_created), 0) as total 
+                   FROM files 
+                   WHERE job_id = ? AND status = 'completed'""",
+                (job_id,),
+            )
+            result_row = c.fetchone()
+            total_vectors += result_row[0] if result_row else 0
+
+        collection_dict["total_vectors"] = total_vectors
+        result.append(collection_dict)
+
+    conn.close()
+    return result
+
+
+def get_collection_details(collection_name: str, user_id: int) -> dict[str, Any] | None:
+    """Get detailed info for a single collection"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+
+    # Check if user has access to this collection
+    c.execute(
+        """SELECT COUNT(*) FROM jobs 
+           WHERE name = ? AND (user_id = ? OR user_id IS NULL)""",
+        (collection_name, user_id),
+    )
+    if c.fetchone()[0] == 0:
+        conn.close()
+        return None
+
+    # Get metadata from parent job
+    metadata = get_collection_metadata(collection_name)
+    if not metadata:
+        conn.close()
+        return None
+
+    # Get all jobs for this collection
+    c.execute(
+        """SELECT id, status, created_at, updated_at, directory_path, 
+                  total_files, processed_files, failed_files, mode
+           FROM jobs 
+           WHERE name = ? 
+           ORDER BY created_at DESC""",
+        (collection_name,),
+    )
+    jobs = [dict(job) for job in c.fetchall()]
+
+    # Get unique source directories
+    c.execute(
+        """SELECT DISTINCT directory_path 
+           FROM jobs 
+           WHERE name = ?""",
+        (collection_name,),
+    )
+    source_directories = [row[0] for row in c.fetchall()]
+
+    # Calculate total stats
+    total_files = sum(job.get("total_files", 0) for job in jobs)
+    total_vectors = 0
+    total_size = 0
+
+    for job in jobs:
+        if job["status"] == "completed":
+            # Get vectors for this job
+            c.execute(
+                """SELECT COALESCE(SUM(vectors_created), 0) as total,
+                          COALESCE(SUM(size), 0) as total_size
+                   FROM files 
+                   WHERE job_id = ? AND status = 'completed'""",
+                (job["id"],),
+            )
+            result_row = c.fetchone()
+            if result_row:
+                total_vectors += result_row[0] or 0
+                total_size += result_row[1] or 0
+
+    conn.close()
+
+    return {
+        "name": collection_name,
+        "stats": {
+            "total_files": total_files,
+            "total_vectors": total_vectors,
+            "total_size": total_size,
+            "job_count": len(jobs),
+        },
+        "configuration": {
+            "model_name": metadata["model_name"],
+            "chunk_size": metadata["chunk_size"],
+            "chunk_overlap": metadata["chunk_overlap"],
+            "quantization": metadata.get("quantization", "float32"),
+            "vector_dim": metadata.get("vector_dim"),
+            "instruction": metadata.get("instruction"),
+        },
+        "source_directories": source_directories,
+        "jobs": jobs,
+    }
+
+
+def get_collection_files(collection_name: str, user_id: int, page: int = 1, limit: int = 50) -> dict[str, Any]:
+    """Get paginated files for a collection"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+
+    # Check access
+    c.execute(
+        """SELECT id FROM jobs 
+           WHERE name = ? AND (user_id = ? OR user_id IS NULL)""",
+        (collection_name, user_id),
+    )
+    job_ids = [row[0] for row in c.fetchall()]
+
+    if not job_ids:
+        conn.close()
+        return {"files": [], "total": 0, "page": page, "pages": 0}
+
+    # Count total files
+    placeholders = ",".join("?" * len(job_ids))
+    c.execute(
+        f"""SELECT COUNT(*) FROM files 
+            WHERE job_id IN ({placeholders})""",
+        job_ids,
+    )
+    total = c.fetchone()[0]
+
+    # Calculate pagination
+    offset = (page - 1) * limit
+    pages = (total + limit - 1) // limit
+
+    # Get paginated files
+    c.execute(
+        f"""SELECT f.*, j.name as collection_name 
+            FROM files f
+            JOIN jobs j ON f.job_id = j.id
+            WHERE f.job_id IN ({placeholders})
+            ORDER BY f.path
+            LIMIT ? OFFSET ?""",
+        job_ids + [limit, offset],
+    )
+
+    files = [dict(file) for file in c.fetchall()]
+    conn.close()
+
+    return {"files": files, "total": total, "page": page, "pages": pages}
+
+
+def rename_collection(old_name: str, new_name: str, user_id: int) -> bool:
+    """Rename collection display name"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    try:
+        # Check if user owns at least one job in the collection
+        c.execute(
+            """SELECT COUNT(*) FROM jobs 
+               WHERE name = ? AND (user_id = ? OR user_id IS NULL)""",
+            (old_name, user_id),
+        )
+        if c.fetchone()[0] == 0:
+            conn.close()
+            return False
+
+        # Check if new name already exists
+        c.execute("SELECT COUNT(*) FROM jobs WHERE name = ?", (new_name,))
+        if c.fetchone()[0] > 0:
+            conn.close()
+            return False
+
+        # Update all jobs with the old name
+        c.execute(
+            """UPDATE jobs 
+               SET name = ?, updated_at = ? 
+               WHERE name = ?""",
+            (new_name, datetime.now(UTC).isoformat(), old_name),
+        )
+
+        conn.commit()
+        conn.close()
+        return True
+
+    except Exception:
+        conn.rollback()
+        conn.close()
+        return False
+
+
+def delete_collection(collection_name: str, user_id: int) -> dict[str, Any]:
+    """Delete collection and all associated data"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    # Get all job IDs for this collection that user has access to
+    c.execute(
+        """SELECT id FROM jobs 
+           WHERE name = ? AND (user_id = ? OR user_id IS NULL)""",
+        (collection_name, user_id),
+    )
+    job_ids = [row[0] for row in c.fetchall()]
+
+    if not job_ids:
+        conn.close()
+        return {"job_ids": [], "qdrant_collections": []}
+
+    # Get Qdrant collection names
+    qdrant_collections = [f"job_{job_id}" for job_id in job_ids]
+
+    # Delete files first
+    placeholders = ",".join("?" * len(job_ids))
+    c.execute(f"DELETE FROM files WHERE job_id IN ({placeholders})", job_ids)
+
+    # Delete jobs
+    c.execute(f"DELETE FROM jobs WHERE id IN ({placeholders})", job_ids)
+
+    conn.commit()
+    conn.close()
+
+    return {"job_ids": job_ids, "qdrant_collections": qdrant_collections}
+
+
 # User-related database operations
 def get_user(username: str) -> dict[str, Any] | None:
     """Get user by username"""
