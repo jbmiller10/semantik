@@ -9,14 +9,16 @@ export interface Toast {
 
 interface UIState {
   toasts: Toast[];
-  activeTab: 'create' | 'jobs' | 'search';
+  activeTab: 'create' | 'jobs' | 'search' | 'collections';
   showJobMetricsModal: string | null;
   showDocumentViewer: { jobId: string; docId: string; chunkId?: string } | null;
+  showCollectionDetailsModal: string | null;
   addToast: (toast: Omit<Toast, 'id'>) => void;
   removeToast: (id: string) => void;
-  setActiveTab: (tab: 'create' | 'jobs' | 'search') => void;
+  setActiveTab: (tab: 'create' | 'jobs' | 'search' | 'collections') => void;
   setShowJobMetricsModal: (jobId: string | null) => void;
   setShowDocumentViewer: (viewer: { jobId: string; docId: string; chunkId?: string } | null) => void;
+  setShowCollectionDetailsModal: (collectionName: string | null) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -24,6 +26,7 @@ export const useUIStore = create<UIState>((set) => ({
   activeTab: 'create',
   showJobMetricsModal: null,
   showDocumentViewer: null,
+  showCollectionDetailsModal: null,
   addToast: (toast) => {
     const id = Date.now().toString();
     set((state) => ({ toasts: [...state.toasts, { ...toast, id }] }));
@@ -44,4 +47,5 @@ export const useUIStore = create<UIState>((set) => ({
   setActiveTab: (tab) => set({ activeTab: tab }),
   setShowJobMetricsModal: (jobId) => set({ showJobMetricsModal: jobId }),
   setShowDocumentViewer: (viewer) => set({ showDocumentViewer: viewer }),
+  setShowCollectionDetailsModal: (collectionName) => set({ showCollectionDetailsModal: collectionName }),
 }));

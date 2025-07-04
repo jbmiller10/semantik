@@ -14,7 +14,7 @@ from slowapi.errors import RateLimitExceeded
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from .api import auth, documents, files, jobs, metrics, models, root, search, settings
+from .api import auth, collections, documents, files, jobs, metrics, models, root, search, settings
 from .api.files import scan_websocket
 from .api.jobs import websocket_endpoint
 from .rate_limiter import limiter
@@ -33,6 +33,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(jobs.router)
     app.include_router(files.router)
+    app.include_router(collections.router)
     app.include_router(metrics.router)
     app.include_router(settings.router)
     app.include_router(models.router)
