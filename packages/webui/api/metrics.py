@@ -37,7 +37,7 @@ def update_metrics_loop():
 
 if METRICS_PORT:
     try:
-        from packages.vecpipe.metrics import generate_latest, metrics_collector, registry, start_metrics_server
+        from packages.vecpipe.metrics import generate_latest, registry, start_metrics_server
 
         start_metrics_server(METRICS_PORT)
         logger.info(f"Metrics server started on port {METRICS_PORT}")
