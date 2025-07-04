@@ -1,8 +1,8 @@
-# VecPipe Document Embedding System - Comprehensive Architecture Documentation
+# Semantik Document Embedding System - Comprehensive Architecture Documentation
 
 ## Executive Summary
 
-VecPipe is a production-ready, high-performance document embedding and vector search system designed for technical users who prioritize performance and control. The system features a clean separation between its core search engine (VecPipe) and control plane (WebUI), enabling both standalone usage and user-friendly management through a modern React interface.
+Semantik is a production-ready, high-performance document embedding and vector search system designed for technical users who prioritize performance and control. The system features a clean separation between its core search engine (Semantik) and control plane (WebUI), enabling both standalone usage and user-friendly management through a modern React interface.
 
 ### Key Features
 - 🚀 High-performance vector search powered by Qdrant
@@ -38,7 +38,7 @@ VecPipe is a production-ready, high-performance document embedding and vector se
 └──────────────────┘        │              │
                            │              │
 ┌──────────────────────────┴──────────────┴─────────────────────────────┐
-│                          VecPipe Core Engine                           │
+│                          Semantik Core Engine                          │
 │                      Search API (Port 8001)                            │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐  ┌────────────┐ │
 │  │  Extract    │  │   Embed      │  │   Ingest    │  │   Search   │ │

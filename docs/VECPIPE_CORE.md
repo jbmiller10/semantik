@@ -1,4 +1,4 @@
-# VecPipe Core Engine Documentation
+# Semantik Core Engine Documentation
 
 ## Table of Contents
 1. [Core Architecture Overview](#core-architecture-overview)
@@ -14,7 +14,7 @@
 
 ### Purpose and Design Philosophy
 
-VecPipe is a high-performance, resource-efficient semantic search engine designed for technical users who prioritize performance and control. The core engine follows a modular pipeline architecture that separates concerns into distinct stages:
+Semantik is a high-performance, resource-efficient semantic search engine designed for technical users who prioritize performance and control. The core engine follows a modular pipeline architecture that separates concerns into distinct stages:
 
 1. **Document Extraction** - Parsing and chunking documents into processable units
 2. **Embedding Generation** - Converting text chunks into vector representations
@@ -488,4 +488,4 @@ The search API provides multiple endpoints for different search strategies:
 
 ## Conclusion
 
-The VecPipe core engine provides a robust, scalable foundation for semantic search applications. Its modular architecture allows for easy customization while maintaining high performance through careful resource management and optimization strategies.
+The Semantik core engine provides a robust, scalable foundation for semantic search applications. Its modular architecture allows for easy customization while maintaining high performance through careful resource management and optimization strategies.

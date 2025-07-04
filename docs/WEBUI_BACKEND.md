@@ -15,7 +15,7 @@
 
 ## Architecture Overview
 
-The WebUI serves as a control plane for the VecPipe semantic search engine. It provides:
+The WebUI serves as a control plane for the Semantik semantic search engine. It provides:
 
 - **User Interface**: React-based frontend for managing embedding jobs and searching
 - **Job Management**: Create, monitor, and manage document embedding jobs
@@ -26,8 +26,8 @@ The WebUI serves as a control plane for the VecPipe semantic search engine. It p
 ### Key Architectural Principles
 
 1. **Separation of Concerns**: WebUI acts as a control plane, never implementing core search or embedding logic
-2. **Proxy Pattern**: All search functionality proxies to the VecPipe search API
-3. **Database Independence**: VecPipe core engine never accesses the WebUI SQLite database
+2. **Proxy Pattern**: All search functionality proxies to the Semantik search API
+3. **Database Independence**: Semantik core engine never accesses the WebUI SQLite database
 4. **Scalability**: Designed to handle multiple concurrent jobs and users
 
 ## Main Application Structure
@@ -89,7 +89,7 @@ Manages embedding job lifecycle:
 ### api/search.py
 **Endpoints**: `/api/*`
 
-Proxies search requests to VecPipe:
+Proxies search requests to Semantik:
 - `POST /search` - Unified search (vector/hybrid)
 - `POST /hybrid_search` - Legacy hybrid search endpoint
 
@@ -261,7 +261,7 @@ class FileInfo(BaseModel):
 
 ### embedding_service.py
 
-A unified service that bridges VecPipe and WebUI for embedding generation:
+A unified service that bridges Semantik and WebUI for embedding generation:
 
 #### Key Features
 
@@ -431,8 +431,8 @@ def some_operation():
 1. Frontend sends search request to `/api/search`
 2. WebUI validates authentication via JWT
 3. WebUI determines collection and model from job_id
-4. WebUI proxies request to VecPipe search API
-5. VecPipe processes search and returns results
+4. WebUI proxies request to Semantik search API
+5. Semantik processes search and returns results
 6. WebUI transforms results for frontend format
 7. Frontend displays search results
 

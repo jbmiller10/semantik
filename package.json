@@ -1,7 +1,7 @@
 {
   "name": "document-embedding-project",
   "version": "1.0.0",
-  "description": "VecPipe: High-performance semantic search engine monorepo",
+  "description": "Semantik: High-performance semantic search engine monorepo",
   "private": true,
   "workspaces": [
     "apps/*"
