@@ -8,7 +8,7 @@
 
 **Semantik** is the only self-hosted semantic search engine with enterprise-grade GPU memory management and true microservices architecture. Built for technical users who need **control**, **performance**, and **privacy**.
 
-![Semantik Dashboard](docs/images/vecpipe-dashboard.png)
+![Semantik Dashboard](docs/images/semantik-dashboard.png)
 
 ## 🎯 Why Semantik?
 
@@ -37,8 +37,8 @@ Semantik bridges the gap with:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/vecpipe.git
-cd vecpipe
+git clone https://github.com/yourusername/semantik.git
+cd semantik
 
 # Start all services with Docker Compose
 docker-compose up -d
@@ -89,6 +89,7 @@ curl "http://localhost:8000/hybrid_search?q=python+docker&mode=filter"
 - **Hybrid Search**: Combines vector similarity with keyword matching
 - **Question-Answering**: Optimized prompts for Q&A scenarios
 - **Batch Processing**: Efficient multi-query operations
+- **Collections Management**: Organize and search across multiple data sources
 
 ### 📊 Production-Ready Features
 - **Prometheus Metrics**: Complete observability
@@ -131,8 +132,11 @@ curl "http://localhost:8000/hybrid_search?q=python+docker&mode=filter"
 
 ## 🚀 Deployment Options
 
-### Docker Compose (Recommended)
+### Docker Compose (Coming Soon)
 
+> **Note**: Docker deployment is currently under development. For now, please use the manual installation method above.
+
+<!-- Example configuration (not yet available):
 ```yaml
 version: '3.8'
 services:
@@ -143,7 +147,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
 
-  vecpipe:
+  semantik:
     build: ./packages/vecpipe
     ports:
       - "8000:8000"
@@ -163,25 +167,21 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - SEARCH_API_URL=http://vecpipe:8000
+      - SEARCH_API_URL=http://semantik:8000
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
 
 volumes:
   qdrant_data:
 ```
+-->
 
-### Kubernetes (Helm Chart)
+### Kubernetes (Helm Chart - Coming Soon)
 
-```bash
-helm repo add vecpipe https://charts.vecpipe.io
-helm install my-vecpipe vecpipe/vecpipe \
-  --set gpu.enabled=true \
-  --set persistence.size=100Gi
-```
+> **Note**: Kubernetes deployment via Helm chart is currently under development.
 
 ### Manual Installation
 
-See [detailed installation guide](docs/installation.md) for manual setup instructions.
+Follow the Quick Start guide above for manual installation instructions.
 
 ## 🔧 Configuration
 
@@ -364,11 +364,14 @@ make test    # Run tests
 
 ## 📚 Documentation
 
-- [Installation Guide](docs/installation.md)
-- [API Reference](docs/api-reference.md)
 - [Architecture Overview](docs/ARCH.md)
-- [Deployment Guide](docs/deployment.md)
-- [Performance Tuning](docs/performance.md)
+- [API Reference](API_REFERENCE.md)
+- [Configuration Guide](CONFIGURATION.md)
+- [Collections Management](docs/COLLECTIONS.md)
+- [Hybrid Search](HYBRID_SEARCH.md)
+- [Database Architecture](docs/DATABASE_ARCH.md)
+- [WebUI Backend](docs/WEBUI_BACKEND.md)
+- [Frontend Architecture](docs/FRONTEND_ARCH.md)
 
 ## 🚀 Roadmap
 
@@ -394,7 +397,7 @@ Built with excellent open source projects:
 
 <p align="center">
   <b>Ready to take control of your semantic search?</b><br>
-  <a href="https://github.com/yourusername/vecpipe">⭐ Star us on GitHub</a> •
-  <a href="https://discord.gg/vecpipe">💬 Join our Discord</a> •
-  <a href="https://vecpipe.io/docs">📖 Read the Docs</a>
+  <a href="https://github.com/yourusername/semantik">⭐ Star us on GitHub</a> •
+  <a href="https://discord.gg/semantik">💬 Join our Discord</a> •
+  <a href="https://semantik.io/docs">📖 Read the Docs</a>
 </p>
