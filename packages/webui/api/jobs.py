@@ -565,7 +565,8 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
         from .files import scan_directory_async
 
         # Scan directory first - use async version to avoid blocking UI
-        files = await scan_directory_async(request.directory_path, recursive=True, scan_id=job_id)
+        scan_result = await scan_directory_async(request.directory_path, recursive=True, scan_id=job_id)
+        files = scan_result["files"]
 
         if not files:
             raise HTTPException(status_code=400, detail="No supported files found in directory")
