@@ -189,8 +189,8 @@ def main():
         "--file-list", "-f", default=str(settings.MANIFEST_FILE), help="Path to null-delimited file list"
     )
     parser.add_argument("--dry-run", "-n", action="store_true", help="Perform dry run without deleting")
-    parser.add_argument("--qdrant-host", default=QDRANT_HOST, help="Qdrant host address")
-    parser.add_argument("--qdrant-port", type=int, default=QDRANT_PORT, help="Qdrant port")
+    parser.add_argument("--qdrant-host", default=settings.QDRANT_HOST, help="Qdrant host address")
+    parser.add_argument("--qdrant-port", type=int, default=settings.QDRANT_PORT, help="Qdrant port")
 
     args = parser.parse_args()
 

@@ -58,7 +58,7 @@ Content-Type: application/json
   "model_name": "string",
   "quantization": "float32|float16|int8",
   "include_content": true,
-  "metadata_filter": {}
+  "filters": {}
 }
 ```
 
@@ -115,14 +115,36 @@ Process multiple search queries in a single request.
 **Response:**
 ```json
 {
-  "results": {
-    "query1": [...],
-    "query2": [...],
-    "query3": [...]
-  },
-  "k": 10,
-  "total_time_ms": 145.7,
-  "queries_processed": 3
+  "responses": [
+    {
+      "query": "query1",
+      "results": [...],
+      "num_results": 10,
+      "search_type": "semantic",
+      "model_used": "BAAI/bge-large-en-v1.5/float16",
+      "embedding_time_ms": 12.5,
+      "search_time_ms": 32.7
+    },
+    {
+      "query": "query2",
+      "results": [...],
+      "num_results": 10,
+      "search_type": "semantic", 
+      "model_used": "BAAI/bge-large-en-v1.5/float16",
+      "embedding_time_ms": 10.3,
+      "search_time_ms": 37.8
+    },
+    {
+      "query": "query3",
+      "results": [...],
+      "num_results": 10,
+      "search_type": "semantic",
+      "model_used": "BAAI/bge-large-en-v1.5/float16",
+      "embedding_time_ms": 11.2,
+      "search_time_ms": 41.2
+    }
+  ],
+  "total_time_ms": 145.7
 }
 ```
 
@@ -240,6 +262,29 @@ Get current embedding configuration.
   "mock_mode": false,
   "device": "cuda",
   "max_batch_size": 96
+}
+```
+
+#### Model Status
+```http
+GET /model/status
+```
+
+Get detailed model manager status.
+
+**Response:**
+```json
+{
+  "loaded_models": {
+    "Qwen/Qwen3-Embedding-0.6B": {
+      "quantization": "float16",
+      "device": "cuda",
+      "last_used": "2024-01-15T10:30:00Z",
+      "memory_usage_mb": 1200
+    }
+  },
+  "total_memory_mb": 1200,
+  "device": "cuda"
 }
 ```
 
@@ -378,6 +423,117 @@ GET /api/models
 ```
 
 Get list of available embedding models.
+
+### Collections Management
+
+#### List Collections
+```http
+GET /api/collections/
+```
+
+Get all unique collection names with aggregated statistics.
+
+**Response:**
+```json
+{
+  "collections": [
+    {
+      "name": "Technical Documentation",
+      "total_files": 156,
+      "total_chunks": 3420,
+      "created_at": "2024-01-15T10:30:00Z",
+      "root_job_id": 1
+    }
+  ]
+}
+```
+
+#### Get Collection Details
+```http
+GET /api/collections/{collection_name}
+```
+
+Get detailed information about a specific collection.
+
+**Response:**
+```json
+{
+  "name": "Technical Documentation",
+  "jobs": [
+    {
+      "id": 1,
+      "mode": "create",
+      "source_path": "/docs/api",
+      "files_found": 45,
+      "status": "completed"
+    }
+  ],
+  "total_files": 156,
+  "total_chunks": 3420,
+  "duplicates_found": 3
+}
+```
+
+#### Get Collection Files
+```http
+GET /api/collections/{collection_name}/files?page={page}&per_page={per_page}
+```
+
+Get paginated list of files in a collection.
+
+**Parameters:**
+- `page` (optional): Page number (default: 1)
+- `per_page` (optional): Items per page (default: 50)
+
+#### Rename Collection
+```http
+PUT /api/collections/{collection_name}/rename
+Content-Type: application/json
+
+{
+  "new_name": "API Documentation v2"
+}
+```
+
+Rename a collection.
+
+#### Delete Collection
+```http
+DELETE /api/collections/{collection_name}
+```
+
+Delete a collection and all associated data.
+
+#### Add to Collection
+```http
+POST /api/jobs/add-to-collection
+Content-Type: application/json
+
+{
+  "collection_name": "Technical Documentation",
+  "source_type": "file|directory|github|url",
+  "source_path": "/path/to/new/docs",
+  "filters": {
+    "extensions": [".md", ".txt"],
+    "ignore_patterns": ["**/node_modules/**"]
+  }
+}
+```
+
+Add new data to an existing collection.
+
+#### Preload Model
+```http
+POST /api/preload_model
+Content-Type: application/json
+
+{
+  "model_name": "BAAI/bge-large-en-v1.5",
+  "quantization": "float16"
+}
+```
+
+Preload an embedding model to prevent timeout issues during search.
 
 ### WebSocket Endpoints
 

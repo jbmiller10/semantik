@@ -19,12 +19,12 @@ Semantik is a production-ready, high-performance document embedding and vector s
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                              User Interface                              │
-│                        React Frontend (Port 8000)                        │
+│                        React Frontend (Port 8080)                        │
 └────────────────────────────────┬───────────────────────────────────────┘
                                  │ HTTP/WebSocket
 ┌────────────────────────────────┴───────────────────────────────────────┐
 │                           WebUI Backend                                 │
-│                     FastAPI Control Plane (Port 8000)                   │
+│                     FastAPI Control Plane (Port 8080)                   │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐  ┌─────────────┐ │
 │  │Auth Service │  │Job Management│  │Search Proxy │  │ WebSockets  │ │
 │  └─────────────┘  └──────────────┘  └─────────────┘  └─────────────┘ │
@@ -39,7 +39,7 @@ Semantik is a production-ready, high-performance document embedding and vector s
                            │              │
 ┌──────────────────────────┴──────────────┴─────────────────────────────┐
 │                          Semantik Core Engine                          │
-│                      Search API (Port 8001)                            │
+│                      Search API (Port 8000)                            │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐  ┌────────────┐ │
 │  │  Extract    │  │   Embed      │  │   Ingest    │  │   Search   │ │
 │  │  Chunks     │  │   Chunks     │  │   Qdrant    │  │   Utils    │ │
@@ -55,7 +55,7 @@ Semantik is a production-ready, high-performance document embedding and vector s
 
 ## Component Architecture
 
-### 1. VecPipe Core Engine (`packages/vecpipe/`)
+### 1. Semantik Core Engine (`packages/vecpipe/`)
 
 The headless data processing and search API that forms the heart of the system.
 
@@ -84,7 +84,7 @@ User-facing application for job management and search interface.
 - **api/**: RESTful API routers for auth, jobs, search, files, metrics
 - **database.py**: SQLite database management
 - **auth.py**: JWT-based authentication
-- **embedding_service.py**: Shared embedding service bridging VecPipe
+- **embedding_service.py**: Shared embedding service bridging Semantik
 
 **Frontend (React):**
 - Modern React 19 with TypeScript
@@ -147,13 +147,13 @@ For detailed documentation, see [DATABASE_ARCH.md](./DATABASE_ARCH.md)
 
 ## API Architecture
 
-### Search API (Port 8001)
+### Search API (Port 8000)
 - Pure REST API for vector/hybrid search
 - No authentication required
 - Supports batch operations
 - Model lazy-loading for efficiency
 
-### WebUI API (Port 8000)
+### WebUI API (Port 8080)
 - JWT-authenticated endpoints
 - Job management and monitoring
 - Search proxy with authentication
@@ -304,4 +304,4 @@ For deep dives into specific components:
 
 ## Conclusion
 
-VecPipe demonstrates a well-architected system with clear separation of concerns, robust error handling, and excellent performance characteristics. The modular design enables both standalone usage of the search engine and full-featured operation through the web interface, making it suitable for a wide range of deployment scenarios from development laptops to production servers.
+Semantik demonstrates a well-architected system with clear separation of concerns, robust error handling, and excellent performance characteristics. The modular design enables both standalone usage of the search engine and full-featured operation through the web interface, making it suitable for a wide range of deployment scenarios from development laptops to production servers.
