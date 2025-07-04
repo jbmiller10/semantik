@@ -2,7 +2,7 @@
 
 ## Overview
 
-The frontend for VecPipe is a modern React application built with TypeScript, located in `apps/webui-react/`. It provides a sophisticated user interface for managing document embedding jobs, searching through embedded documents, and monitoring system performance.
+The frontend for Semantik is a modern React application built with TypeScript, located in `apps/webui-react/`. It provides a sophisticated user interface for managing document embedding jobs, searching through embedded documents, and monitoring system performance.
 
 ### Technology Stack
 
@@ -497,4 +497,4 @@ npm run build
 
 ## Conclusion
 
-The VecPipe frontend is a well-structured React application that effectively manages complex state, real-time updates, and user interactions. The architecture supports future growth while maintaining clean separation of concerns and type safety throughout.
+The Semantik frontend is a well-structured React application that effectively manages complex state, real-time updates, and user interactions. The architecture supports future growth while maintaining clean separation of concerns and type safety throughout.

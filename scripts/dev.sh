@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "Starting VecPipe development environment..."
+echo "Starting Semantik development environment..."
 
 # Function to kill all background processes on exit
 cleanup() {

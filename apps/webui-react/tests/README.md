@@ -1,4 +1,4 @@
-# VecPipe WebUI Test Suite
+# Semantik WebUI Test Suite
 
 This directory contains comprehensive test scenarios to verify feature parity between the vanilla JS and React implementations.
 

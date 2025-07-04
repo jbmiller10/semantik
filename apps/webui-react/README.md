@@ -1,6 +1,6 @@
-# VecPipe WebUI React Frontend
+# Semantik WebUI React Frontend
 
-This is the React-based frontend for the VecPipe Document Embedding System, providing a modern user interface for managing embedding jobs and searching documents.
+This is the React-based frontend for the Semantik Document Embedding System, providing a modern user interface for managing embedding jobs and searching documents.
 
 ## Architecture Overview
 
@@ -167,4 +167,4 @@ When adding new features:
 
 ## License
 
-Part of the VecPipe Document Embedding System - AGPL License
+Part of the Semantik Document Embedding System - AGPL License
