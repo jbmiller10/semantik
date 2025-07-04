@@ -89,17 +89,6 @@ def init_db():
             logger.info("Migrating database: adding content_hash column to files table")
             c.execute("ALTER TABLE files ADD COLUMN content_hash TEXT")
 
-    # Check for missing indexes and add them
-    c.execute("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_files_content_hash'")
-    if not c.fetchone():
-        logger.info("Creating index on files.content_hash for faster duplicate detection")
-        c.execute("CREATE INDEX idx_files_content_hash ON files(content_hash)")
-
-    c.execute("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_files_job_content_hash'")
-    if not c.fetchone():
-        logger.info("Creating composite index on files(job_id, content_hash)")
-        c.execute("CREATE INDEX idx_files_job_content_hash ON files(job_id, content_hash)")
-
     # Jobs table
     c.execute(
         """CREATE TABLE IF NOT EXISTS jobs

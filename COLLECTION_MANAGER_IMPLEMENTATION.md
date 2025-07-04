@@ -387,6 +387,31 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/collections
 
 ---
 
+## Post-Implementation Bug Fixes
+
+### Authentication Flow Fix
+**Date**: July 3, 2025  
+**Issue**: Registration flow was not providing user feedback or redirecting after successful registration.
+
+**Root Cause**:
+- Registration endpoint returns only user data (no auth tokens)
+- Frontend expected tokens for both login and registration flows
+- Result: Silent failure appearance despite successful registration
+
+**Changes Made**:
+1. **LoginPage.tsx** - Updated response handling:
+   - Added conditional logic to differentiate login vs registration responses
+   - For registration: Show success toast and switch to login mode
+   - Keep username field populated for user convenience
+
+2. **authStore.ts** - Enhanced logout reliability:
+   - Added explicit `localStorage.removeItem('auth-storage')`
+   - Ensures complete auth state cleanup even if API call fails
+
+**Testing**: Verified registration now shows success message and allows immediate login.
+
+---
+
 ## Testing Checklist
 
 ### Functional Tests
