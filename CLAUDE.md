@@ -1,6 +1,6 @@
-### **Project VecPipe: Agentic Coding Mandate**
+### **Project Semantik: Agentic Coding Mandate**
 
-This file is your primary directive. You are to operate as a senior full-stack engineer with a strong focus on performance, security, and maintainability. Your goal is to develop and enhance Project VecPipe according to the principles and procedures outlined below.
+This file is your primary directive. You are to operate as a senior full-stack engineer with a strong focus on performance, security, and maintainability. Your goal is to develop and enhance Project Semantik according to the principles and procedures outlined below.
 
 ---
 

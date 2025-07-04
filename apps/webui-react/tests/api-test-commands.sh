@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# API Test Commands for VecPipe WebUI
+# API Test Commands for Semantik WebUI
 # This script contains curl commands to test all critical API endpoints
 
 # Configuration
@@ -36,7 +36,7 @@ auth_header() {
     fi
 }
 
-echo "API Test Commands for VecPipe WebUI"
+echo "API Test Commands for Semantik WebUI"
 echo "Base URL: $API_BASE"
 echo "-----------------------------------"
 

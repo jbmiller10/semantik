@@ -1,4 +1,4 @@
-# VecPipe 🚀 - Production-Ready Semantic Search Engine
+# Semantik 🚀 - Production-Ready Semantic Search Engine
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-00a393.svg)](https://fastapi.tiangolo.com)
@@ -6,11 +6,11 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-**VecPipe** is the only self-hosted semantic search engine with enterprise-grade GPU memory management and true microservices architecture. Built for technical users who need **control**, **performance**, and **privacy**.
+**Semantik** is the only self-hosted semantic search engine with enterprise-grade GPU memory management and true microservices architecture. Built for technical users who need **control**, **performance**, and **privacy**.
 
-![VecPipe Dashboard](docs/images/vecpipe-dashboard.png)
+![Semantik Dashboard](docs/images/vecpipe-dashboard.png)
 
-## 🎯 Why VecPipe?
+## 🎯 Why Semantik?
 
 ### The Problem
 - **Cloud services** (Algolia, Pinecone) lock your data in their infrastructure
@@ -19,7 +19,7 @@
 - **RAG demos** aren't ready for real workloads
 
 ### The Solution
-VecPipe bridges the gap with:
+Semantik bridges the gap with:
 - 🧠 **Adaptive GPU Memory Management** - Automatic model loading/unloading
 - 🏗️ **True Microservices** - Use the search engine without the UI
 - 📊 **Production Metrics** - Prometheus-ready monitoring out of the box
@@ -107,7 +107,7 @@ curl "http://localhost:8000/hybrid_search?q=python+docker&mode=filter"
                                ▼
                         ┌──────────────────┐
                         │   Search API      │
-                        │   (VecPipe Core)  │
+                        │   (Semantik Core) │
                         └──────────────────┘
                                │
                                ▼
@@ -119,7 +119,7 @@ curl "http://localhost:8000/hybrid_search?q=python+docker&mode=filter"
 
 ## 📈 Performance Benchmarks
 
-| Operation | VecPipe | Elasticsearch | ChromaDB | Improvement |
+| Operation | Semantik | Elasticsearch | ChromaDB | Improvement |
 |-----------|---------|---------------|----------|-------------|
 | Index 10K docs | 3.2 min | 8.5 min | 5.1 min | **2.6x faster** |
 | Semantic Search (p95) | 96ms | N/A | 142ms | **1.5x faster** |
@@ -187,7 +187,7 @@ See [detailed installation guide](docs/installation.md) for manual setup instruc
 
 ### Embedding Models
 
-VecPipe supports any Sentence Transformer model. Popular choices:
+Semantik supports any Sentence Transformer model. Popular choices:
 
 | Model | Size | Quality | Speed | Use Case |
 |-------|------|---------|-------|-----------|
@@ -209,9 +209,9 @@ VecPipe supports any Sentence Transformer model. Popular choices:
 ### Python SDK
 
 ```python
-from vecpipe import VecPipeClient
+from semantik import SemantikClient
 
-client = VecPipeClient("http://localhost:8000")
+client = SemantikClient("http://localhost:8000")
 
 # Create embedding job
 job = client.create_job(
@@ -270,7 +270,7 @@ curl -X POST http://localhost:8000/search/batch \
 
 ## 📊 Monitoring & Metrics
 
-VecPipe exposes Prometheus metrics at `/metrics`:
+Semantik exposes Prometheus metrics at `/metrics`:
 
 ```prometheus
 # Search latency by operation
@@ -287,9 +287,9 @@ embedding_oom_errors_total{model="Qwen/Qwen3-Embedding-8B",quantization="float32
 batch_size_reductions_total{model="Qwen/Qwen3-Embedding-8B"} 3
 ```
 
-## 🤝 VecPipe vs Alternatives
+## 🤝 Semantik vs Alternatives
 
-| Feature | VecPipe | Elasticsearch | Pinecone | ChromaDB | Weaviate |
+| Feature | Semantik | Elasticsearch | Pinecone | ChromaDB | Weaviate |
 |---------|---------|---------------|----------|----------|----------|
 | Self-hosted | ✅ | ✅ | ❌ | ✅ | ✅ |
 | GPU Management | ✅ Adaptive | ❌ | N/A | ❌ | ❌ |
@@ -331,7 +331,7 @@ curl -X POST http://localhost:8080/api/jobs \
 curl -X POST http://localhost:8080/api/jobs \
   -d '{"model_name": "sentence-transformers/all-MiniLM-L6-v2", ...}'
 
-# Option 3: Reduce batch size (automatic in VecPipe)
+# Option 3: Reduce batch size (automatic in Semantik)
 ```
 </details>
 
@@ -380,7 +380,7 @@ make test    # Run tests
 
 ## 📄 License
 
-VecPipe is licensed under the GNU Affero General Public License v3.0. See [LICENSE](LICENSE) for details.
+Semantik is licensed under the GNU Affero General Public License v3.0. See [LICENSE](LICENSE) for details.
 
 ## 🙏 Acknowledgments
 

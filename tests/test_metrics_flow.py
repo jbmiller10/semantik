@@ -91,7 +91,7 @@ def simulate_job_processing():
 
 
 if __name__ == "__main__":
-    print("Testing VecPipe Metrics Collection")
+    print("Testing Semantik Metrics Collection")
     print("=" * 60)
     simulate_job_processing()
 

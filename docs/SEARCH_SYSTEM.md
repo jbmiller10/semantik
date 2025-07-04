@@ -1,4 +1,4 @@
-# Document Embedding System - Search Architecture Documentation
+# Semantik - Search Architecture Documentation
 
 ## Table of Contents
 1. [Search System Overview](#search-system-overview)
@@ -16,7 +16,7 @@
 
 ## 1. Search System Overview
 
-The Document Embedding System implements a sophisticated search architecture that combines vector similarity search with keyword-based search capabilities. The system is designed for high performance, scalability, and flexibility.
+Semantik implements a sophisticated search architecture that combines vector similarity search with keyword-based search capabilities. The system is designed for high performance, scalability, and flexibility.
 
 ### Architecture Design
 
@@ -605,7 +605,7 @@ response = requests.get(
 
 ## Conclusion
 
-The Document Embedding System's search architecture provides a robust, scalable, and flexible solution for semantic search. With support for multiple search types, advanced hybrid search capabilities, and comprehensive optimization for modern embedding models like Qwen3, the system is well-suited for production deployments requiring high-performance search functionality.
+Semantik's search architecture provides a robust, scalable, and flexible solution for semantic search. With support for multiple search types, advanced hybrid search capabilities, and comprehensive optimization for modern embedding models like Qwen3, the system is well-suited for production deployments requiring high-performance search functionality.
 
 Key strengths include:
 - Flexible architecture supporting various search paradigms

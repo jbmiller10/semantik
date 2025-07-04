@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Comprehensive API Test Suite for VecPipe WebUI
+Comprehensive API Test Suite for Semantik WebUI
 Tests all critical features for feature parity verification
 """
 
@@ -444,7 +444,7 @@ class APITestSuite:
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="VecPipe API Test Suite")
+    parser = argparse.ArgumentParser(description="Semantik API Test Suite")
     parser.add_argument("--url", default="http://localhost:8000", help="Base URL for API")
     parser.add_argument("--token", help="Authentication token")
     parser.add_argument("--test", help="Run specific test only")
