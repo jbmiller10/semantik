@@ -27,7 +27,8 @@ function LoginPage() {
         : { username, email, password, full_name: fullName || undefined };
       const response = await api.post(endpoint, payload);
       
-      if (response.data.access_token) {
+      if (isLogin && response.data.access_token) {
+        // Login flow - expects tokens
         const userResponse = await api.get('/api/auth/me', {
           headers: { Authorization: `Bearer ${response.data.access_token}` }
         });
@@ -35,9 +36,19 @@ function LoginPage() {
         setAuth(response.data.access_token, userResponse.data, response.data.refresh_token);
         addToast({
           type: 'success',
-          message: isLogin ? 'Logged in successfully' : 'Registered successfully',
+          message: 'Logged in successfully',
         });
         navigate('/');
+      } else if (!isLogin && response.data.id) {
+        // Registration flow - only returns user data
+        addToast({
+          type: 'success',
+          message: 'Registration successful! Please log in with your credentials.',
+        });
+        // Switch to login mode and clear password
+        setIsLogin(true);
+        setPassword('');
+        // Keep username filled for convenience
       }
     } catch (error: any) {
       addToast({

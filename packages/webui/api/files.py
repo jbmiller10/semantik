@@ -53,7 +53,7 @@ def compute_file_content_hash(file_path: Path, chunk_size: int = 8192) -> str | 
     except PermissionError:
         logger.warning(f"Permission denied reading {file_path}")
         return None
-    except IOError as e:
+    except OSError as e:
         logger.warning(f"IO error reading {file_path}: {e}")
         return None
     except Exception as e:
@@ -104,7 +104,7 @@ async def compute_file_content_hash_async(file_path: Path, chunk_size: int = 655
     except PermissionError:
         logger.warning(f"Permission denied reading {file_path}")
         return None
-    except IOError as e:
+    except OSError as e:
         logger.warning(f"IO error reading {file_path}: {e}")
         return None
     except Exception as e:

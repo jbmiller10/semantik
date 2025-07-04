@@ -47,6 +47,8 @@ export const useAuthStore = create<AuthState>()(
         } finally {
           // Always clear the state regardless of API call result
           set({ token: null, refreshToken: null, user: null });
+          // Explicitly clear localStorage to ensure no stale auth data persists
+          localStorage.removeItem('auth-storage');
         }
       },
     }),

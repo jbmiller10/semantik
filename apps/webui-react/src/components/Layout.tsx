@@ -4,6 +4,7 @@ import { useUIStore } from '../stores/uiStore';
 import Toast from './Toast';
 import DocumentViewerModal from './DocumentViewerModal';
 import JobMetricsModal from './JobMetricsModal';
+import CollectionDetailsModal from './CollectionDetailsModal';
 
 function Layout() {
   const navigate = useNavigate();
@@ -93,6 +94,16 @@ function Layout() {
               >
                 Search
               </button>
+              <button
+                onClick={() => setActiveTab('collections')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'collections'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Collections
+              </button>
             </nav>
           </div>
         )}
@@ -111,6 +122,9 @@ function Layout() {
       
       {/* Job Metrics Modal */}
       <JobMetricsModal />
+      
+      {/* Collection Details Modal */}
+      <CollectionDetailsModal />
     </div>
   );
 }
