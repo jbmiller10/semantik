@@ -9,7 +9,6 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
-from qdrant_client import QdrantClient
 from qdrant_client.models import CollectionInfo
 
 from .. import database
@@ -324,4 +323,3 @@ async def get_collection_files(
     except Exception as e:
         logger.error(f"Error getting collection files: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-

@@ -3,7 +3,6 @@
 Simple test script to check the /api/metrics endpoint
 """
 import json
-import time
 from datetime import datetime
 
 import requests
