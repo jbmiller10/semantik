@@ -23,6 +23,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from packages.webui.embedding_service import EmbeddingService
 
+from .config import settings
 from .metrics import (
     TimingContext,
     embedding_batch_duration,
@@ -43,8 +44,8 @@ logger = logging.getLogger(__name__)
 # Constants - matching the old embed_chunks.py
 MODEL_NAME = "BAAI/bge-large-en-v1.5"
 BATCH_SIZE = 96
-INPUT_DIR = "/opt/vecpipe/extract"
-OUTPUT_DIR = "/var/embeddings/ingest"
+INPUT_DIR = str(settings.EXTRACT_DIR)
+OUTPUT_DIR = str(settings.INGEST_DIR)
 MAX_CONCURRENT_IO = 4
 
 

@@ -40,7 +40,7 @@ These paths have sensible defaults but can be overridden:
 # Data directories
 FILE_TRACKING_DB=/var/embeddings/file_tracking.json
 WEBUI_DB=/var/embeddings/webui.db
-EXTRACT_DIR=/opt/vecpipe/extract
+EXTRACT_DIR=/opt/semantik/extract
 INGEST_DIR=/var/embeddings/ingest
 LOADED_DIR=/var/embeddings/loaded
 REJECT_DIR=/var/embeddings/rejects
