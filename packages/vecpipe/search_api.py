@@ -27,6 +27,7 @@ from packages.webui.embedding_service import EmbeddingService
 
 from .config import settings
 from .hybrid_search import HybridSearchEngine
+from .memory_utils import InsufficientMemoryError
 from .metrics import metrics_collector, registry, start_metrics_server
 from .qwen3_search_config import RERANKING_INSTRUCTIONS, get_reranker_for_embedding_model
 from .search_utils import parse_search_results, search_qdrant
@@ -177,7 +178,6 @@ async def lifespan(app: FastAPI):
     logger.info(f"Connected to Qdrant at {settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
 
     # Initialize model manager with lazy loading
-    from .memory_utils import InsufficientMemoryError
     from .model_manager import ModelManager
 
     unload_after = int(os.getenv("MODEL_UNLOAD_AFTER_SECONDS", "300"))  # 5 minutes default
