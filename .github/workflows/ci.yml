@@ -79,6 +79,8 @@ jobs:
         QDRANT_HOST: localhost
         QDRANT_PORT: 6333
         JWT_SECRET_KEY: test-secret-key
+        USE_MOCK_EMBEDDINGS: "true"
+        PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:512"
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
