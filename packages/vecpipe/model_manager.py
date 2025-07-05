@@ -54,13 +54,17 @@ class ModelManager:
                 self.is_mock_mode = self.embedding_service.mock_mode
 
     def _update_last_used(self):
-        """Update the last used timestamp"""
+        """Update the last used timestamp - must be called within lock"""
         self.last_used = time.time()
 
     async def _schedule_unload(self):
         """Schedule model unloading after inactivity"""
         if self.unload_task:
             self.unload_task.cancel()
+            try:
+                await self.unload_task
+            except asyncio.CancelledError:
+                pass
 
         async def unload_after_delay():
             await asyncio.sleep(self.unload_after_seconds)
@@ -85,14 +89,14 @@ class ModelManager:
 
         model_key = self._get_model_key(model_name, quantization)
 
-        # Check if correct model is already loaded
-        if self.current_model_key == model_key:
-            self._update_last_used()
-            return True
-
-        # Need to load the model
-        logger.info(f"Loading model: {model_name} with {quantization}")
         with self.lock:
+            # Check if correct model is already loaded
+            if self.current_model_key == model_key:
+                self._update_last_used()
+                return True
+
+            # Need to load the model
+            logger.info(f"Loading model: {model_name} with {quantization}")
             if self.embedding_service.load_model(model_name, quantization):
                 self.current_model_key = model_key
                 self._update_last_used()
@@ -185,14 +189,15 @@ class ModelManager:
 
         reranker_key = self._get_model_key(model_name, quantization)
 
-        # Check if correct reranker is already loaded
-        if self.current_reranker_key == reranker_key and self.reranker is not None:
-            self.last_reranker_used = time.time()
-            return True
-
-        # Need to load the reranker
-        logger.info(f"Loading reranker: {model_name} with {quantization}")
         with self.reranker_lock:
+            # Check if correct reranker is already loaded
+            if self.current_reranker_key == reranker_key and self.reranker is not None:
+                self.last_reranker_used = time.time()
+                return True
+
+            # Need to load the reranker
+            logger.info(f"Loading reranker: {model_name} with {quantization}")
+
             # Unload current reranker if different
             if self.reranker is not None:
                 self.reranker.unload_model()
@@ -215,6 +220,10 @@ class ModelManager:
         """Schedule reranker unloading after inactivity"""
         if self.reranker_unload_task:
             self.reranker_unload_task.cancel()
+            try:
+                await self.reranker_unload_task
+            except asyncio.CancelledError:
+                pass
 
         async def unload_after_delay():
             await asyncio.sleep(self.unload_after_seconds)

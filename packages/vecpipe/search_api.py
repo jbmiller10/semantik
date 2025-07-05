@@ -491,6 +491,7 @@ async def search_post(request: SearchRequest = Body(...)):
                         chunk_id=r["chunk_id"],
                         score=r["score"],
                         doc_id=r.get("doc_id"),
+                        content=r.get("content") if should_include_content else None,
                         metadata=r.get("metadata"),
                     )
                     results.append(result)
@@ -521,18 +522,20 @@ async def search_post(request: SearchRequest = Body(...)):
                     chunk_ids_to_fetch = [r.chunk_id for r in results if not r.content]
 
                     if chunk_ids_to_fetch:
-                        # Fetch content for missing chunks
+                        # Fetch content for missing chunks by searching with chunk_id filter
                         try:
+                            # Use scroll to fetch points by chunk_id in payload
                             fetch_request = {
-                                "ids": chunk_ids_to_fetch,
+                                "filter": {"must": [{"key": "chunk_id", "match": {"any": chunk_ids_to_fetch}}]},
                                 "with_payload": True,
                                 "with_vector": False,
+                                "limit": len(chunk_ids_to_fetch),
                             }
                             response = await qdrant_client.post(
-                                f"/collections/{collection_name}/points", json=fetch_request
+                                f"/collections/{collection_name}/points/scroll", json=fetch_request
                             )
                             response.raise_for_status()
-                            fetched_points = response.json()["result"]
+                            fetched_points = response.json()["result"]["points"]
 
                             # Create a map of chunk_id to content
                             content_map = {}
