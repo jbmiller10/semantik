@@ -4,6 +4,7 @@ Uses Qwen3-Reranker models for state-of-the-art reranking
 """
 
 import logging
+import threading
 import time
 from typing import List, Optional, Tuple
 
@@ -43,6 +44,7 @@ class CrossEncoderReranker:
         self.max_length = max_length
         self.model = None
         self.tokenizer = None
+        self._lock = threading.Lock()  # Thread safety lock
 
         # Model size to batch size mapping
         self.batch_size_config = {
@@ -69,85 +71,87 @@ class CrossEncoderReranker:
 
     def load_model(self):
         """Load the reranker model and tokenizer"""
-        if self.model is not None:
-            logger.info(f"Model {self.model_name} already loaded")
-            return
+        with self._lock:
+            if self.model is not None:
+                logger.info(f"Model {self.model_name} already loaded")
+                return
 
-        logger.info(f"Loading reranker model: {self.model_name}")
-        start_time = time.time()
+            logger.info(f"Loading reranker model: {self.model_name}")
+            start_time = time.time()
 
-        try:
-            # Load tokenizer
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                self.model_name,
-                trust_remote_code=True,
-                padding_side="left",  # Important for batch processing
-            )
-
-            # Determine torch dtype based on quantization
-            torch_dtype = torch.float32
-            if self.quantization == "float16":
-                torch_dtype = torch.float16
-            elif self.quantization == "bfloat16":
-                torch_dtype = torch.bfloat16
-
-            # Load model with appropriate settings
-            load_kwargs = {
-                "torch_dtype": torch_dtype,
-                "device_map": "auto" if self.device == "cuda" else None,
-                "trust_remote_code": True,
-            }
-
-            # Add flash attention if available
-            # Note: attn_implementation parameter is not available in transformers 4.53.0
-            # Flash attention will be auto-detected if flash_attn package is installed
             try:
-                import flash_attn
-
-                logger.info("Flash Attention package detected, will be used automatically if supported by model")
-            except ImportError:
-                logger.debug("Flash Attention not available")
-
-            # Apply int8 quantization if requested
-            if self.quantization == "int8":
-                from transformers import BitsAndBytesConfig
-
-                quantization_config = BitsAndBytesConfig(
-                    load_in_8bit=True,
-                    bnb_8bit_compute_dtype=torch.float16,
+                # Load tokenizer
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    self.model_name,
+                    trust_remote_code=True,
+                    padding_side="left",  # Important for batch processing
                 )
-                load_kwargs["quantization_config"] = quantization_config
-                # Remove torch_dtype when using quantization_config
-                load_kwargs.pop("torch_dtype", None)
 
-            # Load model
-            self.model = AutoModelForCausalLM.from_pretrained(self.model_name, **load_kwargs)
+                # Determine torch dtype based on quantization
+                torch_dtype = torch.float32
+                if self.quantization == "float16":
+                    torch_dtype = torch.float16
+                elif self.quantization == "bfloat16":
+                    torch_dtype = torch.bfloat16
 
-            # Move to device if not using device_map
-            if self.device == "cpu" or self.quantization != "int8":
-                self.model = self.model.to(self.device)
+                # Load model with appropriate settings
+                load_kwargs = {
+                    "torch_dtype": torch_dtype,
+                    "device_map": "auto" if self.device == "cuda" else None,
+                    "trust_remote_code": True,
+                }
 
-            self.model.eval()
+                # Add flash attention if available
+                # Note: attn_implementation parameter is not available in transformers 4.53.0
+                # Flash attention will be auto-detected if flash_attn package is installed
+                try:
+                    import flash_attn
 
-            load_time = time.time() - start_time
-            logger.info(f"Reranker model loaded in {load_time:.2f}s")
+                    logger.info("Flash Attention package detected, will be used automatically if supported by model")
+                except ImportError:
+                    logger.debug("Flash Attention not available")
 
-        except Exception as e:
-            logger.error(f"Failed to load reranker model: {e}")
-            raise RuntimeError(f"Failed to load reranker model: {e}")
+                # Apply int8 quantization if requested
+                if self.quantization == "int8":
+                    from transformers import BitsAndBytesConfig
+
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_8bit=True,
+                        bnb_8bit_compute_dtype=torch.float16,
+                    )
+                    load_kwargs["quantization_config"] = quantization_config
+                    # Remove torch_dtype when using quantization_config
+                    load_kwargs.pop("torch_dtype", None)
+
+                # Load model
+                self.model = AutoModelForCausalLM.from_pretrained(self.model_name, **load_kwargs)
+
+                # Move to device if not using device_map
+                if self.device == "cpu" or self.quantization != "int8":
+                    self.model = self.model.to(self.device)
+
+                self.model.eval()
+
+                load_time = time.time() - start_time
+                logger.info(f"Reranker model loaded in {load_time:.2f}s")
+
+            except Exception as e:
+                logger.error(f"Failed to load reranker model: {e}")
+                raise RuntimeError(f"Failed to load reranker model: {e}")
 
     def unload_model(self):
         """Unload the model to free memory"""
-        if self.model is not None:
-            logger.info(f"Unloading reranker model: {self.model_name}")
-            del self.model
-            self.model = None
-            del self.tokenizer
-            self.tokenizer = None
+        with self._lock:
+            if self.model is not None:
+                logger.info(f"Unloading reranker model: {self.model_name}")
+                del self.model
+                self.model = None
+                del self.tokenizer
+                self.tokenizer = None
 
-            # Clear GPU cache
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+                # Clear GPU cache only if using CUDA
+                if self.device == "cuda" and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
     def format_input(self, query: str, document: str, instruction: Optional[str] = None) -> str:
         """
