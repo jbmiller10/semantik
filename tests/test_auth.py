@@ -3,12 +3,19 @@
 
 import json
 
+import pytest
 import requests
 
 BASE_URL = "http://localhost:8080"
 
 
 def test_auth():
+    # Check if server is running
+    try:
+        requests.get(f"{BASE_URL}/", timeout=1)
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+        pytest.skip("Server not running at localhost:8080")
+
     # Test registration
     register_data = {
         "username": "testuser",
