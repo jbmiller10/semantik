@@ -20,6 +20,7 @@ function SearchInterface() {
     setError,
     setCollections,
     collections,
+    setRerankingMetrics,
   } = useSearchStore();
   const addToast = useUIStore((state) => state.addToast);
 
@@ -107,12 +108,25 @@ function SearchInterface() {
         score_threshold: searchParams.scoreThreshold,
         search_type: searchParams.searchType,
         rerank_model: searchParams.rerankModel,
+        use_reranker: searchParams.useReranker,
+        rerank_top_k: searchParams.rerankTopK,
         hybrid_alpha: searchParams.hybridAlpha,
         hybrid_mode: searchParams.hybridMode,
         keyword_mode: searchParams.keywordMode,
       });
 
       setResults(response.data.results);
+      
+      // Store reranking metrics if present
+      if (response.data.reranking_used !== undefined) {
+        setRerankingMetrics({
+          rerankingUsed: response.data.reranking_used,
+          rerankerModel: response.data.reranker_model,
+          rerankingTimeMs: response.data.reranking_time_ms,
+        });
+      } else {
+        setRerankingMetrics(null);
+      }
     } catch (error: any) {
       setError(error.response?.data?.detail || 'Search failed');
       addToast({ type: 'error', message: 'Search failed' });
@@ -276,6 +290,57 @@ function SearchInterface() {
                 </p>
               </div>
             )}
+          </div>
+
+          {/* Reranking Options */}
+          <div className="mb-4">
+            <div className="bg-gray-50 rounded-lg p-4">
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={searchParams.useReranker}
+                  onChange={(e) => updateSearchParams({ useReranker: e.target.checked })}
+                  className="w-4 h-4 text-blue-600 rounded"
+                />
+                <span className="text-sm font-medium text-gray-700">
+                  Enable Cross-Encoder Reranking
+                </span>
+              </label>
+              
+              {searchParams.useReranker && (
+                <div className="mt-3 ml-6">
+                  <p className="text-xs text-gray-600 mb-3">
+                    Reranking uses a more sophisticated model to re-score the top search results, 
+                    improving accuracy at the cost of slightly increased latency.
+                  </p>
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs text-gray-700 mb-1">
+                        Candidates to rerank: {searchParams.rerankTopK}
+                      </label>
+                      <input
+                        type="range"
+                        min="20"
+                        max="100"
+                        step="10"
+                        value={searchParams.rerankTopK}
+                        onChange={(e) => updateSearchParams({ rerankTopK: parseInt(e.target.value) })}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                      />
+                      <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>20 (faster)</span>
+                        <span>100 (more accurate)</span>
+                      </div>
+                    </div>
+                    
+                    <p className="text-xs text-gray-500">
+                      The system will retrieve {searchParams.rerankTopK} candidates and rerank them to return the top {searchParams.topK} results.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Submit Button */}
