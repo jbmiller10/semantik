@@ -53,9 +53,14 @@ def create_app() -> FastAPI:
     # Mount static files with proper path resolution
     base_dir = os.path.dirname(os.path.abspath(__file__))
     static_dir = os.path.join(base_dir, "static")
+    assets_dir = os.path.join(static_dir, "assets")
+
+    # Ensure directories exist (for tests and fresh environments)
+    os.makedirs(static_dir, exist_ok=True)
+    os.makedirs(assets_dir, exist_ok=True)
 
     # Mount assets directory for React build
-    app.mount("/assets", StaticFiles(directory=os.path.join(static_dir, "assets")), name="assets")
+    app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
     # Mount static files
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
