@@ -4,8 +4,9 @@
 This document tracks the implementation progress of cross-encoder reranking feature using Qwen3-Reranker models.
 
 **Start Date**: 2025-07-05  
-**Target Completion**: 3 weeks  
-**Branch**: jm/true-reranking  
+**Completion Date**: 2025-07-05  
+**Branch**: jm/true-reranking → jm/doc-cleanup  
+**Status**: ✅ COMPLETE - All features implemented and UI simplified
 
 ---
 
@@ -705,6 +706,22 @@ Conducted thorough review of all implementation phases against the original plan
 - Reduced cognitive load for users
 - Maintains flexibility for future optimization
 - Backward compatible (old API calls still work)
+
+**Commit**: `e3dce91` - refactor: unify result count controls for reranking
+
+---
+
+## Commits Log
+
+### Cross-Encoder Reranking Implementation
+- `a8e855f` - docs: update dev log with Day 2 implementation details
+- `d997c41` - fix: import InsufficientMemoryError globally
+- `cf70533` - feat: add service scripts with UI rebuild
+- `6270f52` - feat: add manual reranker model and quantization selection
+- `1725981` - feat: add memory management for reranking models
+
+### UI Simplification
+- `e3dce91` - refactor: unify result count controls for reranking
 
 ---
 
