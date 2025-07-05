@@ -30,6 +30,7 @@ class SearchRequest(BaseModel):
     # Reranking parameters
     use_reranker: bool = Field(default=False, description="Enable cross-encoder reranking")
     rerank_model: str | None = None
+    rerank_quantization: str | None = None
     rerank_top_k: int = Field(default=50, ge=10, le=200, description="Number of candidates to retrieve for reranking")
     # Hybrid search specific parameters
     hybrid_alpha: float = Field(default=0.7, ge=0.0, le=1.0)
@@ -201,6 +202,8 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
                 search_params["rerank_top_k"] = request.rerank_top_k
                 if request.rerank_model:
                     search_params["rerank_model"] = request.rerank_model
+                if request.rerank_quantization:
+                    search_params["rerank_quantization"] = request.rerank_quantization
 
             # Add optional parameters
             if model_name:

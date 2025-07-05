@@ -108,6 +108,7 @@ function SearchInterface() {
         score_threshold: searchParams.scoreThreshold,
         search_type: searchParams.searchType,
         rerank_model: searchParams.rerankModel,
+        rerank_quantization: searchParams.rerankQuantization,
         use_reranker: searchParams.useReranker,
         rerank_top_k: searchParams.rerankTopK,
         hybrid_alpha: searchParams.hybridAlpha,
@@ -332,6 +333,45 @@ function SearchInterface() {
                   </p>
                   
                   <div className="space-y-3">
+                    {/* Reranker Model Selection */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-700 mb-1">
+                          Reranker Model
+                        </label>
+                        <select
+                          value={searchParams.rerankModel || 'auto'}
+                          onChange={(e) => updateSearchParams({ 
+                            rerankModel: e.target.value === 'auto' ? undefined : e.target.value 
+                          })}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                          <option value="auto">Auto-select</option>
+                          <option value="Qwen/Qwen3-Reranker-0.6B">0.6B (Fastest)</option>
+                          <option value="Qwen/Qwen3-Reranker-4B">4B (Balanced)</option>
+                          <option value="Qwen/Qwen3-Reranker-8B">8B (Most Accurate)</option>
+                        </select>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs text-gray-700 mb-1">
+                          Quantization
+                        </label>
+                        <select
+                          value={searchParams.rerankQuantization || 'auto'}
+                          onChange={(e) => updateSearchParams({ 
+                            rerankQuantization: e.target.value === 'auto' ? undefined : e.target.value 
+                          })}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                          <option value="auto">Auto (match embedding)</option>
+                          <option value="float32">Float32 (Full precision)</option>
+                          <option value="float16">Float16 (Balanced)</option>
+                          <option value="int8">Int8 (Low memory)</option>
+                        </select>
+                      </div>
+                    </div>
+                    
                     <div>
                       <label className="block text-xs text-gray-700 mb-1">
                         Candidates to rerank: {searchParams.rerankTopK}

@@ -77,6 +77,7 @@ export const searchApi = {
     score_threshold: number;
     search_type: 'vector' | 'hybrid';
     rerank_model?: string;
+    rerank_quantization?: string;
     use_reranker?: boolean;
     rerank_top_k?: number;
     hybrid_alpha?: number;
