@@ -29,7 +29,7 @@ from .config import settings
 from .hybrid_search import HybridSearchEngine
 from .memory_utils import InsufficientMemoryError
 from .metrics import metrics_collector, registry, start_metrics_server
-from .qwen3_search_config import RERANKING_INSTRUCTIONS, get_reranker_for_embedding_model
+from .qwen3_search_config import RERANK_CONFIG, RERANKING_INSTRUCTIONS, get_reranker_for_embedding_model
 from .search_utils import parse_search_results, search_qdrant
 
 # Configure logging
@@ -109,7 +109,6 @@ class SearchRequest(BaseModel):
     use_reranker: bool = Field(False, description="Enable cross-encoder reranking")
     rerank_model: str | None = Field(None, description="Override reranker model")
     rerank_quantization: str | None = Field(None, description="Override reranker quantization: float32, float16, int8")
-    rerank_top_k: int = Field(50, ge=10, le=200, description="Number of candidates to retrieve for reranking")
 
 
 class BatchSearchRequest(BaseModel):
@@ -442,8 +441,17 @@ async def search_post(request: SearchRequest = Body(...)):
         search_start = time.time()
 
         # Determine number of candidates to retrieve
-        # If reranking is enabled, retrieve more candidates
-        search_k = request.rerank_top_k if request.use_reranker else request.k
+        # If reranking is enabled, retrieve more candidates based on multiplier
+        if request.use_reranker:
+            multiplier = RERANK_CONFIG.get("candidate_multiplier", 5)
+            min_candidates = RERANK_CONFIG.get("min_candidates", 20)
+            max_candidates = RERANK_CONFIG.get("max_candidates", 200)
+
+            # Calculate candidates: requested * multiplier, within bounds
+            search_k = max(min_candidates, min(request.k * multiplier, max_candidates))
+            logger.info(f"Reranking enabled: retrieving {search_k} candidates to rerank to top {request.k}")
+        else:
+            search_k = request.k
 
         # Handle filters if provided
         if request.filters:

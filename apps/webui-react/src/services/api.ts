@@ -79,7 +79,6 @@ export const searchApi = {
     rerank_model?: string;
     rerank_quantization?: string;
     use_reranker?: boolean;
-    rerank_top_k?: number;
     hybrid_alpha?: number;
     hybrid_mode?: 'rerank' | 'filter';
     keyword_mode?: 'any' | 'all';
