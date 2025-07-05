@@ -296,7 +296,21 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
             return response_data
 
     except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
+        if e.response.status_code == 507:
+            # Insufficient memory error from search API
+            error_detail = e.response.json().get("detail", {})
+            if isinstance(error_detail, dict) and error_detail.get("error") == "insufficient_memory":
+                raise HTTPException(
+                    status_code=507,
+                    detail={
+                        "error": "insufficient_memory",
+                        "message": error_detail.get("message", "Insufficient GPU memory for reranking"),
+                        "suggestion": error_detail.get(
+                            "suggestion", "Try using a smaller model or different quantization"
+                        ),
+                    },
+                )
+        elif e.response.status_code == 404:
             raise HTTPException(
                 status_code=404,
                 detail="Collection not found. The embedding job may not have created any vectors yet. Please check the job status.",

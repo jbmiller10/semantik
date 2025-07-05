@@ -176,6 +176,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"Connected to Qdrant at {settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
 
     # Initialize model manager with lazy loading
+    from .memory_utils import InsufficientMemoryError
     from .model_manager import ModelManager
 
     unload_after = int(os.getenv("MODEL_UNLOAD_AFTER_SECONDS", "300"))  # 5 minutes default
@@ -584,6 +585,17 @@ async def search_post(request: SearchRequest = Body(...)):
                 results = reranked_results
                 reranker_model_used = f"{reranker_model}/{quantization}"
 
+            except InsufficientMemoryError as e:
+                # Don't silently fall back - inform the user
+                logger.error(f"Insufficient memory for reranking: {e}")
+                raise HTTPException(
+                    status_code=507,  # Insufficient Storage
+                    detail={
+                        "error": "insufficient_memory",
+                        "message": str(e),
+                        "suggestion": "Try using a smaller model or different quantization (float16/int8)",
+                    },
+                )
             except Exception as e:
                 logger.error(f"Reranking failed: {e}, falling back to vector search results")
                 # Keep original results if reranking fails
@@ -981,6 +993,46 @@ async def load_model(
     except Exception as e:
         logger.error(f"Model load error: {e}")
         raise HTTPException(status_code=500, detail=f"Model load failed: {str(e)}")
+
+
+@app.get("/models/suggest")
+async def suggest_models():
+    """
+    Suggest optimal model configuration based on available GPU memory
+    """
+    from .memory_utils import get_gpu_memory_info, suggest_model_configuration
+
+    free_mb, total_mb = get_gpu_memory_info()
+
+    if total_mb == 0:
+        return {
+            "gpu_available": False,
+            "message": "No GPU detected. CPU mode will be used.",
+            "suggestion": {
+                "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+                "embedding_quantization": "float32",
+                "reranker_model": None,
+                "reranker_quantization": None,
+                "notes": ["CPU mode - using lightweight models"],
+            },
+        }
+
+    suggestions = suggest_model_configuration(free_mb)
+
+    return {
+        "gpu_available": True,
+        "gpu_memory": {
+            "free_mb": free_mb,
+            "total_mb": total_mb,
+            "used_mb": total_mb - free_mb,
+            "usage_percent": round((total_mb - free_mb) / total_mb * 100, 1),
+        },
+        "suggestion": suggestions,
+        "current_models": {
+            "embedding": model_manager.current_model_key if model_manager else None,
+            "reranker": model_manager.current_reranker_key if model_manager else None,
+        },
+    }
 
 
 @app.get("/embedding/info")
