@@ -128,8 +128,25 @@ function SearchInterface() {
         setRerankingMetrics(null);
       }
     } catch (error: any) {
-      setError(error.response?.data?.detail || 'Search failed');
-      addToast({ type: 'error', message: 'Search failed' });
+      const errorDetail = error.response?.data?.detail;
+      
+      // Handle insufficient memory error specifically
+      if (error.response?.status === 507 && typeof errorDetail === 'object' && errorDetail.error === 'insufficient_memory') {
+        const errorMessage = errorDetail.message || 'Insufficient GPU memory for reranking';
+        const suggestion = errorDetail.suggestion || 'Try using a smaller model or different quantization';
+        
+        setError(`${errorMessage}\n\n${suggestion}`);
+        addToast({ 
+          type: 'error', 
+          message: 'Insufficient GPU memory for reranking. Check the error message for suggestions.' 
+        });
+      } else {
+        // Handle other errors
+        const errorMessage = typeof errorDetail === 'string' ? errorDetail : 
+                           errorDetail?.message || 'Search failed';
+        setError(errorMessage);
+        addToast({ type: 'error', message: 'Search failed' });
+      }
     } finally {
       setLoading(false);
     }

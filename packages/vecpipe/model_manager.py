@@ -11,6 +11,7 @@ from typing import Any, List, Optional, Tuple
 
 from packages.webui.embedding_service import EmbeddingService
 
+from .memory_utils import InsufficientMemoryError, check_memory_availability, get_gpu_memory_info
 from .reranker import CrossEncoderReranker
 
 logger = logging.getLogger(__name__)
@@ -198,6 +199,28 @@ class ModelManager:
             # Need to load the reranker
             logger.info(f"Loading reranker: {model_name} with {quantization}")
 
+            # Check memory availability before loading
+            current_models = {}
+            if self.current_model_key:
+                model_name_parts = self.current_model_key.split("_")
+                if len(model_name_parts) >= 2:
+                    current_models["embedding"] = ("_".join(model_name_parts[:-1]), model_name_parts[-1])
+
+            can_load, memory_msg = check_memory_availability(model_name, quantization, current_models)
+            logger.info(f"Memory check: {memory_msg}")
+
+            if not can_load and "Can free" in memory_msg:
+                # Memory pressure - inform user instead of silent fallback
+                raise InsufficientMemoryError(
+                    f"Cannot load reranker due to insufficient GPU memory. {memory_msg}. "
+                    f"Consider using a smaller model or different quantization."
+                )
+            elif not can_load:
+                # Even with unloading, not enough memory
+                raise InsufficientMemoryError(
+                    f"Cannot load reranker: {memory_msg}. " f"This GPU cannot run both models simultaneously."
+                )
+
             # Unload current reranker if different
             if self.reranker is not None:
                 self.reranker.unload_model()
@@ -214,7 +237,16 @@ class ModelManager:
                 logger.error(f"Failed to load reranker: {e}")
                 self.reranker = None
                 self.current_reranker_key = None
-                return False
+
+                # If it's an OOM error, provide helpful message
+                if "out of memory" in str(e).lower() or "CUDA" in str(e):
+                    free_mb, total_mb = get_gpu_memory_info()
+                    raise InsufficientMemoryError(
+                        f"GPU out of memory while loading reranker. "
+                        f"Current free memory: {free_mb}MB / {total_mb}MB total. "
+                        f"Try using a smaller model or enabling quantization (int8/float16)."
+                    ) from e
+                raise
 
     async def _schedule_reranker_unload(self):
         """Schedule reranker unloading after inactivity"""
