@@ -614,7 +614,9 @@ class TestPerformance:
         assert "loaded" in info
         assert info["loaded"] is True
         assert info["model_name"] == TEST_MODEL_NAME
-        assert info["device"] == "cuda"
+        # Device should be cuda if available, otherwise cpu
+        expected_device = "cuda" if torch.cuda.is_available() else "cpu"
+        assert info["device"] == expected_device
         assert info["quantization"] == "float16"
 
     def test_model_info_unloaded(self, reranker_unloaded):

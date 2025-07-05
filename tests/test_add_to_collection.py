@@ -104,12 +104,16 @@ class TestDuplicateDetection:
             {
                 "id": job_id,
                 "name": "test_collection",
+                "description": "Test collection",
                 "status": "completed",
                 "created_at": "2024-01-01T00:00:00",
                 "updated_at": "2024-01-01T00:00:00",
                 "total_files": 2,
                 "model_name": "test_model",
                 "directory_path": "/test",
+                "chunk_size": 512,
+                "chunk_overlap": 50,
+                "batch_size": 32,
                 "user_id": 1,
             }
         )
@@ -148,12 +152,16 @@ class TestDuplicateDetection:
             {
                 "id": job_id,
                 "name": "test_collection",
+                "description": "Test collection",
                 "status": "failed",  # Not completed
                 "created_at": "2024-01-01T00:00:00",
                 "updated_at": "2024-01-01T00:00:00",
                 "total_files": 1,
                 "model_name": "test_model",
                 "directory_path": "/test",
+                "chunk_size": 512,
+                "chunk_overlap": 50,
+                "batch_size": 32,
                 "user_id": 1,
             }
         )
@@ -202,6 +210,7 @@ class TestSettingsInheritance:
             {
                 "id": parent_job_id,
                 "name": "test_collection",
+                "description": "Test collection",
                 "status": "completed",
                 "created_at": "2024-01-01T00:00:00",
                 "updated_at": "2024-01-01T00:00:00",
@@ -244,6 +253,7 @@ class TestSettingsInheritance:
             {
                 "id": parent_job_id,
                 "name": "test_collection",
+                "description": "Test collection",
                 "status": "completed",
                 "created_at": "2024-01-01T00:00:00",
                 "updated_at": "2024-01-01T00:00:00",
@@ -266,6 +276,7 @@ class TestSettingsInheritance:
             {
                 "id": append_job_id,
                 "name": "test_collection",
+                "description": "Test collection",
                 "status": "created",
                 "created_at": "2024-01-02T00:00:00",
                 "updated_at": "2024-01-02T00:00:00",
@@ -331,10 +342,20 @@ class TestResourceLimits:
             result = original_stat(self, **kwargs)
             if self.name == "large.txt":
                 # Mock the file as being 60GB
-                mock_result = MagicMock()
-                mock_result.st_size = 60 * 1024 * 1024 * 1024
-                mock_result.st_mtime = result.st_mtime
-                return mock_result
+                # Create a proper mock with all required attributes
+                class MockStatResult:
+                    st_size = 60 * 1024 * 1024 * 1024
+                    st_mtime = result.st_mtime
+                    st_atime = result.st_atime
+                    st_ctime = result.st_ctime
+                    st_mode = result.st_mode
+                    st_ino = result.st_ino
+                    st_dev = result.st_dev
+                    st_nlink = result.st_nlink
+                    st_uid = result.st_uid
+                    st_gid = result.st_gid
+
+                return MockStatResult()
             return result
 
         with patch.object(Path, "stat", mock_stat):
