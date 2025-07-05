@@ -77,32 +77,7 @@ A powerful backend deserves a clean frontend.
 
 ## ⚡ Quick Start (5 minutes)
 
-All you need is Docker and Docker Compose.
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/jbmiller10/semantik.git
-cd semantik
-
-# 2. Create a directory for your documents on your host machine
-mkdir -p ./my_documents
-
-# 3. Create your .env file
-cp .env.example .env
-# (No changes are needed to get started)
-
-# 4. Start the services!
-docker-compose up -d
-
-# 5. Access the Web UI
-# Open your browser to http://localhost:8080
-```
-
-Once running, use the UI to create your first collection pointing to the `/data` directory (which is mapped to the `my_documents` folder you created).
-
-## 🚀 Deployment
-
-The recommended deployment method is using `docker-compose`. See the [Quick Start](#-quick-start-5-minutes) guide above. For manual installation and production deployment guidance, see our [Installation Guide](docs/installation.md).
+Soon
 
 ## 🤝 Semantik vs. The Alternatives
 
