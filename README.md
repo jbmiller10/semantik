@@ -1,4 +1,4 @@
-**Note:** Semantik is currently in a **pre-release state**. While you are encouraged to use it and file issues and feature requests, please be aware that you will likely encounter rough-edges and bugs, and we do not yet recommend its usage in a production environment.
+**Dev Note:** Semantik is currently in a **pre-release state**. While you are encouraged to use it and file issues and feature requests, please be aware that you will likely encounter rough-edges and bugs, and we do not yet recommend its usage in a production environment.
 
 # Semantik 🚀 - Private, Powerful, and Controllable Document Search
 
