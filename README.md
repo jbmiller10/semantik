@@ -75,7 +75,7 @@ A powerful backend deserves a clean frontend.
 </ul>
 </details>
 
-## ⚡ Quick Start (5 minutes)
+## ⚡ Quick Start
 
 Soon
 
