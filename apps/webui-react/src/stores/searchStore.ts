@@ -21,7 +21,6 @@ export interface SearchParams {
   rerankModel?: string;
   rerankQuantization?: string;
   useReranker: boolean;
-  rerankTopK: number;
   hybridAlpha?: number;
   hybridMode?: 'rerank' | 'filter';
   keywordMode?: 'any' | 'all';
@@ -58,7 +57,6 @@ export const useSearchStore = create<SearchState>((set) => ({
     scoreThreshold: 0.0,
     searchType: 'vector',
     useReranker: false,
-    rerankTopK: 50,
     hybridMode: 'rerank',
     keywordMode: 'any',
   },

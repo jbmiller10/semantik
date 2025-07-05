@@ -110,7 +110,6 @@ function SearchInterface() {
         rerank_model: searchParams.rerankModel,
         rerank_quantization: searchParams.rerankQuantization,
         use_reranker: searchParams.useReranker,
-        rerank_top_k: searchParams.rerankTopK,
         hybrid_alpha: searchParams.hybridAlpha,
         hybrid_mode: searchParams.hybridMode,
         keyword_mode: searchParams.keywordMode,
@@ -371,29 +370,6 @@ function SearchInterface() {
                         </select>
                       </div>
                     </div>
-                    
-                    <div>
-                      <label className="block text-xs text-gray-700 mb-1">
-                        Candidates to rerank: {searchParams.rerankTopK}
-                      </label>
-                      <input
-                        type="range"
-                        min="20"
-                        max="100"
-                        step="10"
-                        value={searchParams.rerankTopK}
-                        onChange={(e) => updateSearchParams({ rerankTopK: parseInt(e.target.value) })}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                      />
-                      <div className="flex justify-between text-xs text-gray-500 mt-1">
-                        <span>20 (faster)</span>
-                        <span>100 (more accurate)</span>
-                      </div>
-                    </div>
-                    
-                    <p className="text-xs text-gray-500">
-                      The system will retrieve {searchParams.rerankTopK} candidates and rerank them to return the top {searchParams.topK} results.
-                    </p>
                   </div>
                 </div>
               )}
