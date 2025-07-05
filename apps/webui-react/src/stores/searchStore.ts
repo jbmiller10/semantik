@@ -19,6 +19,8 @@ export interface SearchParams {
   scoreThreshold: number;
   searchType: 'vector' | 'hybrid';
   rerankModel?: string;
+  rerankQuantization?: string;
+  useReranker: boolean;
   hybridAlpha?: number;
   hybridMode?: 'rerank' | 'filter';
   keywordMode?: 'any' | 'all';
@@ -30,12 +32,18 @@ interface SearchState {
   error: string | null;
   searchParams: SearchParams;
   collections: string[];
+  rerankingMetrics: {
+    rerankingUsed: boolean;
+    rerankerModel?: string;
+    rerankingTimeMs?: number;
+  } | null;
   setResults: (results: SearchResult[]) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   updateSearchParams: (params: Partial<SearchParams>) => void;
   setCollections: (collections: string[]) => void;
   clearResults: () => void;
+  setRerankingMetrics: (metrics: SearchState['rerankingMetrics']) => void;
 }
 
 export const useSearchStore = create<SearchState>((set) => ({
@@ -48,10 +56,12 @@ export const useSearchStore = create<SearchState>((set) => ({
     topK: 10,
     scoreThreshold: 0.0,
     searchType: 'vector',
+    useReranker: false,
     hybridMode: 'rerank',
     keywordMode: 'any',
   },
   collections: [],
+  rerankingMetrics: null,
   setResults: (results) => set({ results }),
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
@@ -60,5 +70,6 @@ export const useSearchStore = create<SearchState>((set) => ({
       searchParams: { ...state.searchParams, ...params },
     })),
   setCollections: (collections) => set({ collections }),
-  clearResults: () => set({ results: [], error: null }),
+  clearResults: () => set({ results: [], error: null, rerankingMetrics: null }),
+  setRerankingMetrics: (metrics) => set({ rerankingMetrics: metrics }),
 }));

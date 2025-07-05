@@ -58,11 +58,14 @@ Content-Type: application/json
   "model_name": "string",
   "quantization": "float32|float16|int8",
   "include_content": true,
-  "filters": {}
+  "filters": {},
+  "use_reranker": false,
+  "rerank_model": "string",
+  "rerank_quantization": "float32|float16|int8"
 }
 ```
 
-Performs vector similarity search.
+Performs vector similarity search with optional cross-encoder reranking.
 
 **Parameters:**
 - `query` (required): Search query text
@@ -72,7 +75,12 @@ Performs vector similarity search.
 - `model_name` (optional): Override default embedding model
 - `quantization` (optional): Override default quantization
 - `include_content` (optional): Include full text content in results
-- `metadata_filter` (optional): Filter results by metadata
+- `filters` (optional): Filter results by metadata
+- `use_reranker` (optional): Enable cross-encoder reranking for improved accuracy (default: false)
+- `rerank_model` (optional): Override default reranker model (auto-selected based on embedding model)
+- `rerank_quantization` (optional): Override reranker quantization (default: matches embedding quantization)
+
+**Note on Reranking:** When `use_reranker` is enabled, the system automatically retrieves more candidates (5x the requested `k` value, between 20-200) and uses a cross-encoder model to re-score them, returning only the top `k` results. This improves search accuracy at the cost of slightly increased latency.
 
 **Response:**
 ```json
@@ -91,9 +99,17 @@ Performs vector similarity search.
   "query": "original query",
   "k": 10,
   "search_time_ms": 45.2,
-  "embedding_time_ms": 12.3
+  "embedding_time_ms": 12.3,
+  "reranking_used": false,
+  "reranker_model": null,
+  "reranking_time_ms": null
 }
 ```
+
+**Response fields with reranking enabled:**
+- `reranking_used`: Whether reranking was applied
+- `reranker_model`: The model used for reranking (e.g., "Qwen/Qwen3-Reranker-0.6B")
+- `reranking_time_ms`: Time spent on reranking in milliseconds
 
 #### Batch Search
 ```http
@@ -394,12 +410,31 @@ Content-Type: application/json
 
 {
   "query": "search text",
-  "k": 10,
-  "job_id": "job_abc123"
+  "top_k": 10,
+  "collection": "job_abc123",
+  "search_type": "vector|hybrid",
+  "use_reranker": false,
+  "rerank_model": "string",
+  "rerank_quantization": "float32|float16|int8",
+  "hybrid_alpha": 0.7,
+  "hybrid_mode": "rerank|filter",
+  "keyword_mode": "any|all"
 }
 ```
 
-Search within a specific job's embeddings. This endpoint proxies to the Search API.
+Search within a specific collection. This endpoint proxies to the Search API.
+
+**Parameters:**
+- `query` (required): Search query text
+- `top_k` (optional): Number of results to return (default: 10)
+- `collection` (optional): Collection to search in (e.g., "job_123")
+- `search_type` (optional): "vector" or "hybrid" (default: "vector")
+- `use_reranker` (optional): Enable cross-encoder reranking (default: false)
+- `rerank_model` (optional): Override reranker model selection
+- `rerank_quantization` (optional): Override reranker quantization
+- `hybrid_alpha` (optional): Weight for hybrid search (0.0-1.0, default: 0.7)
+- `hybrid_mode` (optional): "rerank" or "filter" for hybrid search (default: "rerank")
+- `keyword_mode` (optional): "any" or "all" for keyword matching (default: "any")
 
 #### Hybrid Search (Web UI)
 ```http
@@ -566,12 +601,26 @@ All endpoints return standard HTTP status codes:
 - `401 Unauthorized` - Missing or invalid authentication
 - `404 Not Found` - Resource not found
 - `500 Internal Server Error` - Server error
+- `507 Insufficient Storage` - Insufficient GPU memory for operation
 
 Error response format:
 ```json
 {
   "detail": "Error message",
   "status_code": 400
+}
+```
+
+**Insufficient Memory Error (507):**
+When GPU memory is insufficient for reranking, the API returns:
+```json
+{
+  "detail": {
+    "error": "insufficient_memory",
+    "message": "Not enough GPU memory to load reranker model Qwen/Qwen3-Reranker-8B with quantization float16",
+    "suggestion": "Try using a smaller model (e.g., Qwen/Qwen3-Reranker-0.6B) or different quantization (e.g., int8)"
+  },
+  "status_code": 507
 }
 ```
 

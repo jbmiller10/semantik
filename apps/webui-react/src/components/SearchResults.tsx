@@ -3,7 +3,7 @@ import { useSearchStore } from '../stores/searchStore';
 import { useUIStore } from '../stores/uiStore';
 
 function SearchResults() {
-  const { results, loading, error } = useSearchStore();
+  const { results, loading, error, rerankingMetrics } = useSearchStore();
   const setShowDocumentViewer = useUIStore((state) => state.setShowDocumentViewer);
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
 
@@ -68,10 +68,29 @@ function SearchResults() {
   return (
     <div className="bg-white rounded-lg shadow-md">
       <div className="p-6 border-b border-gray-200">
-        <h3 className="text-lg font-semibold text-gray-900">Search Results</h3>
-        <p className="mt-1 text-sm text-gray-600">
-          Found {results.length} results in {Object.keys(groupedResults).length} documents
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Search Results</h3>
+            <p className="mt-1 text-sm text-gray-600">
+              Found {results.length} results in {Object.keys(groupedResults).length} documents
+            </p>
+          </div>
+          {rerankingMetrics?.rerankingUsed && (
+            <div className="text-right">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                <svg className="mr-1 h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Reranked
+              </span>
+              {rerankingMetrics.rerankingTimeMs && (
+                <p className="mt-1 text-xs text-gray-500">
+                  {rerankingMetrics.rerankingTimeMs.toFixed(0)}ms
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="divide-y divide-gray-200">

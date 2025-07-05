@@ -27,7 +27,9 @@ from packages.webui.embedding_service import EmbeddingService
 
 from .config import settings
 from .hybrid_search import HybridSearchEngine
+from .memory_utils import InsufficientMemoryError
 from .metrics import metrics_collector, registry, start_metrics_server
+from .qwen3_search_config import RERANK_CONFIG, RERANKING_INSTRUCTIONS, get_reranker_for_embedding_model
 from .search_utils import parse_search_results, search_qdrant
 
 # Configure logging
@@ -104,6 +106,9 @@ class SearchRequest(BaseModel):
     filters: dict | None = Field(None, description="Metadata filters for search")
     include_content: bool = Field(False, description="Include chunk content in results")
     collection: str | None = Field(None, description="Collection name (e.g., job_123)")
+    use_reranker: bool = Field(False, description="Enable cross-encoder reranking")
+    rerank_model: str | None = Field(None, description="Override reranker model")
+    rerank_quantization: str | None = Field(None, description="Override reranker quantization: float32, float16, int8")
 
 
 class BatchSearchRequest(BaseModel):
@@ -123,6 +128,9 @@ class SearchResponse(BaseModel):
     model_used: str | None = None
     embedding_time_ms: float | None = None
     search_time_ms: float | None = None
+    reranking_used: bool | None = None
+    reranker_model: str | None = None
+    reranking_time_ms: float | None = None
 
 
 class BatchSearchResponse(BaseModel):
@@ -432,12 +440,25 @@ async def search_post(request: SearchRequest = Body(...)):
         # Search in Qdrant
         search_start = time.time()
 
+        # Determine number of candidates to retrieve
+        # If reranking is enabled, retrieve more candidates based on multiplier
+        if request.use_reranker:
+            multiplier = RERANK_CONFIG.get("candidate_multiplier", 5)
+            min_candidates = RERANK_CONFIG.get("min_candidates", 20)
+            max_candidates = RERANK_CONFIG.get("max_candidates", 200)
+
+            # Calculate candidates: requested * multiplier, within bounds
+            search_k = max(min_candidates, min(request.k * multiplier, max_candidates))
+            logger.info(f"Reranking enabled: retrieving {search_k} candidates to rerank to top {request.k}")
+        else:
+            search_k = request.k
+
         # Handle filters if provided
         if request.filters:
             # Direct Qdrant search with filters
             search_request = {
                 "vector": query_vector,
-                "limit": request.k,
+                "limit": search_k,
                 "with_payload": True,
                 "with_vector": False,
                 "filter": request.filters,
@@ -449,13 +470,16 @@ async def search_post(request: SearchRequest = Body(...)):
         else:
             # Use shared utility for regular search
             qdrant_results = await search_qdrant(
-                settings.QDRANT_HOST, settings.QDRANT_PORT, collection_name, query_vector, request.k
+                settings.QDRANT_HOST, settings.QDRANT_PORT, collection_name, query_vector, search_k
             )
 
         search_time = (time.time() - search_start) * 1000
 
         # Parse results
         results = []
+        # We need to ensure we have content if reranking is enabled
+        should_include_content = request.include_content or request.use_reranker
+
         for point in qdrant_results:
             if isinstance(point, dict) and "payload" in point:
                 # Direct Qdrant response format
@@ -465,7 +489,7 @@ async def search_post(request: SearchRequest = Body(...)):
                     chunk_id=payload.get("chunk_id", ""),
                     score=point["score"],
                     doc_id=payload.get("doc_id"),
-                    content=payload.get("content") if request.include_content else None,
+                    content=payload.get("content") if should_include_content else None,
                     metadata=payload.get("metadata"),
                 )
             else:
@@ -477,14 +501,129 @@ async def search_post(request: SearchRequest = Body(...)):
                         chunk_id=r["chunk_id"],
                         score=r["score"],
                         doc_id=r.get("doc_id"),
+                        content=r.get("content") if should_include_content else None,
                         metadata=r.get("metadata"),
                     )
                     results.append(result)
                 break
             results.append(result)
 
+        # Apply reranking if enabled
+        reranking_time_ms = None
+        reranker_model_used = None
+
+        if request.use_reranker and len(results) > 0:
+            rerank_start = time.time()
+
+            try:
+                # Determine reranker model
+                if request.rerank_model:
+                    reranker_model = request.rerank_model
+                else:
+                    # Auto-select reranker based on embedding model
+                    reranker_model = get_reranker_for_embedding_model(model_name)
+
+                # Extract documents for reranking
+                documents = []
+                # If we don't have content, we need to fetch it from Qdrant
+                if not all(r.content for r in results):
+                    logger.info("Fetching content for reranking from Qdrant")
+                    # Get all chunk IDs that need content
+                    chunk_ids_to_fetch = [r.chunk_id for r in results if not r.content]
+
+                    if chunk_ids_to_fetch:
+                        # Fetch content for missing chunks by searching with chunk_id filter
+                        try:
+                            # Use scroll to fetch points by chunk_id in payload
+                            fetch_request = {
+                                "filter": {"must": [{"key": "chunk_id", "match": {"any": chunk_ids_to_fetch}}]},
+                                "with_payload": True,
+                                "with_vector": False,
+                                "limit": len(chunk_ids_to_fetch),
+                            }
+                            response = await qdrant_client.post(
+                                f"/collections/{collection_name}/points/scroll", json=fetch_request
+                            )
+                            response.raise_for_status()
+                            fetched_points = response.json()["result"]["points"]
+
+                            # Create a map of chunk_id to content
+                            content_map = {}
+                            for point in fetched_points:
+                                if "payload" in point and "chunk_id" in point["payload"]:
+                                    content_map[point["payload"]["chunk_id"]] = point["payload"].get("content", "")
+
+                            # Update results with fetched content
+                            for r in results:
+                                if not r.content and r.chunk_id in content_map:
+                                    r.content = content_map[r.chunk_id]
+                        except Exception as e:
+                            logger.error(f"Failed to fetch content for reranking: {e}")
+
+                # Now build documents list
+                for r in results:
+                    if r.content:
+                        documents.append(r.content)
+                    else:
+                        # Fallback if content still not available
+                        logger.warning(f"No content available for chunk {r.chunk_id}, using fallback")
+                        documents.append(f"Document from {r.path} (chunk {r.chunk_id})")
+
+                # Get reranking instruction based on search type
+                instruction = RERANKING_INSTRUCTIONS.get(request.search_type, RERANKING_INSTRUCTIONS["general"])
+
+                # Determine reranker quantization
+                reranker_quantization = request.rerank_quantization or quantization
+
+                # Perform reranking
+                logger.info(f"Reranking {len(documents)} documents with {reranker_model}/{reranker_quantization}")
+                reranked_indices = await model_manager.rerank_async(
+                    query=request.query,
+                    documents=documents,
+                    top_k=request.k,
+                    model_name=reranker_model,
+                    quantization=reranker_quantization,
+                    instruction=instruction,
+                )
+
+                # Reorder results based on reranking
+                reranked_results = []
+                for idx, score in reranked_indices:
+                    result = results[idx]
+                    # Update score with reranking score
+                    result.score = score
+                    reranked_results.append(result)
+
+                results = reranked_results
+                reranker_model_used = f"{reranker_model}/{reranker_quantization}"
+
+            except InsufficientMemoryError as e:
+                # Don't silently fall back - inform the user
+                logger.error(f"Insufficient memory for reranking: {e}")
+                raise HTTPException(
+                    status_code=507,  # Insufficient Storage
+                    detail={
+                        "error": "insufficient_memory",
+                        "message": str(e),
+                        "suggestion": "Try using a smaller model or different quantization (float16/int8)",
+                    },
+                )
+            except Exception as e:
+                logger.error(f"Reranking failed: {e}, falling back to vector search results")
+                # Keep original results if reranking fails
+                results = results[: request.k]
+
+            reranking_time_ms = (time.time() - rerank_start) * 1000
+        else:
+            # No reranking, just limit to requested k
+            results = results[: request.k]
+
         total_time = (time.time() - start_time) * 1000
-        logger.info(f"Search completed in {total_time:.2f}ms (embed: {embed_time:.2f}ms, search: {search_time:.2f}ms)")
+        log_msg = f"Search completed in {total_time:.2f}ms (embed: {embed_time:.2f}ms, search: {search_time:.2f}ms"
+        if reranking_time_ms:
+            log_msg += f", rerank: {reranking_time_ms:.2f}ms"
+        log_msg += ")"
+        logger.info(log_msg)
 
         # Record search latency
         search_latency.labels(endpoint="/search", search_type=request.search_type).observe(time.time() - start_time)
@@ -500,6 +639,9 @@ async def search_post(request: SearchRequest = Body(...)):
             model_used=f"{model_name}/{quantization}" if not settings.USE_MOCK_EMBEDDINGS else "mock",
             embedding_time_ms=embed_time,
             search_time_ms=search_time,
+            reranking_used=request.use_reranker,
+            reranker_model=reranker_model_used,
+            reranking_time_ms=reranking_time_ms,
         )
 
     except httpx.HTTPStatusError as e:
@@ -863,6 +1005,46 @@ async def load_model(
     except Exception as e:
         logger.error(f"Model load error: {e}")
         raise HTTPException(status_code=500, detail=f"Model load failed: {str(e)}")
+
+
+@app.get("/models/suggest")
+async def suggest_models():
+    """
+    Suggest optimal model configuration based on available GPU memory
+    """
+    from .memory_utils import get_gpu_memory_info, suggest_model_configuration
+
+    free_mb, total_mb = get_gpu_memory_info()
+
+    if total_mb == 0:
+        return {
+            "gpu_available": False,
+            "message": "No GPU detected. CPU mode will be used.",
+            "suggestion": {
+                "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+                "embedding_quantization": "float32",
+                "reranker_model": None,
+                "reranker_quantization": None,
+                "notes": ["CPU mode - using lightweight models"],
+            },
+        }
+
+    suggestions = suggest_model_configuration(free_mb)
+
+    return {
+        "gpu_available": True,
+        "gpu_memory": {
+            "free_mb": free_mb,
+            "total_mb": total_mb,
+            "used_mb": total_mb - free_mb,
+            "usage_percent": round((total_mb - free_mb) / total_mb * 100, 1),
+        },
+        "suggestion": suggestions,
+        "current_models": {
+            "embedding": model_manager.current_model_key if model_manager else None,
+            "reranker": model_manager.current_reranker_key if model_manager else None,
+        },
+    }
 
 
 @app.get("/embedding/info")
