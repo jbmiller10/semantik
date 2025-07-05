@@ -124,14 +124,14 @@ This document tracks the implementation progress of cross-encoder reranking feat
 ### Phase 4: Testing & Documentation
 
 #### Task 4.1: Unit Tests
-- [ ] Test reranker module
-- [ ] Test model manager extensions
-- [ ] Test search API changes
-- [ ] Test error scenarios
+- [x] Test reranker module
+- [x] Test model manager extensions
+- [x] Test search API changes
+- [x] Test error scenarios
 
-**Status**: Not started  
+**Status**: ✅ COMPLETE  
 **Blockers**: None  
-**Notes**: 
+**Notes**: Comprehensive unit tests implemented with 96% coverage for reranker.py
 
 #### Task 4.2: Integration Tests
 - [ ] End-to-end search with reranking
@@ -172,7 +172,7 @@ This document tracks the implementation progress of cross-encoder reranking feat
 10. ✅ Update SearchResults to show reranking metrics
 
 ### Low Priority
-11. ⬜ Create unit tests for reranking functionality
+11. ✅ Create unit tests for reranking functionality
 12. ⬜ Run integration tests and update dev log with results
 13. ⬜ Add memory pressure detection and OOM handling
 14. ⬜ Optimize content fetching with concurrent requests
@@ -983,6 +983,132 @@ reranking:
 3. **Documentation**: Update API docs with new endpoints
 4. **Performance**: Consider implementing Option 3 (automatic model unloading) as enhancement
 5. **UI Enhancement**: Consider simplifying to single "Number of Results" field with multiplier
+
+---
+
+## Unit Testing Implementation - 2025-07-05
+
+### Overview
+Implemented comprehensive unit tests for the CrossEncoderReranker module following the test plan in RERANKER_UNIT_TEST_PLAN.md.
+
+### Test Coverage Achieved
+**Overall Coverage**: 96% for reranker.py (138 statements, 5 missed)
+
+**Missing Lines**:
+- Line 95: `torch_dtype = torch.bfloat16` (only tested float16 and int8)
+- Line 110: Flash attention log message (import detection)
+- Line 245: Error case when yes/no tokens encode to multiple tokens
+- Lines 329-330: Parameter size calculation for int8 quantization
+
+### Test Categories Implemented
+
+1. **Initialization Tests** (3 tests) ✅
+   - Default initialization
+   - Custom initialization with all parameters
+   - CUDA fallback to CPU when unavailable
+
+2. **Model Loading/Unloading Tests** (6 tests) ✅
+   - Successful model loading
+   - Loading with int8 quantization
+   - Model unloading and cleanup
+   - Thread-safe loading (prevents double-loading)
+   - Already loaded check
+   - Error handling during loading
+
+3. **Input Formatting Tests** (3 tests) ✅
+   - Default instruction formatting
+   - Custom instruction formatting
+   - Empty value handling
+
+4. **Relevance Scoring Tests** (6 tests) ✅
+   - Basic score computation
+   - Empty query validation
+   - Empty document handling
+   - No documents edge case
+   - Batch processing verification
+   - Model not loaded error
+
+5. **Reranking Tests** (5 tests) ✅
+   - Basic reranking functionality
+   - Top-k larger than document count
+   - Empty document list
+   - Score return option
+   - Single document edge case
+
+6. **Edge Cases and Error Handling** (4 tests) ✅
+   - Very long document truncation
+   - Unicode/multilingual content
+   - Concurrent reranking thread safety
+   - Special token encoding fallback
+
+7. **Performance and Resource Tests** (6 tests) ✅
+   - Batch size configuration for different models
+   - Model info retrieval
+   - Model info when unloaded
+   - GPU memory cleanup on unload
+   - No cleanup on CPU
+   - Model size extraction from name
+
+8. **Test Utilities** (2 tests) ✅
+   - Result validation helper
+   - Mock tokenizer encoder helper
+
+### Key Testing Challenges and Solutions
+
+1. **Tensor Operation Mocking**
+   - Challenge: Complex tensor operations with slicing and indexing
+   - Solution: Mocked at the torch.stack and torch.nn.functional.softmax level
+   - Used proper tensor objects where needed for shape operations
+
+2. **Batch Processing Verification**
+   - Challenge: Verifying batching behavior without running full computation
+   - Solution: Tracked model and tokenizer calls, verified batch sizes
+   - Simplified test to focus on call counts rather than tensor manipulation
+
+3. **Thread Safety Testing**
+   - Challenge: Testing concurrent access patterns
+   - Solution: Used threading.Thread with shared reranker instance
+   - Verified locks prevent double-loading and race conditions
+
+4. **Mock Complexity**
+   - Challenge: Transformers library has deep call chains
+   - Solution: Mocked at the AutoModelForCausalLM and AutoTokenizer level
+   - Created reusable fixtures for consistent mocking
+
+### Test Execution
+```bash
+# Run all reranker tests
+poetry run pytest tests/test_reranker.py -v
+
+# Run with coverage
+poetry run pytest tests/test_reranker.py --cov=packages.vecpipe.reranker --cov-report=term-missing
+
+# Results: 35 tests passed in ~9 seconds
+```
+
+### Integration with CI/CD
+Ready for GitHub Actions integration with:
+```yaml
+- name: Run reranker unit tests
+  env:
+    USE_MOCK_EMBEDDINGS: "true"
+    PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:512"
+  run: |
+    pytest tests/test_reranker.py -v --cov=packages.vecpipe.reranker
+```
+
+### Key Achievements
+1. **High Coverage**: 96% line coverage demonstrates thorough testing
+2. **All Edge Cases**: Covered empty inputs, Unicode, threading, errors
+3. **Performance Tests**: Verified batch sizing and memory management
+4. **Clean Mocking**: Avoided complex tensor operation mocking where possible
+5. **Fast Execution**: All tests run in under 10 seconds
+
+### Future Improvements
+1. Add tests for bfloat16 quantization path
+2. Add integration tests with real models (marked as slow)
+3. Add performance benchmarking tests
+4. Test flash attention when available
 
 ---
 
