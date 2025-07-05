@@ -81,7 +81,7 @@ All you need is Docker and Docker Compose.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/semantik.git
+git clone https://github.com/jbmiller10/semantik.git
 cd semantik
 
 # 2. Create a directory for your documents on your host machine
