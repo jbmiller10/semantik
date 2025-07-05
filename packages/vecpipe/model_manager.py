@@ -7,9 +7,11 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
-from typing import Any
+from typing import Any, List, Optional, Tuple
 
 from packages.webui.embedding_service import EmbeddingService
+
+from .reranker import CrossEncoderReranker
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +27,17 @@ class ModelManager:
             unload_after_seconds: Unload model after this many seconds of inactivity
         """
         self.embedding_service: EmbeddingService | None = None
+        self.reranker: CrossEncoderReranker | None = None
         self.executor: ThreadPoolExecutor | None = None
         self.unload_after_seconds = unload_after_seconds
         self.last_used = 0
+        self.last_reranker_used = 0
         self.current_model_key: str | None = None
+        self.current_reranker_key: str | None = None
         self.lock = Lock()
+        self.reranker_lock = Lock()
         self.unload_task: asyncio.Task | None = None
+        self.reranker_unload_task: asyncio.Task | None = None
         self.is_mock_mode = False
 
     def _get_model_key(self, model_name: str, quantization: str) -> str:
@@ -116,7 +123,7 @@ class ModelManager:
 
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
-                except:
+                except ImportError:
                     pass
 
     async def generate_embedding_async(
@@ -166,21 +173,144 @@ class ModelManager:
 
         return embedding
 
+    def ensure_reranker_loaded(self, model_name: str, quantization: str) -> bool:
+        """
+        Ensure the specified reranker model is loaded
+
+        Returns:
+            True if reranker is loaded successfully, False otherwise
+        """
+        if self.is_mock_mode:
+            return True
+
+        reranker_key = self._get_model_key(model_name, quantization)
+
+        # Check if correct reranker is already loaded
+        if self.current_reranker_key == reranker_key and self.reranker is not None:
+            self.last_reranker_used = time.time()
+            return True
+
+        # Need to load the reranker
+        logger.info(f"Loading reranker: {model_name} with {quantization}")
+        with self.reranker_lock:
+            # Unload current reranker if different
+            if self.reranker is not None:
+                self.reranker.unload_model()
+
+            # Create and load new reranker
+            self.reranker = CrossEncoderReranker(model_name=model_name, quantization=quantization)
+
+            try:
+                self.reranker.load_model()
+                self.current_reranker_key = reranker_key
+                self.last_reranker_used = time.time()
+                return True
+            except Exception as e:
+                logger.error(f"Failed to load reranker: {e}")
+                self.reranker = None
+                self.current_reranker_key = None
+                return False
+
+    async def _schedule_reranker_unload(self):
+        """Schedule reranker unloading after inactivity"""
+        if self.reranker_unload_task:
+            self.reranker_unload_task.cancel()
+
+        async def unload_after_delay():
+            await asyncio.sleep(self.unload_after_seconds)
+            with self.reranker_lock:
+                if time.time() - self.last_reranker_used >= self.unload_after_seconds:
+                    logger.info(f"Unloading reranker after {self.unload_after_seconds}s of inactivity")
+                    self.unload_reranker()
+
+        self.reranker_unload_task = asyncio.create_task(unload_after_delay())
+
+    def unload_reranker(self):
+        """Unload the current reranker to free memory"""
+        with self.reranker_lock:
+            if self.reranker is not None:
+                logger.info("Unloading current reranker")
+                self.reranker.unload_model()
+                self.reranker = None
+                self.current_reranker_key = None
+
+    async def rerank_async(
+        self,
+        query: str,
+        documents: List[str],
+        top_k: int,
+        model_name: str,
+        quantization: str,
+        instruction: Optional[str] = None,
+    ) -> List[Tuple[int, float]]:
+        """
+        Perform async reranking with lazy model loading
+
+        Args:
+            query: Search query
+            documents: List of documents to rerank
+            top_k: Number of top documents to return
+            model_name: Reranker model to use
+            quantization: Quantization type
+            instruction: Optional instruction for reranking
+
+        Returns:
+            List of (index, score) tuples sorted by relevance
+        """
+        # Ensure reranker is loaded
+        if not self.ensure_reranker_loaded(model_name, quantization):
+            raise RuntimeError(f"Failed to load reranker {model_name}")
+
+        # Schedule unloading
+        await self._schedule_reranker_unload()
+
+        # Perform reranking
+        if self.is_mock_mode:
+            # Mock reranking - just return indices with fake scores
+            import random
+
+            scores = [(i, random.random()) for i in range(len(documents))]
+            scores.sort(key=lambda x: x[1], reverse=True)
+            return scores[:top_k]
+
+        # Use real reranker
+        loop = asyncio.get_event_loop()
+        results = await loop.run_in_executor(
+            self.executor, self.reranker.rerank, query, documents, top_k, instruction, True  # return_scores
+        )
+
+        return results
+
     def get_status(self) -> dict[str, Any]:
         """Get current status of the model manager"""
-        return {
-            "model_loaded": self.current_model_key is not None,
-            "current_model": self.current_model_key,
-            "last_used": self.last_used,
-            "seconds_since_last_use": int(time.time() - self.last_used) if self.last_used > 0 else None,
+        status = {
+            "embedding_model_loaded": self.current_model_key is not None,
+            "current_embedding_model": self.current_model_key,
+            "embedding_last_used": self.last_used,
+            "embedding_seconds_since_last_use": int(time.time() - self.last_used) if self.last_used > 0 else None,
+            "reranker_loaded": self.current_reranker_key is not None,
+            "current_reranker": self.current_reranker_key,
+            "reranker_last_used": self.last_reranker_used,
+            "reranker_seconds_since_last_use": (
+                int(time.time() - self.last_reranker_used) if self.last_reranker_used > 0 else None
+            ),
             "unload_after_seconds": self.unload_after_seconds,
             "is_mock_mode": self.is_mock_mode,
         }
+
+        # Add reranker info if loaded
+        if self.reranker is not None:
+            status["reranker_info"] = self.reranker.get_model_info()
+
+        return status
 
     def shutdown(self):
         """Shutdown the model manager"""
         if self.unload_task:
             self.unload_task.cancel()
+        if self.reranker_unload_task:
+            self.reranker_unload_task.cancel()
         self.unload_model()
+        self.unload_reranker()
         if self.executor:
             self.executor.shutdown(wait=True)
