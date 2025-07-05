@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.pyc
+
+# Log files
+*.log
+logs/
 # Distribution / packaging
 .Python
 build/
