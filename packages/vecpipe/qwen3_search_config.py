@@ -78,13 +78,47 @@ SEARCH_OPTIMIZATIONS = {
     "adaptive_batch_sizing": True,  # Adjust batch size based on GPU memory
 }
 
+# Qwen3 Reranker model mapping - matches embedding models with their reranker counterparts
+QWEN3_RERANKER_MAPPING = {
+    "Qwen/Qwen3-Embedding-0.6B": "Qwen/Qwen3-Reranker-0.6B",
+    "Qwen/Qwen3-Embedding-4B": "Qwen/Qwen3-Reranker-4B",
+    "Qwen/Qwen3-Embedding-8B": "Qwen/Qwen3-Reranker-8B",
+}
+
 # Reranking configurations
 RERANK_CONFIG = {
     "enabled": True,
-    "top_k_candidates": 50,  # Retrieve more candidates
+    "top_k_candidates": 50,  # Retrieve more candidates for reranking
     "final_k": 10,  # Return top-k after reranking
-    "cross_encoder_model": "BAAI/bge-reranker-v2-m3",
+    "default_model": "Qwen/Qwen3-Reranker-0.6B",  # Default reranker model
     "use_hybrid_scoring": True,  # Combine vector similarity with reranking scores
+    "hybrid_weight": 0.3,  # Weight for original vector score (0.3 vector + 0.7 rerank)
+    "batch_sizes": {
+        "Qwen/Qwen3-Reranker-0.6B": {
+            "float32": 64,
+            "float16": 128,
+            "int8": 256,
+        },
+        "Qwen/Qwen3-Reranker-4B": {
+            "float32": 16,
+            "float16": 32,
+            "int8": 64,
+        },
+        "Qwen/Qwen3-Reranker-8B": {
+            "float32": 8,
+            "float16": 16,
+            "int8": 32,
+        },
+    },
+}
+
+# Reranking instructions for different domains
+RERANKING_INSTRUCTIONS = {
+    "general": "Given the query and document, determine if the document is relevant to the query.",
+    "technical": "Assess if this technical document provides useful information for the technical query.",
+    "code": "Determine if this code snippet is relevant to the programming query.",
+    "qa": "Check if this document contains information that answers the question.",
+    "semantic": "Evaluate the semantic relevance between the query and document.",
 }
 
 # Performance monitoring
@@ -122,6 +156,32 @@ def get_optimal_config(use_case: str = "balanced", gpu_memory_gb: int = 16):
     )
 
     return base_config
+
+
+def get_reranker_for_embedding_model(embedding_model: str) -> str:
+    """
+    Get the appropriate reranker model for a given embedding model
+
+    Args:
+        embedding_model: Name of the embedding model
+
+    Returns:
+        Name of the corresponding reranker model
+    """
+    # Direct mapping if available
+    if embedding_model in QWEN3_RERANKER_MAPPING:
+        return QWEN3_RERANKER_MAPPING[embedding_model]
+
+    # Try to match by size
+    if "0.6B" in embedding_model:
+        return "Qwen/Qwen3-Reranker-0.6B"
+    elif "4B" in embedding_model:
+        return "Qwen/Qwen3-Reranker-4B"
+    elif "8B" in embedding_model:
+        return "Qwen/Qwen3-Reranker-8B"
+
+    # Default to smallest model
+    return RERANK_CONFIG["default_model"]
 
 
 # Example usage configurations

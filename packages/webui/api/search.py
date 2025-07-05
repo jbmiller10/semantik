@@ -27,8 +27,11 @@ class SearchRequest(BaseModel):
     top_k: int = Field(default=10, ge=1, le=100, alias="k")  # Frontend sends top_k
     score_threshold: float = 0.0
     search_type: str = Field(default="vector", pattern="^(vector|hybrid)$")
-    # Hybrid search specific parameters
+    # Reranking parameters
+    use_reranker: bool = Field(default=False, description="Enable cross-encoder reranking")
     rerank_model: str | None = None
+    rerank_top_k: int = Field(default=50, ge=10, le=200, description="Number of candidates to retrieve for reranking")
+    # Hybrid search specific parameters
     hybrid_alpha: float = Field(default=0.7, ge=0.0, le=1.0)
     hybrid_mode: str = Field(default="rerank", pattern="^(rerank|filter)$")
     keyword_mode: str = Field(default="any", pattern="^(any|all)$")
@@ -192,6 +195,13 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
                 "include_content": True,
             }
 
+            # Add reranking parameters
+            if request.use_reranker:
+                search_params["use_reranker"] = request.use_reranker
+                search_params["rerank_top_k"] = request.rerank_top_k
+                if request.rerank_model:
+                    search_params["rerank_model"] = request.rerank_model
+
             # Add optional parameters
             if model_name:
                 search_params["model_name"] = model_name
@@ -268,13 +278,22 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
                 }
                 transformed_results.append(transformed_result)
 
-            return {
+            # Build response with reranking metrics if available
+            response_data = {
                 "query": api_response["query"],
                 "results": transformed_results,
                 "collection": collection_name,
                 "num_results": len(transformed_results),
                 "search_type": request.search_type,
             }
+
+            # Include reranking metrics if present
+            if api_response.get("reranking_used"):
+                response_data["reranking_used"] = api_response["reranking_used"]
+                response_data["reranker_model"] = api_response.get("reranker_model")
+                response_data["reranking_time_ms"] = api_response.get("reranking_time_ms")
+
+            return response_data
 
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
