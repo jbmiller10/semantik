@@ -88,8 +88,9 @@ QWEN3_RERANKER_MAPPING = {
 # Reranking configurations
 RERANK_CONFIG = {
     "enabled": True,
-    "top_k_candidates": 50,  # Retrieve more candidates for reranking
-    "final_k": 10,  # Return top-k after reranking
+    "candidate_multiplier": 5,  # Retrieve N * multiplier candidates for reranking
+    "min_candidates": 20,  # Minimum candidates to retrieve (even for small k)
+    "max_candidates": 200,  # Maximum candidates to retrieve (cap for large k)
     "default_model": "Qwen/Qwen3-Reranker-0.6B",  # Default reranker model
     "use_hybrid_scoring": True,  # Combine vector similarity with reranking scores
     "hybrid_weight": 0.3,  # Weight for original vector score (0.3 vector + 0.7 rerank)

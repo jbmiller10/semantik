@@ -664,6 +664,50 @@ Conducted thorough review of all implementation phases against the original plan
 
 ---
 
+## UI Simplification Update
+
+### 2025-07-05: Unified Result Count Control
+**Change**: Removed separate "Candidates to rerank" slider from UI  
+**Rationale**: Simplified UX - users only need to specify desired results, not implementation details
+
+**Implementation Details**:
+1. **Backend Configuration**: Added `RERANK_CONFIG` with configurable multiplier
+   ```python
+   RERANK_CONFIG = {
+       "candidate_multiplier": 5,  # Retrieve N * multiplier candidates
+       "min_candidates": 20,       # Minimum candidates to retrieve
+       "max_candidates": 200,      # Maximum candidates to retrieve
+   }
+   ```
+
+2. **Automatic Calculation**: System now automatically determines candidates
+   - Formula: `candidates = max(min_candidates, min(k * multiplier, max_candidates))`
+   - Example: For k=10, retrieves 50 candidates (10 * 5)
+   - Example: For k=5, retrieves 20 candidates (minimum threshold)
+   - Example: For k=50, retrieves 200 candidates (capped at maximum)
+
+3. **Future Flexibility**: Multiplier can be tuned via:
+   - Direct config file edits
+   - Environment variables (future enhancement)
+   - Admin UI settings (future enhancement)
+
+4. **Files Updated**:
+   - ✅ `qwen3_search_config.py`: Added RERANK_CONFIG with multiplier settings
+   - ✅ `search_api.py`: Removed rerank_top_k parameter, added automatic calculation
+   - ✅ `SearchInterface.tsx`: Removed candidates slider UI
+   - ✅ `searchStore.ts`: Removed rerankTopK from state
+   - ✅ `api.ts`: Removed rerank_top_k from API calls
+   - ✅ `webui/api/search.py`: Removed rerank_top_k from proxy
+   - ✅ `API_REFERENCE.md`: Updated documentation
+
+**Impact**: 
+- Cleaner, more intuitive UI
+- Reduced cognitive load for users
+- Maintains flexibility for future optimization
+- Backward compatible (old API calls still work)
+
+---
+
 ## Issues & Resolutions
 
 ### Issue #1: [Placeholder]
@@ -684,7 +728,6 @@ response = await client.post("/search", json={
     "collection": "job_25c48f60-d6c6-43d3-a871-b2943347305a",
     "k": 10,
     "use_reranker": True,
-    "rerank_top_k": 50,  # Retrieve 50 candidates
     "rerank_model": "Qwen/Qwen3-Reranker-0.6B"  # Optional, auto-selected if not specified
 })
 
@@ -696,6 +739,8 @@ response = await client.post("/search", json={
     "reranking_time_ms": 1234.56
 }
 ```
+
+**Note**: The system automatically retrieves 50 candidates (10 * 5) for reranking when k=10.
 
 ### Example: Frontend Usage
 ```typescript
