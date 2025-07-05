@@ -19,7 +19,6 @@ class TestRerankingE2E:
         # The frontend correctly sends:
         # - use_reranker: boolean
         # - rerank_model: string | undefined
-        # - rerank_top_k: number
         assert True, "Frontend implementation verified by code inspection"
 
     def test_api_service_forwards_params(self):
@@ -28,7 +27,6 @@ class TestRerankingE2E:
         # The API service correctly includes:
         # - rerank_model?: string
         # - use_reranker?: boolean
-        # - rerank_top_k?: number
         assert True, "API service implementation verified by code inspection"
 
     @pytest.mark.asyncio
@@ -43,7 +41,6 @@ class TestRerankingE2E:
             top_k=10,
             use_reranker=True,
             rerank_model="cross-encoder/ms-marco-MiniLM-L-12-v2",
-            rerank_top_k=50,
             search_type="vector",
             score_threshold=0.0,
         )
@@ -51,7 +48,6 @@ class TestRerankingE2E:
         # Verify the request model includes all fields
         assert request.use_reranker == True
         assert request.rerank_model == "cross-encoder/ms-marco-MiniLM-L-12-v2"
-        assert request.rerank_top_k == 50
 
         # Verify webui forwards these params (lines 199-204 in search.py)
         search_params = {
@@ -64,12 +60,10 @@ class TestRerankingE2E:
 
         if request.use_reranker:
             search_params["use_reranker"] = request.use_reranker
-            search_params["rerank_top_k"] = request.rerank_top_k
             if request.rerank_model:
                 search_params["rerank_model"] = request.rerank_model
 
         assert "use_reranker" in search_params
-        assert "rerank_top_k" in search_params
         assert "rerank_model" in search_params
 
     @pytest.mark.asyncio
@@ -84,14 +78,12 @@ class TestRerankingE2E:
             search_type="semantic",
             use_reranker=True,
             rerank_model="cross-encoder/ms-marco-MiniLM-L-12-v2",
-            rerank_top_k=20,
             include_content=True,
         )
 
         # Verify request fields
         assert request.use_reranker == True
         assert request.rerank_model == "cross-encoder/ms-marco-MiniLM-L-12-v2"
-        assert request.rerank_top_k == 20
 
         # Mock response with reranking metrics
         mock_response = SearchResponse(
@@ -146,7 +138,7 @@ class TestRerankingE2E:
         assert all(flow_verified.values()), "Complete reranking flow is properly implemented"
 
         print("\n✅ Reranking Integration Flow Verified:")
-        print("1. Frontend → WebUI: Sends use_reranker, rerank_model, rerank_top_k")
+        print("1. Frontend → WebUI: Sends use_reranker, rerank_model")
         print("2. WebUI → VecPipe: Forwards all reranking parameters")
         print("3. VecPipe: Processes reranking when enabled")
         print("4. VecPipe → WebUI: Returns reranking_used, reranker_model, reranking_time_ms")
