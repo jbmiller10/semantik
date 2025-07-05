@@ -106,16 +106,21 @@ The recommended deployment method is using `docker-compose`. See the [Quick Star
 | **Built-in Reranking & Hybrid Search** | ✅ | Plugin | ❌ | ❌ |
 | **Truly Open Source (AGPL)** | ✅ | ❌ | ❌ | ✅ |
 
-## 🤝 Contributing
-
-We love contributions! Whether you're a developer, a designer, or just have a great idea, we want to hear from you. Check out our [Contributing Guide](CONTRIBUTING.md) to get started.
-
 ## 📄 License
 
 Semantik is licensed under the [GNU Affero General Public License v3.0](LICENSE). The core of this license is that if you use this code (or a modified version of it) to provide a service over a network, you must also make the source code available. This ensures that the project and its derivatives will always remain open source.
 
 ---
 
+## **Roadmap**
+<ul>
+<li><b>Multimodality & support for additional file formats:</b> index images, code, and more </li>
+<li><b>Integrated OCR:</b> Seamlessly extract and index text from pdfs or images. </li>
+<li><b>Support for additional models:</b>Use any SentenceTransformers compatible model</li>
+<li><b>Integrated Model Context Protocol Server</b>: Seamlessly bring the knowledge of your corpus to the LLM of your choice.</li>
+<li><b>Contextually aware document chunking:</b></li>
+<ul>
+  
 <p align="center">
   ⭐ If you find Semantik useful, please consider starring the repository! ⭐
 </p>
