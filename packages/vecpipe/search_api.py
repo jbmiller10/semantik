@@ -107,6 +107,7 @@ class SearchRequest(BaseModel):
     collection: str | None = Field(None, description="Collection name (e.g., job_123)")
     use_reranker: bool = Field(False, description="Enable cross-encoder reranking")
     rerank_model: str | None = Field(None, description="Override reranker model")
+    rerank_quantization: str | None = Field(None, description="Override reranker quantization: float32, float16, int8")
     rerank_top_k: int = Field(50, ge=10, le=200, description="Number of candidates to retrieve for reranking")
 
 
@@ -563,14 +564,17 @@ async def search_post(request: SearchRequest = Body(...)):
                 # Get reranking instruction based on search type
                 instruction = RERANKING_INSTRUCTIONS.get(request.search_type, RERANKING_INSTRUCTIONS["general"])
 
+                # Determine reranker quantization
+                reranker_quantization = request.rerank_quantization or quantization
+
                 # Perform reranking
-                logger.info(f"Reranking {len(documents)} documents with {reranker_model}")
+                logger.info(f"Reranking {len(documents)} documents with {reranker_model}/{reranker_quantization}")
                 reranked_indices = await model_manager.rerank_async(
                     query=request.query,
                     documents=documents,
                     top_k=request.k,
                     model_name=reranker_model,
-                    quantization=quantization,
+                    quantization=reranker_quantization,
                     instruction=instruction,
                 )
 
@@ -583,7 +587,7 @@ async def search_post(request: SearchRequest = Body(...)):
                     reranked_results.append(result)
 
                 results = reranked_results
-                reranker_model_used = f"{reranker_model}/{quantization}"
+                reranker_model_used = f"{reranker_model}/{reranker_quantization}"
 
             except InsufficientMemoryError as e:
                 # Don't silently fall back - inform the user

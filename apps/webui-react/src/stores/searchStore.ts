@@ -19,6 +19,7 @@ export interface SearchParams {
   scoreThreshold: number;
   searchType: 'vector' | 'hybrid';
   rerankModel?: string;
+  rerankQuantization?: string;
   useReranker: boolean;
   rerankTopK: number;
   hybridAlpha?: number;
