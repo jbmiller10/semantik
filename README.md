@@ -17,8 +17,6 @@ While we will do our best to avoid any breaking changes, we do not gurantee back
 
 No cloud APIs, no subscriptions, no vendor lock-in. Just powerful, open-source search you control completely.
 
-![Semantik Dashboard](docs/images/semantik-dashboard.png)
-
 ## Why Semantik? Find Your Files Without Sacrificing Privacy.
 
 Commercial search solutions are powerful, but they require you to upload your sensitive data to their servers. Open-source libraries are private, but they require you to build an entire application from scratch.
