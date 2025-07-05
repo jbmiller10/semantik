@@ -20,6 +20,7 @@ function SearchInterface() {
     setError,
     setCollections,
     collections,
+    setRerankingMetrics,
   } = useSearchStore();
   const addToast = useUIStore((state) => state.addToast);
 
@@ -107,15 +108,45 @@ function SearchInterface() {
         score_threshold: searchParams.scoreThreshold,
         search_type: searchParams.searchType,
         rerank_model: searchParams.rerankModel,
+        rerank_quantization: searchParams.rerankQuantization,
+        use_reranker: searchParams.useReranker,
         hybrid_alpha: searchParams.hybridAlpha,
         hybrid_mode: searchParams.hybridMode,
         keyword_mode: searchParams.keywordMode,
       });
 
       setResults(response.data.results);
+      
+      // Store reranking metrics if present
+      if (response.data.reranking_used !== undefined) {
+        setRerankingMetrics({
+          rerankingUsed: response.data.reranking_used,
+          rerankerModel: response.data.reranker_model,
+          rerankingTimeMs: response.data.reranking_time_ms,
+        });
+      } else {
+        setRerankingMetrics(null);
+      }
     } catch (error: any) {
-      setError(error.response?.data?.detail || 'Search failed');
-      addToast({ type: 'error', message: 'Search failed' });
+      const errorDetail = error.response?.data?.detail;
+      
+      // Handle insufficient memory error specifically
+      if (error.response?.status === 507 && typeof errorDetail === 'object' && errorDetail.error === 'insufficient_memory') {
+        const errorMessage = errorDetail.message || 'Insufficient GPU memory for reranking';
+        const suggestion = errorDetail.suggestion || 'Try using a smaller model or different quantization';
+        
+        setError(`${errorMessage}\n\n${suggestion}`);
+        addToast({ 
+          type: 'error', 
+          message: 'Insufficient GPU memory for reranking. Check the error message for suggestions.' 
+        });
+      } else {
+        // Handle other errors
+        const errorMessage = typeof errorDetail === 'string' ? errorDetail : 
+                           errorDetail?.message || 'Search failed';
+        setError(errorMessage);
+        addToast({ type: 'error', message: 'Search failed' });
+      }
     } finally {
       setLoading(false);
     }
@@ -276,6 +307,73 @@ function SearchInterface() {
                 </p>
               </div>
             )}
+          </div>
+
+          {/* Reranking Options */}
+          <div className="mb-4">
+            <div className="bg-gray-50 rounded-lg p-4">
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={searchParams.useReranker}
+                  onChange={(e) => updateSearchParams({ useReranker: e.target.checked })}
+                  className="w-4 h-4 text-blue-600 rounded"
+                />
+                <span className="text-sm font-medium text-gray-700">
+                  Enable Cross-Encoder Reranking
+                </span>
+              </label>
+              
+              {searchParams.useReranker && (
+                <div className="mt-3 ml-6">
+                  <p className="text-xs text-gray-600 mb-3">
+                    Reranking uses a more sophisticated model to re-score the top search results, 
+                    improving accuracy at the cost of slightly increased latency.
+                  </p>
+                  
+                  <div className="space-y-3">
+                    {/* Reranker Model Selection */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-700 mb-1">
+                          Reranker Model
+                        </label>
+                        <select
+                          value={searchParams.rerankModel || 'auto'}
+                          onChange={(e) => updateSearchParams({ 
+                            rerankModel: e.target.value === 'auto' ? undefined : e.target.value 
+                          })}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                          <option value="auto">Auto-select</option>
+                          <option value="Qwen/Qwen3-Reranker-0.6B">0.6B (Fastest)</option>
+                          <option value="Qwen/Qwen3-Reranker-4B">4B (Balanced)</option>
+                          <option value="Qwen/Qwen3-Reranker-8B">8B (Most Accurate)</option>
+                        </select>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs text-gray-700 mb-1">
+                          Quantization
+                        </label>
+                        <select
+                          value={searchParams.rerankQuantization || 'auto'}
+                          onChange={(e) => updateSearchParams({ 
+                            rerankQuantization: e.target.value === 'auto' ? undefined : e.target.value 
+                          })}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                          <option value="auto">Auto (match embedding)</option>
+                          <option value="float32">Float32 (Full precision)</option>
+                          <option value="float16">Float16 (Balanced)</option>
+                          <option value="int8">Int8 (Low memory)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Submit Button */}

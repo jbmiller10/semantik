@@ -27,8 +27,11 @@ class SearchRequest(BaseModel):
     top_k: int = Field(default=10, ge=1, le=100, alias="k")  # Frontend sends top_k
     score_threshold: float = 0.0
     search_type: str = Field(default="vector", pattern="^(vector|hybrid)$")
-    # Hybrid search specific parameters
+    # Reranking parameters
+    use_reranker: bool = Field(default=False, description="Enable cross-encoder reranking")
     rerank_model: str | None = None
+    rerank_quantization: str | None = None
+    # Hybrid search specific parameters
     hybrid_alpha: float = Field(default=0.7, ge=0.0, le=1.0)
     hybrid_mode: str = Field(default="rerank", pattern="^(rerank|filter)$")
     keyword_mode: str = Field(default="any", pattern="^(any|all)$")
@@ -192,6 +195,14 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
                 "include_content": True,
             }
 
+            # Add reranking parameters
+            if request.use_reranker:
+                search_params["use_reranker"] = request.use_reranker
+                if request.rerank_model:
+                    search_params["rerank_model"] = request.rerank_model
+                if request.rerank_quantization:
+                    search_params["rerank_quantization"] = request.rerank_quantization
+
             # Add optional parameters
             if model_name:
                 search_params["model_name"] = model_name
@@ -268,7 +279,8 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
                 }
                 transformed_results.append(transformed_result)
 
-            return {
+            # Build response with reranking metrics if available
+            response_data = {
                 "query": api_response["query"],
                 "results": transformed_results,
                 "collection": collection_name,
@@ -276,8 +288,30 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
                 "search_type": request.search_type,
             }
 
+            # Include reranking metrics if present
+            if api_response.get("reranking_used"):
+                response_data["reranking_used"] = api_response["reranking_used"]
+                response_data["reranker_model"] = api_response.get("reranker_model")
+                response_data["reranking_time_ms"] = api_response.get("reranking_time_ms")
+
+            return response_data
+
     except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
+        if e.response.status_code == 507:
+            # Insufficient memory error from search API
+            error_detail = e.response.json().get("detail", {})
+            if isinstance(error_detail, dict) and error_detail.get("error") == "insufficient_memory":
+                raise HTTPException(
+                    status_code=507,
+                    detail={
+                        "error": "insufficient_memory",
+                        "message": error_detail.get("message", "Insufficient GPU memory for reranking"),
+                        "suggestion": error_detail.get(
+                            "suggestion", "Try using a smaller model or different quantization"
+                        ),
+                    },
+                )
+        elif e.response.status_code == 404:
             raise HTTPException(
                 status_code=404,
                 detail="Collection not found. The embedding job may not have created any vectors yet. Please check the job status.",
