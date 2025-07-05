@@ -58,6 +58,10 @@ class ModelManager:
         """Update the last used timestamp - must be called within lock"""
         self.last_used = time.time()
 
+    def _update_last_reranker_used(self):
+        """Update the last reranker used timestamp - must be called within reranker_lock"""
+        self.last_reranker_used = time.time()
+
     async def _schedule_unload(self):
         """Schedule model unloading after inactivity"""
         if self.unload_task:
@@ -193,7 +197,7 @@ class ModelManager:
         with self.reranker_lock:
             # Check if correct reranker is already loaded
             if self.current_reranker_key == reranker_key and self.reranker is not None:
-                self.last_reranker_used = time.time()
+                self._update_last_reranker_used()
                 return True
 
             # Need to load the reranker
@@ -231,7 +235,7 @@ class ModelManager:
             try:
                 self.reranker.load_model()
                 self.current_reranker_key = reranker_key
-                self.last_reranker_used = time.time()
+                self._update_last_reranker_used()
                 return True
             except Exception as e:
                 logger.error(f"Failed to load reranker: {e}")
