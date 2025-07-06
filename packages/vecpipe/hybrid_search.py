@@ -6,7 +6,7 @@ Combines vector similarity search with text-based filtering
 
 import logging
 import re
-from typing import Any
+from typing import Any, cast
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, MatchText
@@ -80,9 +80,9 @@ class HybridSearchEngine:
 
         if mode == "all":
             # All keywords must match
-            return Filter(must=conditions)
+            return Filter(must=cast(Any, conditions))
         # Any keyword can match
-        return Filter(should=conditions)
+        return Filter(should=cast(Any, conditions))
 
     def hybrid_search(
         self,
@@ -155,7 +155,7 @@ class HybridSearchEngine:
             # Score and rerank based on keyword matches
             scored_results = []
             for hit in search_result:
-                content = hit.payload.get("content", "").lower()
+                content = hit.payload.get("content", "").lower() if hit.payload else ""
 
                 # Count keyword matches
                 keyword_score = 0
@@ -177,14 +177,14 @@ class HybridSearchEngine:
                         "id": str(hit.id),
                         "score": hit.score,
                         "keyword_score": normalized_keyword_score,
-                        "combined_score": combined_score,
+                        "combined_score": float(combined_score),
                         "payload": hit.payload,
                         "matched_keywords": matched_keywords,
                     }
                 )
 
             # Sort by combined score and return top results
-            scored_results.sort(key=lambda x: x["combined_score"], reverse=True)
+            scored_results.sort(key=lambda x: cast(float, x["combined_score"]), reverse=True)
             return scored_results[:limit]
 
         except Exception as e:
