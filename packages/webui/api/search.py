@@ -8,10 +8,10 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from webui import database
-from webui.auth import get_current_user
 
 from packages.vecpipe.config import settings
+from webui import database
+from webui.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 

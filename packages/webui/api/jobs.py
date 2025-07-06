@@ -24,13 +24,12 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 import contextlib
 
+from packages.vecpipe.config import settings
+from packages.vecpipe.extract_chunks import TokenChunker, extract_text
 from webui import database
 from webui.auth import get_current_user
 from webui.embedding_service import POPULAR_MODELS, embedding_service
 from webui.utils.qdrant_manager import qdrant_manager
-
-from packages.vecpipe.config import settings
-from packages.vecpipe.extract_chunks import TokenChunker, extract_text
 
 logger = logging.getLogger(__name__)
 
