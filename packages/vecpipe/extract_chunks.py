@@ -10,9 +10,8 @@ import argparse
 import hashlib
 import json
 import logging
-import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +21,7 @@ import tiktoken
 from tqdm import tqdm
 
 # Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 # Unstructured for document parsing
 from unstructured.partition.auto import partition
 
@@ -58,7 +57,7 @@ class TokenChunker:
         # Use tiktoken for accurate token counting
         try:
             self.tokenizer = tiktoken.get_encoding(model_name)
-        except:
+        except Exception:
             # Fallback to default encoding
             self.tokenizer = tiktoken.get_encoding("cl100k_base")
 
@@ -185,24 +184,24 @@ class FileChangeTracker:
 
     def _load_tracking_data(self) -> dict:
         """Load tracking data from JSON file"""
-        if os.path.exists(self.db_path):
+        if Path(self.db_path).exists():
             try:
-                with open(self.db_path) as f:
+                with Path(self.db_path).open() as f:
                     return json.load(f)
-            except:
+            except Exception:
                 logger.warning(f"Failed to load tracking data from {self.db_path}")
         return {"files": {}}
 
     def _save_tracking_data(self):
         """Save tracking data to JSON file"""
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-        with open(self.db_path, "w") as f:
+        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        with Path(self.db_path).open("w") as f:
             json.dump(self.tracking_data, f, indent=2)
 
     def get_file_hash(self, filepath: str) -> str:
         """Calculate SHA256 hash of file"""
         sha256_hash = hashlib.sha256()
-        with open(filepath, "rb") as f:
+        with Path(filepath).open("rb") as f:
             for byte_block in iter(lambda: f.read(65536), b""):
                 sha256_hash.update(byte_block)
         return sha256_hash.hexdigest()
@@ -217,19 +216,17 @@ class FileChangeTracker:
             if file_info["hash"] == current_hash:
                 # File unchanged
                 return False, current_hash
-            else:
-                # File changed
-                logger.info(f"File changed: {filepath}")
-                return True, current_hash
-        else:
-            # New file
-            logger.info(f"New file: {filepath}")
+            # File changed
+            logger.info(f"File changed: {filepath}")
             return True, current_hash
+        # New file
+        logger.info(f"New file: {filepath}")
+        return True, current_hash
 
     def update_file_tracking(self, filepath: str, file_hash: str, doc_id: str, chunks_created: int):
         """Update tracking information for a file"""
         file_key = str(Path(filepath).absolute())
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         if file_key in self.tracking_data["files"]:
             # Update existing entry
@@ -269,7 +266,7 @@ class FileChangeTracker:
 
     def remove_file(self, filepath: str):
         """Remove a file from tracking"""
-        file_key = str(Path(filepath).absolute()) if not os.path.isabs(filepath) else filepath
+        file_key = str(Path(filepath).absolute()) if not Path(filepath).is_absolute() else filepath
         if file_key in self.tracking_data["files"]:
             del self.tracking_data["files"][file_key]
             logger.info(f"Removed file from tracking: {file_key}")
@@ -304,7 +301,7 @@ def extract_and_serialize(filepath: str) -> list[tuple[str, dict[str, Any]]]:
                 continue
 
             # Build metadata
-            metadata = {"filename": os.path.basename(filepath), "file_type": ext[1:] if ext else "unknown"}
+            metadata = {"filename": Path(filepath).name, "file_type": ext[1:] if ext else "unknown"}
 
             # Add element-specific metadata
             if hasattr(element, "metadata"):
@@ -358,8 +355,8 @@ def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, track
         doc_id = hashlib.md5(filepath.encode()).hexdigest()[:16]
 
         # Check if output already exists (for resume capability)
-        output_path = os.path.join(output_dir, f"{doc_id}.parquet")
-        if os.path.exists(output_path):
+        output_path = Path(output_dir) / f"{doc_id}.parquet"
+        if output_path.exists():
             # Verify the existing output is valid
             try:
                 existing_table = pq.read_table(output_path)
@@ -367,7 +364,7 @@ def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, track
                     logger.info(f"Valid output exists for: {filepath}")
                     tracker.update_file_tracking(filepath, file_hash, doc_id, len(existing_table))
                     return output_path
-            except:
+            except Exception:
                 logger.warning(f"Invalid existing output, reprocessing: {filepath}")
 
         # Extract text and metadata
@@ -415,7 +412,7 @@ def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, track
                 df_data["metadata"].append(json.dumps(chunk.get("metadata", {})))
 
             table = pa.table(df_data)
-            pq.write_table(table, output_path)
+            pq.write_table(table, str(output_path))
 
             # Update tracking
             tracker.update_file_tracking(filepath, file_hash, doc_id, len(all_chunks))
@@ -427,7 +424,7 @@ def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, track
     except Exception as e:
         logger.error(f"Failed to process {filepath}: {e}")
         # Log error to file
-        with open(settings.ERROR_LOG, "a") as f:
+        with Path(settings.ERROR_LOG).open("a") as f:
             f.write(f"{filepath}\t{str(e)}\n")
         return None
 
@@ -456,7 +453,7 @@ def process_file(filepath: str, output_dir: str) -> str | None:
 def main():
     parser = argparse.ArgumentParser(description="Extract and chunk documents (V2)")
     parser.add_argument("--input", "-i", required=True, help="Input file list (null-delimited)")
-    parser.add_argument("--output", "-o", default=OUTPUT_DIR, help="Output directory for parquet files")
+    parser.add_argument("--output", "-o", default=str(settings.OUTPUT_DIR), help="Output directory for parquet files")
     parser.add_argument("--chunk-size", "-cs", type=int, default=DEFAULT_CHUNK_SIZE, help="Chunk size in tokens")
     parser.add_argument(
         "--chunk-overlap", "-co", type=int, default=DEFAULT_CHUNK_OVERLAP, help="Chunk overlap in tokens"
@@ -471,10 +468,10 @@ def main():
     tracker = FileChangeTracker()
 
     # Ensure output directory exists
-    os.makedirs(args.output, exist_ok=True)
+    Path(args.output).mkdir(parents=True, exist_ok=True)
 
     # Read file list
-    with open(args.input, "rb") as f:
+    with Path(args.input).open("rb") as f:
         file_list = f.read().decode("utf-8").split("\0")
         file_list = [f for f in file_list if f]  # Remove empty strings
 

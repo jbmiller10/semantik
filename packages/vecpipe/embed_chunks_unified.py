@@ -6,9 +6,7 @@ Uses the webui.embedding_service.EmbeddingService for all embedding operations
 
 import argparse
 import asyncio
-import glob
 import logging
-import os
 import sys
 import uuid
 from pathlib import Path
@@ -19,7 +17,7 @@ import pyarrow.parquet as pq
 from tqdm.asyncio import tqdm
 
 # Add parent directory to path to import webui module
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from packages.webui.embedding_service import EmbeddingService
 
@@ -96,10 +94,10 @@ async def process_file_async(file_path: str, output_dir: str, embedding_service:
     try:
         # Generate output filename
         filename = Path(file_path).stem
-        output_path = os.path.join(output_dir, f"{filename}_embedded.parquet")
+        output_path = Path(output_dir) / f"{filename}_embedded.parquet"
 
         # Skip if already processed
-        if os.path.exists(output_path):
+        if output_path.exists():
             logger.info(f"Skipping already processed: {file_path}")
             return output_path
 
@@ -158,7 +156,7 @@ async def process_file_async(file_path: str, output_dir: str, embedding_service:
 
         logger.info(f"Saved embeddings to: {output_path}")
         record_file_processed("embedding")
-        return output_path
+        return str(output_path)
 
     except Exception as e:
         logger.error(f"Failed to process {file_path}: {e}")
@@ -199,7 +197,7 @@ async def main_async(args):
             logger.info("Continuing without metrics server")
 
     # Ensure output directory exists
-    os.makedirs(args.output, exist_ok=True)
+    Path(args.output).mkdir(parents=True, exist_ok=True)
 
     # Initialize unified embedding service
     logger.info("Initializing unified EmbeddingService...")
@@ -214,16 +212,17 @@ async def main_async(args):
 
     try:
         # Find input files
-        input_files = glob.glob(os.path.join(args.input, args.pattern))
+        input_path = Path(args.input)
+        input_files = list(input_path.glob(args.pattern))
 
         if not input_files:
-            logger.warning(f"No files found matching pattern: {os.path.join(args.input, args.pattern)}")
+            logger.warning(f"No files found matching pattern: {input_path / args.pattern}")
             return
 
         logger.info(f"Found {len(input_files)} files to process")
 
         # Process files in parallel
-        results = await process_files_parallel(input_files, args.output, embedding_service, args)
+        results = await process_files_parallel([str(f) for f in input_files], args.output, embedding_service, args)
 
         # Count successes
         successful = sum(1 for r in results if r is not None)

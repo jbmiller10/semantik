@@ -136,7 +136,7 @@ class CrossEncoderReranker:
 
             except Exception as e:
                 logger.error(f"Failed to load reranker model: {e}")
-                raise RuntimeError(f"Failed to load reranker model: {e}")
+                raise RuntimeError(f"Failed to load reranker model: {e}") from e
 
     def unload_model(self):
         """Unload the model to free memory"""

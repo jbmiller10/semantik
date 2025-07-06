@@ -7,6 +7,7 @@ Provides secure access to original documents with support for:
 - Multi-format document preview (PDF, DOCX, TXT, MD, HTML, PPTX, EML)
 """
 
+import contextlib
 import logging
 import mimetypes
 import re
@@ -23,19 +24,16 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
-
-from .. import database
-from ..auth import get_current_user
-from ..rate_limiter import limiter
+from webui import database
+from webui.auth import get_current_user
+from webui.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 
 # PPTX conversion configuration
 PPTX2MD_AVAILABLE = False
 PPTX2MD_COMMAND = None
-try:
-    import pptx2md
-except ImportError:
+with contextlib.suppress(ImportError):
     pass
 
 # Try different methods to find pptx2md
@@ -95,7 +93,7 @@ def cleanup_old_sessions():
         current_time = time.time()
         expired_sessions = []
 
-        for session_id, (user_id, created_time, image_dir) in IMAGE_SESSIONS.items():
+        for session_id, (_user_id, created_time, image_dir) in IMAGE_SESSIONS.items():
             if current_time - created_time > TEMP_IMAGE_TTL:
                 expired_sessions.append(session_id)
                 try:
@@ -162,7 +160,7 @@ def validate_file_access(job_id: str, doc_id: str, current_user: dict[str, Any])
             raise HTTPException(status_code=403, detail="Access denied")
     except Exception as e:
         logger.error(f"Path validation error: {e}")
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=403, detail="Access denied") from e
 
     # Verify file exists
     if not file_path.exists():
@@ -241,7 +239,7 @@ async def get_document(
 
                 if result.returncode == 0 and output_path.exists():
                     # Read the converted markdown
-                    with open(output_path, encoding="utf-8") as f:
+                    with output_path.open(encoding="utf-8") as f:
                         markdown_content = f.read()
 
                     # Update image paths in markdown to use our temp image endpoint
@@ -344,7 +342,7 @@ async def get_document(
 
             # Return partial content
             def file_generator():
-                with open(file_path, "rb") as f:
+                with Path(file_path).open("rb") as f:
                     f.seek(range_start)
                     remaining = content_length
 
@@ -474,7 +472,7 @@ async def get_temp_image(
             raise HTTPException(status_code=403, detail="Access denied")
     except Exception as e:
         logger.error(f"Path validation error: {e}")
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=403, detail="Access denied") from e
 
     # Determine content type
     content_type = mimetypes.guess_type(str(file_path))[0]

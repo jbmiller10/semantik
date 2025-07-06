@@ -21,7 +21,7 @@ NO_TOKEN_ID = 2753  # Mock token ID for "No"
 
 # Fixtures
 @pytest.fixture()
-def mock_torch_cuda():
+def _mock_torch_cuda():
     """Mock torch.cuda availability"""
     with patch("torch.cuda.is_available", return_value=True):
         yield
@@ -44,7 +44,7 @@ def mock_transformers():
         mock_tokenizer_class.from_pretrained.return_value = mock_tokenizer
 
         # Configure tokenizer behavior
-        mock_tokenizer.encode.side_effect = lambda text, add_special_tokens=True: {
+        mock_tokenizer.encode.side_effect = lambda text, add_special_tokens=True: {  # noqa: ARG005
             "Yes": [YES_TOKEN_ID],
             "No": [NO_TOKEN_ID],
             "yes": [YES_TOKEN_ID],
@@ -64,7 +64,7 @@ def reranker_unloaded(mock_transformers):
 
 
 @pytest.fixture()
-def reranker_loaded(reranker_unloaded, mock_transformers):
+def reranker_loaded(reranker_unloaded, mock_transformers):  # noqa: ARG001
     """Create reranker instance with model loaded"""
     reranker_unloaded.load_model()
     return reranker_unloaded
@@ -283,7 +283,9 @@ class TestRelevanceScoring:
         # Mock CPU tensor conversion
         mock_yes_probs = MagicMock()
         mock_yes_probs.cpu.return_value.tolist.return_value = [0.9, 0.7, 0.5, 0.3, 0.1]
-        mock_probs.__getitem__ = lambda self, key: mock_yes_probs if key == (slice(None), 1) else MagicMock()
+        mock_probs.__getitem__ = lambda self, key: (
+            mock_yes_probs if key == (slice(None), 1) else MagicMock()
+        )  # noqa: ARG005
 
         scores = reranker_loaded.compute_relevance_scores(query, sample_documents)
 
@@ -319,7 +321,9 @@ class TestRelevanceScoring:
         # Mock CPU tensor conversion
         mock_yes_probs = MagicMock()
         mock_yes_probs.cpu.return_value.tolist.return_value = [0.5, 0.5, 0.5, 0.5]
-        mock_probs.__getitem__ = lambda self, key: mock_yes_probs if key == (slice(None), 1) else MagicMock()
+        mock_probs.__getitem__ = lambda self, key: (
+            mock_yes_probs if key == (slice(None), 1) else MagicMock()
+        )  # noqa: ARG005
 
         # Should handle gracefully without errors
         scores = reranker_loaded.compute_relevance_scores(query, documents)
@@ -353,7 +357,7 @@ class TestRelevanceScoring:
         mock_model.side_effect = model_side_effect
 
         # Configure tokenizer
-        def tokenizer_side_effect(inputs, **kwargs):
+        def tokenizer_side_effect(inputs, **kwargs):  # noqa: ARG001
             batch_size = len(inputs)
             tokenizer_calls.append(batch_size)
             return MagicMock(input_ids=torch.randint(0, 1000, (batch_size, 10)))
@@ -491,7 +495,9 @@ class TestEdgeCases:
         mock_probs = MagicMock()
         mock_yes_probs = MagicMock()
         mock_yes_probs.cpu.return_value.tolist.return_value = [0.75]
-        mock_probs.__getitem__ = lambda self, key: mock_yes_probs if key == (slice(None), 1) else MagicMock()
+        mock_probs.__getitem__ = lambda self, key: (
+            mock_yes_probs if key == (slice(None), 1) else MagicMock()
+        )  # noqa: ARG005
         mock_softmax.return_value = mock_probs
         mock_stack.return_value = torch.rand(1, 2)
 
@@ -549,17 +555,14 @@ class TestEdgeCases:
         _, _, mock_model, mock_tokenizer = mock_transformers
 
         # Configure tokenizer to return multiple tokens for capitalized versions
-        def encode_side_effect(text, add_special_tokens=True):
-            if text == "Yes":
-                return [1, 2, 3]  # Multiple tokens
-            elif text == "No":
-                return [4, 5]  # Multiple tokens
-            elif text == "yes":
-                return [YES_TOKEN_ID]  # Single token
-            elif text == "no":
-                return [NO_TOKEN_ID]  # Single token
-            else:
-                return [1, 2, 3]  # Default
+        def encode_side_effect(text, add_special_tokens=True):  # noqa: ARG001
+            token_map = {
+                "Yes": [1, 2, 3],  # Multiple tokens
+                "No": [4, 5],  # Multiple tokens
+                "yes": [YES_TOKEN_ID],  # Single token
+                "no": [NO_TOKEN_ID],  # Single token
+            }
+            return token_map.get(text, [1, 2, 3])  # Default
 
         mock_tokenizer.encode.side_effect = encode_side_effect
 
@@ -571,7 +574,9 @@ class TestEdgeCases:
         mock_probs = MagicMock()
         mock_yes_probs = MagicMock()
         mock_yes_probs.cpu.return_value.tolist.return_value = [0.85]
-        mock_probs.__getitem__ = lambda self, key: mock_yes_probs if key == (slice(None), 1) else MagicMock()
+        mock_probs.__getitem__ = lambda self, key: (
+            mock_yes_probs if key == (slice(None), 1) else MagicMock()
+        )  # noqa: ARG005
         mock_softmax.return_value = mock_probs
         mock_stack.return_value = torch.rand(1, 2)
 
@@ -636,13 +641,12 @@ class TestPerformance:
 
     @patch("torch.cuda.empty_cache")
     @patch("torch.cuda.is_available", return_value=False)
-    def test_no_memory_cleanup_on_cpu(self, mock_cuda_available, mock_empty_cache):
+    def test_no_memory_cleanup_on_cpu(self, mock_cuda_available, mock_empty_cache):  # noqa: ARG002
         """Test no GPU cleanup when on CPU"""
         reranker = CrossEncoderReranker(device="cpu")
-        with patch("packages.vecpipe.reranker.AutoModelForCausalLM"):
-            with patch("packages.vecpipe.reranker.AutoTokenizer"):
-                reranker.load_model()
-                reranker.unload_model()
+        with patch("packages.vecpipe.reranker.AutoModelForCausalLM"), patch("packages.vecpipe.reranker.AutoTokenizer"):
+            reranker.load_model()
+            reranker.unload_model()
 
         # Should not call empty_cache on CPU
         mock_empty_cache.assert_not_called()
@@ -680,7 +684,7 @@ def assert_valid_rerank_results(results: list[tuple[int, float]], expected_lengt
 def create_mock_tokenizer_encode(special_tokens: dict):
     """Create mock tokenizer encode function"""
 
-    def encode(text, add_special_tokens=True):
+    def encode(text, add_special_tokens=True):  # noqa: ARG001
         return special_tokens.get(text, [1, 2, 3])  # Default tokens
 
     return encode
@@ -699,10 +703,9 @@ class TestUtilities:
         results = [(0, 1.0)]
         assert_valid_rerank_results(results, 1, 1)
 
-        # Test invalid cases
+        # Test invalid cases - wrong order
+        results = [(1, 0.5), (3, 0.7)]
         with pytest.raises(AssertionError):
-            # Wrong order
-            results = [(1, 0.5), (3, 0.7)]
             assert_valid_rerank_results(results, 2, 5)
 
     def test_create_mock_tokenizer_encode(self):

@@ -4,9 +4,10 @@ Test script to verify metrics are being collected during job processing
 """
 import os
 import sys
+from pathlib import Path
 
 # Add the project directory to Python path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 # Set the metrics port to enable metrics collection
 os.environ["WEBUI_METRICS_PORT"] = "9092"

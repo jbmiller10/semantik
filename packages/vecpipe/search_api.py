@@ -7,11 +7,11 @@ REST API for vector similarity search with Qwen3 support
 import asyncio
 import hashlib
 import logging
-import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -20,7 +20,7 @@ from fastapi import Body, FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 # Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 from prometheus_client import Counter, Histogram
 
 from packages.webui.embedding_service import EmbeddingService
@@ -320,7 +320,7 @@ async def root():
         return health_info
     except Exception as e:
         logger.error(f"Health check failed: {e}")
-        raise HTTPException(status_code=503, detail=f"Service unavailable: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Service unavailable: {str(e)}") from e
 
 
 @app.get("/search", response_model=SearchResponse)
@@ -607,7 +607,7 @@ async def search_post(request: SearchRequest = Body(...)):
                         "message": str(e),
                         "suggestion": "Try using a smaller model or different quantization (float16/int8)",
                     },
-                )
+                ) from e
             except Exception as e:
                 logger.error(f"Reranking failed: {e}, falling back to vector search results")
                 # Keep original results if reranking fails
@@ -647,19 +647,21 @@ async def search_post(request: SearchRequest = Body(...)):
     except httpx.HTTPStatusError as e:
         logger.error(f"Qdrant error: {e}")
         search_errors.labels(endpoint="/search", error_type="qdrant_error").inc()
-        raise HTTPException(status_code=502, detail="Vector database error")
+        raise HTTPException(status_code=502, detail="Vector database error") from e
     except RuntimeError as e:
         # Specific handling for embedding failures
         logger.error(f"Embedding generation failed: {e}")
         search_errors.labels(endpoint="/search", error_type="embedding_error").inc()
-        raise HTTPException(status_code=503, detail=f"Embedding service error: {str(e)}. Check logs for details.")
+        raise HTTPException(
+            status_code=503, detail=f"Embedding service error: {str(e)}. Check logs for details."
+        ) from e
     except Exception as e:
         logger.error(f"Search error: {e}")
         search_errors.labels(endpoint="/search", error_type="unknown_error").inc()
         import traceback
 
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}") from e
 
 
 @app.get("/hybrid_search", response_model=HybridSearchResponse)
@@ -792,7 +794,7 @@ async def hybrid_search(
         import traceback
 
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Hybrid search error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Hybrid search error: {str(e)}") from e
     finally:
         if "hybrid_engine" in locals():
             hybrid_engine.close()
@@ -876,7 +878,7 @@ async def batch_search(request: BatchSearchRequest = Body(...)):
 
     except Exception as e:
         logger.error(f"Batch search error: {e}")
-        raise HTTPException(status_code=500, detail=f"Batch search failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Batch search failed: {str(e)}") from e
 
 
 @app.get("/keyword_search", response_model=HybridSearchResponse)
@@ -938,7 +940,7 @@ async def keyword_search(
         import traceback
 
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Keyword search error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Keyword search error: {str(e)}") from e
     finally:
         if "hybrid_engine" in locals():
             hybrid_engine.close()
@@ -953,7 +955,7 @@ async def collection_info():
         return response.json()["result"]
     except Exception as e:
         logger.error(f"Failed to get collection info: {e}")
-        raise HTTPException(status_code=502, detail="Failed to get collection info")
+        raise HTTPException(status_code=502, detail="Failed to get collection info") from e
 
 
 @app.get("/models")
@@ -1004,7 +1006,7 @@ async def load_model(
 
     except Exception as e:
         logger.error(f"Model load error: {e}")
-        raise HTTPException(status_code=500, detail=f"Model load failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Model load failed: {str(e)}") from e
 
 
 @app.get("/models/suggest")

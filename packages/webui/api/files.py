@@ -11,9 +11,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+from webui.auth import get_current_user
+from webui.schemas import FileInfo
 
-from ..auth import get_current_user
-from ..schemas import FileInfo
 from .jobs import SUPPORTED_EXTENSIONS, manager
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ def compute_file_content_hash(file_path: Path, chunk_size: int = 8192) -> str | 
             sha256_hash.update(target.encode("utf-8"))
             return f"symlink:{sha256_hash.hexdigest()}"
 
-        with open(file_path, "rb") as f:
+        with file_path.open("rb") as f:
             while chunk := f.read(chunk_size):
                 sha256_hash.update(chunk)
         return sha256_hash.hexdigest()
@@ -94,7 +94,7 @@ async def compute_file_content_hash_async(file_path: Path, chunk_size: int = 655
         # For larger files, read asynchronously
         # Note: aiofiles is not in dependencies, so we'll use thread pool
         def hash_large_file():
-            with open(file_path, "rb") as f:
+            with Path(file_path).open("rb") as f:
                 while chunk := f.read(chunk_size):
                     sha256_hash.update(chunk)
             return sha256_hash.hexdigest()
@@ -136,10 +136,7 @@ def scan_directory(path: str, recursive: bool = True) -> dict[str, Any]:
         raise ValueError(f"Path is not a directory: {path}")
 
     # Determine search pattern
-    if recursive:
-        pattern = "**/*"
-    else:
-        pattern = "*"
+    pattern = "**/*" if recursive else "*"
 
     file_count = 0
     total_size = 0
@@ -219,10 +216,7 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str =
     scanned_files = 0
 
     # Determine search pattern
-    if recursive:
-        pattern = "**/*"
-    else:
-        pattern = "*"
+    pattern = "**/*" if recursive else "*"
 
     # Count phase
     for _ in path_obj.glob(pattern):
@@ -305,7 +299,7 @@ async def scan_directory_endpoint(
             "warnings": result["warnings"],
         }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # WebSocket handler for scan progress - export this separately so it can be mounted at the app level

@@ -69,9 +69,8 @@ class SearchBenchmark:
 
             logger.info(f"Results: {result}")
             return result
-        else:
-            logger.error("Failed to generate embeddings")
-            return None
+        logger.error("Failed to generate embeddings")
+        return None
 
     def compare_search_quality(self, query: str, documents: list[str], configs: list[dict]):
         """Compare search quality across different configurations"""

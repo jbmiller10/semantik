@@ -3,7 +3,6 @@ End-to-End Integration Test for Reranking Feature
 Tests the complete flow from frontend parameters to backend processing and response
 """
 
-
 import pytest
 
 
@@ -43,7 +42,7 @@ class TestRerankingE2E:
         )
 
         # Verify the request model includes all fields
-        assert request.use_reranker == True
+        assert request.use_reranker is True
         assert request.rerank_model == "cross-encoder/ms-marco-MiniLM-L-12-v2"
 
         # Verify webui forwards these params (lines 199-204 in search.py)
@@ -79,7 +78,7 @@ class TestRerankingE2E:
         )
 
         # Verify request fields
-        assert request.use_reranker == True
+        assert request.use_reranker is True
         assert request.rerank_model == "cross-encoder/ms-marco-MiniLM-L-12-v2"
 
         # Mock response with reranking metrics
@@ -97,7 +96,7 @@ class TestRerankingE2E:
         )
 
         # Verify response includes reranking metrics
-        assert mock_response.reranking_used == True
+        assert mock_response.reranking_used is True
         assert mock_response.reranker_model == "cross-encoder/ms-marco-MiniLM-L-12-v2/float16"
         assert mock_response.reranking_time_ms == 30.0
 

@@ -65,9 +65,7 @@ class HybridSearchEngine:
 
         # Split query into words and filter
         words = re.findall(r"\w+", query.lower())
-        keywords = [word for word in words if word not in stop_words and len(word) > 2]
-
-        return keywords
+        return [word for word in words if word not in stop_words and len(word) > 2]
 
     def build_text_filter(self, keywords: list[str], mode: str = "any") -> Filter | None:
         """Build Qdrant filter for text matching"""
@@ -83,9 +81,8 @@ class HybridSearchEngine:
         if mode == "all":
             # All keywords must match
             return Filter(must=conditions)
-        else:
-            # Any keyword can match
-            return Filter(should=conditions)
+        # Any keyword can match
+        return Filter(should=conditions)
 
     def hybrid_search(
         self,

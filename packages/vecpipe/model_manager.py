@@ -3,6 +3,7 @@ Model lifecycle manager with lazy loading and automatic unloading
 """
 
 import asyncio
+import contextlib
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -66,10 +67,8 @@ class ModelManager:
         """Schedule model unloading after inactivity"""
         if self.unload_task:
             self.unload_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self.unload_task
-            except asyncio.CancelledError:
-                pass
 
         async def unload_after_delay():
             await asyncio.sleep(self.unload_after_seconds)
@@ -176,11 +175,9 @@ class ModelManager:
 
         # Use real embedding service
         loop = asyncio.get_event_loop()
-        embedding = await loop.run_in_executor(
+        return await loop.run_in_executor(
             self.executor, self.embedding_service.generate_single_embedding, text, model_name, quantization, instruction
         )
-
-        return embedding
 
     def ensure_reranker_loaded(self, model_name: str, quantization: str) -> bool:
         """
@@ -256,10 +253,8 @@ class ModelManager:
         """Schedule reranker unloading after inactivity"""
         if self.reranker_unload_task:
             self.reranker_unload_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self.reranker_unload_task
-            except asyncio.CancelledError:
-                pass
 
         async def unload_after_delay():
             await asyncio.sleep(self.unload_after_seconds)
@@ -320,11 +315,9 @@ class ModelManager:
 
         # Use real reranker
         loop = asyncio.get_event_loop()
-        results = await loop.run_in_executor(
+        return await loop.run_in_executor(
             self.executor, self.reranker.rerank, query, documents, top_k, instruction, True  # return_scores
         )
-
-        return results
 
     def get_status(self) -> dict[str, Any]:
         """Get current status of the model manager"""

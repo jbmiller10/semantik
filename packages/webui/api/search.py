@@ -8,11 +8,10 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from webui import database
+from webui.auth import get_current_user
 
 from packages.vecpipe.config import settings
-
-from .. import database
-from ..auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -310,19 +309,19 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
                             "suggestion", "Try using a smaller model or different quantization"
                         ),
                     },
-                )
+                ) from e
         elif e.response.status_code == 404:
             raise HTTPException(
                 status_code=404,
                 detail="Collection not found. The embedding job may not have created any vectors yet. Please check the job status.",
-            )
-        raise HTTPException(status_code=502, detail=f"Search failed: {str(e)}")
+            ) from e
+        raise HTTPException(status_code=502, detail=f"Search failed: {str(e)}") from e
     except httpx.RequestError as e:
         logger.error(f"Failed to connect to search API: {e}")
-        raise HTTPException(status_code=503, detail="Search service unavailable")
+        raise HTTPException(status_code=503, detail="Search service unavailable") from e
     except Exception as e:
         logger.error(f"Search error: {e}")
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}") from e
 
 
 class PreloadModelRequest(BaseModel):
@@ -360,13 +359,13 @@ async def preload_model(request: PreloadModelRequest, current_user: dict[str, An
 
     except httpx.HTTPStatusError as e:
         logger.error(f"Failed to preload model: {e}")
-        raise HTTPException(status_code=502, detail=f"Failed to preload model: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"Failed to preload model: {str(e)}") from e
     except httpx.RequestError as e:
         logger.error(f"Failed to connect to search API: {e}")
-        raise HTTPException(status_code=503, detail="Search service unavailable")
+        raise HTTPException(status_code=503, detail="Search service unavailable") from e
     except Exception as e:
         logger.error(f"Preload error: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to preload model: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to preload model: {str(e)}") from e
 
 
 @router.post("/hybrid_search")
@@ -423,11 +422,11 @@ async def hybrid_search(request: HybridSearchRequest, current_user: dict[str, An
 
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
-            raise HTTPException(status_code=404, detail="Collection not found")
-        raise HTTPException(status_code=502, detail=f"Hybrid search failed: {str(e)}")
+            raise HTTPException(status_code=404, detail="Collection not found") from e
+        raise HTTPException(status_code=502, detail=f"Hybrid search failed: {str(e)}") from e
     except httpx.RequestError as e:
         logger.error(f"Failed to connect to search API: {e}")
-        raise HTTPException(status_code=503, detail="Search service unavailable")
+        raise HTTPException(status_code=503, detail="Search service unavailable") from e
     except Exception as e:
         logger.error(f"Hybrid search error: {e}")
-        raise HTTPException(status_code=500, detail=f"Hybrid search failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Hybrid search failed: {str(e)}") from e

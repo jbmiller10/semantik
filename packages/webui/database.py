@@ -6,16 +6,16 @@ Centralizes all database operations for jobs, files, users, and tokens
 
 import hashlib
 import logging
-import os
 import sqlite3
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from passlib.context import CryptContext
 
 # Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 from packages.vecpipe.config import settings
 
 # Configure logging
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 # Database configuration
 DB_PATH = str(settings.WEBUI_DB)
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
 
 # Password hashing context for auth functions
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -449,8 +449,8 @@ def get_job_total_vectors(job_id: str) -> int:
     c = conn.cursor()
 
     c.execute(
-        """SELECT COALESCE(SUM(vectors_created), 0) as total 
-           FROM files 
+        """SELECT COALESCE(SUM(vectors_created), 0) as total
+           FROM files
            WHERE job_id = ? AND status = 'completed'""",
         (job_id,),
     )
@@ -481,9 +481,9 @@ def get_duplicate_files_in_collection(collection_name: str, content_hashes: list
     placeholders = ",".join("?" * len(content_hashes))
     job_placeholders = ",".join("?" * len(job_ids))
 
-    query = f"""SELECT DISTINCT content_hash 
-                FROM files 
-                WHERE job_id IN ({job_placeholders}) 
+    query = f"""SELECT DISTINCT content_hash
+                FROM files
+                WHERE job_id IN ({job_placeholders})
                 AND content_hash IN ({placeholders})
                 AND content_hash IS NOT NULL"""
 
@@ -503,10 +503,10 @@ def get_collection_metadata(collection_name: str) -> dict[str, Any] | None:
 
     # Find the original job (mode='create' or no parent_job_id)
     c.execute(
-        """SELECT * FROM jobs 
-           WHERE name = ? 
+        """SELECT * FROM jobs
+           WHERE name = ?
            AND (mode = 'create' OR parent_job_id IS NULL)
-           ORDER BY created_at ASC 
+           ORDER BY created_at ASC
            LIMIT 1""",
         (collection_name,),
     )
@@ -526,32 +526,32 @@ def list_collections(user_id: int | None = None) -> list[dict[str, Any]]:
     if user_id is not None:
         # Show collections where user owns at least one job OR legacy collections without user_id
         query = """
-            SELECT 
+            SELECT
                 name,
                 COUNT(DISTINCT id) as job_count,
                 SUM(total_files) as total_files,
                 MAX(created_at) as created_at,
                 MAX(updated_at) as updated_at,
                 MIN(CASE WHEN mode = 'create' OR parent_job_id IS NULL THEN model_name END) as model_name
-            FROM jobs 
-            WHERE status != 'failed' 
+            FROM jobs
+            WHERE status != 'failed'
             AND (user_id = ? OR user_id IS NULL)
-            GROUP BY name 
+            GROUP BY name
             ORDER BY MAX(updated_at) DESC
         """
         c.execute(query, (user_id,))
     else:
         query = """
-            SELECT 
+            SELECT
                 name,
                 COUNT(DISTINCT id) as job_count,
                 SUM(total_files) as total_files,
                 MAX(created_at) as created_at,
                 MAX(updated_at) as updated_at,
                 MIN(CASE WHEN mode = 'create' OR parent_job_id IS NULL THEN model_name END) as model_name
-            FROM jobs 
+            FROM jobs
             WHERE status != 'failed'
-            GROUP BY name 
+            GROUP BY name
             ORDER BY MAX(updated_at) DESC
         """
         c.execute(query)
@@ -571,8 +571,8 @@ def list_collections(user_id: int | None = None) -> list[dict[str, Any]]:
         total_vectors = 0
         for job_id in job_ids:
             c.execute(
-                """SELECT COALESCE(SUM(vectors_created), 0) as total 
-                   FROM files 
+                """SELECT COALESCE(SUM(vectors_created), 0) as total
+                   FROM files
                    WHERE job_id = ? AND status = 'completed'""",
                 (job_id,),
             )
@@ -594,7 +594,7 @@ def get_collection_details(collection_name: str, user_id: int) -> dict[str, Any]
 
     # Check if user has access to this collection
     c.execute(
-        """SELECT COUNT(*) FROM jobs 
+        """SELECT COUNT(*) FROM jobs
            WHERE name = ? AND (user_id = ? OR user_id IS NULL)""",
         (collection_name, user_id),
     )
@@ -610,10 +610,10 @@ def get_collection_details(collection_name: str, user_id: int) -> dict[str, Any]
 
     # Get all jobs for this collection
     c.execute(
-        """SELECT id, status, created_at, updated_at, directory_path, 
+        """SELECT id, status, created_at, updated_at, directory_path,
                   total_files, processed_files, failed_files, mode
-           FROM jobs 
-           WHERE name = ? 
+           FROM jobs
+           WHERE name = ?
            ORDER BY created_at DESC""",
         (collection_name,),
     )
@@ -621,8 +621,8 @@ def get_collection_details(collection_name: str, user_id: int) -> dict[str, Any]
 
     # Get unique source directories
     c.execute(
-        """SELECT DISTINCT directory_path 
-           FROM jobs 
+        """SELECT DISTINCT directory_path
+           FROM jobs
            WHERE name = ?""",
         (collection_name,),
     )
@@ -639,7 +639,7 @@ def get_collection_details(collection_name: str, user_id: int) -> dict[str, Any]
             c.execute(
                 """SELECT COALESCE(SUM(vectors_created), 0) as total,
                           COALESCE(SUM(size), 0) as total_size
-                   FROM files 
+                   FROM files
                    WHERE job_id = ? AND status = 'completed'""",
                 (job["id"],),
             )
@@ -679,7 +679,7 @@ def get_collection_files(collection_name: str, user_id: int, page: int = 1, limi
 
     # Check access
     c.execute(
-        """SELECT id FROM jobs 
+        """SELECT id FROM jobs
            WHERE name = ? AND (user_id = ? OR user_id IS NULL)""",
         (collection_name, user_id),
     )
@@ -692,7 +692,7 @@ def get_collection_files(collection_name: str, user_id: int, page: int = 1, limi
     # Count total files
     placeholders = ",".join("?" * len(job_ids))
     c.execute(
-        f"""SELECT COUNT(*) FROM files 
+        f"""SELECT COUNT(*) FROM files
             WHERE job_id IN ({placeholders})""",
         job_ids,
     )
@@ -704,7 +704,7 @@ def get_collection_files(collection_name: str, user_id: int, page: int = 1, limi
 
     # Get paginated files
     c.execute(
-        f"""SELECT f.*, j.name as collection_name 
+        f"""SELECT f.*, j.name as collection_name
             FROM files f
             JOIN jobs j ON f.job_id = j.id
             WHERE f.job_id IN ({placeholders})
@@ -727,7 +727,7 @@ def rename_collection(old_name: str, new_name: str, user_id: int) -> bool:
     try:
         # Check if user owns at least one job in the collection
         c.execute(
-            """SELECT COUNT(*) FROM jobs 
+            """SELECT COUNT(*) FROM jobs
                WHERE name = ? AND (user_id = ? OR user_id IS NULL)""",
             (old_name, user_id),
         )
@@ -743,8 +743,8 @@ def rename_collection(old_name: str, new_name: str, user_id: int) -> bool:
 
         # Update all jobs with the old name
         c.execute(
-            """UPDATE jobs 
-               SET name = ?, updated_at = ? 
+            """UPDATE jobs
+               SET name = ?, updated_at = ?
                WHERE name = ?""",
             (new_name, datetime.now(UTC).isoformat(), old_name),
         )
@@ -766,7 +766,7 @@ def delete_collection(collection_name: str, user_id: int) -> dict[str, Any]:
 
     # Get all job IDs for this collection that user has access to
     c.execute(
-        """SELECT id FROM jobs 
+        """SELECT id FROM jobs
            WHERE name = ? AND (user_id = ? OR user_id IS NULL)""",
         (collection_name, user_id),
     )
