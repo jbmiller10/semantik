@@ -59,7 +59,7 @@ class TestContentHashing:
             # Skip test if running as root (root can read any file)
             if os.getuid() == 0:
                 pytest.skip("Permission test not applicable when running as root")
-            
+
             try:
                 test_file.chmod(0o000)
 
