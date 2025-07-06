@@ -9,8 +9,8 @@ from unittest.mock import patch
 
 import pytest
 
-from packages.webui import database
-from packages.webui.api.files import compute_file_content_hash
+from webui import database
+from webui.api.files import compute_file_content_hash
 
 
 class TestContentHashing:
@@ -56,6 +56,10 @@ class TestContentHashing:
         import os
 
         if os.name != "nt":
+            # Skip test if running as root (root can read any file)
+            if os.getuid() == 0:
+                pytest.skip("Permission test not applicable when running as root")
+            
             try:
                 test_file.chmod(0o000)
 
@@ -315,7 +319,7 @@ class TestResourceLimits:
 
     def test_scan_directory_file_warning(self, tmp_path):
         """Test that file count warnings are generated"""
-        from packages.webui.api.files import scan_directory
+        from webui.api.files import scan_directory
 
         # Create many files
         for i in range(5):
@@ -330,7 +334,7 @@ class TestResourceLimits:
 
     def test_scan_directory_size_warning(self, tmp_path):
         """Test that total size warnings are generated"""
-        from packages.webui.api.files import scan_directory
+        from webui.api.files import scan_directory
 
         # Create a large file (simulate)
         large_file = tmp_path / "large.txt"
