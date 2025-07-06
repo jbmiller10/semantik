@@ -9,7 +9,7 @@ import json
 import logging
 import sqlite3
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from qdrant_client import QdrantClient
@@ -165,7 +165,7 @@ class QdrantCleanupService:
 
         # Log summary
         summary = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "removed_files": len(removed_files),
             "deleted_points": total_deleted,
             "by_collection": deleted_by_collection,

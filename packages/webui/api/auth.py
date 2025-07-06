@@ -92,7 +92,7 @@ async def refresh_token(refresh_token: str):
 
 
 @router.post("/logout")
-async def logout(refresh_token: str = None, current_user: dict[str, Any] = Depends(get_current_user)):
+async def logout(refresh_token: str = None, current_user: dict[str, Any] = Depends(get_current_user)):  # noqa: ARG001
     """Logout and revoke refresh token"""
     if refresh_token:
         database.revoke_refresh_token(refresh_token)

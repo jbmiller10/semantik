@@ -12,9 +12,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # Set the metrics port to enable metrics collection
 os.environ["WEBUI_METRICS_PORT"] = "9092"
 
-from prometheus_client import generate_latest
+# Import after setting environment variables
+import prometheus_client  # noqa: E402
 
-from packages.vecpipe.metrics import (
+from packages.vecpipe.metrics import (  # noqa: E402
     record_chunks_created,
     record_embeddings_generated,
     record_file_failed,
@@ -28,7 +29,7 @@ from packages.vecpipe.metrics import (
 
 def print_current_metrics():
     """Print current metric values"""
-    metrics_data = generate_latest(registry).decode("utf-8")
+    metrics_data = prometheus_client.generate_latest(registry).decode("utf-8")
     print("Current Metrics:")
     print("-" * 60)
 

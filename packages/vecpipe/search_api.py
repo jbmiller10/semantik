@@ -50,8 +50,7 @@ def get_or_create_metric(metric_class, name, description, labels=None, **kwargs)
     # Create new metric
     if labels:
         return metric_class(name, description, labels, registry=registry, **kwargs)
-    else:
-        return metric_class(name, description, registry=registry, **kwargs)
+    return metric_class(name, description, registry=registry, **kwargs)
 
 
 # Create metrics with duplicate protection
@@ -166,7 +165,7 @@ executor = None
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI):  # noqa: ARG001
     """Manage application lifecycle"""
     global qdrant_client, model_manager, embedding_service, executor
     # Startup
@@ -282,8 +281,7 @@ async def model_status():
     """Get model manager status"""
     if model_manager:
         return model_manager.get_status()
-    else:
-        return {"error": "Model manager not initialized"}
+    return {"error": "Model manager not initialized"}
 
 
 @app.get("/")
@@ -1002,8 +1000,7 @@ async def load_model(
         if success:
             model_info = embedding_service.get_model_info(model_name, quantization)
             return {"status": "success", "model": model_name, "quantization": quantization, "info": model_info}
-        else:
-            raise HTTPException(status_code=400, detail="Failed to load model")
+        raise HTTPException(status_code=400, detail="Failed to load model")
 
     except Exception as e:
         logger.error(f"Model load error: {e}")

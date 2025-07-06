@@ -5,7 +5,7 @@ File and directory scanning routes for the Web UI
 import asyncio
 import hashlib
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -154,7 +154,7 @@ def scan_directory(path: str, recursive: bool = True) -> dict[str, Any]:
                     FileInfo(
                         path=str(file_path),
                         size=stat.st_size,
-                        modified=datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                        modified=datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
                         extension=file_path.suffix.lower(),
                         content_hash=content_hash,
                     )
@@ -213,7 +213,6 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str =
 
     # First, count total files to scan
     total_files = 0
-    scanned_files = 0
 
     # Determine search pattern
     pattern = "**/*" if recursive else "*"
@@ -230,9 +229,7 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str =
     warning_file_limit = 10000
     warning_size_limit = 50 * 1024 * 1024 * 1024  # 50GB
 
-    for file_path in path_obj.glob(pattern):
-        scanned_files += 1
-
+    for scanned_files, file_path in enumerate(path_obj.glob(pattern), 1):
         # Send progress update every 10 files or at specific percentages
         if scan_id and (scanned_files % 10 == 0 or scanned_files == total_files):
             await manager.send_update(
@@ -250,7 +247,7 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str =
                     FileInfo(
                         path=str(file_path),
                         size=stat.st_size,
-                        modified=datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                        modified=datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
                         extension=file_path.suffix.lower(),
                         content_hash=content_hash,
                     )
@@ -287,7 +284,7 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str =
 
 @router.post("/scan-directory")
 async def scan_directory_endpoint(
-    request: ScanDirectoryRequest, current_user: dict[str, Any] = Depends(get_current_user)
+    request: ScanDirectoryRequest, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
 ):
     """Scan a directory for supported files"""
     try:

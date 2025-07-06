@@ -44,7 +44,7 @@ class UserCreate(BaseModel):
     full_name: str | None = None
 
     @validator("username")
-    def validate_username(cls, v):
+    def validate_username(cls, v):  # noqa: N805
         if len(v) < 3:
             raise ValueError("Username must be at least 3 characters long")
         # Check if username contains only alphanumeric characters and underscores
@@ -53,7 +53,7 @@ class UserCreate(BaseModel):
         return v
 
     @validator("password")
-    def validate_password(cls, v):
+    def validate_password(cls, v):  # noqa: N805
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters long")
         return v

@@ -176,7 +176,7 @@ def validate_file_access(job_id: str, doc_id: str, current_user: dict[str, Any])
 @router.get("/{job_id}/{doc_id}")
 @limiter.limit("10/minute")
 async def get_document(
-    request: Request,
+    request: Request,  # noqa: ARG001
     job_id: str,
     doc_id: str,
     current_user: dict[str, Any] = Depends(get_current_user),
@@ -392,7 +392,7 @@ async def get_document(
 @router.get("/{job_id}/{doc_id}/info")
 @limiter.limit("30/minute")
 async def get_document_info(
-    request: Request, job_id: str, doc_id: str, current_user: dict[str, Any] = Depends(get_current_user)
+    request: Request, job_id: str, doc_id: str, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
 ):
     """
     Get document metadata without downloading the file.
@@ -424,11 +424,11 @@ async def get_document_info(
 @router.get("/temp-images/{session_id}/{filename}")
 @limiter.limit("30/minute")
 async def get_temp_image(
-    request: Request,
+    request: Request,  # noqa: ARG001
     session_id: str,
     filename: str,
-    token: str | None = None,
-    current_user: dict[str, Any] | None = None,
+    token: str | None = None,  # noqa: ARG001
+    current_user: dict[str, Any] | None = None,  # noqa: ARG001
 ):
     """
     Serve temporary images extracted from documents (e.g., PPTX slides).

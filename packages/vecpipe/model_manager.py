@@ -105,9 +105,8 @@ class ModelManager:
                 self.current_model_key = model_key
                 self._update_last_used()
                 return True
-            else:
-                logger.error(f"Failed to load model: {model_name}")
-                return False
+            logger.error(f"Failed to load model: {model_name}")
+            return False
 
     def unload_model(self):
         """Unload the current model to free memory"""
@@ -216,7 +215,7 @@ class ModelManager:
                     f"Cannot load reranker due to insufficient GPU memory. {memory_msg}. "
                     f"Consider using a smaller model or different quantization."
                 )
-            elif not can_load:
+            if not can_load:
                 # Even with unloading, not enough memory
                 raise InsufficientMemoryError(
                     f"Cannot load reranker: {memory_msg}. This GPU cannot run both models simultaneously."

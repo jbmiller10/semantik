@@ -125,11 +125,10 @@ def check_memory_availability(
             False,
             f"Insufficient memory: {free_mb}MB free, {required_mb}MB required. Can free {freeable_mb}MB by unloading: {models_str}",
         )
-    else:
-        return (
-            False,
-            f"Insufficient memory: {free_mb}MB free, {required_mb}MB required. Even after unloading all models, only {free_mb + freeable_mb}MB would be available",
-        )
+    return (
+        False,
+        f"Insufficient memory: {free_mb}MB free, {required_mb}MB required. Even after unloading all models, only {free_mb + freeable_mb}MB would be available",
+    )
 
 
 def suggest_model_configuration(available_memory_mb: int) -> dict[str, str]:

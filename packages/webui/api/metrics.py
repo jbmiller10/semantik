@@ -53,7 +53,7 @@ if METRICS_PORT:
 
 
 @router.get("/metrics")
-async def get_metrics(current_user: User = Depends(get_current_user)):
+async def get_metrics(current_user: User = Depends(get_current_user)):  # noqa: ARG001
     """Get current Prometheus metrics"""
     # If local metrics server isn't available, try to fetch from the search API metrics server
     if not METRICS_AVAILABLE:
@@ -64,8 +64,7 @@ async def get_metrics(current_user: User = Depends(get_current_user)):
                 response = await client.get(f"http://localhost:{METRICS_PORT}/metrics")
                 if response.status_code == 200:
                     return {"available": True, "metrics_port": METRICS_PORT, "data": response.text}
-                else:
-                    return {"error": "Metrics server not responding", "metrics_port": METRICS_PORT}
+                return {"error": "Metrics server not responding", "metrics_port": METRICS_PORT}
         except Exception as e:
             logger.error(f"Failed to fetch metrics from port {METRICS_PORT}: {e}")
             return {"error": f"Metrics not available: {str(e)}", "metrics_port": METRICS_PORT}

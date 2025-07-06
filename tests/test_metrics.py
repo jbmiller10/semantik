@@ -3,7 +3,7 @@
 Simple test script to check the /api/metrics endpoint
 """
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import requests
 
@@ -14,7 +14,7 @@ def test_metrics_endpoint():
     metrics_url = f"{base_url}/api/metrics"
 
     print(f"Testing metrics endpoint at: {metrics_url}")
-    print(f"Time: {datetime.now(timezone.utc)}")
+    print(f"Time: {datetime.now(UTC)}")
     print("-" * 60)
 
     try:
