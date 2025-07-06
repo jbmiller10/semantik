@@ -93,6 +93,8 @@ Semantik can run on both CPU and GPU, but a CUDA-compatible GPU is **strongly re
 
 > **Why the GPU?** Creating search embeddings is a highly parallel task. A GPU can be 10-100x faster than a CPU, turning a process that takes hours into one that takes minutes.
 
+> **CUDA Setup Issues?** If you encounter CUDA library errors, see our [Troubleshooting Guide](TROUBLESHOOTING.md#cuda-library-issues-on-linux).
+
 </details>
 
 <br>
