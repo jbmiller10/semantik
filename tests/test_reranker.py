@@ -5,10 +5,8 @@ Tests the reranking functionality with mocked models
 
 import queue
 import threading
-from typing import List, Tuple
-from unittest.mock import MagicMock, Mock, PropertyMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
-import numpy as np
 import pytest
 import torch
 
@@ -22,14 +20,14 @@ NO_TOKEN_ID = 2753  # Mock token ID for "No"
 
 
 # Fixtures
-@pytest.fixture
+@pytest.fixture()
 def mock_torch_cuda():
     """Mock torch.cuda availability"""
     with patch("torch.cuda.is_available", return_value=True):
         yield
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_transformers():
     """Mock transformers imports"""
     with (
@@ -58,21 +56,21 @@ def mock_transformers():
         yield mock_model_class, mock_tokenizer_class, mock_model, mock_tokenizer
 
 
-@pytest.fixture
+@pytest.fixture()
 def reranker_unloaded(mock_transformers):
     """Create reranker instance without loading model"""
     _, _, _, _ = mock_transformers
     return CrossEncoderReranker(model_name=TEST_MODEL_NAME, device="cuda", quantization="float16")
 
 
-@pytest.fixture
+@pytest.fixture()
 def reranker_loaded(reranker_unloaded, mock_transformers):
     """Create reranker instance with model loaded"""
     reranker_unloaded.load_model()
     return reranker_unloaded
 
 
-@pytest.fixture
+@pytest.fixture()
 def sample_documents():
     """Sample documents for testing"""
     return [
@@ -84,7 +82,7 @@ def sample_documents():
     ]
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_model_output():
     """Mock model output with logits"""
 
@@ -425,7 +423,7 @@ class TestReranking:
             assert all(isinstance(r, tuple) and len(r) == 2 for r in results)
 
             # Check sorting (highest score first)
-            indices, scores = zip(*results)
+            indices, scores = zip(*results, strict=False)
             assert indices == (1, 3, 4)  # Indices of top 3 scores
             assert scores == (0.9, 0.7, 0.5)
 
@@ -456,7 +454,7 @@ class TestReranking:
 
             # Should still return (index, score) tuples
             assert all(isinstance(r[1], float) for r in results)
-            indices, scores = zip(*results)
+            indices, scores = zip(*results, strict=False)
             assert indices == (4, 3, 2)
             assert scores == (0.5, 0.4, 0.3)
 
@@ -666,7 +664,7 @@ class TestPerformance:
 # Test Utilities
 
 
-def assert_valid_rerank_results(results: List[Tuple[int, float]], expected_length: int, num_documents: int):
+def assert_valid_rerank_results(results: list[tuple[int, float]], expected_length: int, num_documents: int):
     """Helper to validate reranking results"""
     assert len(results) == expected_length
     assert all(isinstance(r, tuple) and len(r) == 2 for r in results)

@@ -7,7 +7,7 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 from packages.webui.embedding_service import EmbeddingService
 
@@ -222,7 +222,7 @@ class ModelManager:
             elif not can_load:
                 # Even with unloading, not enough memory
                 raise InsufficientMemoryError(
-                    f"Cannot load reranker: {memory_msg}. " f"This GPU cannot run both models simultaneously."
+                    f"Cannot load reranker: {memory_msg}. This GPU cannot run both models simultaneously."
                 )
 
             # Unload current reranker if different
@@ -282,12 +282,12 @@ class ModelManager:
     async def rerank_async(
         self,
         query: str,
-        documents: List[str],
+        documents: list[str],
         top_k: int,
         model_name: str,
         quantization: str,
-        instruction: Optional[str] = None,
-    ) -> List[Tuple[int, float]]:
+        instruction: str | None = None,
+    ) -> list[tuple[int, float]]:
         """
         Perform async reranking with lazy model loading
 
