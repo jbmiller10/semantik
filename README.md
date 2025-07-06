@@ -89,7 +89,7 @@ Semantik can run on both CPU and GPU, but a CUDA-compatible GPU is **strongly re
 - **CPU**: Modern quad-core or better.
 - **RAM**: 16GB+.
 - **STORAGE**:  SSD for model storage; HDD is fine for documents
-- **Software**: Docker & Docker Compose (latest versions).
+- **Software**: Python 3.12, Cuda Toolkit, Docker & Docker Compose
 
 > **Why the GPU?** Creating search embeddings is a highly parallel task. A GPU can be 10-100x faster than a CPU, turning a process that takes hours into one that takes minutes.
 
@@ -104,7 +104,7 @@ Semantik can run on both CPU and GPU, but a CUDA-compatible GPU is **strongly re
 - **CPU**: Modern quad-core or better.
 - **RAM**: 16GB+.
 - **Storage**: SSD for model storage; HDD is fine for documents
-- **Software**: Docker & Docker Compose.
+- **Software**: Python 3.12, Docker & Docker Compose.
 
 > **Performance Note:** A CPU-only setup will be **very slow** for indexing and search. It is suitable for evaluation and small personal document collections only.
 
