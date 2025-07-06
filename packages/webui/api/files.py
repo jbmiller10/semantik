@@ -94,7 +94,7 @@ async def compute_file_content_hash_async(file_path: Path, chunk_size: int = 655
 
         # For larger files, read asynchronously
         # Note: aiofiles is not in dependencies, so we'll use thread pool
-        def hash_large_file():
+        def hash_large_file() -> str:
             with Path(file_path).open("rb") as f:
                 while chunk := f.read(chunk_size):
                     sha256_hash.update(chunk)
@@ -188,7 +188,7 @@ def scan_directory(path: str, recursive: bool = True) -> dict[str, Any]:
     return {"files": files, "warnings": warnings, "total_files": file_count, "total_size": total_size}
 
 
-async def scan_directory_async(path: str, recursive: bool = True, scan_id: str = None) -> dict[str, Any]:
+async def scan_directory_async(path: str, recursive: bool = True, scan_id: str | None = None) -> dict[str, Any]:
     """Scan directory for supported files with progress updates
 
     Args:
@@ -286,7 +286,7 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str =
 @router.post("/scan-directory")
 async def scan_directory_endpoint(
     request: ScanDirectoryRequest, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
-):
+) -> dict[str, Any]:
     """Scan a directory for supported files"""
     try:
         result = scan_directory(request.path, request.recursive)
@@ -301,7 +301,7 @@ async def scan_directory_endpoint(
 
 
 # WebSocket handler for scan progress - export this separately so it can be mounted at the app level
-async def scan_websocket(websocket: WebSocket, scan_id: str):
+async def scan_websocket(websocket: WebSocket, scan_id: str) -> None:
     """WebSocket for real-time scan progress"""
     await manager.connect(websocket, f"scan_{scan_id}")
     try:

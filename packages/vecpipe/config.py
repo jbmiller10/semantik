@@ -1,5 +1,6 @@
 # vecpipe/config.py
 
+import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -60,7 +61,9 @@ class Settings(BaseSettings):
 
 
 # Instantiate settings once and export
-settings = Settings()
+settings = Settings(
+    QDRANT_HOST=os.getenv("QDRANT_HOST", "localhost"), JWT_SECRET_KEY=os.getenv("JWT_SECRET_KEY", "default-secret-key")
+)
 
 # Create data/log directories if they don't exist
 (settings.PROJECT_ROOT / "data").mkdir(parents=True, exist_ok=True)

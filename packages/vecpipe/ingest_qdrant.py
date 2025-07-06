@@ -87,7 +87,7 @@ def process_parquet_file(file_path: str, client: QdrantClient, batch_size: int =
         return False
 
 
-def move_file(src: str, dst_dir: str):
+def move_file(src: str, dst_dir: str) -> None:
     """Move file to destination directory"""
     dst_path = Path(dst_dir)
     dst_path.mkdir(parents=True, exist_ok=True)
@@ -97,7 +97,7 @@ def move_file(src: str, dst_dir: str):
     logger.info(f"Moved {src_path.name} to {dst_dir}")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest embeddings into Qdrant")
     parser.add_argument(
         "--input", "-i", default=str(settings.INGEST_DIR), help="Input directory with embedded parquet files"

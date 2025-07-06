@@ -4,7 +4,6 @@ import time
 
 import psutil
 import requests
-
 from vecpipe.metrics import metrics_collector
 
 print("Testing metrics update...")

@@ -7,7 +7,7 @@ import functools
 import logging
 import time
 from collections.abc import Callable
-from typing import TypeVar
+from typing import Any, TypeVar, cast
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +19,8 @@ def exponential_backoff_retry(
     initial_delay: float = 1.0,
     max_delay: float = 60.0,
     exponential_base: float = 2.0,
-    exceptions: tuple = (Exception,),
-) -> Callable:
+    exceptions: tuple[type[Exception], ...] = (Exception,),
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """
     Decorator for retrying functions with exponential backoff.
 
@@ -36,9 +36,11 @@ def exponential_backoff_retry(
     """
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        is_async = asyncio.iscoroutinefunction(func)
+
         @functools.wraps(func)
-        def sync_wrapper(*args, **kwargs) -> T:
-            last_exception = None
+        def sync_wrapper(*args: Any, **kwargs: Any) -> T:
+            last_exception: Exception | None = None
 
             for attempt in range(max_retries + 1):
                 try:
@@ -54,15 +56,18 @@ def exponential_backoff_retry(
                     logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {delay:.1f} seconds...")
                     time.sleep(delay)
 
-            raise last_exception
+            if last_exception is not None:
+                raise last_exception
+            raise RuntimeError("No exception was caught")
 
         @functools.wraps(func)
-        async def async_wrapper(*args, **kwargs) -> T:
-            last_exception = None
+        async def async_wrapper(*args: Any, **kwargs: Any) -> T:
+            last_exception: Exception | None = None
 
             for attempt in range(max_retries + 1):
                 try:
-                    return await func(*args, **kwargs)
+                    result = await func(*args, **kwargs)  # type: ignore[misc]
+                    return cast(T, result)
                 except exceptions as e:
                     last_exception = e
 
@@ -74,11 +79,13 @@ def exponential_backoff_retry(
                     logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {delay:.1f} seconds...")
                     await asyncio.sleep(delay)
 
-            raise last_exception
+            if last_exception is not None:
+                raise last_exception
+            raise RuntimeError("No exception was caught")
 
         # Return appropriate wrapper based on function type
-        if asyncio.iscoroutinefunction(func):
-            return async_wrapper
+        if is_async:
+            return cast(Callable[..., T], async_wrapper)
         return sync_wrapper
 
     return decorator

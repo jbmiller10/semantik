@@ -3,6 +3,8 @@ Qwen3 Search Optimization Configuration
 Best practices and configurations for optimal search performance
 """
 
+from typing import Any
+
 # Qwen3 model recommendations for different use cases
 QWEN3_MODEL_RECOMMENDATIONS = {
     "high_quality": {
@@ -132,10 +134,10 @@ MONITORING_CONFIG = {
 }
 
 
-def get_optimal_config(use_case: str = "balanced", gpu_memory_gb: int = 16):
+def get_optimal_config(use_case: str = "balanced", gpu_memory_gb: int = 16) -> dict[str, Any]:
     """Get optimal configuration based on use case and available resources"""
 
-    base_config = QWEN3_MODEL_RECOMMENDATIONS.get(use_case, QWEN3_MODEL_RECOMMENDATIONS["balanced"])
+    base_config = QWEN3_MODEL_RECOMMENDATIONS.get(use_case, QWEN3_MODEL_RECOMMENDATIONS["balanced"]).copy()
 
     # Adjust based on GPU memory
     if gpu_memory_gb < 8:
@@ -150,12 +152,18 @@ def get_optimal_config(use_case: str = "balanced", gpu_memory_gb: int = 16):
         base_config["quantization"] = "float16"
 
     # Add batch config
-    model_batch_config = BATCH_CONFIGS.get(base_config["model"], {})
-    base_config["batch_config"] = model_batch_config.get(
-        base_config["quantization"], {"batch_size": 32, "max_length": 8192}
-    )
+    model_name = str(base_config["model"])
+    model_batch_config: dict[str, dict[str, int]] = BATCH_CONFIGS.get(model_name, {})
+    quantization_key = str(base_config["quantization"])
 
-    return base_config
+    # Create a new dict to avoid type issues
+    result: dict[str, Any] = dict(base_config)
+    batch_config_value: dict[str, int] = model_batch_config.get(
+        quantization_key, {"batch_size": 32, "max_length": 8192}
+    )
+    result["batch_config"] = batch_config_value
+
+    return result
 
 
 def get_reranker_for_embedding_model(embedding_model: str) -> str:
@@ -181,7 +189,7 @@ def get_reranker_for_embedding_model(embedding_model: str) -> str:
         return "Qwen/Qwen3-Reranker-8B"
 
     # Default to smallest model
-    return RERANK_CONFIG["default_model"]
+    return str(RERANK_CONFIG["default_model"])
 
 
 # Example usage configurations

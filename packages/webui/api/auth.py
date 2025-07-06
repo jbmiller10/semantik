@@ -28,16 +28,17 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=User)
-async def register(user_data: UserCreate):
+async def register(user_data: UserCreate) -> User:
     """Register a new user"""
     try:
         hashed_password = get_password_hash(user_data.password)
-        return database.create_user(
+        user_dict = database.create_user(
             username=user_data.username,
             email=user_data.email,
             hashed_password=hashed_password,
             full_name=user_data.full_name,
         )
+        return User(**user_dict)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
@@ -46,7 +47,7 @@ async def register(user_data: UserCreate):
 
 
 @router.post("/login", response_model=Token)
-async def login(login_data: UserLogin):
+async def login(login_data: UserLogin) -> Token:
     """Login and receive access token"""
     user = authenticate_user(login_data.username, login_data.password)
     if not user:
@@ -66,7 +67,7 @@ async def login(login_data: UserLogin):
 
 
 @router.post("/refresh", response_model=Token)
-async def refresh_token(refresh_token: str):
+async def refresh_token(refresh_token: str) -> Token:
     """Refresh access token using refresh token"""
     user_id = database.verify_refresh_token(refresh_token)
     if not user_id:
@@ -93,7 +94,9 @@ async def refresh_token(refresh_token: str):
 
 
 @router.post("/logout")
-async def logout(refresh_token: str = None, current_user: dict[str, Any] = Depends(get_current_user)):  # noqa: ARG001
+async def logout(
+    refresh_token: str | None = None, current_user: dict[str, Any] = Depends(get_current_user)
+) -> dict[str, str]:  # noqa: ARG001
     """Logout and revoke refresh token"""
     if refresh_token:
         database.revoke_refresh_token(refresh_token)
@@ -101,6 +104,6 @@ async def logout(refresh_token: str = None, current_user: dict[str, Any] = Depen
 
 
 @router.get("/me", response_model=User)
-async def get_me(current_user: dict[str, Any] = Depends(get_current_user)):
+async def get_me(current_user: dict[str, Any] = Depends(get_current_user)) -> User:
     """Get current user info"""
     return User(**current_user)
