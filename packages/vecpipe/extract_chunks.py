@@ -176,23 +176,24 @@ class TokenChunker:
 class FileChangeTracker:
     """Track file changes using SHA256 and SCD-like approach"""
 
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str | None = None) -> None:
         if db_path is None:
             db_path = str(settings.FILE_TRACKING_DB)
         self.db_path = db_path
         self.tracking_data = self._load_tracking_data()
 
-    def _load_tracking_data(self) -> dict:
+    def _load_tracking_data(self) -> dict[str, Any]:
         """Load tracking data from JSON file"""
         if Path(self.db_path).exists():
             try:
                 with Path(self.db_path).open() as f:
-                    return json.load(f)
+                    data = json.load(f)
+                    return data  # type: ignore[no-any-return]
             except Exception:
                 logger.warning(f"Failed to load tracking data from {self.db_path}")
         return {"files": {}}
 
-    def _save_tracking_data(self):
+    def _save_tracking_data(self) -> None:
         """Save tracking data to JSON file"""
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         with Path(self.db_path).open("w") as f:
@@ -223,7 +224,7 @@ class FileChangeTracker:
         logger.info(f"New file: {filepath}")
         return True, current_hash
 
-    def update_file_tracking(self, filepath: str, file_hash: str, doc_id: str, chunks_created: int):
+    def update_file_tracking(self, filepath: str, file_hash: str, doc_id: str, chunks_created: int) -> None:
         """Update tracking information for a file"""
         file_key = str(Path(filepath).absolute())
         now = datetime.now(UTC).isoformat()
@@ -264,14 +265,14 @@ class FileChangeTracker:
 
         return removed_files
 
-    def remove_file(self, filepath: str):
+    def remove_file(self, filepath: str) -> None:
         """Remove a file from tracking"""
         file_key = str(Path(filepath).absolute()) if not Path(filepath).is_absolute() else filepath
         if file_key in self.tracking_data["files"]:
             del self.tracking_data["files"][file_key]
             logger.info(f"Removed file from tracking: {file_key}")
 
-    def save(self):
+    def save(self) -> None:
         """Save tracking data to disk"""
         self._save_tracking_data()
 
@@ -301,7 +302,7 @@ def extract_and_serialize(filepath: str) -> list[tuple[str, dict[str, Any]]]:
                 continue
 
             # Build metadata
-            metadata = {"filename": Path(filepath).name, "file_type": ext[1:] if ext else "unknown"}
+            metadata: dict[str, Any] = {"filename": Path(filepath).name, "file_type": ext[1:] if ext else "unknown"}
 
             # Add element-specific metadata
             if hasattr(element, "metadata"):
@@ -313,11 +314,11 @@ def extract_and_serialize(filepath: str) -> list[tuple[str, dict[str, Any]]]:
                     metadata["page_number"] = current_page
 
                 if hasattr(elem_meta, "category"):
-                    metadata["element_type"] = elem_meta.category
+                    metadata["element_type"] = str(elem_meta.category)
 
                 # Add any coordinates if available
                 if hasattr(elem_meta, "coordinates"):
-                    metadata["has_coordinates"] = True
+                    metadata["has_coordinates"] = "True"
 
             results.append((text, metadata))
 
@@ -346,6 +347,7 @@ def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, track
     try:
         # Check if file needs processing
         should_process, file_hash = tracker.should_process_file(filepath)
+        assert file_hash is not None  # file_hash is always returned
 
         if not should_process:
             logger.info(f"Skipping unchanged file: {filepath}")
@@ -363,7 +365,7 @@ def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, track
                 if len(existing_table) > 0:
                     logger.info(f"Valid output exists for: {filepath}")
                     tracker.update_file_tracking(filepath, file_hash, doc_id, len(existing_table))
-                    return output_path
+                    return str(output_path)
             except Exception:
                 logger.warning(f"Invalid existing output, reprocessing: {filepath}")
 
@@ -391,7 +393,7 @@ def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, track
         # Convert to parquet with metadata
         if all_chunks:
             # Prepare data for parquet
-            df_data = {
+            df_data: dict[str, list[Any]] = {
                 "doc_id": [],
                 "chunk_id": [],
                 "path": [],
@@ -417,7 +419,7 @@ def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, track
             # Update tracking
             tracker.update_file_tracking(filepath, file_hash, doc_id, len(all_chunks))
 
-            return output_path
+            return str(output_path)
 
         return None
 
@@ -450,7 +452,7 @@ def process_file(filepath: str, output_dir: str) -> str | None:
     return process_file_v2(filepath, output_dir, _default_chunker, tracker)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Extract and chunk documents (V2)")
     parser.add_argument("--input", "-i", required=True, help="Input file list (null-delimited)")
     parser.add_argument("--output", "-o", default=str(settings.OUTPUT_DIR), help="Output directory for parquet files")

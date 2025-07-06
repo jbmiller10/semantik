@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 class QdrantCleanupService:
     """Service to clean up vectors for deleted documents"""
 
-    def __init__(self, qdrant_host: str = None, qdrant_port: int = None):
+    def __init__(self, qdrant_host: str | None = None, qdrant_port: int | None = None):
         if qdrant_host is None:
             qdrant_host = settings.QDRANT_HOST
         if qdrant_port is None:
@@ -113,7 +113,7 @@ class QdrantCleanupService:
             self.client.delete(collection_name=collection_name, points_selector=FilterSelector(filter=count_filter))
 
             logger.info(f"Deleted {count} points with doc_id={doc_id} from {collection_name}")
-            return count
+            return int(count)
 
         except Exception as e:
             logger.error(f"Error deleting points from {collection_name}: {e}")
@@ -184,7 +184,7 @@ class QdrantCleanupService:
         return summary
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Clean up vectors for deleted documents")
     parser.add_argument(
         "--file-list", "-f", default=str(settings.MANIFEST_FILE), help="Path to null-delimited file list"

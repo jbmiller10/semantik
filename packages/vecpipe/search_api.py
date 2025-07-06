@@ -23,7 +23,6 @@ from pydantic import BaseModel, Field
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from prometheus_client import Counter, Histogram
-
 from webui.embedding_service import EmbeddingService
 
 from .config import settings
@@ -39,7 +38,13 @@ logger = logging.getLogger(__name__)
 
 
 # Create or get metrics for search API
-def get_or_create_metric(metric_class, name, description, labels=None, **kwargs):
+def get_or_create_metric(
+    metric_class: type,
+    name: str,
+    description: str,
+    labels: list[str] | None = None,
+    **kwargs: Any,
+) -> Any:
     """Create a metric or return existing one if already registered"""
     from prometheus_client import REGISTRY
 
@@ -158,14 +163,14 @@ class HybridSearchResponse(BaseModel):
 
 
 # Global resources
-qdrant_client = None
-model_manager = None
-embedding_service = None
-executor = None
+qdrant_client: httpx.AsyncClient | None = None
+model_manager: Any | None = None  # Will be ModelManager once imported
+embedding_service: EmbeddingService | None = None
+executor: ThreadPoolExecutor | None = None
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):  # noqa: ARG001
+async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     """Manage application lifecycle"""
     global qdrant_client, model_manager, embedding_service, executor
     # Startup
@@ -210,7 +215,7 @@ app = FastAPI(
 )
 
 
-def generate_mock_embedding(text: str, vector_dim: int = None) -> list[float]:
+def generate_mock_embedding(text: str, vector_dim: int | None = None) -> list[float]:
     """Generate mock embedding for testing (fallback when real embeddings unavailable)"""
     # If vector_dim not specified, try to get from collection info
     if vector_dim is None:
@@ -244,7 +249,10 @@ def generate_mock_embedding(text: str, vector_dim: int = None) -> list[float]:
 
 
 async def generate_embedding_async(
-    text: str, model_name: str = None, quantization: str = None, instruction: str = None
+    text: str,
+    model_name: str | None = None,
+    quantization: str | None = None,
+    instruction: str | None = None,
 ) -> list[float]:
     """Generate embedding using the model manager"""
     if settings.USE_MOCK_EMBEDDINGS:
@@ -273,22 +281,24 @@ async def generate_embedding_async(
     if embedding is None:
         raise RuntimeError(f"Failed to generate embedding for text: {text[:100]}...")
 
-    return embedding
+    return list(embedding)  # Ensure we return a list, not Any
 
 
 @app.get("/model/status")
-async def model_status():
+async def model_status() -> dict[str, Any]:
     """Get model manager status"""
     if model_manager:
-        return model_manager.get_status()
+        return dict(model_manager.get_status())  # Ensure we return a dict
     return {"error": "Model manager not initialized"}
 
 
 @app.get("/")
-async def root():
+async def root() -> dict[str, Any]:
     """Health check endpoint with detailed status"""
     try:
         # Check Qdrant connection
+        if qdrant_client is None:
+            raise HTTPException(status_code=503, detail="Qdrant client not initialized")
         response = await qdrant_client.get(f"/collections/{settings.DEFAULT_COLLECTION}")
         response.raise_for_status()
         info = response.json()["result"]
@@ -330,7 +340,7 @@ async def search(
     search_type: str = Query("semantic", description="Type of search: semantic, question, code, hybrid"),
     model_name: str | None = Query(None, description="Override embedding model"),
     quantization: str | None = Query(None, description="Override quantization"),
-):
+) -> SearchResponse:
     """
     Search for similar documents (GET endpoint for compatibility)
 
@@ -343,13 +353,24 @@ async def search(
     """
     # Create request object for unified handling
     request = SearchRequest(
-        query=q, k=k, search_type=search_type, model_name=model_name, quantization=quantization, collection=collection
+        query=q,
+        k=k,
+        search_type=search_type,
+        model_name=model_name,
+        quantization=quantization,
+        collection=collection,
+        filters=None,
+        include_content=False,
+        use_reranker=False,
+        rerank_model=None,
+        rerank_quantization=None,
     )
-    return await search_post(request)
+    result = await search_post(request)
+    return SearchResponse(**result.model_dump())
 
 
 @app.post("/search", response_model=SearchResponse)
-async def search_post(request: SearchRequest = Body(...)):
+async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
     """
     Search for similar documents with advanced options
 
@@ -371,6 +392,8 @@ async def search_post(request: SearchRequest = Body(...)):
         # Get collection info to determine vector dimension
         vector_dim = 1024  # default
         try:
+            if qdrant_client is None:
+                raise RuntimeError("Qdrant client not initialized")
             response = await qdrant_client.get(f"/collections/{collection_name}")
             response.raise_for_status()
             collection_info = response.json()["result"]
@@ -442,9 +465,34 @@ async def search_post(request: SearchRequest = Body(...)):
         # Determine number of candidates to retrieve
         # If reranking is enabled, retrieve more candidates based on multiplier
         if request.use_reranker:
-            multiplier = RERANK_CONFIG.get("candidate_multiplier", 5)
-            min_candidates = RERANK_CONFIG.get("min_candidates", 20)
-            max_candidates = RERANK_CONFIG.get("max_candidates", 200)
+            # Get config values with defaults
+            # These are guaranteed to be integers in the config, but mypy can't know that
+            # So we use a type-safe approach with isinstance checks
+            multiplier_raw = RERANK_CONFIG.get("candidate_multiplier", 5)
+            min_candidates_raw = RERANK_CONFIG.get("min_candidates", 20)
+            max_candidates_raw = RERANK_CONFIG.get("max_candidates", 200)
+
+            # Safely convert to int with type checking
+            if isinstance(multiplier_raw, int):
+                multiplier = multiplier_raw
+            elif isinstance(multiplier_raw, str | float):
+                multiplier = int(multiplier_raw)
+            else:
+                multiplier = 5
+
+            if isinstance(min_candidates_raw, int):
+                min_candidates = min_candidates_raw
+            elif isinstance(min_candidates_raw, str | float):
+                min_candidates = int(min_candidates_raw)
+            else:
+                min_candidates = 20
+
+            if isinstance(max_candidates_raw, int):
+                max_candidates = max_candidates_raw
+            elif isinstance(max_candidates_raw, str | float):
+                max_candidates = int(max_candidates_raw)
+            else:
+                max_candidates = 200
 
             # Calculate candidates: requested * multiplier, within bounds
             search_k = max(min_candidates, min(request.k * multiplier, max_candidates))
@@ -463,6 +511,8 @@ async def search_post(request: SearchRequest = Body(...)):
                 "filter": request.filters,
             }
 
+            if qdrant_client is None:
+                raise RuntimeError("Qdrant client not initialized")
             response = await qdrant_client.post(f"/collections/{collection_name}/points/search", json=search_request)
             response.raise_for_status()
             qdrant_results = response.json()["result"]
@@ -475,7 +525,7 @@ async def search_post(request: SearchRequest = Body(...)):
         search_time = (time.time() - search_start) * 1000
 
         # Parse results
-        results = []
+        results: list[SearchResult] = []
         # We need to ensure we have content if reranking is enabled
         should_include_content = request.include_content or request.use_reranker
 
@@ -494,14 +544,14 @@ async def search_post(request: SearchRequest = Body(...)):
             else:
                 # Parsed format from search_utils
                 parsed_results = parse_search_results(qdrant_results)
-                for r in parsed_results:
+                for parsed_item in parsed_results:
                     result = SearchResult(
-                        path=r["path"],
-                        chunk_id=r["chunk_id"],
-                        score=r["score"],
-                        doc_id=r.get("doc_id"),
-                        content=r.get("content") if should_include_content else None,
-                        metadata=r.get("metadata"),
+                        path=parsed_item["path"],
+                        chunk_id=parsed_item["chunk_id"],
+                        score=parsed_item["score"],
+                        doc_id=parsed_item.get("doc_id"),
+                        content=parsed_item.get("content") if should_include_content else None,
+                        metadata=parsed_item.get("metadata"),
                     )
                     results.append(result)
                 break
@@ -540,6 +590,8 @@ async def search_post(request: SearchRequest = Body(...)):
                                 "with_vector": False,
                                 "limit": len(chunk_ids_to_fetch),
                             }
+                            if qdrant_client is None:
+                                raise RuntimeError("Qdrant client not initialized")
                             response = await qdrant_client.post(
                                 f"/collections/{collection_name}/points/scroll", json=fetch_request
                             )
@@ -576,6 +628,8 @@ async def search_post(request: SearchRequest = Body(...)):
 
                 # Perform reranking
                 logger.info(f"Reranking {len(documents)} documents with {reranker_model}/{reranker_quantization}")
+                if model_manager is None:
+                    raise RuntimeError("Model manager not initialized")
                 reranked_indices = await model_manager.rerank_async(
                     query=request.query,
                     documents=documents,
@@ -673,7 +727,7 @@ async def hybrid_search(
     score_threshold: float | None = Query(None, description="Minimum similarity score threshold"),
     model_name: str | None = Query(None, description="Override embedding model"),
     quantization: str | None = Query(None, description="Override quantization"),
-):
+) -> HybridSearchResponse:
     """
     Perform hybrid search combining vector similarity and text matching
 
@@ -739,6 +793,8 @@ async def hybrid_search(
             # Get vector dimension from collection
             vector_dim = 1024  # default
             try:
+                if qdrant_client is None:
+                    raise RuntimeError("Qdrant client not initialized")
                 response = await qdrant_client.get(f"/collections/{collection_name}")
                 response.raise_for_status()
                 collection_info = response.json()["result"]
@@ -800,7 +856,7 @@ async def hybrid_search(
 
 
 @app.post("/search/batch", response_model=BatchSearchResponse)
-async def batch_search(request: BatchSearchRequest = Body(...)):
+async def batch_search(request: BatchSearchRequest = Body(...)) -> BatchSearchResponse:
     """
     Batch search for multiple queries
 
@@ -886,7 +942,7 @@ async def keyword_search(
     k: int = Query(DEFAULT_K, ge=1, le=100, description="Number of results to return"),
     collection: str | None = Query(None, description="Collection name (e.g., job_123)"),
     mode: str = Query("any", description="Keyword matching: 'any' or 'all'"),
-):
+) -> HybridSearchResponse:
     """
     Search using only keywords (no vector similarity)
 
@@ -946,19 +1002,21 @@ async def keyword_search(
 
 
 @app.get("/collection/info")
-async def collection_info():
+async def collection_info() -> dict[str, Any]:
     """Get information about the vector collection"""
     try:
+        if qdrant_client is None:
+            raise HTTPException(status_code=503, detail="Qdrant client not initialized")
         response = await qdrant_client.get(f"/collections/{settings.DEFAULT_COLLECTION}")
         response.raise_for_status()
-        return response.json()["result"]
+        return dict(response.json()["result"])  # Ensure we return a dict
     except Exception as e:
         logger.error(f"Failed to get collection info: {e}")
         raise HTTPException(status_code=502, detail="Failed to get collection info") from e
 
 
 @app.get("/models")
-async def list_models():
+async def list_models() -> dict[str, Any]:
     """List available embedding models and their properties"""
     from webui.embedding_service import QUANTIZED_MODEL_INFO
 
@@ -987,12 +1045,15 @@ async def list_models():
 async def load_model(
     model_name: str = Body(..., description="Model name to load"),
     quantization: str = Body("float32", description="Quantization type"),
-):
+) -> dict[str, Any]:
     """Load a specific embedding model"""
     if settings.USE_MOCK_EMBEDDINGS:
         raise HTTPException(status_code=400, detail="Cannot load models when using mock embeddings")
 
     try:
+        if embedding_service is None:
+            raise HTTPException(status_code=503, detail="Embedding service not initialized")
+
         success = await asyncio.get_event_loop().run_in_executor(
             executor, embedding_service.load_model, model_name, quantization
         )
@@ -1008,7 +1069,7 @@ async def load_model(
 
 
 @app.get("/models/suggest")
-async def suggest_models():
+async def suggest_models() -> dict[str, Any]:
     """
     Suggest optimal model configuration based on available GPU memory
     """
@@ -1048,9 +1109,9 @@ async def suggest_models():
 
 
 @app.get("/embedding/info")
-async def embedding_info():
+async def embedding_info() -> dict[str, Any]:
     """Get information about the embedding configuration"""
-    info = {
+    info: dict[str, Any] = {
         "mode": "mock" if settings.USE_MOCK_EMBEDDINGS else "real",
         "available": not settings.USE_MOCK_EMBEDDINGS and embedding_service is not None,
     }
@@ -1067,7 +1128,7 @@ async def embedding_info():
         )
 
         # Get model details
-        if embedding_service.current_model_name:
+        if embedding_service.current_model_name and embedding_service.current_quantization:
             model_info = embedding_service.get_model_info(
                 embedding_service.current_model_name, embedding_service.current_quantization
             )

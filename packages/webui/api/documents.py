@@ -18,6 +18,7 @@ import tempfile
 import threading
 import time
 import uuid
+from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -81,14 +82,14 @@ CHUNK_SIZE = 8192  # 8KB chunks for streaming
 TEMP_IMAGE_DIR = Path(tempfile.gettempdir()) / "webui_temp_images"
 TEMP_IMAGE_DIR.mkdir(exist_ok=True)
 TEMP_IMAGE_TTL = 3600  # 1 hour in seconds
-IMAGE_SESSIONS = {}  # Maps session_id to (user_id, created_time, image_dir)
+IMAGE_SESSIONS: dict[str, tuple[str, float, Path]] = {}  # Maps session_id to (user_id, created_time, image_dir)
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".webp"}
 
 # Cleanup thread
 cleanup_lock = threading.Lock()
 
 
-def cleanup_old_sessions():
+def cleanup_old_sessions() -> None:
     """Remove temporary image directories older than TTL"""
     with cleanup_lock:
         current_time = time.time()
@@ -108,10 +109,10 @@ def cleanup_old_sessions():
             del IMAGE_SESSIONS[session_id]
 
 
-def start_cleanup_thread():
+def start_cleanup_thread() -> None:
     """Start background thread for cleanup"""
 
-    def cleanup_worker():
+    def cleanup_worker() -> None:
         while True:
             time.sleep(300)  # Run cleanup every 5 minutes
             cleanup_old_sessions()
@@ -182,7 +183,7 @@ async def get_document(
     doc_id: str,
     current_user: dict[str, Any] = Depends(get_current_user),
     range: str | None = Header(None),
-):
+) -> Response:
     """
     Retrieve a document by job_id and doc_id.
 
@@ -226,6 +227,8 @@ async def get_document(
                     IMAGE_SESSIONS[session_id] = (user_id, time.time(), session_image_dir)
 
                 # Run the conversion command using the detected method
+                if PPTX2MD_COMMAND is None:
+                    raise RuntimeError("PPTX2MD_COMMAND is not initialized")
                 cmd = PPTX2MD_COMMAND + [
                     str(file_path),
                     "-o",
@@ -253,13 +256,13 @@ async def get_document(
                     )
 
                     # Also handle any other image path patterns
-                    def replace_image_path(match):
+                    def replace_image_path(match: Any) -> str:
                         alt_text = match.group(1)
                         image_path = match.group(2)
 
                         # If already an API path, keep it
                         if image_path.startswith("/api/documents/temp-images/"):
-                            return match.group(0)
+                            return str(match.group(0))
 
                         # If it contains our session ID, update the path
                         if session_id in image_path:
@@ -342,7 +345,7 @@ async def get_document(
             content_length = range_end - range_start + 1
 
             # Return partial content
-            def file_generator():
+            def file_generator() -> Generator[bytes, None, None]:
                 with Path(file_path).open("rb") as f:
                     f.seek(range_start)
                     remaining = content_length
@@ -394,7 +397,7 @@ async def get_document(
 @limiter.limit("30/minute")
 async def get_document_info(
     request: Request, job_id: str, doc_id: str, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
-):
+) -> dict[str, Any]:
     """
     Get document metadata without downloading the file.
 
@@ -430,7 +433,7 @@ async def get_temp_image(
     filename: str,
     token: str | None = None,  # noqa: ARG001
     current_user: dict[str, Any] | None = None,  # noqa: ARG001
-):
+) -> FileResponse:
     """
     Serve temporary images extracted from documents (e.g., PPTX slides).
 

@@ -83,7 +83,7 @@ def get_model_memory_requirement(model_name: str, quantization: str = "float32")
 
 
 def check_memory_availability(
-    model_name: str, quantization: str = "float32", current_models: dict[str, tuple[str, str]] = None
+    model_name: str, quantization: str = "float32", current_models: dict[str, tuple[str, str]] | None = None
 ) -> tuple[bool, str]:
     """
     Check if there's enough memory to load a model
@@ -131,7 +131,7 @@ def check_memory_availability(
     )
 
 
-def suggest_model_configuration(available_memory_mb: int) -> dict[str, str]:
+def suggest_model_configuration(available_memory_mb: int) -> dict[str, str | list[str] | None]:
     """
     Suggest optimal model configuration based on available memory
 
@@ -141,7 +141,7 @@ def suggest_model_configuration(available_memory_mb: int) -> dict[str, str]:
     Returns:
         Dict with suggested configuration
     """
-    suggestions = {
+    suggestions: dict[str, str | list[str] | None] = {
         "embedding_model": None,
         "embedding_quantization": None,
         "reranker_model": None,

@@ -8,8 +8,8 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-
 from vecpipe.config import settings
+
 from webui import database
 from webui.auth import get_current_user
 
@@ -51,7 +51,7 @@ class HybridSearchRequest(BaseModel):
 
 
 @router.post("/search")
-async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(get_current_user)):
+async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     """Unified search endpoint - handles both vector and hybrid search"""
     logger.info(
         f"Search request received: query='{request.query}', type={request.search_type}, "
@@ -92,7 +92,7 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
         # Route based on search type
         if request.search_type == "hybrid":
             # Call hybrid search endpoint
-            search_params = {
+            search_params: dict[str, str | int | float] = {
                 "q": request.query,  # Hybrid endpoint expects 'q' not 'query'
                 "k": request.k,
                 "collection": collection_name,
@@ -185,7 +185,7 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
             }
 
         # Vector search
-        search_params = {
+        vector_search_params: dict[str, str | int | bool | float] = {
             "query": request.query,
             "k": request.k,
             "collection": collection_name,
@@ -195,22 +195,22 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
 
         # Add reranking parameters
         if request.use_reranker:
-            search_params["use_reranker"] = request.use_reranker
+            vector_search_params["use_reranker"] = request.use_reranker
             if request.rerank_model:
-                search_params["rerank_model"] = request.rerank_model
+                vector_search_params["rerank_model"] = request.rerank_model
             if request.rerank_quantization:
-                search_params["rerank_quantization"] = request.rerank_quantization
+                vector_search_params["rerank_quantization"] = request.rerank_quantization
 
         # Add optional parameters
         if model_name:
-            search_params["model_name"] = model_name
+            vector_search_params["model_name"] = model_name
         if quantization:
-            search_params["quantization"] = quantization
+            vector_search_params["quantization"] = quantization
         if request.score_threshold > 0:
-            search_params["score_threshold"] = request.score_threshold
+            vector_search_params["score_threshold"] = request.score_threshold
 
         # Call REST API search endpoint with POST
-        logger.info(f"Calling vector search API with params: {search_params}")
+        logger.info(f"Calling vector search API with params: {vector_search_params}")
 
         # Use longer timeout for first request after model might be unloaded
         # This handles the case where model needs to be reloaded
@@ -223,7 +223,7 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
 
         async with httpx.AsyncClient(timeout=timeout) as client:
             try:
-                response = await client.post(f"{settings.SEARCH_API_URL}/search", json=search_params)
+                response = await client.post(f"{settings.SEARCH_API_URL}/search", json=vector_search_params)
                 response.raise_for_status()
             except httpx.ReadTimeout:
                 # If first attempt times out, it might be due to model loading
@@ -231,7 +231,7 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
                 logger.warning("Search request timed out, likely due to model loading. Retrying with longer timeout...")
                 extended_timeout = httpx.Timeout(timeout=120.0, connect=5.0, read=120.0, write=5.0)
                 async with httpx.AsyncClient(timeout=extended_timeout) as retry_client:
-                    response = await retry_client.post(f"{settings.SEARCH_API_URL}/search", json=search_params)
+                    response = await retry_client.post(f"{settings.SEARCH_API_URL}/search", json=vector_search_params)
                     response.raise_for_status()
 
         # Transform REST API response to match WebUI JavaScript expectations
@@ -329,7 +329,7 @@ class PreloadModelRequest(BaseModel):
 @router.post("/preload_model")
 async def preload_model(
     request: PreloadModelRequest, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
-):
+) -> dict[str, str]:
     """
     Preload a model to prevent timeout issues on first search.
     This is useful when you know a search is coming and want to ensure the model is ready.
@@ -368,7 +368,9 @@ async def preload_model(
 
 
 @router.post("/hybrid_search")
-async def hybrid_search(request: HybridSearchRequest, current_user: dict[str, Any] = Depends(get_current_user)):
+async def hybrid_search(
+    request: HybridSearchRequest, current_user: dict[str, Any] = Depends(get_current_user)
+) -> dict[str, Any]:
     """Perform hybrid search combining vector similarity and text matching - proxies to REST API"""
     try:
         # Determine collection name
@@ -394,7 +396,7 @@ async def hybrid_search(request: HybridSearchRequest, current_user: dict[str, An
                 quantization = job["quantization"]
 
         # Prepare hybrid search params for REST API
-        search_params = {
+        search_params: dict[str, str | int | float | None] = {
             "q": request.query,
             "k": request.k,
             "collection": collection_name,
@@ -417,7 +419,8 @@ async def hybrid_search(request: HybridSearchRequest, current_user: dict[str, An
             response.raise_for_status()
 
         # The REST API returns the response in the format we need
-        return response.json()
+        result: dict[str, Any] = response.json()
+        return result
 
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:

@@ -106,7 +106,7 @@ class PaginatedFileList(BaseModel):
 
 
 @router.get("", response_model=list[CollectionSummary])
-async def list_collections(current_user: dict[str, Any] = Depends(get_current_user)):
+async def list_collections(current_user: dict[str, Any] = Depends(get_current_user)) -> list[CollectionSummary]:
     """List all unique collections with summary stats"""
     try:
         # Get collections from database
@@ -142,7 +142,9 @@ async def list_collections(current_user: dict[str, Any] = Depends(get_current_us
 
 
 @router.get("/{collection_name}", response_model=CollectionDetails)
-async def get_collection_details(collection_name: str, current_user: dict[str, Any] = Depends(get_current_user)):
+async def get_collection_details(
+    collection_name: str, current_user: dict[str, Any] = Depends(get_current_user)
+) -> CollectionDetails:
     """Get detailed information for a single collection"""
     try:
         # Get collection details from database
@@ -163,7 +165,7 @@ async def get_collection_details(collection_name: str, current_user: dict[str, A
                 try:
                     qdrant_collection = f"job_{job['id']}"
                     info = qdrant.get_collection(qdrant_collection)
-                    if isinstance(info, CollectionInfo):
+                    if isinstance(info, CollectionInfo) and info.points_count is not None:
                         actual_vectors += info.points_count
                 except Exception:
                     # Collection might not exist
@@ -193,7 +195,7 @@ async def rename_collection(
     collection_name: str,
     request: CollectionRenameRequest,
     current_user: dict[str, Any] = Depends(get_current_user),
-):
+) -> dict[str, str]:
     """Rename the display name of a collection"""
     try:
         # Attempt to rename
@@ -221,7 +223,9 @@ async def rename_collection(
 
 
 @router.delete("/{collection_name}")
-async def delete_collection(collection_name: str, current_user: dict[str, Any] = Depends(get_current_user)):
+async def delete_collection(
+    collection_name: str, current_user: dict[str, Any] = Depends(get_current_user)
+) -> dict[str, Any]:
     """Delete a collection and all associated data"""
     try:
         # Get deletion info from database
@@ -302,7 +306,7 @@ async def get_collection_files(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(50, ge=1, le=100, description="Items per page"),
     current_user: dict[str, Any] = Depends(get_current_user),
-):
+) -> PaginatedFileList:
     """Get paginated list of files in a collection"""
     try:
         # Get files from database

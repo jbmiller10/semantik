@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-def check_environment():
+def check_environment() -> tuple[bool, str, str]:
     """Check environment configuration"""
     print("=" * 60)
     print("Search API Configuration Validation")
@@ -37,7 +37,7 @@ def check_environment():
     return use_mock, model, quantization
 
 
-def check_dependencies():
+def check_dependencies() -> bool:
     """Check required dependencies"""
     print("\n2. Dependencies:")
 
@@ -61,7 +61,7 @@ def check_dependencies():
     return all_good
 
 
-def check_hardware():
+def check_hardware() -> tuple[bool, float]:
     """Check hardware capabilities"""
     print("\n3. Hardware:")
 
@@ -87,7 +87,7 @@ def check_hardware():
     return False, 0
 
 
-def test_model_loading(model_name, quantization, has_gpu):  # noqa: ARG001
+def test_model_loading(model_name: str, quantization: str, has_gpu: bool) -> bool:  # noqa: ARG001
     """Test loading the embedding model"""
     print(f"\n4. Testing Model Loading: {model_name}")
 
@@ -120,7 +120,9 @@ def test_model_loading(model_name, quantization, has_gpu):  # noqa: ARG001
         return False
 
 
-def suggest_fixes(use_mock, model, quantization, deps_ok, has_gpu, gpu_memory, model_loads):  # noqa: ARG001
+def suggest_fixes(
+    use_mock: bool, model: str, quantization: str, deps_ok: bool, has_gpu: bool, gpu_memory: float, model_loads: bool
+) -> None:  # noqa: ARG001
     """Suggest fixes for common issues"""
     print("\n" + "=" * 60)
     print("Recommendations:")
@@ -156,7 +158,7 @@ def suggest_fixes(use_mock, model, quantization, deps_ok, has_gpu, gpu_memory, m
         print("\n✓ Everything looks good! The API should start successfully.")
 
 
-def main():
+def main() -> None:
     # Check configuration
     use_mock, model, quantization = check_environment()
 

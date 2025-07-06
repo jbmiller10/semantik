@@ -224,6 +224,6 @@ class HybridSearchEngine:
             logger.error(f"Keyword search failed: {e}")
             raise
 
-    def close(self):
+    def close(self) -> None:
         """Close the client connection"""
         self.client.close()

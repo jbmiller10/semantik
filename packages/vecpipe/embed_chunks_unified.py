@@ -51,7 +51,7 @@ async def read_parquet_async(file_path: str) -> dict[str, Any]:
     """Async read parquet file"""
     loop = asyncio.get_event_loop()
 
-    def _read():
+    def _read() -> dict[str, Any]:
         with TimingContext(extraction_duration):
             table = pq.read_table(file_path)
             result = {
@@ -77,11 +77,11 @@ async def read_parquet_async(file_path: str) -> dict[str, Any]:
     return await loop.run_in_executor(None, _read)
 
 
-async def write_parquet_async(output_path: str, data: dict[str, Any]):
+async def write_parquet_async(output_path: str, data: dict[str, Any]) -> None:
     """Async write parquet file"""
     loop = asyncio.get_event_loop()
 
-    def _write():
+    def _write() -> None:
         with TimingContext(ingestion_duration):
             output_table = pa.table(data)
             pq.write_table(output_table, output_path)
@@ -89,7 +89,9 @@ async def write_parquet_async(output_path: str, data: dict[str, Any]):
     await loop.run_in_executor(None, _write)
 
 
-async def process_file_async(file_path: str, output_dir: str, embedding_service: EmbeddingService, args) -> str | None:
+async def process_file_async(
+    file_path: str, output_dir: str, embedding_service: EmbeddingService, args: argparse.Namespace
+) -> str | None:
     """Process a single file asynchronously"""
     try:
         # Generate output filename
@@ -99,7 +101,7 @@ async def process_file_async(file_path: str, output_dir: str, embedding_service:
         # Skip if already processed
         if output_path.exists():
             logger.info(f"Skipping already processed: {file_path}")
-            return output_path
+            return str(output_path)
 
         logger.info(f"Processing: {file_path}")
 
@@ -152,7 +154,7 @@ async def process_file_async(file_path: str, output_dir: str, embedding_service:
         }
 
         # Write output asynchronously
-        await write_parquet_async(output_path, output_data)
+        await write_parquet_async(str(output_path), output_data)
 
         logger.info(f"Saved embeddings to: {output_path}")
         record_file_processed("embedding")
@@ -164,12 +166,14 @@ async def process_file_async(file_path: str, output_dir: str, embedding_service:
         return None
 
 
-async def process_files_parallel(file_paths: list[str], output_dir: str, embedding_service: EmbeddingService, args):
+async def process_files_parallel(
+    file_paths: list[str], output_dir: str, embedding_service: EmbeddingService, args: argparse.Namespace
+) -> list[str | None]:
     """Process multiple files in parallel"""
     # Create semaphore to limit concurrent I/O operations
     io_semaphore = asyncio.Semaphore(MAX_CONCURRENT_IO)
 
-    async def process_with_limit(file_path):
+    async def process_with_limit(file_path: str) -> str | None:
         async with io_semaphore:
             return await process_file_async(file_path, output_dir, embedding_service, args)
 
@@ -185,7 +189,7 @@ async def process_files_parallel(file_paths: list[str], output_dir: str, embeddi
     return results
 
 
-async def main_async(args):
+async def main_async(args: argparse.Namespace) -> None:
     """Main async function"""
     # Start metrics server if requested
     if args.metrics_port:
@@ -243,7 +247,7 @@ async def main_async(args):
         logger.info("Shutting down embedding service")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Generate embeddings using unified service")
     parser.add_argument("--input", "-i", default=INPUT_DIR, help="Input directory with parquet files")
     parser.add_argument("--output", "-o", default=OUTPUT_DIR, help="Output directory for embedded parquet files")

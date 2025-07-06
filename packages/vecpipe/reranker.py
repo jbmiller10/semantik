@@ -67,7 +67,7 @@ class CrossEncoderReranker:
         model_size = self._get_model_size()
         return self.batch_size_config.get(model_size, {}).get(self.quantization, 32)
 
-    def load_model(self):
+    def load_model(self) -> None:
         """Load the reranker model and tokenizer"""
         with self._lock:
             if self.model is not None:
@@ -125,10 +125,11 @@ class CrossEncoderReranker:
                 self.model = AutoModelForCausalLM.from_pretrained(self.model_name, **load_kwargs)
 
                 # Move to device if not using device_map
-                if self.device == "cpu" or self.quantization != "int8":
+                if self.model is not None and (self.device == "cpu" or self.quantization != "int8"):
                     self.model = self.model.to(self.device)
 
-                self.model.eval()
+                if self.model is not None:
+                    self.model.eval()
 
                 load_time = time.time() - start_time
                 logger.info(f"Reranker model loaded in {load_time:.2f}s")
@@ -137,7 +138,7 @@ class CrossEncoderReranker:
                 logger.error(f"Failed to load reranker model: {e}")
                 raise RuntimeError(f"Failed to load reranker model: {e}") from e
 
-    def unload_model(self):
+    def unload_model(self) -> None:
         """Unload the model to free memory"""
         with self._lock:
             if self.model is not None:

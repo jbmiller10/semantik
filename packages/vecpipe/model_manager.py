@@ -32,8 +32,8 @@ class ModelManager:
         self.reranker: CrossEncoderReranker | None = None
         self.executor: ThreadPoolExecutor | None = None
         self.unload_after_seconds = unload_after_seconds
-        self.last_used = 0
-        self.last_reranker_used = 0
+        self.last_used: float = 0
+        self.last_reranker_used: float = 0
         self.current_model_key: str | None = None
         self.current_reranker_key: str | None = None
         self.lock = Lock()
@@ -46,7 +46,7 @@ class ModelManager:
         """Generate a unique key for model/quantization combination"""
         return f"{model_name}_{quantization}"
 
-    def _ensure_service_initialized(self):
+    def _ensure_service_initialized(self) -> None:
         """Ensure the embedding service is initialized"""
         with self.lock:
             if self.embedding_service is None:
@@ -55,22 +55,22 @@ class ModelManager:
                 self.executor = ThreadPoolExecutor(max_workers=4)
                 self.is_mock_mode = self.embedding_service.mock_mode
 
-    def _update_last_used(self):
+    def _update_last_used(self) -> None:
         """Update the last used timestamp - must be called within lock"""
         self.last_used = time.time()
 
-    def _update_last_reranker_used(self):
+    def _update_last_reranker_used(self) -> None:
         """Update the last reranker used timestamp - must be called within reranker_lock"""
         self.last_reranker_used = time.time()
 
-    async def _schedule_unload(self):
+    async def _schedule_unload(self) -> None:
         """Schedule model unloading after inactivity"""
         if self.unload_task:
             self.unload_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self.unload_task
 
-        async def unload_after_delay():
+        async def unload_after_delay() -> None:
             await asyncio.sleep(self.unload_after_seconds)
             with self.lock:
                 if time.time() - self.last_used >= self.unload_after_seconds:
@@ -101,14 +101,14 @@ class ModelManager:
 
             # Need to load the model
             logger.info(f"Loading model: {model_name} with {quantization}")
-            if self.embedding_service.load_model(model_name, quantization):
+            if self.embedding_service is not None and self.embedding_service.load_model(model_name, quantization):
                 self.current_model_key = model_key
                 self._update_last_used()
                 return True
             logger.error(f"Failed to load model: {model_name}")
             return False
 
-    def unload_model(self):
+    def unload_model(self) -> None:
         """Unload the current model to free memory"""
         with self.lock:
             if self.embedding_service and hasattr(self.embedding_service, "current_model"):
@@ -135,7 +135,7 @@ class ModelManager:
 
     async def generate_embedding_async(
         self, text: str, model_name: str, quantization: str, instruction: str | None = None
-    ) -> list | None:
+    ) -> list[float] | None:
         """
         Generate embedding with lazy model loading
 
@@ -174,6 +174,7 @@ class ModelManager:
 
         # Use real embedding service
         loop = asyncio.get_event_loop()
+        assert self.embedding_service is not None  # Already checked in ensure_model_loaded
         return await loop.run_in_executor(
             self.executor, self.embedding_service.generate_single_embedding, text, model_name, quantization, instruction
         )
@@ -248,14 +249,14 @@ class ModelManager:
                     ) from e
                 raise
 
-    async def _schedule_reranker_unload(self):
+    async def _schedule_reranker_unload(self) -> None:
         """Schedule reranker unloading after inactivity"""
         if self.reranker_unload_task:
             self.reranker_unload_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self.reranker_unload_task
 
-        async def unload_after_delay():
+        async def unload_after_delay() -> None:
             await asyncio.sleep(self.unload_after_seconds)
             with self.reranker_lock:
                 if time.time() - self.last_reranker_used >= self.unload_after_seconds:
@@ -264,7 +265,7 @@ class ModelManager:
 
         self.reranker_unload_task = asyncio.create_task(unload_after_delay())
 
-    def unload_reranker(self):
+    def unload_reranker(self) -> None:
         """Unload the current reranker to free memory"""
         with self.reranker_lock:
             if self.reranker is not None:
@@ -314,6 +315,7 @@ class ModelManager:
 
         # Use real reranker
         loop = asyncio.get_event_loop()
+        assert self.reranker is not None  # Already checked in ensure_reranker_loaded
         return await loop.run_in_executor(
             self.executor, self.reranker.rerank, query, documents, top_k, instruction, True  # return_scores
         )
@@ -337,11 +339,11 @@ class ModelManager:
 
         # Add reranker info if loaded
         if self.reranker is not None:
-            status["reranker_info"] = self.reranker.get_model_info()
+            status["reranker_info"] = self.reranker.get_model_info()  # type: ignore[assignment]
 
         return status
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """Shutdown the model manager"""
         if self.unload_task:
             self.unload_task.cancel()

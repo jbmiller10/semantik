@@ -30,7 +30,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 # Database initialization and management
-def init_db():
+def init_db() -> None:
     """Initialize SQLite database for job tracking and authentication"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -150,7 +150,7 @@ def init_db():
     conn.close()
 
 
-def init_auth_tables(_conn: sqlite3.Connection, c: sqlite3.Cursor):
+def init_auth_tables(_conn: sqlite3.Connection, c: sqlite3.Cursor) -> None:
     """Initialize authentication tables in the database"""
     # Users table
     c.execute(
@@ -185,7 +185,7 @@ def init_auth_tables(_conn: sqlite3.Connection, c: sqlite3.Cursor):
     logger.info("Authentication tables initialized")
 
 
-def reset_database():
+def reset_database() -> None:
     """Reset the database by dropping all tables and recreating them"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -274,10 +274,10 @@ def create_job(job_data: dict[str, Any]) -> str:
     conn.commit()
     conn.close()
 
-    return job_data["id"]
+    return str(job_data["id"])
 
 
-def update_job(job_id: str, updates: dict[str, Any]):
+def update_job(job_id: str, updates: dict[str, Any]) -> None:
     """Update job information"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -356,7 +356,7 @@ def list_jobs(user_id: int | None = None) -> list[dict[str, Any]]:
     return result
 
 
-def delete_job(job_id: str):
+def delete_job(job_id: str) -> None:
     """Delete a job and its associated files"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -372,7 +372,7 @@ def delete_job(job_id: str):
 
 
 # File-related database operations
-def add_files_to_job(job_id: str, files: list[dict[str, Any]]):
+def add_files_to_job(job_id: str, files: list[dict[str, Any]]) -> None:
     """Add multiple files to a job"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -410,7 +410,7 @@ def update_file_status(
     error: str | None = None,
     chunks_created: int = 0,
     vectors_created: int = 0,
-):
+) -> None:
     """Update file processing status"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -458,7 +458,7 @@ def get_job_total_vectors(job_id: str) -> int:
     result = c.fetchone()
     conn.close()
 
-    return result[0] if result else 0
+    return int(result[0]) if result else 0
 
 
 def get_duplicate_files_in_collection(collection_name: str, content_hashes: list[str]) -> set[str]:
@@ -858,7 +858,7 @@ def create_user(username: str, email: str, hashed_password: str, full_name: str 
     }
 
 
-def update_user_last_login(user_id: int):
+def update_user_last_login(user_id: int) -> None:
     """Update user's last login timestamp"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -868,7 +868,7 @@ def update_user_last_login(user_id: int):
 
 
 # Refresh token operations
-def save_refresh_token(user_id: int, token_hash: str, expires_at: datetime):
+def save_refresh_token(user_id: int, token_hash: str, expires_at: datetime) -> None:
     """Save refresh token to database"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -902,12 +902,12 @@ def verify_refresh_token(token: str) -> int | None:
     # Check each token
     for token_row in tokens:
         if pwd_context.verify(token, token_row["token_hash"]):
-            return token_row["user_id"]
+            return int(token_row["user_id"])
 
     return None
 
 
-def revoke_refresh_token(_token: str):
+def revoke_refresh_token(_token: str) -> None:
     """Revoke a refresh token"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()

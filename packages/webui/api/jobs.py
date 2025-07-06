@@ -26,6 +26,7 @@ import contextlib
 
 from vecpipe.config import settings
 from vecpipe.extract_chunks import TokenChunker, extract_text
+
 from webui import database
 from webui.auth import get_current_user
 from webui.embedding_service import POPULAR_MODELS, embedding_service
@@ -60,7 +61,7 @@ class CreateJobRequest(BaseModel):
     job_id: str | None = None  # Allow pre-generated job_id for WebSocket connection
 
     @validator("chunk_size")
-    def validate_chunk_size(cls, v):  # noqa: N805
+    def validate_chunk_size(cls, v: int) -> int:  # noqa: N805
         if v <= 0:
             raise ValueError("chunk_size must be positive")
         if v < 100:
@@ -70,7 +71,7 @@ class CreateJobRequest(BaseModel):
         return v
 
     @validator("chunk_overlap")
-    def validate_chunk_overlap(cls, v, values):  # noqa: N805
+    def validate_chunk_overlap(cls, v: int, values: dict[str, Any]) -> int:  # noqa: N805
         if v < 0:
             raise ValueError("chunk_overlap cannot be negative")
         if "chunk_size" in values and v >= values["chunk_size"]:
@@ -106,22 +107,22 @@ class JobStatus(BaseModel):
 
 # WebSocket manager for real-time updates
 class ConnectionManager:
-    def __init__(self):
+    def __init__(self) -> None:
         self.active_connections: dict[str, list[WebSocket]] = {}
 
-    async def connect(self, websocket: WebSocket, job_id: str):
+    async def connect(self, websocket: WebSocket, job_id: str) -> None:
         await websocket.accept()
         if job_id not in self.active_connections:
             self.active_connections[job_id] = []
         self.active_connections[job_id].append(websocket)
 
-    def disconnect(self, websocket: WebSocket, job_id: str):
+    def disconnect(self, websocket: WebSocket, job_id: str) -> None:
         if job_id in self.active_connections:
             self.active_connections[job_id].remove(websocket)
             if not self.active_connections[job_id]:
                 del self.active_connections[job_id]
 
-    async def send_update(self, job_id: str, message: dict):
+    async def send_update(self, job_id: str, message: dict[str, Any]) -> None:
         if job_id in self.active_connections:
             disconnected = []
             for connection in self.active_connections[job_id]:
@@ -159,7 +160,7 @@ def extract_and_serialize_thread_safe(filepath: str) -> list[tuple[str, dict[str
 # Import will be done inside functions to avoid circular import
 
 
-async def update_metrics_continuously():
+async def update_metrics_continuously() -> None:
     """Background task to update resource metrics during job processing"""
     # Since webui/api/metrics.py already has a background thread updating metrics,
     # we only need to ensure metrics are being updated, not force updates
@@ -176,7 +177,7 @@ async def update_metrics_continuously():
         await asyncio.sleep(1)  # Check every 1 second
 
 
-async def process_embedding_job(job_id: str):
+async def process_embedding_job(job_id: str) -> None:
     """Process an embedding job asynchronously"""
     metrics_task = None  # Initialize to avoid undefined reference
 
@@ -249,7 +250,8 @@ async def process_embedding_job(job_id: str):
                         )
                         # Update processed files count
                         current_job = database.get_job(job_id)
-                        database.update_job(job_id, {"processed_files": current_job["processed_files"] + 1})
+                        if current_job:
+                            database.update_job(job_id, {"processed_files": current_job.get("processed_files", 0) + 1})
                         continue
 
                 # Update current file
@@ -287,7 +289,7 @@ async def process_embedding_job(job_id: str):
                     # Use asyncio timeout instead of signal-based timeout
                     file_path = file_row["path"]
                     text_blocks = await asyncio.wait_for(
-                        loop.run_in_executor(executor, lambda fp=file_path: extract_and_serialize_thread_safe(fp)),
+                        loop.run_in_executor(executor, extract_and_serialize_thread_safe, file_path),
                         timeout=300,  # 5 minute timeout
                     )
                 except TimeoutError:
@@ -449,7 +451,8 @@ async def process_embedding_job(job_id: str):
                 )
                 # Get current job to update processed files count
                 current_job = database.get_job(job_id)
-                database.update_job(job_id, {"processed_files": current_job["processed_files"] + 1})
+                if current_job:
+                    database.update_job(job_id, {"processed_files": current_job.get("processed_files", 0) + 1})
 
                 # Record file processed
                 if metrics_tracking:
@@ -460,7 +463,7 @@ async def process_embedding_job(job_id: str):
                     job_id,
                     {
                         "type": "file_completed",
-                        "processed_files": current_job["processed_files"] + 1,
+                        "processed_files": current_job.get("processed_files", 0) + 1 if current_job else 1,
                         "total_files": len(files),
                     },
                 )
@@ -547,13 +550,13 @@ async def process_embedding_job(job_id: str):
 
 # API Routes
 @router.get("/new-id")
-async def get_new_job_id(current_user: dict[str, Any] = Depends(get_current_user)):  # noqa: ARG001
+async def get_new_job_id(current_user: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:  # noqa: ARG001
     """Generate a new job ID for WebSocket connection"""
     return {"job_id": str(uuid.uuid4())}
 
 
 @router.post("", response_model=JobStatus)
-async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = Depends(get_current_user)):
+async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = Depends(get_current_user)) -> JobStatus:
     """Create a new embedding job"""
     # Accept job_id from request if provided, otherwise generate new one
     job_id = request.job_id if request.job_id else str(uuid.uuid4())
@@ -612,9 +615,11 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
         if not vector_size:
             # Try to get from POPULAR_MODELS first
             if request.model_name in POPULAR_MODELS:
-                vector_size = POPULAR_MODELS[request.model_name].get("dim") or POPULAR_MODELS[request.model_name].get(
+                dim_value = POPULAR_MODELS[request.model_name].get("dim") or POPULAR_MODELS[request.model_name].get(
                     "dimension"
                 )
+                if isinstance(dim_value, int):
+                    vector_size = dim_value
 
             # If still not found, get from actual model
             if not vector_size:
@@ -628,6 +633,10 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
                 except Exception as e:
                     logger.warning(f"Error getting model info: {e}")
                     vector_size = 1024  # Default fallback
+
+        # Ensure we have a valid vector size
+        if not vector_size:
+            vector_size = 1024  # Final fallback
 
         # Update job with actual vector dimension
         database.update_job(job_id, {"vector_dim": vector_size})
@@ -654,7 +663,7 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
                 vector_dim=vector_size,
                 chunk_size=request.chunk_size,
                 chunk_overlap=request.chunk_overlap,
-                instruction=request.instruction,
+                instruction=request.instruction or "",
             )
 
         except Exception as e:
@@ -689,7 +698,9 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
 
 
 @router.post("/add-to-collection", response_model=JobStatus)
-async def add_to_collection(request: AddToCollectionRequest, current_user: dict[str, Any] = Depends(get_current_user)):
+async def add_to_collection(
+    request: AddToCollectionRequest, current_user: dict[str, Any] = Depends(get_current_user)
+) -> JobStatus:
     """Add new documents to an existing collection"""
     # Accept job_id from request if provided, otherwise generate new one
     job_id = request.job_id if request.job_id else str(uuid.uuid4())
@@ -835,7 +846,7 @@ async def add_to_collection(request: AddToCollectionRequest, current_user: dict[
 
 
 @router.get("", response_model=list[JobStatus])
-async def list_jobs(current_user: dict[str, Any] = Depends(get_current_user)):
+async def list_jobs(current_user: dict[str, Any] = Depends(get_current_user)) -> list[JobStatus]:
     """List all jobs for the current user"""
     jobs = database.list_jobs(user_id=current_user["id"])
 
@@ -868,7 +879,7 @@ async def list_jobs(current_user: dict[str, Any] = Depends(get_current_user)):
 @router.get("/collection-metadata/{collection_name}")
 async def get_collection_metadata(
     collection_name: str, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
-):
+) -> dict[str, Any]:
     """Get metadata for a specific collection"""
     metadata = database.get_collection_metadata(collection_name)
     if not metadata:
@@ -893,14 +904,16 @@ async def check_duplicates(
     collection_name: str = Body(...),
     content_hashes: list[str] = Body(...),
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-):
+) -> dict[str, list[str]]:
     """Check which content hashes already exist in a collection"""
     existing_hashes = database.get_duplicate_files_in_collection(collection_name, content_hashes)
     return {"existing_hashes": list(existing_hashes)}
 
 
 @router.get("/collections-status")
-async def check_collections_status(current_user: dict[str, Any] = Depends(get_current_user)):  # noqa: ARG001
+async def check_collections_status(
+    current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
+) -> dict[str, dict[str, Any]]:
     """Check which job collections exist in Qdrant"""
     try:
         qdrant = qdrant_manager.get_client()
@@ -936,7 +949,9 @@ async def check_collections_status(current_user: dict[str, Any] = Depends(get_cu
 
 
 @router.post("/{job_id}/cancel")
-async def cancel_job(job_id: str, current_user: dict[str, Any] = Depends(get_current_user)):  # noqa: ARG001
+async def cancel_job(
+    job_id: str, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
+) -> dict[str, str]:
     """Cancel a running job"""
     # Check current job status
     job = database.get_job(job_id)
@@ -957,7 +972,9 @@ async def cancel_job(job_id: str, current_user: dict[str, Any] = Depends(get_cur
 
 
 @router.delete("/{job_id}")
-async def delete_job(job_id: str, current_user: dict[str, Any] = Depends(get_current_user)):  # noqa: ARG001
+async def delete_job(
+    job_id: str, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
+) -> dict[str, str]:
     """Delete a job and its associated collection"""
     # Check if job exists
     job = database.get_job(job_id)
@@ -979,7 +996,7 @@ async def delete_job(job_id: str, current_user: dict[str, Any] = Depends(get_cur
 
 
 @router.get("/{job_id}", response_model=JobStatus)
-async def get_job(job_id: str, current_user: dict[str, Any] = Depends(get_current_user)):  # noqa: ARG001
+async def get_job(job_id: str, current_user: dict[str, Any] = Depends(get_current_user)) -> JobStatus:  # noqa: ARG001
     """Get job details"""
     job = database.get_job(job_id)
 
@@ -1009,7 +1026,7 @@ async def get_job(job_id: str, current_user: dict[str, Any] = Depends(get_curren
 @router.get("/{job_id}/collection-exists")
 async def check_collection_exists(
     job_id: str, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
-):
+) -> dict[str, Any]:
     """Check if a job's collection exists in Qdrant"""
     try:
         qdrant = qdrant_manager.get_client()
@@ -1036,7 +1053,7 @@ async def check_collection_exists(
 
 
 # WebSocket handler - export this separately so it can be mounted at the app level
-async def websocket_endpoint(websocket: WebSocket, job_id: str):
+async def websocket_endpoint(websocket: WebSocket, job_id: str) -> None:
     """WebSocket for real-time job updates"""
     await manager.connect(websocket, job_id)
     try:
