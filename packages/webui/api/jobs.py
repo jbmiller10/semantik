@@ -6,12 +6,12 @@ import asyncio
 import gc
 import hashlib
 import logging
-import os
 import sys
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, WebSocket, WebSocketDisconnect
@@ -20,15 +20,17 @@ from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Distance, PointStruct
 
 # Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+
+import contextlib
+
+from webui import database
+from webui.auth import get_current_user
+from webui.embedding_service import POPULAR_MODELS, embedding_service
+from webui.utils.qdrant_manager import qdrant_manager
 
 from packages.vecpipe.config import settings
 from packages.vecpipe.extract_chunks import TokenChunker, extract_text
-
-from .. import database
-from ..auth import get_current_user
-from ..embedding_service import POPULAR_MODELS, embedding_service
-from ..utils.qdrant_manager import qdrant_manager
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +128,7 @@ class ConnectionManager:
             for connection in self.active_connections[job_id]:
                 try:
                     await connection.send_json(message)
-                except:
+                except Exception:
                     disconnected.append(connection)
 
             # Clean up disconnected clients
@@ -199,7 +201,7 @@ async def process_embedding_job(job_id: str):
 
     try:
         # Update job status and set start time
-        database.update_job(job_id, {"status": "processing", "start_time": datetime.now().isoformat()})
+        database.update_job(job_id, {"status": "processing", "start_time": datetime.now(timezone.utc).isoformat()})
 
         # Get job details
         job = database.get_job(job_id)
@@ -289,7 +291,7 @@ async def process_embedding_job(job_id: str):
                         timeout=300,  # 5 minute timeout
                     )
                 except TimeoutError:
-                    raise TimeoutError(f"Text extraction timed out after 300 seconds for {file_row['path']}")
+                    raise TimeoutError(f"Text extraction timed out after 300 seconds for {file_row['path']}") from None
 
                 memory_after_extract = process.memory_info().rss / 1024 / 1024  # MB
                 logger.info(
@@ -429,9 +431,7 @@ async def process_embedding_job(job_id: str):
                                 PointStruct(id=point["id"], vector=point["vector"], payload=point["payload"])
                                 for point in points
                             ]
-                            upload_result = qdrant.upsert(
-                                collection_name=collection_name, points=point_structs, wait=True
-                            )
+                            qdrant.upsert(collection_name=collection_name, points=point_structs, wait=True)
                             successfully_uploaded += len(point_structs)
                             logger.info(f"Successfully uploaded {len(point_structs)} points to Qdrant")
                         except Exception as e:
@@ -541,10 +541,8 @@ async def process_embedding_job(job_id: str):
         # Cancel metrics updater task if it exists
         if metrics_task:
             metrics_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await metrics_task
-            except asyncio.CancelledError:
-                pass
 
 
 # API Routes
@@ -572,7 +570,7 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
             raise HTTPException(status_code=400, detail="No supported files found in directory")
 
         # Create job record
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         job_data = {
             "id": job_id,
             "name": request.name,
@@ -642,7 +640,7 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
             )
 
             # Verify collection was created
-            collection_info = qdrant_manager.verify_collection(collection_name)
+            qdrant_manager.verify_collection(collection_name)
             logger.info(f"Successfully created collection {collection_name}")
 
             # Store metadata about this collection
@@ -663,7 +661,7 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
             logger.error(f"Failed to create collection {collection_name}: {e}")
             # Clean up job and return error
             database.delete_job(job_id)
-            raise HTTPException(status_code=500, detail=f"Failed to create Qdrant collection: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to create Qdrant collection: {str(e)}") from e
 
         # Start processing in background with cancellation support
         task = asyncio.create_task(process_embedding_job(job_id))
@@ -687,7 +685,7 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/add-to-collection", response_model=JobStatus)
@@ -765,10 +763,10 @@ async def add_to_collection(request: AddToCollectionRequest, current_user: dict[
                 )
 
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to verify collection dimensions: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to verify collection dimensions: {str(e)}") from e
 
         # Create job record with inherited settings
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         job_data = {
             "id": job_id,
             "name": request.collection_name,  # Use same collection name
@@ -833,7 +831,7 @@ async def add_to_collection(request: AddToCollectionRequest, current_user: dict[
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("", response_model=list[JobStatus])
@@ -932,7 +930,7 @@ async def check_collections_status(current_user: dict[str, Any] = Depends(get_cu
 
     except Exception as e:
         logger.error(f"Failed to check collections status: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to check collections: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to check collections: {str(e)}") from e
 
 
 @router.post("/{job_id}/cancel")
@@ -1030,7 +1028,7 @@ async def check_collection_exists(job_id: str, current_user: dict[str, Any] = De
 
     except Exception as e:
         logger.error(f"Failed to check collection existence: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to check collection: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to check collection: {str(e)}") from e
 
 
 # WebSocket handler - export this separately so it can be mounted at the app level

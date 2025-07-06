@@ -7,16 +7,16 @@ Removes vectors for deleted documents from all collections
 import argparse
 import json
 import logging
-import os
 import sqlite3
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import Path
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue
 
 # Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from .config import settings
 from .extract_chunks import FileChangeTracker
@@ -42,11 +42,12 @@ class QdrantCleanupService:
 
     def get_current_files(self, file_list_path: str) -> list[str]:
         """Read current file list from null-delimited file"""
-        if not os.path.exists(file_list_path):
+        file_path = Path(file_list_path)
+        if not file_path.exists():
             logger.error(f"File list not found: {file_list_path}")
             return []
 
-        with open(file_list_path, "rb") as f:
+        with file_path.open("rb") as f:
             content = f.read()
             files = content.decode("utf-8").split("\0")
             # Filter out empty strings
@@ -59,7 +60,7 @@ class QdrantCleanupService:
         """Get all job collection names from webui database"""
         collections = [settings.DEFAULT_COLLECTION]
 
-        if not os.path.exists(settings.WEBUI_DB):
+        if not Path(settings.WEBUI_DB).exists():
             logger.warning(f"WebUI database not found: {settings.WEBUI_DB}")
             return collections
 
@@ -164,7 +165,7 @@ class QdrantCleanupService:
 
         # Log summary
         summary = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "removed_files": len(removed_files),
             "deleted_points": total_deleted,
             "by_collection": deleted_by_collection,
@@ -175,7 +176,7 @@ class QdrantCleanupService:
 
         # Write to cleanup log
         try:
-            with open(settings.CLEANUP_LOG, "a") as f:
+            with Path(settings.CLEANUP_LOG).open("a") as f:
                 f.write(json.dumps(summary) + "\n")
         except Exception as e:
             logger.error(f"Failed to write cleanup log: {e}")
@@ -206,7 +207,7 @@ def main():
             return 1
 
         # Run cleanup
-        result = service.cleanup_removed_files(current_files, dry_run=args.dry_run)
+        service.cleanup_removed_files(current_files, dry_run=args.dry_run)
 
         # Exit with success if no errors
         return 0

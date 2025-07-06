@@ -64,5 +64,5 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # Create data/log directories if they don't exist
-os.makedirs(settings.PROJECT_ROOT / "data", exist_ok=True)
-os.makedirs(settings.PROJECT_ROOT / "logs", exist_ok=True)
+(settings.PROJECT_ROOT / "data").mkdir(parents=True, exist_ok=True)
+(settings.PROJECT_ROOT / "logs").mkdir(parents=True, exist_ok=True)

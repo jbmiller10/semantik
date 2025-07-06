@@ -3,7 +3,7 @@
 Simple test script to check the /api/metrics endpoint
 """
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 
@@ -14,7 +14,7 @@ def test_metrics_endpoint():
     metrics_url = f"{base_url}/api/metrics"
 
     print(f"Testing metrics endpoint at: {metrics_url}")
-    print(f"Time: {datetime.now()}")
+    print(f"Time: {datetime.now(timezone.utc)}")
     print("-" * 60)
 
     try:
@@ -49,7 +49,7 @@ def test_metrics_endpoint():
                 print(f"Total embeddings: {data.get('total_embeddings', 'NOT FOUND')}")
 
                 # Check if any values are non-zero
-                non_zero_metrics = [k for k, v in data.items() if isinstance(v, (int, float)) and v > 0]
+                non_zero_metrics = [k for k, v in data.items() if isinstance(v, int | float) and v > 0]
                 if non_zero_metrics:
                     print(f"\nNon-zero metrics: {non_zero_metrics}")
                 else:

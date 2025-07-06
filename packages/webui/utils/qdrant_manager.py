@@ -70,9 +70,8 @@ class QdrantConnectionManager:
         if self._client:
             if self._verify_connection(self._client):
                 return self._client
-            else:
-                logger.warning("Cached Qdrant client is no longer valid, creating new one")
-                self._client = None
+            logger.warning("Cached Qdrant client is no longer valid, creating new one")
+            self._client = None
 
         # Create and verify new client
         client = self._create_client()
@@ -128,8 +127,7 @@ class QdrantConnectionManager:
             Exception: If collection doesn't exist or verification fails
         """
         client = self.get_client()
-        collection_info = client.get_collection(collection_name)
-        return collection_info
+        return client.get_collection(collection_name)
 
     def close(self):
         """Close the cached client connection."""

@@ -3,8 +3,8 @@ Main entry point for Document Embedding Web UI
 Creates and configures the FastAPI application
 """
 
-import os
 import sys
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
@@ -12,7 +12,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 # Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from .api import auth, collections, documents, files, jobs, metrics, models, root, search, settings
 from .api.files import scan_websocket
@@ -51,13 +51,13 @@ def create_app() -> FastAPI:
         await scan_websocket(websocket, scan_id)
 
     # Mount static files with proper path resolution
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    static_dir = os.path.join(base_dir, "static")
-    assets_dir = os.path.join(static_dir, "assets")
+    base_dir = Path(__file__).resolve().parent
+    static_dir = base_dir / "static"
+    assets_dir = static_dir / "assets"
 
     # Ensure directories exist (for tests and fresh environments)
-    os.makedirs(static_dir, exist_ok=True)
-    os.makedirs(assets_dir, exist_ok=True)
+    static_dir.mkdir(parents=True, exist_ok=True)
+    assets_dir.mkdir(parents=True, exist_ok=True)
 
     # Mount assets directory for React build
     app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")

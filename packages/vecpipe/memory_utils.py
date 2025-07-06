@@ -40,7 +40,6 @@ class InsufficientMemoryError(Exception):
     """Raised when there's not enough memory to load a model"""
 
 
-
 def get_gpu_memory_info() -> tuple[int, int]:
     """
     Get GPU memory information

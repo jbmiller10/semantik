@@ -3,7 +3,6 @@ Unit tests for add-to-collection functionality
 """
 
 import hashlib
-import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -54,16 +53,18 @@ class TestContentHashing:
         test_file.write_text("content")
 
         # Make it unreadable (Unix only)
+        import os
+
         if os.name != "nt":
             try:
-                os.chmod(test_file, 0o000)
+                test_file.chmod(0o000)
 
                 # Should return None on permission error
                 hash_result = compute_file_content_hash(test_file)
                 assert hash_result is None
             finally:
                 # Always restore permissions for cleanup
-                os.chmod(test_file, 0o644)
+                test_file.chmod(0o644)
         else:
             # Skip test on Windows
             pytest.skip("Permission test not applicable on Windows")
@@ -89,7 +90,7 @@ class TestDuplicateDetection:
         """Cleanup test database"""
         database.DB_PATH = self.original_db_path
         self.temp_db.close()
-        os.unlink(self.temp_db.name)
+        Path(self.temp_db.name).unlink()
 
     def test_get_duplicate_files_empty_collection(self):
         """Test checking duplicates in non-existent collection"""
@@ -200,7 +201,7 @@ class TestSettingsInheritance:
         """Cleanup test database"""
         database.DB_PATH = self.original_db_path
         self.temp_db.close()
-        os.unlink(self.temp_db.name)
+        Path(self.temp_db.name).unlink()
 
     def test_get_collection_metadata(self):
         """Test retrieving collection metadata"""

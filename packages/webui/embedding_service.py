@@ -157,7 +157,7 @@ class EmbeddingService:
                     except Exception as e:
                         error_msg = f"Failed to load model with INT8 quantization: {str(e)}"
                         logger.error(error_msg)
-                        raise RuntimeError(error_msg)
+                        raise RuntimeError(error_msg) from e
 
                 elif quantization == "float16" and self.device == "cuda":
                     self.current_model = AutoModel.from_pretrained(
@@ -478,7 +478,7 @@ class EmbeddingService:
                         self.successful_batches = 0  # Reset success counter
 
                         if current_batch_size < self.min_batch_size:
-                            raise RuntimeError("Unable to process batch even with minimum batch size")
+                            raise RuntimeError("Unable to process batch even with minimum batch size") from e
 
             return embeddings
 

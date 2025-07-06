@@ -7,9 +7,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-
-from .. import database
-from ..auth import (
+from webui import database
+from webui.auth import (
     Token,
     User,
     UserCreate,
@@ -32,18 +31,17 @@ async def register(user_data: UserCreate):
     """Register a new user"""
     try:
         hashed_password = get_password_hash(user_data.password)
-        user = database.create_user(
+        return database.create_user(
             username=user_data.username,
             email=user_data.email,
             hashed_password=hashed_password,
             full_name=user_data.full_name,
         )
-        return user
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.error(f"Registration error: {e}")
-        raise HTTPException(status_code=500, detail="Registration failed")
+        raise HTTPException(status_code=500, detail="Registration failed") from e
 
 
 @router.post("/login", response_model=Token)

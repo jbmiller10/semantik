@@ -5,13 +5,13 @@ Helps diagnose configuration and model loading issues
 """
 
 import logging
-import os
 import sys
+from pathlib import Path
 
 import torch
 
 # Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)

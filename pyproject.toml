@@ -75,7 +75,10 @@ select = [
     "ARG", # flake8-unused-arguments
     "PTH", # flake8-use-pathlib
 ]
-ignore = ["E501"]  # line too long
+ignore = [
+    "E501",  # line too long
+    "B008",  # do not perform function call in argument defaults (needed for FastAPI)
+]
 
 [tool.black]
 line-length = 120
