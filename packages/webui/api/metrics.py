@@ -80,8 +80,7 @@ async def get_metrics(current_user: User = Depends(get_current_user)) -> dict[st
         if generate_latest is not None and registry is not None:
             metrics_data = generate_latest(registry)
             return {"available": True, "metrics_port": METRICS_PORT, "data": metrics_data.decode("utf-8")}
-        else:
-            return {"error": "Metrics not initialized", "metrics_port": METRICS_PORT}
+        return {"error": "Metrics not initialized", "metrics_port": METRICS_PORT}
     except Exception as e:
         logger.error(f"Failed to generate metrics: {e}")
         return {"error": str(e), "metrics_port": METRICS_PORT}

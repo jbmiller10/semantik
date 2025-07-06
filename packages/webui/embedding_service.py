@@ -245,12 +245,10 @@ class EmbeddingService:
                 outputs = self.current_model(**batch_dict)
                 embeddings = last_token_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
                 embeddings = F.normalize(embeddings, p=2, dim=1)
-                result = embeddings[0].cpu().numpy()
-                return result  # type: ignore[no-any-return]
+                return embeddings[0].cpu().numpy()  # type: ignore[no-any-return]
         else:
             assert self.current_model is not None
-            result = self.current_model.encode("test", convert_to_numpy=True)
-            return result  # type: ignore[no-any-return]
+            return self.current_model.encode("test", convert_to_numpy=True)  # type: ignore[no-any-return]
 
     def _generate_mock_embeddings(self, texts: list[str]) -> np.ndarray:
         """Generate deterministic mock embeddings based on text hash"""
@@ -262,7 +260,7 @@ class EmbeddingService:
             # Try to get dimension from model info
             model_info = QUANTIZED_MODEL_INFO.get(self.current_model_name, {})
             dim_value = model_info.get("dimension", 1024)
-            vector_dim = int(dim_value) if isinstance(dim_value, (int, str, float)) else 1024
+            vector_dim = int(dim_value) if isinstance(dim_value, int | str | float) else 1024
 
         embeddings = []
         for text in texts:
@@ -415,7 +413,8 @@ class EmbeddingService:
                                 and self.original_batch_size is not None
                                 and self.current_batch_size < self.original_batch_size
                             ):
-                                assert self.current_batch_size is not None and self.original_batch_size is not None
+                                assert self.current_batch_size is not None
+                                assert self.original_batch_size is not None
                                 new_size = min(self.current_batch_size * 2, self.original_batch_size)
                                 logger.info(f"Restoring batch size from {self.current_batch_size} to {new_size}")
                                 self.current_batch_size = new_size
@@ -481,7 +480,8 @@ class EmbeddingService:
                                 and self.original_batch_size is not None
                                 and self.current_batch_size < self.original_batch_size
                             ):
-                                assert self.current_batch_size is not None and self.original_batch_size is not None
+                                assert self.current_batch_size is not None
+                                assert self.original_batch_size is not None
                                 new_size = min(self.current_batch_size * 2, self.original_batch_size)
                                 logger.info(f"Restoring batch size from {self.current_batch_size} to {new_size}")
                                 self.current_batch_size = new_size
@@ -535,8 +535,7 @@ class EmbeddingService:
             [text], model_name, quantization, batch_size=1, show_progress=False, instruction=instruction
         )
         if embeddings is not None and len(embeddings) > 0:
-            result = embeddings[0].tolist()
-            return result  # type: ignore[no-any-return]
+            return embeddings[0].tolist()  # type: ignore[no-any-return]
         return None
 
 
