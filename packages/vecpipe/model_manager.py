@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from typing import Any
 
-from packages.webui.embedding_service import EmbeddingService
+from webui.embedding_service import EmbeddingService
 
 from .memory_utils import InsufficientMemoryError, check_memory_availability, get_gpu_memory_info
 from .reranker import CrossEncoderReranker

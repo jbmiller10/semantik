@@ -8,7 +8,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 from webui import database
 from webui.api.files import compute_file_content_hash
 

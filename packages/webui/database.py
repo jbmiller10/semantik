@@ -16,7 +16,7 @@ from passlib.context import CryptContext
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from packages.vecpipe.config import settings
+from vecpipe.config import settings
 
 # Configure logging
 logger = logging.getLogger(__name__)

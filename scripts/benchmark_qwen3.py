@@ -14,8 +14,8 @@ import numpy as np
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from packages.vecpipe.qwen3_search_config import DOMAIN_INSTRUCTIONS, get_optimal_config
-from packages.webui.embedding_service import EmbeddingService
+from vecpipe.qwen3_search_config import DOMAIN_INSTRUCTIONS, get_optimal_config
+from webui.embedding_service import EmbeddingService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)

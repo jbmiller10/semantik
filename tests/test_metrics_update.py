@@ -5,7 +5,7 @@ import time
 import psutil
 import requests
 
-from packages.vecpipe.metrics import metrics_collector
+from vecpipe.metrics import metrics_collector
 
 print("Testing metrics update...")
 print(f"Initial CPU percent (no interval): {psutil.cpu_percent(interval=None)}")

@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from prometheus_client import Counter, Histogram
 
-from packages.webui.embedding_service import EmbeddingService
+from webui.embedding_service import EmbeddingService
 
 from .config import settings
 from .hybrid_search import HybridSearchEngine
