@@ -28,8 +28,8 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 @router.post("/reset-database")
 async def reset_database_endpoint(
-    current_user: dict[str, Any] = Depends(get_current_user)
-) -> dict[str, str]:  # noqa: ARG001
+    current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
+) -> dict[str, str]:
     """Reset the database"""
     try:
         # Get all job IDs before reset
@@ -73,8 +73,8 @@ async def reset_database_endpoint(
 
 @router.get("/stats")
 async def get_database_stats(
-    current_user: dict[str, Any] = Depends(get_current_user)
-) -> dict[str, Any]:  # noqa: ARG001
+    current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
+) -> dict[str, Any]:
     """Get database statistics"""
     # Get stats from database module
     stats = database.get_database_stats()

@@ -187,8 +187,7 @@ class FileChangeTracker:
         if Path(self.db_path).exists():
             try:
                 with Path(self.db_path).open() as f:
-                    data = json.load(f)
-                    return data  # type: ignore[no-any-return]
+                    return json.load(f)  # type: ignore[no-any-return]
             except Exception:
                 logger.warning(f"Failed to load tracking data from {self.db_path}")
         return {"files": {}}

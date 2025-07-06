@@ -121,8 +121,14 @@ def test_model_loading(model_name: str, quantization: str, has_gpu: bool) -> boo
 
 
 def suggest_fixes(
-    use_mock: bool, model: str, quantization: str, deps_ok: bool, has_gpu: bool, gpu_memory: float, model_loads: bool
-) -> None:  # noqa: ARG001
+    use_mock: bool,
+    model: str,  # noqa: ARG001
+    quantization: str,  # noqa: ARG001
+    deps_ok: bool,
+    has_gpu: bool,
+    gpu_memory: float,
+    model_loads: bool,  # noqa: ARG001
+) -> None:
     """Suggest fixes for common issues"""
     print("\n" + "=" * 60)
     print("Recommendations:")
