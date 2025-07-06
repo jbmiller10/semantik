@@ -1,6 +1,5 @@
 # vecpipe/config.py
 
-import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,7 +15,7 @@ class Settings(BaseSettings):
     PROJECT_ROOT: Path = Path(__file__).parent.parent.resolve()
 
     # Qdrant Configuration
-    QDRANT_HOST: str
+    QDRANT_HOST: str = "localhost"  # Default for mypy, overridden by .env
     QDRANT_PORT: int = 6333
     DEFAULT_COLLECTION: str = "work_docs"
 
@@ -26,7 +25,7 @@ class Settings(BaseSettings):
     DEFAULT_QUANTIZATION: str = "float16"
 
     # JWT Authentication Configuration
-    JWT_SECRET_KEY: str
+    JWT_SECRET_KEY: str = "default-secret-key"  # Default for mypy, MUST be overridden in .env
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     ALGORITHM: str = "HS256"
 
@@ -61,9 +60,7 @@ class Settings(BaseSettings):
 
 
 # Instantiate settings once and export
-settings = Settings(
-    QDRANT_HOST=os.getenv("QDRANT_HOST", "localhost"), JWT_SECRET_KEY=os.getenv("JWT_SECRET_KEY", "default-secret-key")
-)
+settings = Settings()
 
 # Create data/log directories if they don't exist
 (settings.PROJECT_ROOT / "data").mkdir(parents=True, exist_ok=True)
