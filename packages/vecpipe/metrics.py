@@ -6,10 +6,11 @@ Provides observability into system performance
 
 import threading
 import time
+from typing import Any
 
 import GPUtil
 import psutil
-from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, Info, generate_latest, start_http_server
+from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, Info, start_http_server
 
 # Create custom registry
 registry = CollectorRegistry()
@@ -84,13 +85,13 @@ qdrant_upload_errors = Counter("embedding_qdrant_upload_errors_total", "Qdrant u
 class MetricsCollector:
     """Collector for system and GPU metrics"""
 
-    def __init__(self):
-        self.last_update = 0
+    def __init__(self) -> None:
+        self.last_update: float = 0.0
         self.update_interval = 1  # seconds - reduced for more responsive metrics
         self.lock = threading.Lock()
         self.first_cpu_call = True
 
-    def update_resource_metrics(self, force=False):
+    def update_resource_metrics(self, force: bool = False) -> None:
         """Update resource utilization metrics"""
         current_time = time.time()
 
@@ -159,63 +160,63 @@ metrics_collector = MetricsCollector()
 class TimingContext:
     """Context manager for timing operations"""
 
-    def __init__(self, histogram: Histogram):
+    def __init__(self, histogram: Histogram) -> None:
         self.histogram = histogram
-        self.start_time = None
+        self.start_time: float | None = None
 
-    def __enter__(self):
+    def __enter__(self) -> "TimingContext":
         self.start_time = time.time()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         if self.start_time:
             duration = time.time() - self.start_time
             self.histogram.observe(duration)
 
 
 # Helper functions
-def record_job_started():
+def record_job_started() -> None:
     """Record that a job has started"""
     jobs_created.inc()
 
 
-def record_job_completed(duration_seconds: float):
+def record_job_completed(duration_seconds: float) -> None:
     """Record that a job has completed"""
     jobs_completed.inc()
     job_duration.observe(duration_seconds)
 
 
-def record_job_failed():
+def record_job_failed() -> None:
     """Record that a job has failed"""
     jobs_failed.inc()
 
 
-def record_file_processed(stage: str):
+def record_file_processed(stage: str) -> None:
     """Record successful file processing"""
     files_processed.labels(stage=stage).inc()
 
 
-def record_file_failed(stage: str, error_type: str):
+def record_file_failed(stage: str, error_type: str) -> None:
     """Record failed file processing"""
     files_failed.labels(stage=stage, error_type=error_type).inc()
 
 
-def record_chunks_created(count: int):
+def record_chunks_created(count: int) -> None:
     """Record number of chunks created"""
     chunks_created.inc(count)
 
 
-def record_embeddings_generated(count: int):
+def record_embeddings_generated(count: int) -> None:
     """Record number of embeddings generated"""
     embeddings_generated.inc(count)
 
 
-def update_queue_length(stage: str, length: int):
+def update_queue_length(stage: str, length: int) -> None:
     """Update queue length for a stage"""
     queue_length.labels(stage=stage).set(length)
 
 
-def update_processing_lag(stage: str, lag_seconds: float):
+def update_processing_lag(stage: str, lag_seconds: float) -> None:
     """Update processing lag for a stage"""
     processing_lag.labels(stage=stage).set(lag_seconds)
 
@@ -224,7 +225,7 @@ def update_processing_lag(stage: str, lag_seconds: float):
 # These were defined but never called in the codebase
 
 
-def start_metrics_server(port: int = 9090):
+def start_metrics_server(port: int = 9090) -> None:
     """Start Prometheus metrics server"""
     start_http_server(port, registry=registry)
     print(f"Metrics server started on port {port}")

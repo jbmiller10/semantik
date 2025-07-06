@@ -6,7 +6,7 @@ Combines vector similarity search with text-based filtering
 
 import logging
 import re
-from typing import Any
+from typing import Any, cast
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, MatchText
@@ -65,9 +65,7 @@ class HybridSearchEngine:
 
         # Split query into words and filter
         words = re.findall(r"\w+", query.lower())
-        keywords = [word for word in words if word not in stop_words and len(word) > 2]
-
-        return keywords
+        return [word for word in words if word not in stop_words and len(word) > 2]
 
     def build_text_filter(self, keywords: list[str], mode: str = "any") -> Filter | None:
         """Build Qdrant filter for text matching"""
@@ -82,10 +80,9 @@ class HybridSearchEngine:
 
         if mode == "all":
             # All keywords must match
-            return Filter(must=conditions)
-        else:
-            # Any keyword can match
-            return Filter(should=conditions)
+            return Filter(must=cast(Any, conditions))
+        # Any keyword can match
+        return Filter(should=cast(Any, conditions))
 
     def hybrid_search(
         self,
@@ -141,54 +138,54 @@ class HybridSearchEngine:
 
                 return results
 
-            else:  # rerank mode
-                # First get more candidates using vector search
-                candidate_limit = limit * 3  # Get 3x candidates for reranking
+            # rerank mode
+            # First get more candidates using vector search
+            candidate_limit = limit * 3  # Get 3x candidates for reranking
 
-                search_result = self.client.search(
-                    collection_name=self.collection_name,
-                    query_vector=query_vector,
-                    limit=candidate_limit,
-                    score_threshold=score_threshold,
+            search_result = self.client.search(
+                collection_name=self.collection_name,
+                query_vector=query_vector,
+                limit=candidate_limit,
+                score_threshold=score_threshold,
+            )
+
+            # Extract keywords
+            keywords = self.extract_keywords(query_text)
+
+            # Score and rerank based on keyword matches
+            scored_results = []
+            for hit in search_result:
+                content = hit.payload.get("content", "").lower() if hit.payload else ""
+
+                # Count keyword matches
+                keyword_score = 0
+                matched_keywords = []
+                for keyword in keywords:
+                    if keyword in content:
+                        keyword_score += 1
+                        matched_keywords.append(keyword)
+
+                # Combine vector score with keyword score
+                # Normalize keyword score (0-1 range)
+                normalized_keyword_score = keyword_score / len(keywords) if keywords else 0
+
+                # Weighted combination (70% vector, 30% keywords)
+                combined_score = 0.7 * hit.score + 0.3 * normalized_keyword_score
+
+                scored_results.append(
+                    {
+                        "id": str(hit.id),
+                        "score": hit.score,
+                        "keyword_score": normalized_keyword_score,
+                        "combined_score": float(combined_score),
+                        "payload": hit.payload,
+                        "matched_keywords": matched_keywords,
+                    }
                 )
 
-                # Extract keywords
-                keywords = self.extract_keywords(query_text)
-
-                # Score and rerank based on keyword matches
-                scored_results = []
-                for hit in search_result:
-                    content = hit.payload.get("content", "").lower()
-
-                    # Count keyword matches
-                    keyword_score = 0
-                    matched_keywords = []
-                    for keyword in keywords:
-                        if keyword in content:
-                            keyword_score += 1
-                            matched_keywords.append(keyword)
-
-                    # Combine vector score with keyword score
-                    # Normalize keyword score (0-1 range)
-                    normalized_keyword_score = keyword_score / len(keywords) if keywords else 0
-
-                    # Weighted combination (70% vector, 30% keywords)
-                    combined_score = 0.7 * hit.score + 0.3 * normalized_keyword_score
-
-                    scored_results.append(
-                        {
-                            "id": str(hit.id),
-                            "score": hit.score,
-                            "keyword_score": normalized_keyword_score,
-                            "combined_score": combined_score,
-                            "payload": hit.payload,
-                            "matched_keywords": matched_keywords,
-                        }
-                    )
-
-                # Sort by combined score and return top results
-                scored_results.sort(key=lambda x: x["combined_score"], reverse=True)
-                return scored_results[:limit]
+            # Sort by combined score and return top results
+            scored_results.sort(key=lambda x: cast(float, x["combined_score"]), reverse=True)
+            return scored_results[:limit]
 
         except Exception as e:
             logger.error(f"Hybrid search failed: {e}")
@@ -227,6 +224,6 @@ class HybridSearchEngine:
             logger.error(f"Keyword search failed: {e}")
             raise
 
-    def close(self):
+    def close(self) -> None:
         """Close the client connection"""
         self.client.close()

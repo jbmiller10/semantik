@@ -5,9 +5,7 @@ Bulk loads vectors from parquet files into Qdrant collection
 """
 
 import argparse
-import glob
 import logging
-import os
 import sys
 import time
 from pathlib import Path
@@ -18,7 +16,7 @@ from qdrant_client.models import PointStruct
 from tqdm import tqdm
 
 # Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 from .config import settings
 
 # Configure logging
@@ -89,15 +87,17 @@ def process_parquet_file(file_path: str, client: QdrantClient, batch_size: int =
         return False
 
 
-def move_file(src: str, dst_dir: str):
+def move_file(src: str, dst_dir: str) -> None:
     """Move file to destination directory"""
-    os.makedirs(dst_dir, exist_ok=True)
-    dst = os.path.join(dst_dir, Path(src).name)
-    os.rename(src, dst)
-    logger.info(f"Moved {Path(src).name} to {dst_dir}")
+    dst_path = Path(dst_dir)
+    dst_path.mkdir(parents=True, exist_ok=True)
+    src_path = Path(src)
+    dst = dst_path / src_path.name
+    src_path.rename(dst)
+    logger.info(f"Moved {src_path.name} to {dst_dir}")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest embeddings into Qdrant")
     parser.add_argument(
         "--input", "-i", default=str(settings.INGEST_DIR), help="Input directory with embedded parquet files"
@@ -114,8 +114,8 @@ def main():
     args = parser.parse_args()
 
     # Create directories
-    os.makedirs(args.loaded, exist_ok=True)
-    os.makedirs(args.rejects, exist_ok=True)
+    Path(args.loaded).mkdir(parents=True, exist_ok=True)
+    Path(args.rejects).mkdir(parents=True, exist_ok=True)
 
     # Initialize client
     client = QdrantClient(url=f"http://{args.host}:{args.port}")
@@ -129,10 +129,11 @@ def main():
         sys.exit(1)
 
     # Find input files
-    input_files = glob.glob(os.path.join(args.input, args.pattern))
+    input_path = Path(args.input)
+    input_files = list(input_path.glob(args.pattern))
 
     if not input_files:
-        logger.info(f"No files found matching pattern: {os.path.join(args.input, args.pattern)}")
+        logger.info(f"No files found matching pattern: {input_path / args.pattern}")
         return
 
     logger.info(f"Found {len(input_files)} files to ingest")
@@ -142,11 +143,11 @@ def main():
     failed = 0
 
     for file_path in tqdm(input_files, desc="Ingesting files"):
-        if process_parquet_file(file_path, client, args.batch_size):
-            move_file(file_path, args.loaded)
+        if process_parquet_file(str(file_path), client, args.batch_size):
+            move_file(str(file_path), args.loaded)
             successful += 1
         else:
-            move_file(file_path, args.rejects)
+            move_file(str(file_path), args.rejects)
             failed += 1
 
     # Get final collection info

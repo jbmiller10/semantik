@@ -5,15 +5,16 @@ File and directory scanning routes for the Web UI
 import asyncio
 import hashlib
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
-from ..auth import get_current_user
-from ..schemas import FileInfo
+from webui.auth import get_current_user
+from webui.schemas import FileInfo
+
 from .jobs import SUPPORTED_EXTENSIONS, manager
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,7 @@ def compute_file_content_hash(file_path: Path, chunk_size: int = 8192) -> str | 
             sha256_hash.update(target.encode("utf-8"))
             return f"symlink:{sha256_hash.hexdigest()}"
 
-        with open(file_path, "rb") as f:
+        with file_path.open("rb") as f:
             while chunk := f.read(chunk_size):
                 sha256_hash.update(chunk)
         return sha256_hash.hexdigest()
@@ -93,8 +94,8 @@ async def compute_file_content_hash_async(file_path: Path, chunk_size: int = 655
 
         # For larger files, read asynchronously
         # Note: aiofiles is not in dependencies, so we'll use thread pool
-        def hash_large_file():
-            with open(file_path, "rb") as f:
+        def hash_large_file() -> str:
+            with Path(file_path).open("rb") as f:
                 while chunk := f.read(chunk_size):
                     sha256_hash.update(chunk)
             return sha256_hash.hexdigest()
@@ -136,10 +137,7 @@ def scan_directory(path: str, recursive: bool = True) -> dict[str, Any]:
         raise ValueError(f"Path is not a directory: {path}")
 
     # Determine search pattern
-    if recursive:
-        pattern = "**/*"
-    else:
-        pattern = "*"
+    pattern = "**/*" if recursive else "*"
 
     file_count = 0
     total_size = 0
@@ -157,7 +155,7 @@ def scan_directory(path: str, recursive: bool = True) -> dict[str, Any]:
                     FileInfo(
                         path=str(file_path),
                         size=stat.st_size,
-                        modified=datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                        modified=datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
                         extension=file_path.suffix.lower(),
                         content_hash=content_hash,
                     )
@@ -190,7 +188,7 @@ def scan_directory(path: str, recursive: bool = True) -> dict[str, Any]:
     return {"files": files, "warnings": warnings, "total_files": file_count, "total_size": total_size}
 
 
-async def scan_directory_async(path: str, recursive: bool = True, scan_id: str = None) -> dict[str, Any]:
+async def scan_directory_async(path: str, recursive: bool = True, scan_id: str | None = None) -> dict[str, Any]:
     """Scan directory for supported files with progress updates
 
     Args:
@@ -216,13 +214,9 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str =
 
     # First, count total files to scan
     total_files = 0
-    scanned_files = 0
 
     # Determine search pattern
-    if recursive:
-        pattern = "**/*"
-    else:
-        pattern = "*"
+    pattern = "**/*" if recursive else "*"
 
     # Count phase
     for _ in path_obj.glob(pattern):
@@ -236,9 +230,7 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str =
     warning_file_limit = 10000
     warning_size_limit = 50 * 1024 * 1024 * 1024  # 50GB
 
-    for file_path in path_obj.glob(pattern):
-        scanned_files += 1
-
+    for scanned_files, file_path in enumerate(path_obj.glob(pattern), 1):
         # Send progress update every 10 files or at specific percentages
         if scan_id and (scanned_files % 10 == 0 or scanned_files == total_files):
             await manager.send_update(
@@ -256,7 +248,7 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str =
                     FileInfo(
                         path=str(file_path),
                         size=stat.st_size,
-                        modified=datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                        modified=datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
                         extension=file_path.suffix.lower(),
                         content_hash=content_hash,
                     )
@@ -293,8 +285,8 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str =
 
 @router.post("/scan-directory")
 async def scan_directory_endpoint(
-    request: ScanDirectoryRequest, current_user: dict[str, Any] = Depends(get_current_user)
-):
+    request: ScanDirectoryRequest, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
+) -> dict[str, Any]:
     """Scan a directory for supported files"""
     try:
         result = scan_directory(request.path, request.recursive)
@@ -305,11 +297,11 @@ async def scan_directory_endpoint(
             "warnings": result["warnings"],
         }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # WebSocket handler for scan progress - export this separately so it can be mounted at the app level
-async def scan_websocket(websocket: WebSocket, scan_id: str):
+async def scan_websocket(websocket: WebSocket, scan_id: str) -> None:
     """WebSocket for real-time scan progress"""
     await manager.connect(websocket, f"scan_{scan_id}")
     try:

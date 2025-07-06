@@ -3,21 +3,31 @@ Main entry point for Document Embedding Web UI
 Creates and configures the FastAPI application
 """
 
-import os
 import sys
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.requests import Request
+from starlette.responses import Response
 
 # Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from .api import auth, collections, documents, files, jobs, metrics, models, root, search, settings
 from .api.files import scan_websocket
 from .api.jobs import websocket_endpoint
 from .rate_limiter import limiter
+
+
+def rate_limit_handler(request: Request, exc: Exception) -> Response:
+    """Wrapper to ensure proper type signature for rate limit handler"""
+    if isinstance(exc, RateLimitExceeded):
+        return _rate_limit_exceeded_handler(request, exc)
+    # This shouldn't happen, but handle gracefully
+    return Response(content="Rate limit error", status_code=429)
 
 
 def create_app() -> FastAPI:
@@ -27,7 +37,7 @@ def create_app() -> FastAPI:
     )
 
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
     # Include routers with their specific prefixes
     app.include_router(auth.router)
@@ -51,13 +61,13 @@ def create_app() -> FastAPI:
         await scan_websocket(websocket, scan_id)
 
     # Mount static files with proper path resolution
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    static_dir = os.path.join(base_dir, "static")
-    assets_dir = os.path.join(static_dir, "assets")
+    base_dir = Path(__file__).resolve().parent
+    static_dir = base_dir / "static"
+    assets_dir = static_dir / "assets"
 
     # Ensure directories exist (for tests and fresh environments)
-    os.makedirs(static_dir, exist_ok=True)
-    os.makedirs(assets_dir, exist_ok=True)
+    static_dir.mkdir(parents=True, exist_ok=True)
+    assets_dir.mkdir(parents=True, exist_ok=True)
 
     # Mount assets directory for React build
     app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
@@ -73,6 +83,6 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-    from vecpipe.config import settings
+    from vecpipe.config import settings as vecpipe_settings
 
-    uvicorn.run(app, host="0.0.0.0", port=settings.WEBUI_PORT)
+    uvicorn.run(app, host="0.0.0.0", port=vecpipe_settings.WEBUI_PORT)

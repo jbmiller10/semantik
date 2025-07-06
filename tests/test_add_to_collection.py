@@ -3,15 +3,13 @@ Unit tests for add-to-collection functionality
 """
 
 import hashlib
-import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-
-from packages.webui import database
-from packages.webui.api.files import compute_file_content_hash
+from webui import database
+from webui.api.files import compute_file_content_hash
 
 
 class TestContentHashing:
@@ -54,16 +52,22 @@ class TestContentHashing:
         test_file.write_text("content")
 
         # Make it unreadable (Unix only)
+        import os
+
         if os.name != "nt":
+            # Skip test if running as root (root can read any file)
+            if os.getuid() == 0:
+                pytest.skip("Permission test not applicable when running as root")
+
             try:
-                os.chmod(test_file, 0o000)
+                test_file.chmod(0o000)
 
                 # Should return None on permission error
                 hash_result = compute_file_content_hash(test_file)
                 assert hash_result is None
             finally:
                 # Always restore permissions for cleanup
-                os.chmod(test_file, 0o644)
+                test_file.chmod(0o644)
         else:
             # Skip test on Windows
             pytest.skip("Permission test not applicable on Windows")
@@ -89,7 +93,7 @@ class TestDuplicateDetection:
         """Cleanup test database"""
         database.DB_PATH = self.original_db_path
         self.temp_db.close()
-        os.unlink(self.temp_db.name)
+        Path(self.temp_db.name).unlink()
 
     def test_get_duplicate_files_empty_collection(self):
         """Test checking duplicates in non-existent collection"""
@@ -200,7 +204,7 @@ class TestSettingsInheritance:
         """Cleanup test database"""
         database.DB_PATH = self.original_db_path
         self.temp_db.close()
-        os.unlink(self.temp_db.name)
+        Path(self.temp_db.name).unlink()
 
     def test_get_collection_metadata(self):
         """Test retrieving collection metadata"""
@@ -314,7 +318,7 @@ class TestResourceLimits:
 
     def test_scan_directory_file_warning(self, tmp_path):
         """Test that file count warnings are generated"""
-        from packages.webui.api.files import scan_directory
+        from webui.api.files import scan_directory
 
         # Create many files
         for i in range(5):
@@ -329,7 +333,7 @@ class TestResourceLimits:
 
     def test_scan_directory_size_warning(self, tmp_path):
         """Test that total size warnings are generated"""
-        from packages.webui.api.files import scan_directory
+        from webui.api.files import scan_directory
 
         # Create a large file (simulate)
         large_file = tmp_path / "large.txt"

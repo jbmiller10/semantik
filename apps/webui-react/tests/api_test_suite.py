@@ -8,7 +8,7 @@ import argparse
 import asyncio
 import json
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 
 import aiohttp
 import websockets
@@ -69,7 +69,7 @@ class APITestSuite:
             "test": test_name,
             "success": success,
             "message": message,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "details": details,
         }
         self.test_results.append(result)
@@ -113,9 +113,8 @@ class APITestSuite:
                         job_id = data.get("job_id")
                         self.log_test("Job Creation", True, f"Created job {job_id}", data)
                         return job_id
-                    else:
-                        text = await resp.text()
-                        self.log_test("Job Creation", False, f"HTTP {resp.status}", {"response": text})
+                    text = await resp.text()
+                    self.log_test("Job Creation", False, f"HTTP {resp.status}", {"response": text})
             except Exception as e:
                 self.log_test("Job Creation", False, str(e))
         return None

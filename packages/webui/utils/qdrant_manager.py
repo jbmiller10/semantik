@@ -8,8 +8,7 @@ from typing import Optional
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
-
-from packages.vecpipe.config import settings
+from vecpipe.config import settings
 
 from .retry import exponential_backoff_retry
 
@@ -24,6 +23,7 @@ class QdrantConnectionManager:
 
     _instance: Optional["QdrantConnectionManager"] = None
     _lock = Lock()
+    _initialized: bool = False
 
     def __new__(cls) -> "QdrantConnectionManager":
         if cls._instance is None:
@@ -33,7 +33,7 @@ class QdrantConnectionManager:
                     cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         if self._initialized:
             return
 
@@ -70,9 +70,8 @@ class QdrantConnectionManager:
         if self._client:
             if self._verify_connection(self._client):
                 return self._client
-            else:
-                logger.warning("Cached Qdrant client is no longer valid, creating new one")
-                self._client = None
+            logger.warning("Cached Qdrant client is no longer valid, creating new one")
+            self._client = None
 
         # Create and verify new client
         client = self._create_client()
@@ -128,10 +127,9 @@ class QdrantConnectionManager:
             Exception: If collection doesn't exist or verification fails
         """
         client = self.get_client()
-        collection_info = client.get_collection(collection_name)
-        return collection_info
+        return dict(client.get_collection(collection_name))
 
-    def close(self):
+    def close(self) -> None:
         """Close the cached client connection."""
         if self._client:
             self._client.close()

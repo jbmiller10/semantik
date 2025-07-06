@@ -3,7 +3,6 @@ Memory management utilities for model loading
 """
 
 import logging
-from typing import Dict, Tuple
 
 import torch
 
@@ -40,10 +39,8 @@ MEMORY_OVERHEAD_FACTOR = 1.2
 class InsufficientMemoryError(Exception):
     """Raised when there's not enough memory to load a model"""
 
-    pass
 
-
-def get_gpu_memory_info() -> Tuple[int, int]:
+def get_gpu_memory_info() -> tuple[int, int]:
     """
     Get GPU memory information
 
@@ -86,8 +83,8 @@ def get_model_memory_requirement(model_name: str, quantization: str = "float32")
 
 
 def check_memory_availability(
-    model_name: str, quantization: str = "float32", current_models: Dict[str, Tuple[str, str]] = None
-) -> Tuple[bool, str]:
+    model_name: str, quantization: str = "float32", current_models: dict[str, tuple[str, str]] | None = None
+) -> tuple[bool, str]:
     """
     Check if there's enough memory to load a model
 
@@ -128,14 +125,13 @@ def check_memory_availability(
             False,
             f"Insufficient memory: {free_mb}MB free, {required_mb}MB required. Can free {freeable_mb}MB by unloading: {models_str}",
         )
-    else:
-        return (
-            False,
-            f"Insufficient memory: {free_mb}MB free, {required_mb}MB required. Even after unloading all models, only {free_mb + freeable_mb}MB would be available",
-        )
+    return (
+        False,
+        f"Insufficient memory: {free_mb}MB free, {required_mb}MB required. Even after unloading all models, only {free_mb + freeable_mb}MB would be available",
+    )
 
 
-def suggest_model_configuration(available_memory_mb: int) -> Dict[str, str]:
+def suggest_model_configuration(available_memory_mb: int) -> dict[str, str | list[str] | None]:
     """
     Suggest optimal model configuration based on available memory
 
@@ -145,7 +141,7 @@ def suggest_model_configuration(available_memory_mb: int) -> Dict[str, str]:
     Returns:
         Dict with suggested configuration
     """
-    suggestions = {
+    suggestions: dict[str, str | list[str] | None] = {
         "embedding_model": None,
         "embedding_quantization": None,
         "reranker_model": None,

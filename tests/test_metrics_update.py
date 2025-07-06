@@ -3,8 +3,8 @@
 import time
 
 import psutil
-
-from packages.vecpipe.metrics import metrics_collector
+import requests
+from vecpipe.metrics import metrics_collector
 
 print("Testing metrics update...")
 print(f"Initial CPU percent (no interval): {psutil.cpu_percent(interval=None)}")
@@ -22,8 +22,6 @@ print("Metrics updated successfully")
 time.sleep(2)
 
 # Check metrics via Prometheus
-import requests
-
 try:
     response = requests.get("http://localhost:9092/metrics")
     if response.status_code == 200:

@@ -4,7 +4,6 @@ Test script to debug memory issues with embedding jobs
 """
 import gc
 import logging
-import os
 import sys
 import time
 import traceback
@@ -13,9 +12,9 @@ from pathlib import Path
 import psutil
 
 # Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from packages.vecpipe.extract_chunks import TokenChunker, extract_text
+from vecpipe.extract_chunks import TokenChunker, extract_text
 
 # Configure detailed logging
 logging.basicConfig(
@@ -41,7 +40,7 @@ def test_file(filepath: str):
     """Test processing a single file"""
     logger.info(f"\n{'='*60}")
     logger.info(f"Testing file: {filepath}")
-    logger.info(f"File size: {os.path.getsize(filepath) / 1024 / 1024:.2f} MB")
+    logger.info(f"File size: {Path(filepath).stat().st_size / 1024 / 1024:.2f} MB")
     logger.info(f"Initial memory: {monitor_memory()}")
 
     try:
@@ -87,10 +86,10 @@ def main():
 
     path = sys.argv[1]
 
-    if os.path.isfile(path):
+    if Path(path).is_file():
         # Test single file
         test_file(path)
-    elif os.path.isdir(path):
+    elif Path(path).is_dir():
         # Test all supported files in directory
         extensions = {".pdf", ".docx", ".doc", ".txt", ".text"}
         files = []

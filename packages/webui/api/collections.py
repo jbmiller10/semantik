@@ -3,17 +3,17 @@ Collections management API endpoints
 """
 
 import logging
-import os
 import shutil
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from qdrant_client.models import CollectionInfo
 
-from .. import database
-from ..auth import get_current_user
-from ..utils.qdrant_manager import qdrant_manager
+from webui import database
+from webui.auth import get_current_user
+from webui.utils.qdrant_manager import qdrant_manager
 
 logger = logging.getLogger(__name__)
 
@@ -106,14 +106,14 @@ class PaginatedFileList(BaseModel):
 
 
 @router.get("", response_model=list[CollectionSummary])
-async def list_collections(current_user: dict[str, Any] = Depends(get_current_user)):
+async def list_collections(current_user: dict[str, Any] = Depends(get_current_user)) -> list[CollectionSummary]:
     """List all unique collections with summary stats"""
     try:
         # Get collections from database
         collections = database.list_collections(user_id=current_user["id"])
 
         # Get Qdrant client
-        qdrant = qdrant_manager.get_client()
+        qdrant_manager.get_client()
 
         # Enhance with actual vector counts from Qdrant
         result = []
@@ -138,11 +138,13 @@ async def list_collections(current_user: dict[str, Any] = Depends(get_current_us
 
     except Exception as e:
         logger.error(f"Error listing collections: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/{collection_name}", response_model=CollectionDetails)
-async def get_collection_details(collection_name: str, current_user: dict[str, Any] = Depends(get_current_user)):
+async def get_collection_details(
+    collection_name: str, current_user: dict[str, Any] = Depends(get_current_user)
+) -> CollectionDetails:
     """Get detailed information for a single collection"""
     try:
         # Get collection details from database
@@ -163,7 +165,7 @@ async def get_collection_details(collection_name: str, current_user: dict[str, A
                 try:
                     qdrant_collection = f"job_{job['id']}"
                     info = qdrant.get_collection(qdrant_collection)
-                    if isinstance(info, CollectionInfo):
+                    if isinstance(info, CollectionInfo) and info.points_count is not None:
                         actual_vectors += info.points_count
                 except Exception:
                     # Collection might not exist
@@ -185,7 +187,7 @@ async def get_collection_details(collection_name: str, current_user: dict[str, A
         raise
     except Exception as e:
         logger.error(f"Error getting collection details: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.put("/{collection_name}")
@@ -193,7 +195,7 @@ async def rename_collection(
     collection_name: str,
     request: CollectionRenameRequest,
     current_user: dict[str, Any] = Depends(get_current_user),
-):
+) -> dict[str, str]:
     """Rename the display name of a collection"""
     try:
         # Attempt to rename
@@ -217,11 +219,13 @@ async def rename_collection(
         raise
     except Exception as e:
         logger.error(f"Error renaming collection: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.delete("/{collection_name}")
-async def delete_collection(collection_name: str, current_user: dict[str, Any] = Depends(get_current_user)):
+async def delete_collection(
+    collection_name: str, current_user: dict[str, Any] = Depends(get_current_user)
+) -> dict[str, Any]:
     """Delete a collection and all associated data"""
     try:
         # Get deletion info from database
@@ -252,24 +256,24 @@ async def delete_collection(collection_name: str, current_user: dict[str, Any] =
 
         for job_id in deletion_info["job_ids"]:
             # Try to delete job directory
-            job_dir = os.path.join("/app/jobs", job_id)
-            if os.path.exists(job_dir):
+            job_dir = Path("/app/jobs") / job_id
+            if job_dir.exists():
                 try:
                     shutil.rmtree(job_dir)
-                    deleted_artifacts.append(job_dir)
+                    deleted_artifacts.append(str(job_dir))
                 except Exception as e:
                     logger.error(f"Failed to delete job directory {job_dir}: {e}")
-                    failed_artifacts.append(job_dir)
+                    failed_artifacts.append(str(job_dir))
 
             # Try to delete output files
-            output_dir = os.path.join("/app/output", job_id)
-            if os.path.exists(output_dir):
+            output_dir = Path("/app/output") / job_id
+            if output_dir.exists():
                 try:
                     shutil.rmtree(output_dir)
-                    deleted_artifacts.append(output_dir)
+                    deleted_artifacts.append(str(output_dir))
                 except Exception as e:
                     logger.error(f"Failed to delete output directory {output_dir}: {e}")
-                    failed_artifacts.append(output_dir)
+                    failed_artifacts.append(str(output_dir))
 
         logger.info(
             f"User {current_user['username']} deleted collection '{collection_name}' "
@@ -293,7 +297,7 @@ async def delete_collection(collection_name: str, current_user: dict[str, Any] =
         raise
     except Exception as e:
         logger.error(f"Error deleting collection: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/{collection_name}/files", response_model=PaginatedFileList)
@@ -302,7 +306,7 @@ async def get_collection_files(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(50, ge=1, le=100, description="Items per page"),
     current_user: dict[str, Any] = Depends(get_current_user),
-):
+) -> PaginatedFileList:
     """Get paginated list of files in a collection"""
     try:
         # Get files from database
@@ -322,4 +326,4 @@ async def get_collection_files(
 
     except Exception as e:
         logger.error(f"Error getting collection files: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

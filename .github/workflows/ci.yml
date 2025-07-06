@@ -33,7 +33,7 @@ jobs:
     
     - name: Type check with Mypy
       run: |
-        poetry run mypy vecpipe webui
+        poetry run mypy packages/vecpipe packages/webui --ignore-missing-imports
 
   test:
     runs-on: ubuntu-latest

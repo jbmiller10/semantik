@@ -5,17 +5,17 @@ Demonstrates performance improvements and best practices
 """
 
 import logging
-import os
 import sys
 import time
+from pathlib import Path
 
 import numpy as np
 
 # Add project root to path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(str(Path(__file__).resolve().parent))
 
-from packages.vecpipe.qwen3_search_config import DOMAIN_INSTRUCTIONS, get_optimal_config
-from packages.webui.embedding_service import EmbeddingService
+from vecpipe.qwen3_search_config import DOMAIN_INSTRUCTIONS, get_optimal_config
+from webui.embedding_service import EmbeddingService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -69,9 +69,8 @@ class SearchBenchmark:
 
             logger.info(f"Results: {result}")
             return result
-        else:
-            logger.error("Failed to generate embeddings")
-            return None
+        logger.error("Failed to generate embeddings")
+        return None
 
     def compare_search_quality(self, query: str, documents: list[str], configs: list[dict]):
         """Compare search quality across different configurations"""
