@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api", tags=["models"])
 
 
 @router.get("/models")
-async def get_models(current_user: dict[str, Any] = Depends(get_current_user)):
+async def get_models(current_user: dict[str, Any] = Depends(get_current_user)):  # noqa: ARG001
     """Get available embedding models"""
     return {
         "models": POPULAR_MODELS,

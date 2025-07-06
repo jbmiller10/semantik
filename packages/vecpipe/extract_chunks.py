@@ -11,7 +11,7 @@ import hashlib
 import json
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -226,7 +226,7 @@ class FileChangeTracker:
     def update_file_tracking(self, filepath: str, file_hash: str, doc_id: str, chunks_created: int):
         """Update tracking information for a file"""
         file_key = str(Path(filepath).absolute())
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         if file_key in self.tracking_data["files"]:
             # Update existing entry
@@ -328,7 +328,7 @@ def extract_and_serialize(filepath: str) -> list[tuple[str, dict[str, Any]]]:
         raise
 
 
-def extract_text(filepath: str, timeout: int = 300) -> str:
+def extract_text(filepath: str, timeout: int = 300) -> str:  # noqa: ARG001
     """Legacy function for backward compatibility - extracts text without metadata
     Note: timeout parameter is kept for backward compatibility but not used"""
     try:

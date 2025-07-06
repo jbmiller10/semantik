@@ -8,7 +8,7 @@ import argparse
 import asyncio
 import json
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import aiohttp
 import websockets
@@ -69,7 +69,7 @@ class APITestSuite:
             "test": test_name,
             "success": success,
             "message": message,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "details": details,
         }
         self.test_results.append(result)

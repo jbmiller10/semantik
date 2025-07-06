@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import psutil
+from vecpipe.metrics import generate_latest, registry
 
 from packages.vecpipe.metrics import cpu_utilization, memory_utilization, metrics_collector
 
@@ -27,8 +28,6 @@ for metric in memory_utilization.collect():
             print(f"Memory gauge value: {sample.value}")
 
 # Also check using the registry
-from vecpipe.metrics import generate_latest, registry
-
 metrics_text = generate_latest(registry).decode("utf-8")
 print("\nMetrics from registry:")
 for line in metrics_text.split("\n"):

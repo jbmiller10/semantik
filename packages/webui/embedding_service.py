@@ -9,7 +9,7 @@ import logging
 
 import numpy as np
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
@@ -50,7 +50,7 @@ except ImportError:
     METRICS_AVAILABLE = False
 
     class DummyCounter:
-        def labels(self, **kwargs):
+        def labels(self, **kwargs):  # noqa: ARG002
             return self
 
         def inc(self):
@@ -67,10 +67,9 @@ def last_token_pool(last_hidden_states: Tensor, attention_mask: Tensor) -> Tenso
     left_padding = attention_mask[:, -1].sum() == attention_mask.shape[0]
     if left_padding:
         return last_hidden_states[:, -1]
-    else:
-        sequence_lengths = attention_mask.sum(dim=1) - 1
-        batch_size = last_hidden_states.shape[0]
-        return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
+    sequence_lengths = attention_mask.sum(dim=1) - 1
+    batch_size = last_hidden_states.shape[0]
+    return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
 
 
 def get_detailed_instruct(task_description: str, query: str) -> str:
@@ -140,7 +139,6 @@ class EmbeddingService:
 
                 if quantization == "int8" and self.device == "cuda":
                     try:
-                        import bitsandbytes as bnb
                         from transformers import BitsAndBytesConfig
 
                         quantization_config = BitsAndBytesConfig(
@@ -173,7 +171,11 @@ class EmbeddingService:
             elif quantization == "int8" and self.device == "cuda":
                 # Use bitsandbytes for INT8 quantization
                 try:
-                    import bitsandbytes as bnb
+                    import importlib.util
+
+                    if importlib.util.find_spec("bitsandbytes") is None:
+                        raise ImportError("bitsandbytes not available")
+
                     from transformers import BitsAndBytesConfig
 
                     # Configure 8-bit quantization
@@ -277,9 +279,10 @@ class EmbeddingService:
         """
         try:
             model_key = f"{model_name}_{quantization}"
-            if model_key != f"{self.current_model_name}_{self.current_quantization}":
-                if not self.load_model(model_name, quantization):
-                    return {"error": f"Failed to load model {model_name}"}
+            if model_key != f"{self.current_model_name}_{self.current_quantization}" and not self.load_model(
+                model_name, quantization
+            ):
+                return {"error": f"Failed to load model {model_name}"}
 
             if not hasattr(self, "current_model") or self.current_model is None:
                 return {"error": "Model not loaded"}
@@ -314,7 +317,7 @@ class EmbeddingService:
         batch_size: int = 32,
         show_progress: bool = True,
         instruction: str | None = None,
-        **kwargs,
+        **kwargs,  # noqa: ARG002
     ) -> np.ndarray | None:
         """Generate embeddings for a list of texts
 
@@ -335,9 +338,10 @@ class EmbeddingService:
 
             # Load model with specified quantization if needed
             model_key = f"{model_name}_{quantization}"
-            if model_key != f"{self.current_model_name}_{self.current_quantization}":
-                if not self.load_model(model_name, quantization):
-                    return None
+            if model_key != f"{self.current_model_name}_{self.current_quantization}" and not self.load_model(
+                model_name, quantization
+            ):
+                return None
 
             if not hasattr(self, "current_model") or self.current_model is None:
                 logger.error("Model not properly loaded")
@@ -462,7 +466,7 @@ class EmbeddingService:
 
                         break  # Success, exit the retry loop
 
-                    except torch.cuda.OutOfMemoryError:
+                    except torch.cuda.OutOfMemoryError as e:
                         logger.warning(
                             f"OOM with batch size {current_batch_size}, reducing to {current_batch_size // 2}"
                         )
@@ -487,7 +491,12 @@ class EmbeddingService:
             return None
 
     def generate_single_embedding(
-        self, text: str, model_name: str, quantization: str = "float32", instruction: str | None = None, **kwargs
+        self,
+        text: str,
+        model_name: str,
+        quantization: str = "float32",
+        instruction: str | None = None,
+        **kwargs,  # noqa: ARG002
     ) -> list[float] | None:
         """Generate embedding for a single text
 

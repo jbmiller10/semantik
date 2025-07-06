@@ -184,116 +184,113 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
                 "search_mode": api_response.get("search_mode", request.hybrid_mode),
             }
 
-        else:
-            # Vector search
-            search_params = {
-                "query": request.query,
-                "k": request.k,
-                "collection": collection_name,
-                "search_type": "semantic",
-                "include_content": True,
-            }
+        # Vector search
+        search_params = {
+            "query": request.query,
+            "k": request.k,
+            "collection": collection_name,
+            "search_type": "semantic",
+            "include_content": True,
+        }
 
-            # Add reranking parameters
-            if request.use_reranker:
-                search_params["use_reranker"] = request.use_reranker
-                if request.rerank_model:
-                    search_params["rerank_model"] = request.rerank_model
-                if request.rerank_quantization:
-                    search_params["rerank_quantization"] = request.rerank_quantization
+        # Add reranking parameters
+        if request.use_reranker:
+            search_params["use_reranker"] = request.use_reranker
+            if request.rerank_model:
+                search_params["rerank_model"] = request.rerank_model
+            if request.rerank_quantization:
+                search_params["rerank_quantization"] = request.rerank_quantization
 
-            # Add optional parameters
-            if model_name:
-                search_params["model_name"] = model_name
-            if quantization:
-                search_params["quantization"] = quantization
-            if request.score_threshold > 0:
-                search_params["score_threshold"] = request.score_threshold
+        # Add optional parameters
+        if model_name:
+            search_params["model_name"] = model_name
+        if quantization:
+            search_params["quantization"] = quantization
+        if request.score_threshold > 0:
+            search_params["score_threshold"] = request.score_threshold
 
-            # Call REST API search endpoint with POST
-            logger.info(f"Calling vector search API with params: {search_params}")
+        # Call REST API search endpoint with POST
+        logger.info(f"Calling vector search API with params: {search_params}")
 
-            # Use longer timeout for first request after model might be unloaded
-            # This handles the case where model needs to be reloaded
-            timeout = httpx.Timeout(
-                timeout=60.0,  # Total timeout increased to 60 seconds
-                connect=5.0,  # Connection timeout
-                read=60.0,  # Read timeout for model loading
-                write=5.0,  # Write timeout
+        # Use longer timeout for first request after model might be unloaded
+        # This handles the case where model needs to be reloaded
+        timeout = httpx.Timeout(
+            timeout=60.0,  # Total timeout increased to 60 seconds
+            connect=5.0,  # Connection timeout
+            read=60.0,  # Read timeout for model loading
+            write=5.0,  # Write timeout
+        )
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            try:
+                response = await client.post(f"{settings.SEARCH_API_URL}/search", json=search_params)
+                response.raise_for_status()
+            except httpx.ReadTimeout:
+                # If first attempt times out, it might be due to model loading
+                # Log warning and retry with even longer timeout
+                logger.warning("Search request timed out, likely due to model loading. Retrying with longer timeout...")
+                extended_timeout = httpx.Timeout(timeout=120.0, connect=5.0, read=120.0, write=5.0)
+                async with httpx.AsyncClient(timeout=extended_timeout) as retry_client:
+                    response = await retry_client.post(f"{settings.SEARCH_API_URL}/search", json=search_params)
+                    response.raise_for_status()
+
+        # Transform REST API response to match WebUI JavaScript expectations
+        api_response = response.json()
+        logger.info(f"Vector search returned {len(api_response.get('results', []))} results")
+
+        # Convert to format expected by frontend
+        transformed_results = []
+        for result in api_response.get("results", []):
+            # Extract file name from path
+            path = result.get("path", "")
+            file_name = path.split("/")[-1] if path else "Unknown"
+
+            # Get metadata
+            metadata = result.get("metadata", {})
+
+            # Extract job_id from collection name (format: job_{job_id})
+            job_id_from_collection = (
+                collection_name.replace("job_", "") if collection_name.startswith("job_") else request.job_id
             )
 
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                try:
-                    response = await client.post(f"{settings.SEARCH_API_URL}/search", json=search_params)
-                    response.raise_for_status()
-                except httpx.ReadTimeout:
-                    # If first attempt times out, it might be due to model loading
-                    # Log warning and retry with even longer timeout
-                    logger.warning(
-                        "Search request timed out, likely due to model loading. Retrying with longer timeout..."
-                    )
-                    extended_timeout = httpx.Timeout(timeout=120.0, connect=5.0, read=120.0, write=5.0)
-                    async with httpx.AsyncClient(timeout=extended_timeout) as retry_client:
-                        response = await retry_client.post(f"{settings.SEARCH_API_URL}/search", json=search_params)
-                        response.raise_for_status()
-
-            # Transform REST API response to match WebUI JavaScript expectations
-            api_response = response.json()
-            logger.info(f"Vector search returned {len(api_response.get('results', []))} results")
-
-            # Convert to format expected by frontend
-            transformed_results = []
-            for result in api_response.get("results", []):
-                # Extract file name from path
-                path = result.get("path", "")
-                file_name = path.split("/")[-1] if path else "Unknown"
-
-                # Get metadata
-                metadata = result.get("metadata", {})
-
-                # Extract job_id from collection name (format: job_{job_id})
-                job_id_from_collection = (
-                    collection_name.replace("job_", "") if collection_name.startswith("job_") else request.job_id
-                )
-
-                # Create result in format expected by SearchResults component
-                transformed_result = {
-                    "doc_id": result.get("doc_id", ""),
+            # Create result in format expected by SearchResults component
+            transformed_result = {
+                "doc_id": result.get("doc_id", ""),
+                "chunk_id": result.get("chunk_id", ""),
+                "score": result.get("score", 0.0),
+                "content": result.get("content", ""),
+                "file_path": path,
+                "file_name": file_name,
+                "chunk_index": metadata.get("chunk_index", 0),
+                "total_chunks": metadata.get("total_chunks", 1),
+                "job_id": job_id_from_collection,
+                # Keep the payload format for backward compatibility
+                "payload": {
+                    "path": path,
                     "chunk_id": result.get("chunk_id", ""),
-                    "score": result.get("score", 0.0),
-                    "content": result.get("content", ""),
-                    "file_path": path,
-                    "file_name": file_name,
-                    "chunk_index": metadata.get("chunk_index", 0),
-                    "total_chunks": metadata.get("total_chunks", 1),
-                    "job_id": job_id_from_collection,
-                    # Keep the payload format for backward compatibility
-                    "payload": {
-                        "path": path,
-                        "chunk_id": result.get("chunk_id", ""),
-                        "doc_id": result.get("doc_id", ""),
-                        "text": result.get("content", ""),
-                        "metadata": metadata,
-                    },
-                }
-                transformed_results.append(transformed_result)
-
-            # Build response with reranking metrics if available
-            response_data = {
-                "query": api_response["query"],
-                "results": transformed_results,
-                "collection": collection_name,
-                "num_results": len(transformed_results),
-                "search_type": request.search_type,
+                    "doc_id": result.get("doc_id", ""),
+                    "text": result.get("content", ""),
+                    "metadata": metadata,
+                },
             }
+            transformed_results.append(transformed_result)
 
-            # Include reranking metrics if present
-            if api_response.get("reranking_used"):
-                response_data["reranking_used"] = api_response["reranking_used"]
-                response_data["reranker_model"] = api_response.get("reranker_model")
-                response_data["reranking_time_ms"] = api_response.get("reranking_time_ms")
+        # Build response with reranking metrics if available
+        response_data = {
+            "query": api_response["query"],
+            "results": transformed_results,
+            "collection": collection_name,
+            "num_results": len(transformed_results),
+            "search_type": request.search_type,
+        }
 
-            return response_data
+        # Include reranking metrics if present
+        if api_response.get("reranking_used"):
+            response_data["reranking_used"] = api_response["reranking_used"]
+            response_data["reranker_model"] = api_response.get("reranker_model")
+            response_data["reranking_time_ms"] = api_response.get("reranking_time_ms")
+
+        return response_data
 
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 507:
@@ -330,7 +327,9 @@ class PreloadModelRequest(BaseModel):
 
 
 @router.post("/preload_model")
-async def preload_model(request: PreloadModelRequest, current_user: dict[str, Any] = Depends(get_current_user)):
+async def preload_model(
+    request: PreloadModelRequest, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
+):
     """
     Preload a model to prevent timeout issues on first search.
     This is useful when you know a search is coming and want to ensure the model is ready.

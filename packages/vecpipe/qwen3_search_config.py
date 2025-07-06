@@ -145,10 +145,9 @@ def get_optimal_config(use_case: str = "balanced", gpu_memory_gb: int = 16):
             base_config["quantization"] = "int8"
         elif base_config["model"] == "Qwen/Qwen3-Embedding-4B":
             base_config["quantization"] = "int8"
-    elif gpu_memory_gb >= 24:
+    elif gpu_memory_gb >= 24 and base_config["quantization"] == "int8":
         # Plenty of GPU memory - can use less quantization
-        if base_config["quantization"] == "int8":
-            base_config["quantization"] = "float16"
+        base_config["quantization"] = "float16"
 
     # Add batch config
     model_batch_config = BATCH_CONFIGS.get(base_config["model"], {})
@@ -176,9 +175,9 @@ def get_reranker_for_embedding_model(embedding_model: str) -> str:
     # Try to match by size
     if "0.6B" in embedding_model:
         return "Qwen/Qwen3-Reranker-0.6B"
-    elif "4B" in embedding_model:
+    if "4B" in embedding_model:
         return "Qwen/Qwen3-Reranker-4B"
-    elif "8B" in embedding_model:
+    if "8B" in embedding_model:
         return "Qwen/Qwen3-Reranker-8B"
 
     # Default to smallest model

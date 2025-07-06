@@ -56,12 +56,11 @@ class CrossEncoderReranker:
         """Extract model size from model name"""
         if "0.6B" in self.model_name:
             return "0.6B"
-        elif "4B" in self.model_name:
+        if "4B" in self.model_name:
             return "4B"
-        elif "8B" in self.model_name:
+        if "8B" in self.model_name:
             return "8B"
-        else:
-            return "4B"  # Default
+        return "4B"  # Default
 
     def get_batch_size(self) -> int:
         """Get optimal batch size based on model and quantization"""
@@ -103,11 +102,11 @@ class CrossEncoderReranker:
                 # Add flash attention if available
                 # Note: attn_implementation parameter is not available in transformers 4.53.0
                 # Flash attention will be auto-detected if flash_attn package is installed
-                try:
-                    import flash_attn
+                import importlib.util
 
+                if importlib.util.find_spec("flash_attn") is not None:
                     logger.info("Flash Attention package detected, will be used automatically if supported by model")
-                except ImportError:
+                else:
                     logger.debug("Flash Attention not available")
 
                 # Apply int8 quantization if requested
@@ -272,7 +271,7 @@ class CrossEncoderReranker:
         documents: list[str],
         top_k: int,
         instruction: str | None = None,
-        return_scores: bool = False,
+        return_scores: bool = False,  # noqa: ARG002
     ) -> list[tuple[int, float]]:
         """
         Rerank documents based on relevance to query

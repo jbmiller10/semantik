@@ -5,6 +5,7 @@ Helps diagnose configuration and model loading issues
 """
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -82,12 +83,11 @@ def check_hardware():
         print("   - Qwen3-4B (int8): ~4GB")
 
         return True, free_memory
-    else:
-        print("   ⚠ No CUDA GPU available - will use CPU (slower)")
-        return False, 0
+    print("   ⚠ No CUDA GPU available - will use CPU (slower)")
+    return False, 0
 
 
-def test_model_loading(model_name, quantization, has_gpu):
+def test_model_loading(model_name, quantization, has_gpu):  # noqa: ARG001
     """Test loading the embedding model"""
     print(f"\n4. Testing Model Loading: {model_name}")
 
@@ -107,12 +107,10 @@ def test_model_loading(model_name, quantization, has_gpu):
             if embedding:
                 print(f"   ✓ Test embedding generated (dimension: {len(embedding)})")
                 return True
-            else:
-                print("   ✗ Failed to generate test embedding")
-                return False
-        else:
-            print("   ✗ Failed to load model")
+            print("   ✗ Failed to generate test embedding")
             return False
+        print("   ✗ Failed to load model")
+        return False
 
     except Exception as e:
         print(f"   ✗ Error loading model: {e}")
@@ -122,7 +120,7 @@ def test_model_loading(model_name, quantization, has_gpu):
         return False
 
 
-def suggest_fixes(use_mock, model, quantization, deps_ok, has_gpu, gpu_memory, model_loads):
+def suggest_fixes(use_mock, model, quantization, deps_ok, has_gpu, gpu_memory, model_loads):  # noqa: ARG001
     """Suggest fixes for common issues"""
     print("\n" + "=" * 60)
     print("Recommendations:")

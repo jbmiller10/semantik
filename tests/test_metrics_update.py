@@ -3,6 +3,7 @@
 import time
 
 import psutil
+import requests
 
 from packages.vecpipe.metrics import metrics_collector
 
@@ -22,8 +23,6 @@ print("Metrics updated successfully")
 time.sleep(2)
 
 # Check metrics via Prometheus
-import requests
-
 try:
     response = requests.get("http://localhost:9092/metrics")
     if response.status_code == 200:
