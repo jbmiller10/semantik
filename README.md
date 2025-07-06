@@ -138,7 +138,10 @@ Semantik is licensed under the [GNU Affero General Public License v3.0](LICENSE)
 <li><b>Integrated Model Context Protocol Server</b>: Seamlessly bring the knowledge of your corpus to the LLM of your choice.</li>
 <li><b>Contextually aware document chunking:</b></li>
 <ul>
-  
+
+## **Disclosure**
+
+AI tooling was used in the development of this repo. All code was reviewed and tested by a human operator.
 <p align="center">
   ⭐ If you find Semantik useful, please consider starring the repository! ⭐
 </p>
