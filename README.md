@@ -128,7 +128,12 @@ Soon
 
 Semantik is licensed under the [GNU Affero General Public License v3.0](LICENSE). The core of this license is that if you use this code (or a modified version of it) to provide a service over a network, you must also make the source code available. This ensures that the project and its derivatives will always remain open source.
 
----
+
+
+## **Disclosure**
+
+AI tooling was used in the development of this repo. All code was reviewed and tested by a human operator.
+
 
 ## **Roadmap**
 <ul>
@@ -139,9 +144,7 @@ Semantik is licensed under the [GNU Affero General Public License v3.0](LICENSE)
 <li><b>Contextually aware document chunking:</b></li>
 <ul>
 
-## **Disclosure**
 
-AI tooling was used in the development of this repo. All code was reviewed and tested by a human operator.
 <p align="center">
   ⭐ If you find Semantik useful, please consider starring the repository! ⭐
 </p>
