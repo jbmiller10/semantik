@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 METADATA_COLLECTION = "_collection_metadata"
 
 
-def ensure_metadata_collection(qdrant: QdrantClient):
+def ensure_metadata_collection(qdrant: QdrantClient) -> None:
     """Ensure the metadata collection exists"""
     try:
         collections = qdrant.get_collections().collections
@@ -35,10 +35,10 @@ def store_collection_metadata(
     model_name: str,
     quantization: str,
     vector_dim: int,
-    chunk_size: int = None,
-    chunk_overlap: int = None,
-    instruction: str = None,
-):
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
+    instruction: str | None = None,
+) -> None:
     """Store metadata about a collection"""
     ensure_metadata_collection(qdrant)
 
@@ -74,7 +74,8 @@ def get_collection_metadata(qdrant: QdrantClient, collection_name: str) -> dict 
     try:
         result = qdrant.retrieve(collection_name=METADATA_COLLECTION, ids=[collection_name])
         if result:
-            return result[0].payload
+            payload = result[0].payload
+            return dict(payload) if payload else {}
     except Exception as e:
         logger.warning(f"Failed to get metadata for collection {collection_name}: {e}")
     return None

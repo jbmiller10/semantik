@@ -6,7 +6,7 @@ Uses Qwen3-Reranker models for state-of-the-art reranking
 import logging
 import threading
 import time
-from typing import List, Optional, Tuple
+from typing import Any
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -57,19 +57,18 @@ class CrossEncoderReranker:
         """Extract model size from model name"""
         if "0.6B" in self.model_name:
             return "0.6B"
-        elif "4B" in self.model_name:
+        if "4B" in self.model_name:
             return "4B"
-        elif "8B" in self.model_name:
+        if "8B" in self.model_name:
             return "8B"
-        else:
-            return "4B"  # Default
+        return "4B"  # Default
 
     def get_batch_size(self) -> int:
         """Get optimal batch size based on model and quantization"""
         model_size = self._get_model_size()
         return self.batch_size_config.get(model_size, {}).get(self.quantization, 32)
 
-    def load_model(self):
+    def load_model(self) -> None:
         """Load the reranker model and tokenizer"""
         with self._lock:
             if self.model is not None:
@@ -95,7 +94,7 @@ class CrossEncoderReranker:
                     torch_dtype = torch.bfloat16
 
                 # Load model with appropriate settings
-                load_kwargs = {
+                load_kwargs: dict[str, Any] = {
                     "torch_dtype": torch_dtype,
                     "device_map": "auto" if self.device == "cuda" else None,
                     "trust_remote_code": True,
@@ -104,11 +103,11 @@ class CrossEncoderReranker:
                 # Add flash attention if available
                 # Note: attn_implementation parameter is not available in transformers 4.53.0
                 # Flash attention will be auto-detected if flash_attn package is installed
-                try:
-                    import flash_attn
+                import importlib.util
 
+                if importlib.util.find_spec("flash_attn") is not None:
                     logger.info("Flash Attention package detected, will be used automatically if supported by model")
-                except ImportError:
+                else:
                     logger.debug("Flash Attention not available")
 
                 # Apply int8 quantization if requested
@@ -127,19 +126,20 @@ class CrossEncoderReranker:
                 self.model = AutoModelForCausalLM.from_pretrained(self.model_name, **load_kwargs)
 
                 # Move to device if not using device_map
-                if self.device == "cpu" or self.quantization != "int8":
+                if self.model is not None and (self.device == "cpu" or self.quantization != "int8"):
                     self.model = self.model.to(self.device)
 
-                self.model.eval()
+                if self.model is not None:
+                    self.model.eval()
 
                 load_time = time.time() - start_time
                 logger.info(f"Reranker model loaded in {load_time:.2f}s")
 
             except Exception as e:
                 logger.error(f"Failed to load reranker model: {e}")
-                raise RuntimeError(f"Failed to load reranker model: {e}")
+                raise RuntimeError(f"Failed to load reranker model: {e}") from e
 
-    def unload_model(self):
+    def unload_model(self) -> None:
         """Unload the model to free memory"""
         with self._lock:
             if self.model is not None:
@@ -153,7 +153,7 @@ class CrossEncoderReranker:
                 if self.device == "cuda" and torch.cuda.is_available():
                     torch.cuda.empty_cache()
 
-    def format_input(self, query: str, document: str, instruction: Optional[str] = None) -> str:
+    def format_input(self, query: str, document: str, instruction: str | None = None) -> str:
         """
         Format input for Qwen3-Reranker models
 
@@ -175,10 +175,10 @@ class CrossEncoderReranker:
     def compute_relevance_scores(
         self,
         query: str,
-        documents: List[str],
-        instruction: Optional[str] = None,
-        batch_size: Optional[int] = None,
-    ) -> List[float]:
+        documents: list[str],
+        instruction: str | None = None,
+        batch_size: int | None = None,
+    ) -> list[float]:
         """
         Compute relevance scores for documents given a query
 
@@ -243,7 +243,7 @@ class CrossEncoderReranker:
 
                 if len(yes_tokens) != 1 or len(no_tokens) != 1:
                     raise ValueError(
-                        f"Yes/No tokens must encode to single tokens. " f"Got Yes: {yes_tokens}, No: {no_tokens}"
+                        f"Yes/No tokens must encode to single tokens. Got Yes: {yes_tokens}, No: {no_tokens}"
                     )
 
             yes_token_id = yes_tokens[0]
@@ -270,11 +270,11 @@ class CrossEncoderReranker:
     def rerank(
         self,
         query: str,
-        documents: List[str],
+        documents: list[str],
         top_k: int,
-        instruction: Optional[str] = None,
-        return_scores: bool = False,
-    ) -> List[Tuple[int, float]]:
+        instruction: str | None = None,
+        return_scores: bool = False,  # noqa: ARG002
+    ) -> list[tuple[int, float]]:
         """
         Rerank documents based on relevance to query
 
@@ -303,7 +303,7 @@ class CrossEncoderReranker:
         rerank_time = time.time() - start_time
         if top_results:
             logger.info(
-                f"Reranked {len(documents)} documents in {rerank_time:.2f}s " f"(top score: {top_results[0][1]:.3f})"
+                f"Reranked {len(documents)} documents in {rerank_time:.2f}s (top score: {top_results[0][1]:.3f})"
             )
         else:
             logger.info(f"Reranked {len(documents)} documents in {rerank_time:.2f}s (no results)")

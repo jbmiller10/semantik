@@ -2,22 +2,21 @@
 Settings and database management routes for the Web UI
 """
 
-import glob
 import logging
-import os
 import sys
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from qdrant_client import AsyncQdrantClient
 
 # Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
-from packages.vecpipe.config import settings
+from vecpipe.config import settings
 
-from .. import database
-from ..auth import get_current_user
+from webui import database
+from webui.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +27,9 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
 @router.post("/reset-database")
-async def reset_database_endpoint(current_user: dict[str, Any] = Depends(get_current_user)):
+async def reset_database_endpoint(
+    current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
+) -> dict[str, str]:
     """Reset the database"""
     try:
         # Get all job IDs before reset
@@ -53,9 +54,10 @@ async def reset_database_endpoint(current_user: dict[str, Any] = Depends(get_cur
 
         # Delete all parquet files
         try:
-            parquet_files = glob.glob(os.path.join(OUTPUT_DIR, "*.parquet"))
+            output_path = Path(OUTPUT_DIR)
+            parquet_files = list(output_path.glob("*.parquet"))
             for pf in parquet_files:
-                os.remove(pf)
+                pf.unlink()
                 logger.info(f"Deleted parquet file: {pf}")
         except Exception as e:
             logger.warning(f"Failed to delete parquet files: {e}")
@@ -66,21 +68,25 @@ async def reset_database_endpoint(current_user: dict[str, Any] = Depends(get_cur
         return {"status": "success", "message": "Database reset successfully"}
     except Exception as e:
         logger.error(f"Failed to reset database: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/stats")
-async def get_database_stats(current_user: dict[str, Any] = Depends(get_current_user)):
+async def get_database_stats(
+    current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
+) -> dict[str, Any]:
     """Get database statistics"""
     # Get stats from database module
     stats = database.get_database_stats()
 
     # Get database file size
-    db_size = os.path.getsize(database.DB_PATH) if os.path.exists(database.DB_PATH) else 0
+    db_path = Path(database.DB_PATH)
+    db_size = db_path.stat().st_size if db_path.exists() else 0
 
     # Get total parquet files size
-    parquet_files = glob.glob(os.path.join(OUTPUT_DIR, "*.parquet"))
-    parquet_size = sum(os.path.getsize(f) for f in parquet_files)
+    output_path = Path(OUTPUT_DIR)
+    parquet_files = list(output_path.glob("*.parquet"))
+    parquet_size = sum(f.stat().st_size for f in parquet_files)
 
     return {
         "job_count": stats["jobs"]["total"],

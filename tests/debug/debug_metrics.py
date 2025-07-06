@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
 import psutil
-
-from packages.vecpipe.metrics import cpu_utilization, memory_utilization, metrics_collector
+from vecpipe.metrics import cpu_utilization, generate_latest, memory_utilization, metrics_collector, registry
 
 # First, let's check current system metrics
 print(f"Actual CPU: {psutil.cpu_percent(interval=0.1)}%")
@@ -27,8 +26,6 @@ for metric in memory_utilization.collect():
             print(f"Memory gauge value: {sample.value}")
 
 # Also check using the registry
-from vecpipe.metrics import generate_latest, registry
-
 metrics_text = generate_latest(registry).decode("utf-8")
 print("\nMetrics from registry:")
 for line in metrics_text.split("\n"):

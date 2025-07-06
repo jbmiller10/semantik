@@ -4,15 +4,15 @@ Test script for cleanup service
 """
 
 import logging
-import os
 import sys
 import tempfile
+from pathlib import Path
 
 # Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from packages.vecpipe.cleanup import QdrantCleanupService
-from packages.vecpipe.extract_chunks import FileChangeTracker
+from vecpipe.cleanup import QdrantCleanupService
+from vecpipe.extract_chunks import FileChangeTracker
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -50,7 +50,7 @@ def test_cleanup_dry_run():
 
     finally:
         # Clean up temp file
-        os.unlink(temp_file_list)
+        Path(temp_file_list).unlink()
 
 
 def test_tracker_integration():
@@ -92,7 +92,7 @@ def test_tracker_integration():
 
     finally:
         # Clean up
-        os.unlink(temp_db)
+        Path(temp_db).unlink()
 
 
 def main():

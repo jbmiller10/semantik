@@ -2,7 +2,7 @@
 """Manually update metrics in a loop"""
 import time
 
-from packages.vecpipe.metrics import metrics_collector
+from vecpipe.metrics import metrics_collector
 
 print("Starting metrics update loop...")
 while True:

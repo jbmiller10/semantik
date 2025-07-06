@@ -6,27 +6,28 @@ Provides backward-compatible API with feature flags
 
 import gc
 import logging
+from typing import Any
 
 import numpy as np
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
 
 # Import metrics tracking if available
 try:
-    from packages.vecpipe.metrics import Counter, registry
+    from vecpipe.metrics import Counter, registry
 
     # Check if metrics already exist in registry to avoid duplicates
     try:
-        oom_errors = Counter(
+        oom_errors: Any = Counter(
             "embedding_oom_errors_total",
             "Total OOM errors during embedding generation",
             ["model", "quantization"],
             registry=registry,
         )
-        batch_size_reductions = Counter(
+        batch_size_reductions: Any = Counter(
             "embedding_batch_size_reductions_total",
             "Total batch size reductions due to OOM",
             ["model", "quantization"],
@@ -50,10 +51,10 @@ except ImportError:
     METRICS_AVAILABLE = False
 
     class DummyCounter:
-        def labels(self, **kwargs):
+        def labels(self, **kwargs: Any) -> "DummyCounter":  # noqa: ARG002
             return self
 
-        def inc(self):
+        def inc(self) -> None:
             pass
 
     oom_errors = DummyCounter()
@@ -67,10 +68,9 @@ def last_token_pool(last_hidden_states: Tensor, attention_mask: Tensor) -> Tenso
     left_padding = attention_mask[:, -1].sum() == attention_mask.shape[0]
     if left_padding:
         return last_hidden_states[:, -1]
-    else:
-        sequence_lengths = attention_mask.sum(dim=1) - 1
-        batch_size = last_hidden_states.shape[0]
-        return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
+    sequence_lengths = attention_mask.sum(dim=1) - 1
+    batch_size = last_hidden_states.shape[0]
+    return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
 
 
 def get_detailed_instruct(task_description: str, query: str) -> str:
@@ -81,20 +81,20 @@ def get_detailed_instruct(task_description: str, query: str) -> str:
 class EmbeddingService:
     """Unified service for generating embeddings with optional quantization and Qwen3 support"""
 
-    def __init__(self, mock_mode: bool = False):
-        self.models = {}
-        self.current_model = None
-        self.current_tokenizer = None
-        self.current_model_name = None
-        self.current_quantization = None
-        self.is_qwen3_model = False
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.mock_mode = mock_mode
+    def __init__(self, mock_mode: bool = False) -> None:
+        self.models: dict[str, Any] = {}
+        self.current_model: Any | None = None
+        self.current_tokenizer: Any | None = None
+        self.current_model_name: str | None = None
+        self.current_quantization: str | None = None
+        self.is_qwen3_model: bool = False
+        self.device: str = "cuda" if torch.cuda.is_available() else "cpu"
+        self.mock_mode: bool = mock_mode
         # Adaptive batch sizing
-        self.original_batch_size = None
-        self.current_batch_size = None
-        self.successful_batches = 0
-        self.min_batch_size = 4
+        self.original_batch_size: int | None = None
+        self.current_batch_size: int | None = None
+        self.successful_batches: int = 0
+        self.min_batch_size: int = 4
         logger.info(f"Unified EmbeddingService initialized with device: {self.device}, mock_mode: {self.mock_mode}")
 
     def load_model(self, model_name: str, quantization: str = "float32") -> bool:
@@ -140,7 +140,6 @@ class EmbeddingService:
 
                 if quantization == "int8" and self.device == "cuda":
                     try:
-                        import bitsandbytes as bnb
                         from transformers import BitsAndBytesConfig
 
                         quantization_config = BitsAndBytesConfig(
@@ -157,13 +156,13 @@ class EmbeddingService:
                     except Exception as e:
                         error_msg = f"Failed to load model with INT8 quantization: {str(e)}"
                         logger.error(error_msg)
-                        raise RuntimeError(error_msg)
+                        raise RuntimeError(error_msg) from e
 
                 elif quantization == "float16" and self.device == "cuda":
                     self.current_model = AutoModel.from_pretrained(
                         model_name, torch_dtype=torch.float16, device_map={"": 0} if self.device == "cuda" else None
                     )
-                    if self.device == "cpu":
+                    if self.device == "cpu" and self.current_model is not None:
                         self.current_model = self.current_model.to(self.device)
                     logger.info("Loaded Qwen3 model in float16 precision")
                 else:
@@ -173,7 +172,11 @@ class EmbeddingService:
             elif quantization == "int8" and self.device == "cuda":
                 # Use bitsandbytes for INT8 quantization
                 try:
-                    import bitsandbytes as bnb
+                    import importlib.util
+
+                    if importlib.util.find_spec("bitsandbytes") is None:
+                        raise ImportError("bitsandbytes not available")
+
                     from transformers import BitsAndBytesConfig
 
                     # Configure 8-bit quantization
@@ -198,7 +201,8 @@ class EmbeddingService:
                 # Load model in float16
                 self.current_model = SentenceTransformer(model_name, device=self.device)
                 # Convert model to float16
-                self.current_model = self.current_model.half()
+                if self.current_model is not None:
+                    self.current_model = self.current_model.half()
                 logger.info("Loaded model in float16 precision")
 
             else:
@@ -228,6 +232,7 @@ class EmbeddingService:
             raise RuntimeError("Model not loaded")
 
         if self.is_qwen3_model:
+            assert self.current_tokenizer is not None
             batch_dict = self.current_tokenizer(
                 ["test"],
                 padding=True,
@@ -242,7 +247,8 @@ class EmbeddingService:
                 embeddings = F.normalize(embeddings, p=2, dim=1)
                 return embeddings[0].cpu().numpy()
         else:
-            return self.current_model.encode("test", convert_to_numpy=True)
+            assert self.current_model is not None
+            return self.current_model.encode("test", convert_to_numpy=True)  # type: ignore[no-any-return]
 
     def _generate_mock_embeddings(self, texts: list[str]) -> np.ndarray:
         """Generate deterministic mock embeddings based on text hash"""
@@ -253,7 +259,8 @@ class EmbeddingService:
         if self.current_model_name:
             # Try to get dimension from model info
             model_info = QUANTIZED_MODEL_INFO.get(self.current_model_name, {})
-            vector_dim = model_info.get("dimension", 1024)
+            dim_value = model_info.get("dimension", 1024)
+            vector_dim = int(dim_value) if isinstance(dim_value, int | str | float) else 1024
 
         embeddings = []
         for text in texts:
@@ -277,9 +284,10 @@ class EmbeddingService:
         """
         try:
             model_key = f"{model_name}_{quantization}"
-            if model_key != f"{self.current_model_name}_{self.current_quantization}":
-                if not self.load_model(model_name, quantization):
-                    return {"error": f"Failed to load model {model_name}"}
+            if model_key != f"{self.current_model_name}_{self.current_quantization}" and not self.load_model(
+                model_name, quantization
+            ):
+                return {"error": f"Failed to load model {model_name}"}
 
             if not hasattr(self, "current_model") or self.current_model is None:
                 return {"error": "Model not loaded"}
@@ -314,7 +322,7 @@ class EmbeddingService:
         batch_size: int = 32,
         show_progress: bool = True,
         instruction: str | None = None,
-        **kwargs,
+        **kwargs: Any,  # noqa: ARG002
     ) -> np.ndarray | None:
         """Generate embeddings for a list of texts
 
@@ -335,9 +343,10 @@ class EmbeddingService:
 
             # Load model with specified quantization if needed
             model_key = f"{model_name}_{quantization}"
-            if model_key != f"{self.current_model_name}_{self.current_quantization}":
-                if not self.load_model(model_name, quantization):
-                    return None
+            if model_key != f"{self.current_model_name}_{self.current_quantization}" and not self.load_model(
+                model_name, quantization
+            ):
+                return None
 
             if not hasattr(self, "current_model") or self.current_model is None:
                 logger.error("Model not properly loaded")
@@ -367,11 +376,13 @@ class EmbeddingService:
                 all_embeddings = []
                 from tqdm import tqdm
 
+                assert current_batch_size is not None
                 for i in tqdm(range(0, len(texts), current_batch_size), disable=not show_progress, desc="Encoding"):
                     batch_texts = texts[i : i + current_batch_size]
 
                     try:
                         # Tokenize batch
+                        assert self.current_tokenizer is not None
                         batch_dict = self.current_tokenizer(
                             batch_texts,
                             padding=True,
@@ -388,15 +399,22 @@ class EmbeddingService:
                             else:
                                 outputs = self.current_model(**batch_dict)
 
-                            embeddings = last_token_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
-                            embeddings = F.normalize(embeddings, p=2, dim=1)
-                            all_embeddings.append(embeddings.cpu().numpy())
+                            batch_embeddings = last_token_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
+                            batch_embeddings = F.normalize(batch_embeddings, p=2, dim=1)
+                            all_embeddings.append(batch_embeddings.cpu().numpy())
 
                         # Track successful batches for restoration
-                        if current_batch_size == self.current_batch_size:
+                        if current_batch_size == self.current_batch_size and self.current_batch_size is not None:
                             self.successful_batches += 1
                             # Try to restore batch size after 10 successful batches
-                            if self.successful_batches > 10 and self.current_batch_size < self.original_batch_size:
+                            if (
+                                self.successful_batches > 10
+                                and self.current_batch_size is not None
+                                and self.original_batch_size is not None
+                                and self.current_batch_size < self.original_batch_size
+                            ):
+                                assert self.current_batch_size is not None
+                                assert self.original_batch_size is not None
                                 new_size = min(self.current_batch_size * 2, self.original_batch_size)
                                 logger.info(f"Restoring batch size from {self.current_batch_size} to {new_size}")
                                 self.current_batch_size = new_size
@@ -417,6 +435,7 @@ class EmbeddingService:
                             ).inc()
 
                             torch.cuda.empty_cache()
+                            assert current_batch_size is not None
                             current_batch_size = max(self.min_batch_size, current_batch_size // 2)
                             self.current_batch_size = current_batch_size
                             self.successful_batches = 0  # Reset success counter
@@ -425,10 +444,11 @@ class EmbeddingService:
                         else:
                             raise
 
-                embeddings = np.vstack(all_embeddings)
+                embeddings: np.ndarray = np.vstack(all_embeddings)
 
             else:
                 # Standard sentence-transformers processing
+                assert current_batch_size is not None
                 while current_batch_size >= self.min_batch_size:
                     try:
                         if quantization == "float16" and self.device == "cuda":
@@ -451,10 +471,17 @@ class EmbeddingService:
                             )
 
                         # Success! Track it for potential restoration
-                        if current_batch_size == self.current_batch_size:
+                        if current_batch_size == self.current_batch_size and self.current_batch_size is not None:
                             self.successful_batches += 1
                             # Try to restore batch size after 10 successful batches
-                            if self.successful_batches > 10 and self.current_batch_size < self.original_batch_size:
+                            if (
+                                self.successful_batches > 10
+                                and self.current_batch_size is not None
+                                and self.original_batch_size is not None
+                                and self.current_batch_size < self.original_batch_size
+                            ):
+                                assert self.current_batch_size is not None
+                                assert self.original_batch_size is not None
                                 new_size = min(self.current_batch_size * 2, self.original_batch_size)
                                 logger.info(f"Restoring batch size from {self.current_batch_size} to {new_size}")
                                 self.current_batch_size = new_size
@@ -462,7 +489,7 @@ class EmbeddingService:
 
                         break  # Success, exit the retry loop
 
-                    except torch.cuda.OutOfMemoryError:
+                    except torch.cuda.OutOfMemoryError as e:
                         logger.warning(
                             f"OOM with batch size {current_batch_size}, reducing to {current_batch_size // 2}"
                         )
@@ -473,12 +500,13 @@ class EmbeddingService:
                         ).inc()
 
                         torch.cuda.empty_cache()
+                        assert current_batch_size is not None
                         current_batch_size = max(self.min_batch_size, current_batch_size // 2)
                         self.current_batch_size = current_batch_size
                         self.successful_batches = 0  # Reset success counter
 
                         if current_batch_size < self.min_batch_size:
-                            raise RuntimeError("Unable to process batch even with minimum batch size")
+                            raise RuntimeError("Unable to process batch even with minimum batch size") from e
 
             return embeddings
 
@@ -487,7 +515,12 @@ class EmbeddingService:
             return None
 
     def generate_single_embedding(
-        self, text: str, model_name: str, quantization: str = "float32", instruction: str | None = None, **kwargs
+        self,
+        text: str,
+        model_name: str,
+        quantization: str = "float32",
+        instruction: str | None = None,
+        **kwargs: Any,  # noqa: ARG002
     ) -> list[float] | None:
         """Generate embedding for a single text
 
@@ -502,7 +535,7 @@ class EmbeddingService:
             [text], model_name, quantization, batch_size=1, show_progress=False, instruction=instruction
         )
         if embeddings is not None and len(embeddings) > 0:
-            return embeddings[0].tolist()
+            return embeddings[0].tolist()  # type: ignore[no-any-return]
         return None
 
 
@@ -545,7 +578,7 @@ for model_info in POPULAR_MODELS.values():
         model_info["dim"] = model_info["dimension"]
 
 
-def test_embedding_service():
+def test_embedding_service() -> None:
     """Test the unified embedding service"""
     service = EmbeddingService()
 

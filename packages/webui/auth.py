@@ -5,9 +5,9 @@ Provides JWT-based authentication with user management
 """
 
 import logging
-import os
 import sys
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, HTTPException, status
@@ -17,7 +17,7 @@ from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, validator
 
 # Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 from vecpipe.config import settings
 
 # Import database module
@@ -44,7 +44,7 @@ class UserCreate(BaseModel):
     full_name: str | None = None
 
     @validator("username")
-    def validate_username(cls, v):
+    def validate_username(cls, v: str) -> str:  # noqa: N805
         if len(v) < 3:
             raise ValueError("Username must be at least 3 characters long")
         # Check if username contains only alphanumeric characters and underscores
@@ -53,7 +53,7 @@ class UserCreate(BaseModel):
         return v
 
     @validator("password")
-    def validate_password(cls, v):
+    def validate_password(cls, v: str) -> str:  # noqa: N805
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters long")
         return v
@@ -87,16 +87,16 @@ class User(BaseModel):
 # Password hashing functions
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""
-    return pwd_context.verify(plain_password, hashed_password)
+    return bool(pwd_context.verify(plain_password, hashed_password))
 
 
 def get_password_hash(password: str) -> str:
     """Generate password hash"""
-    return pwd_context.hash(password)
+    return str(pwd_context.hash(password))
 
 
 # Token functions
-def create_access_token(data: dict, expires_delta: timedelta | None = None):
+def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     """Create a JWT access token"""
     to_encode = data.copy()
     if expires_delta:
@@ -104,11 +104,10 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     else:
         expire = datetime.now(UTC) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire, "type": "access"})
-    encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
+    return str(jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.ALGORITHM))
 
 
-def create_refresh_token(data: dict, expires_delta: timedelta | None = None):
+def create_refresh_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     """Create a JWT refresh token"""
     to_encode = data.copy()
     if expires_delta:
@@ -116,8 +115,7 @@ def create_refresh_token(data: dict, expires_delta: timedelta | None = None):
     else:
         expire = datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire, "type": "refresh"})
-    encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
+    return str(jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.ALGORITHM))
 
 
 def verify_token(token: str, token_type: str = "access") -> str | None:

@@ -1,11 +1,11 @@
 import hashlib
-import os
 import sqlite3
 import sys
+from pathlib import Path
 
 # Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from packages.vecpipe.config import settings
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from vecpipe.config import settings
 
 DB_PATH = str(settings.WEBUI_DB)
 

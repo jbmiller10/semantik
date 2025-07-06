@@ -6,7 +6,7 @@ Can be run via cron or manually to clean up expired sessions
 
 import shutil
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Configuration
@@ -70,7 +70,7 @@ def main():
     """Main function"""
     print("Temporary Image Cleanup Script")
     print("==============================")
-    print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Time: {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print(f"TTL: {TTL_HOURS} hour(s)")
     print()
 

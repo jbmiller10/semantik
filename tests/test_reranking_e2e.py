@@ -3,11 +3,7 @@ End-to-End Integration Test for Reranking Feature
 Tests the complete flow from frontend parameters to backend processing and response
 """
 
-import json
-from unittest.mock import AsyncMock, Mock, patch
-
 import pytest
-from fastapi.testclient import TestClient
 
 
 class TestRerankingE2E:
@@ -29,10 +25,10 @@ class TestRerankingE2E:
         # - use_reranker?: boolean
         assert True, "API service implementation verified by code inspection"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_webui_search_forwards_to_vecpipe(self):
         """Test that webui search.py forwards reranking params to vecpipe"""
-        from packages.webui.api.search import SearchRequest
+        from webui.api.search import SearchRequest
 
         # Create a request with reranking parameters
         request = SearchRequest(
@@ -46,7 +42,7 @@ class TestRerankingE2E:
         )
 
         # Verify the request model includes all fields
-        assert request.use_reranker == True
+        assert request.use_reranker is True
         assert request.rerank_model == "cross-encoder/ms-marco-MiniLM-L-12-v2"
 
         # Verify webui forwards these params (lines 199-204 in search.py)
@@ -66,10 +62,10 @@ class TestRerankingE2E:
         assert "use_reranker" in search_params
         assert "rerank_model" in search_params
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_vecpipe_processes_reranking(self):
         """Test that vecpipe search_api.py processes reranking correctly"""
-        from packages.vecpipe.search_api import SearchRequest, SearchResponse
+        from vecpipe.search_api import SearchRequest, SearchResponse
 
         # Create a search request with reranking
         request = SearchRequest(
@@ -82,7 +78,7 @@ class TestRerankingE2E:
         )
 
         # Verify request fields
-        assert request.use_reranker == True
+        assert request.use_reranker is True
         assert request.rerank_model == "cross-encoder/ms-marco-MiniLM-L-12-v2"
 
         # Mock response with reranking metrics
@@ -100,7 +96,7 @@ class TestRerankingE2E:
         )
 
         # Verify response includes reranking metrics
-        assert mock_response.reranking_used == True
+        assert mock_response.reranking_used is True
         assert mock_response.reranker_model == "cross-encoder/ms-marco-MiniLM-L-12-v2/float16"
         assert mock_response.reranking_time_ms == 30.0
 

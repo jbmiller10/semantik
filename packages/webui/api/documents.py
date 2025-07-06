@@ -7,6 +7,7 @@ Provides secure access to original documents with support for:
 - Multi-format document preview (PDF, DOCX, TXT, MD, HTML, PPTX, EML)
 """
 
+import contextlib
 import logging
 import mimetypes
 import re
@@ -17,6 +18,7 @@ import tempfile
 import threading
 import time
 import uuid
+from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -24,18 +26,16 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
 
-from .. import database
-from ..auth import get_current_user
-from ..rate_limiter import limiter
+from webui import database
+from webui.auth import get_current_user
+from webui.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 
 # PPTX conversion configuration
 PPTX2MD_AVAILABLE = False
 PPTX2MD_COMMAND = None
-try:
-    import pptx2md
-except ImportError:
+with contextlib.suppress(ImportError):
     pass
 
 # Try different methods to find pptx2md
@@ -82,20 +82,20 @@ CHUNK_SIZE = 8192  # 8KB chunks for streaming
 TEMP_IMAGE_DIR = Path(tempfile.gettempdir()) / "webui_temp_images"
 TEMP_IMAGE_DIR.mkdir(exist_ok=True)
 TEMP_IMAGE_TTL = 3600  # 1 hour in seconds
-IMAGE_SESSIONS = {}  # Maps session_id to (user_id, created_time, image_dir)
+IMAGE_SESSIONS: dict[str, tuple[str, float, Path]] = {}  # Maps session_id to (user_id, created_time, image_dir)
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".webp"}
 
 # Cleanup thread
 cleanup_lock = threading.Lock()
 
 
-def cleanup_old_sessions():
+def cleanup_old_sessions() -> None:
     """Remove temporary image directories older than TTL"""
     with cleanup_lock:
         current_time = time.time()
         expired_sessions = []
 
-        for session_id, (user_id, created_time, image_dir) in IMAGE_SESSIONS.items():
+        for session_id, (_user_id, created_time, image_dir) in IMAGE_SESSIONS.items():
             if current_time - created_time > TEMP_IMAGE_TTL:
                 expired_sessions.append(session_id)
                 try:
@@ -109,10 +109,10 @@ def cleanup_old_sessions():
             del IMAGE_SESSIONS[session_id]
 
 
-def start_cleanup_thread():
+def start_cleanup_thread() -> None:
     """Start background thread for cleanup"""
 
-    def cleanup_worker():
+    def cleanup_worker() -> None:
         while True:
             time.sleep(300)  # Run cleanup every 5 minutes
             cleanup_old_sessions()
@@ -162,7 +162,7 @@ def validate_file_access(job_id: str, doc_id: str, current_user: dict[str, Any])
             raise HTTPException(status_code=403, detail="Access denied")
     except Exception as e:
         logger.error(f"Path validation error: {e}")
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=403, detail="Access denied") from e
 
     # Verify file exists
     if not file_path.exists():
@@ -178,12 +178,12 @@ def validate_file_access(job_id: str, doc_id: str, current_user: dict[str, Any])
 @router.get("/{job_id}/{doc_id}")
 @limiter.limit("10/minute")
 async def get_document(
-    request: Request,
+    request: Request,  # noqa: ARG001
     job_id: str,
     doc_id: str,
     current_user: dict[str, Any] = Depends(get_current_user),
     range: str | None = Header(None),
-):
+) -> Response:
     """
     Retrieve a document by job_id and doc_id.
 
@@ -227,6 +227,8 @@ async def get_document(
                     IMAGE_SESSIONS[session_id] = (user_id, time.time(), session_image_dir)
 
                 # Run the conversion command using the detected method
+                if PPTX2MD_COMMAND is None:
+                    raise RuntimeError("PPTX2MD_COMMAND is not initialized")
                 cmd = PPTX2MD_COMMAND + [
                     str(file_path),
                     "-o",
@@ -241,7 +243,7 @@ async def get_document(
 
                 if result.returncode == 0 and output_path.exists():
                     # Read the converted markdown
-                    with open(output_path, encoding="utf-8") as f:
+                    with output_path.open(encoding="utf-8") as f:
                         markdown_content = f.read()
 
                     # Update image paths in markdown to use our temp image endpoint
@@ -254,13 +256,13 @@ async def get_document(
                     )
 
                     # Also handle any other image path patterns
-                    def replace_image_path(match):
+                    def replace_image_path(match: Any) -> str:
                         alt_text = match.group(1)
                         image_path = match.group(2)
 
                         # If already an API path, keep it
                         if image_path.startswith("/api/documents/temp-images/"):
-                            return match.group(0)
+                            return str(match.group(0))
 
                         # If it contains our session ID, update the path
                         if session_id in image_path:
@@ -343,8 +345,8 @@ async def get_document(
             content_length = range_end - range_start + 1
 
             # Return partial content
-            def file_generator():
-                with open(file_path, "rb") as f:
+            def file_generator() -> Generator[bytes, None, None]:
+                with Path(file_path).open("rb") as f:
                     f.seek(range_start)
                     remaining = content_length
 
@@ -394,8 +396,8 @@ async def get_document(
 @router.get("/{job_id}/{doc_id}/info")
 @limiter.limit("30/minute")
 async def get_document_info(
-    request: Request, job_id: str, doc_id: str, current_user: dict[str, Any] = Depends(get_current_user)
-):
+    request: Request, job_id: str, doc_id: str, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
+) -> dict[str, Any]:
     """
     Get document metadata without downloading the file.
 
@@ -426,12 +428,12 @@ async def get_document_info(
 @router.get("/temp-images/{session_id}/{filename}")
 @limiter.limit("30/minute")
 async def get_temp_image(
-    request: Request,
+    request: Request,  # noqa: ARG001
     session_id: str,
     filename: str,
-    token: str | None = None,
-    current_user: dict[str, Any] | None = None,
-):
+    token: str | None = None,  # noqa: ARG001
+    current_user: dict[str, Any] | None = None,  # noqa: ARG001
+) -> FileResponse:
     """
     Serve temporary images extracted from documents (e.g., PPTX slides).
 
@@ -474,7 +476,7 @@ async def get_temp_image(
             raise HTTPException(status_code=403, detail="Access denied")
     except Exception as e:
         logger.error(f"Path validation error: {e}")
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=403, detail="Access denied") from e
 
     # Determine content type
     content_type = mimetypes.guess_type(str(file_path))[0]

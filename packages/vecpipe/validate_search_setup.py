@@ -7,17 +7,18 @@ Helps diagnose configuration and model loading issues
 import logging
 import os
 import sys
+from pathlib import Path
 
 import torch
 
 # Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
-def check_environment():
+def check_environment() -> tuple[bool, str, str]:
     """Check environment configuration"""
     print("=" * 60)
     print("Search API Configuration Validation")
@@ -36,7 +37,7 @@ def check_environment():
     return use_mock, model, quantization
 
 
-def check_dependencies():
+def check_dependencies() -> bool:
     """Check required dependencies"""
     print("\n2. Dependencies:")
 
@@ -60,7 +61,7 @@ def check_dependencies():
     return all_good
 
 
-def check_hardware():
+def check_hardware() -> tuple[bool, float]:
     """Check hardware capabilities"""
     print("\n3. Hardware:")
 
@@ -82,12 +83,11 @@ def check_hardware():
         print("   - Qwen3-4B (int8): ~4GB")
 
         return True, free_memory
-    else:
-        print("   ⚠ No CUDA GPU available - will use CPU (slower)")
-        return False, 0
+    print("   ⚠ No CUDA GPU available - will use CPU (slower)")
+    return False, 0
 
 
-def test_model_loading(model_name, quantization, has_gpu):
+def test_model_loading(model_name: str, quantization: str, has_gpu: bool) -> bool:  # noqa: ARG001
     """Test loading the embedding model"""
     print(f"\n4. Testing Model Loading: {model_name}")
 
@@ -107,12 +107,10 @@ def test_model_loading(model_name, quantization, has_gpu):
             if embedding:
                 print(f"   ✓ Test embedding generated (dimension: {len(embedding)})")
                 return True
-            else:
-                print("   ✗ Failed to generate test embedding")
-                return False
-        else:
-            print("   ✗ Failed to load model")
+            print("   ✗ Failed to generate test embedding")
             return False
+        print("   ✗ Failed to load model")
+        return False
 
     except Exception as e:
         print(f"   ✗ Error loading model: {e}")
@@ -122,7 +120,15 @@ def test_model_loading(model_name, quantization, has_gpu):
         return False
 
 
-def suggest_fixes(use_mock, model, quantization, deps_ok, has_gpu, gpu_memory, model_loads):
+def suggest_fixes(
+    use_mock: bool,
+    model: str,  # noqa: ARG001
+    quantization: str,  # noqa: ARG001
+    deps_ok: bool,
+    has_gpu: bool,
+    gpu_memory: float,
+    model_loads: bool,  # noqa: ARG001
+) -> None:
     """Suggest fixes for common issues"""
     print("\n" + "=" * 60)
     print("Recommendations:")
@@ -158,7 +164,7 @@ def suggest_fixes(use_mock, model, quantization, deps_ok, has_gpu, gpu_memory, m
         print("\n✓ Everything looks good! The API should start successfully.")
 
 
-def main():
+def main() -> None:
     # Check configuration
     use_mock, model, quantization = check_environment()
 
