@@ -73,6 +73,29 @@ A powerful backend deserves a clean frontend.
 </ul>
 </details>
 
+
+
+## ⚙️ System Requirements
+
+Semantik can run on both CPU and GPU, but a CUDA-compatible GPU is **strongly recommended** for reasonable performance.
+
+### Recommended (GPU Setup)
+- **GPU**: NVIDIA GPU with CUDA support & **8GB+ of VRAM** (e.g., RTX 3060 / 4060 or newer).
+- **CPU**: Modern quad-core or better.
+- **RAM**: 16GB+.
+- **Storage**: Solid State Drive (SSD).
+- **Software**: Docker & Docker Compose (latest versions).
+
+> **Why the GPU?** Creating search embeddings is a highly parallel task. A GPU can be 10-100x faster than a CPU, turning a process that takes hours into one that takes minutes.
+
+### Minimum (CPU-Only Setup)
+- **CPU**: Modern quad-core or better.
+- **RAM**: 16GB+.
+- **Storage**: SSD.
+- **Software**: Docker & Docker Compose.
+
+> **Performance Note:** A CPU-only setup will be **very slow** for indexing and search. It is suitable for evaluation and small personal document collections only.
+
 ## ⚡ Quick Start
 
 Soon
