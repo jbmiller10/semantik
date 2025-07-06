@@ -3,11 +3,8 @@ End-to-End Integration Test for Reranking Feature
 Tests the complete flow from frontend parameters to backend processing and response
 """
 
-import json
-from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from fastapi.testclient import TestClient
 
 
 class TestRerankingE2E:
@@ -29,7 +26,7 @@ class TestRerankingE2E:
         # - use_reranker?: boolean
         assert True, "API service implementation verified by code inspection"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_webui_search_forwards_to_vecpipe(self):
         """Test that webui search.py forwards reranking params to vecpipe"""
         from packages.webui.api.search import SearchRequest
@@ -66,7 +63,7 @@ class TestRerankingE2E:
         assert "use_reranker" in search_params
         assert "rerank_model" in search_params
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_vecpipe_processes_reranking(self):
         """Test that vecpipe search_api.py processes reranking correctly"""
         from packages.vecpipe.search_api import SearchRequest, SearchResponse

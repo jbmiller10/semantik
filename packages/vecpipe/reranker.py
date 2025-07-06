@@ -6,7 +6,6 @@ Uses Qwen3-Reranker models for state-of-the-art reranking
 import logging
 import threading
 import time
-from typing import List, Optional, Tuple
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -153,7 +152,7 @@ class CrossEncoderReranker:
                 if self.device == "cuda" and torch.cuda.is_available():
                     torch.cuda.empty_cache()
 
-    def format_input(self, query: str, document: str, instruction: Optional[str] = None) -> str:
+    def format_input(self, query: str, document: str, instruction: str | None = None) -> str:
         """
         Format input for Qwen3-Reranker models
 
@@ -175,10 +174,10 @@ class CrossEncoderReranker:
     def compute_relevance_scores(
         self,
         query: str,
-        documents: List[str],
-        instruction: Optional[str] = None,
-        batch_size: Optional[int] = None,
-    ) -> List[float]:
+        documents: list[str],
+        instruction: str | None = None,
+        batch_size: int | None = None,
+    ) -> list[float]:
         """
         Compute relevance scores for documents given a query
 
@@ -243,7 +242,7 @@ class CrossEncoderReranker:
 
                 if len(yes_tokens) != 1 or len(no_tokens) != 1:
                     raise ValueError(
-                        f"Yes/No tokens must encode to single tokens. " f"Got Yes: {yes_tokens}, No: {no_tokens}"
+                        f"Yes/No tokens must encode to single tokens. Got Yes: {yes_tokens}, No: {no_tokens}"
                     )
 
             yes_token_id = yes_tokens[0]
@@ -270,11 +269,11 @@ class CrossEncoderReranker:
     def rerank(
         self,
         query: str,
-        documents: List[str],
+        documents: list[str],
         top_k: int,
-        instruction: Optional[str] = None,
+        instruction: str | None = None,
         return_scores: bool = False,
-    ) -> List[Tuple[int, float]]:
+    ) -> list[tuple[int, float]]:
         """
         Rerank documents based on relevance to query
 
@@ -303,7 +302,7 @@ class CrossEncoderReranker:
         rerank_time = time.time() - start_time
         if top_results:
             logger.info(
-                f"Reranked {len(documents)} documents in {rerank_time:.2f}s " f"(top score: {top_results[0][1]:.3f})"
+                f"Reranked {len(documents)} documents in {rerank_time:.2f}s (top score: {top_results[0][1]:.3f})"
             )
         else:
             logger.info(f"Reranked {len(documents)} documents in {rerank_time:.2f}s (no results)")

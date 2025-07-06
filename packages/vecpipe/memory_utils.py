@@ -3,7 +3,6 @@ Memory management utilities for model loading
 """
 
 import logging
-from typing import Dict, Tuple
 
 import torch
 
@@ -40,10 +39,9 @@ MEMORY_OVERHEAD_FACTOR = 1.2
 class InsufficientMemoryError(Exception):
     """Raised when there's not enough memory to load a model"""
 
-    pass
 
 
-def get_gpu_memory_info() -> Tuple[int, int]:
+def get_gpu_memory_info() -> tuple[int, int]:
     """
     Get GPU memory information
 
@@ -86,8 +84,8 @@ def get_model_memory_requirement(model_name: str, quantization: str = "float32")
 
 
 def check_memory_availability(
-    model_name: str, quantization: str = "float32", current_models: Dict[str, Tuple[str, str]] = None
-) -> Tuple[bool, str]:
+    model_name: str, quantization: str = "float32", current_models: dict[str, tuple[str, str]] = None
+) -> tuple[bool, str]:
     """
     Check if there's enough memory to load a model
 
@@ -135,7 +133,7 @@ def check_memory_availability(
         )
 
 
-def suggest_model_configuration(available_memory_mb: int) -> Dict[str, str]:
+def suggest_model_configuration(available_memory_mb: int) -> dict[str, str]:
     """
     Suggest optimal model configuration based on available memory
 

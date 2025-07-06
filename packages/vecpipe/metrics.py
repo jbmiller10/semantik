@@ -9,7 +9,7 @@ import time
 
 import GPUtil
 import psutil
-from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, Info, generate_latest, start_http_server
+from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, Info, start_http_server
 
 # Create custom registry
 registry = CollectorRegistry()
