@@ -40,8 +40,8 @@ OUTPUT_DIR = str(settings.OUTPUT_DIR)
 SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".doc", ".txt", ".text", ".pptx", ".eml", ".md", ".html"]
 
 # Create necessary directories
-os.makedirs(JOBS_DIR, exist_ok=True)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+Path(JOBS_DIR).mkdir(parents=True, exist_ok=True)
+Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
