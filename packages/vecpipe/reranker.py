@@ -6,6 +6,7 @@ Uses Qwen3-Reranker models for state-of-the-art reranking
 import logging
 import threading
 import time
+from typing import Any
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -93,7 +94,7 @@ class CrossEncoderReranker:
                     torch_dtype = torch.bfloat16
 
                 # Load model with appropriate settings
-                load_kwargs = {
+                load_kwargs: dict[str, Any] = {
                     "torch_dtype": torch_dtype,
                     "device_map": "auto" if self.device == "cuda" else None,
                     "trust_remote_code": True,

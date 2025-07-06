@@ -10,6 +10,8 @@ from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.requests import Request
+from starlette.responses import Response
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -20,6 +22,14 @@ from .api.jobs import websocket_endpoint
 from .rate_limiter import limiter
 
 
+def rate_limit_handler(request: Request, exc: Exception) -> Response:
+    """Wrapper to ensure proper type signature for rate limit handler"""
+    if isinstance(exc, RateLimitExceeded):
+        return _rate_limit_exceeded_handler(request, exc)
+    # This shouldn't happen, but handle gracefully
+    return Response(content="Rate limit error", status_code=429)
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application"""
     app = FastAPI(
@@ -27,7 +37,7 @@ def create_app() -> FastAPI:
     )
 
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
     # Include routers with their specific prefixes
     app.include_router(auth.router)

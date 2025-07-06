@@ -516,7 +516,7 @@ async def process_embedding_job(job_id: str) -> None:
             # This accounts for potential race conditions, network issues during upload,
             # or partial batch failures that were retried. The exact count isn't critical
             # as long as most vectors were successfully uploaded.
-            if collection_info.points_count < total_vectors_created * 0.9:
+            if collection_info.points_count is not None and collection_info.points_count < total_vectors_created * 0.9:
                 logger.warning(
                     f"Vector count mismatch: {collection_info.points_count} in Qdrant vs {total_vectors_created} expected"
                 )
@@ -738,7 +738,14 @@ async def add_to_collection(
         try:
             collection_info = qdrant.get_collection(parent_collection_name)
             # Get the actual vector dimension from Qdrant
-            actual_vector_dim = collection_info.config.params.vectors.size
+            vectors_config = collection_info.config.params.vectors
+            if vectors_config is None:
+                raise ValueError(f"No vector configuration found for collection {parent_collection_name}")
+            if hasattr(vectors_config, "size"):
+                actual_vector_dim = vectors_config.size
+            else:
+                # It's a dict, get the first vector config
+                actual_vector_dim = next(iter(vectors_config.values())).size
 
             # Verify that the stored metadata matches the actual collection
             if actual_vector_dim != collection_metadata["vector_dim"]:
@@ -931,7 +938,7 @@ async def check_collections_status(
             collection_name = f"job_{job['id']}"
             exists = collection_name in collection_names
 
-            point_count = 0
+            point_count: int | None = 0
             if exists:
                 try:
                     collection_info = qdrant.get_collection(collection_name)
@@ -1037,7 +1044,7 @@ async def check_collection_exists(
         collection_exists = any(c.name == collection_name for c in collections)
 
         # If collection exists, get point count
-        point_count = 0
+        point_count: int | None = 0
         if collection_exists:
             try:
                 collection_info = qdrant.get_collection(collection_name)

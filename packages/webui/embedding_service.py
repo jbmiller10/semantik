@@ -399,9 +399,9 @@ class EmbeddingService:
                             else:
                                 outputs = self.current_model(**batch_dict)
 
-                            embeddings = last_token_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
-                            embeddings = F.normalize(embeddings, p=2, dim=1)
-                            all_embeddings.append(embeddings.cpu().numpy())
+                            batch_embeddings = last_token_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
+                            batch_embeddings = F.normalize(batch_embeddings, p=2, dim=1)
+                            all_embeddings.append(batch_embeddings.cpu().numpy())
 
                         # Track successful batches for restoration
                         if current_batch_size == self.current_batch_size and self.current_batch_size is not None:
@@ -444,7 +444,7 @@ class EmbeddingService:
                         else:
                             raise
 
-                embeddings = np.vstack(all_embeddings)
+                embeddings: np.ndarray = np.vstack(all_embeddings)
 
             else:
                 # Standard sentence-transformers processing
@@ -508,7 +508,7 @@ class EmbeddingService:
                         if current_batch_size < self.min_batch_size:
                             raise RuntimeError("Unable to process batch even with minimum batch size") from e
 
-            return embeddings  # type: ignore[no-any-return]
+            return embeddings
 
         except Exception as e:
             logger.error(f"Failed to generate embeddings: {e}")
