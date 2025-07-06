@@ -28,7 +28,7 @@ class TestRerankingE2E:
     @pytest.mark.asyncio()
     async def test_webui_search_forwards_to_vecpipe(self):
         """Test that webui search.py forwards reranking params to vecpipe"""
-        from packages.webui.api.search import SearchRequest
+        from webui.api.search import SearchRequest
 
         # Create a request with reranking parameters
         request = SearchRequest(
@@ -65,7 +65,7 @@ class TestRerankingE2E:
     @pytest.mark.asyncio()
     async def test_vecpipe_processes_reranking(self):
         """Test that vecpipe search_api.py processes reranking correctly"""
-        from packages.vecpipe.search_api import SearchRequest, SearchResponse
+        from vecpipe.search_api import SearchRequest, SearchResponse
 
         # Create a search request with reranking
         request = SearchRequest(
