@@ -25,7 +25,7 @@ def update_metrics_loop():
     """Background thread to continuously update metrics"""
     import time
 
-    from packages.vecpipe.metrics import metrics_collector
+    from vecpipe.metrics import metrics_collector
 
     while True:
         try:
@@ -37,7 +37,7 @@ def update_metrics_loop():
 
 if METRICS_PORT:
     try:
-        from packages.vecpipe.metrics import generate_latest, registry, start_metrics_server
+        from vecpipe.metrics import generate_latest, registry, start_metrics_server
 
         start_metrics_server(METRICS_PORT)
         logger.info(f"Metrics server started on port {METRICS_PORT}")

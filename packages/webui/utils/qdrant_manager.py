@@ -9,7 +9,7 @@ from typing import Optional
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 
-from packages.vecpipe.config import settings
+from vecpipe.config import settings
 
 from .retry import exponential_backoff_retry
 

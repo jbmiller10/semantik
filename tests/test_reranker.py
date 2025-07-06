@@ -11,7 +11,7 @@ import pytest
 import torch
 
 # Import the class to test
-from packages.vecpipe.reranker import CrossEncoderReranker
+from vecpipe.reranker import CrossEncoderReranker
 
 # Test constants
 TEST_MODEL_NAME = "Qwen/Qwen3-Reranker-0.6B"
@@ -31,8 +31,8 @@ def _mock_torch_cuda():
 def mock_transformers():
     """Mock transformers imports"""
     with (
-        patch("packages.vecpipe.reranker.AutoModelForCausalLM") as mock_model_class,
-        patch("packages.vecpipe.reranker.AutoTokenizer") as mock_tokenizer_class,
+        patch("vecpipe.reranker.AutoModelForCausalLM") as mock_model_class,
+        patch("vecpipe.reranker.AutoTokenizer") as mock_tokenizer_class,
     ):
 
         # Mock model instance
@@ -636,7 +636,7 @@ class TestPerformance:
     def test_no_memory_cleanup_on_cpu(self, mock_cuda_available, mock_empty_cache):  # noqa: ARG002
         """Test no GPU cleanup when on CPU"""
         reranker = CrossEncoderReranker(device="cpu")
-        with patch("packages.vecpipe.reranker.AutoModelForCausalLM"), patch("packages.vecpipe.reranker.AutoTokenizer"):
+        with patch("vecpipe.reranker.AutoModelForCausalLM"), patch("vecpipe.reranker.AutoTokenizer"):
             reranker.load_model()
             reranker.unload_model()
 

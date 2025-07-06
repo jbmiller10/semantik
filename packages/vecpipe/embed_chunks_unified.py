@@ -19,7 +19,7 @@ from tqdm.asyncio import tqdm
 # Add parent directory to path to import webui module
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from packages.webui.embedding_service import EmbeddingService
+from webui.embedding_service import EmbeddingService
 
 from .config import settings
 from .metrics import (
