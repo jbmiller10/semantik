@@ -6,14 +6,17 @@ ARG NODE_VERSION="20"
 # Stage 1: Build React Frontend
 # ============================================
 FROM node:${NODE_VERSION}-alpine AS frontend-builder
-WORKDIR /app
+WORKDIR /build
 
 # Copy package files for better caching
-COPY apps/webui-react/package*.json ./
+COPY apps/webui-react/package*.json ./apps/webui-react/
+WORKDIR /build/apps/webui-react
 RUN npm ci
 
-# Copy frontend source and build
+# Copy frontend source
 COPY apps/webui-react/ ./
+
+# Build will output to /build/packages/webui/static due to vite config
 RUN npm run build
 
 # ============================================
@@ -71,7 +74,7 @@ COPY --from=python-builder /usr/local/bin /usr/local/bin
 COPY packages/ ./packages/
 
 # Copy built frontend to webui static directory
-COPY --from=frontend-builder /app/dist ./packages/webui/static/
+COPY --from=frontend-builder /build/packages/webui/static ./packages/webui/static/
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && \
