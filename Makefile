@@ -16,6 +16,7 @@ help:
 	@echo "  clean          Clean up generated files"
 	@echo ""
 	@echo "Docker commands:"
+	@echo "  docker-setup      Interactive Docker setup wizard (TUI)"
 	@echo "  docker-up         Start all services with docker-compose"
 	@echo "  docker-down       Stop and remove all containers"
 	@echo "  docker-logs       View logs from all services"
@@ -62,6 +63,10 @@ clean:
 	rm -rf *.egg-info dist build
 
 # Docker commands for the new setup
+docker-setup:
+	@echo "Starting Semantik Docker Setup Wizard..."
+	@poetry run python docker_setup_tui.py
+
 docker-up:
 	@echo "Starting Semantik services with Docker Compose..."
 	@if [ ! -f .env ]; then \
