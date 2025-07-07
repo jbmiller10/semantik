@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     WEBUI_PORT: int = 8080
 
     # Service URLs (for internal API calls)
+    # Support Docker service names through environment variables
     SEARCH_API_URL: str = "http://localhost:8000"
     WEBUI_URL: str = "http://localhost:8080"
 

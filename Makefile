@@ -1,7 +1,8 @@
 # Makefile for Document Embedding System
 
-.PHONY: help install dev-install format lint type-check test test-coverage clean docker-build docker-run
+.PHONY: help install dev-install format lint type-check test test-coverage clean
 .PHONY: frontend-install frontend-build frontend-dev frontend-test build dev
+.PHONY: docker-up docker-down docker-logs docker-build-fresh docker-ps docker-restart
 
 help:
 	@echo "Available commands:"
@@ -13,8 +14,14 @@ help:
 	@echo "  test           Run tests"
 	@echo "  test-coverage  Run tests with coverage report"
 	@echo "  clean          Clean up generated files"
-	@echo "  docker-build   Build Docker image"
-	@echo "  docker-run     Run Docker container"
+	@echo ""
+	@echo "Docker commands:"
+	@echo "  docker-up         Start all services with docker-compose"
+	@echo "  docker-down       Stop and remove all containers"
+	@echo "  docker-logs       View logs from all services"
+	@echo "  docker-build-fresh Rebuild images without cache"
+	@echo "  docker-ps         Show status of all containers"
+	@echo "  docker-restart    Restart all services"
 	@echo ""
 	@echo "Frontend commands:"
 	@echo "  frontend-install  Install frontend dependencies"
@@ -54,18 +61,52 @@ clean:
 	rm -rf .coverage htmlcov .pytest_cache .mypy_cache .ruff_cache
 	rm -rf *.egg-info dist build
 
-docker-build:
-	docker build -f Dockerfile.webui -t document-embedding-webui:latest .
+# Docker commands for the new setup
+docker-up:
+	@echo "Starting Semantik services with Docker Compose..."
+	@if [ ! -f .env ]; then \
+		echo "Creating .env file from .env.docker.example..."; \
+		cp .env.docker.example .env; \
+		echo "Please edit .env file with your configuration before continuing."; \
+		exit 1; \
+	fi
+	docker-compose up -d
+	@echo "Services started! Access the application at http://localhost:8080"
 
-docker-run:
-	docker run -d \
-		--name embedding-webui \
-		-p 8080:8080 \
-		-e QDRANT_HOST=192.168.1.173 \
-		-e QDRANT_PORT=6333 \
-		-v /mnt/docs:/mnt/docs:ro \
-		-v /var/embeddings:/var/embeddings \
-		document-embedding-webui:latest
+docker-down:
+	@echo "Stopping Semantik services..."
+	docker-compose down
+
+docker-logs:
+	docker-compose logs -f
+
+docker-build-fresh:
+	@echo "Rebuilding Docker images without cache..."
+	docker-compose build --no-cache
+
+docker-ps:
+	docker-compose ps
+
+docker-restart:
+	@echo "Restarting Semantik services..."
+	docker-compose restart
+
+# Quick commands for individual services
+docker-logs-webui:
+	docker-compose logs -f webui
+
+docker-logs-vecpipe:
+	docker-compose logs -f vecpipe
+
+docker-logs-qdrant:
+	docker-compose logs -f qdrant
+
+# Shell access to containers
+docker-shell-webui:
+	docker-compose exec webui /bin/bash
+
+docker-shell-vecpipe:
+	docker-compose exec vecpipe /bin/bash
 
 # Development shortcuts
 .PHONY: fix check run
