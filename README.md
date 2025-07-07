@@ -126,11 +126,23 @@ The setup wizard guides you through the entire configuration process with an int
    cd semantik
    ```
 
-2. **Install dependencies and run the wizard:**
+2. **Run the wizard:**
+   
+   **Linux/macOS:**
    ```bash
-   poetry install
    make wizard
    ```
+   
+   **Windows:**
+   ```cmd
+   python wizard_launcher.py
+   ```
+   
+   The wizard will automatically:
+   - Work on Windows, macOS, and Linux
+   - Install Poetry if needed
+   - Install all required dependencies
+   - Launch the interactive setup
 
 3. **Follow the interactive prompts:**
    - Choose between **Quick Setup** (recommended) or **Custom Setup**
