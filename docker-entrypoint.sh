@@ -1,6 +1,39 @@
 #!/bin/bash
 set -e
 
+# Function to validate required environment variables
+validate_env_vars() {
+    local service=$1
+    local missing_vars=()
+    
+    case "$service" in
+        webui)
+            # Critical environment variables for webui
+            if [ -z "$JWT_SECRET_KEY" ] || [ "$JWT_SECRET_KEY" = "CHANGE_THIS_TO_A_STRONG_SECRET_KEY" ]; then
+                echo "ERROR: JWT_SECRET_KEY must be set to a secure value for webui service"
+                echo "Generate one with: openssl rand -hex 32"
+                exit 1
+            fi
+            ;;
+        vecpipe)
+            # Validate Qdrant connection
+            if [ -z "$QDRANT_HOST" ]; then
+                missing_vars+=("QDRANT_HOST")
+            fi
+            if [ -z "$QDRANT_PORT" ]; then
+                missing_vars+=("QDRANT_PORT")
+            fi
+            ;;
+    esac
+    
+    # Check for common required variables
+    if [ ${#missing_vars[@]} -gt 0 ]; then
+        echo "ERROR: Missing required environment variables for $service:"
+        printf '%s\n' "${missing_vars[@]}"
+        exit 1
+    fi
+}
+
 # Function to wait for a service to be ready
 wait_for_service() {
     local host=$1
@@ -27,6 +60,9 @@ wait_for_service() {
 
 # Determine which service to run based on the first argument
 SERVICE=${1:-webui}
+
+# Validate environment variables for the service
+validate_env_vars "$SERVICE"
 
 case "$SERVICE" in
     webui)

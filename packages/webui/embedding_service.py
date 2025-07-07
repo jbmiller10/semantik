@@ -245,7 +245,7 @@ class EmbeddingService:
                 outputs = self.current_model(**batch_dict)
                 embeddings = last_token_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
                 embeddings = F.normalize(embeddings, p=2, dim=1)
-                return embeddings[0].cpu().numpy()
+                return embeddings[0].cpu().numpy()  # type: ignore[no-any-return]
         else:
             assert self.current_model is not None
             return self.current_model.encode("test", convert_to_numpy=True)  # type: ignore[no-any-return]
