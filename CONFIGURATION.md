@@ -2,9 +2,36 @@
 
 This guide covers all configuration options for the Document Embedding System.
 
+## Docker Configuration (Recommended)
+
+When using Docker Compose, configuration is simplified through the `.env` file and docker-compose.yml.
+
+### Quick Setup
+
+1. Copy the Docker environment template:
+   ```bash
+   cp .env.docker.example .env
+   ```
+
+2. Edit `.env` with your configuration (see sections below)
+
+3. Start services:
+   ```bash
+   docker-compose up -d
+   ```
+
+### Docker-Specific Settings
+
+When running with Docker Compose, the following settings are handled automatically:
+
+- **Service URLs**: Services communicate using Docker service names (e.g., `qdrant`, `vecpipe`)
+- **Volumes**: Data persistence is managed through Docker volumes
+- **Networking**: All services are on the same Docker network
+- **Health Checks**: Built-in health monitoring for all services
+
 ## Environment Variables
 
-The system uses environment variables for configuration. Copy `.env.example` to `.env` and customize as needed.
+The system uses environment variables for configuration. When using Docker, copy `.env.docker.example` to `.env`. For manual installation, use `.env.example`.
 
 ### Core Settings
 
@@ -194,6 +221,43 @@ Services write to these log files:
 - `search_api.log`: Search API logs
 - `webui.log`: Web UI logs
 - `data/jobs/job_*/output.log`: Individual job logs
+
+## Docker Volume Configuration
+
+When using Docker Compose, the following volumes are created:
+
+### Named Volumes
+- `qdrant_storage`: Qdrant vector database storage (persistent)
+
+### Bind Mounts
+- `./data`: Application data (jobs, SQLite DB, processed files)
+- `./logs`: Application logs
+- `${DOCUMENT_PATH}`: Your documents directory (read-only)
+
+### Managing Docker Volumes
+
+```bash
+# List volumes
+docker volume ls
+
+# Inspect a volume
+docker volume inspect semantik_qdrant_storage
+
+# Clean up unused volumes
+docker volume prune
+```
+
+## Docker Networking
+
+Services communicate through the Docker network `semantik-network`:
+
+- WebUI → Search API: `http://vecpipe:8000`
+- Services → Qdrant: `qdrant:6333`
+
+To inspect the network:
+```bash
+docker network inspect semantik-network
+```
 
 ## Security Configuration
 

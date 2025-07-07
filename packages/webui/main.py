@@ -60,6 +60,12 @@ def create_app() -> FastAPI:
     async def scan_ws(websocket: WebSocket, scan_id: str) -> None:
         await scan_websocket(websocket, scan_id)
 
+    # Add health check endpoint
+    @app.get("/health")
+    async def health_check() -> dict[str, str]:
+        """Health check endpoint for Docker health monitoring"""
+        return {"status": "healthy", "service": "webui"}
+
     # Mount static files with proper path resolution
     base_dir = Path(__file__).resolve().parent
     static_dir = base_dir / "static"

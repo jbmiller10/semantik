@@ -114,7 +114,88 @@ Semantik can run on both CPU and GPU, but a CUDA-compatible GPU is **strongly re
 
 ## ⚡ Quick Start
 
-Soon
+### Option 1: Docker Compose (Recommended) 🐳
+
+The fastest way to get started with Semantik is using Docker Compose.
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/jbmiller10/semantik.git
+   cd semantik
+   ```
+
+2. **Set up your environment:**
+   ```bash
+   cp .env.docker.example .env
+   # Edit .env with your configuration
+   # At minimum, change JWT_SECRET_KEY for security
+   ```
+
+3. **Start all services:**
+   ```bash
+   make docker-up
+   # Or directly: docker-compose up -d
+   ```
+
+4. **Access Semantik:**
+   Open your browser to http://localhost:8080
+
+That's it! 🎉 Semantik is now running with:
+- **WebUI** on port 8080
+- **Search API** on port 8000
+- **Qdrant** vector database on port 6333
+
+### Option 2: Development Setup (Shell Scripts)
+
+<details>
+<summary>For developers who prefer traditional shell scripts</summary>
+
+1. **Prerequisites:**
+   - Python 3.12+
+   - Node.js 18+
+   - Running Qdrant instance
+   - Poetry for Python dependency management
+
+2. **Setup:**
+   ```bash
+   poetry install
+   make frontend-build
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
+
+3. **Start all services:**
+   ```bash
+   ./start_all_services.sh
+   ```
+
+4. **Other commands:**
+   ```bash
+   ./status_services.sh  # Check service status
+   ./stop_all_services.sh  # Stop all services
+   ./restart_all_services_rebuild.sh  # Rebuild and restart
+   ```
+</details>
+
+### Option 3: Manual Installation
+
+<details>
+<summary>For advanced users who want full control</summary>
+
+1. **Start services individually:**
+   ```bash
+   # Terminal 1: Search API
+   poetry run python -m packages.vecpipe.search_api
+   
+   # Terminal 2: WebUI
+   poetry run uvicorn packages.webui.main:app --host 0.0.0.0 --port 8080
+   ```
+
+2. **Or use the Makefile:**
+   ```bash
+   make run  # Starts the WebUI with auto-reload
+   ```
+</details>
 
 ## 🤝 Semantik vs. The Alternatives
 
