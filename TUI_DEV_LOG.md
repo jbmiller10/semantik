@@ -338,6 +338,71 @@ make wizard
 
 This is more intuitive and shorter than `docker-setup`.
 
+### Enhancement Session 6: Self-Installing Wizard
+
+#### User Request
+- Make the wizard handle dependency installation automatically
+
+#### Implementation
+
+1. **Created `wizard.sh`** - Bash wrapper script that:
+   - Checks Python version (3.12+)
+   - Installs Poetry if not present
+   - Installs dependencies if needed
+   - Launches the wizard
+
+2. **Created `wizard_launcher.py`** - Python fallback that:
+   - Works without any external dependencies
+   - Can bootstrap Poetry installation
+   - Handles dependency installation
+   - Provides user-friendly prompts
+
+3. **Updated Makefile**:
+   - `make wizard` now uses the wrapper script
+   - No need for users to run `poetry install` first
+
+4. **Updated README**:
+   - Removed `poetry install` step
+   - Documented automatic dependency handling
+
+#### Benefits
+- Zero-dependency start - just clone and run `make wizard`
+- Automatic Poetry installation if needed
+- Clear error messages for missing prerequisites
+- Works on systems without Poetry pre-installed
+
+### Enhancement Session 7: Cross-Platform Support
+
+#### User Request
+- Noted that different platforms need different launcher scripts
+
+#### Implementation
+
+1. **Created platform-specific launchers**:
+   - `wizard.sh` - Bash script for Linux/macOS
+   - `wizard.bat` - Batch script for Windows CMD
+   - `wizard.ps1` - PowerShell script for Windows
+
+2. **Enhanced `wizard_launcher.py`**:
+   - Added platform detection
+   - Searches common Poetry installation paths per platform
+   - Platform-specific Poetry installation instructions
+   - Works as universal fallback
+
+3. **Simplified Makefile**:
+   - Now just calls Python launcher
+   - Works on all platforms with Python
+
+4. **Updated README**:
+   - Added Windows-specific instructions
+   - Clarified cross-platform support
+
+#### Key Improvements
+- Single Python launcher works everywhere
+- Detects Poetry in platform-specific locations
+- Handles Windows path differences
+- Clear instructions per platform
+
 ### Testing Plan
 
 1. Test with no .env file

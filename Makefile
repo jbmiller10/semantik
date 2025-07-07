@@ -64,8 +64,7 @@ clean:
 
 # Docker commands for the new setup
 wizard:
-	@echo "Starting Semantik Docker Setup Wizard..."
-	@poetry run python docker_setup_tui.py
+	@python wizard_launcher.py
 
 docker-up:
 	@echo "Starting Semantik services with Docker Compose..."
