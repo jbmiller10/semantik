@@ -96,7 +96,7 @@ USER appuser
 # Environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app/packages
 
 # Create entrypoint script
 COPY --chown=appuser:appuser docker-entrypoint.sh /app/

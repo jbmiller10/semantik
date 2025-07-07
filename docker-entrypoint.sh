@@ -2,7 +2,7 @@
 set -e
 
 # Set Python path to include the packages directory
-export PYTHONPATH="${PYTHONPATH}:/app/packages"
+export PYTHONPATH="/app/packages:${PYTHONPATH}"
 
 # Function to validate required environment variables
 validate_env_vars() {
@@ -80,10 +80,10 @@ case "$SERVICE" in
         
         # Run database migrations if needed
         echo "Setting up database..."
-        python -c "from packages.webui.database import init_db; init_db()"
+        python -c "from webui.database import init_db; init_db()"
         
         # Start the WebUI service
-        exec uvicorn packages.webui.main:app \
+        exec uvicorn webui.main:app \
             --host 0.0.0.0 \
             --port "${WEBUI_PORT:-8080}" \
             --workers "${WEBUI_WORKERS:-1}"
@@ -98,13 +98,13 @@ case "$SERVICE" in
         fi
         
         # Start the Search API service
-        exec python -m packages.vecpipe.search_api
+        exec python -m vecpipe.search_api
         ;;
         
     worker)
         echo "Starting background worker..."
         # This could be used for future background processing tasks
-        exec python -m packages.vecpipe.worker
+        exec python -m vecpipe.worker
         ;;
         
     *)
