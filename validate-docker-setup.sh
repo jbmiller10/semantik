@@ -31,11 +31,14 @@ fi
 # Check if .env file exists
 if [ -f .env ]; then
     echo "✓ .env file exists"
+    # Check for default JWT_SECRET_KEY
+    if grep -q "JWT_SECRET_KEY=CHANGE_THIS_TO_A_STRONG_SECRET_KEY" .env; then
+        echo "⚠ Default JWT_SECRET_KEY detected"
+        echo "  The 'make docker-up' command will automatically generate a secure key"
+    fi
 else
     echo "✗ .env file not found"
-    echo "  Creating from template..."
-    cp .env.docker.example .env
-    echo "  Please edit .env with your configuration"
+    echo "  The 'make docker-up' command will create it and generate a secure JWT_SECRET_KEY"
 fi
 
 # Validate docker-compose.yml

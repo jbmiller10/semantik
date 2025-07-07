@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Set Python path to include the packages directory
+export PYTHONPATH="${PYTHONPATH}:/app/packages"
+
 # Function to validate required environment variables
 validate_env_vars() {
     local service=$1
@@ -77,7 +80,7 @@ case "$SERVICE" in
         
         # Run database migrations if needed
         echo "Setting up database..."
-        python -c "from webui.database import create_tables; create_tables()"
+        python -c "from packages.webui.database import init_db; init_db()"
         
         # Start the WebUI service
         exec uvicorn packages.webui.main:app \
