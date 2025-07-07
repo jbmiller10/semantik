@@ -67,8 +67,35 @@ docker-up:
 	@if [ ! -f .env ]; then \
 		echo "Creating .env file from .env.docker.example..."; \
 		cp .env.docker.example .env; \
-		echo "Please edit .env file with your configuration before continuing."; \
-		exit 1; \
+		echo "Generating secure JWT_SECRET_KEY..."; \
+		if command -v openssl >/dev/null 2>&1; then \
+			JWT_KEY=$$(openssl rand -hex 32); \
+			if [ "$$(uname)" = "Darwin" ]; then \
+				sed -i '' "s/JWT_SECRET_KEY=.*/JWT_SECRET_KEY=$$JWT_KEY/" .env; \
+			else \
+				sed -i "s/JWT_SECRET_KEY=.*/JWT_SECRET_KEY=$$JWT_KEY/" .env; \
+			fi; \
+			echo "✓ Generated secure JWT_SECRET_KEY"; \
+		else \
+			echo "WARNING: openssl not found. Please manually set JWT_SECRET_KEY in .env"; \
+		fi; \
+	else \
+		if grep -q "JWT_SECRET_KEY=CHANGE_THIS_TO_A_STRONG_SECRET_KEY" .env; then \
+			echo "Detected default JWT_SECRET_KEY, generating secure key..."; \
+			if command -v openssl >/dev/null 2>&1; then \
+				JWT_KEY=$$(openssl rand -hex 32); \
+				if [ "$$(uname)" = "Darwin" ]; then \
+					sed -i '' "s/JWT_SECRET_KEY=.*/JWT_SECRET_KEY=$$JWT_KEY/" .env; \
+				else \
+					sed -i "s/JWT_SECRET_KEY=.*/JWT_SECRET_KEY=$$JWT_KEY/" .env; \
+				fi; \
+				echo "✓ Updated JWT_SECRET_KEY to secure value"; \
+			else \
+				echo "ERROR: Default JWT_SECRET_KEY detected but openssl not available"; \
+				echo "Please manually set JWT_SECRET_KEY in .env"; \
+				exit 1; \
+			fi; \
+		fi; \
 	fi
 	docker-compose up -d
 	@echo "Services started! Access the application at http://localhost:8080"
