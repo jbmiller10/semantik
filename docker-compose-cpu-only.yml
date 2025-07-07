@@ -1,6 +1,6 @@
 # Docker Compose configuration for Semantik (Document Embedding System)
-# This is the default configuration with GPU support enabled
-# For CPU-only deployment, use: docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
+# This is the CPU-only configuration (no GPU support)
+# Usage: docker compose -f docker-compose-cpu-only.yml up -d
 version: '3.8'
 
 services:
@@ -57,8 +57,7 @@ services:
       - USE_MOCK_EMBEDDINGS=${USE_MOCK_EMBEDDINGS:-false}
       - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
       - DEFAULT_QUANTIZATION=${DEFAULT_QUANTIZATION:-float16}
-      # GPU-specific settings
-      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      # CPU-only mode
       # Service configuration
       - SEARCH_API_PORT=8000
       - WAIT_FOR_QDRANT=true
@@ -82,10 +81,6 @@ services:
           memory: 4G
         reservations:
           memory: 2G
-          devices:
-            - driver: nvidia
-              count: 1  # Number of GPUs to use (or "all" for all GPUs)
-              capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
@@ -117,10 +112,9 @@ services:
       - USE_MOCK_EMBEDDINGS=${USE_MOCK_EMBEDDINGS:-false}
       - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
       - DEFAULT_QUANTIZATION=${DEFAULT_QUANTIZATION:-float16}
-      # GPU-specific settings
-      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      # CPU-only mode
       - MODEL_MAX_MEMORY_GB=${MODEL_MAX_MEMORY_GB:-8}
-      - MONITOR_GPU_MEMORY=true
+      - MONITOR_GPU_MEMORY=false
       # Service configuration
       - WEBUI_PORT=8080
       - WAIT_FOR_SEARCH_API=true
@@ -146,10 +140,6 @@ services:
           memory: 2G
         reservations:
           memory: 1G
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]

@@ -102,16 +102,24 @@ For users of the old shell scripts:
 
 ## Production Deployment
 
-### GPU Support
-Use `docker-compose.gpu.yml` for GPU-accelerated deployments:
+### Default Configuration (GPU)
+The default `docker-compose.yml` includes GPU support for optimal performance.
 ```bash
-docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+docker compose up -d
 ```
+
+### CPU-Only Deployment
+For systems without GPU support, use the standalone CPU configuration:
+```bash
+docker compose -f docker-compose-cpu-only.yml up -d
+```
+
+This configuration removes all GPU-related settings while maintaining the same Qwen3 embedding model for consistency.
 
 ### Production Configuration
 Use `docker-compose.prod.yml` for production deployments:
 ```bash
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
 Features include:
