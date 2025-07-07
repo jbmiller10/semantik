@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Interactive Docker Setup TUI for Semantik"""
 
+import json
 import os
 import platform
 import secrets
@@ -34,20 +35,51 @@ class DockerSetupTUI:
             if not self.check_system():
                 return
 
-            # Run through setup steps
-            if not self.select_deployment_type():
-                return
-            if not self.configure_directories():
-                return
-            if not self.configure_model():
-                return
-            if not self.configure_security():
-                return
-            if not self.review_configuration():
+            # Check for existing configuration
+            if self._check_existing_config():
+                action = questionary.select(
+                    "Existing configuration found. What would you like to do?",
+                    choices=[
+                        "Use existing configuration and manage services",
+                        "Create new configuration (will backup existing)",
+                        "Exit",
+                    ],
+                ).ask()
+
+                if action is None or "Exit" in action:
+                    return
+
+                if "Use existing" in action:
+                    self._load_existing_config()
+                    self._service_monitor()
+                    return
+
+            # Ask for setup type
+            setup_type = questionary.select(
+                "Choose setup type:",
+                choices=["Quick Setup (Recommended) - Use sensible defaults", "Custom Setup - Configure all options"],
+            ).ask()
+
+            if setup_type is None:
                 return
 
-            # Execute Docker setup
-            self.execute_setup()
+            if "Quick Setup" in setup_type:
+                self._quick_setup()
+            else:
+                # Run through full setup steps
+                if not self.select_deployment_type():
+                    return
+                if not self.configure_directories():
+                    return
+                if not self.configure_model():
+                    return
+                if not self.configure_security():
+                    return
+                if not self.review_configuration():
+                    return
+
+                # Execute Docker setup
+                self.execute_setup()
 
         except KeyboardInterrupt:
             console.print("\n[yellow]Setup cancelled by user[/yellow]")
@@ -85,7 +117,20 @@ class DockerSetupTUI:
             console.print("[green]✓[/green] Docker found")
         else:
             console.print("[red]✗[/red] Docker not found")
-            console.print("\nPlease install Docker: https://docs.docker.com/get-docker/")
+            console.print("\n[yellow]Docker is required to run Semantik.[/yellow]")
+            console.print("\nTo install Docker:")
+            if platform.system() == "Darwin":
+                console.print("  → Download Docker Desktop: https://docker.com/get-docker")
+                console.print("  → Or use Homebrew: brew install --cask docker")
+            elif platform.system() == "Linux":
+                console.print("  → Ubuntu/Debian: sudo apt-get install docker.io docker-compose")
+                console.print("  → Fedora/RHEL: sudo dnf install docker docker-compose")
+                console.print("  → Arch: sudo pacman -S docker docker-compose")
+                console.print("\n  → Don't forget to add your user to the docker group:")
+                console.print("    sudo usermod -aG docker $USER")
+                console.print("    (Log out and back in for this to take effect)")
+            else:
+                console.print("  → Download Docker Desktop: https://docker.com/get-docker")
             return False
 
         # Check Docker Compose
@@ -94,7 +139,9 @@ class DockerSetupTUI:
             console.print("[green]✓[/green] Docker Compose found")
         else:
             console.print("[red]✗[/red] Docker Compose not found")
-            console.print("\nPlease install Docker Compose")
+            console.print("\n[yellow]Docker Compose is required.[/yellow]")
+            console.print("Docker Desktop includes Docker Compose by default.")
+            console.print("For manual installation: https://docs.docker.com/compose/install/")
             return False
 
         # Check GPU availability
@@ -128,8 +175,15 @@ class DockerSetupTUI:
         except:
             return False
 
+    def _show_progress(self, step: int, total: int, title: str) -> None:
+        """Show progress indicator"""
+        progress_bar = "━" * step + "○" * (total - step)
+        console.print(f"\n[bold cyan]Step {step} of {total}: {title}[/bold cyan]")
+        console.print(f"[dim]{progress_bar}[/dim]\n")
+
     def select_deployment_type(self) -> bool:
         """Select GPU or CPU deployment"""
+        self._show_progress(1, 5, "Deployment Type")
         console.print("[bold]Select Deployment Type[/bold]\n")
 
         choices = []
@@ -150,6 +204,7 @@ class DockerSetupTUI:
 
     def configure_directories(self) -> bool:
         """Configure directory mappings"""
+        self._show_progress(2, 5, "Directory Configuration")
         console.print("[bold]Configure Document Directories[/bold]\n")
         console.print("You can add multiple directories containing documents to process.")
         console.print("These directories will be mounted read-only in the Docker container.\n")
@@ -185,6 +240,7 @@ class DockerSetupTUI:
                     for d in document_dirs:
                         console.print(f"  • {d}")
 
+                console.print("\n[dim]Examples: /home/user/documents, ./my-docs, ~/Downloads[/dim]")
                 path_input = questionary.text(
                     "Enter directory path (or press Enter to finish):",
                     default="./documents" if not document_dirs else "",
@@ -335,6 +391,7 @@ class DockerSetupTUI:
 
     def configure_model(self) -> bool:
         """Configure embedding model and GPU settings"""
+        self._show_progress(3, 5, "Model Configuration")
         console.print("[bold]Configure Embedding Model[/bold]\n")
 
         # Model selection
@@ -381,14 +438,26 @@ class DockerSetupTUI:
 
         # GPU-specific settings
         if self.config["USE_GPU"] == "true":
+            console.print("\n[bold]GPU Configuration[/bold]")
+            console.print("[dim]Leave defaults unless you have multiple GPUs or limited memory[/dim]\n")
+
             # GPU selection
-            gpu_id = questionary.text("GPU device ID (0 for first GPU):", default="0").ask()
+            gpu_id = questionary.text(
+                "GPU device ID (0 for first GPU):",
+                default="0",
+                validate=lambda x: x.isdigit() or "Please enter a number",
+            ).ask()
             if gpu_id is None:
                 return False
             self.config["CUDA_VISIBLE_DEVICES"] = gpu_id
 
             # Memory limit
-            mem_limit = questionary.text("GPU memory limit in GB:", default="8").ask()
+            console.print("\n[dim]Recommended: 8GB for most models, 4GB if you have limited VRAM[/dim]")
+            mem_limit = questionary.text(
+                "GPU memory limit in GB:",
+                default="8",
+                validate=lambda x: x.replace(".", "").isdigit() or "Please enter a number",
+            ).ask()
             if mem_limit is None:
                 return False
             self.config["MODEL_MAX_MEMORY_GB"] = mem_limit
@@ -398,6 +467,7 @@ class DockerSetupTUI:
 
     def configure_security(self) -> bool:
         """Configure security and advanced settings"""
+        self._show_progress(4, 5, "Security & Advanced Settings")
         console.print("[bold]Security & Advanced Settings[/bold]\n")
 
         # JWT Secret
@@ -441,6 +511,7 @@ class DockerSetupTUI:
 
     def review_configuration(self) -> bool:
         """Review and confirm configuration"""
+        self._show_progress(5, 5, "Review & Confirm")
         console.print("[bold]Review Configuration[/bold]\n")
 
         # Create review table
@@ -483,7 +554,8 @@ class DockerSetupTUI:
 
         # Save configuration
         self._save_env_file()
-        console.print("[green]Configuration saved to .env[/green]\n")
+        self._save_config()  # Save to JSON for future use
+        console.print("[green]Configuration saved to .env and .semantik-config.json[/green]\n")
         return True
 
     def _save_env_file(self) -> None:
@@ -532,6 +604,10 @@ class DockerSetupTUI:
     def execute_setup(self) -> None:
         """Execute Docker setup with selected options"""
         console.print("[bold]Docker Setup[/bold]\n")
+
+        # Check ports availability
+        if not self._check_ports():
+            return
 
         # Choose action
         action = questionary.select(
@@ -600,6 +676,415 @@ class DockerSetupTUI:
             except Exception as e:
                 console.print(f"\n[red]Error running command: {e}[/red]")
                 return False
+
+    def _check_existing_config(self) -> bool:
+        """Check if an existing configuration exists"""
+        env_path = Path(".env")
+        config_path = Path(".semantik-config.json")
+        return env_path.exists() or config_path.exists()
+
+    def _load_existing_config(self) -> None:
+        """Load existing configuration from files"""
+        # Load from .env file
+        env_path = Path(".env")
+        if env_path.exists():
+            with open(env_path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, value = line.split("=", 1)
+                        self.config[key] = value
+
+        # Load from config file if exists
+        config_path = Path(".semantik-config.json")
+        if config_path.exists():
+            with open(config_path, "r") as f:
+                saved_config = json.load(f)
+                self.config.update(saved_config)
+
+        # Determine if using GPU based on config or docker-compose file
+        if "USE_GPU" not in self.config:
+            # Check which docker-compose is being used
+            if Path("docker-compose-cpu-only.yml").exists():
+                compose_files = subprocess.run(
+                    ["docker", "compose", "config", "--services"], capture_output=True, text=True
+                )
+                self.config["USE_GPU"] = "true"  # Default to GPU unless we detect CPU-only
+            else:
+                self.config["USE_GPU"] = "true"
+
+    def _save_config(self) -> None:
+        """Save configuration to JSON file for future use"""
+        config_path = Path(".semantik-config.json")
+        with open(config_path, "w") as f:
+            json.dump(self.config, f, indent=2)
+        console.print(f"[green]Configuration saved to {config_path}[/green]")
+
+    def _service_monitor(self) -> None:
+        """Interactive service monitoring and management interface"""
+        while True:
+            console.clear()
+            console.print(Panel("[bold]Semantik Service Monitor[/bold]", style="bright_blue"))
+            console.print()
+
+            # Get service status
+            self._show_service_status()
+
+            console.print("\n[bold]Service Management[/bold]")
+            action = questionary.select(
+                "What would you like to do?",
+                choices=[
+                    "Start all services",
+                    "Stop all services",
+                    "Restart all services",
+                    "Rebuild and start services",
+                    "View logs",
+                    "View specific service logs",
+                    "Check service health",
+                    "Refresh status",
+                    "Exit monitor",
+                ],
+            ).ask()
+
+            if action is None or "Exit" in action:
+                break
+
+            compose_file = (
+                "docker-compose.yml" if self.config.get("USE_GPU") == "true" else "docker-compose-cpu-only.yml"
+            )
+
+            if "Start all" in action:
+                # Check if services are already running
+                if self._are_services_running():
+                    console.print("[yellow]Services are already running. Restarting...[/yellow]")
+                    self._run_docker_command(["docker", "compose", "-f", compose_file, "down"], "Stopping services")
+                    self._run_docker_command(["docker", "compose", "-f", compose_file, "up", "-d"], "Starting services")
+                else:
+                    self._run_docker_command(["docker", "compose", "-f", compose_file, "up", "-d"], "Starting services")
+            elif "Stop all" in action:
+                self._run_docker_command(["docker", "compose", "-f", compose_file, "down"], "Stopping services")
+            elif "Restart all" in action:
+                self._run_docker_command(["docker", "compose", "-f", compose_file, "restart"], "Restarting services")
+            elif "Rebuild" in action:
+                self._run_docker_command(["docker", "compose", "-f", compose_file, "build"], "Building images")
+                self._run_docker_command(["docker", "compose", "-f", compose_file, "up", "-d"], "Starting services")
+            elif "View logs" in action and "specific" not in action:
+                console.print("\n[yellow]Press Ctrl+C to exit logs[/yellow]\n")
+                subprocess.run(["docker", "compose", "-f", compose_file, "logs", "-f", "--tail", "50"])
+            elif "specific service" in action:
+                services = self._get_services()
+                if services:
+                    service = questionary.select("Select service:", choices=services).ask()
+                    if service:
+                        console.print(f"\n[yellow]Viewing logs for {service}. Press Ctrl+C to exit[/yellow]\n")
+                        subprocess.run(["docker", "compose", "-f", compose_file, "logs", "-f", "--tail", "50", service])
+            elif "health" in action:
+                self._check_service_health()
+
+            if "Exit" not in action:
+                questionary.press_any_key_to_continue("Press any key to continue...").ask()
+
+    def _show_service_status(self) -> None:
+        """Display current status of all services"""
+        compose_file = "docker-compose.yml" if self.config.get("USE_GPU") == "true" else "docker-compose-cpu-only.yml"
+
+        result = subprocess.run(
+            ["docker", "compose", "-f", compose_file, "ps", "--format", "json"], capture_output=True, text=True
+        )
+
+        if result.returncode == 0 and result.stdout:
+            # Create status table
+            table = Table(title="Service Status")
+            table.add_column("Service", style="cyan")
+            table.add_column("Status", style="green")
+            table.add_column("Ports", style="yellow")
+            table.add_column("Health", style="magenta")
+
+            try:
+                # Parse JSON output line by line
+                for line in result.stdout.strip().split("\n"):
+                    if line:
+                        service = json.loads(line)
+                        name = service.get("Service", "Unknown")
+                        state = service.get("State", "Unknown")
+
+                        # Color code status
+                        if state == "running":
+                            status = "[green]● Running[/green]"
+                        elif state == "exited":
+                            status = "[red]● Stopped[/red]"
+                        else:
+                            status = f"[yellow]● {state}[/yellow]"
+
+                        # Get ports
+                        ports = service.get("Publishers", [])
+                        port_str = ", ".join(
+                            [
+                                f"{p.get('PublishedPort', '')}:{p.get('TargetPort', '')}"
+                                for p in ports
+                                if p.get("PublishedPort")
+                            ]
+                        )
+
+                        # Get health status
+                        health = service.get("Health", "")
+                        if not health:
+                            health = "N/A"
+                        elif "healthy" in health.lower():
+                            health = "[green]Healthy[/green]"
+                        elif "unhealthy" in health.lower():
+                            health = "[red]Unhealthy[/red]"
+                        else:
+                            health = "[yellow]" + health + "[/yellow]"
+
+                        table.add_row(name, status, port_str or "None", health)
+            except:
+                # Fallback to simple ps output
+                result = subprocess.run(["docker", "compose", "-f", compose_file, "ps"], capture_output=True, text=True)
+                console.print("[yellow]Service Status:[/yellow]")
+                console.print(result.stdout)
+                return
+
+            console.print(table)
+        else:
+            console.print("[red]No services found or Docker Compose error[/red]")
+
+    def _get_services(self) -> List[str]:
+        """Get list of service names"""
+        compose_file = "docker-compose.yml" if self.config.get("USE_GPU") == "true" else "docker-compose-cpu-only.yml"
+
+        result = subprocess.run(
+            ["docker", "compose", "-f", compose_file, "config", "--services"], capture_output=True, text=True
+        )
+
+        if result.returncode == 0:
+            return result.stdout.strip().split("\n")
+        return []
+
+    def _check_service_health(self) -> None:
+        """Check detailed health status of services"""
+        console.print("\n[bold]Checking service health...[/bold]\n")
+
+        services = self._get_services()
+        for service in services:
+            console.print(f"[cyan]{service}:[/cyan]")
+
+            # Try to access health endpoint
+            port_map = {"webui": 8080, "vecpipe": 8000, "qdrant": 6333}
+
+            if service in port_map:
+                port = port_map[service]
+                try:
+                    import requests
+
+                    response = requests.get(f"http://localhost:{port}/health", timeout=5)
+                    if response.status_code == 200:
+                        console.print(f"  [green]✓ Health check passed[/green]")
+                    else:
+                        console.print(f"  [yellow]! Health check returned {response.status_code}[/yellow]")
+                except Exception as e:
+                    console.print(f"  [red]✗ Health check failed: {str(e)}[/red]")
+            else:
+                console.print("  [dim]No health endpoint[/dim]")
+
+            console.print()
+
+    def _are_services_running(self) -> bool:
+        """Check if any services are currently running"""
+        compose_file = "docker-compose.yml" if self.config.get("USE_GPU") == "true" else "docker-compose-cpu-only.yml"
+
+        result = subprocess.run(
+            ["docker", "compose", "-f", compose_file, "ps", "--format", "json"], capture_output=True, text=True
+        )
+
+        if result.returncode == 0 and result.stdout:
+            try:
+                # Check if any service is running
+                for line in result.stdout.strip().split("\n"):
+                    if line:
+                        service = json.loads(line)
+                        if service.get("State") == "running":
+                            return True
+            except:
+                # Fallback - check with simple ps
+                result = subprocess.run(
+                    ["docker", "compose", "-f", compose_file, "ps", "-q"], capture_output=True, text=True
+                )
+                return bool(result.stdout.strip())
+
+        return False
+
+    def _quick_setup(self) -> None:
+        """Quick setup with sensible defaults"""
+        console.print("\n[bold]Quick Setup Mode[/bold]")
+        console.print("Using recommended defaults for most settings.\n")
+
+        # Auto-detect GPU
+        self.config["USE_GPU"] = "true" if self.gpu_available else "false"
+        console.print(f"Deployment type: {'GPU' if self.gpu_available else 'CPU'}")
+
+        # Ask only for document directory
+        console.print("\n[bold]Select Document Directory[/bold]")
+        console.print("Choose the directory containing documents to process:")
+
+        # Try to auto-detect common directories
+        common_dirs = self._detect_common_directories()
+
+        if common_dirs:
+            console.print("\n[green]Found these potential document directories:[/green]")
+            choices = []
+            for d in common_dirs:
+                choices.append(f"{d} ({self._count_documents(d)} documents)")
+            choices.append("Browse for a different directory")
+            choices.append("Create new directory")
+
+            selection = questionary.select("Select directory:", choices=choices).ask()
+
+            if selection is None:
+                return
+
+            if "Browse" in selection:
+                selected_dir = self._browse_for_directory()
+                if selected_dir is None:
+                    return
+            elif "Create new" in selection:
+                dir_path = questionary.text("Enter path for new directory:", default="./documents").ask()
+                if dir_path:
+                    selected_dir = Path(dir_path).resolve()
+                    selected_dir.mkdir(parents=True, exist_ok=True)
+                    console.print(f"[green]Created {selected_dir}[/green]")
+                else:
+                    return
+            else:
+                # Extract path from selection
+                selected_dir = Path(selection.split(" (")[0])
+        else:
+            # No common directories found, use browser
+            selected_dir = self._browse_for_directory()
+            if selected_dir is None:
+                return
+
+        self.config["DOCUMENT_PATHS"] = str(selected_dir)
+        self.config["DOCUMENT_PATH"] = str(selected_dir)
+
+        # Set all other defaults
+        console.print("\n[bold]Applying default settings:[/bold]")
+        self.config["DEFAULT_EMBEDDING_MODEL"] = "Qwen/Qwen3-Embedding-0.6B"
+        console.print("  • Embedding model: Qwen/Qwen3-Embedding-0.6B")
+
+        self.config["DEFAULT_QUANTIZATION"] = "float16"
+        console.print("  • Quantization: float16")
+
+        if self.config["USE_GPU"] == "true":
+            self.config["CUDA_VISIBLE_DEVICES"] = "0"
+            self.config["MODEL_MAX_MEMORY_GB"] = "8"
+            console.print("  • GPU device: 0 (8GB memory limit)")
+
+        self.config["JWT_SECRET_KEY"] = secrets.token_hex(32)
+        console.print("  • Security: Generated secure JWT key")
+
+        self.config["ACCESS_TOKEN_EXPIRE_MINUTES"] = "1440"
+        self.config["LOG_LEVEL"] = "INFO"
+        self.config["WEBUI_WORKERS"] = "1"
+        console.print("  • Token expiry: 24 hours")
+        console.print("  • Log level: INFO")
+        console.print("  • Workers: 1")
+
+        # Create data and logs directories
+        Path("./data").mkdir(exist_ok=True)
+        Path("./logs").mkdir(exist_ok=True)
+
+        console.print("\n")
+
+        # Review and confirm
+        if not self.review_configuration():
+            return
+
+        # Execute setup
+        self.execute_setup()
+
+    def _detect_common_directories(self) -> List[Path]:
+        """Detect common document directories"""
+        home = Path.home()
+        common_paths = [
+            home / "Documents",
+            home / "Downloads",
+            home / "Desktop",
+            Path.cwd() / "documents",
+            Path.cwd() / "data",
+        ]
+
+        existing_dirs = []
+        for path in common_paths:
+            if path.exists() and path.is_dir():
+                # Check if it contains any documents
+                if self._count_documents(path) > 0:
+                    existing_dirs.append(path)
+
+        return existing_dirs
+
+    def _count_documents(self, directory: Path) -> int:
+        """Count document files in a directory"""
+        try:
+            doc_extensions = {".pdf", ".docx", ".txt", ".md", ".html", ".pptx", ".csv", ".json"}
+            count = 0
+            for file in directory.iterdir():
+                if file.is_file() and file.suffix.lower() in doc_extensions:
+                    count += 1
+                    if count >= 10:  # Stop counting after 10 for performance
+                        return count
+            return count
+        except:
+            return 0
+
+    def _check_ports(self) -> bool:
+        """Check if required ports are available"""
+        import socket
+
+        console.print("[bold]Checking port availability...[/bold]\n")
+
+        required_ports = [(8080, "WebUI"), (8000, "VecPipe API"), (6333, "Qdrant"), (6334, "Qdrant gRPC")]
+
+        blocked_ports = []
+
+        for port, service in required_ports:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)
+            try:
+                result = sock.connect_ex(("localhost", port))
+                if result == 0:
+                    # Port is in use
+                    blocked_ports.append((port, service))
+                    console.print(f"[red]✗[/red] Port {port} ({service}) is already in use")
+                else:
+                    console.print(f"[green]✓[/green] Port {port} ({service}) is available")
+            except:
+                console.print(f"[green]✓[/green] Port {port} ({service}) is available")
+            finally:
+                sock.close()
+
+        if blocked_ports:
+            console.print(f"\n[red]Error: {len(blocked_ports)} port(s) are already in use.[/red]")
+            console.print("\n[yellow]To fix this:[/yellow]")
+            console.print("1. Stop the services using these ports:")
+            for port, service in blocked_ports:
+                console.print(f"   → Port {port}: sudo lsof -i :{port} or sudo netstat -tlnp | grep {port}")
+            console.print("2. Or change the ports in docker-compose.yml")
+
+            # Offer to try stopping existing Semantik containers
+            if questionary.confirm("\nWould you like to try stopping existing Semantik containers?").ask():
+                compose_file = (
+                    "docker-compose.yml" if self.config.get("USE_GPU") == "true" else "docker-compose-cpu-only.yml"
+                )
+                self._run_docker_command(
+                    ["docker", "compose", "-f", compose_file, "down"], "Stopping existing containers"
+                )
+                console.print("\nPlease run the setup again.")
+
+            return False
+
+        console.print("\n[green]All required ports are available![/green]\n")
+        return True
 
 
 def main() -> None:
