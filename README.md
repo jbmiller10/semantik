@@ -118,6 +118,8 @@ Semantik can run on both CPU and GPU, but a CUDA-compatible GPU is **strongly re
 <details>
 <summary>The fastest way to get started with Semantik is using Docker Compose.</summary>
 
+> **📌 GPU Note:** The default Docker configuration uses GPU acceleration for optimal performance. Ensure you have NVIDIA Docker runtime installed. For CPU-only systems, see the CPU-only option below.
+
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/jbmiller10/semantik.git
@@ -134,7 +136,8 @@ Semantik can run on both CPU and GPU, but a CUDA-compatible GPU is **strongly re
 3. **Start all services:**
    ```bash
    make docker-up
-   # Or directly: docker-compose up -d
+   # Or directly: docker compose up -d
+   # Note: Default configuration requires GPU. For CPU-only: docker compose -f docker-compose-cpu-only.yml up -d
    ```
 
 4. **Access Semantik:**
@@ -146,8 +149,8 @@ That's it! 🎉 Semantik is now running with:
 - **Qdrant** vector database on port 6333
 
 **Additional Docker Options:**
-- **GPU Support**: `docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d`
-- **Production**: `docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
+- **CPU-Only**: `docker compose -f docker-compose-cpu-only.yml up -d`
+- **Production**: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
 </details>
 
 ### Option 2: Development Setup (Shell Scripts)

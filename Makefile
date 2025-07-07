@@ -97,26 +97,26 @@ docker-up:
 			fi; \
 		fi; \
 	fi
-	docker-compose up -d
+	docker compose up -d
 	@echo "Services started! Access the application at http://localhost:8080"
 
 docker-down:
 	@echo "Stopping Semantik services..."
-	docker-compose down
+	docker compose down
 
 docker-logs:
-	docker-compose logs -f
+	docker compose logs -f
 
 docker-build-fresh:
 	@echo "Rebuilding Docker images without cache..."
-	docker-compose build --no-cache
+	docker compose build --no-cache
 
 docker-ps:
-	docker-compose ps
+	docker compose ps
 
 docker-restart:
 	@echo "Restarting Semantik services..."
-	docker-compose restart
+	docker compose restart
 
 # Quick commands for individual services
 docker-logs-webui:

@@ -17,7 +17,7 @@ When using Docker Compose, configuration is simplified through the `.env` file a
 
 3. Start services:
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
 
 ### Docker-Specific Settings
