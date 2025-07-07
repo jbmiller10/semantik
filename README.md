@@ -115,8 +115,8 @@ Semantik can run on both CPU and GPU, but a CUDA-compatible GPU is **strongly re
 ## ⚡ Quick Start
 
 ### Option 1: Docker Compose (Recommended) 🐳
-
-The fastest way to get started with Semantik is using Docker Compose.
+<details>
+<summary>The fastest way to get started with Semantik is using Docker Compose.</summary>
 
 1. **Clone the repository:**
    ```bash
@@ -148,6 +148,7 @@ That's it! 🎉 Semantik is now running with:
 **Additional Docker Options:**
 - **GPU Support**: `docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d`
 - **Production**: `docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
+</details>
 
 ### Option 2: Development Setup (Shell Scripts)
 
