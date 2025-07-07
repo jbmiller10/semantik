@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import questionary
 from rich import print as rprint
@@ -27,6 +27,7 @@ class DockerSetupTUI:
         self.gpu_available = False
         self.docker_available = False
         self.compose_available = False
+        self.docker_gpu_available = False
 
     def run(self) -> None:
         """Main entry point for the TUI"""
@@ -54,32 +55,18 @@ class DockerSetupTUI:
                     self._service_monitor()
                     return
 
-            # Ask for setup type
-            setup_type = questionary.select(
-                "Choose setup type:",
-                choices=["Quick Setup (Recommended) - Use sensible defaults", "Custom Setup - Configure all options"],
-            ).ask()
-
-            if setup_type is None:
+            # Run through setup steps
+            if not self.select_deployment_type():
+                return
+            if not self.configure_directories():
+                return
+            if not self.configure_security():
+                return
+            if not self.review_configuration():
                 return
 
-            if "Quick Setup" in setup_type:
-                self._quick_setup()
-            else:
-                # Run through full setup steps
-                if not self.select_deployment_type():
-                    return
-                if not self.configure_directories():
-                    return
-                if not self.configure_model():
-                    return
-                if not self.configure_security():
-                    return
-                if not self.review_configuration():
-                    return
-
-                # Execute Docker setup
-                self.execute_setup()
+            # Execute Docker setup
+            self.execute_setup()
 
         except KeyboardInterrupt:
             console.print("\n[yellow]Setup cancelled by user[/yellow]")
@@ -125,7 +112,7 @@ class DockerSetupTUI:
             elif platform.system() == "Linux":
                 console.print("  → Ubuntu/Debian: sudo apt-get install docker.io docker-compose")
                 console.print("  → Fedora/RHEL: sudo dnf install docker docker-compose")
-                console.print("  → Arch: sudo pacman -S docker docker-compose")
+                console.print("  → Arch/Manjaro: sudo pacman -S docker docker-compose")
                 console.print("\n  → Don't forget to add your user to the docker group:")
                 console.print("    sudo usermod -aG docker $USER")
                 console.print("    (Log out and back in for this to take effect)")
@@ -148,8 +135,18 @@ class DockerSetupTUI:
         self.gpu_available = self._check_gpu()
         if self.gpu_available:
             console.print("[green]✓[/green] GPU detected (NVIDIA)")
+
+            # Check Docker GPU runtime
+            console.print("  [dim]Checking Docker GPU support...[/dim]")
+            self.docker_gpu_available = self._check_docker_gpu_runtime()
+            if self.docker_gpu_available:
+                console.print("  [green]✓[/green] Docker GPU runtime available")
+            else:
+                console.print("  [yellow]![/yellow] Docker GPU runtime not configured")
+                console.print("  [dim]Installation will be offered if you select GPU mode[/dim]")
         else:
             console.print("[yellow]![/yellow] No GPU detected (CPU mode available)")
+            self.docker_gpu_available = False
 
         console.print()
         return True
@@ -175,6 +172,320 @@ class DockerSetupTUI:
         except:
             return False
 
+    def _check_docker_gpu_runtime(self) -> bool:
+        """Check if Docker can use GPU runtime (NVIDIA Container Toolkit)"""
+        if not self.docker_available:
+            return False
+
+        try:
+            # Test if Docker can run with GPU support
+            result = subprocess.run(
+                ["docker", "run", "--rm", "--gpus", "all", "nvidia/cuda:11.0-base", "nvidia-smi"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            # Check if the command succeeded and nvidia-smi output is present
+            if result.returncode == 0 and "NVIDIA-SMI" in result.stdout:
+                return True
+
+            # Check for common error indicators
+            error_indicators = [
+                "nvidia-container-cli",
+                "libnvidia-ml.so",
+                "could not select device driver",
+                "unknown flag: --gpus",
+            ]
+            error_text = result.stderr.lower() if result.stderr else ""
+            for indicator in error_indicators:
+                if indicator in error_text:
+                    return False
+
+            return False
+        except subprocess.TimeoutExpired:
+            return False
+        except:
+            return False
+
+    def _install_nvidia_container_toolkit(self) -> bool:
+        """Install NVIDIA Container Toolkit based on the platform"""
+        console.print("\n[bold yellow]NVIDIA GPU detected but Docker GPU support is not configured.[/bold yellow]")
+        console.print("The NVIDIA Container Toolkit is required to use GPUs with Docker.\n")
+
+        install = questionary.confirm("Would you like to install the NVIDIA Container Toolkit now?", default=True).ask()
+
+        if not install:
+            console.print("[yellow]Skipping NVIDIA Container Toolkit installation.[/yellow]")
+            console.print("[yellow]GPU mode will not be available. Falling back to CPU mode.[/yellow]")
+            return False
+
+        console.print("\n[bold]Installing NVIDIA Container Toolkit...[/bold]\n")
+
+        system = platform.system()
+
+        if system == "Linux":
+            # Detect Linux distribution
+            distro_info = self._get_linux_distro()
+
+            if distro_info and ("ubuntu" in distro_info.lower() or "debian" in distro_info.lower()):
+                return self._install_nvidia_toolkit_debian()
+            elif distro_info and (
+                "fedora" in distro_info.lower() or "rhel" in distro_info.lower() or "centos" in distro_info.lower()
+            ):
+                return self._install_nvidia_toolkit_rhel()
+            elif distro_info and ("arch" in distro_info.lower() or "manjaro" in distro_info.lower()):
+                return self._install_nvidia_toolkit_arch()
+            else:
+                # Generic Linux instructions
+                console.print("[yellow]Automatic installation not available for your Linux distribution.[/yellow]")
+                console.print("\nPlease install manually by following:")
+                console.print("https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html")
+                return False
+
+        elif system == "Darwin":
+            console.print("[red]GPU support is not available on macOS.[/red]")
+            console.print("Docker Desktop for Mac does not support GPU passthrough.")
+            return False
+
+        elif system == "Windows":
+            console.print("[yellow]On Windows, GPU support requires WSL2.[/yellow]")
+            console.print("\nPlease ensure:")
+            console.print("1. You are using Docker Desktop with WSL2 backend")
+            console.print("2. Install NVIDIA drivers in Windows (not WSL2)")
+            console.print("3. Follow: https://docs.nvidia.com/cuda/wsl-user-guide/index.html")
+            return False
+
+        return False
+
+    def _get_linux_distro(self) -> Optional[str]:
+        """Get Linux distribution information"""
+        try:
+            # Try lsb_release first
+            result = subprocess.run(["lsb_release", "-si"], capture_output=True, text=True)
+            if result.returncode == 0:
+                return result.stdout.strip()
+
+            # Try /etc/os-release
+            if Path("/etc/os-release").exists():
+                with open("/etc/os-release", "r") as f:
+                    for line in f:
+                        if line.startswith("ID="):
+                            return line.split("=")[1].strip().strip('"')
+        except:
+            pass
+
+        return None
+
+    def _install_nvidia_toolkit_debian(self) -> bool:
+        """Install NVIDIA Container Toolkit on Debian/Ubuntu"""
+        # These commands need to be run with shell=True due to pipes
+        shell_commands: List[str] = [
+            # Add the package repository
+            "curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg",
+            "curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list",
+        ]
+
+        # These commands can be run normally
+        regular_commands: List[List[str]] = [
+            ["sudo", "apt-get", "update"],
+            ["sudo", "apt-get", "install", "-y", "nvidia-container-toolkit"],
+            ["sudo", "nvidia-ctk", "runtime", "configure", "--runtime=docker"],
+            ["sudo", "systemctl", "restart", "docker"],
+        ]
+
+        console.print("Running installation commands for Debian/Ubuntu...\n")
+
+        # Execute shell commands first
+        for shell_cmd in shell_commands:
+            console.print(f"[dim]$ {shell_cmd}[/dim]")
+            result = subprocess.run(shell_cmd, shell=True, capture_output=True, text=True)
+
+            if result.returncode != 0:
+                console.print(f"[red]Error: {result.stderr}[/red]")
+                return False
+            else:
+                console.print("[green]✓ Success[/green]\n")
+
+        # Execute regular commands
+        for cmd_list in regular_commands:
+            console.print(f"[dim]$ {' '.join(cmd_list)}[/dim]")
+            result = subprocess.run(cmd_list, capture_output=True, text=True)
+
+            if result.returncode != 0:
+                console.print(f"[red]Error: {result.stderr}[/red]")
+                return False
+            else:
+                console.print("[green]✓ Success[/green]\n")
+
+        # Test if it works now
+        console.print("[bold]Testing GPU support...[/bold]")
+        if self._check_docker_gpu_runtime():
+            console.print("[green]✓ NVIDIA Container Toolkit installed successfully![/green]")
+            return True
+        else:
+            console.print("[red]Installation completed but GPU support test failed.[/red]")
+            console.print("You may need to log out and back in, or reboot.")
+            return False
+
+    def _install_nvidia_toolkit_rhel(self) -> bool:
+        """Install NVIDIA Container Toolkit on RHEL/Fedora/CentOS"""
+        # Shell command for repository setup
+        shell_command = "curl -s -L https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo | sudo tee /etc/yum.repos.d/nvidia-container-toolkit.repo"
+
+        # Regular commands
+        regular_commands: List[List[str]] = [
+            ["sudo", "yum", "install", "-y", "nvidia-container-toolkit"],
+            ["sudo", "nvidia-ctk", "runtime", "configure", "--runtime=docker"],
+            ["sudo", "systemctl", "restart", "docker"],
+        ]
+
+        console.print("Running installation commands for RHEL/Fedora/CentOS...\n")
+
+        # Execute shell command
+        console.print(f"[dim]$ {shell_command}[/dim]")
+        result = subprocess.run(shell_command, shell=True, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            console.print(f"[red]Error: {result.stderr}[/red]")
+            return False
+        else:
+            console.print("[green]✓ Success[/green]\n")
+
+        # Execute regular commands
+        for cmd_list in regular_commands:
+            console.print(f"[dim]$ {' '.join(cmd_list)}[/dim]")
+            result = subprocess.run(cmd_list, capture_output=True, text=True)
+
+            if result.returncode != 0:
+                console.print(f"[red]Error: {result.stderr}[/red]")
+                return False
+            else:
+                console.print("[green]✓ Success[/green]\n")
+
+        # Test if it works now
+        console.print("[bold]Testing GPU support...[/bold]")
+        if self._check_docker_gpu_runtime():
+            console.print("[green]✓ NVIDIA Container Toolkit installed successfully![/green]")
+            return True
+        else:
+            console.print("[red]Installation completed but GPU support test failed.[/red]")
+            console.print("You may need to log out and back in, or reboot.")
+            return False
+
+    def _install_nvidia_toolkit_arch(self) -> bool:
+        """Install NVIDIA Container Toolkit on Arch Linux"""
+        console.print("Detected Arch Linux or derivative.\n")
+
+        # Check for AUR helpers
+        aur_helper = None
+        for helper in ["yay", "paru", "trizen"]:
+            if shutil.which(helper):
+                aur_helper = helper
+                break
+
+        if aur_helper:
+            # Use AUR helper
+            console.print(f"Found AUR helper: {aur_helper}")
+            console.print("Installing from AUR...\n")
+
+            commands = [
+                [aur_helper, "-S", "--noconfirm", "nvidia-container-toolkit"],
+                ["sudo", "nvidia-ctk", "runtime", "configure", "--runtime=docker"],
+                ["sudo", "systemctl", "restart", "docker"],
+            ]
+
+            for cmd in commands:
+                console.print(f"[dim]$ {' '.join(cmd)}[/dim]")
+                result = subprocess.run(cmd, capture_output=True, text=True)
+
+                if result.returncode != 0:
+                    console.print(f"[red]Error: {result.stderr}[/red]")
+                    # Try alternative method
+                    console.print("\n[yellow]AUR installation failed. Trying official NVIDIA method...[/yellow]")
+                    return self._install_nvidia_toolkit_arch_official()
+                else:
+                    console.print("[green]✓ Success[/green]\n")
+        else:
+            # No AUR helper, use official method
+            console.print("No AUR helper found. Using official NVIDIA repositories...\n")
+            return self._install_nvidia_toolkit_arch_official()
+
+        # Test if it works now
+        console.print("[bold]Testing GPU support...[/bold]")
+        if self._check_docker_gpu_runtime():
+            console.print("[green]✓ NVIDIA Container Toolkit installed successfully![/green]")
+            return True
+        else:
+            console.print("[red]Installation completed but GPU support test failed.[/red]")
+            console.print("You may need to log out and back in, or reboot.")
+            return False
+
+    def _install_nvidia_toolkit_arch_official(self) -> bool:
+        """Install NVIDIA Container Toolkit on Arch using manual build"""
+        console.print("[yellow]The NVIDIA Container Toolkit is not in the official Arch repositories.[/yellow]")
+        console.print("\nTo install it, you have the following options:\n")
+
+        console.print("[bold]Option 1: Install an AUR helper and use AUR (Recommended)[/bold]")
+        console.print("$ sudo pacman -S --needed base-devel git")
+        console.print("$ git clone https://aur.archlinux.org/yay.git")
+        console.print("$ cd yay && makepkg -si")
+        console.print("$ yay -S nvidia-container-toolkit")
+        console.print()
+
+        console.print("[bold]Option 2: Build from AUR manually[/bold]")
+        console.print("$ git clone https://aur.archlinux.org/nvidia-container-toolkit.git")
+        console.print("$ cd nvidia-container-toolkit")
+        console.print("$ makepkg -si")
+        console.print()
+
+        console.print("[bold]Option 3: Use libnvidia-container from official repos[/bold]")
+        console.print("$ sudo pacman -S libnvidia-container")
+        console.print("(Note: This may not include all features)")
+        console.print()
+
+        console.print("After installation, run:")
+        console.print("$ sudo nvidia-ctk runtime configure --runtime=docker")
+        console.print("$ sudo systemctl restart docker")
+        console.print()
+
+        console.print("For more information, see:")
+        console.print("https://wiki.archlinux.org/title/Docker#GPU_support")
+
+        return False
+
+    def _get_all_gpu_info(self) -> List[Dict[str, Any]]:
+        """Get detailed information about all GPUs using nvidia-smi"""
+        try:
+            # Query all relevant GPU information
+            result = subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=index,name,memory.total",
+                    "--format=csv,noheader,nounits",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            gpus = []
+            for line in result.stdout.strip().split("\n"):
+                if line:
+                    parts = [p.strip() for p in line.split(",")]
+                    if len(parts) >= 3:
+                        gpus.append(
+                            {
+                                "index": int(parts[0]),
+                                "name": parts[1],
+                                "memory_total_mb": int(parts[2]),
+                            }
+                        )
+
+            return gpus
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return []
+
     def _show_progress(self, step: int, total: int, title: str) -> None:
         """Show progress indicator"""
         progress_bar = "━" * step + "○" * (total - step)
@@ -183,7 +494,7 @@ class DockerSetupTUI:
 
     def select_deployment_type(self) -> bool:
         """Select GPU or CPU deployment"""
-        self._show_progress(1, 5, "Deployment Type")
+        self._show_progress(1, 4, "Deployment Type")
         console.print("[bold]Select Deployment Type[/bold]\n")
 
         choices = []
@@ -198,13 +509,28 @@ class DockerSetupTUI:
         if deployment is None:
             return False
 
-        self.config["USE_GPU"] = "true" if "GPU" in deployment else "false"
+        if "GPU" in deployment:
+            # Check if Docker GPU runtime is available
+            if not self.docker_gpu_available:
+                # Offer to install NVIDIA Container Toolkit
+                if self._install_nvidia_container_toolkit():
+                    self.docker_gpu_available = True
+                    self.config["USE_GPU"] = "true"
+                else:
+                    # Fall back to CPU mode
+                    console.print("\n[yellow]Falling back to CPU mode.[/yellow]")
+                    self.config["USE_GPU"] = "false"
+            else:
+                self.config["USE_GPU"] = "true"
+        else:
+            self.config["USE_GPU"] = "false"
+
         console.print()
         return True
 
     def configure_directories(self) -> bool:
         """Configure directory mappings"""
-        self._show_progress(2, 5, "Directory Configuration")
+        self._show_progress(2, 4, "Directory Configuration")
         console.print("[bold]Configure Document Directories[/bold]\n")
         console.print("You can add multiple directories containing documents to process.")
         console.print("These directories will be mounted read-only in the Docker container.\n")
@@ -389,86 +715,60 @@ class DockerSetupTUI:
         except:
             pass
 
-    def configure_model(self) -> bool:
-        """Configure embedding model and GPU settings"""
-        self._show_progress(3, 5, "Model Configuration")
-        console.print("[bold]Configure Embedding Model[/bold]\n")
-
-        # Model selection
-        models = [
-            "Qwen/Qwen3-Embedding-0.6B (Recommended - 600M params)",
-            "sentence-transformers/all-MiniLM-L6-v2 (Lightweight - 22M params)",
-            "Custom model",
-        ]
-
-        model_choice = questionary.select("Select embedding model:", choices=models).ask()
-
-        if model_choice is None:
-            return False
-
-        if "Qwen" in model_choice:
-            self.config["DEFAULT_EMBEDDING_MODEL"] = "Qwen/Qwen3-Embedding-0.6B"
-        elif "MiniLM" in model_choice:
-            self.config["DEFAULT_EMBEDDING_MODEL"] = "sentence-transformers/all-MiniLM-L6-v2"
-        else:
-            custom_model = questionary.text("Enter model name:", default="Qwen/Qwen3-Embedding-0.6B").ask()
-            if custom_model is None:
-                return False
-            self.config["DEFAULT_EMBEDDING_MODEL"] = custom_model
-
-        # Quantization
-        quant_choice = questionary.select(
-            "Select quantization (reduces memory usage):",
-            choices=[
-                "float16 (Recommended - good balance)",
-                "int8 (More compression, slight quality loss)",
-                "none (Full precision)",
-            ],
-        ).ask()
-
-        if quant_choice is None:
-            return False
-
-        if "float16" in quant_choice:
-            self.config["DEFAULT_QUANTIZATION"] = "float16"
-        elif "int8" in quant_choice:
-            self.config["DEFAULT_QUANTIZATION"] = "int8"
-        else:
-            self.config["DEFAULT_QUANTIZATION"] = "none"
-
-        # GPU-specific settings
-        if self.config["USE_GPU"] == "true":
-            console.print("\n[bold]GPU Configuration[/bold]")
-            console.print("[dim]Leave defaults unless you have multiple GPUs or limited memory[/dim]\n")
-
-            # GPU selection
-            gpu_id = questionary.text(
-                "GPU device ID (0 for first GPU):",
-                default="0",
-                validate=lambda x: x.isdigit() or "Please enter a number",
-            ).ask()
-            if gpu_id is None:
-                return False
-            self.config["CUDA_VISIBLE_DEVICES"] = gpu_id
-
-            # Memory limit
-            console.print("\n[dim]Recommended: 8GB for most models, 4GB if you have limited VRAM[/dim]")
-            mem_limit = questionary.text(
-                "GPU memory limit in GB:",
-                default="8",
-                validate=lambda x: x.replace(".", "").isdigit() or "Please enter a number",
-            ).ask()
-            if mem_limit is None:
-                return False
-            self.config["MODEL_MAX_MEMORY_GB"] = mem_limit
-
-        console.print()
-        return True
-
     def configure_security(self) -> bool:
         """Configure security and advanced settings"""
-        self._show_progress(4, 5, "Security & Advanced Settings")
+        self._show_progress(3, 4, "Security & Advanced Settings")
         console.print("[bold]Security & Advanced Settings[/bold]\n")
+
+        # GPU-specific settings first if GPU is selected
+        if self.config["USE_GPU"] == "true":
+            console.print("[bold]GPU Configuration[/bold]\n")
+
+            # Get all available GPUs
+            gpu_info = self._get_all_gpu_info()
+
+            if gpu_info:
+                # Build choices list
+                choices = ["Auto (GPU 0)"]
+                for gpu in gpu_info:
+                    memory_gb = gpu["memory_total_mb"] / 1024
+                    choices.append(f"GPU {gpu['index']}: {gpu['name']} ({memory_gb:.1f}GB)")
+
+                gpu_choice = questionary.select("Select GPU device:", choices=choices).ask()
+
+                if gpu_choice is None:
+                    return False
+
+                # Parse the selection
+                if "Auto" in gpu_choice:
+                    selected_gpu_idx = 0
+                else:
+                    # Extract GPU index from choice string
+                    selected_gpu_idx = int(gpu_choice.split(":")[0].replace("GPU", "").strip())
+
+                self.config["CUDA_VISIBLE_DEVICES"] = str(selected_gpu_idx)
+
+                # Get the selected GPU's info for memory limit
+                selected_gpu = next((g for g in gpu_info if g["index"] == selected_gpu_idx), gpu_info[0])
+                max_memory_gb = selected_gpu["memory_total_mb"] / 1024
+
+                # Memory limit - default to max available
+                console.print(f"\n[dim]GPU has {max_memory_gb:.1f}GB total memory[/dim]")
+                mem_limit = questionary.text(
+                    "GPU memory limit in GB:",
+                    default=f"{max_memory_gb:.0f}",
+                    validate=lambda x: x.replace(".", "").isdigit() or "Please enter a number",
+                ).ask()
+                if mem_limit is None:
+                    return False
+                self.config["MODEL_MAX_MEMORY_GB"] = mem_limit
+            else:
+                # Fallback if GPU info cannot be retrieved
+                console.print("[yellow]Could not detect GPU details. Using defaults.[/yellow]")
+                self.config["CUDA_VISIBLE_DEVICES"] = "0"
+                self.config["MODEL_MAX_MEMORY_GB"] = "8"
+
+            console.print()
 
         # JWT Secret
         jwt_choice = questionary.select(
@@ -500,18 +800,17 @@ class DockerSetupTUI:
             return False
         self.config["LOG_LEVEL"] = log_level
 
-        # Workers
-        workers = questionary.text("Number of WebUI workers:", default="1").ask()
-        if workers is None:
-            return False
-        self.config["WEBUI_WORKERS"] = workers
+        # Set hardcoded defaults
+        self.config["DEFAULT_EMBEDDING_MODEL"] = "Qwen/Qwen3-Embedding-0.6B"
+        self.config["DEFAULT_QUANTIZATION"] = "float16"
+        self.config["WEBUI_WORKERS"] = "auto"
 
         console.print()
         return True
 
     def review_configuration(self) -> bool:
         """Review and confirm configuration"""
-        self._show_progress(5, 5, "Review & Confirm")
+        self._show_progress(4, 4, "Review & Confirm")
         console.print("[bold]Review Configuration[/bold]\n")
 
         # Create review table
@@ -531,9 +830,6 @@ class DockerSetupTUI:
             for i, d in enumerate(doc_dirs):
                 table.add_row(f"  Directory {i+1}", d)
 
-        table.add_row("Embedding Model", self.config["DEFAULT_EMBEDDING_MODEL"])
-        table.add_row("Quantization", self.config["DEFAULT_QUANTIZATION"])
-
         if self.config["USE_GPU"] == "true":
             table.add_row("GPU Device", self.config["CUDA_VISIBLE_DEVICES"])
             table.add_row("GPU Memory Limit", f"{self.config['MODEL_MAX_MEMORY_GB']} GB")
@@ -541,7 +837,7 @@ class DockerSetupTUI:
         table.add_row("JWT Secret", "***" + self.config["JWT_SECRET_KEY"][-8:])
         table.add_row("Token Expiration", f"{self.config['ACCESS_TOKEN_EXPIRE_MINUTES']} minutes")
         table.add_row("Log Level", self.config["LOG_LEVEL"])
-        table.add_row("WebUI Workers", self.config["WEBUI_WORKERS"])
+        table.add_row("WebUI Workers", "auto")
 
         console.print(table)
         console.print()
@@ -582,7 +878,7 @@ class DockerSetupTUI:
             "DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B": f"DEFAULT_EMBEDDING_MODEL={self.config['DEFAULT_EMBEDDING_MODEL']}",
             "DEFAULT_QUANTIZATION=float16": f"DEFAULT_QUANTIZATION={self.config['DEFAULT_QUANTIZATION']}",
             "DOCUMENT_PATH=./documents": f"DOCUMENT_PATH={self.config['DOCUMENT_PATH']}",
-            "WEBUI_WORKERS=1": f"WEBUI_WORKERS={self.config['WEBUI_WORKERS']}",
+            "WEBUI_WORKERS=1": "WEBUI_WORKERS=auto",
             "LOG_LEVEL=INFO": f"LOG_LEVEL={self.config['LOG_LEVEL']}",
         }
 
@@ -913,95 +1209,6 @@ class DockerSetupTUI:
                 return bool(result.stdout.strip())
 
         return False
-
-    def _quick_setup(self) -> None:
-        """Quick setup with sensible defaults"""
-        console.print("\n[bold]Quick Setup Mode[/bold]")
-        console.print("Using recommended defaults for most settings.\n")
-
-        # Auto-detect GPU
-        self.config["USE_GPU"] = "true" if self.gpu_available else "false"
-        console.print(f"Deployment type: {'GPU' if self.gpu_available else 'CPU'}")
-
-        # Ask only for document directory
-        console.print("\n[bold]Select Document Directory[/bold]")
-        console.print("Choose the directory containing documents to process:")
-
-        # Try to auto-detect common directories
-        common_dirs = self._detect_common_directories()
-
-        if common_dirs:
-            console.print("\n[green]Found these potential document directories:[/green]")
-            choices = []
-            for d in common_dirs:
-                choices.append(f"{d} ({self._count_documents(d)} documents)")
-            choices.append("Browse for a different directory")
-            choices.append("Create new directory")
-
-            selection = questionary.select("Select directory:", choices=choices).ask()
-
-            if selection is None:
-                return
-
-            if "Browse" in selection:
-                selected_dir = self._browse_for_directory()
-                if selected_dir is None:
-                    return
-            elif "Create new" in selection:
-                dir_path = questionary.text("Enter path for new directory:", default="./documents").ask()
-                if dir_path:
-                    selected_dir = Path(dir_path).resolve()
-                    selected_dir.mkdir(parents=True, exist_ok=True)
-                    console.print(f"[green]Created {selected_dir}[/green]")
-                else:
-                    return
-            else:
-                # Extract path from selection
-                selected_dir = Path(selection.split(" (")[0])
-        else:
-            # No common directories found, use browser
-            selected_dir = self._browse_for_directory()
-            if selected_dir is None:
-                return
-
-        self.config["DOCUMENT_PATHS"] = str(selected_dir)
-        self.config["DOCUMENT_PATH"] = str(selected_dir)
-
-        # Set all other defaults
-        console.print("\n[bold]Applying default settings:[/bold]")
-        self.config["DEFAULT_EMBEDDING_MODEL"] = "Qwen/Qwen3-Embedding-0.6B"
-        console.print("  • Embedding model: Qwen/Qwen3-Embedding-0.6B")
-
-        self.config["DEFAULT_QUANTIZATION"] = "float16"
-        console.print("  • Quantization: float16")
-
-        if self.config["USE_GPU"] == "true":
-            self.config["CUDA_VISIBLE_DEVICES"] = "0"
-            self.config["MODEL_MAX_MEMORY_GB"] = "8"
-            console.print("  • GPU device: 0 (8GB memory limit)")
-
-        self.config["JWT_SECRET_KEY"] = secrets.token_hex(32)
-        console.print("  • Security: Generated secure JWT key")
-
-        self.config["ACCESS_TOKEN_EXPIRE_MINUTES"] = "1440"
-        self.config["LOG_LEVEL"] = "INFO"
-        self.config["WEBUI_WORKERS"] = "1"
-        console.print("  • Token expiry: 24 hours")
-        console.print("  • Log level: INFO")
-        console.print("  • Workers: 1")
-
-        # Create data and logs directories
-        Path("./data").mkdir(exist_ok=True)
-        Path("./logs").mkdir(exist_ok=True)
-
-        console.print("\n")
-
-        # Review and confirm
-        if not self.review_configuration():
-            return
-
-        # Execute setup
-        self.execute_setup()
 
     def _detect_common_directories(self) -> List[Path]:
         """Detect common document directories"""
