@@ -100,11 +100,58 @@ For users of the old shell scripts:
    - Backup the SQLite database in `./data`
    - Document recovery procedures
 
+## Production Deployment
+
+### GPU Support
+Use `docker-compose.gpu.yml` for GPU-accelerated deployments:
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+```
+
+### Production Configuration
+Use `docker-compose.prod.yml` for production deployments:
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+Features include:
+- Enhanced security settings
+- Optimized resource limits
+- Log rotation
+- Optional nginx reverse proxy
+- Production-ready health checks
+
+### Nginx Configuration
+Copy and customize the nginx configuration:
+```bash
+cp nginx.conf.example nginx.conf
+# Edit nginx.conf with your domain and SSL certificates
+```
+
+## Security Improvements Implemented
+
+1. **Container Security**:
+   - `no-new-privileges` prevents privilege escalation
+   - Capabilities dropped to minimum required
+   - Non-root user for application containers
+
+2. **Resource Limits**:
+   - CPU and memory limits prevent resource exhaustion
+   - Reservations ensure minimum resources available
+
+3. **Environment Validation**:
+   - Critical variables validated at startup
+   - JWT_SECRET_KEY security check prevents default values
+
+4. **Volume Permissions**:
+   - Documentation added for UID 1000 requirement
+   - Proper directory permissions in Dockerfile
+
 ## Known Limitations
 
-1. GPU support requires additional configuration (nvidia-docker)
-2. The type checking shows one minor error that doesn't affect functionality
-3. Some advanced Qdrant configurations may require custom compose overrides
+1. GPU support requires nvidia-docker runtime installation
+2. Some advanced Qdrant configurations may require custom compose overrides
+3. TLS/SSL must be configured separately in production
 
 ## Conclusion
 

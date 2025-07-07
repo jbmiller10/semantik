@@ -145,6 +145,10 @@ That's it! 🎉 Semantik is now running with:
 - **Search API** on port 8000
 - **Qdrant** vector database on port 6333
 
+**Additional Docker Options:**
+- **GPU Support**: `docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d`
+- **Production**: `docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
+
 ### Option 2: Development Setup (Shell Scripts)
 
 <details>
