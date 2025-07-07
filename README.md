@@ -181,25 +181,6 @@ That's it! 🎉 Semantik is now running with:
    ```
 </details>
 
-### Option 3: Manual Installation
-
-<details>
-<summary>For advanced users who want full control</summary>
-
-1. **Start services individually:**
-   ```bash
-   # Terminal 1: Search API
-   poetry run python -m packages.vecpipe.search_api
-   
-   # Terminal 2: WebUI
-   poetry run uvicorn packages.webui.main:app --host 0.0.0.0 --port 8080
-   ```
-
-2. **Or use the Makefile:**
-   ```bash
-   make run  # Starts the WebUI with auto-reload
-   ```
-</details>
 
 ## 🤝 Semantik vs. The Alternatives
 
