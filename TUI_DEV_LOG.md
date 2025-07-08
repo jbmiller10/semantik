@@ -403,6 +403,101 @@ This is more intuitive and shorter than `docker-setup`.
 - Handles Windows path differences
 - Clear instructions per platform
 
+### Enhancement Session 8: Improved NVIDIA Container Toolkit Handling
+
+#### User Request
+- Clarify confusing GPU detection when NVIDIA GPU exists but Docker can't use it
+- Avoid reboot requirement after installing NVIDIA Container Toolkit
+
+#### Implementation Details
+
+1. **Clearer GPU Detection Messages**:
+   - Now explicitly states "NVIDIA GPU detected on host system"
+   - Clearly indicates "Docker cannot access GPU (NVIDIA Container Toolkit not installed)"
+   - Explains this is a one-time setup for GPU passthrough to containers
+
+2. **Better Docker GPU Test**:
+   - Changed from `nvidia/cuda:11.0-base` (deprecated) to `ubuntu:22.04`
+   - More reliable test that doesn't depend on specific CUDA versions
+   - Added "Failed to initialize NVML" to error indicators
+
+3. **Retry Logic After Installation**:
+   - Added 5-second delay after Docker daemon restart
+   - Implements 3 retry attempts with 3-second delays
+   - Avoids false negatives from Docker not being fully ready
+
+4. **Improved Failure Handling**:
+   - Provides specific commands to try manually
+   - Mentions rootless Docker considerations
+   - Offers to continue with CPU mode instead of blocking
+
+#### Technical Changes
+- Added `time` import at module level
+- Replaced immediate test with delayed retry mechanism
+- Enhanced error messages with actionable solutions
+
+### Enhancement Session 9: Proper GPU Support in Docker
+
+#### User Request
+- Fix Docker GPU support - containers need CUDA libraries
+
+#### Problem Discovered
+- The base Dockerfile uses `python:3.12-slim` which has no CUDA libraries
+- Even with NVIDIA Container Toolkit, PyTorch installs CPU-only version
+- Containers cannot use GPU without CUDA runtime libraries
+
+#### Implementation Details
+
+1. **Created GPU-Specific Dockerfile** (`Dockerfile.gpu`):
+   - Uses `nvidia/cuda:12.1.0-runtime-ubuntu22.04` as base
+   - Installs Python 3.12 from deadsnakes PPA
+   - Forces PyTorch GPU version with `torch==2.1.0+cu121`
+   - Includes all CUDA runtime libraries
+
+2. **Created Docker Compose GPU Override** (`docker-compose.gpu.yml`):
+   - Overrides build to use `Dockerfile.gpu`
+   - Sets CUDA environment variables
+   - Configures PyTorch memory allocation
+
+3. **Updated Wizard Logic**:
+   - Added `_get_compose_files()` helper method
+   - GPU mode uses: `-f docker-compose.yml -f docker-compose.gpu.yml`
+   - CPU mode uses: `-f docker-compose-cpu-only.yml`
+   - All Docker commands updated to use compose file lists
+
+#### Technical Changes
+- Wizard now properly chains compose files for GPU builds
+- Separate Dockerfiles for CPU vs GPU (cleaner than multi-stage)
+- GPU containers will have full CUDA support
+
+### Enhancement Session 10: CUDA Safety and Compatibility
+
+#### User Concern
+- Don't mess up user's existing CUDA installation
+
+#### Implementation Details
+
+1. **Added Driver Version Detection**:
+   - Shows NVIDIA driver version during GPU detection
+   - Indicates compatibility level (CUDA 12.x, 11.x, or too old)
+   - Helps users understand if their system is compatible
+
+2. **Created GPU Docker Guide** (`docs/GPU_DOCKER_GUIDE.md`):
+   - Explains that container CUDA is isolated from host
+   - Shows compatibility matrix
+   - Addresses common concerns
+   - Provides troubleshooting guidance
+
+3. **Updated Messages**:
+   - Now explicitly states "This won't affect your host CUDA installation"
+   - Clear compatibility indicators based on driver version
+
+#### Key Safety Points
+- NVIDIA Container Toolkit is just a bridge, not CUDA
+- Container CUDA (12.1) is completely isolated from host
+- Host CUDA installation remains untouched
+- Driver compatibility is what matters, not host CUDA version
+
 ### Testing Plan
 
 1. Test with no .env file
@@ -415,3 +510,184 @@ This is more intuitive and shorter than `docker-setup`.
 8. Test configuration persistence and reload
 9. Test service monitor functions
 10. Test start/restart behavior when services are already running
+11. Test NVIDIA Container Toolkit installation flow
+12. Test GPU detection with/without toolkit installed
+13. Test GPU functionality inside Docker containers
+14. Verify PyTorch CUDA availability in containers
+15. Test with different host CUDA versions (11.x, 12.x)
+16. Verify host CUDA remains unchanged after setup
+
+### Enhancement Session 11: Fix NVIDIA Toolkit Test Issues
+
+#### Problem Found
+- The GPU test was failing because `ubuntu:22.04` doesn't have `nvidia-smi` installed
+- Installation succeeded but test was using wrong image
+
+#### Implementation Details
+
+1. **Fixed GPU Runtime Test**:
+   - First tests if `--gpus` flag is recognized  
+   - Then tests with `nvidia/cuda:11.8.0-base-ubuntu22.04` which has nvidia-smi
+   - Better error detection for specific toolkit issues
+
+2. **Improved Installation Process**:
+   - Added `systemctl daemon-reload` to all installation methods
+   - Added Docker service status check during testing
+   - Increased retry delays from 3 to 5 seconds
+
+3. **Created Diagnostic Tools**:
+   - `test_nvidia_toolkit.sh` - Comprehensive diagnostic script
+   - `fix_nvidia_toolkit.sh` - Manual fix script for common issues
+
+4. **Enhanced Error Messages**:
+   - Now provides specific commands to fix issues
+   - Mentions WSL2-specific considerations
+   - References the fix script for quick resolution
+
+#### Key Improvements
+- More robust GPU testing with proper CUDA images
+- Better diagnostics when things go wrong
+- Manual fix script for stubborn cases
+- Clear guidance for troubleshooting
+
+### Enhancement Session 12: WSL2 GPU Support Fix
+
+#### Problem Identified
+- In WSL2, the error `libnvidia-ml.so.1: cannot open shared object file` occurs
+- Docker can't find NVIDIA libraries from the Windows host
+- This is a WSL2-specific issue where `/usr/lib/wsl/lib/` paths aren't accessible to Docker
+
+#### Implementation Details
+
+1. **Created WSL2-Specific Fix Script** (`fix_wsl2_gpu.sh`):
+   - Detects WSL2 environment
+   - Creates symbolic links to Windows NVIDIA libraries
+   - Updates Docker's library path configuration
+   - Adds WSL lib path to system ldconfig
+
+2. **Enhanced Wizard WSL2 Detection**:
+   - Detects if running in WSL2 by checking `/proc/version`
+   - Checks for `/dev/dxg` (WSL2 GPU device)
+   - Provides WSL2-specific error messages and fixes
+
+3. **Updated GPU Docker Guide**:
+   - Added comprehensive WSL2 section
+   - Explains Windows driver requirement
+   - Provides troubleshooting steps
+
+#### Key Points for WSL2 Users
+- NVIDIA drivers must be installed on **Windows**, not inside WSL2
+- WSL2 exposes GPU through `/dev/dxg` and libraries in `/usr/lib/wsl/lib/`
+- Docker needs special configuration to access these WSL2 paths
+- The fix script automates the necessary symbolic links and config
+
+### Enhancement Session 13: Final WSL2 GPU Resolution
+
+#### Problem
+- Native Docker in WSL2 had persistent issues with nvidia-container-cli
+- Error: `libnvidia-ml.so.1: cannot open shared object file`
+- Multiple fix attempts couldn't resolve the library path issue
+
+#### Solution
+- **Docker Desktop for Windows** (with WSL2 backend) works perfectly
+- Docker Desktop automatically handles GPU passthrough for WSL2
+- No manual configuration needed
+
+#### Additional Fix
+- Fixed duplicate environment variables in `docker-compose.gpu.yml`
+- `CUDA_VISIBLE_DEVICES` was defined in both base and GPU override files
+- Removed duplicates, kept only GPU-specific settings
+
+### Summary of GPU Support Improvements
+
+1. **Clear Detection & Messaging**
+   - Wizard detects GPU and driver versions
+   - WSL2-specific messages and guidance
+   - Explains Docker GPU requirements clearly
+
+2. **Proper GPU Docker Images**
+   - Created `Dockerfile.gpu` with CUDA base image
+   - Forces PyTorch GPU version installation
+   - Includes all necessary CUDA libraries
+
+3. **Docker Compose Configuration**
+   - GPU override file for GPU-specific settings
+   - Fixed duplicate environment variables
+   - Proper compose file chaining in wizard
+
+4. **Comprehensive Documentation**
+   - GPU Docker guide with compatibility matrix
+   - WSL2-specific troubleshooting section
+   - Multiple fix scripts for different scenarios
+
+5. **Recommended Setup for WSL2 Users**
+   - Install Docker Desktop on Windows
+   - Enable WSL2 backend in Docker Desktop
+   - Run the wizard with GPU mode
+   - Docker Desktop handles all GPU passthrough automatically
+
+## Session Update: 2025-01-08
+
+### GPU Support Resolution
+
+#### Issue Discovered
+User reported GPU detection confusion - wizard detected GPU but Docker couldn't access it. Investigation revealed:
+- User had NVIDIA drivers on Windows but was using native Docker in WSL2
+- Native Docker in WSL2 has limited GPU passthrough support
+- NVIDIA Container Toolkit installation was complex and often failed
+
+#### Solution Implemented
+1. **Docker Desktop Resolution**
+   - User installed Docker Desktop for Windows (not in WSL2)
+   - Docker Desktop automatically handles GPU passthrough to WSL2
+   - No manual NVIDIA Container Toolkit configuration needed
+
+2. **Dockerfile Issues Fixed**
+   - Initial `Dockerfile.gpu` had package installation failures with CUDA base images
+   - Created `Dockerfile.gpu-pytorch` using official PyTorch image:
+     - Base: `pytorch/pytorch:2.7.1-cuda12.6-cudnn9-runtime`
+     - Includes Python 3.11, CUDA 12.6, cuDNN 9
+     - Pre-installed PyTorch with GPU support
+   - Fixed stage naming issue (runtime-gpu → runtime)
+   - Final image size: 19.1GB (expected for GPU-enabled ML image)
+
+3. **Docker Compose Configuration**
+   - Fixed duplicate CUDA_VISIBLE_DEVICES in docker-compose.gpu.yml
+   - Removed from GPU overlay since base compose already sets it
+
+#### Key Learnings
+- WSL2 users should use Docker Desktop for GPU support, not native Docker
+- PyTorch base images are more reliable than manual CUDA setup
+- GPU-enabled ML Docker images are typically 15-20GB due to CUDA/PyTorch
+- Stage names in Dockerfile must match docker-compose target specifications
+
+## Session Update: 2025-01-08 - Simplified to Single Dockerfile
+
+### Simplification Implemented
+
+After research and testing, confirmed that **a single Dockerfile can handle both CPU and GPU deployments**:
+
+1. **PyTorch Auto-Detection Works**
+   - PyTorch's `torch.cuda.is_available()` correctly detects GPU availability in containers
+   - When Docker provides GPU access (via `--gpus` or compose config), PyTorch uses it
+   - When no GPU is available, PyTorch automatically falls back to CPU
+   - Poetry installs the appropriate PyTorch version that supports both
+
+2. **Cleanup Performed**
+   - **Removed**: `Dockerfile.gpu`, `Dockerfile.gpu-pytorch`, `Dockerfile.gpu.v2`
+   - **Removed**: `docker-compose.gpu.yml`, `docker-compose-cpu-only.yml`
+   - **Removed**: 10 GPU-specific helper scripts (fix_wsl2_gpu.sh, etc.)
+   - **Removed**: GPU-specific documentation files
+   - **Updated**: `docker_setup_tui.py` to always use main `docker-compose.yml`
+
+3. **Benefits of Single Dockerfile Approach**
+   - Simpler maintenance - one Dockerfile to update
+   - Automatic GPU detection - no user configuration needed
+   - Same image works everywhere - deploy on CPU or GPU without rebuilding
+   - Smaller overall repository - removed redundant files
+
+4. **How It Works Now**
+   - `docker-compose.yml` includes GPU device reservation
+   - If GPU is available, Docker provides access and PyTorch uses it
+   - If GPU is not available, the container runs fine on CPU
+   - No manual configuration or separate builds required
