@@ -8,6 +8,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -28,6 +29,8 @@ class DockerSetupTUI:
         self.docker_available = False
         self.compose_available = False
         self.docker_gpu_available = False
+        self.driver_version: Optional[str] = None
+        self.is_wsl2 = False
 
     def run(self) -> None:
         """Main entry point for the TUI"""
@@ -134,18 +137,35 @@ class DockerSetupTUI:
         # Check GPU availability
         self.gpu_available = self._check_gpu()
         if self.gpu_available:
-            console.print("[green]✓[/green] GPU detected (NVIDIA)")
+            gpu_msg = "[green]✓[/green] NVIDIA GPU detected on host system"
+            if self.driver_version:
+                gpu_msg += f" (Driver: {self.driver_version})"
+                # Check driver compatibility
+                try:
+                    driver_major = int(self.driver_version.split('.')[0])
+                    if driver_major >= 525:
+                        gpu_msg += " [green]✓ CUDA 12.x compatible[/green]"
+                    elif driver_major >= 470:
+                        gpu_msg += " [yellow]⚠ CUDA 11.x compatible (older)[/yellow]"
+                    else:
+                        gpu_msg += " [red]⚠ Driver may be too old[/red]"
+                except:
+                    pass
+            console.print(gpu_msg)
 
             # Check Docker GPU runtime
-            console.print("  [dim]Checking Docker GPU support...[/dim]")
+            console.print("  [dim]Checking if Docker can access GPU...[/dim]")
             self.docker_gpu_available = self._check_docker_gpu_runtime()
             if self.docker_gpu_available:
-                console.print("  [green]✓[/green] Docker GPU runtime available")
+                console.print("  [green]✓[/green] Docker GPU runtime ready (NVIDIA Container Toolkit installed)")
             else:
-                console.print("  [yellow]![/yellow] Docker GPU runtime not configured")
-                console.print("  [dim]Installation will be offered if you select GPU mode[/dim]")
+                console.print("  [yellow]![/yellow] Docker cannot access GPU (NVIDIA Container Toolkit not installed)")
+                if self.is_wsl2:
+                    console.print("  [dim]→ WSL2 detected - GPU support requires Windows NVIDIA drivers[/dim]")
+                console.print("  [dim]→ The wizard will offer to install it if you choose GPU mode[/dim]")
+                console.print("  [dim]→ This won't affect your host CUDA installation[/dim]")
         else:
-            console.print("[yellow]![/yellow] No GPU detected (CPU mode available)")
+            console.print("[yellow]![/yellow] No NVIDIA GPU detected (CPU mode will be used)")
             self.docker_gpu_available = False
 
         console.print()
@@ -166,9 +186,34 @@ class DockerSetupTUI:
 
     def _check_gpu(self) -> bool:
         """Check if NVIDIA GPU is available"""
+        # Check if running in WSL2
+        self.is_wsl2 = False
+        try:
+            with open("/proc/version", "r") as f:
+                if "microsoft" in f.read().lower():
+                    self.is_wsl2 = True
+        except:
+            pass
+        
         try:
             result = subprocess.run(["nvidia-smi"], capture_output=True, text=True)
-            return result.returncode == 0
+            if result.returncode == 0:
+                # Try to get driver version
+                driver_result = subprocess.run(
+                    ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
+                    capture_output=True,
+                    text=True
+                )
+                if driver_result.returncode == 0:
+                    self.driver_version = driver_result.stdout.strip()
+                else:
+                    self.driver_version = None
+                return True
+            elif self.is_wsl2:
+                # In WSL2, nvidia-smi might not work but GPU could still be available
+                if Path("/dev/dxg").exists():
+                    return True
+            return False
         except:
             return False
 
@@ -179,29 +224,43 @@ class DockerSetupTUI:
 
         try:
             # Test if Docker can run with GPU support
+            # First try a simple test to see if --gpus flag works
             result = subprocess.run(
-                ["docker", "run", "--rm", "--gpus", "all", "nvidia/cuda:11.0-base", "nvidia-smi"],
+                ["docker", "run", "--rm", "--gpus", "all", "ubuntu:22.04", "echo", "GPU test"],
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=10,
             )
 
-            # Check if the command succeeded and nvidia-smi output is present
-            if result.returncode == 0 and "NVIDIA-SMI" in result.stdout:
-                return True
-
-            # Check for common error indicators
-            error_indicators = [
-                "nvidia-container-cli",
-                "libnvidia-ml.so",
-                "could not select device driver",
-                "unknown flag: --gpus",
-            ]
-            error_text = result.stderr.lower() if result.stderr else ""
-            for indicator in error_indicators:
-                if indicator in error_text:
-                    return False
-
+            # First check if --gpus flag is recognized at all
+            if "unknown flag: --gpus" in result.stderr.lower():
+                return False
+            
+            # If basic test succeeded, Docker recognizes GPU flag
+            if result.returncode == 0:
+                # Now test with actual CUDA image to verify GPU access
+                cuda_result = subprocess.run(
+                    ["docker", "run", "--rm", "--gpus", "all", "nvidia/cuda:11.8.0-base-ubuntu22.04", "nvidia-smi"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                
+                # Check if nvidia-smi worked in CUDA container
+                if cuda_result.returncode == 0 and "NVIDIA-SMI" in cuda_result.stdout:
+                    return True
+                
+                # Check for nvidia-container-toolkit specific errors
+                error_indicators = [
+                    "could not select device driver",
+                    "nvidia-container-cli",
+                    "libnvidia-ml.so.1: cannot open shared object file",
+                ]
+                error_text = cuda_result.stderr.lower() if cuda_result.stderr else ""
+                for indicator in error_indicators:
+                    if indicator.lower() in error_text:
+                        return False
+            
             return False
         except subprocess.TimeoutExpired:
             return False
@@ -291,6 +350,8 @@ class DockerSetupTUI:
             ["sudo", "apt-get", "update"],
             ["sudo", "apt-get", "install", "-y", "nvidia-container-toolkit"],
             ["sudo", "nvidia-ctk", "runtime", "configure", "--runtime=docker"],
+            # Ensure Docker daemon reloads config
+            ["sudo", "systemctl", "daemon-reload"],
             ["sudo", "systemctl", "restart", "docker"],
         ]
 
@@ -318,15 +379,55 @@ class DockerSetupTUI:
             else:
                 console.print("[green]✓ Success[/green]\n")
 
-        # Test if it works now
+        # Test if it works now, with retries
         console.print("[bold]Testing GPU support...[/bold]")
-        if self._check_docker_gpu_runtime():
-            console.print("[green]✓ NVIDIA Container Toolkit installed successfully![/green]")
-            return True
+        console.print("[dim]Waiting for Docker daemon to fully restart...[/dim]")
+        
+        # Give Docker daemon time to restart
+        time.sleep(5)
+        
+        # Check Docker daemon status first
+        daemon_check = subprocess.run(
+            ["sudo", "systemctl", "is-active", "docker"],
+            capture_output=True,
+            text=True
+        )
+        if daemon_check.stdout.strip() != "active":
+            console.print("[yellow]Docker service is not active. Attempting to start it...[/yellow]")
+            subprocess.run(["sudo", "systemctl", "start", "docker"], capture_output=True)
+            time.sleep(3)
+        
+        # Try up to 3 times with delays
+        for attempt in range(3):
+            if attempt > 0:
+                console.print(f"[dim]Retry attempt {attempt + 1}/3...[/dim]")
+                time.sleep(5)  # Increase delay between retries
+            
+            if self._check_docker_gpu_runtime():
+                console.print("[green]✓ NVIDIA Container Toolkit installed successfully![/green]")
+                return True
+        
+        # If still failing, provide detailed help
+        console.print("[yellow]GPU support test failed after installation.[/yellow]")
+        console.print("\nPossible solutions:")
+        
+        if self.is_wsl2:
+            console.print("1. [bold]WSL2 detected![/bold] Run: [cyan]sudo bash fix_wsl2_gpu.sh[/cyan]")
+            console.print("2. Ensure Windows has NVIDIA drivers installed (not WSL)")
+            console.print("3. Restart WSL from Windows: [cyan]wsl --shutdown[/cyan]")
+            console.print("4. Check WSL2 GPU support: [cyan]ls -la /dev/dxg[/cyan]")
         else:
-            console.print("[red]Installation completed but GPU support test failed.[/red]")
-            console.print("You may need to log out and back in, or reboot.")
-            return False
+            console.print("1. Run the fix script: [cyan]sudo bash fix_nvidia_toolkit.sh[/cyan]")
+            console.print("2. Or manually run:")
+            console.print("   [cyan]sudo nvidia-ctk runtime configure --runtime=docker[/cyan]")
+            console.print("   [cyan]sudo systemctl daemon-reload[/cyan]")
+            console.print("   [cyan]sudo systemctl restart docker[/cyan]")
+        
+        console.print("5. Check Docker logs: [cyan]sudo journalctl -u docker -n 50[/cyan]")
+        console.print("6. As a last resort, reboot the system")
+        console.print("\nYou can continue with CPU mode for now and enable GPU later.")
+        console.print("To retry GPU setup later, run: [cyan]make wizard[/cyan]")
+        return False
 
     def _install_nvidia_toolkit_rhel(self) -> bool:
         """Install NVIDIA Container Toolkit on RHEL/Fedora/CentOS"""
@@ -337,6 +438,7 @@ class DockerSetupTUI:
         regular_commands: List[List[str]] = [
             ["sudo", "yum", "install", "-y", "nvidia-container-toolkit"],
             ["sudo", "nvidia-ctk", "runtime", "configure", "--runtime=docker"],
+            ["sudo", "systemctl", "daemon-reload"],
             ["sudo", "systemctl", "restart", "docker"],
         ]
 
@@ -363,15 +465,55 @@ class DockerSetupTUI:
             else:
                 console.print("[green]✓ Success[/green]\n")
 
-        # Test if it works now
+        # Test if it works now, with retries
         console.print("[bold]Testing GPU support...[/bold]")
-        if self._check_docker_gpu_runtime():
-            console.print("[green]✓ NVIDIA Container Toolkit installed successfully![/green]")
-            return True
+        console.print("[dim]Waiting for Docker daemon to fully restart...[/dim]")
+        
+        # Give Docker daemon time to restart
+        time.sleep(5)
+        
+        # Check Docker daemon status first
+        daemon_check = subprocess.run(
+            ["sudo", "systemctl", "is-active", "docker"],
+            capture_output=True,
+            text=True
+        )
+        if daemon_check.stdout.strip() != "active":
+            console.print("[yellow]Docker service is not active. Attempting to start it...[/yellow]")
+            subprocess.run(["sudo", "systemctl", "start", "docker"], capture_output=True)
+            time.sleep(3)
+        
+        # Try up to 3 times with delays
+        for attempt in range(3):
+            if attempt > 0:
+                console.print(f"[dim]Retry attempt {attempt + 1}/3...[/dim]")
+                time.sleep(5)  # Increase delay between retries
+            
+            if self._check_docker_gpu_runtime():
+                console.print("[green]✓ NVIDIA Container Toolkit installed successfully![/green]")
+                return True
+        
+        # If still failing, provide detailed help
+        console.print("[yellow]GPU support test failed after installation.[/yellow]")
+        console.print("\nPossible solutions:")
+        
+        if self.is_wsl2:
+            console.print("1. [bold]WSL2 detected![/bold] Run: [cyan]sudo bash fix_wsl2_gpu.sh[/cyan]")
+            console.print("2. Ensure Windows has NVIDIA drivers installed (not WSL)")
+            console.print("3. Restart WSL from Windows: [cyan]wsl --shutdown[/cyan]")
+            console.print("4. Check WSL2 GPU support: [cyan]ls -la /dev/dxg[/cyan]")
         else:
-            console.print("[red]Installation completed but GPU support test failed.[/red]")
-            console.print("You may need to log out and back in, or reboot.")
-            return False
+            console.print("1. Run the fix script: [cyan]sudo bash fix_nvidia_toolkit.sh[/cyan]")
+            console.print("2. Or manually run:")
+            console.print("   [cyan]sudo nvidia-ctk runtime configure --runtime=docker[/cyan]")
+            console.print("   [cyan]sudo systemctl daemon-reload[/cyan]")
+            console.print("   [cyan]sudo systemctl restart docker[/cyan]")
+        
+        console.print("5. Check Docker logs: [cyan]sudo journalctl -u docker -n 50[/cyan]")
+        console.print("6. As a last resort, reboot the system")
+        console.print("\nYou can continue with CPU mode for now and enable GPU later.")
+        console.print("To retry GPU setup later, run: [cyan]make wizard[/cyan]")
+        return False
 
     def _install_nvidia_toolkit_arch(self) -> bool:
         """Install NVIDIA Container Toolkit on Arch Linux"""
@@ -411,15 +553,55 @@ class DockerSetupTUI:
             console.print("No AUR helper found. Using official NVIDIA repositories...\n")
             return self._install_nvidia_toolkit_arch_official()
 
-        # Test if it works now
+        # Test if it works now, with retries
         console.print("[bold]Testing GPU support...[/bold]")
-        if self._check_docker_gpu_runtime():
-            console.print("[green]✓ NVIDIA Container Toolkit installed successfully![/green]")
-            return True
+        console.print("[dim]Waiting for Docker daemon to fully restart...[/dim]")
+        
+        # Give Docker daemon time to restart
+        time.sleep(5)
+        
+        # Check Docker daemon status first
+        daemon_check = subprocess.run(
+            ["sudo", "systemctl", "is-active", "docker"],
+            capture_output=True,
+            text=True
+        )
+        if daemon_check.stdout.strip() != "active":
+            console.print("[yellow]Docker service is not active. Attempting to start it...[/yellow]")
+            subprocess.run(["sudo", "systemctl", "start", "docker"], capture_output=True)
+            time.sleep(3)
+        
+        # Try up to 3 times with delays
+        for attempt in range(3):
+            if attempt > 0:
+                console.print(f"[dim]Retry attempt {attempt + 1}/3...[/dim]")
+                time.sleep(5)  # Increase delay between retries
+            
+            if self._check_docker_gpu_runtime():
+                console.print("[green]✓ NVIDIA Container Toolkit installed successfully![/green]")
+                return True
+        
+        # If still failing, provide detailed help
+        console.print("[yellow]GPU support test failed after installation.[/yellow]")
+        console.print("\nPossible solutions:")
+        
+        if self.is_wsl2:
+            console.print("1. [bold]WSL2 detected![/bold] Run: [cyan]sudo bash fix_wsl2_gpu.sh[/cyan]")
+            console.print("2. Ensure Windows has NVIDIA drivers installed (not WSL)")
+            console.print("3. Restart WSL from Windows: [cyan]wsl --shutdown[/cyan]")
+            console.print("4. Check WSL2 GPU support: [cyan]ls -la /dev/dxg[/cyan]")
         else:
-            console.print("[red]Installation completed but GPU support test failed.[/red]")
-            console.print("You may need to log out and back in, or reboot.")
-            return False
+            console.print("1. Run the fix script: [cyan]sudo bash fix_nvidia_toolkit.sh[/cyan]")
+            console.print("2. Or manually run:")
+            console.print("   [cyan]sudo nvidia-ctk runtime configure --runtime=docker[/cyan]")
+            console.print("   [cyan]sudo systemctl daemon-reload[/cyan]")
+            console.print("   [cyan]sudo systemctl restart docker[/cyan]")
+        
+        console.print("5. Check Docker logs: [cyan]sudo journalctl -u docker -n 50[/cyan]")
+        console.print("6. As a last resort, reboot the system")
+        console.print("\nYou can continue with CPU mode for now and enable GPU later.")
+        console.print("To retry GPU setup later, run: [cyan]make wizard[/cyan]")
+        return False
 
     def _install_nvidia_toolkit_arch_official(self) -> bool:
         """Install NVIDIA Container Toolkit on Arch using manual build"""
@@ -920,22 +1102,22 @@ class DockerSetupTUI:
 
         console.print()
 
-        # Determine compose file
-        compose_file = "docker-compose.yml" if self.config["USE_GPU"] == "true" else "docker-compose-cpu-only.yml"
+        # Get compose files
+        compose_files = self._get_compose_files()
 
         # Execute based on choice
         if "Build and start" in action:
-            self._run_docker_command(["docker", "compose", "-f", compose_file, "build"], "Building images")
-            self._run_docker_command(["docker", "compose", "-f", compose_file, "up", "-d"], "Starting services")
+            self._run_docker_command(["docker", "compose"] + compose_files + ["build"], "Building images")
+            self._run_docker_command(["docker", "compose"] + compose_files + ["up", "-d"], "Starting services")
         elif "Start services" in action:
-            self._run_docker_command(["docker", "compose", "-f", compose_file, "up", "-d"], "Starting services")
+            self._run_docker_command(["docker", "compose"] + compose_files + ["up", "-d"], "Starting services")
         else:
-            self._run_docker_command(["docker", "compose", "-f", compose_file, "build"], "Building images")
+            self._run_docker_command(["docker", "compose"] + compose_files + ["build"], "Building images")
             return
 
         # Check services
         console.print("\n[bold]Checking service status...[/bold]")
-        self._run_docker_command(["docker", "compose", "-f", compose_file, "ps"], "Service status")
+        self._run_docker_command(["docker", "compose"] + compose_files + ["ps"], "Service status")
 
         # Success message
         console.print("\n[bold green]Setup Complete![/bold green]")
@@ -951,7 +1133,7 @@ class DockerSetupTUI:
 
         if view_logs:
             console.print("\n[yellow]Press Ctrl+C to exit logs[/yellow]\n")
-            subprocess.run(["docker", "compose", "-f", compose_file, "logs", "-f"])
+            subprocess.run(["docker", "compose"] + compose_files + ["logs", "-f"])
 
     def _run_docker_command(self, cmd: List[str], description: str) -> bool:
         """Run a Docker command with progress display"""
@@ -972,6 +1154,12 @@ class DockerSetupTUI:
             except Exception as e:
                 console.print(f"\n[red]Error running command: {e}[/red]")
                 return False
+
+    def _get_compose_files(self) -> List[str]:
+        """Get the appropriate docker-compose file arguments based on GPU configuration"""
+        # Always use the main docker-compose.yml
+        # PyTorch will automatically detect GPU availability
+        return ["-f", "docker-compose.yml"]
 
     def _check_existing_config(self) -> bool:
         """Check if an existing configuration exists"""
@@ -1045,35 +1233,33 @@ class DockerSetupTUI:
             if action is None or "Exit" in action:
                 break
 
-            compose_file = (
-                "docker-compose.yml" if self.config.get("USE_GPU") == "true" else "docker-compose-cpu-only.yml"
-            )
+            compose_files = self._get_compose_files()
 
             if "Start all" in action:
                 # Check if services are already running
                 if self._are_services_running():
                     console.print("[yellow]Services are already running. Restarting...[/yellow]")
-                    self._run_docker_command(["docker", "compose", "-f", compose_file, "down"], "Stopping services")
-                    self._run_docker_command(["docker", "compose", "-f", compose_file, "up", "-d"], "Starting services")
+                    self._run_docker_command(["docker", "compose"] + compose_files + ["down"], "Stopping services")
+                    self._run_docker_command(["docker", "compose"] + compose_files + ["up", "-d"], "Starting services")
                 else:
-                    self._run_docker_command(["docker", "compose", "-f", compose_file, "up", "-d"], "Starting services")
+                    self._run_docker_command(["docker", "compose"] + compose_files + ["up", "-d"], "Starting services")
             elif "Stop all" in action:
-                self._run_docker_command(["docker", "compose", "-f", compose_file, "down"], "Stopping services")
+                self._run_docker_command(["docker", "compose"] + compose_files + ["down"], "Stopping services")
             elif "Restart all" in action:
-                self._run_docker_command(["docker", "compose", "-f", compose_file, "restart"], "Restarting services")
+                self._run_docker_command(["docker", "compose"] + compose_files + ["restart"], "Restarting services")
             elif "Rebuild" in action:
-                self._run_docker_command(["docker", "compose", "-f", compose_file, "build"], "Building images")
-                self._run_docker_command(["docker", "compose", "-f", compose_file, "up", "-d"], "Starting services")
+                self._run_docker_command(["docker", "compose"] + compose_files + ["build"], "Building images")
+                self._run_docker_command(["docker", "compose"] + compose_files + ["up", "-d"], "Starting services")
             elif "View logs" in action and "specific" not in action:
                 console.print("\n[yellow]Press Ctrl+C to exit logs[/yellow]\n")
-                subprocess.run(["docker", "compose", "-f", compose_file, "logs", "-f", "--tail", "50"])
+                subprocess.run(["docker", "compose"] + compose_files + ["logs", "-f", "--tail", "50"])
             elif "specific service" in action:
                 services = self._get_services()
                 if services:
                     service = questionary.select("Select service:", choices=services).ask()
                     if service:
                         console.print(f"\n[yellow]Viewing logs for {service}. Press Ctrl+C to exit[/yellow]\n")
-                        subprocess.run(["docker", "compose", "-f", compose_file, "logs", "-f", "--tail", "50", service])
+                        subprocess.run(["docker", "compose"] + compose_files + ["logs", "-f", "--tail", "50", service])
             elif "health" in action:
                 self._check_service_health()
 
@@ -1082,10 +1268,10 @@ class DockerSetupTUI:
 
     def _show_service_status(self) -> None:
         """Display current status of all services"""
-        compose_file = "docker-compose.yml" if self.config.get("USE_GPU") == "true" else "docker-compose-cpu-only.yml"
+        compose_files = self._get_compose_files()
 
         result = subprocess.run(
-            ["docker", "compose", "-f", compose_file, "ps", "--format", "json"], capture_output=True, text=True
+            ["docker", "compose"] + compose_files + ["ps", "--format", "json"], capture_output=True, text=True
         )
 
         if result.returncode == 0 and result.stdout:
@@ -1136,7 +1322,7 @@ class DockerSetupTUI:
                         table.add_row(name, status, port_str or "None", health)
             except:
                 # Fallback to simple ps output
-                result = subprocess.run(["docker", "compose", "-f", compose_file, "ps"], capture_output=True, text=True)
+                result = subprocess.run(["docker", "compose"] + compose_files + ["ps"], capture_output=True, text=True)
                 console.print("[yellow]Service Status:[/yellow]")
                 console.print(result.stdout)
                 return
@@ -1147,10 +1333,10 @@ class DockerSetupTUI:
 
     def _get_services(self) -> List[str]:
         """Get list of service names"""
-        compose_file = "docker-compose.yml" if self.config.get("USE_GPU") == "true" else "docker-compose-cpu-only.yml"
+        compose_files = self._get_compose_files()
 
         result = subprocess.run(
-            ["docker", "compose", "-f", compose_file, "config", "--services"], capture_output=True, text=True
+            ["docker", "compose"] + compose_files + ["config", "--services"], capture_output=True, text=True
         )
 
         if result.returncode == 0:
@@ -1187,10 +1373,10 @@ class DockerSetupTUI:
 
     def _are_services_running(self) -> bool:
         """Check if any services are currently running"""
-        compose_file = "docker-compose.yml" if self.config.get("USE_GPU") == "true" else "docker-compose-cpu-only.yml"
+        compose_files = self._get_compose_files()
 
         result = subprocess.run(
-            ["docker", "compose", "-f", compose_file, "ps", "--format", "json"], capture_output=True, text=True
+            ["docker", "compose"] + compose_files + ["ps", "--format", "json"], capture_output=True, text=True
         )
 
         if result.returncode == 0 and result.stdout:
@@ -1204,7 +1390,7 @@ class DockerSetupTUI:
             except:
                 # Fallback - check with simple ps
                 result = subprocess.run(
-                    ["docker", "compose", "-f", compose_file, "ps", "-q"], capture_output=True, text=True
+                    ["docker", "compose"] + compose_files + ["ps", "-q"], capture_output=True, text=True
                 )
                 return bool(result.stdout.strip())
 
