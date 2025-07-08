@@ -339,12 +339,63 @@ class DockerSetupTUI:
 
     def _install_nvidia_toolkit_debian(self) -> bool:
         """Install NVIDIA Container Toolkit on Debian/Ubuntu"""
-        # These commands need to be run with shell=True due to pipes
-        shell_commands: List[str] = [
-            # Add the package repository
-            "curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg",
-            "curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list",
-        ]
+        console.print("Running installation commands for Debian/Ubuntu...\n")
+
+        try:
+            # Step 1: Download and add GPG key
+            console.print("[dim]$ Downloading NVIDIA GPG key...[/dim]")
+            curl_gpg = subprocess.Popen(
+                ["curl", "-fsSL", "https://nvidia.github.io/libnvidia-container/gpgkey"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            gpg_result = subprocess.run(
+                ["sudo", "gpg", "--dearmor", "-o", "/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg"],
+                stdin=curl_gpg.stdout,
+                capture_output=True,
+                text=True
+            )
+            curl_gpg.wait()
+            
+            if gpg_result.returncode != 0:
+                console.print(f"[red]Error adding GPG key: {gpg_result.stderr}[/red]")
+                return False
+            console.print("[green]✓ GPG key added[/green]\n")
+
+            # Step 2: Download and process repository list
+            console.print("[dim]$ Setting up NVIDIA repository...[/dim]")
+            curl_list = subprocess.run(
+                ["curl", "-s", "-L", "https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list"],
+                capture_output=True,
+                text=True
+            )
+            
+            if curl_list.returncode != 0:
+                console.print(f"[red]Error downloading repository list: {curl_list.stderr}[/red]")
+                return False
+            
+            # Process the list with sed replacement
+            processed_list = curl_list.stdout.replace(
+                "deb https://",
+                "deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://"
+            )
+            
+            # Write to the repository list file
+            tee_result = subprocess.run(
+                ["sudo", "tee", "/etc/apt/sources.list.d/nvidia-container-toolkit.list"],
+                input=processed_list,
+                capture_output=True,
+                text=True
+            )
+            
+            if tee_result.returncode != 0:
+                console.print(f"[red]Error writing repository list: {tee_result.stderr}[/red]")
+                return False
+            console.print("[green]✓ Repository configured[/green]\n")
+
+        except Exception as e:
+            console.print(f"[red]Error during repository setup: {e}[/red]")
+            return False
 
         # These commands can be run normally
         regular_commands: List[List[str]] = [
@@ -355,19 +406,6 @@ class DockerSetupTUI:
             ["sudo", "systemctl", "daemon-reload"],
             ["sudo", "systemctl", "restart", "docker"],
         ]
-
-        console.print("Running installation commands for Debian/Ubuntu...\n")
-
-        # Execute shell commands first
-        for shell_cmd in shell_commands:
-            console.print(f"[dim]$ {shell_cmd}[/dim]")
-            result = subprocess.run(shell_cmd, shell=True, capture_output=True, text=True)
-
-            if result.returncode != 0:
-                console.print(f"[red]Error: {result.stderr}[/red]")
-                return False
-            else:
-                console.print("[green]✓ Success[/green]\n")
 
         # Execute regular commands
         for cmd_list in regular_commands:
@@ -432,8 +470,38 @@ class DockerSetupTUI:
 
     def _install_nvidia_toolkit_rhel(self) -> bool:
         """Install NVIDIA Container Toolkit on RHEL/Fedora/CentOS"""
-        # Shell command for repository setup
-        shell_command = "curl -s -L https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo | sudo tee /etc/yum.repos.d/nvidia-container-toolkit.repo"
+        console.print("Running installation commands for RHEL/Fedora/CentOS...\n")
+
+        try:
+            # Download repository configuration
+            console.print("[dim]$ Setting up NVIDIA repository...[/dim]")
+            curl_result = subprocess.run(
+                ["curl", "-s", "-L", "https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo"],
+                capture_output=True,
+                text=True
+            )
+            
+            if curl_result.returncode != 0:
+                console.print(f"[red]Error downloading repository config: {curl_result.stderr}[/red]")
+                return False
+            
+            # Write to repository file
+            tee_result = subprocess.run(
+                ["sudo", "tee", "/etc/yum.repos.d/nvidia-container-toolkit.repo"],
+                input=curl_result.stdout,
+                capture_output=True,
+                text=True
+            )
+            
+            if tee_result.returncode != 0:
+                console.print(f"[red]Error writing repository config: {tee_result.stderr}[/red]")
+                return False
+            
+            console.print("[green]✓ Repository configured[/green]\n")
+
+        except Exception as e:
+            console.print(f"[red]Error during repository setup: {e}[/red]")
+            return False
 
         # Regular commands
         regular_commands: List[List[str]] = [
@@ -442,18 +510,6 @@ class DockerSetupTUI:
             ["sudo", "systemctl", "daemon-reload"],
             ["sudo", "systemctl", "restart", "docker"],
         ]
-
-        console.print("Running installation commands for RHEL/Fedora/CentOS...\n")
-
-        # Execute shell command
-        console.print(f"[dim]$ {shell_command}[/dim]")
-        result = subprocess.run(shell_command, shell=True, capture_output=True, text=True)
-
-        if result.returncode != 0:
-            console.print(f"[red]Error: {result.stderr}[/red]")
-            return False
-        else:
-            console.print("[green]✓ Success[/green]\n")
 
         # Execute regular commands
         for cmd_list in regular_commands:
