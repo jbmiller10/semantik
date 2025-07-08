@@ -7,9 +7,9 @@ readme = "README.md"
 packages = [{include = "vecpipe", from = "packages"}, {include = "webui", from = "packages"}]
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = ">=3.11,<3.13"
 qdrant-client = "^1.9.0"
-sentence-transformers = "^2.5.1"
+sentence-transformers = "^3.0.0"
 fastapi = "^0.110.0"
 uvicorn = "^0.27.1"
 pyarrow = "^15.0.0"
@@ -37,6 +37,8 @@ numpy = "<2"
 pydantic-settings = "^2.10.1"
 slowapi = "^0.1.9"
 pptx2md = "^0.7.2"
+questionary = "^2.0.1"
+rich = "^13.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
@@ -50,7 +52,7 @@ types-requests = "^2.31.0"
 
 [tool.ruff]
 line-length = 120
-target-version = "py312"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = [
@@ -82,14 +84,14 @@ ignore = [
 
 [tool.black]
 line-length = 120
-target-version = ['py312']
+target-version = ['py311']
 
 [tool.isort]
 profile = "black"
 line_length = 120
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
