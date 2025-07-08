@@ -68,6 +68,14 @@ wizard:
 
 docker-up:
 	@echo "Starting Semantik services with Docker Compose..."
+	@echo "Setting up directories with correct permissions..."
+	@mkdir -p ./models ./data ./logs
+	@if command -v sudo >/dev/null 2>&1; then \
+		sudo chown -R 1000:1000 ./models ./data ./logs; \
+	else \
+		chown -R 1000:1000 ./models ./data ./logs 2>/dev/null || echo "WARNING: Could not set directory permissions. If you encounter permission errors, run: sudo chown -R 1000:1000 ./models ./data ./logs"; \
+	fi
+	@echo "✓ Directories ready"
 	@if [ ! -f .env ]; then \
 		echo "Creating .env file from .env.docker.example..."; \
 		cp .env.docker.example .env; \

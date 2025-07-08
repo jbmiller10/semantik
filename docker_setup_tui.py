@@ -8,6 +8,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -1204,6 +1205,28 @@ class DockerSetupTUI:
             json.dump(self.config, f, indent=2)
         console.print(f"[green]Configuration saved to {config_path}[/green]")
 
+    def _select_with_timeout(self, prompt: str, choices: List[str], timeout: int = 5) -> Optional[str]:
+        """Select menu with timeout for auto-refresh"""
+        result: Optional[str] = None
+        event = threading.Event()
+        
+        def get_input() -> None:
+            nonlocal result
+            result = questionary.select(prompt, choices=choices).ask()
+            event.set()
+        
+        # Start input thread
+        input_thread = threading.Thread(target=get_input)
+        input_thread.daemon = True
+        input_thread.start()
+        
+        # Wait for input or timeout
+        if event.wait(timeout):
+            return result
+        else:
+            # Timeout occurred, return None to trigger refresh
+            return None
+
     def _service_monitor(self) -> None:
         """Interactive service monitoring and management interface"""
         while True:
@@ -1215,7 +1238,9 @@ class DockerSetupTUI:
             self._show_service_status()
 
             console.print("\n[bold]Service Management[/bold]")
-            action = questionary.select(
+            console.print("[dim]Auto-refresh in 10 seconds...[/dim]")
+            
+            action = self._select_with_timeout(
                 "What would you like to do?",
                 choices=[
                     "Start all services",
@@ -1225,12 +1250,17 @@ class DockerSetupTUI:
                     "View logs",
                     "View specific service logs",
                     "Check service health",
-                    "Refresh status",
                     "Exit monitor",
                 ],
-            ).ask()
+                timeout=10
+            )
 
-            if action is None or "Exit" in action:
+            # If timeout occurred, refresh
+            if action is None:
+                continue
+            
+            # If user selected Exit
+            if "Exit" in action:
                 break
 
             compose_files = self._get_compose_files()

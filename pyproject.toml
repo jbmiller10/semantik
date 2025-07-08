@@ -9,7 +9,7 @@ packages = [{include = "vecpipe", from = "packages"}, {include = "webui", from =
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"
 qdrant-client = "^1.9.0"
-sentence-transformers = "^2.5.1"
+sentence-transformers = "^3.0.0"
 fastapi = "^0.110.0"
 uvicorn = "^0.27.1"
 pyarrow = "^15.0.0"
@@ -52,7 +52,7 @@ types-requests = "^2.31.0"
 
 [tool.ruff]
 line-length = 120
-target-version = "py312"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = [
@@ -84,14 +84,14 @@ ignore = [
 
 [tool.black]
 line-length = 120
-target-version = ['py312']
+target-version = ['py311']
 
 [tool.isort]
 profile = "black"
 line_length = 120
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
