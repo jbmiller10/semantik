@@ -75,6 +75,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env.backup
 .semantik-config.json
 .venv
 env/
