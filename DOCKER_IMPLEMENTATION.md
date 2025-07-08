@@ -155,6 +155,21 @@ cp nginx.conf.example nginx.conf
    - Documentation added for UID 1000 requirement
    - Proper directory permissions in Dockerfile
 
+## Python Version Standardization
+
+As of this implementation, both Dockerfiles use Python 3.11 for consistency:
+
+1. **Rationale for Python 3.11**:
+   - Better CUDA compatibility for GPU acceleration
+   - Already specified as the target in project tooling (ruff, black, mypy)
+   - Falls within the supported range (>=3.11,<3.13) in pyproject.toml
+   - No Python 3.12-specific features are used in the codebase
+
+2. **Benefits**:
+   - Consistent behavior across standard and CUDA builds
+   - Simplified debugging and troubleshooting
+   - Reduced potential for version-specific issues
+
 ## Known Limitations
 
 1. GPU support requires nvidia-docker runtime installation

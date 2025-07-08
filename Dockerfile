@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-ARG PYTHON_VERSION="3.12"
+ARG PYTHON_VERSION="3.11"
 ARG NODE_VERSION="20"
 
 # ============================================
@@ -73,7 +73,7 @@ WORKDIR /app
 
 # Copy Python packages from builder
 # Python installations use major.minor version in paths (e.g., python3.12 not python3.12.11)
-COPY --from=python-builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=python-builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=python-builder /usr/local/bin /usr/local/bin
 
 # Copy application code
