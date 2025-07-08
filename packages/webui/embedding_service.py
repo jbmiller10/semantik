@@ -6,8 +6,6 @@ Provides backward-compatible API with feature flags
 
 import gc
 import logging
-import os
-import time
 from typing import Any
 
 import numpy as np
@@ -80,73 +78,6 @@ def get_detailed_instruct(task_description: str, query: str) -> str:
     return f"Instruct: {task_description}\nQuery:{query}"
 
 
-def check_int8_compatibility() -> tuple[bool, str]:
-    """Check if INT8 quantization is available and working.
-
-    Returns:
-        tuple: (is_compatible, message) where is_compatible is True if INT8 can be used
-    """
-    try:
-        # Check CUDA availability
-        if not torch.cuda.is_available():
-            return False, "INT8 quantization requires CUDA GPU (no GPU detected)"
-
-        # Check C compiler for bitsandbytes JIT compilation
-        cc = os.environ.get("CC")
-        if not cc:
-            logger.warning("CC environment variable not set, setting to 'gcc'")
-            os.environ["CC"] = "gcc"
-            os.environ["CXX"] = "g++"
-
-        # Check bitsandbytes import
-        try:
-            import bitsandbytes as bnb
-
-            logger.debug(f"Bitsandbytes version: {bnb.__version__}")
-        except ImportError:
-            return False, "bitsandbytes package not installed"
-
-        # Check if we can create INT8 layers
-        try:
-            from bitsandbytes.nn import Linear8bitLt
-
-            # Test creating a small 8-bit layer
-            test_layer = Linear8bitLt(16, 16).cuda()
-            test_input = torch.randn(1, 16).cuda()
-            _ = test_layer(test_input)
-            del test_layer, test_input
-            torch.cuda.empty_cache()
-        except Exception as e:
-            error_str = str(e)
-            if "C compiler" in error_str:
-                return (
-                    False,
-                    "C compiler not found. Set CC=gcc environment variable or rebuild with docker-compose.cuda.yml",
-                )
-            return False, f"INT8 layer test failed: {error_str}"
-
-        # Check sentence-transformers version for non-Qwen models
-        try:
-            import sentence_transformers
-            from packaging import version
-
-            st_version = version.parse(sentence_transformers.__version__)
-            if st_version < version.parse("3.0.0"):
-                return False, f"sentence-transformers {st_version} doesn't support INT8 (need >= 3.0.0)"
-        except ImportError:
-            pass  # sentence-transformers might not be needed for Qwen models
-
-        # Check CUDA environment
-        cuda_home = os.environ.get("CUDA_HOME")
-        if not cuda_home:
-            logger.warning("CUDA_HOME not set, INT8 might have issues")
-
-        return True, "INT8 quantization is available"
-
-    except Exception as e:
-        return False, f"Unexpected error checking INT8 compatibility: {str(e)}"
-
-
 class EmbeddingService:
     """Unified service for generating embeddings with optional quantization and Qwen3 support"""
 
@@ -164,11 +95,7 @@ class EmbeddingService:
         self.current_batch_size: int | None = None
         self.successful_batches: int = 0
         self.min_batch_size: int = 4
-        # Check if we should allow fallback from INT8 to other quantizations
-        self.allow_quantization_fallback: bool = os.getenv("ALLOW_QUANTIZATION_FALLBACK", "true").lower() == "true"
-        logger.info(
-            f"Unified EmbeddingService initialized with device: {self.device}, mock_mode: {self.mock_mode}, allow_fallback: {self.allow_quantization_fallback}"
-        )
+        logger.info(f"Unified EmbeddingService initialized with device: {self.device}, mock_mode: {self.mock_mode}")
 
     def load_model(self, model_name: str, quantization: str = "float32") -> bool:
         """Load a model from HuggingFace with optional quantization
@@ -202,20 +129,6 @@ class EmbeddingService:
 
             logger.info(f"Loading model: {model_name} with quantization: {quantization}")
 
-            # Pre-flight check for INT8 quantization
-            if quantization == "int8" and self.device == "cuda":
-                is_compatible, compat_msg = check_int8_compatibility()
-                if not is_compatible:
-                    error_msg = f"INT8 quantization not available: {compat_msg}"
-                    logger.error(error_msg)
-                    if not self.allow_quantization_fallback:
-                        raise RuntimeError(error_msg)
-                    else:
-                        logger.warning("Falling back to float32 quantization")
-                        quantization = "float32"
-                else:
-                    logger.info(f"INT8 compatibility check passed: {compat_msg}")
-
             # Check if this is a Qwen3 model
             self.is_qwen3_model = "Qwen3-Embedding" in model_name
 
@@ -227,7 +140,6 @@ class EmbeddingService:
 
                 if quantization == "int8" and self.device == "cuda":
                     try:
-                        logger.info("Attempting to load Qwen3 model with INT8 quantization...")
                         from transformers import BitsAndBytesConfig
 
                         quantization_config = BitsAndBytesConfig(
@@ -236,112 +148,54 @@ class EmbeddingService:
                             bnb_8bit_use_double_quant=True,
                             bnb_8bit_quant_type="nf4",
                         )
-                        logger.info(f"Created BitsAndBytesConfig: {quantization_config}")
 
                         self.current_model = AutoModel.from_pretrained(
                             model_name, quantization_config=quantization_config, device_map="auto"
                         )
-                        logger.info("Successfully loaded Qwen3 model with INT8 quantization")
+                        logger.info("Loaded Qwen3 model with INT8 quantization")
                     except Exception as e:
-                        error_msg = f"Failed to load Qwen3 model with INT8 quantization: {str(e)}"
+                        error_msg = f"Failed to load model with INT8 quantization: {str(e)}"
                         logger.error(error_msg)
-                        logger.error(f"Error type: {type(e).__name__}")
-                        logger.error(f"Full error details:", exc_info=True)
                         raise RuntimeError(error_msg) from e
 
                 elif quantization == "float16" and self.device == "cuda":
-                    # Try to load model with retries
-                    max_retries = 3
-                    retry_delay = 2
-                    for attempt in range(max_retries):
-                        try:
-                            self.current_model = AutoModel.from_pretrained(
-                                model_name,
-                                torch_dtype=torch.float16,
-                                device_map={"": 0} if self.device == "cuda" else None,
-                                local_files_only=attempt > 0,
-                            )
-                            if self.device == "cpu" and self.current_model is not None:
-                                self.current_model = self.current_model.to(self.device)
-                            logger.info("Loaded Qwen3 model in float16 precision")
-                            break
-                        except Exception as e:
-                            if "429" in str(e) and attempt < max_retries - 1:
-                                logger.warning(f"Rate limited, retrying in {retry_delay} seconds...")
-                                time.sleep(retry_delay)
-                                retry_delay *= 2
-                            else:
-                                raise
+                    self.current_model = AutoModel.from_pretrained(
+                        model_name, torch_dtype=torch.float16, device_map={"": 0} if self.device == "cuda" else None
+                    )
+                    if self.device == "cpu" and self.current_model is not None:
+                        self.current_model = self.current_model.to(self.device)
+                    logger.info("Loaded Qwen3 model in float16 precision")
                 else:
-                    # Try to load model with retries
-                    max_retries = 3
-                    retry_delay = 2
-                    for attempt in range(max_retries):
-                        try:
-                            self.current_model = AutoModel.from_pretrained(model_name, local_files_only=attempt > 0).to(
-                                self.device
-                            )
-                            logger.info("Loaded Qwen3 model in float32 precision")
-                            break
-                        except Exception as e:
-                            if "429" in str(e) and attempt < max_retries - 1:
-                                logger.warning(f"Rate limited, retrying in {retry_delay} seconds...")
-                                time.sleep(retry_delay)
-                                retry_delay *= 2
-                            else:
-                                raise
+                    self.current_model = AutoModel.from_pretrained(model_name).to(self.device)
+                    logger.info("Loaded Qwen3 model in float32 precision")
 
             elif quantization == "int8" and self.device == "cuda":
                 # Use bitsandbytes for INT8 quantization
                 try:
-                    logger.info("Attempting to load standard model with INT8 quantization...")
                     import importlib.util
-
-                    from packaging import version
 
                     if importlib.util.find_spec("bitsandbytes") is None:
                         raise ImportError("bitsandbytes not available")
 
-                    # Check sentence-transformers version
-                    import sentence_transformers
+                    from transformers import BitsAndBytesConfig
 
-                    st_version = version.parse(sentence_transformers.__version__)
-                    logger.info(f"sentence-transformers version: {st_version}")
+                    # Configure 8-bit quantization
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_8bit=True,
+                        bnb_8bit_compute_dtype=torch.float16,
+                        bnb_8bit_use_double_quant=True,
+                        bnb_8bit_quant_type="nf4",
+                    )
 
-                    if st_version >= version.parse("3.0.0"):
-                        # Modern approach for v3.0.0+
-                        logger.info("Using v3.0+ method for INT8 quantization")
-                        from transformers import BitsAndBytesConfig
+                    # Load model with quantization
+                    self.current_model = SentenceTransformer(
+                        model_name, device=self.device, model_kwargs={"quantization_config": quantization_config}
+                    )
+                    logger.info("Loaded model with INT8 quantization")
 
-                        quantization_config = BitsAndBytesConfig(
-                            load_in_8bit=True,
-                            bnb_8bit_compute_dtype=torch.float16,
-                            bnb_8bit_use_double_quant=True,
-                            bnb_8bit_quant_type="nf4",
-                        )
-                        logger.info(f"Created BitsAndBytesConfig: {quantization_config}")
-
-                        self.current_model = SentenceTransformer(
-                            model_name, device=self.device, model_kwargs={"quantization_config": quantization_config}
-                        )
-                        logger.info("Successfully loaded model with INT8 quantization (v3.0+ method)")
-                    else:
-                        # Fallback for older versions
-                        logger.warning(
-                            f"sentence-transformers {st_version} doesn't support model_kwargs, INT8 not available"
-                        )
-                        logger.info("To enable INT8, upgrade to sentence-transformers>=3.0.0")
-                        self.current_model = SentenceTransformer(model_name, device=self.device)
-
-                except ImportError as e:
-                    logger.warning(f"bitsandbytes not available: {e}, falling back to standard loading")
+                except ImportError:
+                    logger.warning("bitsandbytes not available, falling back to post-quantization")
                     self.current_model = SentenceTransformer(model_name, device=self.device)
-                except Exception as e:
-                    logger.error(f"INT8 quantization failed: {e}")
-                    logger.error(f"Error type: {type(e).__name__}")
-                    logger.error(f"Full error details:", exc_info=True)
-                    # Don't silently fallback - raise the error
-                    raise RuntimeError(f"Failed to load model with INT8 quantization: {str(e)}") from e
 
             elif quantization == "float16" and self.device == "cuda":
                 # Load model in float16
@@ -508,15 +362,8 @@ class EmbeddingService:
                 self.original_batch_size = batch_size
                 self.current_batch_size = batch_size
 
-            # Ensure current_batch_size is never None
-            if self.current_batch_size is None:
-                self.current_batch_size = batch_size
-
             # Use current batch size from adaptive sizing
             current_batch_size = self.current_batch_size
-
-            # Initialize embeddings variable
-            embeddings: np.ndarray | None = None
 
             # Generate embeddings based on model type
             if self.is_qwen3_model:
@@ -546,7 +393,7 @@ class EmbeddingService:
 
                         # Generate embeddings
                         with torch.no_grad():
-                            if self.current_quantization == "float16" and self.device == "cuda":
+                            if quantization == "float16" and self.device == "cuda":
                                 with torch.cuda.amp.autocast(dtype=torch.float16):
                                     outputs = self.current_model(**batch_dict)
                             else:
@@ -597,19 +444,14 @@ class EmbeddingService:
                         else:
                             raise
 
-                embeddings = np.vstack(all_embeddings)
+                embeddings: np.ndarray = np.vstack(all_embeddings)
 
             else:
                 # Standard sentence-transformers processing
                 assert current_batch_size is not None
-                # embeddings already initialized at the top
                 while current_batch_size >= self.min_batch_size:
                     try:
-                        logger.debug(
-                            f"Attempting to encode with batch_size={current_batch_size}, quantization={self.current_quantization}"
-                        )
-
-                        if self.current_quantization == "float16" and self.device == "cuda":
+                        if quantization == "float16" and self.device == "cuda":
                             # Ensure inputs are float16 compatible
                             with torch.cuda.amp.autocast(dtype=torch.float16):
                                 embeddings = self.current_model.encode(
@@ -665,25 +507,6 @@ class EmbeddingService:
 
                         if current_batch_size < self.min_batch_size:
                             raise RuntimeError("Unable to process batch even with minimum batch size") from e
-
-                    except Exception as e:
-                        # Handle any other exception (not just OOM)
-                        logger.error(f"Unexpected error during encoding with batch_size={current_batch_size}: {e}")
-                        logger.error(f"Error type: {type(e).__name__}")
-                        # For INT8 quantization errors, don't retry with smaller batch
-                        if "int8" in str(e).lower() or "quantization" in str(e).lower():
-                            logger.error("INT8 quantization error detected, not retrying with smaller batch")
-                            raise
-                        # For other errors, try smaller batch
-                        if current_batch_size > self.min_batch_size:
-                            current_batch_size = max(self.min_batch_size, current_batch_size // 2)
-                            logger.warning(f"Retrying with smaller batch size: {current_batch_size}")
-                        else:
-                            raise
-
-                # Check if we successfully got embeddings
-                if embeddings is None:
-                    raise RuntimeError("Failed to generate embeddings after all retries")
 
             return embeddings
 

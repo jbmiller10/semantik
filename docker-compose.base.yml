@@ -1,6 +1,4 @@
 # Docker Compose configuration for Semantik (Document Embedding System)
-# This is the default configuration with GPU support enabled
-# For CPU-only deployment, use: docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
 version: '3.8'
 
 services:
@@ -52,13 +50,11 @@ services:
       # Qdrant configuration
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
-      # Model defaults (same for GPU and CPU)
+      # Load other environment variables from .env file
       - DEFAULT_COLLECTION=${DEFAULT_COLLECTION:-work_docs}
       - USE_MOCK_EMBEDDINGS=${USE_MOCK_EMBEDDINGS:-false}
       - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
       - DEFAULT_QUANTIZATION=${DEFAULT_QUANTIZATION:-float16}
-      # GPU-specific settings
-      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
       # Service configuration
       - SEARCH_API_PORT=8000
       - WAIT_FOR_QDRANT=true
@@ -82,10 +78,6 @@ services:
           memory: 4G
         reservations:
           memory: 2G
-          devices:
-            - driver: nvidia
-              count: 1  # Number of GPUs to use (or "all" for all GPUs)
-              capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
@@ -110,17 +102,13 @@ services:
       - SEARCH_API_HOST=vecpipe
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
-      # Model defaults (same for GPU and CPU)
+      # Load other environment variables from .env file
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_THIS_TO_A_STRONG_SECRET_KEY}
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
       - DEFAULT_COLLECTION=${DEFAULT_COLLECTION:-work_docs}
       - USE_MOCK_EMBEDDINGS=${USE_MOCK_EMBEDDINGS:-false}
       - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
       - DEFAULT_QUANTIZATION=${DEFAULT_QUANTIZATION:-float16}
-      # GPU-specific settings
-      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
-      - MODEL_MAX_MEMORY_GB=${MODEL_MAX_MEMORY_GB:-8}
-      - MONITOR_GPU_MEMORY=true
       # Service configuration
       - WEBUI_PORT=8080
       - WAIT_FOR_SEARCH_API=true
@@ -146,10 +134,6 @@ services:
           memory: 2G
         reservations:
           memory: 1G
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]

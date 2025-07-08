@@ -60,12 +60,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     # Required for some Python packages
     libpq5 \
-    # Required for bitsandbytes (INT8 quantization)
-    libblas3 \
-    liblapack3 \
-    # C compiler for bitsandbytes JIT compilation
-    gcc \
-    g++ \
     # Clean up
     && rm -rf /var/lib/apt/lists/*
 
@@ -103,9 +97,6 @@ USER appuser
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONPATH=/app/packages
-# C compiler for bitsandbytes JIT compilation
-ENV CC=gcc
-ENV CXX=g++
 
 # Create entrypoint script
 COPY --chown=appuser:appuser docker-entrypoint.sh /app/

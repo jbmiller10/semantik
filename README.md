@@ -114,57 +114,9 @@ Semantik can run on both CPU and GPU, but a CUDA-compatible GPU is **strongly re
 
 ## ⚡ Quick Start
 
-### Option 1: Interactive Setup Wizard (Recommended) 🧙‍♂️
+### Option 1: Docker Compose (Recommended) 🐳
 <details>
-<summary>The easiest way to get started is using our interactive setup wizard.</summary>
-
-The setup wizard guides you through the entire configuration process with an intuitive text-based interface.
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/jbmiller10/semantik.git
-   cd semantik
-   ```
-
-2. **Run the wizard:**
-   
-   **Linux/macOS:**
-   ```bash
-   make wizard
-   ```
-   
-   **Windows:**
-   ```cmd
-   python wizard_launcher.py
-   ```
-   
-   The wizard will automatically:
-   - Work on Windows, macOS, and Linux
-   - Install Poetry if needed
-   - Install all required dependencies
-   - Launch the interactive setup
-
-3. **Follow the interactive prompts:**
-   - Choose between **Quick Setup** (recommended) or **Custom Setup**
-   - Select your document directories with the built-in file browser
-   - The wizard auto-detects GPU availability and configures accordingly
-   - All security keys are generated automatically
-
-4. **That's it!** The wizard will:
-   - ✅ Check system requirements
-   - ✅ Configure GPU or CPU mode automatically
-   - ✅ Set up your document directories
-   - ✅ Generate secure configurations
-   - ✅ Start all services
-   - ✅ Provide a service monitor for ongoing management
-
-> **💡 Tip:** If you've already configured Semantik, running `make wizard` again will take you directly to the service monitor where you can start, stop, and manage your services.
-
-</details>
-
-### Option 2: Manual Docker Setup 🐳
-<details>
-<summary>For users who prefer manual configuration or need specific customizations.</summary>
+<summary>The fastest way to get started with Semantik is using Docker Compose.</summary>
 
 > **📌 GPU Note:** The default Docker configuration uses GPU acceleration for optimal performance. Ensure you have NVIDIA Docker runtime installed. For CPU-only systems, see the CPU-only option below.
 
@@ -201,7 +153,7 @@ That's it! 🎉 Semantik is now running with:
 - **Production**: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
 </details>
 
-### Option 3: Development Setup (Shell Scripts)
+### Option 2: Development Setup (Shell Scripts)
 
 <details>
 <summary>For developers who prefer traditional shell scripts</summary>
