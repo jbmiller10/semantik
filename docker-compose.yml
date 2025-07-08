@@ -62,11 +62,16 @@ services:
       # Service configuration
       - SEARCH_API_PORT=8000
       - WAIT_FOR_QDRANT=true
+      # HuggingFace configuration
+      - HF_HOME=/app/.cache/huggingface
+      - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-false}
     volumes:
       # Mount data directories
       # Note: Ensure host directories have appropriate permissions (uid 1000)
       - ./data:/app/data
       - ./logs:/app/logs
+      # Mount HuggingFace cache for persistent model storage
+      - ${HF_CACHE_DIR:-./models}:/app/.cache/huggingface
     depends_on:
       - qdrant
     security_opt:
@@ -124,6 +129,9 @@ services:
       # Service configuration
       - WEBUI_PORT=8080
       - WAIT_FOR_SEARCH_API=true
+      # HuggingFace configuration
+      - HF_HOME=/app/.cache/huggingface
+      - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-false}
     volumes:
       # Mount data directories
       # Note: Ensure host directories have appropriate permissions (uid 1000)
@@ -131,6 +139,8 @@ services:
       - ./logs:/app/logs
       # Mount document directories for processing
       - ${DOCUMENT_PATH:-./documents}:/mnt/docs:ro
+      # Mount HuggingFace cache for persistent model storage
+      - ${HF_CACHE_DIR:-./models}:/app/.cache/huggingface
     depends_on:
       - vecpipe
     security_opt:

@@ -4,6 +4,12 @@ set -e
 # Set Python path to include the packages directory
 export PYTHONPATH="/app/packages:${PYTHONPATH}"
 
+# Set C compiler for bitsandbytes JIT compilation if not already set
+if [ -z "$CC" ]; then
+    export CC=gcc
+    export CXX=g++
+fi
+
 # Function to validate required environment variables
 validate_env_vars() {
     local service=$1
