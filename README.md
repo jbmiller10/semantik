@@ -8,7 +8,7 @@ While we will do our best to avoid any breaking changes, we do not gurantee back
 
 # Semantik 🔎 - Easy, Private, and Powerful Document Search
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg?logo=docker)](https://www.docker.com)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -185,7 +185,7 @@ The setup wizard guides you through the entire configuration process with an int
    ```bash
    make docker-up
    # Or directly: docker compose up -d
-   # Note: Default configuration requires GPU. For CPU-only: docker compose -f docker-compose-cpu-only.yml up -d
+   # Note: Default configuration works for both GPU and CPU. PyTorch will automatically use CPU if no GPU is available.
    ```
 
 4. **Access Semantik:**
@@ -197,8 +197,8 @@ That's it! 🎉 Semantik is now running with:
 - **Qdrant** vector database on port 6333
 
 **Additional Docker Options:**
-- **CPU-Only**: `docker compose -f docker-compose-cpu-only.yml up -d`
 - **Production**: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
+- **CUDA-enabled GPU**: `docker compose -f docker-compose.yml -f docker-compose.cuda.yml up -d`
 </details>
 
 ### Option 3: Development Setup (Shell Scripts)
@@ -243,6 +243,226 @@ That's it! 🎉 Semantik is now running with:
 | **Advanced Search UI Out-of-the-Box** | ✅ | ❌ | ✅ | ❌ |
 | **Built-in Reranking & Hybrid Search** | ✅ | Plugin | ❌ | ❌ |
 | **Truly Open Source (AGPL)** | ✅ | ❌ | ❌ | ✅ |
+
+## 💡 Example Use Cases
+
+Semantik excels in various scenarios where powerful, private search is essential:
+
+<details>
+<summary><strong>🏢 Enterprise Knowledge Management</strong></summary>
+<br>
+<ul>
+  <li><b>Internal Documentation:</b> Search across technical specs, SOPs, and policies</li>
+  <li><b>Compliance Documents:</b> Keep sensitive regulatory documents searchable but secure</li>
+  <li><b>Research & Development:</b> Index patents, research papers, and lab notes</li>
+  <li><b>Legal Discovery:</b> Search through contracts and legal documents efficiently</li>
+</ul>
+</details>
+
+<details>
+<summary><strong>🎓 Academic & Research</strong></summary>
+<br>
+<ul>
+  <li><b>Literature Review:</b> Search through thousands of papers by concept, not just keywords</li>
+  <li><b>Lab Notebooks:</b> Find experimental results across years of documentation</li>
+  <li><b>Course Materials:</b> Index lecture notes, slides, and reading materials</li>
+  <li><b>Thesis Research:</b> Organize and search through source materials efficiently</li>
+</ul>
+</details>
+
+<details>
+<summary><strong>👨‍💻 Personal Knowledge Base</strong></summary>
+<br>
+<ul>
+  <li><b>Digital Library:</b> Search your ebook and PDF collection semantically</li>
+  <li><b>Note Archives:</b> Find information across years of personal notes</li>
+  <li><b>Code Documentation:</b> Search through API docs and technical references</li>
+  <li><b>Project Archives:</b> Index old projects and find solutions to similar problems</li>
+</ul>
+</details>
+
+## 🧪 Testing
+
+Semantik includes a comprehensive test suite to ensure reliability:
+
+### Running Tests
+
+```bash
+# Run all tests
+make test
+
+# Run with coverage report
+make test-coverage
+
+# Run specific test categories
+poetry run pytest tests/unit/          # Unit tests only
+poetry run pytest tests/integration/   # Integration tests only
+poetry run pytest -m "not gpu"         # Skip GPU tests
+
+# Run tests in different modes
+export USE_MOCK_EMBEDDINGS=true        # Use mock embeddings (no GPU required)
+poetry run pytest
+
+export CUDA_VISIBLE_DEVICES=""         # Force CPU mode
+poetry run pytest
+```
+
+### Test Categories
+
+- **Unit Tests**: Test individual components in isolation
+- **Integration Tests**: Test component interactions
+- **End-to-End Tests**: Test complete workflows
+- **Performance Tests**: Benchmark search and indexing speed
+
+For detailed testing documentation, see [docs/TESTING.md](docs/TESTING.md).
+
+## 🛠️ Troubleshooting Common Issues
+
+<details>
+<summary><strong>GPU Not Detected</strong></summary>
+<br>
+
+**Symptoms**: Semantik falls back to CPU mode despite having a GPU
+
+**Solutions**:
+1. Check NVIDIA drivers: `nvidia-smi`
+2. Verify CUDA installation: `nvcc --version`
+3. For Docker: Ensure nvidia-docker2 is installed
+4. Check GPU memory: Minimum 4GB VRAM required
+
+```bash
+# Test GPU availability
+python -c "import torch; print(torch.cuda.is_available())"
+```
+</details>
+
+<details>
+<summary><strong>Out of Memory Errors</strong></summary>
+<br>
+
+**Symptoms**: "CUDA out of memory" or system freezes during processing
+
+**Solutions**:
+1. Use smaller models: `Qwen/Qwen3-Embedding-0.6B`
+2. Enable quantization: Set `DEFAULT_QUANTIZATION=int8`
+3. Reduce batch size: Lower `BATCH_SIZE` in configuration
+4. Enable model auto-unloading: Set `MODEL_UNLOAD_AFTER_SECONDS=60`
+
+```bash
+# Monitor GPU memory usage
+watch -n 1 nvidia-smi
+```
+</details>
+
+<details>
+<summary><strong>Slow Search Performance</strong></summary>
+<br>
+
+**Symptoms**: Searches take several seconds to complete
+
+**Solutions**:
+1. Ensure Qdrant indexes are built (happens automatically after 20k vectors)
+2. Disable reranking for simple searches
+3. Check system resources during search
+4. Consider using SSD for Qdrant storage
+
+```bash
+# Check Qdrant collection info
+curl http://localhost:6333/collections/work_docs
+```
+</details>
+
+<details>
+<summary><strong>WebSocket Connection Issues</strong></summary>
+<br>
+
+**Symptoms**: Real-time progress updates not working
+
+**Solutions**:
+1. Check browser console for WebSocket errors
+2. Ensure no proxy is blocking WebSocket connections
+3. Verify ports 8080 and 8000 are accessible
+4. Try disabling browser extensions
+
+```javascript
+// Test WebSocket connection
+const ws = new WebSocket('ws://localhost:8080/ws/test');
+ws.onopen = () => console.log('Connected');
+ws.onerror = (e) => console.error('Error:', e);
+```
+</details>
+
+For more troubleshooting tips, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
+## ⚡ Performance Tuning Tips
+
+### Model Selection
+
+Choose models based on your hardware and accuracy needs:
+
+| Model | VRAM Usage | Speed | Accuracy | Best For |
+|-------|------------|-------|----------|----------|
+| Qwen3-0.6B | ~1.2GB | Fast | Good | Most users |
+| Qwen3-4B | ~8GB | Medium | Better | Large documents |
+| Qwen3-8B | ~16GB | Slow | Best | Research/Legal |
+
+### Optimization Strategies
+
+<details>
+<summary><strong>For Faster Indexing</strong></summary>
+<br>
+
+```bash
+# Increase batch size (if GPU memory allows)
+BATCH_SIZE=64  # Default: 32
+
+# Use faster quantization
+DEFAULT_QUANTIZATION=int8  # Faster than float16
+
+# Disable reranking during initial indexing
+USE_RERANKER=false
+```
+</details>
+
+<details>
+<summary><strong>For Better Search Quality</strong></summary>
+<br>
+
+```bash
+# Enable reranking
+USE_RERANKER=true
+
+# Use larger models
+DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-4B
+
+# Increase chunk overlap
+CHUNK_OVERLAP=256  # Default: 128
+```
+</details>
+
+<details>
+<summary><strong>For Limited Resources</strong></summary>
+<br>
+
+```bash
+# Aggressive memory management
+MODEL_UNLOAD_AFTER_SECONDS=60  # Unload models quickly
+DEFAULT_QUANTIZATION=int8       # Smallest memory footprint
+BATCH_SIZE=16                   # Smaller batches
+
+# CPU-only mode
+USE_MOCK_EMBEDDINGS=true  # For testing without GPU
+FORCE_CPU=true            # Force CPU usage
+```
+</details>
+
+### Hardware Recommendations by Use Case
+
+| Use Case | Documents | GPU | RAM | Config |
+|----------|-----------|-----|-----|--------|
+| Personal (<10k docs) | RTX 3060 (6GB) | 16GB | Default |
+| Team (10k-100k docs) | RTX 4070 (12GB) | 32GB | Larger models |
+| Enterprise (100k+ docs) | RTX 4090 (24GB) | 64GB | Production config |
 
 ## 📄 License
 

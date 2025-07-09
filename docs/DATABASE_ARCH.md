@@ -139,10 +139,12 @@ CREATE INDEX idx_refresh_tokens_hash ON refresh_tokens(token_hash);
 
 ```
 users (1) ──────< (N) refresh_tokens
-                         │
-                         │ (future)
-                         ↓
-jobs (1) ───────< (N) files
+        │
+        └───────< (N) jobs (via user_id)
+                        │
+                        ├───────< (N) files
+                        │
+                        └───────< (N) jobs (via parent_job_id)
 ```
 
 ### Migration Strategy
