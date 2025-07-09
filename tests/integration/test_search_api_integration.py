@@ -73,7 +73,9 @@ class TestSearchAPIIntegration:
     ):
         """Test that the /search endpoint correctly uses the embedding service."""
         # Import settings to check which mode we're in
+
         from shared.config import settings
+
 
         # Set up mocks
         # Mock the embedding service instance
@@ -228,7 +230,9 @@ class TestSearchAPIIntegration:
     ):
         """Test search with custom model name and quantization parameters."""
         # Import settings to check which mode we're in
+
         from shared.config import settings
+
 
         # Set up mocks
         mock_embedding_instance = mock_embedding_service_class.return_value
