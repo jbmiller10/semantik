@@ -43,10 +43,9 @@ def check_cuda():
             print(f"Total GPU memory: {total_memory / 1024**3:.2f} GB")
 
             return True
-        else:
-            print("\n⚠️  CUDA is not available!")
-            print("This means INT8 quantization will not work.")
-            return False
+        print("\n⚠️  CUDA is not available!")
+        print("This means INT8 quantization will not work.")
+        return False
 
     except ImportError:
         print("❌ PyTorch not installed!")
@@ -69,7 +68,7 @@ def check_bitsandbytes():
 
         # Try to import key components
         try:
-            from bitsandbytes.nn import Linear8bitLt
+            import bitsandbytes.nn  # Test import availability
 
             print("✓ Linear8bitLt available")
         except ImportError as e:
@@ -100,9 +99,8 @@ def check_bitsandbytes():
                 )
 
                 return True
-            else:
-                print("⚠️  Cannot test INT8 operations without CUDA")
-                return False
+            print("⚠️  Cannot test INT8 operations without CUDA")
+            return False
 
         except Exception as e:
             print(f"❌ INT8 operation test failed: {e}")
@@ -150,16 +148,14 @@ def test_embedding_service():
                 print(f"  Shape: {embeddings.shape}")
                 print(f"  Dimension: {embeddings.shape[1]}")
                 return True
-            else:
-                print("❌ Failed to generate embeddings")
-                return False
-        else:
-            print("❌ Failed to load model with INT8")
-            print("\nThis might mean:")
-            print("1. Bitsandbytes is not properly installed")
-            print("2. CUDA libraries are not accessible")
-            print("3. The model doesn't support INT8 quantization")
+            print("❌ Failed to generate embeddings")
             return False
+        print("❌ Failed to load model with INT8")
+        print("\nThis might mean:")
+        print("1. Bitsandbytes is not properly installed")
+        print("2. CUDA libraries are not accessible")
+        print("3. The model doesn't support INT8 quantization")
+        return False
 
     except Exception as e:
         print(f"❌ Embedding service test failed: {e}")
@@ -194,14 +190,13 @@ def main():
         print("1. Set DEFAULT_QUANTIZATION=int8 in your .env file")
         print("2. Restart the containers")
         return 0
-    else:
-        print("\n❌ Some tests failed. INT8 quantization may not work properly.")
-        print("\nTroubleshooting:")
-        print("1. Ensure you're using: docker compose -f docker-compose.yml -f docker-compose.cuda.yml up")
-        print("2. Check that your GPU has compute capability 7.0+")
-        print("3. Verify NVIDIA Docker runtime is installed")
-        print("4. Check the logs: docker logs semantik-webui")
-        return 1
+    print("\n❌ Some tests failed. INT8 quantization may not work properly.")
+    print("\nTroubleshooting:")
+    print("1. Ensure you're using: docker compose -f docker-compose.yml -f docker-compose.cuda.yml up")
+    print("2. Check that your GPU has compute capability 7.0+")
+    print("3. Verify NVIDIA Docker runtime is installed")
+    print("4. Check the logs: docker logs semantik-webui")
+    return 1
 
 
 if __name__ == "__main__":

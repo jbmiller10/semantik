@@ -149,7 +149,7 @@ class DockerSetupTUI:
                         gpu_msg += " [yellow]⚠ CUDA 11.x compatible (older)[/yellow]"
                     else:
                         gpu_msg += " [red]⚠ Driver may be too old[/red]"
-                except:
+                except Exception:
                     pass
             console.print(gpu_msg)
 
@@ -181,7 +181,7 @@ class DockerSetupTUI:
 
             # Try old syntax
             return shutil.which("docker-compose") is not None
-        except:
+        except Exception:
             return False
 
     def _check_gpu(self) -> bool:
@@ -189,10 +189,10 @@ class DockerSetupTUI:
         # Check if running in WSL2
         self.is_wsl2 = False
         try:
-            with open("/proc/version") as f:
+            with Path("/proc/version").open() as f:
                 if "microsoft" in f.read().lower():
                     self.is_wsl2 = True
-        except:
+        except Exception:
             pass
 
         try:
@@ -209,12 +209,11 @@ class DockerSetupTUI:
                 else:
                     self.driver_version = None
                 return True
-            elif self.is_wsl2:
+            if self.is_wsl2 and Path("/dev/dxg").exists():
                 # In WSL2, nvidia-smi might not work but GPU could still be available
-                if Path("/dev/dxg").exists():
-                    return True
+                return True
             return False
-        except:
+        except Exception:
             return False
 
     def _check_docker_gpu_runtime(self) -> bool:
@@ -289,14 +288,13 @@ class DockerSetupTUI:
 
             if distro_info and ("ubuntu" in distro_info.lower() or "debian" in distro_info.lower()):
                 return self._install_nvidia_toolkit_debian()
-            elif distro_info and (
+            if distro_info and (
                 "fedora" in distro_info.lower() or "rhel" in distro_info.lower() or "centos" in distro_info.lower()
             ):
                 return self._install_nvidia_toolkit_rhel()
-            elif distro_info and ("arch" in distro_info.lower() or "manjaro" in distro_info.lower()):
+            if distro_info and ("arch" in distro_info.lower() or "manjaro" in distro_info.lower()):
                 return self._install_nvidia_toolkit_arch()
-            else:
-                # Generic Linux instructions
+            # Generic Linux instructions
                 console.print("[yellow]Automatic installation not available for your Linux distribution.[/yellow]")
                 console.print("\nPlease install manually by following:")
                 console.print("https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html")
@@ -327,11 +325,11 @@ class DockerSetupTUI:
 
             # Try /etc/os-release
             if Path("/etc/os-release").exists():
-                with open("/etc/os-release") as f:
+                with Path("/etc/os-release").open() as f:
                     for line in f:
                         if line.startswith("ID="):
                             return line.split("=")[1].strip().strip('"')
-        except:
+        except Exception:
             pass
 
         return None
@@ -418,8 +416,7 @@ class DockerSetupTUI:
             if result.returncode != 0:
                 console.print(f"[red]Error: {result.stderr}[/red]")
                 return False
-            else:
-                console.print("[green]✓ Success[/green]\n")
+            console.print("[green]✓ Success[/green]\n")
 
         # Test if it works now, with retries
         console.print("[bold]Testing GPU support...[/bold]")
@@ -523,8 +520,7 @@ class DockerSetupTUI:
             if result.returncode != 0:
                 console.print(f"[red]Error: {result.stderr}[/red]")
                 return False
-            else:
-                console.print("[green]✓ Success[/green]\n")
+            console.print("[green]✓ Success[/green]\n")
 
         # Test if it works now, with retries
         console.print("[bold]Testing GPU support...[/bold]")
@@ -603,8 +599,7 @@ class DockerSetupTUI:
                     # Try alternative method
                     console.print("\n[yellow]AUR installation failed. Trying official NVIDIA method...[/yellow]")
                     return self._install_nvidia_toolkit_arch_official()
-                else:
-                    console.print("[green]✓ Success[/green]\n")
+                console.print("[green]✓ Success[/green]\n")
         else:
             # No AUR helper, use official method
             console.print("No AUR helper found. Using official NVIDIA repositories...\n")
@@ -812,7 +807,7 @@ class DockerSetupTUI:
 
                 if not path_input and document_dirs:
                     break
-                elif not path_input:
+                if not path_input:
                     console.print("[yellow]You must add at least one directory[/yellow]")
                     continue
 
@@ -914,8 +909,7 @@ class DockerSetupTUI:
                         typed_path = Path(manual_path).resolve()
                         if typed_path.exists() and typed_path.is_dir():
                             return typed_path
-                        else:
-                            console.print("[red]Invalid directory path[/red]")
+                        console.print("[red]Invalid directory path[/red]")
                     continue
 
                 # Navigate to subdirectory
@@ -947,7 +941,7 @@ class DockerSetupTUI:
                     console.print(f"    ... and {len(doc_files) - 5} more")
             else:
                 console.print("  [dim]No documents found in this directory[/dim]")
-        except:
+        except Exception:
             pass
 
     def configure_security(self) -> bool:
@@ -1103,7 +1097,7 @@ class DockerSetupTUI:
         if not template_path.exists():
             raise FileNotFoundError(".env.docker.example not found")
 
-        with open(template_path) as f:
+        with template_path.open() as f:
             content = f.read()
 
         # Replace values
@@ -1129,7 +1123,7 @@ class DockerSetupTUI:
             content = content.replace(old, new)
 
         # Write .env
-        with open(".env", "w") as f:
+        with Path(".env").open("w") as f:
             f.write(content)
 
     def execute_setup(self) -> None:
@@ -1201,9 +1195,8 @@ class DockerSetupTUI:
                 if result.returncode == 0:
                     progress.update(task, completed=True)
                     return True
-                else:
-                    console.print(f"\n[red]Error: {result.stderr}[/red]")
-                    return False
+                console.print(f"\n[red]Error: {result.stderr}[/red]")
+                return False
             except Exception as e:
                 console.print(f"\n[red]Error running command: {e}[/red]")
                 return False
@@ -1225,7 +1218,7 @@ class DockerSetupTUI:
         # Load from .env file
         env_path = Path(".env")
         if env_path.exists():
-            with open(env_path) as f:
+            with env_path.open() as f:
                 for line in f:
                     line = line.strip()
                     if line and not line.startswith("#") and "=" in line:
@@ -1235,7 +1228,7 @@ class DockerSetupTUI:
         # Load from config file if exists
         config_path = Path(".semantik-config.json")
         if config_path.exists():
-            with open(config_path) as f:
+            with config_path.open() as f:
                 saved_config = json.load(f)
                 self.config.update(saved_config)
 
@@ -1243,7 +1236,7 @@ class DockerSetupTUI:
         if "USE_GPU" not in self.config:
             # Check which docker-compose is being used
             if Path("docker-compose-cpu-only.yml").exists():
-                compose_files = subprocess.run(
+                subprocess.run(
                     ["docker", "compose", "config", "--services"], capture_output=True, text=True
                 )
                 self.config["USE_GPU"] = "true"  # Default to GPU unless we detect CPU-only
@@ -1253,7 +1246,7 @@ class DockerSetupTUI:
     def _save_config(self) -> None:
         """Save configuration to JSON file for future use"""
         config_path = Path(".semantik-config.json")
-        with open(config_path, "w") as f:
+        with config_path.open("w") as f:
             json.dump(self.config, f, indent=2)
         console.print(f"[green]Configuration saved to {config_path}[/green]")
 
@@ -1275,9 +1268,8 @@ class DockerSetupTUI:
         # Wait for input or timeout
         if event.wait(timeout):
             return result
-        else:
-            # Timeout occurred, return None to trigger refresh
-            return None
+        # Timeout occurred, return None to trigger refresh
+        return None
 
     def _service_monitor(self) -> None:
         """Interactive service monitoring and management interface"""
@@ -1402,7 +1394,7 @@ class DockerSetupTUI:
                             health = "[yellow]" + health + "[/yellow]"
 
                         table.add_row(name, status, port_str or "None", health)
-            except:
+            except Exception:
                 # Fallback to simple ps output
                 result = subprocess.run(["docker", "compose"] + compose_files + ["ps"], capture_output=True, text=True)
                 console.print("[yellow]Service Status:[/yellow]")
@@ -1469,7 +1461,7 @@ class DockerSetupTUI:
                         service = json.loads(line)
                         if service.get("State") == "running":
                             return True
-            except:
+            except Exception:
                 # Fallback - check with simple ps
                 result = subprocess.run(
                     ["docker", "compose"] + compose_files + ["ps", "-q"], capture_output=True, text=True
@@ -1491,10 +1483,8 @@ class DockerSetupTUI:
 
         existing_dirs = []
         for path in common_paths:
-            if path.exists() and path.is_dir():
-                # Check if it contains any documents
-                if self._count_documents(path) > 0:
-                    existing_dirs.append(path)
+            if path.exists() and path.is_dir() and self._count_documents(path) > 0:
+                existing_dirs.append(path)
 
         return existing_dirs
 
@@ -1509,7 +1499,7 @@ class DockerSetupTUI:
                     if count >= 10:  # Stop counting after 10 for performance
                         return count
             return count
-        except:
+        except Exception:
             return 0
 
     def _check_ports(self) -> bool:
@@ -1533,7 +1523,7 @@ class DockerSetupTUI:
                     console.print(f"[red]✗[/red] Port {port} ({service}) is already in use")
                 else:
                     console.print(f"[green]✓[/green] Port {port} ({service}) is available")
-            except:
+            except Exception:
                 console.print(f"[green]✓[/green] Port {port} ({service}) is available")
             finally:
                 sock.close()
@@ -1542,7 +1532,7 @@ class DockerSetupTUI:
             console.print(f"\n[red]Error: {len(blocked_ports)} port(s) are already in use.[/red]")
             console.print("\n[yellow]To fix this:[/yellow]")
             console.print("1. Stop the services using these ports:")
-            for port, service in blocked_ports:
+            for port, _ in blocked_ports:
                 console.print(f"   → Port {port}: sudo lsof -i :{port} or sudo netstat -tlnp | grep {port}")
             console.print("2. Or change the ports in docker-compose.yml")
 
