@@ -27,6 +27,7 @@ import contextlib
 from shared.config import settings
 from shared.text_processing.chunking import TokenChunker
 from shared.text_processing.extraction import extract_text
+
 from webui import database
 from webui.auth import get_current_user
 from webui.embedding_service import POPULAR_MODELS, embedding_service

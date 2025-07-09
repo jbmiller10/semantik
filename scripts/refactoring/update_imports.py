@@ -43,13 +43,11 @@ class ImportUpdater:
     def update_file(self, file_path: Path) -> list[str]:
         """Update imports in a single file"""
         try:
-            with open(file_path, encoding="utf-8") as f:
-                content = f.read()
+            content = file_path.read_text(encoding="utf-8")
         except Exception as e:
             print(f"Error reading {file_path}: {e}")
             return []
 
-        original_content = content
         changes = []
 
         for pattern, replacement in self.IMPORT_MAPPINGS.items():
@@ -63,8 +61,7 @@ class ImportUpdater:
 
         if changes and not self.dry_run:
             try:
-                with open(file_path, "w", encoding="utf-8") as f:
-                    f.write(content)
+                file_path.write_text(content, encoding="utf-8")
                 self.files_changed += 1
             except Exception as e:
                 print(f"Error writing {file_path}: {e}")
