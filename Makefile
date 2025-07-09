@@ -1,7 +1,8 @@
 # Makefile for Document Embedding System
 
-.PHONY: help install dev-install format lint type-check test test-coverage clean docker-build docker-run
+.PHONY: help install dev-install format lint type-check test test-coverage clean
 .PHONY: frontend-install frontend-build frontend-dev frontend-test build dev
+.PHONY: docker-up docker-down docker-logs docker-build-fresh docker-ps docker-restart
 
 help:
 	@echo "Available commands:"
@@ -13,8 +14,15 @@ help:
 	@echo "  test           Run tests"
 	@echo "  test-coverage  Run tests with coverage report"
 	@echo "  clean          Clean up generated files"
-	@echo "  docker-build   Build Docker image"
-	@echo "  docker-run     Run Docker container"
+	@echo ""
+	@echo "Docker commands:"
+	@echo "  wizard            Interactive Docker setup wizard (TUI)"
+	@echo "  docker-up         Start all services with docker-compose"
+	@echo "  docker-down       Stop and remove all containers"
+	@echo "  docker-logs       View logs from all services"
+	@echo "  docker-build-fresh Rebuild images without cache"
+	@echo "  docker-ps         Show status of all containers"
+	@echo "  docker-restart    Restart all services"
 	@echo ""
 	@echo "Frontend commands:"
 	@echo "  frontend-install  Install frontend dependencies"
@@ -54,18 +62,90 @@ clean:
 	rm -rf .coverage htmlcov .pytest_cache .mypy_cache .ruff_cache
 	rm -rf *.egg-info dist build
 
-docker-build:
-	docker build -f Dockerfile.webui -t document-embedding-webui:latest .
+# Docker commands for the new setup
+wizard:
+	@python wizard_launcher.py
 
-docker-run:
-	docker run -d \
-		--name embedding-webui \
-		-p 8080:8080 \
-		-e QDRANT_HOST=192.168.1.173 \
-		-e QDRANT_PORT=6333 \
-		-v /mnt/docs:/mnt/docs:ro \
-		-v /var/embeddings:/var/embeddings \
-		document-embedding-webui:latest
+docker-up:
+	@echo "Starting Semantik services with Docker Compose..."
+	@echo "Setting up directories with correct permissions..."
+	@mkdir -p ./models ./data ./logs
+	@if command -v sudo >/dev/null 2>&1; then \
+		sudo chown -R 1000:1000 ./models ./data ./logs; \
+	else \
+		chown -R 1000:1000 ./models ./data ./logs 2>/dev/null || echo "WARNING: Could not set directory permissions. If you encounter permission errors, run: sudo chown -R 1000:1000 ./models ./data ./logs"; \
+	fi
+	@echo "✓ Directories ready"
+	@if [ ! -f .env ]; then \
+		echo "Creating .env file from .env.docker.example..."; \
+		cp .env.docker.example .env; \
+		echo "Generating secure JWT_SECRET_KEY..."; \
+		if command -v openssl >/dev/null 2>&1; then \
+			JWT_KEY=$$(openssl rand -hex 32); \
+			if [ "$$(uname)" = "Darwin" ]; then \
+				sed -i '' "s/JWT_SECRET_KEY=.*/JWT_SECRET_KEY=$$JWT_KEY/" .env; \
+			else \
+				sed -i "s/JWT_SECRET_KEY=.*/JWT_SECRET_KEY=$$JWT_KEY/" .env; \
+			fi; \
+			echo "✓ Generated secure JWT_SECRET_KEY"; \
+		else \
+			echo "WARNING: openssl not found. Please manually set JWT_SECRET_KEY in .env"; \
+		fi; \
+	else \
+		if grep -q "JWT_SECRET_KEY=CHANGE_THIS_TO_A_STRONG_SECRET_KEY" .env; then \
+			echo "Detected default JWT_SECRET_KEY, generating secure key..."; \
+			if command -v openssl >/dev/null 2>&1; then \
+				JWT_KEY=$$(openssl rand -hex 32); \
+				if [ "$$(uname)" = "Darwin" ]; then \
+					sed -i '' "s/JWT_SECRET_KEY=.*/JWT_SECRET_KEY=$$JWT_KEY/" .env; \
+				else \
+					sed -i "s/JWT_SECRET_KEY=.*/JWT_SECRET_KEY=$$JWT_KEY/" .env; \
+				fi; \
+				echo "✓ Updated JWT_SECRET_KEY to secure value"; \
+			else \
+				echo "ERROR: Default JWT_SECRET_KEY detected but openssl not available"; \
+				echo "Please manually set JWT_SECRET_KEY in .env"; \
+				exit 1; \
+			fi; \
+		fi; \
+	fi
+	docker compose up -d
+	@echo "Services started! Access the application at http://localhost:8080"
+
+docker-down:
+	@echo "Stopping Semantik services..."
+	docker compose down
+
+docker-logs:
+	docker compose logs -f
+
+docker-build-fresh:
+	@echo "Rebuilding Docker images without cache..."
+	docker compose build --no-cache
+
+docker-ps:
+	docker compose ps
+
+docker-restart:
+	@echo "Restarting Semantik services..."
+	docker compose restart
+
+# Quick commands for individual services
+docker-logs-webui:
+	docker-compose logs -f webui
+
+docker-logs-vecpipe:
+	docker-compose logs -f vecpipe
+
+docker-logs-qdrant:
+	docker-compose logs -f qdrant
+
+# Shell access to containers
+docker-shell-webui:
+	docker-compose exec webui /bin/bash
+
+docker-shell-vecpipe:
+	docker-compose exec vecpipe /bin/bash
 
 # Development shortcuts
 .PHONY: fix check run

@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Semantik is a production-ready, high-performance document embedding and vector search system designed for technical users who prioritize performance and control. The system features a clean separation between its core search engine (Semantik) and control plane (WebUI), enabling both standalone usage and user-friendly management through a modern React interface.
+Semantik is a production-ready, high-performance document embedding and vector search system designed for technical users who prioritize performance and control. The system features a largely clean separation between its core search engine (vecpipe) and control plane (WebUI), with a pragmatic exception for the embedding service to avoid code duplication. This architecture enables both standalone usage and user-friendly management through a modern React interface.
 
 ### Key Features
 - 🚀 High-performance vector search powered by Qdrant
@@ -64,8 +64,17 @@ The headless data processing and search API that forms the heart of the system.
 - **embed_chunks_unified.py**: Unified embedding generation with adaptive batching
 - **ingest_qdrant.py**: Vector database ingestion with retry mechanisms
 - **search_api.py**: FastAPI service exposing search functionality
-- **model_manager.py**: GPU memory management with lazy loading
+- **model_manager.py**: GPU memory management with lazy loading and automatic unloading
 - **hybrid_search.py**: Combined vector and keyword search implementation
+- **reranker.py**: Cross-encoder reranking for improved search accuracy
+
+**ModelManager Architecture:**
+The ModelManager provides intelligent model lifecycle management:
+- **Lazy Loading**: Models are loaded only when needed
+- **Automatic Unloading**: Models are unloaded after configurable inactivity (default: 300s)
+- **Memory Tracking**: Monitors GPU memory usage and prevents OOM errors
+- **Multi-Model Support**: Manages both embedding and reranker models independently
+- **Thread-Safe**: Handles concurrent requests with proper locking
 
 **Design Principles:**
 - Modular pipeline architecture
@@ -73,7 +82,7 @@ The headless data processing and search API that forms the heart of the system.
 - Supports multiple embedding models and quantization levels
 - Robust error handling and recovery
 
-For detailed documentation, see [VECPIPE_CORE.md](./VECPIPE_CORE.md)
+For detailed documentation, see [SEMANTIK_CORE.md](./SEMANTIK_CORE.md)
 
 ### 2. WebUI Control Plane (`packages/webui/`)
 
@@ -84,7 +93,15 @@ User-facing application for job management and search interface.
 - **api/**: RESTful API routers for auth, jobs, search, files, metrics
 - **database.py**: SQLite database management
 - **auth.py**: JWT-based authentication
-- **embedding_service.py**: Shared embedding service bridging Semantik
+- **embedding_service.py**: Embedding generation service (see Architectural Note below)
+
+**Architectural Note - embedding_service.py:**
+While the architecture emphasizes separation between vecpipe and webui packages, `embedding_service.py` is an intentional exception:
+- **Location**: `packages/webui/embedding_service.py`
+- **Used by**: Both webui (for job processing) and vecpipe (for search)
+- **Rationale**: Avoids code duplication for complex embedding logic
+- **Impact**: Creates coupling between packages but ensures consistency
+- **Future**: May be refactored into a separate shared package
 
 **Frontend (React):**
 - Modern React 19 with TypeScript
@@ -165,11 +182,27 @@ For complete API documentation, see [API_ARCHITECTURE.md](./API_ARCHITECTURE.md)
 
 ### Search Types
 1. **Vector Search**: Semantic similarity using embeddings
+   - Optional cross-encoder reranking for improved accuracy
 2. **Hybrid Search**: Combines vector + keyword matching
    - Filter mode: Uses Qdrant's text filtering
    - Rerank mode: Post-processes with weighted scoring
 3. **Keyword Search**: Pure text-based without embeddings
 4. **Batch Search**: Process multiple queries in parallel
+
+### Cross-Encoder Reranking
+When enabled, the system uses a two-stage retrieval process:
+1. **First Stage**: Retrieve more candidates (5x requested) using vector search
+2. **Second Stage**: Re-score candidates with cross-encoder model
+
+**Automatic Model Selection**:
+- BAAI embeddings → BAAI reranker
+- Sentence transformers → MS MARCO cross-encoder
+- Qwen3 embeddings → Matching Qwen3 reranker size
+
+**Benefits**:
+- Significantly improved relevance for complex queries
+- Better handling of nuanced questions
+- Trade-off: Slightly increased latency for better accuracy
 
 ### Supported Models
 - BAAI/bge series (base, large)
@@ -221,9 +254,10 @@ For detailed documentation, see [INFRASTRUCTURE.md](./INFRASTRUCTURE.md)
 
 ### Optimization Strategies
 1. **Model Management**
-   - Lazy loading with 5-minute timeout
+   - Lazy loading with configurable timeout (default: 5 minutes)
    - Automatic GPU memory cleanup
    - Quantization support (int8, float16)
+   - Intelligent model selection based on available GPU memory
 
 2. **Batch Processing**
    - Adaptive batch sizing
@@ -294,7 +328,7 @@ cp .env.example .env
 
 For deep dives into specific components:
 
-- **Core Engine**: [VECPIPE_CORE.md](./VECPIPE_CORE.md)
+- **Core Engine**: [SEMANTIK_CORE.md](./SEMANTIK_CORE.md)
 - **Backend**: [WEBUI_BACKEND.md](./WEBUI_BACKEND.md)
 - **Frontend**: [FRONTEND_ARCH.md](./FRONTEND_ARCH.md)
 - **Database**: [DATABASE_ARCH.md](./DATABASE_ARCH.md)
