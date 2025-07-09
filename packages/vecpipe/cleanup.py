@@ -19,6 +19,7 @@ from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchVa
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from shared.config import settings
+
 from .extract_chunks import FileChangeTracker
 
 # Configure logging
@@ -60,12 +61,12 @@ class QdrantCleanupService:
         """Get all job collection names from webui database"""
         collections = [settings.DEFAULT_COLLECTION]
 
-        if not Path(settings.WEBUI_DB).exists():
-            logger.warning(f"WebUI database not found: {settings.WEBUI_DB}")
+        if not Path(settings.webui_db).exists():
+            logger.warning(f"WebUI database not found: {settings.webui_db}")
             return collections
 
         try:
-            conn = sqlite3.connect(str(settings.WEBUI_DB))
+            conn = sqlite3.connect(str(settings.webui_db))
             c = conn.cursor()
 
             # Get all job IDs
@@ -176,7 +177,7 @@ class QdrantCleanupService:
 
         # Write to cleanup log
         try:
-            with Path(settings.CLEANUP_LOG).open("a") as f:
+            with Path(settings.cleanup_log).open("a") as f:
                 f.write(json.dumps(summary) + "\n")
         except Exception as e:
             logger.error(f"Failed to write cleanup log: {e}")
@@ -187,7 +188,7 @@ class QdrantCleanupService:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Clean up vectors for deleted documents")
     parser.add_argument(
-        "--file-list", "-f", default=str(settings.MANIFEST_FILE), help="Path to null-delimited file list"
+        "--file-list", "-f", default=str(settings.manifest_file), help="Path to null-delimited file list"
     )
     parser.add_argument("--dry-run", "-n", action="store_true", help="Perform dry run without deleting")
     parser.add_argument("--qdrant-host", default=settings.QDRANT_HOST, help="Qdrant host address")

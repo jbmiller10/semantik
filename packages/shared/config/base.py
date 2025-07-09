@@ -34,41 +34,41 @@ class BaseConfig(BaseSettings):
         docker_logs = Path("/app/logs")
         return docker_logs if docker_logs.exists() else self.LOGS_DIR
 
-    # Common paths using the dynamic data_dir - maintain uppercase for backward compatibility
+    # Common paths using the dynamic data_dir
     @property
-    def FILE_TRACKING_DB(self) -> Path:
+    def file_tracking_db(self) -> Path:
         return self.data_dir / "file_tracking.json"
 
     @property
-    def WEBUI_DB(self) -> Path:
+    def webui_db(self) -> Path:
         return self.data_dir / "webui.db"
 
     @property
-    def EXTRACT_DIR(self) -> Path:
+    def extract_dir(self) -> Path:
         return self.data_dir / "extract"
 
     @property
-    def INGEST_DIR(self) -> Path:
+    def ingest_dir(self) -> Path:
         return self.data_dir / "ingest"
 
     @property
-    def LOADED_DIR(self) -> Path:
+    def loaded_dir(self) -> Path:
         return self.data_dir / "loaded"
 
     @property
-    def REJECT_DIR(self) -> Path:
+    def reject_dir(self) -> Path:
         return self.data_dir / "rejects"
 
     @property
-    def MANIFEST_FILE(self) -> Path:
+    def manifest_file(self) -> Path:
         return self.data_dir / "filelist.null"
 
     @property
-    def ERROR_LOG(self) -> Path:
+    def error_log(self) -> Path:
         return self.logs_dir / "error_extract.log"
 
     @property
-    def CLEANUP_LOG(self) -> Path:
+    def cleanup_log(self) -> Path:
         return self.logs_dir / "cleanup.log"
 
     # Pydantic model config

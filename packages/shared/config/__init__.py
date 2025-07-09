@@ -18,7 +18,6 @@ class Settings(VecpipeConfig, WebuiConfig):
     """
 
 
-
 # Instantiate settings once and export
 settings = Settings()
 

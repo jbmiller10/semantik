@@ -19,8 +19,6 @@ from tqdm.asyncio import tqdm
 # Add parent directory to path to import webui module
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from webui.embedding_service import EmbeddingService
-
 from shared.config import settings
 from shared.metrics.prometheus import (
     TimingContext,
@@ -34,6 +32,7 @@ from shared.metrics.prometheus import (
     record_file_processed,
     start_metrics_server,
 )
+from webui.embedding_service import EmbeddingService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -42,8 +41,8 @@ logger = logging.getLogger(__name__)
 # Constants - matching the old embed_chunks.py
 MODEL_NAME = "BAAI/bge-large-en-v1.5"
 BATCH_SIZE = 96
-INPUT_DIR = str(settings.EXTRACT_DIR)
-OUTPUT_DIR = str(settings.INGEST_DIR)
+INPUT_DIR = str(settings.extract_dir)
+OUTPUT_DIR = str(settings.ingest_dir)
 MAX_CONCURRENT_IO = 4
 
 

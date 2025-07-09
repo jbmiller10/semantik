@@ -41,7 +41,7 @@ class FileChangeTracker:
 
     def __init__(self, db_path: str | None = None) -> None:
         if db_path is None:
-            db_path = str(settings.FILE_TRACKING_DB)
+            db_path = str(settings.file_tracking_db)
         self.db_path = db_path
         self.tracking_data = self._load_tracking_data()
 
@@ -223,7 +223,7 @@ def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, track
     except Exception as e:
         logger.error(f"Failed to process {filepath}: {e}")
         # Log error to file
-        with Path(settings.ERROR_LOG).open("a") as f:
+        with Path(settings.error_log).open("a") as f:
             f.write(f"{filepath}\t{str(e)}\n")
         return None
 
@@ -252,7 +252,7 @@ def process_file(filepath: str, output_dir: str) -> str | None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Extract and chunk documents (V2)")
     parser.add_argument("--input", "-i", required=True, help="Input file list (null-delimited)")
-    parser.add_argument("--output", "-o", default=str(settings.OUTPUT_DIR), help="Output directory for parquet files")
+    parser.add_argument("--output", "-o", default=str(settings.output_dir), help="Output directory for parquet files")
     parser.add_argument("--chunk-size", "-cs", type=int, default=DEFAULT_CHUNK_SIZE, help="Chunk size in tokens")
     parser.add_argument(
         "--chunk-overlap", "-co", type=int, default=DEFAULT_CHUNK_OVERLAP, help="Chunk overlap in tokens"
