@@ -92,7 +92,7 @@ def check_bitsandbytes():
                 # Forward pass
                 output = linear_8bit(input_tensor)
 
-                print(f"✓ INT8 forward pass successful!")
+                print("✓ INT8 forward pass successful!")
                 print(f"  Input shape: {input_tensor.shape}")
                 print(f"  Output shape: {output.shape}")
                 print(
@@ -146,7 +146,7 @@ def test_embedding_service():
             )
 
             if embeddings is not None:
-                print(f"✓ Embeddings generated successfully!")
+                print("✓ Embeddings generated successfully!")
                 print(f"  Shape: {embeddings.shape}")
                 print(f"  Dimension: {embeddings.shape[1]}")
                 return True

@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Test script to verify INT8 quantization fixes"""
 
+import gc
+import os
 import sys
 import time
+
+import torch
 
 sys.path.insert(0, "/app/packages")
 
@@ -29,21 +33,20 @@ try:
     print(f"   ✓ Current quantization: {service.current_quantization}")
 
     # Generate embeddings
-    print(f"   Generating embeddings...")
+    print("   Generating embeddings...")
     embeddings = service.generate_embeddings(
         ["test text for int8 quantization"], model, quantization="int8", batch_size=1, show_progress=False
     )
     if embeddings is not None:
-        print(f"   ✓ Embeddings generated successfully!")
+        print("   ✓ Embeddings generated successfully!")
         print(f"   ✓ Shape: {embeddings.shape}")
     else:
-        print(f"   ✗ Failed to generate embeddings")
+        print("   ✗ Failed to generate embeddings")
 except Exception as e:
     print(f"   ✗ Error: {e}")
 
 # Test 3: Test with ALLOW_QUANTIZATION_FALLBACK=false
 print("\n3. Testing with fallback disabled...")
-import os
 
 os.environ["ALLOW_QUANTIZATION_FALLBACK"] = "false"
 service2 = EmbeddingService()
@@ -58,8 +61,6 @@ except Exception as e:
 
 # Test 4: Memory usage comparison
 print("\n4. Memory usage comparison...")
-import torch
-import gc
 
 
 def get_gpu_memory():
