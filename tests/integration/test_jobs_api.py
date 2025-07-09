@@ -27,6 +27,7 @@ class TestJobsAPI:
         test_user: dict,
     ):
         """Test successful job creation."""
+
         # Setup mocks
         # Create mock FileInfo objects with path attribute
         class MockFileInfo:
@@ -36,7 +37,7 @@ class TestJobsAPI:
                 self.modified = modified
                 self.extension = extension
                 self.content_hash = content_hash
-        
+
         mock_scan_directory.return_value = {
             "files": [
                 MockFileInfo("/path/to/documents/file1.txt", 1000, "2024-01-01T00:00:00+00:00", ".txt"),
@@ -44,12 +45,12 @@ class TestJobsAPI:
             ],
             "warnings": [],
             "total_files": 2,
-            "total_size": 3000
+            "total_size": 3000,
         }
         mock_job_id = "test-job-123"
         mock_create_job.return_value = mock_job_id
         mock_add_files.return_value = None
-        
+
         # Mock the created job that get_job will return
         mock_job = {
             "id": mock_job_id,
@@ -70,7 +71,7 @@ class TestJobsAPI:
             "chunk_overlap": 200,
         }
         mock_get_job.return_value = mock_job
-        
+
         # Mock process_embedding_job to return immediately
         mock_process_job.return_value = AsyncMock()
 
@@ -114,10 +115,10 @@ class TestJobsAPI:
         assert scan_args[1]["recursive"] == True
         # scan_id is the generated job_id
         assert len(scan_args[1]["scan_id"]) == 36
-        
+
         # Verify create_job was called
         mock_create_job.assert_called_once()
-        
+
         # Verify add_files_to_job was called
         mock_add_files.assert_called_once()
         add_files_args = mock_add_files.call_args
@@ -125,7 +126,7 @@ class TestJobsAPI:
         assert len(add_files_args[0][0]) == 36  # UUID length
         # Second arg should be the file records
         assert len(add_files_args[0][1]) == 2  # 2 files
-        
+
         # Verify process_embedding_job was called with the generated job ID
         mock_process_job.assert_called_once()
         actual_job_id = mock_process_job.call_args[0][0]
@@ -142,12 +143,12 @@ class TestJobsAPI:
                     "size": 1000,
                     "modified": "2024-01-01T00:00:00+00:00",
                     "extension": ".txt",
-                    "content_hash": None
+                    "content_hash": None,
                 }
             ],
             "warnings": [],
             "total_files": 1,
-            "total_size": 1000
+            "total_size": 1000,
         }
 
         # Prepare invalid request payload (chunk_overlap >= chunk_size)
@@ -202,7 +203,7 @@ class TestJobsAPI:
         }
         mock_get_job.return_value = mock_job
         mock_delete_job.return_value = True
-        
+
         # Mock Qdrant client - it's created using constructor syntax
         mock_client_instance = AsyncMock()
         mock_client_instance.delete_collection = AsyncMock(return_value=True)
@@ -282,7 +283,7 @@ class TestJobsAPI:
 
         # Verify task was cancelled
         mock_task.cancel.assert_called_once()
-        
+
         # Verify status was updated to cancelled
         mock_update_job.assert_called_once()
         update_args = mock_update_job.call_args[0]
