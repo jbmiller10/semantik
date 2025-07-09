@@ -70,7 +70,7 @@ def last_token_pool(last_hidden_states: Tensor, attention_mask: Tensor) -> Tenso
 class DenseEmbeddingService(BaseEmbeddingService):
     """Dense embedding service supporting both sentence-transformers and custom models like Qwen."""
 
-    def __init__(self) -> None:
+    def __init__(self, mock_mode: bool = False) -> None:
         self.model: Any = None
         self.tokenizer: Any = None
         self.model_name: str | None = None
@@ -79,6 +79,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
         self.dimension: int | None = None
         self.max_sequence_length: int = 512
         self._initialized: bool = False
+        self.mock_mode: bool = mock_mode
 
         # Quantization settings
         self.quantization: str = "float32"
@@ -98,6 +99,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
                 - quantization: "float32", "float16", "int8"
                 - device: "cuda" or "cpu"
                 - trust_remote_code: bool
+                - mock_mode: bool
         """
         try:
             # Clean up previous model if exists
@@ -106,6 +108,18 @@ class DenseEmbeddingService(BaseEmbeddingService):
             self.model_name = model_name
             self.quantization = kwargs.get("quantization", "float32")
             self.device = kwargs.get("device", self.device)
+            self.mock_mode = kwargs.get("mock_mode", self.mock_mode)
+
+            # If in mock mode, skip actual model loading
+            if self.mock_mode:
+                logger.info(f"Mock mode: simulating initialization of {model_name}")
+                # Get dimension from config if available
+                from .models import get_model_config
+
+                config = get_model_config(model_name)
+                self.dimension = config.dimension if config else 384
+                self._initialized = True
+                return
 
             # Check int8 compatibility if requested
             if self.quantization == "int8" and self.device == "cuda":
@@ -202,6 +216,16 @@ class DenseEmbeddingService(BaseEmbeddingService):
 
         if not texts:
             return np.array([])
+
+        # Mock mode - return random embeddings
+        if self.mock_mode:
+            logger.debug(f"Mock mode: generating embeddings for {len(texts)} texts")
+            embeddings = np.random.randn(len(texts), self.dimension or 384).astype(np.float32)
+            if kwargs.get("normalize", True):
+                # Normalize embeddings
+                norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+                embeddings = embeddings / norms
+            return embeddings
 
         normalize = kwargs.get("normalize", True)
         show_progress = kwargs.get("show_progress", False)
@@ -344,7 +368,10 @@ class EmbeddingService:
             loop = self._get_loop()
             loop.run_until_complete(
                 self._service.initialize(
-                    model_name, quantization=quantization, allow_fallback=self.allow_quantization_fallback
+                    model_name,
+                    quantization=quantization,
+                    allow_fallback=self.allow_quantization_fallback,
+                    mock_mode=self.mock_mode,
                 )
             )
             return True
@@ -355,6 +382,21 @@ class EmbeddingService:
     def get_model_info(self, model_name: str, quantization: str = "float32") -> dict[str, Any]:
         """Get model info synchronously."""
         try:
+            # In mock mode, return mock info without loading
+            if self.mock_mode and not self._service.is_initialized:
+                from .models import get_model_config
+
+                config = get_model_config(model_name)
+                return {
+                    "model_name": model_name,
+                    "dimension": config.dimension if config else 384,
+                    "device": self._service.device,
+                    "max_sequence_length": 512,
+                    "quantization": quantization,
+                    "is_qwen": False,
+                    "dtype": "torch.float32",
+                }
+
             # Ensure model is loaded
             if (not self._service.is_initialized or self._service.model_name != model_name) and not self.load_model(
                 model_name, quantization
