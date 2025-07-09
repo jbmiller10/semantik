@@ -298,6 +298,65 @@ Test complete workflows:
 - User registration → Login → Create job
 - Collection management lifecycle
 
+#### Refactoring Validation E2E Test
+We maintain a special E2E test that captures the exact current behavior of the system. This test is critical for ensuring no regressions are introduced during the refactoring initiative.
+
+**Location**: `tests/e2e/test_refactoring_validation.py`
+
+**Purpose**: This test serves as a "golden master" that validates the entire document processing and search pipeline via the public API.
+
+**Running the test with Docker Compose**:
+```bash
+# Start the application with docker compose
+docker compose up -d
+
+# Set the API endpoint (defaults to http://localhost:8080)
+export API_BASE_URL=http://localhost:8080
+
+# Run the E2E validation test
+poetry run pytest tests/e2e/test_refactoring_validation.py -v
+
+# Or run with a custom endpoint
+API_BASE_URL=http://localhost:3000 poetry run pytest tests/e2e/test_refactoring_validation.py
+```
+
+**What the test validates**:
+1. Creates a job with test documents from `test_data/` directory
+2. Waits for the job to complete (with timeout)
+3. Performs a search to verify embeddings were created correctly
+4. Cleans up all created resources (job and Qdrant collection)
+
+**Requirements**:
+- Running instance of the application (via docker compose or locally)
+- Test data files in `test_data/` directory
+- Network access to the API endpoint
+
+**Note**: This test makes real HTTP calls to a running instance and is intentionally not mocked. It should pass identically before and after any refactoring.
+
+**Important**: When running with Docker Compose, the test uses `/mnt/docs` directory which contains production documents. This can make the test take 1-2 minutes to complete. For faster testing in CI/CD, consider:
+- Creating a smaller test dataset mounted at a specific path
+- Using the `test_data/` directory when running locally without Docker
+- Setting a job size limit for test environments
+
+**CI/CD Integration**:
+The E2E test is marked with `@pytest.mark.e2e` and automatically skips if the service is not available. To exclude E2E tests in CI:
+```bash
+# Run all tests except E2E
+make test-ci
+# or
+pytest tests -v -m "not e2e"
+```
+
+To run only E2E tests when services are available:
+```bash
+# Start services first
+docker compose up -d
+# Run E2E tests
+make test-e2e
+# or
+pytest tests -v -m e2e
+```
+
 ## Continuous Integration
 
 ### GitHub Actions Workflow
@@ -318,9 +377,9 @@ jobs:
         run: |
           pip install poetry
           poetry install
-      - name: Run tests
+      - name: Run tests (excluding E2E)
         run: |
-          poetry run pytest --cov=packages
+          make test-ci
 ```
 
 ## Performance Testing
