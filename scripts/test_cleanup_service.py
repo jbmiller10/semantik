@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from vecpipe.cleanup import QdrantCleanupService
-from vecpipe.extract_chunks import FileChangeTracker
+from shared.text_processing import FileChangeTracker
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

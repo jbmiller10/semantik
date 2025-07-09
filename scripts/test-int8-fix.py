@@ -10,7 +10,7 @@ import torch
 
 sys.path.insert(0, "/app/packages")
 
-from webui.embedding_service import EmbeddingService, check_int8_compatibility
+from shared.embedding import EmbeddingService, check_int8_compatibility
 
 print("=" * 60)
 print("INT8 Quantization Fix Test")
