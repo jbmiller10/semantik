@@ -1,8 +1,8 @@
 """Integration tests for authentication API endpoints."""
 
-import os
 import shutil
 import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -13,32 +13,30 @@ class TempDatabase:
     """Context manager for temporary database."""
 
     def __init__(self):
-        self.temp_dir = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.temp_dir, "test.db")
+        self.temp_dir = Path(tempfile.mkdtemp())
+        self.db_path = str(self.temp_dir / "test.db")
 
     def __enter__(self):
         return self.db_path
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if os.path.exists(self.temp_dir):
+        if self.temp_dir.exists():
             shutil.rmtree(self.temp_dir)
 
 
 @pytest.fixture()
 def test_db():
     """Create a temporary database for each test."""
-    with TempDatabase() as db_path:
-        # Patch the DB_PATH at the module level
-        with patch("webui.database.DB_PATH", db_path):
-            # Import and initialize after patching
-            from webui.database import init_db
+    with TempDatabase() as db_path, patch("webui.database.DB_PATH", db_path):
+        # Import and initialize after patching
+        from webui.database import init_db
 
-            init_db()
-            yield db_path
+        init_db()
+        yield db_path
 
 
 @pytest.fixture()
-def client(test_db):
+def client(test_db):  # noqa: ARG001
     """Create a test client with the isolated database."""
     from webui.main import app
 
