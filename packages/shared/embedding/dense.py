@@ -377,6 +377,16 @@ class EmbeddingService:
     ) -> np.ndarray | None:
         """Generate embeddings synchronously."""
         try:
+            # Mock mode - return random embeddings
+            if self.mock_mode:
+                logger.info(f"Mock mode: generating embeddings for {len(texts)} texts")
+                # Get dimension from model config if available
+                from .models import get_model_config
+
+                config = get_model_config(model_name)
+                dim = config.dimension if config else 384
+                return np.random.randn(len(texts), dim).astype(np.float32)
+
             # Ensure model is loaded
             if (not self._service.is_initialized or self._service.model_name != model_name) and not self.load_model(
                 model_name, quantization
@@ -437,40 +447,8 @@ class EmbeddingService:
             loop.run_until_complete(self._service.cleanup())
 
 
-# Model configurations
-QUANTIZED_MODEL_INFO = {
-    # Qwen3 Embedding Models
-    "Qwen/Qwen3-Embedding-0.6B": {
-        "dimension": 1024,
-        "description": "Qwen3 small model, instruction-aware (1024d)",
-        "supports_quantization": True,
-        "recommended_quantization": "float16",
-        "memory_estimate": {"float32": 2400, "float16": 1200, "int8": 600},
-    },
-    "Qwen/Qwen3-Embedding-4B": {
-        "dimension": 2560,
-        "description": "Qwen3 medium model, MTEB top performer (2560d)",
-        "supports_quantization": True,
-        "recommended_quantization": "float16",
-        "memory_estimate": {"float32": 16000, "float16": 8000, "int8": 4000},
-    },
-    "Qwen/Qwen3-Embedding-8B": {
-        "dimension": 4096,
-        "description": "Qwen3 large model, MTEB #1 (4096d)",
-        "supports_quantization": True,
-        "recommended_quantization": "int8",
-        "memory_estimate": {"float32": 32000, "float16": 16000, "int8": 8000},
-    },
-}
-
-# Backwards compatibility aliases
-POPULAR_MODELS = QUANTIZED_MODEL_INFO
-
-# Legacy compatibility - add dim key for old code
-for model_info in POPULAR_MODELS.values():
-    if "dimension" in model_info:
-        model_info["dim"] = model_info["dimension"]
-
+# Import centralized model configurations
+from .models import POPULAR_MODELS, QUANTIZED_MODEL_INFO
 
 # Create global instances for backwards compatibility
 embedding_service = EmbeddingService()
