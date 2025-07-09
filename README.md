@@ -88,7 +88,7 @@ Semantik can run on both CPU and GPU, but a CUDA-compatible GPU is **strongly re
 - **GPU**: NVIDIA GPU with CUDA support & **8GB+ of VRAM** (e.g., RTX 3060 / 4060 or newer).
 - **CPU**: Modern quad-core or better.
 - **RAM**: 16GB+.
-- **STORAGE**:  SSD for model storage; HDD is fine for documents
+- **Storage**: SSD for model storage with at least 30GB of free space; HDD is fine for documents
 - **Software**: Python 3.12, Cuda Toolkit, Docker & Docker Compose
 
 > **Why the GPU?** Creating search embeddings is a highly parallel task. A GPU can be 10-100x faster than a CPU, turning a process that takes hours into one that takes minutes.
@@ -105,7 +105,7 @@ Semantik can run on both CPU and GPU, but a CUDA-compatible GPU is **strongly re
 
 - **CPU**: Modern quad-core or better.
 - **RAM**: 16GB+.
-- **Storage**: SSD for model storage; HDD is fine for documents
+- **Storage**: SSD for model storage with at least 30GB of free space; HDD is fine for documents
 - **Software**: Python 3.12, Docker & Docker Compose.
 
 > **Performance Note:** A CPU-only setup will be **very slow** for indexing and search. It is suitable for evaluation and small personal document collections only.
@@ -207,7 +207,7 @@ That's it! 🎉 Semantik is now running with:
 <summary>For developers who prefer traditional shell scripts</summary>
 
 1. **Prerequisites:**
-   - Python 3.12+
+   - Python 3.11+
    - Node.js 18+
    - Running Qdrant instance
    - Poetry for Python dependency management
@@ -243,78 +243,6 @@ That's it! 🎉 Semantik is now running with:
 | **Advanced Search UI Out-of-the-Box** | ✅ | ❌ | ✅ | ❌ |
 | **Built-in Reranking & Hybrid Search** | ✅ | Plugin | ❌ | ❌ |
 | **Truly Open Source (AGPL)** | ✅ | ❌ | ❌ | ✅ |
-
-## 💡 Example Use Cases
-
-Semantik excels in various scenarios where powerful, private search is essential:
-
-<details>
-<summary><strong>🏢 Enterprise Knowledge Management</strong></summary>
-<br>
-<ul>
-  <li><b>Internal Documentation:</b> Search across technical specs, SOPs, and policies</li>
-  <li><b>Compliance Documents:</b> Keep sensitive regulatory documents searchable but secure</li>
-  <li><b>Research & Development:</b> Index patents, research papers, and lab notes</li>
-  <li><b>Legal Discovery:</b> Search through contracts and legal documents efficiently</li>
-</ul>
-</details>
-
-<details>
-<summary><strong>🎓 Academic & Research</strong></summary>
-<br>
-<ul>
-  <li><b>Literature Review:</b> Search through thousands of papers by concept, not just keywords</li>
-  <li><b>Lab Notebooks:</b> Find experimental results across years of documentation</li>
-  <li><b>Course Materials:</b> Index lecture notes, slides, and reading materials</li>
-  <li><b>Thesis Research:</b> Organize and search through source materials efficiently</li>
-</ul>
-</details>
-
-<details>
-<summary><strong>👨‍💻 Personal Knowledge Base</strong></summary>
-<br>
-<ul>
-  <li><b>Digital Library:</b> Search your ebook and PDF collection semantically</li>
-  <li><b>Note Archives:</b> Find information across years of personal notes</li>
-  <li><b>Code Documentation:</b> Search through API docs and technical references</li>
-  <li><b>Project Archives:</b> Index old projects and find solutions to similar problems</li>
-</ul>
-</details>
-
-## 🧪 Testing
-
-Semantik includes a comprehensive test suite to ensure reliability:
-
-### Running Tests
-
-```bash
-# Run all tests
-make test
-
-# Run with coverage report
-make test-coverage
-
-# Run specific test categories
-poetry run pytest tests/unit/          # Unit tests only
-poetry run pytest tests/integration/   # Integration tests only
-poetry run pytest -m "not gpu"         # Skip GPU tests
-
-# Run tests in different modes
-export USE_MOCK_EMBEDDINGS=true        # Use mock embeddings (no GPU required)
-poetry run pytest
-
-export CUDA_VISIBLE_DEVICES=""         # Force CPU mode
-poetry run pytest
-```
-
-### Test Categories
-
-- **Unit Tests**: Test individual components in isolation
-- **Integration Tests**: Test component interactions
-- **End-to-End Tests**: Test complete workflows
-- **Performance Tests**: Benchmark search and indexing speed
-
-For detailed testing documentation, see [docs/TESTING.md](docs/TESTING.md).
 
 ## 🛠️ Troubleshooting Common Issues
 
@@ -394,75 +322,6 @@ ws.onerror = (e) => console.error('Error:', e);
 
 For more troubleshooting tips, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
-## ⚡ Performance Tuning Tips
-
-### Model Selection
-
-Choose models based on your hardware and accuracy needs:
-
-| Model | VRAM Usage | Speed | Accuracy | Best For |
-|-------|------------|-------|----------|----------|
-| Qwen3-0.6B | ~1.2GB | Fast | Good | Most users |
-| Qwen3-4B | ~8GB | Medium | Better | Large documents |
-| Qwen3-8B | ~16GB | Slow | Best | Research/Legal |
-
-### Optimization Strategies
-
-<details>
-<summary><strong>For Faster Indexing</strong></summary>
-<br>
-
-```bash
-# Increase batch size (if GPU memory allows)
-BATCH_SIZE=64  # Default: 32
-
-# Use faster quantization
-DEFAULT_QUANTIZATION=int8  # Faster than float16
-
-# Disable reranking during initial indexing
-USE_RERANKER=false
-```
-</details>
-
-<details>
-<summary><strong>For Better Search Quality</strong></summary>
-<br>
-
-```bash
-# Enable reranking
-USE_RERANKER=true
-
-# Use larger models
-DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-4B
-
-# Increase chunk overlap
-CHUNK_OVERLAP=256  # Default: 128
-```
-</details>
-
-<details>
-<summary><strong>For Limited Resources</strong></summary>
-<br>
-
-```bash
-# Aggressive memory management
-MODEL_UNLOAD_AFTER_SECONDS=60  # Unload models quickly
-DEFAULT_QUANTIZATION=int8       # Smallest memory footprint
-BATCH_SIZE=16                   # Smaller batches
-
-# CPU-only mode
-USE_MOCK_EMBEDDINGS=true  # For testing without GPU
-FORCE_CPU=true            # Force CPU usage
-```
-</details>
-
-### Hardware Recommendations by Use Case
-
-| Use Case | Documents | GPU | RAM | Config |
-|----------|-----------|-----|-----|--------|
-| Personal (<10k docs) | RTX 3060 (6GB) | 16GB | Default |
-| Team (10k-100k docs) | RTX 4070 (12GB) | 32GB | Larger models |
-| Enterprise (100k+ docs) | RTX 4090 (24GB) | 64GB | Production config |
 
 ## 📄 License
 
