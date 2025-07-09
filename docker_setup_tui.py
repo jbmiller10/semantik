@@ -143,7 +143,7 @@ class DockerSetupTUI:
                 gpu_msg += f" (Driver: {self.driver_version})"
                 # Check driver compatibility
                 try:
-                    driver_major = int(self.driver_version.split('.')[0])
+                    driver_major = int(self.driver_version.split(".")[0])
                     if driver_major >= 525:
                         gpu_msg += " [green]✓ CUDA 12.x compatible[/green]"
                     elif driver_major >= 470:
@@ -195,7 +195,7 @@ class DockerSetupTUI:
                     self.is_wsl2 = True
         except:
             pass
-        
+
         try:
             result = subprocess.run(["nvidia-smi"], capture_output=True, text=True)
             if result.returncode == 0:
@@ -203,7 +203,7 @@ class DockerSetupTUI:
                 driver_result = subprocess.run(
                     ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
                     capture_output=True,
-                    text=True
+                    text=True,
                 )
                 if driver_result.returncode == 0:
                     self.driver_version = driver_result.stdout.strip()
@@ -236,7 +236,7 @@ class DockerSetupTUI:
             # First check if --gpus flag is recognized at all
             if "unknown flag: --gpus" in result.stderr.lower():
                 return False
-            
+
             # If basic test succeeded, Docker recognizes GPU flag
             if result.returncode == 0:
                 # Now test with actual CUDA image to verify GPU access
@@ -246,11 +246,11 @@ class DockerSetupTUI:
                     text=True,
                     timeout=30,
                 )
-                
+
                 # Check if nvidia-smi worked in CUDA container
                 if cuda_result.returncode == 0 and "NVIDIA-SMI" in cuda_result.stdout:
                     return True
-                
+
                 # Check for nvidia-container-toolkit specific errors
                 error_indicators = [
                     "could not select device driver",
@@ -261,7 +261,7 @@ class DockerSetupTUI:
                 for indicator in error_indicators:
                     if indicator.lower() in error_text:
                         return False
-            
+
             return False
         except subprocess.TimeoutExpired:
             return False
@@ -347,16 +347,16 @@ class DockerSetupTUI:
             curl_gpg = subprocess.Popen(
                 ["curl", "-fsSL", "https://nvidia.github.io/libnvidia-container/gpgkey"],
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                stderr=subprocess.PIPE,
             )
             gpg_result = subprocess.run(
                 ["sudo", "gpg", "--dearmor", "-o", "/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg"],
                 stdin=curl_gpg.stdout,
                 capture_output=True,
-                text=True
+                text=True,
             )
             curl_gpg.wait()
-            
+
             if gpg_result.returncode != 0:
                 console.print(f"[red]Error adding GPG key: {gpg_result.stderr}[/red]")
                 return False
@@ -365,29 +365,33 @@ class DockerSetupTUI:
             # Step 2: Download and process repository list
             console.print("[dim]$ Setting up NVIDIA repository...[/dim]")
             curl_list = subprocess.run(
-                ["curl", "-s", "-L", "https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list"],
+                [
+                    "curl",
+                    "-s",
+                    "-L",
+                    "https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list",
+                ],
                 capture_output=True,
-                text=True
+                text=True,
             )
-            
+
             if curl_list.returncode != 0:
                 console.print(f"[red]Error downloading repository list: {curl_list.stderr}[/red]")
                 return False
-            
+
             # Process the list with sed replacement
             processed_list = curl_list.stdout.replace(
-                "deb https://",
-                "deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://"
+                "deb https://", "deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://"
             )
-            
+
             # Write to the repository list file
             tee_result = subprocess.run(
                 ["sudo", "tee", "/etc/apt/sources.list.d/nvidia-container-toolkit.list"],
                 input=processed_list,
                 capture_output=True,
-                text=True
+                text=True,
             )
-            
+
             if tee_result.returncode != 0:
                 console.print(f"[red]Error writing repository list: {tee_result.stderr}[/red]")
                 return False
@@ -421,35 +425,31 @@ class DockerSetupTUI:
         # Test if it works now, with retries
         console.print("[bold]Testing GPU support...[/bold]")
         console.print("[dim]Waiting for Docker daemon to fully restart...[/dim]")
-        
+
         # Give Docker daemon time to restart
         time.sleep(5)
-        
+
         # Check Docker daemon status first
-        daemon_check = subprocess.run(
-            ["sudo", "systemctl", "is-active", "docker"],
-            capture_output=True,
-            text=True
-        )
+        daemon_check = subprocess.run(["sudo", "systemctl", "is-active", "docker"], capture_output=True, text=True)
         if daemon_check.stdout.strip() != "active":
             console.print("[yellow]Docker service is not active. Attempting to start it...[/yellow]")
             subprocess.run(["sudo", "systemctl", "start", "docker"], capture_output=True)
             time.sleep(3)
-        
+
         # Try up to 3 times with delays
         for attempt in range(3):
             if attempt > 0:
                 console.print(f"[dim]Retry attempt {attempt + 1}/3...[/dim]")
                 time.sleep(5)  # Increase delay between retries
-            
+
             if self._check_docker_gpu_runtime():
                 console.print("[green]✓ NVIDIA Container Toolkit installed successfully![/green]")
                 return True
-        
+
         # If still failing, provide detailed help
         console.print("[yellow]GPU support test failed after installation.[/yellow]")
         console.print("\nPossible solutions:")
-        
+
         if self.is_wsl2:
             console.print("1. [bold]WSL2 detected![/bold] Run: [cyan]sudo bash fix_wsl2_gpu.sh[/cyan]")
             console.print("2. Ensure Windows has NVIDIA drivers installed (not WSL)")
@@ -461,7 +461,7 @@ class DockerSetupTUI:
             console.print("   [cyan]sudo nvidia-ctk runtime configure --runtime=docker[/cyan]")
             console.print("   [cyan]sudo systemctl daemon-reload[/cyan]")
             console.print("   [cyan]sudo systemctl restart docker[/cyan]")
-        
+
         console.print("5. Check Docker logs: [cyan]sudo journalctl -u docker -n 50[/cyan]")
         console.print("6. As a last resort, reboot the system")
         console.print("\nYou can continue with CPU mode for now and enable GPU later.")
@@ -476,27 +476,32 @@ class DockerSetupTUI:
             # Download repository configuration
             console.print("[dim]$ Setting up NVIDIA repository...[/dim]")
             curl_result = subprocess.run(
-                ["curl", "-s", "-L", "https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo"],
+                [
+                    "curl",
+                    "-s",
+                    "-L",
+                    "https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo",
+                ],
                 capture_output=True,
-                text=True
+                text=True,
             )
-            
+
             if curl_result.returncode != 0:
                 console.print(f"[red]Error downloading repository config: {curl_result.stderr}[/red]")
                 return False
-            
+
             # Write to repository file
             tee_result = subprocess.run(
                 ["sudo", "tee", "/etc/yum.repos.d/nvidia-container-toolkit.repo"],
                 input=curl_result.stdout,
                 capture_output=True,
-                text=True
+                text=True,
             )
-            
+
             if tee_result.returncode != 0:
                 console.print(f"[red]Error writing repository config: {tee_result.stderr}[/red]")
                 return False
-            
+
             console.print("[green]✓ Repository configured[/green]\n")
 
         except Exception as e:
@@ -525,35 +530,31 @@ class DockerSetupTUI:
         # Test if it works now, with retries
         console.print("[bold]Testing GPU support...[/bold]")
         console.print("[dim]Waiting for Docker daemon to fully restart...[/dim]")
-        
+
         # Give Docker daemon time to restart
         time.sleep(5)
-        
+
         # Check Docker daemon status first
-        daemon_check = subprocess.run(
-            ["sudo", "systemctl", "is-active", "docker"],
-            capture_output=True,
-            text=True
-        )
+        daemon_check = subprocess.run(["sudo", "systemctl", "is-active", "docker"], capture_output=True, text=True)
         if daemon_check.stdout.strip() != "active":
             console.print("[yellow]Docker service is not active. Attempting to start it...[/yellow]")
             subprocess.run(["sudo", "systemctl", "start", "docker"], capture_output=True)
             time.sleep(3)
-        
+
         # Try up to 3 times with delays
         for attempt in range(3):
             if attempt > 0:
                 console.print(f"[dim]Retry attempt {attempt + 1}/3...[/dim]")
                 time.sleep(5)  # Increase delay between retries
-            
+
             if self._check_docker_gpu_runtime():
                 console.print("[green]✓ NVIDIA Container Toolkit installed successfully![/green]")
                 return True
-        
+
         # If still failing, provide detailed help
         console.print("[yellow]GPU support test failed after installation.[/yellow]")
         console.print("\nPossible solutions:")
-        
+
         if self.is_wsl2:
             console.print("1. [bold]WSL2 detected![/bold] Run: [cyan]sudo bash fix_wsl2_gpu.sh[/cyan]")
             console.print("2. Ensure Windows has NVIDIA drivers installed (not WSL)")
@@ -565,7 +566,7 @@ class DockerSetupTUI:
             console.print("   [cyan]sudo nvidia-ctk runtime configure --runtime=docker[/cyan]")
             console.print("   [cyan]sudo systemctl daemon-reload[/cyan]")
             console.print("   [cyan]sudo systemctl restart docker[/cyan]")
-        
+
         console.print("5. Check Docker logs: [cyan]sudo journalctl -u docker -n 50[/cyan]")
         console.print("6. As a last resort, reboot the system")
         console.print("\nYou can continue with CPU mode for now and enable GPU later.")
@@ -613,35 +614,31 @@ class DockerSetupTUI:
         # Test if it works now, with retries
         console.print("[bold]Testing GPU support...[/bold]")
         console.print("[dim]Waiting for Docker daemon to fully restart...[/dim]")
-        
+
         # Give Docker daemon time to restart
         time.sleep(5)
-        
+
         # Check Docker daemon status first
-        daemon_check = subprocess.run(
-            ["sudo", "systemctl", "is-active", "docker"],
-            capture_output=True,
-            text=True
-        )
+        daemon_check = subprocess.run(["sudo", "systemctl", "is-active", "docker"], capture_output=True, text=True)
         if daemon_check.stdout.strip() != "active":
             console.print("[yellow]Docker service is not active. Attempting to start it...[/yellow]")
             subprocess.run(["sudo", "systemctl", "start", "docker"], capture_output=True)
             time.sleep(3)
-        
+
         # Try up to 3 times with delays
         for attempt in range(3):
             if attempt > 0:
                 console.print(f"[dim]Retry attempt {attempt + 1}/3...[/dim]")
                 time.sleep(5)  # Increase delay between retries
-            
+
             if self._check_docker_gpu_runtime():
                 console.print("[green]✓ NVIDIA Container Toolkit installed successfully![/green]")
                 return True
-        
+
         # If still failing, provide detailed help
         console.print("[yellow]GPU support test failed after installation.[/yellow]")
         console.print("\nPossible solutions:")
-        
+
         if self.is_wsl2:
             console.print("1. [bold]WSL2 detected![/bold] Run: [cyan]sudo bash fix_wsl2_gpu.sh[/cyan]")
             console.print("2. Ensure Windows has NVIDIA drivers installed (not WSL)")
@@ -653,7 +650,7 @@ class DockerSetupTUI:
             console.print("   [cyan]sudo nvidia-ctk runtime configure --runtime=docker[/cyan]")
             console.print("   [cyan]sudo systemctl daemon-reload[/cyan]")
             console.print("   [cyan]sudo systemctl restart docker[/cyan]")
-        
+
         console.print("5. Check Docker logs: [cyan]sudo journalctl -u docker -n 50[/cyan]")
         console.print("6. As a last resort, reboot the system")
         console.print("\nYou can continue with CPU mode for now and enable GPU later.")
@@ -1265,17 +1262,17 @@ class DockerSetupTUI:
         """Select menu with timeout for auto-refresh"""
         result: Optional[str] = None
         event = threading.Event()
-        
+
         def get_input() -> None:
             nonlocal result
             result = questionary.select(prompt, choices=choices).ask()
             event.set()
-        
+
         # Start input thread
         input_thread = threading.Thread(target=get_input)
         input_thread.daemon = True
         input_thread.start()
-        
+
         # Wait for input or timeout
         if event.wait(timeout):
             return result
@@ -1295,7 +1292,7 @@ class DockerSetupTUI:
 
             console.print("\n[bold]Service Management[/bold]")
             console.print("[dim]Auto-refresh in 10 seconds...[/dim]")
-            
+
             action = self._select_with_timeout(
                 "What would you like to do?",
                 choices=[
@@ -1308,13 +1305,13 @@ class DockerSetupTUI:
                     "Check service health",
                     "Exit monitor",
                 ],
-                timeout=10
+                timeout=10,
             )
 
             # If timeout occurred, refresh
             if action is None:
                 continue
-            
+
             # If user selected Exit
             if "Exit" in action:
                 break
