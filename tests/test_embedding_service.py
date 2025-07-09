@@ -89,7 +89,7 @@ class TestEmbeddingService(unittest.TestCase):
 
         # Test loading with int8
         result = service.load_model(self.TEST_MODEL, quantization="int8")
-        self.assertTrue(result)
+        assert result is True
 
         # Verify BitsAndBytesConfig was created with correct parameters
         self.mock_bnb.assert_called_once_with(
@@ -110,14 +110,14 @@ class TestEmbeddingService(unittest.TestCase):
 
         # Test float16 quantization
         result = service.load_model(self.TEST_MODEL, quantization="float16")
-        self.assertTrue(result)
+        assert result is True
 
         # Verify model was loaded and converted to half precision
         self.mock_st.assert_called_with(self.TEST_MODEL, device="cuda")
         mock_model.half.assert_called_once()
 
         # Verify correct quantization type was set
-        self.assertEqual(service.current_quantization, "float16")
+        assert service.current_quantization == "float16"
 
     @patch("torch.cuda.is_available")
     def test_int8_compatibility_fallback(self, mock_cuda_available):
@@ -139,10 +139,10 @@ class TestEmbeddingService(unittest.TestCase):
         result = service.load_model(self.TEST_MODEL, quantization="int8")
 
         # Should succeed by falling back to float32
-        self.assertTrue(result)
+        assert result is True
 
         # Verify it fell back to float32
-        self.assertEqual(service.current_quantization, "float32")
+        assert service.current_quantization == "float32"
 
         # Verify SentenceTransformer was called without quantization config
         self.mock_st.assert_called_with(self.TEST_MODEL, device="cuda")
@@ -165,7 +165,7 @@ class TestEmbeddingService(unittest.TestCase):
         # When fallback is disabled, load_model should return False (not raise exception)
         # Looking at the code, the exception is caught and False is returned
         result = service2.load_model(self.TEST_MODEL_2, quantization="int8")
-        self.assertFalse(result)
+        assert result is False
 
     def _create_oom_side_effect(self, fail_threshold=16):
         """Create a side effect that simulates OOM for batch sizes above threshold"""
@@ -202,7 +202,7 @@ class TestEmbeddingService(unittest.TestCase):
         # So we need to mock the test embedding generation too
         with patch.object(service, "_generate_test_embedding", return_value=self.DEFAULT_EMBEDDING[0]):
             result = service.load_model(self.TEST_MODEL, quantization="float32")
-            self.assertTrue(result)
+            assert result is True
 
         # Generate embeddings with initial batch size of 32
         texts = ["text1", "text2"]
@@ -211,18 +211,18 @@ class TestEmbeddingService(unittest.TestCase):
         )
 
         # Should succeed after reducing batch size
-        self.assertIsNotNone(embeddings)
-        self.assertEqual(embeddings.shape, (2, 3))
+        assert embeddings is not None
+        assert embeddings.shape == (2, 3)
 
         # Verify encode was called twice - once with 32 (failed), once with 16 (succeeded)
         calls = mock_model.encode.call_args_list
-        self.assertEqual(len(calls), 2)
+        assert len(calls) == 2
         # Check batch_size in kwargs
-        self.assertEqual(calls[0].kwargs.get("batch_size"), self.DEFAULT_BATCH_SIZE)
-        self.assertEqual(calls[1].kwargs.get("batch_size"), self.REDUCED_BATCH_SIZE)
+        assert calls[0].kwargs.get("batch_size") == self.DEFAULT_BATCH_SIZE
+        assert calls[1].kwargs.get("batch_size") == self.REDUCED_BATCH_SIZE
 
         # Verify batch size was reduced
-        self.assertEqual(service.current_batch_size, self.REDUCED_BATCH_SIZE)
+        assert service.current_batch_size == self.REDUCED_BATCH_SIZE
 
         # Verify empty_cache was called after OOM
         mock_empty_cache.assert_called()
@@ -238,7 +238,7 @@ class TestEmbeddingService(unittest.TestCase):
         # Mock tokenizer
         mock_tokenizer = MagicMock()
         mock_batch_dict = {"input_ids": torch.tensor([[1, 2, 3]]), "attention_mask": torch.tensor([[1, 1, 1]])}
-        mock_tokenizer.return_value = MagicMock(to=lambda device: mock_batch_dict)
+        mock_tokenizer.return_value = MagicMock(to=lambda _device: mock_batch_dict)
         self.mock_at.from_pretrained.return_value = mock_tokenizer
 
         # Mock Qwen3 model
@@ -250,8 +250,8 @@ class TestEmbeddingService(unittest.TestCase):
 
         # Load Qwen3 model
         result = service.load_model(self.QWEN3_MODEL, quantization="float32")
-        self.assertTrue(result)
-        self.assertTrue(service.is_qwen3_model)
+        assert result is True
+        assert service.is_qwen3_model is True
 
         # Generate embeddings with instruction
         texts = ["How to cook pasta?"]
@@ -276,7 +276,7 @@ class TestEmbeddingService(unittest.TestCase):
         )
 
         # Verify embeddings were generated
-        self.assertIsNotNone(embeddings)
+        assert embeddings is not None
 
 
 if __name__ == "__main__":
