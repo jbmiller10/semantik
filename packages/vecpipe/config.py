@@ -32,7 +32,8 @@ class Settings(BaseSettings):
     # Data & Processing Paths
     # Use paths relative to the project root for portability
     FILE_TRACKING_DB: Path = PROJECT_ROOT / "data" / "file_tracking.json"
-    WEBUI_DB: Path = PROJECT_ROOT / "data" / "webui.db"
+    # For Docker environments, use the mounted volume path; otherwise use relative path
+    WEBUI_DB: Path = Path("/app/data/webui.db") if Path("/app/data").exists() else PROJECT_ROOT / "data" / "webui.db"
     EXTRACT_DIR: Path = PROJECT_ROOT / "data" / "extract"
     INGEST_DIR: Path = PROJECT_ROOT / "data" / "ingest"
     LOADED_DIR: Path = PROJECT_ROOT / "data" / "loaded"
@@ -48,6 +49,7 @@ class Settings(BaseSettings):
     WEBUI_PORT: int = 8080
 
     # Service URLs (for internal API calls)
+    # Support Docker service names through environment variables
     SEARCH_API_URL: str = "http://localhost:8000"
     WEBUI_URL: str = "http://localhost:8080"
 

@@ -1,0 +1,129 @@
+# Docker Compose production override configuration
+# Use this file for production deployments with enhanced security and performance
+#
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# IMPORTANT: 
+# - Always use a reverse proxy (nginx/traefik) for TLS termination
+# - Ensure all secrets are properly managed (consider Docker secrets)
+# - Review and adjust resource limits based on your hardware
+
+version: '3.8'
+
+services:
+  # Production configuration for Qdrant
+  qdrant:
+    # Use specific version tag instead of latest for stability
+    image: qdrant/qdrant:v1.7.4
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    # Additional production environment variables
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+      - QDRANT__LOG_LEVEL=WARN  # Reduce log verbosity
+      - QDRANT__SERVICE__ENABLE_TLS=false  # TLS handled by reverse proxy
+      # Performance tuning
+      - QDRANT__STORAGE__PERFORMANCE__INDEXING_THRESHOLD_KB=20000
+      - QDRANT__STORAGE__PERFORMANCE__MEMMAP_THRESHOLD_KB=50000
+
+  # Production configuration for Search API
+  vecpipe:
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    environment:
+      # Production optimizations
+      - PYTHONOPTIMIZE=2  # Remove docstrings and enable optimizations
+      - MODEL_UNLOAD_AFTER_SECONDS=600  # Keep models loaded longer in production
+      # Disable debug features
+      - USE_MOCK_EMBEDDINGS=false
+      - LOG_LEVEL=WARNING
+    # Production health check with tighter timings
+    healthcheck:
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Production configuration for WebUI
+  webui:
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    environment:
+      # Production settings
+      - PYTHONOPTIMIZE=2
+      - LOG_LEVEL=WARNING
+      # Increase workers for production load
+      - WEBUI_WORKERS=4
+      # Security headers (additional to reverse proxy)
+      - FORWARDED_ALLOW_IPS=*  # Configure based on your proxy
+      # Rate limiting
+      - RATE_LIMIT_PER_MINUTE=60
+    # Remove port exposure - access through reverse proxy only
+    ports: []
+    # Production health check
+    healthcheck:
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Optional: Add a reverse proxy service
+  nginx:
+    image: nginx:alpine
+    container_name: semantik-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx_cache:/var/cache/nginx
+    depends_on:
+      - webui
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - CHOWN
+      - SETUID
+      - SETGID
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+volumes:
+  nginx_cache:
+    driver: local
+
+# Production network configuration
+networks:
+  default:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: semantik_prod
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
