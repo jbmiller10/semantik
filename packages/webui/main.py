@@ -89,6 +89,6 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-    from vecpipe.config import settings as vecpipe_settings
+    from shared.config import settings as vecpipe_settings
 
     uvicorn.run(app, host="0.0.0.0", port=vecpipe_settings.WEBUI_PORT)

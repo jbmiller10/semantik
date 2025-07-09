@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from packages.vecpipe.extract_chunks import TokenChunker, extract_and_serialize
+from shared.text_processing.chunking import TokenChunker, extract_and_serialize
 
 
 @pytest.fixture()

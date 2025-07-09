@@ -21,8 +21,8 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from webui.embedding_service import EmbeddingService
 
-from .config import settings
-from .metrics import (
+from shared.config import settings
+from shared.metrics.prometheus import (
     TimingContext,
     embedding_batch_duration,
     extraction_duration,

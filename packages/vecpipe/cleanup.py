@@ -18,7 +18,7 @@ from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchVa
 # Add parent directory to path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from .config import settings
+from shared.config import settings
 from .extract_chunks import FileChangeTracker
 
 # Configure logging
