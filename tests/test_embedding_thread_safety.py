@@ -8,8 +8,8 @@ import threading
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Set
-from unittest.mock import MagicMock, patch
+from typing import Any
+from unittest.mock import MagicMock
 
 # Mock metrics before importing
 sys.modules["shared.metrics.prometheus"] = MagicMock()
@@ -22,7 +22,7 @@ class TestThreadSafety(unittest.TestCase):
         """Test that singleton is thread-safe."""
         from shared.embedding import get_embedding_service_sync
 
-        services: Set[int] = set()
+        services: set[int] = set()
         lock = threading.Lock()
 
         def get_service_id() -> int:
@@ -39,7 +39,7 @@ class TestThreadSafety(unittest.TestCase):
                 future.result()
 
         # Should only have one unique service instance
-        self.assertEqual(len(services), 1, "Multiple service instances created - not thread safe!")
+        assert len(services) == 1, "Multiple service instances created - not thread safe!"
 
     def test_concurrent_model_loading(self) -> None:
         """Test concurrent model loading doesn't cause issues."""
@@ -66,9 +66,9 @@ class TestThreadSafety(unittest.TestCase):
                 future.result()
 
         # All should succeed
-        self.assertEqual(len(errors), 0, f"Errors during concurrent loading: {errors}")
-        self.assertEqual(len(results), 10)
-        self.assertTrue(all(success for _, success in results))
+        assert len(errors) == 0, f"Errors during concurrent loading: {errors}"
+        assert len(results) == 10
+        assert all(success for _, success in results)
 
     def test_concurrent_embedding_generation(self) -> None:
         """Test concurrent embedding generation is safe."""
@@ -98,18 +98,18 @@ class TestThreadSafety(unittest.TestCase):
                 future.result()
 
         # All should succeed
-        self.assertEqual(len(errors), 0, f"Errors during concurrent generation: {errors}")
-        self.assertEqual(len(results), 50)
+        assert len(errors) == 0, f"Errors during concurrent generation: {errors}"
+        assert len(results) == 50
 
         # All should have correct shape
         for thread_id, shape in results:
-            self.assertEqual(shape, (100, 384), f"Thread {thread_id} got wrong shape: {shape}")
+            assert shape == (100, 384), f"Thread {thread_id} got wrong shape: {shape}"
 
     def test_async_singleton_thread_safety(self) -> None:
         """Test async singleton is thread-safe across event loops."""
         from shared.embedding import get_embedding_service
 
-        services: Set[int] = set()
+        services: set[int] = set()
         lock = threading.Lock()
 
         def get_service_in_new_loop() -> int:
@@ -131,7 +131,7 @@ class TestThreadSafety(unittest.TestCase):
                 future.result()
 
         # Should only have one unique service instance
-        self.assertEqual(len(services), 1, "Multiple async service instances created!")
+        assert len(services) == 1, "Multiple async service instances created!"
 
     def test_race_condition_in_initialization(self) -> None:
         """Test no race conditions during service initialization."""
@@ -151,7 +151,7 @@ class TestThreadSafety(unittest.TestCase):
             # All should be the same instance
             first_id = id(services[0])
             for i, service in enumerate(services):
-                self.assertEqual(id(service), first_id, f"Service {i} has different id")
+                assert id(service) == first_id, f"Service {i} has different id"
 
         asyncio.run(test_concurrent_init())
 
@@ -196,7 +196,7 @@ class TestThreadSafety(unittest.TestCase):
 
         # Requests might fail or succeed depending on timing, but shouldn't crash
         total_completed = len(results) + len(errors)
-        self.assertEqual(total_completed, 5, "Not all requests completed")
+        assert total_completed == 5, "Not all requests completed"
 
 
 class TestAsyncConcurrency(unittest.TestCase):
@@ -224,12 +224,12 @@ class TestAsyncConcurrency(unittest.TestCase):
             duration = time.time() - start
 
             # Verify results
-            self.assertEqual(len(results), 50)
+            assert len(results) == 50
             for i, embeddings in enumerate(results):
-                self.assertEqual(embeddings.shape, (100, 384), f"Task {i} got wrong shape")
+                assert embeddings.shape == (100, 384), f"Task {i} got wrong shape"
 
             # Should complete reasonably fast (concurrent execution)
-            self.assertLess(duration, 2.0, f"Concurrent execution too slow: {duration}s")
+            assert duration < 2.0, f"Concurrent execution too slow: {duration}s"
 
         asyncio.run(run_test())
 
@@ -272,9 +272,9 @@ class TestAsyncConcurrency(unittest.TestCase):
             failures = sum(1 for r in results if isinstance(r, Exception))
 
             # Should have some of each
-            self.assertGreater(successes, 0, "No successful requests")
-            self.assertGreater(failures, 0, "No failed requests")
-            self.assertEqual(successes + failures, 10, "Wrong total count")
+            assert successes > 0, "No successful requests"
+            assert failures > 0, "No failed requests"
+            assert successes + failures == 10, "Wrong total count"
 
         asyncio.run(run_test())
 
