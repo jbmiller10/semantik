@@ -14,7 +14,7 @@ from .webui import WebuiConfig
 class Settings(VecpipeConfig, WebuiConfig):
     """
     Unified settings class that includes all configuration options.
-    This maintains backward compatibility with the original vecpipe.config.Settings
+    This maintains backward compatibility with the original shared.config.Settings
     """
 
 

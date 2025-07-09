@@ -96,8 +96,8 @@ class TestSearchAPIEmbeddingFlow:
         """Document and verify the current dependency structure.
 
         This test documents the current problematic dependency where:
-        - vecpipe/search_api imports from webui.embedding_service
-        - vecpipe/model_manager imports from webui.embedding_service
+        - vecpipe/search_api imports from shared.embedding
+        - vecpipe/model_manager imports from shared.embedding
 
         After CORE-003, these imports should come from a shared package.
         """
@@ -114,8 +114,8 @@ class TestSearchAPIEmbeddingFlow:
         search_api_source = inspect.getsource(search_api)
         model_manager_source = inspect.getsource(model_manager)
 
-        assert "from webui.embedding_service import EmbeddingService" in search_api_source
-        assert "from webui.embedding_service import EmbeddingService" in model_manager_source
+        assert "from shared.embedding import EmbeddingService" in search_api_source
+        assert "from shared.embedding import EmbeddingService" in model_manager_source
 
         # This assertion will need to be updated after CORE-003
         # to verify imports come from shared.embedding_service instead

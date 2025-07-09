@@ -15,7 +15,7 @@ import numpy as np
 sys.path.append(str(Path(__file__).resolve().parent))
 
 from vecpipe.qwen3_search_config import DOMAIN_INSTRUCTIONS, get_optimal_config
-from webui.embedding_service import EmbeddingService
+from shared.embedding import EmbeddingService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)

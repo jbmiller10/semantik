@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from typing import Any
 
-from webui.embedding_service import EmbeddingService
+from shared.embedding import DenseEmbeddingService, EmbeddingService
 
 from .memory_utils import InsufficientMemoryError, check_memory_availability, get_gpu_memory_info
 from .reranker import CrossEncoderReranker
@@ -111,12 +111,9 @@ class ModelManager:
     def unload_model(self) -> None:
         """Unload the current model to free memory"""
         with self.lock:
-            if self.embedding_service and hasattr(self.embedding_service, "current_model"):
+            if self.embedding_service:
                 logger.info("Unloading current model")
-                self.embedding_service.current_model = None
-                self.embedding_service.current_tokenizer = None
-                self.embedding_service.current_model_name = None
-                self.embedding_service.current_quantization = None
+                self.embedding_service.unload_model()
                 self.current_model_key = None
 
                 # Force garbage collection
