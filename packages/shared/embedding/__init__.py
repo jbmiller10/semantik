@@ -4,13 +4,14 @@ This module provides embedding generation capabilities for the system.
 """
 
 from .base import BaseEmbeddingService
-from .dense import (
+from .dense import DenseEmbeddingService, EmbeddingService, embedding_service, enhanced_embedding_service
+from .models import (
     POPULAR_MODELS,
     QUANTIZED_MODEL_INFO,
-    DenseEmbeddingService,
-    EmbeddingService,
-    embedding_service,
-    enhanced_embedding_service,
+    ModelConfig,
+    add_model_config,
+    get_model_config,
+    list_available_models,
 )
 from .service import (
     cleanup,
@@ -33,6 +34,11 @@ __all__ = [
     "embed_texts",
     "embed_single",
     "cleanup",
+    # Model configuration
+    "ModelConfig",
+    "get_model_config",
+    "list_available_models",
+    "add_model_config",
     # Compatibility exports
     "embedding_service",
     "enhanced_embedding_service",
