@@ -1,10 +1,8 @@
 """Integration tests for job creation and management API endpoints."""
 
-import json
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 
@@ -24,7 +22,6 @@ class TestJobsAPI:
         mock_get_job,
         mock_process_job,
         test_client: TestClient,
-        test_user: dict,
     ):
         """Test successful job creation."""
 
@@ -112,7 +109,7 @@ class TestJobsAPI:
         mock_scan_directory.assert_called_once()
         scan_args = mock_scan_directory.call_args
         assert scan_args[0][0] == "/path/to/documents"
-        assert scan_args[1]["recursive"] == True
+        assert scan_args[1]["recursive"] is True
         # scan_id is the generated job_id
         assert len(scan_args[1]["scan_id"]) == 36
 
@@ -198,8 +195,8 @@ class TestJobsAPI:
             "user_id": test_user["id"],
             "name": "Job to Delete",
             "status": "completed",
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
         }
         mock_get_job.return_value = mock_job
         mock_delete_job.return_value = True
@@ -225,7 +222,7 @@ class TestJobsAPI:
         mock_qdrant_client.return_value.delete_collection.assert_called_once_with(f"job_{job_id}")
 
     @patch("webui.api.jobs.database.get_job")
-    def test_delete_job_unauthorized(self, mock_get_job, test_client: TestClient, test_user: dict):
+    def test_delete_job_unauthorized(self, mock_get_job, test_client: TestClient):
         """Test job deletion by unauthorized user."""
         # Setup mocks - job belongs to different user
         job_id = "test-job-789"
@@ -263,8 +260,8 @@ class TestJobsAPI:
             "user_id": test_user["id"],
             "name": "Job to Cancel",
             "status": "processing",
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
         }
         mock_get_job.return_value = mock_job
 
