@@ -33,61 +33,61 @@ class TestSearchAPIEmbeddingFlow:
         - The actual embedding service implementation (may be mocked)
         - The specific embedding model used (depends on settings)
         """
-        with patch("packages.vecpipe.search_utils.AsyncQdrantClient") as mock_qdrant_client_class:
-            with patch("httpx.AsyncClient.get") as mock_get:
-                # Mock Qdrant collection info
-                mock_get.return_value = AsyncMock(
-                    status_code=200,
-                    json=lambda: {
-                        "result": {
-                            "points_count": 100,
-                            "config": {"params": {"vectors": {"size": 1024}}},
-                        }
+        with patch("packages.vecpipe.search_utils.AsyncQdrantClient") as mock_qdrant_client_class, \
+             patch("httpx.AsyncClient.get") as mock_get:
+            # Mock Qdrant collection info
+            mock_get.return_value = AsyncMock(
+                status_code=200,
+                json=lambda: {
+                    "result": {
+                        "points_count": 100,
+                        "config": {"params": {"vectors": {"size": 1024}}},
+                    }
+                },
+            )
+            mock_get.return_value.raise_for_status = AsyncMock()
+
+            # Mock Qdrant search results
+            mock_qdrant_instance = mock_qdrant_client_class.return_value
+            mock_result = MagicMock()
+            mock_result.id = "test-id"
+            mock_result.score = 0.95
+            mock_result.payload = {
+                "path": "/test/file.txt",
+                "chunk_id": "chunk-1",
+                "doc_id": "doc-1",
+            }
+            mock_qdrant_instance.search = AsyncMock(return_value=[mock_result])
+
+            # Import and test
+            from packages.vecpipe.search_api import app
+
+            with TestClient(app) as client:
+                query_text = "test query"
+                response = client.post(
+                    "/search",
+                    json={
+                        "query": query_text,
+                        "k": 5,
+                        "search_type": "semantic",
                     },
                 )
-                mock_get.return_value.raise_for_status = AsyncMock()
 
-                # Mock Qdrant search results
-                mock_qdrant_instance = mock_qdrant_client_class.return_value
-                mock_result = MagicMock()
-                mock_result.id = "test-id"
-                mock_result.score = 0.95
-                mock_result.payload = {
-                    "path": "/test/file.txt",
-                    "chunk_id": "chunk-1",
-                    "doc_id": "doc-1",
-                }
-                mock_qdrant_instance.search = AsyncMock(return_value=[mock_result])
+                # Verify response
+                assert response.status_code == 200
+                result = response.json()
+                assert result["query"] == query_text
+                assert len(result["results"]) == 1
+                assert result["results"][0]["path"] == "/test/file.txt"
 
-                # Import and test
-                from packages.vecpipe.search_api import app
+                # Verify Qdrant was searched
+                mock_qdrant_instance.search.assert_called_once()
+                search_call = mock_qdrant_instance.search.call_args
 
-                with TestClient(app) as client:
-                    query_text = "test query"
-                    response = client.post(
-                        "/search",
-                        json={
-                            "query": query_text,
-                            "k": 5,
-                            "search_type": "semantic",
-                        },
-                    )
-
-                    # Verify response
-                    assert response.status_code == 200
-                    result = response.json()
-                    assert result["query"] == query_text
-                    assert len(result["results"]) == 1
-                    assert result["results"][0]["path"] == "/test/file.txt"
-
-                    # Verify Qdrant was searched
-                    mock_qdrant_instance.search.assert_called_once()
-                    search_call = mock_qdrant_instance.search.call_args
-
-                    # Should have been called with a vector (embedding)
-                    assert "query_vector" in search_call.kwargs
-                    assert isinstance(search_call.kwargs["query_vector"], list)
-                    assert len(search_call.kwargs["query_vector"]) > 0
+                # Should have been called with a vector (embedding)
+                assert "query_vector" in search_call.kwargs
+                assert isinstance(search_call.kwargs["query_vector"], list)
+                assert len(search_call.kwargs["query_vector"]) > 0
 
     @patch("packages.vecpipe.search_api.model_manager")
     def test_embedding_service_dependency_structure(self, mock_model_manager):
@@ -124,44 +124,44 @@ class TestSearchAPIEmbeddingFlow:
         This verifies that custom parameters are accepted and processed,
         though the actual model used depends on settings and availability.
         """
-        with patch("packages.vecpipe.search_utils.AsyncQdrantClient") as mock_qdrant_client_class:
-            with patch("httpx.AsyncClient.get") as mock_get:
-                # Mock responses
-                mock_get.return_value = AsyncMock(
-                    status_code=200,
-                    json=lambda: {
-                        "result": {
-                            "points_count": 50,
-                            "config": {"params": {"vectors": {"size": 768}}},
-                        }
-                    },
-                )
-                mock_get.return_value.raise_for_status = AsyncMock()
+        with patch("packages.vecpipe.search_utils.AsyncQdrantClient") as mock_qdrant_client_class, \
+             patch("httpx.AsyncClient.get") as mock_get:
+            # Mock responses
+            mock_get.return_value = AsyncMock(
+                status_code=200,
+                json=lambda: {
+                    "result": {
+                        "points_count": 50,
+                        "config": {"params": {"vectors": {"size": 768}}},
+                    }
+                },
+            )
+            mock_get.return_value.raise_for_status = AsyncMock()
 
-                mock_qdrant_instance = mock_qdrant_client_class.return_value
-                mock_qdrant_instance.search = AsyncMock(return_value=[])
+            mock_qdrant_instance = mock_qdrant_client_class.return_value
+            mock_qdrant_instance.search = AsyncMock(return_value=[])
 
-                # Need to patch metrics server to avoid port conflicts
-                with patch("packages.vecpipe.search_api.start_metrics_server"):
-                    from packages.vecpipe.search_api import app
+            # Need to patch metrics server to avoid port conflicts
+            with patch("packages.vecpipe.search_api.start_metrics_server"):
+                from packages.vecpipe.search_api import app
 
-                    with TestClient(app) as client:
-                        response = client.post(
-                            "/search",
-                            json={
-                                "query": "test with custom params",
-                                "k": 10,
-                                "search_type": "question",
-                                "model_name": "sentence-transformers/all-MiniLM-L6-v2",
-                                "quantization": "int8",
-                            },
-                        )
+                with TestClient(app) as client:
+                    response = client.post(
+                        "/search",
+                        json={
+                            "query": "test with custom params",
+                            "k": 10,
+                            "search_type": "question",
+                            "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+                            "quantization": "int8",
+                        },
+                    )
 
-                        assert response.status_code == 200
-                        result = response.json()
+                    assert response.status_code == 200
+                    result = response.json()
 
-                        # The response should indicate the search type
-                        assert result["search_type"] == "question"
+                    # The response should indicate the search type
+                    assert result["search_type"] == "question"
 
-                        # Note: model_used in response depends on USE_MOCK_EMBEDDINGS
-                        # so we don't assert on it here
+                    # Note: model_used in response depends on USE_MOCK_EMBEDDINGS
+                    # so we don't assert on it here
