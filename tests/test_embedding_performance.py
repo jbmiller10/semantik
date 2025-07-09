@@ -7,9 +7,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
-from unittest.mock import MagicMock, patch
-
-import numpy as np
+from unittest.mock import MagicMock
 
 # Mock metrics before importing
 sys.modules["shared.metrics.prometheus"] = MagicMock()
@@ -47,7 +45,7 @@ def benchmark_sync_embeddings() -> dict[str, Any]:
 
 async def benchmark_async_embeddings() -> dict[str, Any]:
     """Benchmark asynchronous embedding generation."""
-    from shared.embedding import get_embedding_service, initialize_embedding_service
+    from shared.embedding import initialize_embedding_service
 
     # Initialize with mock model
     service = await initialize_embedding_service("test-model", mock_mode=True)
@@ -161,7 +159,7 @@ async def benchmark_service_lifecycle() -> dict[str, float]:
 
     # Benchmark initialization
     start = time.time()
-    service = await initialize_embedding_service("test-model", mock_mode=True)
+    await initialize_embedding_service("test-model", mock_mode=True)
     results["initialization_time"] = time.time() - start
 
     # Benchmark singleton retrieval

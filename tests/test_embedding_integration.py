@@ -2,14 +2,11 @@
 """
 Integration tests for the embedding service async/sync interaction
 """
-import asyncio
 import sys
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
-
-import numpy as np
 
 # Mock metrics before importing
 sys.modules["shared.metrics.prometheus"] = MagicMock()
