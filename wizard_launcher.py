@@ -5,9 +5,9 @@ This script can run without any dependencies and will bootstrap the setup proces
 """
 
 import os
-import sys
-import subprocess
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -33,9 +33,9 @@ def check_poetry():
             # Windows: Check AppData locations
             appdata = os.environ.get("APPDATA", "")
             possible_paths = [
-                os.path.join(appdata, "Python", "Scripts", "poetry.exe"),
-                os.path.join(appdata, "pypoetry", "venv", "Scripts", "poetry.exe"),
-                os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Python", "Scripts", "poetry.exe"),
+                Path(appdata) / "Python" / "Scripts" / "poetry.exe",
+                Path(appdata) / "pypoetry" / "venv" / "Scripts" / "poetry.exe",
+                Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Python" / "Scripts" / "poetry.exe",
             ]
         else:
             # macOS/Linux: Check home directory locations
@@ -82,13 +82,12 @@ def check_poetry():
                     print(f"   {os.environ.get('APPDATA')}\\Python\\Scripts")
                 else:
                     print("ℹ️  You may need to restart your terminal or run:")
-                    print(f'   export PATH="$HOME/.local/bin:$PATH"')
+                    print('   export PATH="$HOME/.local/bin:$PATH"')
 
                 # Try to find Poetry again after installation
                 return check_poetry()
-            else:
-                print(f"❌ Failed to install Poetry: {result.stderr}")
-                return False
+            print(f"❌ Failed to install Poetry: {result.stderr}")
+            return False
 
         except Exception as e:
             print(f"❌ Error installing Poetry: {e}")
@@ -113,7 +112,7 @@ def check_dependencies():
             [poetry_cmd, "run", "python", "-c", "import questionary, rich"], capture_output=True, text=True
         )
         return result.returncode == 0
-    except:
+    except Exception:
         return False
 
 
@@ -127,9 +126,8 @@ def install_dependencies():
         if result.returncode == 0:
             print("✅ Dependencies installed successfully")
             return True
-        else:
-            print(f"❌ Failed to install dependencies: {result.stderr}")
-            return False
+        print(f"❌ Failed to install dependencies: {result.stderr}")
+        return False
     except Exception as e:
         print(f"❌ Error installing dependencies: {e}")
         return False

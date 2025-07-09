@@ -11,10 +11,9 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import questionary
-from rich import print as rprint
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -25,12 +24,12 @@ console = Console()
 
 class DockerSetupTUI:
     def __init__(self) -> None:
-        self.config: Dict[str, str] = {}
+        self.config: dict[str, str] = {}
         self.gpu_available = False
         self.docker_available = False
         self.compose_available = False
         self.docker_gpu_available = False
-        self.driver_version: Optional[str] = None
+        self.driver_version: str | None = None
         self.is_wsl2 = False
 
     def run(self) -> None:
@@ -86,8 +85,8 @@ class DockerSetupTUI:
 ║                                                               ║
 ║   ███████╗███████╗███╗   ███╗ █████╗ ███╗   ██╗████████╗██╗██╗  ██╗
 ║   ██╔════╝██╔════╝████╗ ████║██╔══██╗████╗  ██║╚══██╔══╝██║██║ ██╔╝
-║   ███████╗█████╗  ██╔████╔██║███████║██╔██╗ ██║   ██║   ██║█████╔╝ 
-║   ╚════██║██╔══╝  ██║╚██╔╝██║██╔══██║██║╚██╗██║   ██║   ██║██╔═██╗ 
+║   ███████╗█████╗  ██╔████╔██║███████║██╔██╗ ██║   ██║   ██║█████╔╝
+║   ╚════██║██╔══╝  ██║╚██╔╝██║██╔══██║██║╚██╗██║   ██║   ██║██╔═██╗
 ║   ███████║███████╗██║ ╚═╝ ██║██║  ██║██║ ╚████║   ██║   ██║██║  ██╗
 ║   ╚══════╝╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝   ╚═╝   ╚═╝╚═╝  ╚═╝
 ║                                                               ║
@@ -190,7 +189,7 @@ class DockerSetupTUI:
         # Check if running in WSL2
         self.is_wsl2 = False
         try:
-            with open("/proc/version", "r") as f:
+            with open("/proc/version") as f:
                 if "microsoft" in f.read().lower():
                     self.is_wsl2 = True
         except:
@@ -265,7 +264,7 @@ class DockerSetupTUI:
             return False
         except subprocess.TimeoutExpired:
             return False
-        except:
+        except Exception:
             return False
 
     def _install_nvidia_container_toolkit(self) -> bool:
@@ -318,7 +317,7 @@ class DockerSetupTUI:
 
         return False
 
-    def _get_linux_distro(self) -> Optional[str]:
+    def _get_linux_distro(self) -> str | None:
         """Get Linux distribution information"""
         try:
             # Try lsb_release first
@@ -328,7 +327,7 @@ class DockerSetupTUI:
 
             # Try /etc/os-release
             if Path("/etc/os-release").exists():
-                with open("/etc/os-release", "r") as f:
+                with open("/etc/os-release") as f:
                     for line in f:
                         if line.startswith("ID="):
                             return line.split("=")[1].strip().strip('"')
@@ -402,7 +401,7 @@ class DockerSetupTUI:
             return False
 
         # These commands can be run normally
-        regular_commands: List[List[str]] = [
+        regular_commands: list[list[str]] = [
             ["sudo", "apt-get", "update"],
             ["sudo", "apt-get", "install", "-y", "nvidia-container-toolkit"],
             ["sudo", "nvidia-ctk", "runtime", "configure", "--runtime=docker"],
@@ -509,7 +508,7 @@ class DockerSetupTUI:
             return False
 
         # Regular commands
-        regular_commands: List[List[str]] = [
+        regular_commands: list[list[str]] = [
             ["sudo", "yum", "install", "-y", "nvidia-container-toolkit"],
             ["sudo", "nvidia-ctk", "runtime", "configure", "--runtime=docker"],
             ["sudo", "systemctl", "daemon-reload"],
@@ -690,7 +689,7 @@ class DockerSetupTUI:
 
         return False
 
-    def _get_all_gpu_info(self) -> List[Dict[str, Any]]:
+    def _get_all_gpu_info(self) -> list[dict[str, Any]]:
         """Get detailed information about all GPUs using nvidia-smi"""
         try:
             # Query all relevant GPU information
@@ -771,7 +770,7 @@ class DockerSetupTUI:
         console.print("You can add multiple directories containing documents to process.")
         console.print("These directories will be mounted read-only in the Docker container.\n")
 
-        document_dirs: List[Path] = []
+        document_dirs: list[Path] = []
 
         # First, ask if they want to use a file browser or type paths
         browse_mode = questionary.select(
@@ -798,7 +797,7 @@ class DockerSetupTUI:
             else:
                 # Manual path entry
                 if document_dirs:
-                    console.print(f"\n[green]Selected directories:[/green]")
+                    console.print("\n[green]Selected directories:[/green]")
                     for d in document_dirs:
                         console.print(f"  • {d}")
 
@@ -872,7 +871,7 @@ class DockerSetupTUI:
         console.print()
         return True
 
-    def _browse_for_directory(self) -> Optional[Path]:
+    def _browse_for_directory(self) -> Path | None:
         """Interactive directory browser"""
         current_path = Path.cwd()
 
@@ -1104,7 +1103,7 @@ class DockerSetupTUI:
         if not template_path.exists():
             raise FileNotFoundError(".env.docker.example not found")
 
-        with open(template_path, "r") as f:
+        with open(template_path) as f:
             content = f.read()
 
         # Replace values
@@ -1189,7 +1188,7 @@ class DockerSetupTUI:
             console.print("\n[yellow]Press Ctrl+C to exit logs[/yellow]\n")
             subprocess.run(["docker", "compose"] + compose_files + ["logs", "-f"])
 
-    def _run_docker_command(self, cmd: List[str], description: str) -> bool:
+    def _run_docker_command(self, cmd: list[str], description: str) -> bool:
         """Run a Docker command with progress display"""
         with Progress(
             SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
@@ -1209,7 +1208,7 @@ class DockerSetupTUI:
                 console.print(f"\n[red]Error running command: {e}[/red]")
                 return False
 
-    def _get_compose_files(self) -> List[str]:
+    def _get_compose_files(self) -> list[str]:
         """Get the appropriate docker-compose file arguments based on GPU configuration"""
         # Always use the main docker-compose.yml
         # PyTorch will automatically detect GPU availability
@@ -1226,7 +1225,7 @@ class DockerSetupTUI:
         # Load from .env file
         env_path = Path(".env")
         if env_path.exists():
-            with open(env_path, "r") as f:
+            with open(env_path) as f:
                 for line in f:
                     line = line.strip()
                     if line and not line.startswith("#") and "=" in line:
@@ -1236,7 +1235,7 @@ class DockerSetupTUI:
         # Load from config file if exists
         config_path = Path(".semantik-config.json")
         if config_path.exists():
-            with open(config_path, "r") as f:
+            with open(config_path) as f:
                 saved_config = json.load(f)
                 self.config.update(saved_config)
 
@@ -1258,9 +1257,9 @@ class DockerSetupTUI:
             json.dump(self.config, f, indent=2)
         console.print(f"[green]Configuration saved to {config_path}[/green]")
 
-    def _select_with_timeout(self, prompt: str, choices: List[str], timeout: int = 5) -> Optional[str]:
+    def _select_with_timeout(self, prompt: str, choices: list[str], timeout: int = 5) -> str | None:
         """Select menu with timeout for auto-refresh"""
-        result: Optional[str] = None
+        result: str | None = None
         event = threading.Event()
 
         def get_input() -> None:
@@ -1414,7 +1413,7 @@ class DockerSetupTUI:
         else:
             console.print("[red]No services found or Docker Compose error[/red]")
 
-    def _get_services(self) -> List[str]:
+    def _get_services(self) -> list[str]:
         """Get list of service names"""
         compose_files = self._get_compose_files()
 
@@ -1444,7 +1443,7 @@ class DockerSetupTUI:
 
                     response = requests.get(f"http://localhost:{port}/health", timeout=5)
                     if response.status_code == 200:
-                        console.print(f"  [green]✓ Health check passed[/green]")
+                        console.print("  [green]✓ Health check passed[/green]")
                     else:
                         console.print(f"  [yellow]! Health check returned {response.status_code}[/yellow]")
                 except Exception as e:
@@ -1479,7 +1478,7 @@ class DockerSetupTUI:
 
         return False
 
-    def _detect_common_directories(self) -> List[Path]:
+    def _detect_common_directories(self) -> list[Path]:
         """Detect common document directories"""
         home = Path.home()
         common_paths = [
