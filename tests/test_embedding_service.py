@@ -28,8 +28,8 @@ class TestEmbeddingService(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures"""
         # Mock the metrics module before importing embedding_service
-        self.original_metrics_module = sys.modules.get("vecpipe.metrics")
-        sys.modules["vecpipe.metrics"] = MagicMock()
+        self.original_metrics_module = sys.modules.get("shared.metrics.prometheus")
+        sys.modules["shared.metrics.prometheus"] = MagicMock()
 
         # Patch at module level to avoid import errors
         self.mock_sentence_transformers = patch("packages.webui.embedding_service.SentenceTransformer")
@@ -61,9 +61,9 @@ class TestEmbeddingService(unittest.TestCase):
 
         # Restore original metrics module
         if self.original_metrics_module is not None:
-            sys.modules["vecpipe.metrics"] = self.original_metrics_module
+            sys.modules["shared.metrics.prometheus"] = self.original_metrics_module
         else:
-            sys.modules.pop("vecpipe.metrics", None)
+            sys.modules.pop("shared.metrics.prometheus", None)
 
     @patch("torch.cuda.is_available")
     def test_load_model_quantization(self, mock_cuda_available):
