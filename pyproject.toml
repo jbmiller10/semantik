@@ -115,6 +115,9 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --cov=packages.vecpipe --cov=packages.webui --cov-report=html --cov-report=term"
 pythonpath = ["."]
+markers = [
+    "e2e: End-to-end tests that require a running instance (deselect with '-m \"not e2e\"')",
+]
 
 [build-system]
 requires = ["poetry-core"]
