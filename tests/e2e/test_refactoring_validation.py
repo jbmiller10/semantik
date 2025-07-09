@@ -18,7 +18,7 @@ def service_available(url: str) -> bool:
         return False
 
 
-@pytest.mark.e2e
+@pytest.mark.e2e()
 @pytest.mark.skipif(
     not service_available(os.getenv("API_BASE_URL", "http://localhost:8080")),
     reason="Semantik service is not available - run with docker compose up",
