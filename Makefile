@@ -11,7 +11,9 @@ help:
 	@echo "  format         Format code with black and isort"
 	@echo "  lint           Run linting with ruff"
 	@echo "  type-check     Run type checking with mypy"
-	@echo "  test           Run tests"
+	@echo "  test           Run all tests"
+	@echo "  test-ci        Run tests excluding E2E (for CI)"
+	@echo "  test-e2e       Run only E2E tests (requires running services)"
 	@echo "  test-coverage  Run tests with coverage report"
 	@echo "  clean          Clean up generated files"
 	@echo ""
@@ -52,6 +54,12 @@ type-check:
 
 test:
 	pytest tests -v
+
+test-ci:
+	pytest tests -v -m "not e2e"
+
+test-e2e:
+	pytest tests -v -m e2e
 
 test-coverage:
 	pytest tests -v --cov=packages.vecpipe --cov=packages.webui --cov-report=html --cov-report=term

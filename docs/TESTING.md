@@ -338,6 +338,25 @@ API_BASE_URL=http://localhost:3000 poetry run pytest tests/e2e/test_refactoring_
 - Using the `test_data/` directory when running locally without Docker
 - Setting a job size limit for test environments
 
+**CI/CD Integration**:
+The E2E test is marked with `@pytest.mark.e2e` and automatically skips if the service is not available. To exclude E2E tests in CI:
+```bash
+# Run all tests except E2E
+make test-ci
+# or
+pytest tests -v -m "not e2e"
+```
+
+To run only E2E tests when services are available:
+```bash
+# Start services first
+docker compose up -d
+# Run E2E tests
+make test-e2e
+# or
+pytest tests -v -m e2e
+```
+
 ## Continuous Integration
 
 ### GitHub Actions Workflow
@@ -358,9 +377,9 @@ jobs:
         run: |
           pip install poetry
           poetry install
-      - name: Run tests
+      - name: Run tests (excluding E2E)
         run: |
-          poetry run pytest --cov=packages
+          make test-ci
 ```
 
 ## Performance Testing

@@ -9,6 +9,20 @@ import pytest
 import requests
 
 
+def service_available(url: str) -> bool:
+    """Check if the service is available at the given URL."""
+    try:
+        response = requests.get(f"{url}/health", timeout=5)
+        return response.status_code == 200
+    except requests.exceptions.RequestException:
+        return False
+
+
+@pytest.mark.e2e
+@pytest.mark.skipif(
+    not service_available(os.getenv("API_BASE_URL", "http://localhost:8080")),
+    reason="Semantik service is not available - run with docker compose up",
+)
 class TestCurrentSystemBehavior:
     """Capture exact current behavior for regression testing."""
 
