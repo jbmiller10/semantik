@@ -18,8 +18,11 @@ _embedding_service: BaseEmbeddingService | None = None
 _service_lock = asyncio.Lock()
 
 
-async def get_embedding_service() -> BaseEmbeddingService:
+async def get_embedding_service(**kwargs: Any) -> BaseEmbeddingService:
     """Get or create the singleton embedding service instance.
+
+    Args:
+        **kwargs: Options passed to service creation (e.g., mock_mode)
 
     Returns:
         The initialized embedding service
@@ -32,7 +35,7 @@ async def get_embedding_service() -> BaseEmbeddingService:
     async with _service_lock:
         if _embedding_service is None:
             logger.info("Creating new embedding service instance")
-            _embedding_service = DenseEmbeddingService()
+            _embedding_service = DenseEmbeddingService(**kwargs)
 
         return _embedding_service
 
@@ -47,9 +50,11 @@ async def initialize_embedding_service(model_name: str, **kwargs: Any) -> BaseEm
     Returns:
         The initialized embedding service
     """
-    service = await get_embedding_service()
+    # Extract service creation kwargs
+    mock_mode = kwargs.get("mock_mode", False)
+    service = await get_embedding_service(mock_mode=mock_mode)
 
-    if not service.is_initialized or service.get_model_info().get("model_name") != model_name:
+    if not service.is_initialized or (hasattr(service, "model_name") and service.model_name != model_name):
         await service.initialize(model_name, **kwargs)
 
     return service
