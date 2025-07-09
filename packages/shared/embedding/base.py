@@ -25,7 +25,6 @@ class BaseEmbeddingService(ABC):
             ValueError: If the model cannot be loaded
             RuntimeError: If initialization fails
         """
-        pass
 
     @abstractmethod
     async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> np.ndarray:
@@ -43,7 +42,6 @@ class BaseEmbeddingService(ABC):
             ValueError: If texts is empty or invalid
             RuntimeError: If embedding generation fails
         """
-        pass
 
     @abstractmethod
     async def embed_single(self, text: str, **kwargs: Any) -> np.ndarray:
@@ -60,7 +58,6 @@ class BaseEmbeddingService(ABC):
             ValueError: If text is empty or invalid
             RuntimeError: If embedding generation fails
         """
-        pass
 
     @abstractmethod
     def get_dimension(self) -> int:
@@ -72,7 +69,6 @@ class BaseEmbeddingService(ABC):
         Raises:
             RuntimeError: If called before initialization
         """
-        pass
 
     @abstractmethod
     def get_model_info(self) -> dict[str, Any]:
@@ -88,7 +84,6 @@ class BaseEmbeddingService(ABC):
         Raises:
             RuntimeError: If called before initialization
         """
-        pass
 
     @abstractmethod
     async def cleanup(self) -> None:
@@ -97,10 +92,8 @@ class BaseEmbeddingService(ABC):
         This should be called when the service is no longer needed.
         After cleanup, the service must be re-initialized before use.
         """
-        pass
 
     @property
     @abstractmethod
     def is_initialized(self) -> bool:
         """Check if the service is initialized and ready to use."""
-        pass

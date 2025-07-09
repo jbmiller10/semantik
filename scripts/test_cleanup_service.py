@@ -11,8 +11,8 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from vecpipe.cleanup import QdrantCleanupService
 from shared.text_processing import FileChangeTracker
+from vecpipe.cleanup import QdrantCleanupService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

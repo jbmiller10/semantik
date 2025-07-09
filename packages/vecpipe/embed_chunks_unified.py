@@ -20,7 +20,7 @@ from tqdm.asyncio import tqdm
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from shared.config import settings
-from shared.embedding import DenseEmbeddingService, EmbeddingService
+from shared.embedding import EmbeddingService
 from shared.metrics.prometheus import (
     TimingContext,
     embedding_batch_duration,

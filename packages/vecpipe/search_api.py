@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from prometheus_client import Counter, Histogram
 from shared.config import settings
-from shared.embedding import DenseEmbeddingService, EmbeddingService
+from shared.embedding import EmbeddingService
 from shared.metrics.prometheus import metrics_collector, registry, start_metrics_server
 
 from .hybrid_search import HybridSearchEngine
