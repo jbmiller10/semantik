@@ -13,7 +13,7 @@ from qdrant_client import AsyncQdrantClient
 # Add parent directory to path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
-from vecpipe.config import settings
+from shared.config import settings
 
 from webui import database
 from webui.auth import get_current_user

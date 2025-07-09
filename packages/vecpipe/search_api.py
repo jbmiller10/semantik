@@ -25,10 +25,10 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from prometheus_client import Counter, Histogram
 from webui.embedding_service import EmbeddingService
 
-from .config import settings
+from shared.config import settings
 from .hybrid_search import HybridSearchEngine
 from .memory_utils import InsufficientMemoryError
-from .metrics import metrics_collector, registry, start_metrics_server
+from shared.metrics.prometheus import metrics_collector, registry, start_metrics_server
 from .qwen3_search_config import RERANK_CONFIG, RERANKING_INSTRUCTIONS, get_reranker_for_embedding_model
 from .search_utils import parse_search_results, search_qdrant
 
