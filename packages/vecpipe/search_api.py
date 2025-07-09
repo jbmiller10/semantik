@@ -46,11 +46,17 @@ def get_or_create_metric(
     **kwargs: Any,
 ) -> Any:
     """Create a metric or return existing one if already registered"""
-    from prometheus_client import REGISTRY
+    # Use the shared registry instead of the default one
 
     # Check if metric already exists
-    if name in REGISTRY._names_to_collectors:
-        return REGISTRY._names_to_collectors[name]
+    try:
+        # Try to get existing collector from registry
+        for collector in registry._collector_to_names:
+            if hasattr(collector, "_name") and collector._name == name:
+                return collector
+    except AttributeError:
+        # Registry structure might be different, continue to create new metric
+        pass
 
     # Create new metric
     if labels:

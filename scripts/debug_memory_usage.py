@@ -14,7 +14,8 @@ import psutil
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from vecpipe.extract_chunks import TokenChunker, extract_text
+from shared.text_processing.chunking import TokenChunker
+from shared.text_processing.extraction import extract_text
 
 # Configure detailed logging
 logging.basicConfig(
