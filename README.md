@@ -15,31 +15,16 @@ While we will do our best to avoid any breaking changes, we do not gurantee back
 
 **Semantik is a self-hosted search engine that turns your personal or team's file server into a powerful, private knowledge base. Find what you need instantly, without your data ever leaving your hardware.**
 
-No cloud APIs, no subscriptions, no vendor lock-in. Just powerful, open-source search you control completely.
-
-## Why Semantik? Find Your Files Without Sacrificing Privacy.
-
-Commercial search solutions are powerful, but they require you to upload your sensitive data to their servers. Open-source libraries are private, but they require you to build an entire application from scratch.
-
-Semantik gives you the best of both worlds: a production-ready application that runs entirely on your own hardware.
-
-| Semantik is for you if... | You might not need Semantik if... |
-| :--- | :--- |
-| ✅ You have a large collection of documents on a NAS or local server. | ❌ All your data is already in a cloud service you like. |
-| ✅ You value privacy and want to keep your data 100% in-house. | ❌ You prefer a fully managed, hands-off solution. |
-| ✅ You want the power of modern AI-powered search. | ❌ You only need simple keyword search. |
-| ✅ You're a technical user who likes to tune and control your software. | ❌ You don't want to manage your own server/application. |
-
-## 🌟 Key Features
+## Key Features
 
 <details>
-<summary><strong>🔒 100% Private & Self-Hosted</strong></summary>
+<summary><strong> 100% Private & Self-Hosted</strong></summary>
 <br>
 Your data and models stay on your hardware. Semantik makes zero external API calls. It's the perfect solution for searching sensitive work documents, research papers, or personal files.
 </details>
 
 <details>
-<summary><strong>🧠 State-of-the-Art Search Intelligence</strong></summary>
+<summary><strong> State-of-the-Art Search Intelligence</strong></summary>
 <br>
 Go beyond simple keyword matching. Semantik uses top-performing open-source AI models to understand the <i>meaning</i> of your documents.
 <ul>
@@ -51,7 +36,7 @@ Go beyond simple keyword matching. Semantik uses top-performing open-source AI m
 </details>
 
 <details>
-<summary><strong>🔧 Complete Control & Tunability</strong></summary>
+<summary><strong> Complete Control & Tunability</strong></summary>
 <br>
 Semantik is built for users who want to be in the driver's seat.
 <ul>
@@ -63,7 +48,7 @@ Semantik is built for users who want to be in the driver's seat.
 </details>
 
 <details>
-<summary><strong>✨ Easy-to-Use Interface</strong></summary>
+<summary><strong> Easy-to-Use Interface</strong></summary>
 <br>
 A powerful backend deserves a clean frontend.
 <ul>
@@ -75,14 +60,14 @@ A powerful backend deserves a clean frontend.
 
 
 
-## ⚙️ System Requirements
+##  System Requirements
 
 Semantik can run on both CPU and GPU, but a CUDA-compatible GPU is **strongly recommended** for reasonable performance.
 
 <br>
 
 <details>
-<summary><strong>✅ Recommended (GPU Setup)</strong></summary>
+<summary><strong> Recommended (GPU Setup)</strong></summary>
 <br>
 
 - **GPU**: NVIDIA GPU with CUDA support & **8GB+ of VRAM** (e.g., RTX 3060 / 4060 or newer).
@@ -100,7 +85,7 @@ Semantik can run on both CPU and GPU, but a CUDA-compatible GPU is **strongly re
 <br>
 
 <details>
-<summary><strong>⚠️ Minimum (CPU-Only Setup)</strong></summary>
+<summary><strong> (CPU-Only Setup)</strong></summary>
 <br>
 
 - **CPU**: Modern quad-core or better.
@@ -112,7 +97,7 @@ Semantik can run on both CPU and GPU, but a CUDA-compatible GPU is **strongly re
 
 </details>
 
-## ⚡ Quick Start
+## Quick Start
 
 ### Option 1: Interactive Setup Wizard (Recommended) 🧙‍♂️
 <details>
@@ -158,15 +143,15 @@ The setup wizard guides you through the entire configuration process with an int
    - ✅ Start all services
    - ✅ Provide a service monitor for ongoing management
 
-> **💡 Tip:** If you've already configured Semantik, running `make wizard` again will take you directly to the service monitor where you can start, stop, and manage your services.
+> ** Tip:** If you've already configured Semantik, running `make wizard` again will take you directly to the service monitor where you can start, stop, and manage your services.
 
 </details>
 
-### Option 2: Manual Docker Setup 🐳
+### Option 2: Manual Docker Setup 
 <details>
 <summary>For users who prefer manual configuration or need specific customizations.</summary>
 
-> **📌 GPU Note:** The default Docker configuration uses GPU acceleration for optimal performance. Ensure you have NVIDIA Docker runtime installed. For CPU-only systems, see the CPU-only option below.
+> ** GPU Note:** The default Docker configuration uses GPU acceleration for optimal performance. Ensure you have NVIDIA Docker runtime installed. For CPU-only systems, see the CPU-only option below.
 
 1. **Clone the repository:**
    ```bash
@@ -191,7 +176,7 @@ The setup wizard guides you through the entire configuration process with an int
 4. **Access Semantik:**
    Open your browser to http://localhost:8080
 
-That's it! 🎉 Semantik is now running with:
+That's it!  Semantik is now running with:
 - **WebUI** on port 8080
 - **Search API** on port 8000
 - **Qdrant** vector database on port 6333
@@ -234,17 +219,9 @@ That's it! 🎉 Semantik is now running with:
 </details>
 
 
-## 🤝 Semantik vs. The Alternatives
 
-| Feature | Semantik | Elasticsearch | Pinecone | ChromaDB |
-| :--- | :---: | :---: | :---: | :---: |
-| **Self-hosted & Private** | ✅ | ✅ | ❌ | ✅ |
-| **Intelligent GPU Management** | ✅ | ❌ | N/A | ❌ |
-| **Advanced Search UI Out-of-the-Box** | ✅ | ❌ | ✅ | ❌ |
-| **Built-in Reranking & Hybrid Search** | ✅ | Plugin | ❌ | ❌ |
-| **Truly Open Source (AGPL)** | ✅ | ❌ | ❌ | ✅ |
 
-## 🛠️ Troubleshooting Common Issues
+##  Troubleshooting Common Issues
 
 <details>
 <summary><strong>GPU Not Detected</strong></summary>
@@ -323,7 +300,7 @@ ws.onerror = (e) => console.error('Error:', e);
 For more troubleshooting tips, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 
-## 📄 License
+##  License
 
 Semantik is licensed under the [GNU Affero General Public License v3.0](LICENSE). The core of this license is that if you use this code (or a modified version of it) to provide a service over a network, you must also make the source code available. This ensures that the project and its derivatives will always remain open source.
 
@@ -336,18 +313,12 @@ AI tooling was used in the development of this repo. All code was reviewed and t
 
 ## **Roadmap**
 <ul>
+<li><b>SPLADE sparse indexing for hybrid search</b>
 <li><b>Multimodality & support for additional file formats:</b> index images, code, and more </li>
-<li><b>Integrated OCR:</b> Seamlessly extract and index text from pdfs or images. </li>
+<li><b>Integrated OCR</b>
 <li><b>Support for additional models:</b>Use any SentenceTransformers compatible model</li>
 <li><b>Integrated Model Context Protocol Server</b>: Seamlessly bring the knowledge of your corpus to the LLM of your choice.</li>
 <li><b>Contextually aware document chunking:</b></li>
 <ul>
 
 
-<p align="center">
-  ⭐ If you find Semantik useful, please consider starring the repository! ⭐
-</p>
-<p align="center">
-  <a href="https://github.com/jbmiller10/semantik/issues">Report a Bug</a> •
-  <a href="https://github.com/jbmiller10/semantik/discussions">Request a Feature</a>
-</p>
