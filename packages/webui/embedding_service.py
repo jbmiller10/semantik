@@ -210,9 +210,8 @@ class EmbeddingService:
                     logger.error(error_msg)
                     if not self.allow_quantization_fallback:
                         raise RuntimeError(error_msg)
-                    else:
-                        logger.warning("Falling back to float32 quantization")
-                        quantization = "float32"
+                    logger.warning("Falling back to float32 quantization")
+                    quantization = "float32"
                 else:
                     logger.info(f"INT8 compatibility check passed: {compat_msg}")
 
@@ -246,7 +245,7 @@ class EmbeddingService:
                         error_msg = f"Failed to load Qwen3 model with INT8 quantization: {str(e)}"
                         logger.error(error_msg)
                         logger.error(f"Error type: {type(e).__name__}")
-                        logger.error(f"Full error details:", exc_info=True)
+                        logger.error("Full error details:", exc_info=True)
                         raise RuntimeError(error_msg) from e
 
                 elif quantization == "float16" and self.device == "cuda":
@@ -339,7 +338,7 @@ class EmbeddingService:
                 except Exception as e:
                     logger.error(f"INT8 quantization failed: {e}")
                     logger.error(f"Error type: {type(e).__name__}")
-                    logger.error(f"Full error details:", exc_info=True)
+                    logger.error("Full error details:", exc_info=True)
                     # Don't silently fallback - raise the error
                     raise RuntimeError(f"Failed to load model with INT8 quantization: {str(e)}") from e
 
