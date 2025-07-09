@@ -12,21 +12,29 @@ To build and maintain a **high-performance, resource-efficient, and self-hostabl
 
 ### **2. Core Architecture & Key Files**
 
-The system is a monorepo with two primary packages. Understanding their separation is **critical**.
+The system is a monorepo with two primary packages and a React frontend app.
 
-*   **`vecpipe/` (The Core Engine):** Headless data processing and search API.
+*   **`packages/vecpipe/` (The Core Engine):** Data processing and search API.
     *   `extract_chunks.py`: Document parsing/chunking.
     *   `model_manager.py`: GPU memory management via model lazy-loading and unloading.
     *   `search_api.py`: FastAPI service exposing search functionality. This is the **only** entry point for search logic.
+    *   `cleanup.py`: Cleanup utilities that currently access the webui SQLite database.
 
-*   **`webui/` (The Control Plane & UI):** User-facing application for job management and search.
+*   **`packages/webui/` (The Control Plane & API):** User-facing API for job management and search.
     *   `main.py`: The main FastAPI app that serves the UI and its API.
     *   `api/`: Routers for jobs, users, search proxying, etc.
     *   `database.py`: Manages the **SQLite database** (jobs, users).
-    *   `embedding_service.py`: **The heart of embedding generation.** Handles models, quantization, and adaptive batching. Shared between webui and vecpipe.
-    *   `static/` or `webui-react/`: The frontend code.
+    *   `embedding_service.py`: **The heart of embedding generation.** Handles models, quantization, and adaptive batching. Currently imported by both webui and vecpipe components.
 
-*   **Why this architecture?** The separation allows the `vecpipe` engine to be used independently (e.g., in other data pipelines), while the `webui` acts as a sophisticated, user-friendly control plane. **You must maintain this separation.**
+*   **`apps/webui-react/` (The Frontend):** React-based user interface.
+    *   Modern React application with TypeScript
+    *   Communicates with webui backend via API endpoints
+    *   WebSocket support for real-time updates
+
+*   **Current Architecture Notes:** While the original design intended for complete separation between vecpipe and webui, the current implementation has some interdependencies:
+    *   vecpipe imports `embedding_service.py` from webui
+    *   vecpipe's `cleanup.py` accesses the webui SQLite database
+    *   The webui search endpoints properly proxy to vecpipe's search_api
 
 ---
 
@@ -49,9 +57,10 @@ You have access to and are expected to use the following tools.
 
 These are your core operational constraints.
 
-> **1. YOU MUST MAINTAIN ARCHITECTURAL PURITY.**
-> *   **NEVER** write core search or embedding logic in the `webui/` package. The Web UI's search endpoint is a **proxy** to `vecpipe/search_api.py`.
-> *   **NEVER** allow the `vecpipe/` package to access the `webui` SQLite database.
+> **1. CURRENT ARCHITECTURE GUIDELINES.**
+> *   Core search logic resides in `packages/vecpipe/search_api.py`. The Web UI's search endpoints are **proxies** to vecpipe's search API.
+> *   The embedding service (`packages/webui/embedding_service.py`) is currently shared between packages, imported by both webui and vecpipe.
+> *   While vecpipe's `cleanup.py` currently accesses the webui SQLite database, new features should minimize cross-package dependencies where possible.
 
 > **2. YOU MUST ADHERE TO STRICT QUALITY STANDARDS.**
 > *   All new Python code **MUST** be fully type-hinted and pass `make type-check`.
@@ -72,10 +81,10 @@ For any given task, identify and follow the relevant SOP.
 #### **SOP-01: Adding or Modifying a Backend Feature**
 
 1.  **Analyze & Plan:** Verbally confirm your understanding of the request. Use `think hard` to create a step-by-step implementation plan. State which files you will modify. Await approval before proceeding.
-2.  **Implement Core Logic:** Make changes inside the `vecpipe/` package first.
+2.  **Implement Core Logic:** Make changes inside the `packages/vecpipe/` package first.
 3.  **Write Tests:** Add or update unit tests in `tests/` to cover the new logic. Run `make test` and confirm they pass.
-4.  **Expose via API:** If necessary, expose the new functionality by adding/updating an endpoint in `vecpipe/search_api.py`.
-5.  **Update Control Plane:** If the feature is user-facing, update the `webui/` API to proxy requests to the `search_api`.
+4.  **Expose via API:** If necessary, expose the new functionality by adding/updating an endpoint in `packages/vecpipe/search_api.py`.
+5.  **Update Control Plane:** If the feature is user-facing, update the `packages/webui/` API to proxy requests to the `search_api`.
 6.  **Final Verification:** Run `make format`, `make lint`, and `make type-check`.
 
 #### **SOP-02: Fixing a Bug**
@@ -88,14 +97,14 @@ For any given task, identify and follow the relevant SOP.
 
 #### **SOP-03: Refactoring a Frontend Component (React)**
 
-1.  **Identify Component:** State the vanilla JS functionality you are about to refactor into a React component (e.g., "I will now refactor the job creation form").
-2.  **Create Component File:** Create a new `.tsx` file in `webui-react/src/components/`.
+1.  **Identify Component:** State the functionality you are about to implement or refactor as a React component (e.g., "I will now refactor the job creation form").
+2.  **Create Component File:** Create a new `.tsx` file in `apps/webui-react/src/components/`.
 3.  **Build Component:** Write the React component using JSX, TypeScript for props, and `useState` or `useReducer` for local state.
 4.  **Centralize Logic:**
     *   Move API calls into the dedicated API service.
-    *   Move shared state into the Zustand store.
-5.  **Integrate and Test:** Import and use the new component in its parent. Verify its functionality is identical to the original.
-6.  **Cleanup:** Once verified, remove the corresponding legacy code from the old `.js` and `.html` files.
+    *   Move shared state into the Zustand store if applicable.
+5.  **Integrate and Test:** Import and use the new component in its parent. Verify its functionality works as expected.
+6.  **Cleanup:** Once verified, remove any corresponding legacy code if this was a refactoring task.
 
 ---
 

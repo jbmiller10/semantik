@@ -483,6 +483,29 @@ curl -X POST http://localhost:8000/models/load \
 }
 ```
 
+#### Model Suggestions
+```http
+GET /models/suggest
+```
+
+Get optimal model configuration suggestions based on system resources.
+
+**Example Request:**
+```bash
+curl http://localhost:8000/models/suggest
+```
+
+**Response:**
+```json
+{
+  "gpu_available": true,
+  "gpu_memory_gb": 12.0,
+  "recommended_model": "Qwen/Qwen3-Embedding-0.6B",
+  "recommended_quantization": "int8",
+  "reasoning": "GPU with 12GB VRAM can handle 0.6B model with int8 quantization for optimal speed/quality balance"
+}
+```
+
 #### Embedding Info
 ```http
 GET /embedding/info
@@ -603,6 +626,115 @@ curl -X GET http://localhost:8080/api/jobs \
 ```
 
 ### Endpoints
+
+#### Authentication Endpoints
+
+##### Register
+```http
+POST /api/auth/register
+Content-Type: application/json
+
+{
+  "username": "string",
+  "email": "string",
+  "password": "string",
+  "full_name": "string"
+}
+```
+
+Register a new user account.
+
+**Response (201):**
+```json
+{
+  "id": 1,
+  "username": "john_doe",
+  "email": "john@example.com",
+  "full_name": "John Doe",
+  "created_at": "2024-01-15T10:30:00Z"
+}
+```
+
+##### Login
+```http
+POST /api/auth/login
+Content-Type: application/json
+
+{
+  "username": "string",
+  "password": "string"
+}
+```
+
+Login and receive access and refresh tokens.
+
+**Response (200):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4gZXhhbXBsZQ==",
+  "token_type": "bearer"
+}
+```
+
+##### Refresh Token
+```http
+POST /api/auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "string"
+}
+```
+
+Get a new access token using a refresh token.
+
+**Response (200):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer"
+}
+```
+
+##### Logout
+```http
+POST /api/auth/logout
+Content-Type: application/json
+Authorization: Bearer {token}
+
+{
+  "refresh_token": "string"
+}
+```
+
+Logout and revoke the refresh token.
+
+**Response (200):**
+```json
+{
+  "message": "Successfully logged out"
+}
+```
+
+##### Get Current User
+```http
+GET /api/auth/me
+Authorization: Bearer {token}
+```
+
+Get information about the currently authenticated user.
+
+**Response (200):**
+```json
+{
+  "id": 1,
+  "username": "john_doe",
+  "email": "john@example.com",
+  "full_name": "John Doe",
+  "created_at": "2024-01-15T10:30:00Z"
+}
+```
 
 #### Scan Directory
 ```http
@@ -747,6 +879,170 @@ curl -X GET http://localhost:8080/api/jobs/tech_docs_v2_2024q4 \
     {"file": "/docs/corrupted.pdf", "error": "PDF parsing failed"},
     {"file": "/docs/empty.txt", "error": "Empty file"}
   ]
+}
+```
+
+#### Generate New Job ID
+```http
+GET /api/jobs/new-id
+```
+
+Generate a new unique job ID for creating jobs.
+
+**Example Request:**
+```bash
+curl -X GET http://localhost:8080/api/jobs/new-id \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+```json
+{
+  "job_id": "job_abc123_20240115_103000"
+}
+```
+
+#### Get Collection Metadata
+```http
+GET /api/jobs/collection-metadata/{collection_name}
+```
+
+Get metadata for a specific collection across all jobs.
+
+**Example Request:**
+```bash
+curl -X GET http://localhost:8080/api/jobs/collection-metadata/tech_docs \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+```json
+{
+  "collection_name": "tech_docs",
+  "total_jobs": 3,
+  "total_files": 450,
+  "total_vectors": 15420,
+  "model_used": "Qwen/Qwen3-Embedding-0.6B",
+  "last_updated": "2024-01-15T10:45:00Z"
+}
+```
+
+#### Check Duplicates
+```http
+POST /api/jobs/check-duplicates
+Content-Type: application/json
+
+{
+  "content_hashes": ["hash1", "hash2", "hash3"],
+  "collection_name": "tech_docs"
+}
+```
+
+Check which content hashes already exist in a collection.
+
+**Example Request:**
+```bash
+curl -X POST http://localhost:8080/api/jobs/check-duplicates \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content_hashes": ["abc123...", "def456...", "ghi789..."],
+    "collection_name": "tech_docs"
+  }'
+```
+
+**Response:**
+```json
+{
+  "existing_hashes": ["abc123...", "ghi789..."],
+  "new_hashes": ["def456..."]
+}
+```
+
+#### Get Collections Status
+```http
+GET /api/jobs/collections-status
+```
+
+Check which job collections exist in Qdrant.
+
+**Example Request:**
+```bash
+curl -X GET http://localhost:8080/api/jobs/collections-status \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+```json
+{
+  "existing_collections": ["job_abc123", "job_def456"],
+  "missing_collections": ["job_ghi789"]
+}
+```
+
+#### Cancel Job
+```http
+POST /api/jobs/{job_id}/cancel
+```
+
+Cancel a running job.
+
+**Example Request:**
+```bash
+curl -X POST http://localhost:8080/api/jobs/job_abc123/cancel \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+```json
+{
+  "message": "Job cancelled successfully",
+  "job_id": "job_abc123",
+  "status": "cancelled"
+}
+```
+
+#### Delete Job
+```http
+DELETE /api/jobs/{job_id}
+```
+
+Delete a job and its associated collection.
+
+**Example Request:**
+```bash
+curl -X DELETE http://localhost:8080/api/jobs/job_abc123 \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+```json
+{
+  "message": "Job deleted successfully",
+  "job_id": "job_abc123",
+  "collection_deleted": true
+}
+```
+
+#### Check Collection Exists
+```http
+GET /api/jobs/{job_id}/collection-exists
+```
+
+Check if a job's collection exists in Qdrant.
+
+**Example Request:**
+```bash
+curl -X GET http://localhost:8080/api/jobs/job_abc123/collection-exists \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+```json
+{
+  "exists": true,
+  "collection_name": "job_abc123",
+  "vector_count": 15420
 }
 ```
 
@@ -941,7 +1237,7 @@ Get paginated list of files in a collection.
 
 #### Rename Collection
 ```http
-PUT /api/collections/{collection_name}/rename
+PUT /api/collections/{collection_name}
 Content-Type: application/json
 
 {
@@ -988,6 +1284,151 @@ Content-Type: application/json
 ```
 
 Preload an embedding model to prevent timeout issues during search.
+
+#### Document Endpoints
+
+##### Get Document
+```http
+GET /api/documents/{job_id}/{doc_id}
+```
+
+Retrieve a document by job ID and document ID.
+
+**Example Request:**
+```bash
+curl -X GET http://localhost:8080/api/documents/job_abc123/doc_xyz789 \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+Document content is returned with appropriate content-type header.
+
+##### Get Document Info
+```http
+GET /api/documents/{job_id}/{doc_id}/info
+```
+
+Get document metadata without downloading the full content.
+
+**Example Request:**
+```bash
+curl -X GET http://localhost:8080/api/documents/job_abc123/doc_xyz789/info \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+```json
+{
+  "doc_id": "doc_xyz789",
+  "job_id": "job_abc123",
+  "filename": "technical_spec.pdf",
+  "content_type": "application/pdf",
+  "size_bytes": 1048576,
+  "created_at": "2024-01-15T10:30:00Z"
+}
+```
+
+##### Get Temporary Image
+```http
+GET /api/documents/temp-images/{session_id}/{filename}
+```
+
+Serve temporary images extracted from documents.
+
+**Example Request:**
+```bash
+curl -X GET http://localhost:8080/api/documents/temp-images/session123/image1.png \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+Image content with appropriate content-type header.
+
+#### Metrics
+```http
+GET /api/metrics
+```
+
+Get current Prometheus metrics.
+
+**Example Request:**
+```bash
+curl -X GET http://localhost:8080/api/metrics \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+```
+# HELP http_requests_total Total HTTP requests
+# TYPE http_requests_total counter
+http_requests_total{method="GET",endpoint="/api/search",status="200"} 1234.0
+http_requests_total{method="POST",endpoint="/api/jobs",status="201"} 56.0
+
+# HELP embedding_generation_seconds Time spent generating embeddings
+# TYPE embedding_generation_seconds histogram
+embedding_generation_seconds_bucket{le="0.1"} 100.0
+embedding_generation_seconds_bucket{le="0.5"} 450.0
+embedding_generation_seconds_bucket{le="1.0"} 480.0
+embedding_generation_seconds_bucket{le="+Inf"} 500.0
+embedding_generation_seconds_sum 234.5
+embedding_generation_seconds_count 500.0
+```
+
+#### Settings Endpoints
+
+##### Reset Database
+```http
+POST /api/settings/reset-database
+```
+
+Reset the database (requires confirmation).
+
+**Example Request:**
+```bash
+curl -X POST http://localhost:8080/api/settings/reset-database \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "confirm": true
+  }'
+```
+
+**Response:**
+```json
+{
+  "message": "Database reset successfully",
+  "jobs_deleted": 15,
+  "files_deleted": 1250,
+  "collections_deleted": 5
+}
+```
+
+##### Get Database Statistics
+```http
+GET /api/settings/stats
+```
+
+Get database statistics.
+
+**Example Request:**
+```bash
+curl -X GET http://localhost:8080/api/settings/stats \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+```json
+{
+  "total_jobs": 15,
+  "total_files": 1250,
+  "total_users": 3,
+  "database_size_mb": 125.4,
+  "parquet_files": 0,
+  "parquet_size_mb": 0.0,
+  "oldest_job": "2024-01-01T00:00:00Z",
+  "newest_job": "2024-01-15T10:30:00Z"
+}
+```
 
 ### WebSocket Endpoints
 
