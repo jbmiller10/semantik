@@ -23,11 +23,11 @@ class VecpipeConfig(BaseConfig):
     # Support Docker service names through environment variables
     SEARCH_API_URL: str = "http://localhost:8000"
 
-    # Additional Paths specific to vecpipe - maintain uppercase for backward compatibility
+    # Additional Paths specific to vecpipe
     @property
-    def JOBS_DIR(self) -> Path:
+    def jobs_dir(self) -> Path:
         return self.data_dir / "jobs"
 
     @property
-    def OUTPUT_DIR(self) -> Path:
+    def output_dir(self) -> Path:
         return self.data_dir / "output"

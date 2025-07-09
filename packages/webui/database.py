@@ -22,7 +22,7 @@ from shared.config import settings
 logger = logging.getLogger(__name__)
 
 # Database configuration
-DB_PATH = str(settings.WEBUI_DB)
+DB_PATH = str(settings.webui_db)
 Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
 
 # Password hashing context for auth functions
