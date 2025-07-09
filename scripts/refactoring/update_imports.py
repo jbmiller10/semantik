@@ -31,6 +31,7 @@ class ImportUpdater:
         # Text processing moves - extract functions
         r"from vecpipe\.extract_chunks import extract_text": "from shared.text_processing.extraction import extract_text",
         r"from packages\.vecpipe\.extract_chunks import extract_text": "from shared.text_processing.extraction import extract_text",
+        r"from shared\.text_processing\.chunking import extract_text": "from shared.text_processing.extraction import extract_text",
         r"from vecpipe\.extract_chunks import extract_and_serialize": "from shared.text_processing.extraction import extract_and_serialize",
         r"from packages\.vecpipe\.extract_chunks import extract_and_serialize": "from shared.text_processing.extraction import extract_and_serialize",
         
