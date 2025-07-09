@@ -33,7 +33,7 @@ jobs:
     
     - name: Type check with Mypy
       run: |
-        poetry run mypy packages/vecpipe packages/webui --ignore-missing-imports
+        poetry run mypy packages/vecpipe packages/webui packages/shared --ignore-missing-imports
 
   test:
     runs-on: ubuntu-latest
@@ -74,7 +74,7 @@ jobs:
     
     - name: Run tests with pytest (excluding E2E)
       run: |
-        poetry run pytest -m "not e2e" --cov=vecpipe --cov=webui --cov-report=xml
+        poetry run pytest -m "not e2e" --cov=vecpipe --cov=webui --cov=shared --cov-report=xml
       env:
         QDRANT_HOST: localhost
         QDRANT_PORT: 6333
