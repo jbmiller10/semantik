@@ -26,7 +26,7 @@ def update_metrics_loop() -> None:
     """Background thread to continuously update metrics"""
     import time
 
-    from vecpipe.metrics import metrics_collector
+    from shared.metrics.prometheus import metrics_collector
 
     while True:
         try:
@@ -39,8 +39,8 @@ def update_metrics_loop() -> None:
 if METRICS_PORT:
     try:
         from prometheus_client import generate_latest as _generate_latest
-        from vecpipe.metrics import registry as _registry
-        from vecpipe.metrics import start_metrics_server
+        from shared.metrics.prometheus import registry as _registry
+        from shared.metrics.prometheus import start_metrics_server
 
         generate_latest = _generate_latest
         registry = _registry

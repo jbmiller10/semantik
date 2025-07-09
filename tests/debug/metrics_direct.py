@@ -2,7 +2,7 @@
 """Test metrics directly from the registry"""
 import time
 
-from vecpipe.metrics import (
+from shared.metrics.prometheus import (
     cpu_utilization,
     generate_latest,
     memory_total,
