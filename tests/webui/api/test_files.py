@@ -276,7 +276,7 @@ class TestComputeFileContentHashAsync:
         test_path = MagicMock(spec=Path)
         test_path.is_symlink.return_value = False
         test_path.stat.return_value.st_size = 11 * 1024 * 1024  # 11MB - large file
-        test_path.__str__ = lambda self: "/large_file.txt"  # type: ignore[method-assign]
+        test_path.__str__ = lambda self: "/large_file.txt"  # type: ignore[method-assign]  # noqa: ARG005
 
         # Mock the Path constructor to raise OSError when opening
         def mock_path_init(path_str: str) -> MagicMock:  # noqa: ARG001
