@@ -11,7 +11,6 @@ from packages.webui.utils.retry import exponential_backoff_retry
 # from qdrant_client.exceptions import UnexpectedResponse  # Not available in all versions
 
 
-
 class TestExponentialBackoffRetry:
     """Test suite for the exponential_backoff_retry decorator"""
 
