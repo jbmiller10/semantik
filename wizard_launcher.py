@@ -23,7 +23,7 @@ def check_poetry():
     """Check if Poetry is installed, install if not"""
     # Check common Poetry locations based on platform
     poetry_cmd = None
-    
+
     # First check if poetry is in PATH
     if shutil.which("poetry"):
         poetry_cmd = "poetry"
@@ -45,54 +45,51 @@ def check_poetry():
                 home / ".poetry" / "bin" / "poetry",
                 "/usr/local/bin/poetry",
             ]
-        
+
         for path in possible_paths:
             if Path(path).exists():
                 poetry_cmd = str(path)
                 break
-    
+
     if poetry_cmd:
         print(f"✅ Poetry is installed at: {poetry_cmd}")
         # Store for later use
         os.environ["POETRY_CMD"] = poetry_cmd
         return True
-    
+
     print("📦 Poetry not found. Would you like to install it? (recommended)")
     response = input("Install Poetry? [Y/n]: ").strip().lower()
-    
-    if response in ['', 'y', 'yes']:
+
+    if response in ["", "y", "yes"]:
         print("Installing Poetry...")
         try:
             # Download and run Poetry installer
             import urllib.request
+
             installer_url = "https://install.python-poetry.org"
             with urllib.request.urlopen(installer_url) as response:
-                installer_script = response.read().decode('utf-8')
-            
+                installer_script = response.read().decode("utf-8")
+
             # Run the installer
-            result = subprocess.run(
-                [sys.executable, "-c", installer_script],
-                capture_output=True,
-                text=True
-            )
-            
+            result = subprocess.run([sys.executable, "-c", installer_script], capture_output=True, text=True)
+
             if result.returncode == 0:
                 print("✅ Poetry installed successfully")
-                
+
                 # Platform-specific instructions
                 if sys.platform == "win32":
                     print("ℹ️  You may need to restart your terminal or add Poetry to PATH:")
                     print(f"   {os.environ.get('APPDATA')}\\Python\\Scripts")
                 else:
                     print("ℹ️  You may need to restart your terminal or run:")
-                    print(f"   export PATH=\"$HOME/.local/bin:$PATH\"")
-                
+                    print(f'   export PATH="$HOME/.local/bin:$PATH"')
+
                 # Try to find Poetry again after installation
                 return check_poetry()
             else:
                 print(f"❌ Failed to install Poetry: {result.stderr}")
                 return False
-                
+
         except Exception as e:
             print(f"❌ Error installing Poetry: {e}")
             return False
@@ -113,9 +110,7 @@ def check_dependencies():
         # Try to import the required modules
         poetry_cmd = get_poetry_cmd()
         result = subprocess.run(
-            [poetry_cmd, "run", "python", "-c", "import questionary, rich"],
-            capture_output=True,
-            text=True
+            [poetry_cmd, "run", "python", "-c", "import questionary, rich"], capture_output=True, text=True
         )
         return result.returncode == 0
     except:
@@ -127,12 +122,8 @@ def install_dependencies():
     print("📦 Installing dependencies...")
     try:
         poetry_cmd = get_poetry_cmd()
-        result = subprocess.run(
-            [poetry_cmd, "install", "--no-interaction"],
-            capture_output=True,
-            text=True
-        )
-        
+        result = subprocess.run([poetry_cmd, "install", "--no-interaction"], capture_output=True, text=True)
+
         if result.returncode == 0:
             print("✅ Dependencies installed successfully")
             return True
@@ -162,26 +153,26 @@ def main():
     """Main entry point"""
     print("🚀 Semantik Setup Wizard")
     print("========================\n")
-    
+
     # Check we're in the right directory
     if not Path("pyproject.toml").exists():
         print("❌ Error: Please run this script from the Semantik root directory")
         sys.exit(1)
-    
+
     # Check Python version
     check_python_version()
-    
+
     # Check/install Poetry
     if not check_poetry():
         sys.exit(1)
-    
+
     # Check/install dependencies
     if not check_dependencies():
         if not install_dependencies():
             sys.exit(1)
     else:
         print("✅ Dependencies already installed")
-    
+
     # Run the wizard
     run_wizard()
 

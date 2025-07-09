@@ -3,7 +3,8 @@
 
 import sys
 import time
-sys.path.insert(0, '/app/packages')
+
+sys.path.insert(0, "/app/packages")
 
 from webui.embedding_service import EmbeddingService, check_int8_compatibility
 
@@ -20,21 +21,17 @@ print(f"   Message: {msg}")
 # Test 2: Load Qwen3 model with INT8
 print("\n2. Testing Qwen3 model with INT8...")
 service = EmbeddingService()
-model = 'Qwen/Qwen3-Embedding-0.6B'
+model = "Qwen/Qwen3-Embedding-0.6B"
 try:
     print(f"   Loading {model} with INT8...")
-    loaded = service.load_model(model, quantization='int8')
+    loaded = service.load_model(model, quantization="int8")
     print(f"   ✓ Load successful: {loaded}")
     print(f"   ✓ Current quantization: {service.current_quantization}")
-    
+
     # Generate embeddings
     print(f"   Generating embeddings...")
     embeddings = service.generate_embeddings(
-        ['test text for int8 quantization'], 
-        model, 
-        quantization='int8', 
-        batch_size=1, 
-        show_progress=False
+        ["test text for int8 quantization"], model, quantization="int8", batch_size=1, show_progress=False
     )
     if embeddings is not None:
         print(f"   ✓ Embeddings generated successfully!")
@@ -47,12 +44,13 @@ except Exception as e:
 # Test 3: Test with ALLOW_QUANTIZATION_FALLBACK=false
 print("\n3. Testing with fallback disabled...")
 import os
-os.environ['ALLOW_QUANTIZATION_FALLBACK'] = 'false'
+
+os.environ["ALLOW_QUANTIZATION_FALLBACK"] = "false"
 service2 = EmbeddingService()
-model2 = 'sentence-transformers/all-MiniLM-L6-v2'
+model2 = "sentence-transformers/all-MiniLM-L6-v2"
 try:
     print(f"   Loading {model2} with INT8 (fallback disabled)...")
-    loaded = service2.load_model(model2, quantization='int8')
+    loaded = service2.load_model(model2, quantization="int8")
     print(f"   ✓ Load successful: {loaded}")
     print(f"   ✓ Current quantization: {service2.current_quantization}")
 except Exception as e:
@@ -63,10 +61,12 @@ print("\n4. Memory usage comparison...")
 import torch
 import gc
 
+
 def get_gpu_memory():
     if torch.cuda.is_available():
         return torch.cuda.memory_allocated() / 1024**3  # GB
     return 0
+
 
 # Clear previous models
 del service, service2
@@ -78,7 +78,7 @@ print(f"   Base GPU memory: {get_gpu_memory():.2f} GB")
 
 # Load float32
 service_f32 = EmbeddingService()
-service_f32.load_model(model, quantization='float32')
+service_f32.load_model(model, quantization="float32")
 mem_f32 = get_gpu_memory()
 print(f"   Float32 memory: {mem_f32:.2f} GB")
 
@@ -89,7 +89,7 @@ gc.collect()
 time.sleep(1)
 
 service_int8 = EmbeddingService()
-service_int8.load_model(model, quantization='int8')
+service_int8.load_model(model, quantization="int8")
 mem_int8 = get_gpu_memory()
 print(f"   INT8 memory: {mem_int8:.2f} GB")
 print(f"   Memory savings: {((mem_f32 - mem_int8) / mem_f32 * 100):.1f}%")
