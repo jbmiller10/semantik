@@ -8,7 +8,7 @@ This module contains all model-specific configurations, making it easy to:
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 @dataclass
@@ -21,7 +21,7 @@ class ModelConfig:
     max_sequence_length: int = 512
     supports_quantization: bool = True
     recommended_quantization: str = "float32"
-    memory_estimate: Optional[Dict[str, int]] = None
+    memory_estimate: dict[str, int] | None = None
     requires_instruction: bool = False
     pooling_method: str = "mean"  # mean, cls, last_token
 
@@ -35,7 +35,7 @@ class ModelConfig:
                 "int8": base_memory // 4,
             }
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for backwards compatibility."""
         return {
             "dimension": self.dimension,
@@ -109,12 +109,12 @@ MODEL_CONFIGS = {
 }
 
 
-def get_model_config(model_name: str) -> Optional[ModelConfig]:
+def get_model_config(model_name: str) -> ModelConfig | None:
     """Get configuration for a model."""
     return MODEL_CONFIGS.get(model_name)
 
 
-def list_available_models() -> Dict[str, ModelConfig]:
+def list_available_models() -> dict[str, ModelConfig]:
     """List all available models."""
     return MODEL_CONFIGS.copy()
 

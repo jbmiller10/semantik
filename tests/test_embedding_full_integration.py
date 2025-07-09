@@ -2,11 +2,8 @@
 """
 Full integration tests for embedding service across packages
 """
-import asyncio
 import sys
-import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
@@ -86,7 +83,7 @@ class TestVecpipeIntegration(unittest.TestCase):
         """Test search_api.py integration pattern."""
         mock_cuda.return_value = False
 
-        from shared.embedding import EmbeddingService, get_embedding_service_sync
+        from shared.embedding import EmbeddingService
 
         # Create a mock service for testing
         mock_service = EmbeddingService(mock_mode=True)
@@ -109,7 +106,7 @@ class TestWebuiIntegration(unittest.TestCase):
         """Test jobs API usage pattern."""
         mock_cuda.return_value = False
 
-        from shared.embedding import EmbeddingService, embedding_service
+        from shared.embedding import EmbeddingService
 
         # Create mock service for testing
         mock_service = EmbeddingService(mock_mode=True)
@@ -143,7 +140,7 @@ class TestWebuiIntegration(unittest.TestCase):
         """Test models API usage pattern."""
         mock_cuda.return_value = False
 
-        from shared.embedding import EmbeddingService, embedding_service
+        from shared.embedding import EmbeddingService
         from shared.embedding.models import list_available_models
 
         # Get available models
@@ -197,7 +194,7 @@ class TestCrossPackageWorkflow(unittest.TestCase):
 
         # 5. Simulate vector storage preparation
         vectors = []
-        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings, strict=False)):
             vector = {
                 "id": f"doc_1_chunk_{i}",
                 "text": chunk,

@@ -490,7 +490,6 @@ class EmbeddingService:
 
 
 # Import centralized model configurations
-from .models import POPULAR_MODELS, QUANTIZED_MODEL_INFO
 
 # Create global instances for backwards compatibility
 embedding_service = EmbeddingService()
