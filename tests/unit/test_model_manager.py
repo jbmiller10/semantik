@@ -372,7 +372,11 @@ class TestEdgeCasesAndThreadSafety:
         self, model_manager: ModelManager, mock_embedding_service: Mock
     ) -> None:  # noqa: ARG002
         """Test unload triggers garbage collection and CUDA cache clearing."""
-        with patch("gc.collect") as mock_gc, patch("torch.cuda.empty_cache") as mock_cuda:
+        with (
+            patch("gc.collect") as mock_gc,
+            patch("torch.cuda.empty_cache") as mock_cuda,
+            patch("torch.cuda.is_available", return_value=True),
+        ):
             # Load model
             asyncio.run(model_manager.generate_embedding_async(text="test", model_name="model", quantization="float16"))
 
