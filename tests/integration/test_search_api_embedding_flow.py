@@ -33,8 +33,10 @@ class TestSearchAPIEmbeddingFlow:
         - The actual embedding service implementation (may be mocked)
         - The specific embedding model used (depends on settings)
         """
-        with patch("packages.vecpipe.search_utils.AsyncQdrantClient") as mock_qdrant_client_class, \
-             patch("httpx.AsyncClient.get") as mock_get:
+        with (
+            patch("packages.vecpipe.search_utils.AsyncQdrantClient") as mock_qdrant_client_class,
+            patch("httpx.AsyncClient.get") as mock_get,
+        ):
             # Mock Qdrant collection info
             mock_get.return_value = AsyncMock(
                 status_code=200,
@@ -124,8 +126,10 @@ class TestSearchAPIEmbeddingFlow:
         This verifies that custom parameters are accepted and processed,
         though the actual model used depends on settings and availability.
         """
-        with patch("packages.vecpipe.search_utils.AsyncQdrantClient") as mock_qdrant_client_class, \
-             patch("httpx.AsyncClient.get") as mock_get:
+        with (
+            patch("packages.vecpipe.search_utils.AsyncQdrantClient") as mock_qdrant_client_class,
+            patch("httpx.AsyncClient.get") as mock_get,
+        ):
             # Mock responses
             mock_get.return_value = AsyncMock(
                 status_code=200,
