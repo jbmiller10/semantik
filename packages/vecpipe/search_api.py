@@ -23,12 +23,12 @@ from pydantic import BaseModel, Field
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from prometheus_client import Counter, Histogram
+from shared.config import settings
+from shared.metrics.prometheus import metrics_collector, registry, start_metrics_server
 from webui.embedding_service import EmbeddingService
 
-from .config import settings
 from .hybrid_search import HybridSearchEngine
 from .memory_utils import InsufficientMemoryError
-from .metrics import metrics_collector, registry, start_metrics_server
 from .qwen3_search_config import RERANK_CONFIG, RERANKING_INSTRUCTIONS, get_reranker_for_embedding_model
 from .search_utils import parse_search_results, search_qdrant
 
@@ -46,11 +46,17 @@ def get_or_create_metric(
     **kwargs: Any,
 ) -> Any:
     """Create a metric or return existing one if already registered"""
-    from prometheus_client import REGISTRY
+    # Use the shared registry instead of the default one
 
     # Check if metric already exists
-    if name in REGISTRY._names_to_collectors:
-        return REGISTRY._names_to_collectors[name]
+    try:
+        # Try to get existing collector from registry
+        for collector in registry._collector_to_names:
+            if hasattr(collector, "_name") and collector._name == name:
+                return collector
+    except AttributeError:
+        # Registry structure might be different, continue to create new metric
+        pass
 
     # Create new metric
     if labels:

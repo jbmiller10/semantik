@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from .config import settings
+from shared.config import settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -100,12 +100,12 @@ def move_file(src: str, dst_dir: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest embeddings into Qdrant")
     parser.add_argument(
-        "--input", "-i", default=str(settings.INGEST_DIR), help="Input directory with embedded parquet files"
+        "--input", "-i", default=str(settings.ingest_dir), help="Input directory with embedded parquet files"
     )
     parser.add_argument(
-        "--loaded", "-l", default=str(settings.LOADED_DIR), help="Directory for successfully loaded files"
+        "--loaded", "-l", default=str(settings.loaded_dir), help="Directory for successfully loaded files"
     )
-    parser.add_argument("--rejects", "-r", default=str(settings.REJECT_DIR), help="Directory for rejected files")
+    parser.add_argument("--rejects", "-r", default=str(settings.reject_dir), help="Directory for rejected files")
     parser.add_argument("--pattern", "-p", default="*_embedded.parquet", help="File pattern to match")
     parser.add_argument("--batch-size", "-b", type=int, default=BATCH_SIZE, help="Batch size for uploads")
     parser.add_argument("--host", default=settings.QDRANT_HOST, help="Qdrant host")

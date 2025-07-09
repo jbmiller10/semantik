@@ -19,7 +19,7 @@ from transformers import AutoModel, AutoTokenizer
 
 # Import metrics tracking if available
 try:
-    from vecpipe.metrics import Counter, registry
+    from shared.metrics.prometheus import Counter, registry
 
     # Check if metrics already exist in registry to avoid duplicates
     try:

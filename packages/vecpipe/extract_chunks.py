@@ -17,15 +17,15 @@ from typing import Any
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-import tiktoken
 from tqdm import tqdm
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-# Unstructured for document parsing
-from unstructured.partition.auto import partition
 
-from .config import settings
+# Import from shared package
+from shared.config import settings
+from shared.text_processing.chunking import TokenChunker
+from shared.text_processing.extraction import extract_and_serialize
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -36,149 +36,12 @@ DEFAULT_CHUNK_SIZE = 600  # tokens
 DEFAULT_CHUNK_OVERLAP = 200  # tokens
 
 
-class TokenChunker:
-    """Chunk text by token count using tiktoken"""
-
-    def __init__(self, model_name: str = "cl100k_base", chunk_size: int = 600, chunk_overlap: int = 200):
-        """Initialize tokenizer for chunking"""
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
-
-        # Validate parameters to prevent infinite loops
-        if self.chunk_overlap >= self.chunk_size:
-            logger.warning(
-                f"chunk_overlap ({chunk_overlap}) >= chunk_size ({chunk_size}), setting overlap to chunk_size/2"
-            )
-            self.chunk_overlap = self.chunk_size // 2
-
-        if self.chunk_size <= 0:
-            raise ValueError(f"chunk_size must be positive, got {chunk_size}")
-
-        # Use tiktoken for accurate token counting
-        try:
-            self.tokenizer = tiktoken.get_encoding(model_name)
-        except Exception:
-            # Fallback to default encoding
-            self.tokenizer = tiktoken.get_encoding("cl100k_base")
-
-        logger.info(
-            f"Initialized tokenizer: {model_name}, chunk_size: {self.chunk_size}, overlap: {self.chunk_overlap}"
-        )
-
-    def chunk_text(self, text: str, doc_id: str, metadata: dict | None = None) -> list[dict]:
-        """Split text into overlapping chunks by token count"""
-        if not text.strip():
-            return []
-
-        logger.info(f"Starting tokenization for doc_id: {doc_id}, text length: {len(text)} chars")
-
-        # Tokenize entire text
-        import time
-
-        start_time = time.time()
-        tokens = self.tokenizer.encode(text)
-        tokenize_time = time.time() - start_time
-        total_tokens = len(tokens)
-
-        logger.info(f"Tokenization complete in {tokenize_time:.2f}s: {total_tokens} tokens from {len(text)} chars")
-
-        if total_tokens <= self.chunk_size:
-            # Text fits in single chunk
-            chunk_data = {
-                "doc_id": doc_id,
-                "chunk_id": f"{doc_id}_0000",
-                "text": text.strip(),
-                "token_count": total_tokens,
-                "start_token": 0,
-                "end_token": total_tokens,
-            }
-            if metadata:
-                chunk_data["metadata"] = metadata
-            return [chunk_data]
-
-        chunks = []
-        chunk_id = 0
-        start = 0
-
-        logger.info(
-            f"Starting chunking: {total_tokens} tokens, chunk_size: {self.chunk_size}, overlap: {self.chunk_overlap}"
-        )
-
-        while start < total_tokens:
-            # Determine chunk boundaries
-            end = min(start + self.chunk_size, total_tokens)
-
-            # Extract chunk tokens
-            chunk_tokens = tokens[start:end]
-
-            # Decode back to text
-            chunk_text = self.tokenizer.decode(chunk_tokens)
-
-            # Try to break at sentence boundary if not at end
-            if end < total_tokens:
-                # Look for sentence end in last 10% of chunk
-                search_start = int(len(chunk_tokens) * 0.9)
-                best_break = len(chunk_tokens)
-
-                for i in range(search_start, len(chunk_tokens)):
-                    decoded = self.tokenizer.decode(chunk_tokens[:i])
-                    if decoded.rstrip().endswith((".", "!", "?", "\n\n")):
-                        best_break = i
-                        break
-
-                # Adjust chunk if we found a better break point
-                if best_break < len(chunk_tokens):
-                    chunk_tokens = chunk_tokens[:best_break]
-                    chunk_text = self.tokenizer.decode(chunk_tokens)
-                    end = start + best_break
-
-            chunk_data = {
-                "doc_id": doc_id,
-                "chunk_id": f"{doc_id}_{chunk_id:04d}",
-                "text": chunk_text.strip(),
-                "token_count": len(chunk_tokens),
-                "start_token": start,
-                "end_token": end,
-            }
-            if metadata:
-                chunk_data["metadata"] = metadata
-
-            chunks.append(chunk_data)
-
-            # Free chunk_tokens reference
-            del chunk_tokens
-
-            chunk_id += 1
-
-            # Move start position with overlap
-            next_start = end - self.chunk_overlap
-
-            # Ensure progress - this is normal at the end of the document
-            if next_start <= start:
-                # We've reached the end of the document or overlap is too large
-                # Just move to the end position
-                next_start = end
-
-            start = next_start
-
-            # Safety check for actual infinite loops
-            if chunk_id > 10000:
-                logger.error(f"Too many chunks created ({chunk_id}), stopping to prevent infinite loop")
-                break
-
-        # Free the tokens list after processing
-        del tokens
-
-        logger.debug(f"Created {len(chunks)} chunks from {total_tokens} tokens")
-        return chunks
-
-
 class FileChangeTracker:
     """Track file changes using SHA256 and SCD-like approach"""
 
     def __init__(self, db_path: str | None = None) -> None:
         if db_path is None:
-            db_path = str(settings.FILE_TRACKING_DB)
+            db_path = str(settings.file_tracking_db)
         self.db_path = db_path
         self.tracking_data = self._load_tracking_data()
 
@@ -276,71 +139,6 @@ class FileChangeTracker:
         self._save_tracking_data()
 
 
-def extract_and_serialize(filepath: str) -> list[tuple[str, dict[str, Any]]]:
-    """Uses unstructured to partition a file and serializes structured data.
-    Returns list of (text, metadata) tuples."""
-    ext = Path(filepath).suffix.lower()
-
-    # Use unstructured for all file types
-    try:
-        elements = partition(
-            filename=filepath,
-            strategy="auto",  # Let unstructured determine the best strategy
-            include_page_breaks=True,
-            infer_table_structure=True,
-            chunking_strategy="by_title",
-        )
-
-        results = []
-        current_page = 1
-
-        for element in elements:
-            # Extract text content
-            text = str(element)
-            if not text.strip():
-                continue
-
-            # Build metadata
-            metadata: dict[str, Any] = {"filename": Path(filepath).name, "file_type": ext[1:] if ext else "unknown"}
-
-            # Add element-specific metadata
-            if hasattr(element, "metadata"):
-                elem_meta = element.metadata
-                if hasattr(elem_meta, "page_number") and elem_meta.page_number:
-                    metadata["page_number"] = elem_meta.page_number
-                    current_page = elem_meta.page_number
-                else:
-                    metadata["page_number"] = current_page
-
-                if hasattr(elem_meta, "category"):
-                    metadata["element_type"] = str(elem_meta.category)
-
-                # Add any coordinates if available
-                if hasattr(elem_meta, "coordinates"):
-                    metadata["has_coordinates"] = "True"
-
-            results.append((text, metadata))
-
-        return results
-
-    except Exception as e:
-        logger.error(f"Failed to extract from {filepath} using unstructured: {e}")
-        raise
-
-
-def extract_text(filepath: str, timeout: int = 300) -> str:  # noqa: ARG001
-    """Legacy function for backward compatibility - extracts text without metadata
-    Note: timeout parameter is kept for backward compatibility but not used"""
-    try:
-        results = extract_and_serialize(filepath)
-        # Concatenate all text parts
-        text_parts = [text for text, _ in results]
-        return "\n\n".join(text_parts)
-    except Exception as e:
-        logger.error(f"Failed to extract text from {filepath}: {e}")
-        raise
-
-
 def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, tracker: FileChangeTracker) -> str | None:
     """Process a single file with change tracking and metadata preservation"""
     try:
@@ -425,7 +223,7 @@ def process_file_v2(filepath: str, output_dir: str, chunker: TokenChunker, track
     except Exception as e:
         logger.error(f"Failed to process {filepath}: {e}")
         # Log error to file
-        with Path(settings.ERROR_LOG).open("a") as f:
+        with Path(settings.error_log).open("a") as f:
             f.write(f"{filepath}\t{str(e)}\n")
         return None
 
@@ -454,7 +252,7 @@ def process_file(filepath: str, output_dir: str) -> str | None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Extract and chunk documents (V2)")
     parser.add_argument("--input", "-i", required=True, help="Input file list (null-delimited)")
-    parser.add_argument("--output", "-o", default=str(settings.OUTPUT_DIR), help="Output directory for parquet files")
+    parser.add_argument("--output", "-o", default=str(settings.output_dir), help="Output directory for parquet files")
     parser.add_argument("--chunk-size", "-cs", type=int, default=DEFAULT_CHUNK_SIZE, help="Chunk size in tokens")
     parser.add_argument(
         "--chunk-overlap", "-co", type=int, default=DEFAULT_CHUNK_OVERLAP, help="Chunk overlap in tokens"

@@ -24,8 +24,9 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 import contextlib
 
-from vecpipe.config import settings
-from vecpipe.extract_chunks import TokenChunker, extract_text
+from shared.config import settings
+from shared.text_processing.chunking import TokenChunker
+from shared.text_processing.extraction import extract_text
 
 from webui import database
 from webui.auth import get_current_user
@@ -35,8 +36,8 @@ from webui.utils.qdrant_manager import qdrant_manager
 logger = logging.getLogger(__name__)
 
 # Constants
-JOBS_DIR = str(settings.JOBS_DIR)
-OUTPUT_DIR = str(settings.OUTPUT_DIR)
+JOBS_DIR = str(settings.jobs_dir)
+OUTPUT_DIR = str(settings.output_dir)
 SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".doc", ".txt", ".text", ".pptx", ".eml", ".md", ".html"]
 
 # Create necessary directories
@@ -152,7 +153,7 @@ def extract_text_thread_safe(filepath: str) -> str:
 
 def extract_and_serialize_thread_safe(filepath: str) -> list[tuple[str, dict[str, Any]]]:
     """Thread-safe version of extract_and_serialize that preserves metadata"""
-    from vecpipe.extract_chunks import extract_and_serialize
+    from shared.text_processing.extraction import extract_and_serialize
 
     return extract_and_serialize(filepath)
 
@@ -166,7 +167,7 @@ async def update_metrics_continuously() -> None:
     # we only need to ensure metrics are being updated, not force updates
     while True:
         try:
-            from vecpipe.metrics import metrics_collector
+            from shared.metrics.prometheus import metrics_collector
 
             # Only update if it's been more than 0.5 seconds since last update
             current_time = time.time()
@@ -183,7 +184,7 @@ async def process_embedding_job(job_id: str) -> None:
 
     # Import metrics if available
     try:
-        from vecpipe.metrics import (
+        from shared.metrics.prometheus import (
             embedding_batch_duration,
             metrics_collector,
             record_chunks_created,

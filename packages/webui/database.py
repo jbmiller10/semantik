@@ -16,13 +16,13 @@ from passlib.context import CryptContext
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from vecpipe.config import settings
+from shared.config import settings
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 # Database configuration
-DB_PATH = str(settings.WEBUI_DB)
+DB_PATH = str(settings.webui_db)
 Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
 
 # Password hashing context for auth functions

@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock, Mock
 
 from fastapi.testclient import TestClient
-from vecpipe.config import settings
+from shared.config import settings
 from webui.api.jobs import ConnectionManager, active_job_tasks
 
 

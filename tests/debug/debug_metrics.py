@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import psutil
-from vecpipe.metrics import cpu_utilization, generate_latest, memory_utilization, metrics_collector, registry
+from shared.metrics.prometheus import cpu_utilization, generate_latest, memory_utilization, metrics_collector, registry
 
 # First, let's check current system metrics
 print(f"Actual CPU: {psutil.cpu_percent(interval=0.1)}%")

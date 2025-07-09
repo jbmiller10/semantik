@@ -18,7 +18,7 @@ from pydantic import BaseModel, EmailStr, validator
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from vecpipe.config import settings
+from shared.config import settings
 
 # Import database module
 from . import database
