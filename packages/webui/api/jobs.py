@@ -26,7 +26,6 @@ import contextlib
 
 from vecpipe.config import settings
 from vecpipe.extract_chunks import TokenChunker, extract_text
-
 from webui import database
 from webui.auth import get_current_user
 from webui.embedding_service import POPULAR_MODELS, embedding_service
