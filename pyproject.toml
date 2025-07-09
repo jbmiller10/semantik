@@ -82,6 +82,9 @@ ignore = [
     "B008",  # do not perform function call in argument defaults (needed for FastAPI)
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ARG002"]  # Allow unused fixture arguments in tests
+
 [tool.black]
 line-length = 120
 target-version = ['py311']
