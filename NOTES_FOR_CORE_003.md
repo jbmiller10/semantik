@@ -54,11 +54,32 @@ When moving the embedding service to the shared package, you'll need to:
 - The model_manager acts as an intermediary, providing lazy loading and automatic unloading of models
 - The embedding_service is also used for status checks in the search_api (lines 316-327, 1039-1041, 1054-1056, 1119-1136)
 
+### Testing Challenges Discovered
+
+During TEST-002 implementation, we discovered several architectural issues that make testing difficult:
+
+1. **Settings loaded at module import time**: The `settings` object in `config.py` is instantiated when the module is imported, making it impossible to override `USE_MOCK_EMBEDDINGS` in tests after import.
+
+2. **Current test limitations**: 
+   - Tests cannot easily control whether mock or real embeddings are used
+   - The `model_used` field in responses depends on environment configuration
+   - Integration tests are more like "flow tests" rather than true integration tests
+
+3. **Test files created**:
+   - `test_search_api_integration.py`: Original test with mocking challenges
+   - `test_search_api_embedding_flow.py`: Alternative approach that documents current constraints
+
+### Recommendations for CORE-003
+
+1. **Dependency Injection**: Consider making settings injectable rather than globally imported
+2. **Factory Pattern**: Use factory functions to create services with configurable settings
+3. **Better Testability**: Design the shared package with testing in mind from the start
+
 ### Testing After Refactor
 
 After completing CORE-003, run:
 ```bash
-poetry run pytest tests/integration/test_search_api_integration.py -v
+poetry run pytest tests/integration/test_search_api_integration.py tests/integration/test_search_api_embedding_flow.py -v
 ```
 
-This will verify that the refactored structure maintains the expected behavior.
+This will verify that the refactored structure maintains the expected behavior and hopefully allows for better test isolation.
