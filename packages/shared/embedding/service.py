@@ -76,8 +76,7 @@ def get_embedding_service_sync() -> BaseEmbeddingService:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        service = loop.run_until_complete(get_embedding_service())
-        return service
+        return loop.run_until_complete(get_embedding_service())
     finally:
         loop.close()
         asyncio.set_event_loop(None)

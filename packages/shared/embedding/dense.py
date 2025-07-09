@@ -8,7 +8,7 @@ from typing import Any
 
 import numpy as np
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
@@ -208,11 +208,9 @@ class DenseEmbeddingService(BaseEmbeddingService):
         instruction = kwargs.get("instruction", None)
 
         # Process in thread pool to avoid blocking
-        embeddings = await asyncio.get_running_loop().run_in_executor(
+        return await asyncio.get_running_loop().run_in_executor(
             None, self._embed_texts_sync, texts, batch_size, normalize, show_progress, instruction
         )
-
-        return embeddings
 
     def _embed_texts_sync(
         self, texts: list[str], batch_size: int, normalize: bool, show_progress: bool, instruction: str | None
@@ -220,8 +218,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
         """Synchronously embed texts (runs in thread pool)."""
         if self.is_qwen_model:
             return self._embed_qwen_texts(texts, batch_size, normalize, instruction)
-        else:
-            return self._embed_sentence_transformer_texts(texts, batch_size, normalize, show_progress)
+        return self._embed_sentence_transformer_texts(texts, batch_size, normalize, show_progress)
 
     def _embed_qwen_texts(
         self, texts: list[str], batch_size: int, normalize: bool, instruction: str | None
@@ -359,9 +356,10 @@ class EmbeddingService:
         """Get model info synchronously."""
         try:
             # Ensure model is loaded
-            if not self._service.is_initialized or self._service.model_name != model_name:
-                if not self.load_model(model_name, quantization):
-                    return {"error": f"Failed to load model {model_name}"}
+            if (not self._service.is_initialized or self._service.model_name != model_name) and not self.load_model(
+                model_name, quantization
+            ):
+                return {"error": f"Failed to load model {model_name}"}
 
             return self._service.get_model_info()
         except Exception as e:
@@ -380,9 +378,10 @@ class EmbeddingService:
         """Generate embeddings synchronously."""
         try:
             # Ensure model is loaded
-            if not self._service.is_initialized or self._service.model_name != model_name:
-                if not self.load_model(model_name, quantization):
-                    return None
+            if (not self._service.is_initialized or self._service.model_name != model_name) and not self.load_model(
+                model_name, quantization
+            ):
+                return None
 
             loop = self._get_loop()
             return loop.run_until_complete(

@@ -14,8 +14,8 @@ import numpy as np
 # Add project root to path
 sys.path.append(str(Path(__file__).resolve().parent))
 
-from vecpipe.qwen3_search_config import DOMAIN_INSTRUCTIONS, get_optimal_config
 from shared.embedding import EmbeddingService
+from vecpipe.qwen3_search_config import DOMAIN_INSTRUCTIONS, get_optimal_config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
