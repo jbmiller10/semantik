@@ -11,7 +11,9 @@ help:
 	@echo "  format         Format code with black and isort"
 	@echo "  lint           Run linting with ruff"
 	@echo "  type-check     Run type checking with mypy"
-	@echo "  test           Run tests"
+	@echo "  test           Run all tests"
+	@echo "  test-ci        Run tests excluding E2E (for CI)"
+	@echo "  test-e2e       Run only E2E tests (requires running services)"
 	@echo "  test-coverage  Run tests with coverage report"
 	@echo "  clean          Clean up generated files"
 	@echo ""
@@ -41,20 +43,26 @@ dev-install:
 	poetry install
 
 format:
-	black packages/vecpipe packages/webui tests
-	isort packages/vecpipe packages/webui tests
+	black packages/vecpipe packages/webui packages/shared tests
+	isort packages/vecpipe packages/webui packages/shared tests
 
 lint:
-	ruff check packages/vecpipe packages/webui tests
+	ruff check packages/vecpipe packages/webui packages/shared tests
 
 type-check:
-	mypy packages/vecpipe packages/webui --ignore-missing-imports
+	mypy packages/vecpipe packages/webui packages/shared --ignore-missing-imports
 
 test:
 	pytest tests -v
 
+test-ci:
+	pytest tests -v -m "not e2e"
+
+test-e2e:
+	pytest tests -v -m e2e
+
 test-coverage:
-	pytest tests -v --cov=packages.vecpipe --cov=packages.webui --cov-report=html --cov-report=term
+	pytest tests -v --cov=packages.vecpipe --cov=packages.webui --cov=packages.shared --cov-report=html --cov-report=term
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
