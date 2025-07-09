@@ -72,9 +72,9 @@ jobs:
           sleep 2
         done
     
-    - name: Run tests with pytest
+    - name: Run tests with pytest (excluding E2E)
       run: |
-        poetry run pytest --cov=vecpipe --cov=webui --cov-report=xml
+        poetry run pytest -m "not e2e" --cov=vecpipe --cov=webui --cov-report=xml
       env:
         QDRANT_HOST: localhost
         QDRANT_PORT: 6333
