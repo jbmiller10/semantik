@@ -8,7 +8,7 @@ While we will do our best to avoid any breaking changes, we do not gurantee back
 
 # Semantik 🔎 - Easy, Private, and Powerful Document Search
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg?logo=docker)](https://www.docker.com)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -185,7 +185,7 @@ The setup wizard guides you through the entire configuration process with an int
    ```bash
    make docker-up
    # Or directly: docker compose up -d
-   # Note: Default configuration requires GPU. For CPU-only: docker compose -f docker-compose-cpu-only.yml up -d
+   # Note: Default configuration works for both GPU and CPU. PyTorch will automatically use CPU if no GPU is available.
    ```
 
 4. **Access Semantik:**
@@ -197,8 +197,8 @@ That's it! 🎉 Semantik is now running with:
 - **Qdrant** vector database on port 6333
 
 **Additional Docker Options:**
-- **CPU-Only**: `docker compose -f docker-compose-cpu-only.yml up -d`
 - **Production**: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
+- **CUDA-enabled GPU**: `docker compose -f docker-compose.yml -f docker-compose.cuda.yml up -d`
 </details>
 
 ### Option 3: Development Setup (Shell Scripts)
