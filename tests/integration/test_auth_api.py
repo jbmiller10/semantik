@@ -2,9 +2,7 @@
 
 import os
 import shutil
-import sqlite3
 import tempfile
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -26,7 +24,7 @@ class TempDatabase:
             shutil.rmtree(self.temp_dir)
 
 
-@pytest.fixture
+@pytest.fixture()
 def test_db():
     """Create a temporary database for each test."""
     with TempDatabase() as db_path:
@@ -39,7 +37,7 @@ def test_db():
             yield db_path
 
 
-@pytest.fixture
+@pytest.fixture()
 def client(test_db):
     """Create a test client with the isolated database."""
     from webui.main import app
