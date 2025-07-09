@@ -47,9 +47,7 @@ class TestListCollections:
     """Test cases for list_collections endpoint"""
 
     @pytest.mark.asyncio()
-    async def test_list_collections_single_job_per_collection(
-        self, mock_database, mock_current_user
-    ):
+    async def test_list_collections_single_job_per_collection(self, mock_database, mock_current_user):
         """Test listing collections where each collection has a single job"""
         # Mock database response
         mock_database.list_collections.return_value = [
@@ -95,9 +93,7 @@ class TestListCollections:
         assert result[1].job_count == 1
 
     @pytest.mark.asyncio()
-    async def test_list_collections_multiple_jobs_aggregation(
-        self, mock_database, mock_current_user
-    ):
+    async def test_list_collections_multiple_jobs_aggregation(self, mock_database, mock_current_user):
         """Test listing collections with proper aggregation of multiple jobs"""
         # Mock database response with aggregated data
         mock_database.list_collections.return_value = [
