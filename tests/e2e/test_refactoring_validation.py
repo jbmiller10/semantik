@@ -2,8 +2,8 @@
 
 import os
 import time
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 import pytest
 import requests
@@ -21,11 +21,11 @@ class TestCurrentSystemBehavior:
             f"{self.API_BASE_URL}/api/auth/login",
             json={"username": "testuser", "password": "testpass123"},
         )
-        
+
         if login_response.status_code == 200:
             token = login_response.json()["access_token"]
             return {"Authorization": f"Bearer {token}"}
-        
+
         # If login fails, try to register
         register_response = requests.post(
             f"{self.API_BASE_URL}/api/auth/register",
@@ -36,7 +36,7 @@ class TestCurrentSystemBehavior:
                 "full_name": "Test User",
             },
         )
-        
+
         if register_response.status_code == 200:
             # Now login with the newly created user
             login_response = requests.post(
@@ -46,19 +46,19 @@ class TestCurrentSystemBehavior:
             if login_response.status_code == 200:
                 token = login_response.json()["access_token"]
                 return {"Authorization": f"Bearer {token}"}
-        
+
         raise Exception(f"Failed to authenticate: Login: {login_response.text}, Register: {register_response.text}")
 
     def test_complete_embedding_pipeline(self, test_documents_fixture: Path, cleanup_job: list[str]) -> None:
         """Test document ingestion through search."""
         # Get authentication headers
         headers = self._get_auth_headers()
-        
+
         # 1. Create job
         # Note: When running in Docker, we use a path accessible inside the container
         # For local development, use test_documents_fixture
         docker_path = "/mnt/docs"  # Use the mounted documents directory in Docker
-        
+
         response = requests.post(
             f"{self.API_BASE_URL}/api/jobs",
             json={
@@ -71,7 +71,7 @@ class TestCurrentSystemBehavior:
         if response.status_code != 200:
             print(f"Failed to create job: {response.status_code} - {response.text}")
         assert response.status_code == 200
-        
+
         job_data = response.json()
         job_id = job_data["id"]
 
@@ -83,13 +83,15 @@ class TestCurrentSystemBehavior:
         while time.time() - start_time < 300:  # 5-minute timeout
             status_response = requests.get(f"{self.API_BASE_URL}/api/jobs/{job_id}", headers=headers)
             job_status = status_response.json()
-            print(f"Job status at {time.time() - start_time:.1f}s: {job_status['status']}, processed: {job_status.get('processed_files', 0)}/{job_status.get('total_files', 0)}")
-            
+            print(
+                f"Job status at {time.time() - start_time:.1f}s: {job_status['status']}, processed: {job_status.get('processed_files', 0)}/{job_status.get('total_files', 0)}"
+            )
+
             if job_status["status"] == "completed":
                 break
-            elif job_status["status"] == "failed":
+            if job_status["status"] == "failed":
                 pytest.fail(f"Job failed with error: {job_status.get('error', 'Unknown error')}")
-            
+
             time.sleep(5)  # Check every 5 seconds instead of 2
         else:
             pytest.fail(f"Job did not complete within timeout. Final status: {job_status}")
@@ -111,7 +113,7 @@ class TestCurrentSystemBehavior:
         assert first_result["score"] > 0  # Score should be positive
 
 
-@pytest.fixture
+@pytest.fixture()
 def test_documents_fixture() -> Path:
     """Provide path to test documents directory."""
     test_data_path = Path(__file__).parent.parent.parent / "test_data"
@@ -120,7 +122,7 @@ def test_documents_fixture() -> Path:
     return test_data_path
 
 
-@pytest.fixture
+@pytest.fixture()
 def cleanup_job() -> Iterator[list[str]]:
     """Fixture to clean up jobs after test completion."""
     job_ids: list[str] = []
@@ -128,7 +130,7 @@ def cleanup_job() -> Iterator[list[str]]:
 
     # Cleanup after test
     api_base_url = os.getenv("API_BASE_URL", "http://localhost:8080")
-    
+
     # Get auth headers for cleanup
     try:
         login_response = requests.post(
@@ -142,7 +144,7 @@ def cleanup_job() -> Iterator[list[str]]:
             headers = {}
     except Exception:
         headers = {}
-    
+
     for job_id in job_ids:
         try:
             # Delete the job
