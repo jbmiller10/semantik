@@ -368,7 +368,9 @@ class TestEdgeCasesAndThreadSafety:
         mock_embedding_service.assert_called_once()
         mock_embedding_service.return_value.load_model.assert_called_once()
 
-    def test_unload_with_gc_and_cuda(self, model_manager: ModelManager, mock_embedding_service: Mock) -> None:  # noqa: ARG002
+    def test_unload_with_gc_and_cuda(
+        self, model_manager: ModelManager, mock_embedding_service: Mock
+    ) -> None:  # noqa: ARG002
         """Test unload triggers garbage collection and CUDA cache clearing."""
         with patch("gc.collect") as mock_gc, patch("torch.cuda.empty_cache") as mock_cuda:
             # Load model
