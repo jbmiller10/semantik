@@ -294,7 +294,7 @@ class DockerSetupTUI:
                 return self._install_nvidia_toolkit_rhel()
             if distro_info and ("arch" in distro_info.lower() or "manjaro" in distro_info.lower()):
                 return self._install_nvidia_toolkit_arch()
-            # Generic Linux instructions
+                # Generic Linux instructions
                 console.print("[yellow]Automatic installation not available for your Linux distribution.[/yellow]")
                 console.print("\nPlease install manually by following:")
                 console.print("https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html")
@@ -1236,9 +1236,7 @@ class DockerSetupTUI:
         if "USE_GPU" not in self.config:
             # Check which docker-compose is being used
             if Path("docker-compose-cpu-only.yml").exists():
-                subprocess.run(
-                    ["docker", "compose", "config", "--services"], capture_output=True, text=True
-                )
+                subprocess.run(["docker", "compose", "config", "--services"], capture_output=True, text=True)
                 self.config["USE_GPU"] = "true"  # Default to GPU unless we detect CPU-only
             else:
                 self.config["USE_GPU"] = "true"
