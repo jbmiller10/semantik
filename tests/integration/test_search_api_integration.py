@@ -76,7 +76,6 @@ class TestSearchAPIIntegration:
 
         from shared.config import settings
 
-
         # Set up mocks
         # Mock the embedding service instance
         mock_embedding_instance = mock_embedding_service_class.return_value
@@ -232,7 +231,6 @@ class TestSearchAPIIntegration:
         # Import settings to check which mode we're in
 
         from shared.config import settings
-
 
         # Set up mocks
         mock_embedding_instance = mock_embedding_service_class.return_value
