@@ -15,13 +15,11 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, validator
+from pydantic import BaseModel
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Distance, PointStruct
 from shared.contracts.jobs import AddToCollectionRequest
 from shared.contracts.jobs import CreateJobRequest as SharedCreateJobRequest
-from shared.contracts.jobs import JobResponse
-from shared.contracts.jobs import JobStatus as JobStatusEnum
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
@@ -32,6 +30,7 @@ from shared.config import settings
 from shared.embedding import POPULAR_MODELS, embedding_service
 from shared.text_processing.chunking import TokenChunker
 from shared.text_processing.extraction import extract_text
+
 from webui import database
 from webui.auth import get_current_user
 from webui.utils.qdrant_manager import qdrant_manager

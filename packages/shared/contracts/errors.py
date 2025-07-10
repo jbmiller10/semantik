@@ -1,6 +1,6 @@
 """Standard error response contracts."""
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -8,9 +8,9 @@ from pydantic import BaseModel, Field
 class ErrorDetail(BaseModel):
     """Detailed error information."""
 
-    field: Optional[str] = Field(None, description="Field that caused the error")
+    field: str | None = Field(None, description="Field that caused the error")
     message: str = Field(description="Detailed error message")
-    code: Optional[str] = Field(None, description="Error code")
+    code: str | None = Field(None, description="Error code")
 
 
 class ErrorResponse(BaseModel):
@@ -18,10 +18,10 @@ class ErrorResponse(BaseModel):
 
     error: str = Field(description="Error type or category")
     message: str = Field(description="Human-readable error message")
-    details: Optional[dict[str, Any] | list[ErrorDetail]] = Field(None, description="Additional error details")
-    request_id: Optional[str] = Field(None, description="Request ID for tracking")
-    timestamp: Optional[str] = Field(None, description="Error timestamp")
-    status_code: Optional[int] = Field(None, description="HTTP status code")
+    details: dict[str, Any] | list[ErrorDetail] | None = Field(None, description="Additional error details")
+    request_id: str | None = Field(None, description="Request ID for tracking")
+    timestamp: str | None = Field(None, description="Error timestamp")
+    status_code: int | None = Field(None, description="HTTP status code")
 
     class Config:
         json_schema_extra = {
@@ -77,8 +77,8 @@ class NotFoundErrorResponse(ErrorResponse):
     """Resource not found error response."""
 
     error: str = Field(default="NotFoundError")
-    resource_type: Optional[str] = Field(None, description="Type of resource not found")
-    resource_id: Optional[str] = Field(None, description="ID of resource not found")
+    resource_type: str | None = Field(None, description="Type of resource not found")
+    resource_id: str | None = Field(None, description="ID of resource not found")
 
 
 class InsufficientResourcesError(ErrorResponse):
@@ -86,26 +86,26 @@ class InsufficientResourcesError(ErrorResponse):
 
     error: str = Field(default="InsufficientResourcesError")
     resource_type: str = Field(description="Type of resource (memory, disk, gpu)")
-    required: Optional[str] = Field(None, description="Required amount")
-    available: Optional[str] = Field(None, description="Available amount")
-    suggestion: Optional[str] = Field(None, description="Suggestion to resolve the issue")
+    required: str | None = Field(None, description="Required amount")
+    available: str | None = Field(None, description="Available amount")
+    suggestion: str | None = Field(None, description="Suggestion to resolve the issue")
 
 
 class ServiceUnavailableError(ErrorResponse):
     """Service unavailable error."""
 
     error: str = Field(default="ServiceUnavailableError")
-    service: Optional[str] = Field(None, description="Name of unavailable service")
-    retry_after: Optional[int] = Field(None, description="Seconds to wait before retry")
+    service: str | None = Field(None, description="Name of unavailable service")
+    retry_after: int | None = Field(None, description="Seconds to wait before retry")
 
 
 class RateLimitError(ErrorResponse):
     """Rate limit exceeded error."""
 
     error: str = Field(default="RateLimitError")
-    limit: Optional[int] = Field(None, description="Rate limit")
-    window: Optional[str] = Field(None, description="Time window (e.g., '1 hour')")
-    retry_after: Optional[int] = Field(None, description="Seconds to wait before retry")
+    limit: int | None = Field(None, description="Rate limit")
+    window: str | None = Field(None, description="Time window (e.g., '1 hour')")
+    retry_after: int | None = Field(None, description="Seconds to wait before retry")
 
 
 # Helper functions for creating error responses
@@ -115,10 +115,7 @@ def create_validation_error(errors: list[tuple[str, str]]) -> ValidationErrorRes
     """Create a validation error response from a list of field errors."""
     details = [ErrorDetail(field=field, message=message) for field, message in errors]
     return ValidationErrorResponse(
-        error="ValidationError",
-        message="Validation failed",
-        details=details,
-        status_code=400
+        error="ValidationError", message="Validation failed", details=details, status_code=400
     )
 
 

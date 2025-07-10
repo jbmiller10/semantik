@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 import numpy as np
+
 from shared.config.vecpipe import VecpipeConfig
 
 from .base import BaseEmbeddingService

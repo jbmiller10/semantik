@@ -1,7 +1,6 @@
 """Search API contracts for unified search functionality."""
 
-from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, validator
 
@@ -13,15 +12,15 @@ class SearchRequest(BaseModel):
     # Use 'k' as the canonical field, but accept 'top_k' as an alias for backward compatibility
     k: int = Field(default=10, ge=1, le=100, description="Number of results", alias="top_k")
     search_type: str = Field("semantic", description="Type of search: semantic, question, code, hybrid, vector")
-    model_name: Optional[str] = Field(None, description="Override embedding model")
-    quantization: Optional[str] = Field(None, description="Override quantization: float32, float16, int8")
-    filters: Optional[dict[str, Any]] = Field(None, description="Metadata filters for search")
+    model_name: str | None = Field(None, description="Override embedding model")
+    quantization: str | None = Field(None, description="Override quantization: float32, float16, int8")
+    filters: dict[str, Any] | None = Field(None, description="Metadata filters for search")
     include_content: bool = Field(False, description="Include chunk content in results")
-    collection: Optional[str] = Field(None, description="Collection name (e.g., job_123)")
-    job_id: Optional[str] = Field(None, description="Job ID for collection inference")
+    collection: str | None = Field(None, description="Collection name (e.g., job_123)")
+    job_id: str | None = Field(None, description="Job ID for collection inference")
     use_reranker: bool = Field(False, description="Enable cross-encoder reranking")
-    rerank_model: Optional[str] = Field(None, description="Override reranker model")
-    rerank_quantization: Optional[str] = Field(
+    rerank_model: str | None = Field(None, description="Override reranker model")
+    rerank_quantization: str | None = Field(
         None, description="Override reranker quantization: float32, float16, int8"
     )
     score_threshold: float = Field(0.0, ge=0.0, le=1.0, description="Minimum score threshold")
@@ -73,15 +72,15 @@ class SearchResult(BaseModel):
     chunk_id: str
     score: float
     path: str = Field(description="File path")
-    content: Optional[str] = Field(None, description="Chunk content (if include_content=True)")
-    metadata: Optional[dict[str, Any]] = Field(default_factory=dict)
-    highlights: Optional[list[str]] = None
+    content: str | None = Field(None, description="Chunk content (if include_content=True)")
+    metadata: dict[str, Any] | None = Field(default_factory=dict)
+    highlights: list[str] | None = None
     # Additional fields for frontend compatibility
-    file_path: Optional[str] = None  # Duplicate of path for frontend
-    file_name: Optional[str] = None
-    chunk_index: Optional[int] = None
-    total_chunks: Optional[int] = None
-    job_id: Optional[str] = None
+    file_path: str | None = None  # Duplicate of path for frontend
+    file_name: str | None = None
+    chunk_index: int | None = None
+    total_chunks: int | None = None
+    job_id: str | None = None
 
 
 class SearchResponse(BaseModel):
@@ -90,14 +89,14 @@ class SearchResponse(BaseModel):
     query: str
     results: list[SearchResult]
     num_results: int
-    search_type: Optional[str] = None
-    model_used: Optional[str] = None
-    embedding_time_ms: Optional[float] = None
-    search_time_ms: Optional[float] = None
-    reranking_used: Optional[bool] = None
-    reranker_model: Optional[str] = None
-    reranking_time_ms: Optional[float] = None
-    collection: Optional[str] = None
+    search_type: str | None = None
+    model_used: str | None = None
+    embedding_time_ms: float | None = None
+    search_time_ms: float | None = None
+    reranking_used: bool | None = None
+    reranker_model: str | None = None
+    reranking_time_ms: float | None = None
+    collection: str | None = None
 
     class Config:
         json_schema_extra = {
@@ -129,9 +128,9 @@ class BatchSearchRequest(BaseModel):
     queries: list[str] = Field(..., description="List of search queries")
     k: int = Field(10, ge=1, le=100, description="Number of results per query")
     search_type: str = Field("semantic", description="Type of search")
-    model_name: Optional[str] = Field(None, description="Override embedding model")
-    quantization: Optional[str] = Field(None, description="Override quantization")
-    collection: Optional[str] = Field(None, description="Collection name")
+    model_name: str | None = Field(None, description="Override embedding model")
+    quantization: str | None = Field(None, description="Override quantization")
+    collection: str | None = Field(None, description="Collection name")
 
 
 class BatchSearchResponse(BaseModel):
@@ -147,12 +146,12 @@ class HybridSearchResult(BaseModel):
     path: str
     chunk_id: str
     score: float
-    doc_id: Optional[str] = None
+    doc_id: str | None = None
     matched_keywords: list[str] = Field(default_factory=list)
-    keyword_score: Optional[float] = None
-    combined_score: Optional[float] = None
-    metadata: Optional[dict[str, Any]] = None
-    content: Optional[str] = None
+    keyword_score: float | None = None
+    combined_score: float | None = None
+    metadata: dict[str, Any] | None = None
+    content: str | None = None
 
 
 class HybridSearchResponse(BaseModel):
@@ -170,13 +169,13 @@ class HybridSearchRequest(BaseModel):
 
     query: str
     k: int = Field(default=10, ge=1, le=100)
-    job_id: Optional[str] = None
+    job_id: str | None = None
     mode: str = Field(default="filter", description="Hybrid search mode: 'filter' or 'rerank'")
     keyword_mode: str = Field(default="any", description="Keyword matching: 'any' or 'all'")
-    score_threshold: Optional[float] = None
-    collection: Optional[str] = None
-    model_name: Optional[str] = None
-    quantization: Optional[str] = None
+    score_threshold: float | None = None
+    collection: str | None = None
+    model_name: str | None = None
+    quantization: str | None = None
 
 
 # Additional models for specialized endpoints
