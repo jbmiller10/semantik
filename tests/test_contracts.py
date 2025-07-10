@@ -441,6 +441,28 @@ class TestJobContractsExtended:
         assert len(req3.include_patterns) == 2
         assert len(req3.exclude_patterns) == 2
 
+    def test_file_extensions_validation(self):
+        """Test file_extensions validation."""
+        # Valid extensions with and without dots
+        req = CreateJobRequest(name="Test", directory_path="/test", file_extensions=[".txt", "md", ".py", "json"])
+        # All should be normalized to lowercase with dots
+        assert req.file_extensions == [".txt", ".md", ".py", ".json"]
+
+        # Empty extension should fail
+        with pytest.raises(ValidationError) as exc_info:
+            CreateJobRequest(name="Test", directory_path="/test", file_extensions=["."])
+        assert "Invalid file extension" in str(exc_info.value)
+
+        # Too long extension should fail
+        with pytest.raises(ValidationError) as exc_info:
+            CreateJobRequest(name="Test", directory_path="/test", file_extensions=[".verylongext"])
+        assert "File extension too long" in str(exc_info.value)
+
+        # Invalid characters should fail
+        with pytest.raises(ValidationError) as exc_info:
+            CreateJobRequest(name="Test", directory_path="/test", file_extensions=[".txt!", ".py@"])
+        assert "Invalid characters in file extension" in str(exc_info.value)
+
 
 class TestErrorContractsExtended:
     """Extended tests for error contracts."""

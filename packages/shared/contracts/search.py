@@ -95,6 +95,7 @@ class SearchResponse(BaseModel):
     reranker_model: str | None = None
     reranking_time_ms: float | None = None
     collection: str | None = None
+    api_version: str = Field(default="1.0", description="API version")
 
     class Config:
         json_schema_extra = {
@@ -145,6 +146,7 @@ class BatchSearchResponse(BaseModel):
 
     responses: list[SearchResponse]
     total_time_ms: float
+    api_version: str = Field(default="1.0", description="API version")
 
 
 class HybridSearchResult(BaseModel):
@@ -169,6 +171,7 @@ class HybridSearchResponse(BaseModel):
     num_results: int
     keywords_extracted: list[str]
     search_mode: str  # "filter" or "rerank"
+    api_version: str = Field(default="1.0", description="API version")
 
 
 class HybridSearchRequest(BaseModel):
@@ -200,3 +203,4 @@ class PreloadModelResponse(BaseModel):
 
     status: str = Field(..., max_length=50)
     message: str = Field(..., max_length=500)
+    api_version: str = Field(default="1.0", description="API version")
