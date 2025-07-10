@@ -33,12 +33,12 @@ class SearchRequest(BaseModel):
         populate_by_name = True  # Allow both 'k' and 'top_k'
 
     @validator("query")
-    def clean_query(cls, v: str) -> str:
+    def clean_query(cls, v: str) -> str:  # noqa: N805
         """Clean and validate query string."""
         return v.strip()
 
     @validator("search_type")
-    def validate_search_type(cls, v: str) -> str:
+    def validate_search_type(cls, v: str) -> str:  # noqa: N805
         """Validate search type and map 'vector' to 'semantic'."""
         # Map 'vector' to 'semantic' for backward compatibility
         if v == "vector":
@@ -49,7 +49,7 @@ class SearchRequest(BaseModel):
         return v
 
     @validator("hybrid_mode")
-    def validate_hybrid_mode(cls, v: str) -> str:
+    def validate_hybrid_mode(cls, v: str) -> str:  # noqa: N805
         """Validate hybrid mode."""
         valid_modes = {"filter", "rerank"}
         if v not in valid_modes:
@@ -57,7 +57,7 @@ class SearchRequest(BaseModel):
         return v
 
     @validator("keyword_mode")
-    def validate_keyword_mode(cls, v: str) -> str:
+    def validate_keyword_mode(cls, v: str) -> str:  # noqa: N805
         """Validate keyword mode."""
         valid_modes = {"any", "all"}
         if v not in valid_modes:
