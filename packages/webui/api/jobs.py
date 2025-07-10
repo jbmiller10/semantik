@@ -30,6 +30,7 @@ from shared.config import settings
 from shared.embedding import POPULAR_MODELS, embedding_service
 from shared.text_processing.chunking import TokenChunker
 from shared.text_processing.extraction import extract_text
+
 from webui import database
 from webui.auth import get_current_user
 from webui.utils.qdrant_manager import qdrant_manager
@@ -621,7 +622,7 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
             logger.info(f"Successfully created collection {collection_name}")
 
             # Store metadata about this collection
-            from .collection_metadata import store_collection_metadata
+            from shared.database.collection_metadata import store_collection_metadata
 
             store_collection_metadata(
                 qdrant=qdrant,

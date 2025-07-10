@@ -7,7 +7,6 @@ REST API for vector similarity search with Qwen3 support
 import asyncio
 import hashlib
 import logging
-import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -97,7 +96,7 @@ embedding_generation_latency = get_or_create_metric(
 
 # Constants
 DEFAULT_K = 10
-METRICS_PORT = int(os.getenv("METRICS_PORT", "9091"))
+METRICS_PORT = settings.METRICS_PORT
 
 # Search instructions for different use cases
 SEARCH_INSTRUCTIONS = {
@@ -133,7 +132,7 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     # Initialize model manager with lazy loading
     from .model_manager import ModelManager
 
-    unload_after = int(os.getenv("MODEL_UNLOAD_AFTER_SECONDS", "300"))  # 5 minutes default
+    unload_after = settings.MODEL_UNLOAD_AFTER_SECONDS
     model_manager = ModelManager(unload_after_seconds=unload_after)
     logger.info(f"Initialized model manager with {unload_after}s inactivity timeout")
 
@@ -316,16 +315,55 @@ async def root() -> dict[str, Any]:
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
-    """Simple health check endpoint"""
+async def health() -> dict[str, Any]:
+    """Comprehensive health check endpoint"""
+    health_status: dict[str, Any] = {"status": "healthy", "components": {}}
+
+    # Check Qdrant client
     try:
-        # Just check if the service is up
         if qdrant_client is None:
-            raise HTTPException(status_code=503, detail="Service not ready")
-        return {"status": "healthy"}
+            health_status["components"]["qdrant"] = {"status": "unhealthy", "error": "Client not initialized"}
+            health_status["status"] = "unhealthy"
+        else:
+            # Try to get collection info to verify connection
+            response = await qdrant_client.get("/collections")
+            if response.status_code == 200:
+                collections_data = response.json()
+                health_status["components"]["qdrant"] = {
+                    "status": "healthy",
+                    "collections_count": len(collections_data.get("result", {}).get("collections", [])),
+                }
+            else:
+                health_status["components"]["qdrant"] = {"status": "unhealthy", "error": f"HTTP {response.status_code}"}
+                health_status["status"] = "unhealthy"
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        raise HTTPException(status_code=503, detail=f"Service unavailable: {str(e)}") from e
+        health_status["components"]["qdrant"] = {"status": "unhealthy", "error": str(e)}
+        health_status["status"] = "unhealthy"
+
+    # Check embedding service
+    try:
+        if embedding_service is None:
+            health_status["components"]["embedding"] = {"status": "unhealthy", "error": "Service not initialized"}
+            health_status["status"] = "degraded" if health_status["status"] == "healthy" else "unhealthy"
+        else:
+            if embedding_service.is_initialized:
+                model_info = embedding_service.get_model_info()
+                health_status["components"]["embedding"] = {
+                    "status": "healthy",
+                    "model": model_info.get("model_name"),
+                    "dimension": model_info.get("dimension"),
+                }
+            else:
+                health_status["components"]["embedding"] = {"status": "unhealthy", "error": "Service not initialized"}
+                health_status["status"] = "degraded" if health_status["status"] == "healthy" else "unhealthy"
+    except Exception as e:
+        health_status["components"]["embedding"] = {"status": "unhealthy", "error": str(e)}
+        health_status["status"] = "degraded" if health_status["status"] == "healthy" else "unhealthy"
+
+    if health_status["status"] == "unhealthy":
+        raise HTTPException(status_code=503, detail=health_status)
+
+    return health_status
 
 
 @app.get("/search", response_model=SearchResponse)
@@ -350,16 +388,21 @@ async def search(
     # Create request object for unified handling
     request = SearchRequest(
         query=q,
-        k=k,  # Use the canonical field name
+        top_k=k,  # Use the alias since 'k' has alias="top_k"
         search_type=search_type,
         model_name=model_name,
         quantization=quantization,
         collection=collection,
         filters=None,
         include_content=False,
+        job_id=None,
         use_reranker=False,
         rerank_model=None,
         rerank_quantization=None,
+        score_threshold=0.0,
+        hybrid_alpha=0.7,
+        hybrid_mode="rerank",
+        keyword_mode="any",
     )
     result = await search_post(request)
     return SearchResponse(**result.model_dump())
@@ -408,7 +451,7 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
             from qdrant_client import QdrantClient
 
             sync_client = QdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
-            from webui.api.collection_metadata import get_collection_metadata
+            from shared.database.collection_metadata import get_collection_metadata
 
             metadata = get_collection_metadata(sync_client, collection_name)
             if metadata:
@@ -536,6 +579,9 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
                     doc_id=payload["doc_id"],
                     content=payload.get("content") if should_include_content else None,
                     metadata=payload.get("metadata"),
+                    file_path=None,
+                    file_name=None,
+                    job_id=None,
                 )
             else:
                 # Parsed format from search_utils
@@ -548,6 +594,9 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
                         doc_id=parsed_item["doc_id"],
                         content=parsed_item.get("content") if should_include_content else None,
                         metadata=parsed_item.get("metadata"),
+                        file_path=None,
+                        file_name=None,
+                        job_id=None,
                     )
                     results.append(result)
                 break
@@ -750,7 +799,7 @@ async def hybrid_search(
             from qdrant_client import QdrantClient
 
             sync_client = QdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
-            from webui.api.collection_metadata import get_collection_metadata
+            from shared.database.collection_metadata import get_collection_metadata
 
             metadata = get_collection_metadata(sync_client, collection_name)
             if metadata:
@@ -823,6 +872,7 @@ async def hybrid_search(
                 keyword_score=r.get("keyword_score"),
                 combined_score=r.get("combined_score"),
                 metadata=r["payload"].get("metadata"),
+                content=None,
             )
             hybrid_results.append(result)
 
@@ -900,6 +950,9 @@ async def batch_search(request: BatchSearchRequest = Body(...)) -> BatchSearchRe
                             score=point["score"],
                             doc_id=payload["doc_id"],
                             content=None,
+                            file_path=None,
+                            file_name=None,
+                            job_id=None,
                         )
                     )
                 else:
@@ -913,6 +966,9 @@ async def batch_search(request: BatchSearchRequest = Body(...)) -> BatchSearchRe
                                 score=r["score"],
                                 doc_id=r["doc_id"],
                                 content=None,
+                                file_path=None,
+                                file_name=None,
+                                job_id=None,
                             )
                         )
                     break
@@ -978,6 +1034,7 @@ async def keyword_search(
                 score=0.0,  # No vector score for keyword-only search
                 doc_id=r["payload"]["doc_id"],
                 matched_keywords=r.get("matched_keywords", []),
+                content=None,
             )
             hybrid_results.append(result)
 

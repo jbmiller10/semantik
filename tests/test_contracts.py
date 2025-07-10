@@ -412,10 +412,16 @@ class TestJobContractsExtended:
 
     def test_create_job_request_name_validation(self):
         """Test name field constraints for CreateJobRequest."""
-        # Test max length for name (assuming reasonable limit)
-        long_name = "x" * 256  # Reasonable name length
+        # Test max length for name (255 character limit)
+        long_name = "x" * 255  # Max allowed name length
         req = CreateJobRequest(name=long_name, directory_path="/test")
         assert req.name == long_name
+
+        # Test exceeding max length should fail
+        too_long_name = "x" * 256
+        with pytest.raises(ValidationError) as exc_info:
+            CreateJobRequest(name=too_long_name, directory_path="/test")
+        assert "at most 255 characters" in str(exc_info.value)
 
         # Empty name should fail
         with pytest.raises(ValidationError) as exc_info:
@@ -431,15 +437,14 @@ class TestJobContractsExtended:
         req2 = CreateJobRequest(name="Test", directory_path="/test", batch_size=500)
         assert req2.batch_size == 500
 
-        # Test include/exclude patterns
+        # Test file_extensions field (which exists instead of include/exclude patterns)
         req3 = CreateJobRequest(
             name="Test",
             directory_path="/test",
-            include_patterns=["*.txt", "*.md"],
-            exclude_patterns=["**/node_modules/**", "*.tmp"],
+            file_extensions=[".txt", ".md", "py"],  # Should normalize py to .py
         )
-        assert len(req3.include_patterns) == 2
-        assert len(req3.exclude_patterns) == 2
+        assert len(req3.file_extensions) == 3
+        assert req3.file_extensions == [".txt", ".md", ".py"]
 
     def test_file_extensions_validation(self):
         """Test file_extensions validation."""

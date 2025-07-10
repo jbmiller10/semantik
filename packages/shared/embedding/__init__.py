@@ -4,6 +4,7 @@ This module provides embedding generation capabilities for the system.
 """
 
 from .base import BaseEmbeddingService
+from .context import ManagedEmbeddingService, embedding_service_context, temporary_embedding_service
 from .dense import (
     DenseEmbeddingService,
     EmbeddingService,
@@ -43,6 +44,10 @@ __all__ = [
     "embed_single",
     "cleanup",
     "configure_global_embedding_service",
+    # Context managers
+    "embedding_service_context",
+    "temporary_embedding_service",
+    "ManagedEmbeddingService",
     # Model configuration
     "ModelConfig",
     "get_model_config",

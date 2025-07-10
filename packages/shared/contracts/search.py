@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class SearchRequest(BaseModel):
@@ -29,14 +29,17 @@ class SearchRequest(BaseModel):
 
     class Config:
         populate_by_name = True  # Allow both 'k' and 'top_k'
+        extra = "forbid"  # Reject extra fields
 
-    @validator("query")
-    def clean_query(cls: type["SearchRequest"], v: str) -> str:  # noqa: N805
+    @field_validator("query")
+    @classmethod
+    def clean_query(cls, v: str) -> str:
         """Clean and validate query string."""
         return v.strip()
 
-    @validator("search_type")
-    def validate_search_type(cls: type["SearchRequest"], v: str) -> str:  # noqa: N805
+    @field_validator("search_type")
+    @classmethod
+    def validate_search_type(cls, v: str) -> str:
         """Validate search type and map 'vector' to 'semantic'."""
         # Map 'vector' to 'semantic' for backward compatibility
         if v == "vector":
@@ -46,16 +49,18 @@ class SearchRequest(BaseModel):
             raise ValueError(f"Invalid search_type: {v}. Must be one of {valid_types}")
         return v
 
-    @validator("hybrid_mode")
-    def validate_hybrid_mode(cls: type["SearchRequest"], v: str) -> str:  # noqa: N805
+    @field_validator("hybrid_mode")
+    @classmethod
+    def validate_hybrid_mode(cls, v: str) -> str:
         """Validate hybrid mode."""
         valid_modes = {"filter", "rerank"}
         if v not in valid_modes:
             raise ValueError(f"Invalid hybrid_mode: {v}. Must be one of {valid_modes}")
         return v
 
-    @validator("keyword_mode")
-    def validate_keyword_mode(cls: type["SearchRequest"], v: str) -> str:  # noqa: N805
+    @field_validator("keyword_mode")
+    @classmethod
+    def validate_keyword_mode(cls, v: str) -> str:
         """Validate keyword mode."""
         valid_modes = {"any", "all"}
         if v not in valid_modes:
@@ -131,13 +136,15 @@ class BatchSearchRequest(BaseModel):
     quantization: str | None = Field(None, max_length=20, description="Override quantization")
     collection: str | None = Field(None, max_length=200, description="Collection name")
 
-    @validator("queries", each_item=True)
-    def validate_query_length(cls: type["BatchSearchRequest"], v: str) -> str:  # noqa: N805
+    @field_validator("queries")
+    @classmethod
+    def validate_query_length(cls, v: list[str]) -> list[str]:
         """Validate each query doesn't exceed max length."""
-        if len(v) > 1000:
-            raise ValueError("Each query must not exceed 1000 characters")
-        if len(v) < 1:
-            raise ValueError("Each query must have at least 1 character")
+        for query in v:
+            if len(query) > 1000:
+                raise ValueError("Each query must not exceed 1000 characters")
+            if len(query) < 1:
+                raise ValueError("Each query must have at least 1 character")
         return v
 
 
