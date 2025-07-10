@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F  # noqa: N812
 from sentence_transformers import SentenceTransformer
+from shared.config.vecpipe import VecpipeConfig
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
 
@@ -70,7 +71,7 @@ def last_token_pool(last_hidden_states: Tensor, attention_mask: Tensor) -> Tenso
 class DenseEmbeddingService(BaseEmbeddingService):
     """Dense embedding service supporting both sentence-transformers and custom models like Qwen."""
 
-    def __init__(self, mock_mode: bool = False) -> None:
+    def __init__(self, config: VecpipeConfig | None = None, mock_mode: bool | None = None) -> None:
         self.model: Any = None
         self.tokenizer: Any = None
         self.model_name: str | None = None
@@ -79,7 +80,14 @@ class DenseEmbeddingService(BaseEmbeddingService):
         self.dimension: int | None = None
         self.max_sequence_length: int = 512
         self._initialized: bool = False
-        self.mock_mode: bool = mock_mode
+
+        # Use config if provided, otherwise fall back to direct parameter
+        self.config: VecpipeConfig | None = config
+        if config is not None:
+            self.mock_mode = config.USE_MOCK_EMBEDDINGS
+        else:
+            # For backward compatibility
+            self.mock_mode = mock_mode if mock_mode is not None else False
 
         # Quantization settings
         self.quantization: str = "float32"
@@ -347,10 +355,15 @@ class EmbeddingService:
     the new async implementation underneath.
     """
 
-    def __init__(self, mock_mode: bool = False) -> None:
-        self._service = DenseEmbeddingService()
+    def __init__(self, config: VecpipeConfig | None = None, mock_mode: bool | None = None) -> None:
+        # Create service with config or mock_mode
+        if config is not None:
+            self._service = DenseEmbeddingService(config=config)
+            self.mock_mode = config.USE_MOCK_EMBEDDINGS
+        else:
+            self._service = DenseEmbeddingService(mock_mode=mock_mode if mock_mode is not None else False)
+            self.mock_mode = mock_mode if mock_mode is not None else False
         self._loop: asyncio.AbstractEventLoop | None = None
-        self.mock_mode = mock_mode
         self.allow_quantization_fallback = True  # For backwards compatibility
 
     def _get_loop(self) -> asyncio.AbstractEventLoop:

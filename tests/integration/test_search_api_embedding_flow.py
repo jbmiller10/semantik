@@ -4,8 +4,8 @@ This test verifies the flow from search endpoint to embedding generation,
 acknowledging current architectural constraints where settings are loaded
 at module import time.
 
-TODO: After CORE-003, update this test to properly verify the embedding service integration
-when it's moved to a shared package with better dependency injection.
+NOTE: The embedding service has been moved to a shared package with dependency injection
+as part of CORE-003. This test now verifies the flow with the updated architecture.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch

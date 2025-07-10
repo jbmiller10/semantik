@@ -8,6 +8,8 @@ import asyncio
 import logging
 from typing import Any
 
+from shared.config.vecpipe import VecpipeConfig
+
 from .base import BaseEmbeddingService
 from .dense import DenseEmbeddingService
 
@@ -18,10 +20,11 @@ _embedding_service: BaseEmbeddingService | None = None
 _service_lock = asyncio.Lock()
 
 
-async def get_embedding_service(**kwargs: Any) -> BaseEmbeddingService:
+async def get_embedding_service(config: VecpipeConfig | None = None, **kwargs: Any) -> BaseEmbeddingService:
     """Get or create the singleton embedding service instance.
 
     Args:
+        config: Optional configuration object for dependency injection
         **kwargs: Options passed to service creation (e.g., mock_mode)
 
     Returns:
@@ -35,16 +38,22 @@ async def get_embedding_service(**kwargs: Any) -> BaseEmbeddingService:
     async with _service_lock:
         if _embedding_service is None:
             logger.info("Creating new embedding service instance")
-            _embedding_service = DenseEmbeddingService(**kwargs)
+            if config is not None:
+                _embedding_service = DenseEmbeddingService(config=config)
+            else:
+                _embedding_service = DenseEmbeddingService(**kwargs)
 
         return _embedding_service
 
 
-async def initialize_embedding_service(model_name: str, **kwargs: Any) -> BaseEmbeddingService:
+async def initialize_embedding_service(
+    model_name: str, config: VecpipeConfig | None = None, **kwargs: Any
+) -> BaseEmbeddingService:
     """Initialize the embedding service with a specific model.
 
     Args:
         model_name: The model to load
+        config: Optional configuration object for dependency injection
         **kwargs: Additional configuration options
 
     Returns:
@@ -52,7 +61,7 @@ async def initialize_embedding_service(model_name: str, **kwargs: Any) -> BaseEm
     """
     # Extract service creation kwargs
     mock_mode = kwargs.get("mock_mode", False)
-    service = await get_embedding_service(mock_mode=mock_mode)
+    service = await get_embedding_service(config=config, mock_mode=mock_mode)
 
     if not service.is_initialized or (hasattr(service, "model_name") and service.model_name != model_name):
         await service.initialize(model_name, **kwargs)
@@ -60,11 +69,14 @@ async def initialize_embedding_service(model_name: str, **kwargs: Any) -> BaseEm
     return service
 
 
-def get_embedding_service_sync() -> BaseEmbeddingService:
+def get_embedding_service_sync(config: VecpipeConfig | None = None) -> BaseEmbeddingService:
     """Get the embedding service synchronously.
 
     This is a convenience method for code that hasn't been converted to async yet.
     It will create a new event loop if needed.
+
+    Args:
+        config: Optional configuration object for dependency injection
 
     Returns:
         The embedding service instance (may not be initialized)
@@ -81,7 +93,7 @@ def get_embedding_service_sync() -> BaseEmbeddingService:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        return loop.run_until_complete(get_embedding_service())
+        return loop.run_until_complete(get_embedding_service(config=config))
     finally:
         loop.close()
         asyncio.set_event_loop(None)
