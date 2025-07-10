@@ -29,6 +29,7 @@ class SearchRequest(BaseModel):
 
     class Config:
         populate_by_name = True  # Allow both 'k' and 'top_k'
+        extra = "forbid"  # Reject extra fields
 
     @field_validator("query")
     @classmethod

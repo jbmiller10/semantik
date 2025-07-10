@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter
-from shared.embedding import get_embedding_service_sync
+from shared.embedding import get_embedding_service
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ async def health_check() -> dict[str, str]:
 async def embedding_health() -> dict[str, Any]:
     """Check embedding service health and status."""
     try:
-        service = get_embedding_service_sync()
+        service = await get_embedding_service()
 
         if service.is_initialized:
             try:
@@ -47,7 +47,7 @@ async def embedding_health() -> dict[str, Any]:
 async def readiness_check() -> dict[str, Any]:
     """Readiness probe for Kubernetes/container orchestration."""
     try:
-        service = get_embedding_service_sync()
+        service = await get_embedding_service()
 
         if service.is_initialized:
             # Try a simple embedding to ensure service is truly ready
