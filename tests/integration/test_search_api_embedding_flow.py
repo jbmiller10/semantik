@@ -105,7 +105,8 @@ class TestSearchAPIEmbeddingFlow:
         from packages.vecpipe import model_manager, search_api
 
         # Verify the imports exist (will help catch when refactoring happens)
-        assert hasattr(search_api, "EmbeddingService")
+        # After CORE-003, search_api uses get_embedding_service instead of EmbeddingService
+        assert hasattr(search_api, "get_embedding_service")
         assert hasattr(model_manager, "EmbeddingService")
 
         # Document that both import from webui
@@ -114,7 +115,9 @@ class TestSearchAPIEmbeddingFlow:
         search_api_source = inspect.getsource(search_api)
         model_manager_source = inspect.getsource(model_manager)
 
-        assert "from shared.embedding import EmbeddingService" in search_api_source
+        # After CORE-003 refactoring, search_api imports from shared.embedding.service
+        assert "from shared.embedding.service import get_embedding_service" in search_api_source
+        # model_manager still imports from shared.embedding for now
         assert "from shared.embedding import EmbeddingService" in model_manager_source
 
         # This assertion will need to be updated after CORE-003
