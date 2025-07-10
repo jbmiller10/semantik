@@ -73,33 +73,44 @@ class TestWebuiHealthEndpoints:
     def test_embedding_health_service_error(self, test_client):
         """Test embedding health when service throws error or is not initialized"""
 
-        # In CI environment with USE_MOCK_EMBEDDINGS=true, the service may be created
-        # but not initialized, or we may successfully mock an exception.
-        # This test handles both cases.
+        # In CI, the embedding service singleton might already be initialized
+        # We need to ensure our mock is applied at all levels
 
         # Mock get_embedding_service to raise an exception
         async def async_error(*_args, **_kwargs):
             raise Exception("Service error")
 
-        # Patch the function in the health module
-        with patch("packages.webui.api.health.get_embedding_service", side_effect=async_error):
-            response = test_client.get("/api/health/embedding")
-            assert response.status_code == 200
-            data = response.json()
+        # Reset the singleton to ensure our mock takes effect
+        import shared.embedding.service
+        original_service = shared.embedding.service._embedding_service
+        shared.embedding.service._embedding_service = None
 
-            # The endpoint should return unhealthy status
-            assert data["status"] == "unhealthy"
+        try:
+            # Patch the function in the health module and the service module
+            with (
+                patch("packages.webui.api.health.get_embedding_service", side_effect=async_error),
+                patch("shared.embedding.service.get_embedding_service", side_effect=async_error),
+            ):
+                response = test_client.get("/api/health/embedding")
+                assert response.status_code == 200
+                data = response.json()
 
-            # It should have either 'error' (exception case) or 'message' (uninitialized case)
-            assert "error" in data or "message" in data
+                # The endpoint should return unhealthy status
+                assert data["status"] == "unhealthy"
 
-            # Verify the response indicates a problem
-            if "error" in data:
-                # Exception was thrown
-                assert "Failed to access embedding service" in data["error"]
-            elif "message" in data:
-                # Service created but not initialized
-                assert "not initialized" in data["message"].lower()
+                # It should have either 'error' (exception case) or 'message' (uninitialized case)
+                assert "error" in data or "message" in data
+
+                # Verify the response indicates a problem
+                if "error" in data:
+                    # Exception was thrown
+                    assert "Failed to access embedding service" in data["error"]
+                elif "message" in data:
+                    # Service created but not initialized
+                    assert "not initialized" in data["message"].lower()
+        finally:
+            # Restore the original service
+            shared.embedding.service._embedding_service = original_service
 
     def test_readiness_check_ready(self, test_client, mock_embedding_service):
         """Test readiness check when service is ready"""
