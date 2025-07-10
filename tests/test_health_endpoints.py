@@ -14,7 +14,7 @@ def mock_embedding_service():
     service.get_model_info.return_value = {"model_name": "test-model", "dimension": 384, "device": "cpu"}
 
     # Create an async version of embed_single
-    async def async_embed_single(text):
+    async def async_embed_single(_text):
         return [0.1] * 384
 
     service.embed_single = async_embed_single
@@ -34,7 +34,7 @@ class TestWebuiHealthEndpoints:
     def test_embedding_health_initialized(self, test_client, mock_embedding_service):
         """Test embedding health when service is initialized"""
 
-        async def async_get_service(*args, **kwargs):
+        async def async_get_service(*_args, **_kwargs):
             return mock_embedding_service
 
         # Patch both the function and the singleton instance
@@ -55,7 +55,7 @@ class TestWebuiHealthEndpoints:
         """Test embedding health when service is not initialized"""
         mock_embedding_service.is_initialized = False
 
-        async def async_get_service(*args, **kwargs):
+        async def async_get_service(*_args, **_kwargs):
             return mock_embedding_service
 
         with (
@@ -74,7 +74,7 @@ class TestWebuiHealthEndpoints:
         """Test embedding health when service throws error"""
 
         # Mock get_embedding_service to raise an exception
-        async def async_error(*args, **kwargs):
+        async def async_error(*_args, **_kwargs):
             raise Exception("Service error")
 
         # We need to patch the function where it's actually used in the health module
@@ -94,7 +94,7 @@ class TestWebuiHealthEndpoints:
         """Test readiness check when service is ready"""
 
         # embed_single is already set up as an async function in the fixture
-        async def async_get_service(*args, **kwargs):
+        async def async_get_service(*_args, **_kwargs):
             return mock_embedding_service
 
         with (
@@ -111,7 +111,7 @@ class TestWebuiHealthEndpoints:
         """Test readiness check when service is not ready"""
         mock_embedding_service.is_initialized = False
 
-        async def async_get_service(*args, **kwargs):
+        async def async_get_service(*_args, **_kwargs):
             return mock_embedding_service
 
         with (
@@ -140,7 +140,7 @@ class TestVecpipeHealthEndpoints:
         mock_qdrant = Mock()
 
         # Create async mock for qdrant_client.get
-        async def mock_get(path):
+        async def mock_get(_path):
             mock_response = Mock()
             mock_response.status_code = 200
             mock_response.json.return_value = {"result": {"collections": [{"name": "col1"}, {"name": "col2"}]}}
@@ -177,7 +177,7 @@ class TestVecpipeHealthEndpoints:
         mock_qdrant = Mock()
 
         # Create async mock for qdrant_client.get
-        async def mock_get(path):
+        async def mock_get(_path):
             mock_response = Mock()
             mock_response.status_code = 200
             mock_response.json.return_value = {"result": {"collections": []}}
