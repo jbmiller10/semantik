@@ -1,40 +1,35 @@
 """Tests for the maintenance service."""
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import httpx
 import pytest
-from qdrant_client.models import CollectionInfo, CollectionsResponse
 
 from packages.vecpipe.maintenance import MaintenanceService
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_qdrant_client():
     """Create a mock Qdrant client."""
-    client = AsyncMock()
-    return client
+    return AsyncMock()
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_httpx_client():
     """Create a mock httpx client."""
-    client = MagicMock()
-    return client
+    return MagicMock()
 
 
-@pytest.fixture
+@pytest.fixture()
 def maintenance_service(mock_qdrant_client):
     """Create a maintenance service instance with mocked dependencies."""
-    service = MaintenanceService(qdrant_client=mock_qdrant_client, webui_base_url="http://localhost:8080")
-    return service
+    return MaintenanceService(qdrant_client=mock_qdrant_client, webui_base_url="http://localhost:8080")
 
 
 class TestMaintenanceService:
     """Test the maintenance service functionality."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_job_collections_success(self, maintenance_service):
         """Test successful retrieval of job collections from API."""
         mock_response = Mock()
@@ -53,7 +48,7 @@ class TestMaintenanceService:
                 assert "headers" in call_args.kwargs
                 assert "X-Internal-Api-Key" in call_args.kwargs["headers"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_job_collections_with_retry(self, maintenance_service):
         """Test retry logic for API calls."""
         # First two calls fail, third succeeds
@@ -63,14 +58,16 @@ class TestMaintenanceService:
             Mock(json=Mock(return_value=["job_1"]), raise_for_status=Mock()),
         ]
 
-        with patch("httpx.get", side_effect=mock_responses) as mock_get:
-            with patch("time.sleep"):  # Don't actually sleep in tests
-                collections = maintenance_service.get_job_collections()
+        with (
+            patch("httpx.get", side_effect=mock_responses) as mock_get,
+            patch("time.sleep"),
+        ):  # Don't actually sleep in tests
+            collections = maintenance_service.get_job_collections()
 
-                assert collections == ["job_1"]
-                assert mock_get.call_count == 3
+            assert collections == ["job_1"]
+            assert mock_get.call_count == 3
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_identify_orphaned_collections(self, maintenance_service, mock_qdrant_client):
         """Test identification of orphaned Qdrant collections."""
         # Mock Qdrant collections
@@ -93,7 +90,7 @@ class TestMaintenanceService:
         assert set(orphaned) == {"job_3", "orphaned_collection"}
         mock_qdrant_client.get_collections.assert_called_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_cleanup_orphaned_collections(self, maintenance_service, mock_qdrant_client):
         """Test cleanup of orphaned collections."""
         orphaned_collections = ["orphaned_1", "orphaned_2"]
@@ -106,7 +103,7 @@ class TestMaintenanceService:
         mock_qdrant_client.delete_collection.assert_any_call("orphaned_1")
         mock_qdrant_client.delete_collection.assert_any_call("orphaned_2")
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_cleanup_orphaned_collections_handles_errors(self, maintenance_service, mock_qdrant_client):
         """Test that cleanup continues even if some deletions fail."""
         orphaned_collections = ["orphaned_1", "orphaned_2", "orphaned_3"]
@@ -124,7 +121,7 @@ class TestMaintenanceService:
         # All deletions should be attempted
         assert mock_qdrant_client.delete_collection.call_count == 3
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_run_maintenance_full_flow(self, maintenance_service, mock_qdrant_client):
         """Test the full maintenance flow."""
         # Mock API response
@@ -148,7 +145,7 @@ class TestMaintenanceService:
             assert cleaned_count == 1
             mock_qdrant_client.delete_collection.assert_called_once_with("job_3")
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_run_maintenance_no_orphans(self, maintenance_service, mock_qdrant_client):
         """Test maintenance when there are no orphaned collections."""
         # Mock API response

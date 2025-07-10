@@ -46,7 +46,6 @@ def test_cleanup_dry_run():
         result = service.cleanup_removed_files(current_files, dry_run=True)
         logger.info(f"Dry-run result: {result}")
 
-
     finally:
         # Clean up temp file
         Path(temp_file_list).unlink()

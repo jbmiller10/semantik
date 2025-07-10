@@ -6,8 +6,9 @@ consistent state management.
 """
 
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import Any
 
 from .base import BaseEmbeddingService
 from .service import get_embedding_service
@@ -139,9 +140,8 @@ class ManagedEmbeddingService:
     def __enter__(self):
         """Sync context manager entry - not supported."""
         raise RuntimeError(
-            "Synchronous context manager not supported. " "Use 'async with ManagedEmbeddingService()' instead."
+            "Synchronous context manager not supported. Use 'async with ManagedEmbeddingService()' instead."
         )
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Sync context manager exit - not supported."""
-        pass

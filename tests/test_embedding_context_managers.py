@@ -1,7 +1,7 @@
 """Tests for embedding service context managers."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from shared.embedding.base import BaseEmbeddingService
@@ -46,7 +46,7 @@ class MockEmbeddingService(BaseEmbeddingService):
 class TestEmbeddingServiceContext:
     """Test embedding_service_context function."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_context_manager_basic_usage(self):
         """Test basic context manager usage."""
         mock_service = MockEmbeddingService()
@@ -60,21 +60,22 @@ class TestEmbeddingServiceContext:
             # Cleanup should be called after exiting context
             assert mock_service.cleanup_called
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_context_manager_with_exception(self):
         """Test context manager cleans up even with exceptions."""
         mock_service = MockEmbeddingService()
 
-        with patch("shared.embedding.context.get_embedding_service", return_value=mock_service):
-            with pytest.raises(ValueError):
-                async with embedding_service_context() as service:
-                    assert service is mock_service
-                    raise ValueError("Test error")
+        with (
+            patch("shared.embedding.context.get_embedding_service", return_value=mock_service),
+            pytest.raises(ValueError, match="Test error"),
+        ):
+            async with embedding_service_context():
+                raise ValueError("Test error")
 
-            # Cleanup should still be called
-            assert mock_service.cleanup_called
+        # Cleanup should still be called
+        assert mock_service.cleanup_called
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_context_manager_cleanup_error(self):
         """Test context manager handles cleanup errors gracefully."""
         mock_service = MockEmbeddingService()
@@ -92,7 +93,7 @@ class TestEmbeddingServiceContext:
 class TestTemporaryEmbeddingService:
     """Test temporary_embedding_service context manager."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_temporary_service_creation(self):
         """Test creating a temporary service with specific model."""
         async with temporary_embedding_service("test-model", service_class=MockEmbeddingService) as service:
@@ -103,7 +104,7 @@ class TestTemporaryEmbeddingService:
         # Should be cleaned up after context
         assert service.cleanup_called
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_temporary_service_with_kwargs(self):
         """Test passing kwargs to temporary service."""
         async with temporary_embedding_service(
@@ -111,7 +112,7 @@ class TestTemporaryEmbeddingService:
         ) as service:
             assert service.model_name == "test-model"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_temporary_service_exception_handling(self):
         """Test temporary service handles exceptions properly."""
         with pytest.raises(RuntimeError):
@@ -125,7 +126,7 @@ class TestTemporaryEmbeddingService:
 class TestManagedEmbeddingService:
     """Test ManagedEmbeddingService class."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_managed_service_async_context(self):
         """Test using ManagedEmbeddingService as async context manager."""
         mock_service = MockEmbeddingService()
@@ -144,15 +145,14 @@ class TestManagedEmbeddingService:
         """Test that sync context manager raises error."""
         managed = ManagedEmbeddingService()
 
-        with pytest.raises(RuntimeError, match="Synchronous context manager not supported"):
-            with managed:
-                pass
+        with pytest.raises(RuntimeError, match="Synchronous context manager not supported"), managed:
+            pass
 
 
 class TestBaseEmbeddingServiceContextManager:
     """Test context manager implementation in BaseEmbeddingService."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_base_service_context_manager(self):
         """Test using service directly as context manager."""
         service = MockEmbeddingService()
@@ -165,19 +165,19 @@ class TestBaseEmbeddingServiceContextManager:
 
         assert service.cleanup_called
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_base_service_context_with_exception(self):
         """Test base service context manager with exception."""
         service = MockEmbeddingService()
         service._initialized = True
 
-        with pytest.raises(ValueError):
-            async with service as s:
+        with pytest.raises(ValueError, match="Test error"):
+            async with service:
                 raise ValueError("Test error")
 
         assert service.cleanup_called
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_base_service_cleanup_error_suppressed(self):
         """Test that cleanup errors don't mask original exception."""
         service = MockEmbeddingService()
@@ -192,7 +192,7 @@ class TestBaseEmbeddingServiceContextManager:
 class TestConcurrentContextManagers:
     """Test concurrent usage of context managers."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_multiple_temporary_services(self):
         """Test creating multiple temporary services concurrently."""
 
@@ -208,14 +208,13 @@ class TestConcurrentContextManagers:
 
         # All should succeed
         assert len(results) == 5
-        for model_name, embed_count in results:
+        for _, embed_count in results:
             assert embed_count == 1
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_nested_context_managers(self):
         """Test nested context manager usage."""
         outer_service = MockEmbeddingService()
-        inner_service = MockEmbeddingService()
 
         with patch("shared.embedding.context.get_embedding_service", return_value=outer_service):
             async with embedding_service_context() as outer:

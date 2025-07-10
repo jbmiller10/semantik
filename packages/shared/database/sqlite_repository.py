@@ -5,7 +5,6 @@ These implementations wrap the existing database functions to provide a clean
 abstraction layer that can be replaced in the future.
 """
 
-import json
 from typing import Any
 
 from .base import JobRepository, UserRepository
@@ -45,6 +44,8 @@ class SQLiteJobRepository(JobRepository):
 
     async def list_jobs(self, user_id: str | None = None, **filters: Any) -> list[dict[str, Any]]:
         """List jobs with optional filters."""
+        # Note: filters are accepted for interface compatibility but not used in SQLite implementation
+        _ = filters
         return self.db.list_jobs(user_id=user_id)
 
     async def get_all_job_ids(self) -> list[str]:
@@ -87,4 +88,5 @@ class SQLiteUserRepository(UserRepository):
         """Delete a user."""
         # Note: Current database module might not have this method
         # This is a placeholder for future implementation
+        _ = user_id  # Mark as used for linting
         return True  # Placeholder

@@ -33,7 +33,6 @@ from shared.contracts.search import (
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from prometheus_client import Counter, Histogram
 from shared.config import settings
-from shared.embedding.context import embedding_service_context
 from shared.embedding.service import get_embedding_service
 from shared.metrics.prometheus import metrics_collector, registry, start_metrics_server
 

@@ -252,14 +252,12 @@ class QdrantMaintenanceService:
             else:
                 logger.info("No orphaned collections found")
 
-            summary = {
+            return {
                 "timestamp": datetime.now(UTC).isoformat(),
                 "orphaned_collections": orphaned,
                 "deleted_collections": deleted_collections,
                 "dry_run": dry_run,
             }
-
-            return summary
 
         except Exception as e:
             logger.error(f"Failed to cleanup orphaned collections: {e}")

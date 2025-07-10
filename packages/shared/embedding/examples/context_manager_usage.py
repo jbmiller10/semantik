@@ -32,9 +32,7 @@ async def temporary_model_example():
     # Load a model just for this operation
     async with temporary_embedding_service("sentence-transformers/all-MiniLM-L6-v2") as temp_service:
         # This service is isolated from the global singleton
-        embeddings = await temp_service.embed_texts(
-            ["This uses a different model", "Without affecting the main service"]
-        )
+        await temp_service.embed_texts(["This uses a different model", "Without affecting the main service"])
 
         model_info = temp_service.get_model_info()
         print(f"Temporary model: {model_info['model_name']}")
@@ -49,12 +47,12 @@ async def compare_models_example():
 
     # Load first model
     async with temporary_embedding_service("BAAI/bge-base-en-v1.5") as bge_service:
-        bge_embedding = await bge_service.embed_single(test_text)
+        await bge_service.embed_single(test_text)
         bge_dim = bge_service.get_dimension()
 
     # Load second model (first is already cleaned up)
     async with temporary_embedding_service("sentence-transformers/all-MiniLM-L6-v2") as minilm_service:
-        minilm_embedding = await minilm_service.embed_single(test_text)
+        await minilm_service.embed_single(test_text)
         minilm_dim = minilm_service.get_dimension()
 
     print(f"BGE dimension: {bge_dim}")
@@ -68,7 +66,7 @@ async def exception_handling_example():
             await service.initialize("BAAI/bge-base-en-v1.5")
 
             # Simulate an error during processing
-            embeddings = await service.embed_texts(["test"])
+            await service.embed_texts(["test"])
             raise ValueError("Something went wrong!")
 
     except ValueError:
@@ -103,7 +101,7 @@ async def fastapi_endpoint_example():
                 }
 
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 async def managed_service_example():
@@ -116,7 +114,7 @@ async def managed_service_example():
         await service.initialize("BAAI/bge-base-en-v1.5")
 
         # Can be passed around to other functions
-        embeddings = await process_documents(service, ["doc1", "doc2"])
+        await process_documents(service, ["doc1", "doc2"])
 
     # Automatically cleaned up
 

@@ -47,13 +47,13 @@ class TestInternalAPIAuth:
 class TestInternalAPIEndpoints:
     """Test internal API endpoints."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_database(self):
         """Mock the database module."""
         with patch("packages.webui.api.internal.database") as mock_db:
             yield mock_db
 
-    @pytest.fixture
+    @pytest.fixture()
     def client(self):
         """Create test client with the router."""
         from fastapi import FastAPI
@@ -113,7 +113,7 @@ class TestInternalAPIEndpoints:
 class TestInternalAPIIntegration:
     """Integration tests for internal API with maintenance service."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_maintenance_service_api_integration(self):
         """Test that maintenance service can successfully call internal API."""
         from packages.vecpipe.maintenance import MaintenanceService
@@ -126,15 +126,17 @@ class TestInternalAPIIntegration:
         mock_response.json.return_value = ["job_1", "job_2"]
         mock_response.raise_for_status = MagicMock()
 
-        with patch("httpx.get", return_value=mock_response) as mock_get:
-            with patch.object(service, "internal_api_key", "test-key"):
-                result = service.get_job_collections()
+        with (
+            patch("httpx.get", return_value=mock_response) as mock_get,
+            patch.object(service, "internal_api_key", "test-key"),
+        ):
+            result = service.get_job_collections()
 
-                # Verify correct API call
-                mock_get.assert_called_once_with(
-                    "http://test-server/api/internal/jobs/all-ids",
-                    headers={"X-Internal-Api-Key": "test-key"},
-                    timeout=30.0,
-                )
+            # Verify correct API call
+            mock_get.assert_called_once_with(
+                "http://test-server/api/internal/jobs/all-ids",
+                headers={"X-Internal-Api-Key": "test-key"},
+                timeout=30.0,
+            )
 
-                assert result == ["job_1", "job_2"]
+            assert result == ["job_1", "job_2"]

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from shared.config import settings
 from shared.contracts.search import HybridSearchRequest, PreloadModelRequest
 from shared.contracts.search import SearchRequest as SharedSearchRequest
+
 from webui import database
 from webui.auth import get_current_user
 
