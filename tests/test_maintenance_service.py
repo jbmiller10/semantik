@@ -27,9 +27,11 @@ def maintenance_service(mock_qdrant_client, monkeypatch):
     monkeypatch.setattr("packages.vecpipe.maintenance.settings.QDRANT_HOST", "localhost")
     monkeypatch.setattr("packages.vecpipe.maintenance.settings.QDRANT_PORT", 6333)
     monkeypatch.setattr("packages.vecpipe.maintenance.settings.INTERNAL_API_KEY", None)
-    
+
     with patch("packages.vecpipe.maintenance.QdrantClient", return_value=mock_qdrant_client):
-        return QdrantMaintenanceService(qdrant_host="localhost", qdrant_port=6333, webui_host="localhost", webui_port=8080)
+        return QdrantMaintenanceService(
+            qdrant_host="localhost", qdrant_port=6333, webui_host="localhost", webui_port=8080
+        )
 
 
 class TestQdrantMaintenanceService:
@@ -59,11 +61,12 @@ class TestQdrantMaintenanceService:
         mock_response.json.return_value = ["job_1"]
         mock_response.raise_for_status = Mock()
 
-        def side_effect(*args, **kwargs):
+        def side_effect(*_args, **_kwargs):
             if side_effect.call_count < 2:
                 side_effect.call_count += 1
                 raise httpx.HTTPStatusError("Server error", request=Mock(), response=Mock(status_code=500))
             return mock_response
+
         side_effect.call_count = 0
 
         with patch("packages.vecpipe.maintenance.httpx.get", side_effect=side_effect) as mock_get:
@@ -78,7 +81,7 @@ class TestQdrantMaintenanceService:
         mock_response = Mock()
         mock_response.json.return_value = ["job_1", "job_2"]
         mock_response.raise_for_status = Mock()
-        
+
         with patch("packages.vecpipe.maintenance.httpx.get", return_value=mock_response):
             # Mock Qdrant collections
             qdrant_collections = []
@@ -108,7 +111,7 @@ class TestQdrantMaintenanceService:
         mock_response = Mock()
         mock_response.json.return_value = ["job_1", "job_2"]
         mock_response.raise_for_status = Mock()
-        
+
         with patch("packages.vecpipe.maintenance.httpx.get", return_value=mock_response):
             # Mock Qdrant collections
             qdrant_collections = []
@@ -136,7 +139,7 @@ class TestQdrantMaintenanceService:
         mock_response = Mock()
         mock_response.json.return_value = ["job_1", "job_2"]
         mock_response.raise_for_status = Mock()
-        
+
         with patch("packages.vecpipe.maintenance.httpx.get", return_value=mock_response):
             # Mock Qdrant collections - all are valid
             qdrant_collections = []
@@ -162,9 +165,7 @@ class TestQdrantMaintenanceService:
         """Test that get_job_collections handles errors gracefully."""
         # All calls fail
         with patch("packages.vecpipe.maintenance.httpx.get") as mock_get:
-            mock_get.side_effect = httpx.HTTPStatusError(
-                "Server error", request=Mock(), response=Mock(status_code=500)
-            )
+            mock_get.side_effect = httpx.HTTPStatusError("Server error", request=Mock(), response=Mock(status_code=500))
 
             # Should return only DEFAULT_COLLECTION when API fails
             collections = maintenance_service.get_job_collections()
@@ -179,7 +180,7 @@ class TestQdrantMaintenanceService:
         mock_response = Mock()
         mock_response.json.return_value = ["job_1"]
         mock_response.raise_for_status = Mock()
-        
+
         with patch("packages.vecpipe.maintenance.httpx.get", return_value=mock_response):
             # Mock Qdrant collections
             qdrant_collections = []
@@ -188,7 +189,7 @@ class TestQdrantMaintenanceService:
                 mock_col.name = name
                 qdrant_collections.append(mock_col)
             maintenance_service.client.get_collections.return_value = Mock(collections=qdrant_collections)
-            
+
             # Mock delete to raise an exception
             maintenance_service.client.delete_collection.side_effect = Exception("Collection not found")
 
@@ -207,19 +208,22 @@ class TestQdrantMaintenanceService:
         monkeypatch.setattr("packages.vecpipe.maintenance.settings.DEFAULT_COLLECTION", "work_docs")
         monkeypatch.setattr("packages.vecpipe.maintenance.settings.QDRANT_HOST", "localhost")
         monkeypatch.setattr("packages.vecpipe.maintenance.settings.QDRANT_PORT", 6333)
-        
-        with patch("packages.vecpipe.maintenance.QdrantClient"), patch("packages.vecpipe.maintenance.httpx.get") as mock_get:
+
+        with (
+            patch("packages.vecpipe.maintenance.QdrantClient"),
+            patch("packages.vecpipe.maintenance.httpx.get") as mock_get,
+        ):
             mock_response = Mock()
             mock_response.json.return_value = ["job_123"]
             mock_response.raise_for_status = Mock()
             mock_get.return_value = mock_response
-            
+
             service = QdrantMaintenanceService(webui_host="localhost", webui_port=8080)
             collections = service.get_job_collections()
-            
+
             assert collections == ["work_docs", "job_job_123"]
             mock_get.assert_called_with(
                 "http://localhost:8080/api/internal/jobs/all-ids",
                 headers={"X-Internal-Api-Key": "test-api-key"},
-                timeout=30.0
+                timeout=30.0,
             )
