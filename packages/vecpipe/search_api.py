@@ -195,7 +195,6 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     logger.info(f"Initialized model manager with {unload_after}s inactivity timeout")
 
     # Initialize embedding service for backward compatibility
-    from shared.embedding.dense import EmbeddingServiceProtocol
 
     # Create embedding service using the factory function
     base_service = await get_embedding_service(config=settings)
