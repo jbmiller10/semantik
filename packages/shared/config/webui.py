@@ -16,6 +16,7 @@ class WebuiConfig(BaseConfig):
 
     # Service Ports
     WEBUI_PORT: int = 8080
+    WEBUI_METRICS_PORT: int = 9092
 
     # Service URLs (for internal API calls)
     WEBUI_URL: str = "http://localhost:8080"

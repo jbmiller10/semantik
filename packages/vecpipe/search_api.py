@@ -7,7 +7,6 @@ REST API for vector similarity search with Qwen3 support
 import asyncio
 import hashlib
 import logging
-import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -98,7 +97,7 @@ embedding_generation_latency = get_or_create_metric(
 
 # Constants
 DEFAULT_K = 10
-METRICS_PORT = int(os.getenv("METRICS_PORT", "9091"))
+METRICS_PORT = settings.METRICS_PORT
 
 # Search instructions for different use cases
 SEARCH_INSTRUCTIONS = {
@@ -134,7 +133,7 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     # Initialize model manager with lazy loading
     from .model_manager import ModelManager
 
-    unload_after = int(os.getenv("MODEL_UNLOAD_AFTER_SECONDS", "300"))  # 5 minutes default
+    unload_after = settings.MODEL_UNLOAD_AFTER_SECONDS
     model_manager = ModelManager(unload_after_seconds=unload_after)
     logger.info(f"Initialized model manager with {unload_after}s inactivity timeout")
 
@@ -443,7 +442,7 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
             from qdrant_client import QdrantClient
 
             sync_client = QdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
-            from webui.api.collection_metadata import get_collection_metadata
+            from shared.database.collection_metadata import get_collection_metadata
 
             metadata = get_collection_metadata(sync_client, collection_name)
             if metadata:
@@ -785,7 +784,7 @@ async def hybrid_search(
             from qdrant_client import QdrantClient
 
             sync_client = QdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
-            from webui.api.collection_metadata import get_collection_metadata
+            from shared.database.collection_metadata import get_collection_metadata
 
             metadata = get_collection_metadata(sync_client, collection_name)
             if metadata:

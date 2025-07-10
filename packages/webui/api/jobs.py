@@ -621,7 +621,7 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
             logger.info(f"Successfully created collection {collection_name}")
 
             # Store metadata about this collection
-            from .collection_metadata import store_collection_metadata
+            from shared.database.collection_metadata import store_collection_metadata
 
             store_collection_metadata(
                 qdrant=qdrant,
