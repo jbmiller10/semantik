@@ -97,3 +97,37 @@ class BaseEmbeddingService(ABC):
     @abstractmethod
     def is_initialized(self) -> bool:
         """Check if the service is initialized and ready to use."""
+
+    async def __aenter__(self) -> "BaseEmbeddingService":
+        """Async context manager entry.
+
+        Returns the service instance for use in async with statements.
+
+        Example:
+            async with service:
+                embeddings = await service.embed_texts(["hello"])
+        """
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
+        """Async context manager exit.
+
+        Ensures cleanup is called when exiting the context, even if an
+        exception occurred. This provides automatic resource management.
+
+        Args:
+            exc_type: Exception type if an exception occurred
+            exc_val: Exception value if an exception occurred
+            exc_tb: Exception traceback if an exception occurred
+
+        Returns:
+            False to propagate any exception that occurred
+        """
+        try:
+            await self.cleanup()
+        except Exception as e:
+            # Log but don't raise cleanup errors to avoid masking original exception
+            import logging
+
+            logging.getLogger(__name__).error(f"Error during context cleanup: {e}")
+        return False  # Don't suppress exceptions
