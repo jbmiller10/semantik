@@ -20,9 +20,7 @@ class SearchRequest(BaseModel):
     job_id: str | None = Field(None, description="Job ID for collection inference")
     use_reranker: bool = Field(False, description="Enable cross-encoder reranking")
     rerank_model: str | None = Field(None, description="Override reranker model")
-    rerank_quantization: str | None = Field(
-        None, description="Override reranker quantization: float32, float16, int8"
-    )
+    rerank_quantization: str | None = Field(None, description="Override reranker quantization: float32, float16, int8")
     score_threshold: float = Field(0.0, ge=0.0, le=1.0, description="Minimum score threshold")
     # Hybrid search specific parameters
     hybrid_alpha: float = Field(0.7, ge=0.0, le=1.0, description="Weight for hybrid search (vector vs keyword)")
