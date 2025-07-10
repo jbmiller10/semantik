@@ -8,6 +8,7 @@ import argparse
 import json
 import logging
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -48,6 +49,31 @@ class QdrantMaintenanceService:
         self.tracker = FileChangeTracker()
         self.webui_base_url = f"http://{webui_host}:{webui_port}"
 
+    def _retry_request(self, func, max_attempts: int = 3, base_delay: float = 1.0):
+        """Execute a request with exponential backoff retry logic."""
+        last_exception = None
+
+        for attempt in range(max_attempts):
+            try:
+                return func()
+            except httpx.HTTPStatusError as e:
+                # Don't retry on 4xx errors (client errors)
+                if 400 <= e.response.status_code < 500:
+                    raise
+                last_exception = e
+            except (httpx.RequestError, httpx.TimeoutException) as e:
+                last_exception = e
+
+            if attempt < max_attempts - 1:
+                delay = base_delay * (2**attempt)  # Exponential backoff
+                logger.warning(
+                    f"Request failed (attempt {attempt + 1}/{max_attempts}), retrying in {delay}s: {last_exception}"
+                )
+                time.sleep(delay)
+
+        logger.error(f"Request failed after {max_attempts} attempts")
+        raise last_exception
+
     def get_current_files(self, file_list_path: str) -> list[str]:
         """Read current file list from null-delimited file"""
         file_path = Path(file_list_path)
@@ -70,10 +96,16 @@ class QdrantMaintenanceService:
 
         try:
             # Call the internal API endpoint to get all job IDs
-            response = httpx.get(f"{self.webui_base_url}/api/internal/jobs/all-ids", timeout=30.0)
-            response.raise_for_status()
+            headers = {}
+            if settings.INTERNAL_API_KEY:
+                headers["X-Internal-Api-Key"] = settings.INTERNAL_API_KEY
 
-            job_ids = response.json()
+            def make_request():
+                response = httpx.get(f"{self.webui_base_url}/api/internal/jobs/all-ids", headers=headers, timeout=30.0)
+                response.raise_for_status()
+                return response.json()
+
+            job_ids = self._retry_request(make_request)
 
             for job_id in job_ids:
                 collections.append(f"job_{job_id}")
@@ -85,7 +117,7 @@ class QdrantMaintenanceService:
             logger.error(f"Failed to fetch job collections from API: {e}")
             return collections
         except Exception as e:
-            logger.error(f"Failed to read job collections: {e}")
+            logger.error(f"Unexpected error while fetching job collections: {e}")
             return collections
 
     def collection_exists(self, collection_name: str) -> bool:
