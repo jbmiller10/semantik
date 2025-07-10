@@ -4,7 +4,13 @@ This module provides embedding generation capabilities for the system.
 """
 
 from .base import BaseEmbeddingService
-from .dense import DenseEmbeddingService, EmbeddingService, embedding_service, enhanced_embedding_service
+from .dense import (
+    DenseEmbeddingService,
+    EmbeddingService,
+    configure_global_embedding_service,
+    embedding_service,
+    enhanced_embedding_service,
+)
 from .models import (
     POPULAR_MODELS,
     QUANTIZED_MODEL_INFO,
@@ -34,6 +40,7 @@ __all__ = [
     "embed_texts",
     "embed_single",
     "cleanup",
+    "configure_global_embedding_service",
     # Model configuration
     "ModelConfig",
     "get_model_config",

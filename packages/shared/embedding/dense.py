@@ -10,10 +10,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F  # noqa: N812
 from sentence_transformers import SentenceTransformer
+from shared.config.vecpipe import VecpipeConfig
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
-
-from shared.config.vecpipe import VecpipeConfig
 
 from .base import BaseEmbeddingService
 
@@ -505,6 +504,66 @@ class EmbeddingService:
 
 # Import centralized model configurations
 
+# Global instances for backwards compatibility (lazy initialization)
+_embedding_service: EmbeddingService | None = None
+_enhanced_embedding_service: EmbeddingService | None = None
+
+
+def _get_global_embedding_service() -> EmbeddingService:
+    """Get or create the global embedding service instance with lazy initialization."""
+    global _embedding_service
+    if _embedding_service is None:
+        # Try to import webui settings if available
+        try:
+            from shared.config import settings
+
+            _embedding_service = EmbeddingService(mock_mode=settings.USE_MOCK_EMBEDDINGS)
+        except ImportError:
+            # Fall back to default configuration
+            _embedding_service = EmbeddingService()
+    return _embedding_service
+
+
+def configure_global_embedding_service(config: VecpipeConfig | None = None, mock_mode: bool | None = None) -> None:
+    """Configure the global embedding service instance.
+
+    This allows webui code to properly configure the global instance with settings.
+    """
+    global _embedding_service
+    if config is not None:
+        _embedding_service = EmbeddingService(config=config)
+    elif mock_mode is not None:
+        _embedding_service = EmbeddingService(mock_mode=mock_mode)
+    else:
+        # Try to use settings
+        try:
+            from shared.config import settings
+
+            _embedding_service = EmbeddingService(mock_mode=settings.USE_MOCK_EMBEDDINGS)
+        except ImportError:
+            _embedding_service = EmbeddingService()
+
+
+# Create lazy-initialized global instances
+class _LazyEmbeddingService:
+    """Lazy wrapper for embedding service to delay initialization."""
+
+    def __init__(self) -> None:
+        self._instance: EmbeddingService | None = None
+
+    def __getattr__(self, name: str) -> Any:
+        if self._instance is None:
+            self._instance = _get_global_embedding_service()
+        return getattr(self._instance, name)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        if self._instance is None:
+            self._instance = _get_global_embedding_service()
+        # This method shouldn't be called since EmbeddingService isn't callable
+        # But keeping for compatibility
+        raise AttributeError("EmbeddingService object is not callable")
+
+
 # Create global instances for backwards compatibility
-embedding_service = EmbeddingService()
+embedding_service = _LazyEmbeddingService()
 enhanced_embedding_service = embedding_service  # Alias
