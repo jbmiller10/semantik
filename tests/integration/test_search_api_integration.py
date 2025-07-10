@@ -19,7 +19,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-# TODO: Update patch path in this test after CORE-003 is merged
 # NOTE: This test verifies that generate_embedding_async is called correctly,
 # but due to settings being loaded at module import time, it may use mock embeddings
 # depending on the environment configuration
@@ -59,7 +58,7 @@ class TestSearchAPIIntegration:
     @patch("packages.vecpipe.search_api.generate_mock_embedding")
     @patch("packages.vecpipe.search_api.generate_embedding_async")
     @patch("packages.vecpipe.search_utils.AsyncQdrantClient")
-    @patch("packages.vecpipe.model_manager.EmbeddingService")
+    @patch("shared.embedding.EmbeddingService")
     @patch("httpx.AsyncClient.get")
     @patch("httpx.AsyncClient.post")
     def test_search_endpoint_uses_embedding_service(
@@ -215,7 +214,7 @@ class TestSearchAPIIntegration:
     @patch("packages.vecpipe.search_api.generate_mock_embedding")
     @patch("packages.vecpipe.search_api.generate_embedding_async")
     @patch("packages.vecpipe.search_utils.AsyncQdrantClient")
-    @patch("packages.vecpipe.model_manager.EmbeddingService")
+    @patch("shared.embedding.EmbeddingService")
     @patch("httpx.AsyncClient.get")
     @patch("httpx.AsyncClient.post")
     def test_search_with_custom_model_params(
