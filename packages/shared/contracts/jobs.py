@@ -59,31 +59,30 @@ class CreateJobRequest(BaseModel):
     @validator("directory_path")
     def validate_path(cls: type["CreateJobRequest"], v: str) -> str:  # noqa: N805
         """Clean and validate directory path with security checks."""
-        import os
         from pathlib import Path
-        
+
         # Strip whitespace
         cleaned_path = v.strip()
-        
+
         # Check for empty path
         if not cleaned_path:
             raise ValueError("Directory path cannot be empty")
-        
+
         # Check for path traversal attempts
         if ".." in cleaned_path or cleaned_path.startswith("~"):
             raise ValueError("Path traversal not allowed")
-        
+
         # Check if it's a relative path before resolving
         path_obj = Path(cleaned_path)
         if not path_obj.is_absolute():
             raise ValueError("Only absolute paths are allowed")
-        
+
         # Normalize the path and resolve any symbolic links
         try:
             resolved_path = path_obj.resolve()
         except (ValueError, RuntimeError) as e:
-            raise ValueError(f"Invalid directory path: {e}")
-        
+            raise ValueError(f"Invalid directory path: {e}") from e
+
         return str(resolved_path)
 
     @validator("quantization")
