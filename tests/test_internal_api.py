@@ -116,10 +116,11 @@ class TestInternalAPIIntegration:
     @pytest.mark.asyncio()
     async def test_maintenance_service_api_integration(self):
         """Test that maintenance service can successfully call internal API."""
-        from packages.vecpipe.maintenance import MaintenanceService
+        from packages.vecpipe.maintenance import QdrantMaintenanceService
 
         # Create maintenance service
-        service = MaintenanceService(qdrant_client=MagicMock(), webui_base_url="http://test-server")
+        with patch("packages.vecpipe.maintenance.QdrantClient", return_value=MagicMock()):
+            service = QdrantMaintenanceService(webui_host="test-server", webui_port=80)
 
         # Mock successful API response
         mock_response = MagicMock()
@@ -127,16 +128,18 @@ class TestInternalAPIIntegration:
         mock_response.raise_for_status = MagicMock()
 
         with (
-            patch("httpx.get", return_value=mock_response) as mock_get,
-            patch.object(service, "internal_api_key", "test-key"),
+            patch("packages.vecpipe.maintenance.httpx.get", return_value=mock_response) as mock_get,
+            patch("packages.vecpipe.maintenance.settings") as mock_settings,
         ):
+            mock_settings.INTERNAL_API_KEY = "test-key"
+            mock_settings.DEFAULT_COLLECTION = "work_docs"
             result = service.get_job_collections()
 
             # Verify correct API call
             mock_get.assert_called_once_with(
-                "http://test-server/api/internal/jobs/all-ids",
+                "http://test-server:80/api/internal/jobs/all-ids",
                 headers={"X-Internal-Api-Key": "test-key"},
                 timeout=30.0,
             )
 
-            assert result == ["job_1", "job_2"]
+            assert result == ["work_docs", "job_job_1", "job_job_2"]
