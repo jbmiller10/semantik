@@ -7,9 +7,9 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
 from shared.config import settings
-
+from shared.contracts.search import HybridSearchRequest, PreloadModelRequest
+from shared.contracts.search import SearchRequest as SharedSearchRequest
 from webui import database
 from webui.auth import get_current_user
 
@@ -18,36 +18,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["search"])
 
 
-# Request models
-class SearchRequest(BaseModel):
-    query: str
-    collection: str | None = None
-    job_id: str | None = None
-    top_k: int = Field(default=10, ge=1, le=100, alias="k")  # Frontend sends top_k
-    score_threshold: float = 0.0
-    search_type: str = Field(default="vector", pattern="^(vector|hybrid)$")
-    # Reranking parameters
-    use_reranker: bool = Field(default=False, description="Enable cross-encoder reranking")
-    rerank_model: str | None = None
-    rerank_quantization: str | None = None
-    # Hybrid search specific parameters
-    hybrid_alpha: float = Field(default=0.7, ge=0.0, le=1.0)
-    hybrid_mode: str = Field(default="rerank", pattern="^(rerank|filter)$")
-    keyword_mode: str = Field(default="any", pattern="^(any|all)$")
+# Create a custom SearchRequest that handles the webui-specific field mappings
+class SearchRequest(SharedSearchRequest):
+    """WebUI-specific search request that maps frontend fields."""
 
-    @property
-    def k(self) -> int:
-        """Property to access k value for backward compatibility"""
-        return self.top_k
-
-
-class HybridSearchRequest(BaseModel):
-    query: str
-    k: int = Field(default=10, ge=1, le=100)
-    job_id: str | None = None
-    mode: str = Field(default="filter", description="Hybrid search mode: 'filter' or 'rerank'")
-    keyword_mode: str = Field(default="any", description="Keyword matching: 'any' or 'all'")
-    score_threshold: float | None = None
+    # Override to ensure we accept both 'top_k' and 'k' from frontend
+    class Config(SharedSearchRequest.Config):
+        populate_by_name = True
 
 
 @router.post("/search")
@@ -55,7 +32,7 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
     """Unified search endpoint - handles both vector and hybrid search"""
     logger.info(
         f"Search request received: query='{request.query}', type={request.search_type}, "
-        f"collection={request.collection}, top_k={request.top_k}, threshold={request.score_threshold}"
+        f"collection={request.collection}, top_k={request.k}, threshold={request.score_threshold}"
     )
 
     try:
@@ -321,9 +298,7 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}") from e
 
 
-class PreloadModelRequest(BaseModel):
-    model_name: str = Field(..., description="Model name to preload")
-    quantization: str = Field(default="float16", description="Quantization type")
+# PreloadModelRequest is now imported from shared.contracts.search
 
 
 @router.post("/preload_model")

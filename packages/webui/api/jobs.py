@@ -15,9 +15,11 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, validator
+from pydantic import BaseModel
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Distance, PointStruct
+from shared.contracts.jobs import AddToCollectionRequest
+from shared.contracts.jobs import CreateJobRequest as SharedCreateJobRequest
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
@@ -28,7 +30,6 @@ from shared.config import settings
 from shared.embedding import POPULAR_MODELS, embedding_service
 from shared.text_processing.chunking import TokenChunker
 from shared.text_processing.extraction import extract_text
-
 from webui import database
 from webui.auth import get_current_user
 from webui.utils.qdrant_manager import qdrant_manager
@@ -47,46 +48,12 @@ Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 
-# Request/Response models
-class CreateJobRequest(BaseModel):
-    name: str
-    description: str = ""
-    directory_path: str
-    model_name: str = "Qwen/Qwen3-Embedding-0.6B"
-    chunk_size: int = 600
-    chunk_overlap: int = 200
-    batch_size: int = 96
-    vector_dim: int | None = None
-    quantization: str = "float32"
-    instruction: str | None = None
-    job_id: str | None = None  # Allow pre-generated job_id for WebSocket connection
-
-    @validator("chunk_size")
-    def validate_chunk_size(cls, v: int) -> int:  # noqa: N805
-        if v <= 0:
-            raise ValueError("chunk_size must be positive")
-        if v < 100:
-            raise ValueError("chunk_size must be at least 100 tokens")
-        if v > 50000:
-            raise ValueError("chunk_size must not exceed 50000 tokens")
-        return v
-
-    @validator("chunk_overlap")
-    def validate_chunk_overlap(cls, v: int, values: dict[str, Any]) -> int:  # noqa: N805
-        if v < 0:
-            raise ValueError("chunk_overlap cannot be negative")
-        if "chunk_size" in values and v >= values["chunk_size"]:
-            raise ValueError(f'chunk_overlap ({v}) must be less than chunk_size ({values["chunk_size"]})')
-        return v
+# Request/Response models are imported from shared.contracts.jobs
+# We'll use SharedCreateJobRequest directly as CreateJobRequest
+CreateJobRequest = SharedCreateJobRequest
 
 
-class AddToCollectionRequest(BaseModel):
-    collection_name: str
-    directory_path: str
-    description: str = ""
-    job_id: str | None = None  # Allow pre-generated job_id for WebSocket connection
-
-
+# Legacy JobStatus for WebSocket updates (different from JobResponse)
 class JobStatus(BaseModel):
     id: str
     name: str
