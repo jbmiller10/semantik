@@ -4,8 +4,8 @@ This test verifies the flow from search endpoint to embedding generation,
 acknowledging current architectural constraints where settings are loaded
 at module import time.
 
-TODO: After CORE-003, update this test to properly verify the embedding service integration
-when it's moved to a shared package with better dependency injection.
+NOTE: The embedding service has been moved to a shared package with dependency injection
+as part of CORE-003. This test now verifies the flow with the updated architecture.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -105,7 +105,8 @@ class TestSearchAPIEmbeddingFlow:
         from packages.vecpipe import model_manager, search_api
 
         # Verify the imports exist (will help catch when refactoring happens)
-        assert hasattr(search_api, "EmbeddingService")
+        # After CORE-003, search_api uses get_embedding_service instead of EmbeddingService
+        assert hasattr(search_api, "get_embedding_service")
         assert hasattr(model_manager, "EmbeddingService")
 
         # Document that both import from webui
@@ -114,7 +115,9 @@ class TestSearchAPIEmbeddingFlow:
         search_api_source = inspect.getsource(search_api)
         model_manager_source = inspect.getsource(model_manager)
 
-        assert "from shared.embedding import EmbeddingService" in search_api_source
+        # After CORE-003 refactoring, search_api imports from shared.embedding.service
+        assert "from shared.embedding.service import get_embedding_service" in search_api_source
+        # model_manager still imports from shared.embedding for now
         assert "from shared.embedding import EmbeddingService" in model_manager_source
 
         # This assertion will need to be updated after CORE-003

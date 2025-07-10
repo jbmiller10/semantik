@@ -1,10 +1,13 @@
 """Dense embedding service using sentence-transformers and transformers."""
 
 import asyncio
+import contextlib
 import gc
 import logging
 import os
-from typing import Any
+import threading
+from collections.abc import Coroutine
+from typing import Any, Protocol, TypeVar, Union
 
 import numpy as np
 import torch
@@ -13,9 +16,86 @@ from sentence_transformers import SentenceTransformer
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
 
+from shared.config.vecpipe import VecpipeConfig
+
 from .base import BaseEmbeddingService
 
 logger = logging.getLogger(__name__)
+
+# Type variable for async return types
+T = TypeVar("T")
+
+
+class EmbeddingServiceProtocol(Protocol):
+    """Protocol defining the EmbeddingService interface for better type checking."""
+
+    mock_mode: bool
+    allow_quantization_fallback: bool
+
+    def load_model(self, model_name: str, quantization: str = "float32") -> bool:
+        """Load a model synchronously."""
+        ...
+
+    def get_model_info(self, model_name: str, quantization: str = "float32") -> dict[str, Any]:
+        """Get model info synchronously."""
+        ...
+
+    def generate_embeddings(
+        self,
+        texts: list[str],
+        model_name: str,
+        quantization: str = "float32",
+        batch_size: int = 32,
+        show_progress: bool = True,
+        instruction: str | None = None,
+        **kwargs: Any,
+    ) -> np.ndarray | None:
+        """Generate embeddings synchronously."""
+        ...
+
+    def generate_single_embedding(
+        self,
+        text: str,
+        model_name: str,
+        quantization: str = "float32",
+        instruction: str | None = None,
+        **kwargs: Any,
+    ) -> list[float] | None:
+        """Generate single embedding synchronously."""
+        ...
+
+    def unload_model(self) -> None:
+        """Unload the current model to free memory."""
+        ...
+
+    def shutdown(self) -> None:
+        """Shutdown the service and clean up resources."""
+        ...
+
+    @property
+    def current_model(self) -> Union[AutoModel, "SentenceTransformer", None]:
+        """Get current model for compatibility."""
+        ...
+
+    @property
+    def current_tokenizer(self) -> AutoTokenizer | None:
+        """Get current tokenizer for compatibility."""
+        ...
+
+    @property
+    def current_model_name(self) -> str | None:
+        """Get current model name for compatibility."""
+        ...
+
+    @property
+    def current_quantization(self) -> str:
+        """Get current quantization for compatibility."""
+        ...
+
+    @property
+    def device(self) -> str:
+        """Get device for compatibility."""
+        ...
 
 
 def check_int8_compatibility() -> tuple[bool, str]:
@@ -70,16 +150,23 @@ def last_token_pool(last_hidden_states: Tensor, attention_mask: Tensor) -> Tenso
 class DenseEmbeddingService(BaseEmbeddingService):
     """Dense embedding service supporting both sentence-transformers and custom models like Qwen."""
 
-    def __init__(self, mock_mode: bool = False) -> None:
-        self.model: Any = None
-        self.tokenizer: Any = None
+    def __init__(self, config: VecpipeConfig | None = None, mock_mode: bool | None = None) -> None:
+        self.model: AutoModel | "SentenceTransformer" | None = None
+        self.tokenizer: AutoTokenizer | None = None
         self.model_name: str | None = None
         self.device: str = "cuda" if torch.cuda.is_available() else "cpu"
         self.is_qwen_model: bool = False
         self.dimension: int | None = None
         self.max_sequence_length: int = 512
         self._initialized: bool = False
-        self.mock_mode: bool = mock_mode
+
+        # Use config if provided, otherwise fall back to direct parameter
+        self.config: VecpipeConfig | None = config
+        if config is not None:
+            self.mock_mode = config.USE_MOCK_EMBEDDINGS
+        else:
+            # For backward compatibility
+            self.mock_mode = mock_mode if mock_mode is not None else False
 
         # Quantization settings
         self.quantization: str = "float32"
@@ -100,14 +187,38 @@ class DenseEmbeddingService(BaseEmbeddingService):
                 - device: "cuda" or "cpu"
                 - trust_remote_code: bool
                 - mock_mode: bool
+
+        Raises:
+            ValueError: If input parameters are invalid
+            RuntimeError: If model initialization fails
         """
         try:
+            # Validate input parameters
+            if not isinstance(model_name, str) or not model_name.strip():
+                raise ValueError("model_name must be a non-empty string")
+
+            quantization = kwargs.get("quantization", "float32")
+            if quantization not in ["float32", "float16", "int8"]:
+                raise ValueError(f"quantization must be one of ['float32', 'float16', 'int8'], got '{quantization}'")
+
+            device = kwargs.get("device", self.device)
+            if device not in ["cuda", "cpu"]:
+                raise ValueError(f"device must be 'cuda' or 'cpu', got '{device}'")
+
+            # Check CUDA availability if requested
+            if device == "cuda" and not torch.cuda.is_available():
+                if kwargs.get("allow_fallback", True):
+                    logger.warning("CUDA requested but not available, falling back to CPU")
+                    device = "cpu"
+                else:
+                    raise RuntimeError("CUDA device requested but CUDA is not available")
+
             # Clean up previous model if exists
             await self.cleanup()
 
-            self.model_name = model_name
-            self.quantization = kwargs.get("quantization", "float32")
-            self.device = kwargs.get("device", self.device)
+            self.model_name = model_name.strip()
+            self.quantization = quantization
+            self.device = device
             self.mock_mode = kwargs.get("mock_mode", self.mock_mode)
 
             # If in mock mode, skip actual model loading
@@ -142,17 +253,25 @@ class DenseEmbeddingService(BaseEmbeddingService):
             # Run model loading in thread pool to avoid blocking
             await asyncio.get_running_loop().run_in_executor(None, self._load_model_sync, model_name, kwargs)
 
-            # Test the model and get dimension
-            test_embedding = await self.embed_single("test")
-            self.dimension = len(test_embedding)
+            # Get dimension from the model directly
+            if self.is_qwen_model and self.model is not None:
+                # For Qwen models, get dimension from model config
+                self.dimension = self.model.config.hidden_size
+            elif self.model is not None and hasattr(self.model, "get_sentence_embedding_dimension"):
+                # For sentence-transformers
+                self.dimension = self.model.get_sentence_embedding_dimension()
+            else:
+                # Fallback: generate test embedding to determine dimension
+                test_embedding = await self._embed_single_internal("test")
+                self.dimension = len(test_embedding)
 
             self._initialized = True
             logger.info(f"Model initialized successfully. Dimension: {self.dimension}")
 
         except Exception as e:
-            logger.error(f"Failed to initialize model {model_name}: {e}")
+            logger.error(f"Failed to initialize embedding model {model_name}: {e}")
             self._initialized = False
-            raise RuntimeError(f"Model initialization failed: {e}") from e
+            raise RuntimeError(f"Embedding model initialization failed for {model_name}: {e}") from e
 
     def _load_model_sync(self, model_name: str, kwargs: dict[str, Any]) -> None:
         """Synchronously load the model (runs in thread pool)."""
@@ -200,22 +319,17 @@ class DenseEmbeddingService(BaseEmbeddingService):
 
         return kwargs
 
-    async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> np.ndarray:
-        """Generate embeddings for multiple texts.
+    async def _embed_texts_internal(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> np.ndarray:
+        """Internal method for embedding texts without validation checks.
 
-        Args:
-            texts: List of texts to embed
-            batch_size: Batch size for processing
-            **kwargs: Additional options:
-                - normalize: bool (default: True)
-                - show_progress: bool (default: False)
-                - instruction: str (for Qwen models)
+        This is used during initialization and other internal operations.
         """
-        if not self._initialized:
-            raise RuntimeError("Service not initialized. Call initialize() first.")
-
+        # Handle empty texts gracefully for internal use
         if not texts:
-            return np.array([])
+            return np.array([]).reshape(0, self.dimension or 384)
+
+        # Ensure no empty strings for tokenization
+        texts = [text if text.strip() else " " for text in texts]
 
         # Mock mode - return random embeddings
         if self.mock_mode:
@@ -258,11 +372,15 @@ class DenseEmbeddingService(BaseEmbeddingService):
             batch_texts = texts[i : i + batch_size]
 
             # Tokenize
+            if self.tokenizer is None:
+                raise RuntimeError("Tokenizer not initialized")
             batch_dict = self.tokenizer(
                 batch_texts, padding=True, truncation=True, max_length=self.max_sequence_length, return_tensors="pt"
             ).to(self.device)
 
             # Generate embeddings
+            if self.model is None:
+                raise RuntimeError("Model not initialized")
             with torch.no_grad():
                 if self.dtype == torch.float16:
                     with torch.cuda.amp.autocast(dtype=torch.float16):
@@ -283,6 +401,8 @@ class DenseEmbeddingService(BaseEmbeddingService):
         self, texts: list[str], batch_size: int, normalize: bool, show_progress: bool
     ) -> np.ndarray:
         """Embed texts using sentence-transformers."""
+        if self.model is None:
+            raise RuntimeError("Model not initialized")
         embeddings: np.ndarray = self.model.encode(
             texts,
             batch_size=batch_size,
@@ -292,8 +412,64 @@ class DenseEmbeddingService(BaseEmbeddingService):
         )
         return embeddings
 
+    async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> np.ndarray:
+        """Generate embeddings for multiple texts.
+
+        Args:
+            texts: List of texts to embed
+            batch_size: Batch size for processing
+            **kwargs: Additional options:
+                - normalize: bool (default: True)
+                - show_progress: bool (default: False)
+                - instruction: str (for Qwen models)
+
+        Raises:
+            RuntimeError: If service is not initialized
+            ValueError: If input parameters are invalid
+        """
+        # Validate service state
+        if not self._initialized:
+            raise RuntimeError("Embedding service not initialized. Call initialize() first.")
+
+        # Validate input parameters
+        if not isinstance(texts, list):
+            raise ValueError("texts must be a list of strings")
+
+        if not texts:
+            logger.warning("Empty text list provided to embed_texts")
+            return np.array([]).reshape(0, self.dimension or 384)
+
+        if batch_size <= 0:
+            raise ValueError(f"batch_size must be positive, got {batch_size}")
+
+        # Validate text content
+        if not all(isinstance(text, str) for text in texts):
+            raise ValueError("All items in texts must be strings")
+
+        # Check for empty strings
+        empty_indices = [i for i, text in enumerate(texts) if not text.strip()]
+        if empty_indices:
+            logger.warning(
+                f"Found {len(empty_indices)} empty or whitespace-only texts at indices: {empty_indices[:5]}..."
+            )
+
+        # Delegate to internal method
+        return await self._embed_texts_internal(texts, batch_size, **kwargs)
+
+    async def _embed_single_internal(self, text: str, **kwargs: Any) -> np.ndarray:
+        """Internal method for embedding a single text without validation."""
+        embeddings = await self._embed_texts_internal([text], batch_size=1, **kwargs)
+        result: np.ndarray = embeddings[0]
+        return result
+
     async def embed_single(self, text: str, **kwargs: Any) -> np.ndarray:
         """Generate embedding for a single text."""
+        if not self._initialized:
+            raise RuntimeError("Embedding service not initialized. Call initialize() first.")
+
+        if not isinstance(text, str):
+            raise ValueError("text must be a string")
+
         embeddings = await self.embed_texts([text], batch_size=1, **kwargs)
         result: np.ndarray = embeddings[0]
         return result
@@ -347,26 +523,95 @@ class EmbeddingService:
     the new async implementation underneath.
     """
 
-    def __init__(self, mock_mode: bool = False) -> None:
-        self._service = DenseEmbeddingService()
+    def __init__(self, config: VecpipeConfig | None = None, mock_mode: bool | None = None) -> None:
+        # Create service with config or mock_mode
+        if config is not None:
+            self._service = DenseEmbeddingService(config=config)
+            self.mock_mode = config.USE_MOCK_EMBEDDINGS
+        else:
+            self._service = DenseEmbeddingService(mock_mode=mock_mode if mock_mode is not None else False)
+            self.mock_mode = mock_mode if mock_mode is not None else False
         self._loop: asyncio.AbstractEventLoop | None = None
-        self.mock_mode = mock_mode
+        self._loop_thread: threading.Thread | None = None
+        self._loop_lock = threading.Lock()  # For thread-safe loop management
         self.allow_quantization_fallback = True  # For backwards compatibility
 
     def _get_loop(self) -> asyncio.AbstractEventLoop:
-        """Get or create event loop for sync operations."""
+        """Get or create persistent event loop for sync operations.
+
+        This method creates a persistent event loop that runs in a separate thread
+        to avoid the overhead of creating/destroying loops per operation.
+        """
         try:
+            # If we're already in an async context, we can't use a separate event loop
             return asyncio.get_running_loop()
         except RuntimeError:
+            # No running loop, create our persistent loop
+            pass
+
+        with self._loop_lock:
+            # Check if we need to create a new loop
             if self._loop is None or self._loop.is_closed():
                 self._loop = asyncio.new_event_loop()
+
+                # Start the loop in a separate daemon thread
+                def run_loop() -> None:
+                    asyncio.set_event_loop(self._loop)
+                    try:
+                        if self._loop is not None:
+                            self._loop.run_forever()
+                    except Exception as e:
+                        logger.error(f"Event loop thread error: {e}")
+                    finally:
+                        if self._loop is not None:
+                            self._loop.close()
+
+                self._loop_thread = threading.Thread(target=run_loop, daemon=True)
+                self._loop_thread.start()
+
+                # Wait for the loop to be ready
+                while not self._loop.is_running():
+                    threading.Event().wait(0.001)  # Small delay
+
+                logger.debug("Created persistent event loop for sync operations")
+
             return self._loop
 
-    def load_model(self, model_name: str, quantization: str = "float32") -> bool:
-        """Load a model synchronously."""
+    def _run_async(self, coro: Coroutine[Any, Any, T]) -> T:
+        """Helper to run async coroutines from sync context with proper loop management."""
         try:
+            # Check if we're already in an async context
+            current_loop = asyncio.get_running_loop()
+            # If we're in an async context, we need to use run_coroutine_threadsafe
             loop = self._get_loop()
-            loop.run_until_complete(
+            if loop != current_loop:
+                future = asyncio.run_coroutine_threadsafe(coro, loop)
+                return future.result()
+
+            # This shouldn't happen in practice, but handle it gracefully
+            raise RuntimeError("Cannot run async operation from same event loop")
+        except RuntimeError:
+            # No running loop, use our persistent loop
+            loop = self._get_loop()
+            if loop.is_running():
+                future = asyncio.run_coroutine_threadsafe(coro, loop)
+                return future.result()
+
+            # Fallback to run_until_complete
+            return loop.run_until_complete(coro)
+
+    def load_model(self, model_name: str, quantization: str = "float32") -> bool:
+        """Load a model synchronously.
+
+        Args:
+            model_name: HuggingFace model name
+            quantization: Quantization type
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self._run_async(
                 self._service.initialize(
                     model_name,
                     quantization=quantization,
@@ -374,13 +619,22 @@ class EmbeddingService:
                     mock_mode=self.mock_mode,
                 )
             )
+            logger.info(f"Successfully loaded model {model_name} with quantization {quantization}")
             return True
         except Exception as e:
-            logger.error(f"Failed to load model: {e}")
+            logger.error(f"Failed to load model {model_name} with quantization {quantization}: {e}")
             return False
 
     def get_model_info(self, model_name: str, quantization: str = "float32") -> dict[str, Any]:
-        """Get model info synchronously."""
+        """Get model info synchronously.
+
+        Args:
+            model_name: HuggingFace model name
+            quantization: Quantization type
+
+        Returns:
+            Dictionary with model information or error details
+        """
         try:
             # In mock mode, return mock info without loading
             if self.mock_mode and not self._service.is_initialized:
@@ -401,11 +655,15 @@ class EmbeddingService:
             if (not self._service.is_initialized or self._service.model_name != model_name) and not self.load_model(
                 model_name, quantization
             ):
-                return {"error": f"Failed to load model {model_name}"}
+                error_msg = f"Failed to load model {model_name} with quantization {quantization}"
+                logger.error(error_msg)
+                return {"error": error_msg}
 
             return self._service.get_model_info()
         except Exception as e:
-            return {"error": str(e)}
+            error_msg = f"Failed to get model info for {model_name}: {e}"
+            logger.error(error_msg)
+            return {"error": error_msg}
 
     def generate_embeddings(
         self,
@@ -417,8 +675,44 @@ class EmbeddingService:
         instruction: str | None = None,
         **kwargs: Any,
     ) -> np.ndarray | None:
-        """Generate embeddings synchronously."""
+        """Generate embeddings synchronously.
+
+        Args:
+            texts: List of texts to embed
+            model_name: HuggingFace model name
+            quantization: Quantization type
+            batch_size: Batch size for processing
+            show_progress: Whether to show progress bar
+            instruction: Optional instruction for Qwen models
+            **kwargs: Additional options
+
+        Returns:
+            Numpy array of embeddings or None on error
+
+        Raises:
+            ValueError: If input parameters are invalid
+        """
         try:
+            # Validate input parameters
+            if not isinstance(texts, list):
+                raise ValueError("texts must be a list of strings")
+
+            if not texts:
+                logger.warning("Empty text list provided to generate_embeddings")
+                return np.array([]).reshape(0, 384)  # Default dimension
+
+            if not isinstance(model_name, str) or not model_name.strip():
+                raise ValueError("model_name must be a non-empty string")
+
+            if quantization not in ["float32", "float16", "int8"]:
+                raise ValueError(f"quantization must be one of ['float32', 'float16', 'int8'], got '{quantization}'")
+
+            if batch_size <= 0:
+                raise ValueError(f"batch_size must be positive, got {batch_size}")
+
+            if not all(isinstance(text, str) for text in texts):
+                raise ValueError("All items in texts must be strings")
+
             # Mock mode - return random embeddings
             if self.mock_mode:
                 logger.info(f"Mock mode: generating embeddings for {len(texts)} texts")
@@ -435,8 +729,7 @@ class EmbeddingService:
             ):
                 return None
 
-            loop = self._get_loop()
-            return loop.run_until_complete(
+            return self._run_async(
                 self._service.embed_texts(
                     texts, batch_size=batch_size, show_progress=show_progress, instruction=instruction, **kwargs
                 )
@@ -448,22 +741,39 @@ class EmbeddingService:
     def generate_single_embedding(
         self, text: str, model_name: str, quantization: str = "float32", instruction: str | None = None, **kwargs: Any
     ) -> list[float] | None:
-        """Generate single embedding synchronously."""
-        embeddings = self.generate_embeddings(
-            [text], model_name, quantization, batch_size=1, show_progress=False, instruction=instruction, **kwargs
-        )
-        if embeddings is not None and len(embeddings) > 0:
-            result: list[float] = embeddings[0].tolist()
-            return result
-        return None
+        """Generate single embedding synchronously.
+
+        Args:
+            text: Text to embed
+            model_name: HuggingFace model name
+            quantization: Quantization type
+            instruction: Optional instruction for Qwen models
+            **kwargs: Additional options
+
+        Returns:
+            List of floats representing the embedding, or None on error
+        """
+        try:
+            embeddings = self.generate_embeddings(
+                [text], model_name, quantization, batch_size=1, show_progress=False, instruction=instruction, **kwargs
+            )
+            if embeddings is not None and len(embeddings) > 0:
+                result: list[float] = embeddings[0].tolist()
+                return result
+
+            logger.warning(f"No embeddings generated for text with model {model_name}")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to generate single embedding for text with model {model_name}: {e}")
+            return None
 
     @property
-    def current_model(self) -> Any:
+    def current_model(self) -> Union[AutoModel, "SentenceTransformer", None]:
         """Get current model for compatibility."""
         return self._service.model
 
     @property
-    def current_tokenizer(self) -> Any:
+    def current_tokenizer(self) -> AutoTokenizer | None:
         """Get current tokenizer for compatibility."""
         return self._service.tokenizer
 
@@ -483,14 +793,243 @@ class EmbeddingService:
         return self._service.device
 
     def unload_model(self) -> None:
-        """Unload the current model to free memory."""
-        if self._service.is_initialized:
-            loop = self._get_loop()
-            loop.run_until_complete(self._service.cleanup())
+        """Unload the current model to free memory.
+
+        Raises:
+            RuntimeError: If model unloading fails
+        """
+        try:
+            if self._service.is_initialized:
+                self._run_async(self._service.cleanup())
+                logger.info("Model unloaded successfully")
+            else:
+                logger.info("No model to unload")
+        except Exception as e:
+            logger.error(f"Failed to unload model: {e}")
+            raise RuntimeError(f"Failed to unload model: {e}") from e
+
+    def shutdown(self) -> None:
+        """Shutdown the service and clean up resources.
+
+        This method properly closes the persistent event loop and cleans up all resources.
+        """
+        try:
+            # First unload the model
+            if self._service.is_initialized:
+                self.unload_model()
+
+            # Stop the event loop if it's running
+            with self._loop_lock:
+                if self._loop is not None and not self._loop.is_closed():
+                    # Stop the loop gracefully
+                    self._loop.call_soon_threadsafe(self._loop.stop)
+
+                    # Wait for the loop thread to finish
+                    if self._loop_thread is not None and self._loop_thread.is_alive():
+                        self._loop_thread.join(timeout=5.0)
+                        if self._loop_thread.is_alive():
+                            logger.warning("Event loop thread did not shut down cleanly")
+
+                    # Close the loop
+                    if not self._loop.is_closed():
+                        self._loop.close()
+
+                    self._loop = None
+                    self._loop_thread = None
+
+                    logger.info("EmbeddingService shutdown completed")
+
+        except Exception as e:
+            logger.error(f"Error during EmbeddingService shutdown: {e}")
+
+    def __del__(self) -> None:
+        """Destructor to ensure proper cleanup."""
+        with contextlib.suppress(Exception):
+            self.shutdown()
+
+    def __enter__(self) -> "EmbeddingService":
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:
+        """Context manager exit with cleanup."""
+        self.shutdown()
 
 
 # Import centralized model configurations
 
+# Global instances for backwards compatibility (lazy initialization)
+_embedding_service: EmbeddingService | None = None
+_enhanced_embedding_service: EmbeddingService | None = None
+
+
+def _get_global_embedding_service() -> EmbeddingService:
+    """Get or create the global embedding service instance with lazy initialization."""
+    global _embedding_service
+    if _embedding_service is None:
+        # Try to import webui settings if available
+        try:
+            from shared.config import settings
+
+            logger.info(
+                f"Initializing global embedding service with settings: mock_mode={settings.USE_MOCK_EMBEDDINGS}"
+            )
+            _embedding_service = EmbeddingService(mock_mode=settings.USE_MOCK_EMBEDDINGS)
+        except ImportError as e:
+            # Fall back to default configuration
+            logger.warning(
+                f"Could not import shared.config.settings ({e}), falling back to default embedding service configuration"
+            )
+            _embedding_service = EmbeddingService()
+            logger.info("Global embedding service initialized with default configuration (mock_mode=False)")
+        except Exception as e:
+            # Handle other potential errors during service creation
+            logger.error(f"Error creating embedding service with settings: {e}")
+            logger.warning("Falling back to default embedding service configuration")
+            _embedding_service = EmbeddingService()
+            logger.info("Global embedding service initialized with default configuration after error fallback")
+    return _embedding_service
+
+
+def configure_global_embedding_service(config: VecpipeConfig | None = None, mock_mode: bool | None = None) -> None:
+    """Configure the global embedding service instance.
+
+    This allows webui code to properly configure the global instance with settings.
+    """
+    global _embedding_service
+    if config is not None:
+        _embedding_service = EmbeddingService(config=config)
+    elif mock_mode is not None:
+        _embedding_service = EmbeddingService(mock_mode=mock_mode)
+    else:
+        # Try to use settings
+        try:
+            from shared.config import settings
+
+            _embedding_service = EmbeddingService(mock_mode=settings.USE_MOCK_EMBEDDINGS)
+        except ImportError:
+            _embedding_service = EmbeddingService()
+
+
+# Create lazy-initialized global instances
+class _LazyEmbeddingService:
+    """Lazy wrapper for embedding service to delay initialization.
+
+    This class implements the EmbeddingServiceProtocol interface and provides
+    lazy initialization of the actual EmbeddingService instance.
+    """
+
+    def __init__(self) -> None:
+        self._instance: EmbeddingService | None = None
+
+    def _get_instance(self) -> EmbeddingService:
+        """Get the underlying embedding service instance, creating it if needed."""
+        if self._instance is None:
+            self._instance = _get_global_embedding_service()
+        return self._instance
+
+    def __getattr__(self, name: str) -> Any:
+        # Delegate to the actual instance
+        return getattr(self._get_instance(), name)
+
+    # Implement the protocol methods explicitly for better type checking
+    @property
+    def mock_mode(self) -> bool:
+        """Get mock mode setting."""
+        return self._get_instance().mock_mode
+
+    @mock_mode.setter
+    def mock_mode(self, value: bool) -> None:
+        """Set mock mode setting."""
+        self._get_instance().mock_mode = value
+
+    @property
+    def allow_quantization_fallback(self) -> bool:
+        """Get quantization fallback setting."""
+        return self._get_instance().allow_quantization_fallback
+
+    @allow_quantization_fallback.setter
+    def allow_quantization_fallback(self, value: bool) -> None:
+        """Set quantization fallback setting."""
+        self._get_instance().allow_quantization_fallback = value
+
+    def load_model(self, model_name: str, quantization: str = "float32") -> bool:
+        """Load a model synchronously."""
+        return self._get_instance().load_model(model_name, quantization)
+
+    def get_model_info(self, model_name: str, quantization: str = "float32") -> dict[str, Any]:
+        """Get model info synchronously."""
+        return self._get_instance().get_model_info(model_name, quantization)
+
+    def generate_embeddings(
+        self,
+        texts: list[str],
+        model_name: str,
+        quantization: str = "float32",
+        batch_size: int = 32,
+        show_progress: bool = True,
+        instruction: str | None = None,
+        **kwargs: Any,
+    ) -> np.ndarray | None:
+        """Generate embeddings synchronously."""
+        return self._get_instance().generate_embeddings(
+            texts, model_name, quantization, batch_size, show_progress, instruction, **kwargs
+        )
+
+    def generate_single_embedding(
+        self,
+        text: str,
+        model_name: str,
+        quantization: str = "float32",
+        instruction: str | None = None,
+        **kwargs: Any,
+    ) -> list[float] | None:
+        """Generate single embedding synchronously."""
+        return self._get_instance().generate_single_embedding(text, model_name, quantization, instruction, **kwargs)
+
+    def unload_model(self) -> None:
+        """Unload the current model to free memory."""
+        return self._get_instance().unload_model()
+
+    @property
+    def current_model(self) -> Union[AutoModel, "SentenceTransformer", None]:
+        """Get current model for compatibility."""
+        return self._get_instance().current_model
+
+    @property
+    def current_tokenizer(self) -> AutoTokenizer | None:
+        """Get current tokenizer for compatibility."""
+        return self._get_instance().current_tokenizer
+
+    @property
+    def current_model_name(self) -> str | None:
+        """Get current model name for compatibility."""
+        return self._get_instance().current_model_name
+
+    @property
+    def current_quantization(self) -> str:
+        """Get current quantization for compatibility."""
+        return self._get_instance().current_quantization
+
+    @property
+    def device(self) -> str:
+        """Get device for compatibility."""
+        return self._get_instance().device
+
+    def __call__(self, *_args: Any, **_kwargs: Any) -> Any:
+        if self._instance is None:
+            self._instance = _get_global_embedding_service()
+        # This method shouldn't be called since EmbeddingService isn't callable
+        # But keeping for compatibility
+        raise AttributeError("EmbeddingService object is not callable")
+
+    def shutdown(self) -> None:
+        """Shutdown the lazy embedding service."""
+        if self._instance is not None:
+            self._instance.shutdown()
+            self._instance = None
+
+
 # Create global instances for backwards compatibility
-embedding_service = EmbeddingService()
+embedding_service = _LazyEmbeddingService()
 enhanced_embedding_service = embedding_service  # Alias
