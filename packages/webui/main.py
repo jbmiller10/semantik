@@ -22,7 +22,19 @@ from shared.embedding import configure_global_embedding_service
 
 logger = logging.getLogger(__name__)
 
-from .api import auth, collections, documents, files, jobs, metrics, models, root, search, settings  # noqa: E402
+from .api import (  # noqa: E402
+    auth,
+    collections,
+    documents,
+    files,
+    internal,
+    jobs,
+    metrics,
+    models,
+    root,
+    search,
+    settings,
+)
 from .api.files import scan_websocket  # noqa: E402
 from .api.jobs import websocket_endpoint  # noqa: E402
 from .rate_limiter import limiter  # noqa: E402
@@ -74,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(models.router)
     app.include_router(search.router)
     app.include_router(documents.router)
+    app.include_router(internal.router)
     app.include_router(root.router)  # No prefix for static + root
 
     # Mount WebSocket endpoints at the app level
