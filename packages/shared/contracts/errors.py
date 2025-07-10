@@ -8,19 +8,19 @@ from pydantic import BaseModel, Field
 class ErrorDetail(BaseModel):
     """Detailed error information."""
 
-    field: str | None = Field(None, description="Field that caused the error")
-    message: str = Field(description="Detailed error message")
-    code: str | None = Field(None, description="Error code")
+    field: str | None = Field(None, max_length=100, description="Field that caused the error")
+    message: str = Field(..., max_length=500, description="Detailed error message")
+    code: str | None = Field(None, max_length=50, description="Error code")
 
 
 class ErrorResponse(BaseModel):
     """Standard error response for all services."""
 
-    error: str = Field(description="Error type or category")
-    message: str = Field(description="Human-readable error message")
+    error: str = Field(..., max_length=100, description="Error type or category")
+    message: str = Field(..., max_length=1000, description="Human-readable error message")
     details: dict[str, Any] | list[ErrorDetail] | None = Field(None, description="Additional error details")
-    request_id: str | None = Field(None, description="Request ID for tracking")
-    timestamp: str | None = Field(None, description="Error timestamp")
+    request_id: str | None = Field(None, max_length=100, description="Request ID for tracking")
+    timestamp: str | None = Field(None, max_length=50, description="Error timestamp")
     status_code: int | None = Field(None, description="HTTP status code")
 
     class Config:
@@ -55,56 +55,56 @@ class ErrorResponse(BaseModel):
 class ValidationErrorResponse(ErrorResponse):
     """Validation error response with field-specific errors."""
 
-    error: str = Field(default="ValidationError")
+    error: str = Field(default="ValidationError", max_length=100)
     details: list[ErrorDetail] = Field(description="List of validation errors")
 
 
 class AuthenticationErrorResponse(ErrorResponse):
     """Authentication error response."""
 
-    error: str = Field(default="AuthenticationError")
-    message: str = Field(default="Authentication failed")
+    error: str = Field(default="AuthenticationError", max_length=100)
+    message: str = Field(default="Authentication failed", max_length=1000)
 
 
 class AuthorizationErrorResponse(ErrorResponse):
     """Authorization error response."""
 
-    error: str = Field(default="AuthorizationError")
-    message: str = Field(default="Access denied")
+    error: str = Field(default="AuthorizationError", max_length=100)
+    message: str = Field(default="Access denied", max_length=1000)
 
 
 class NotFoundErrorResponse(ErrorResponse):
     """Resource not found error response."""
 
-    error: str = Field(default="NotFoundError")
-    resource_type: str | None = Field(None, description="Type of resource not found")
-    resource_id: str | None = Field(None, description="ID of resource not found")
+    error: str = Field(default="NotFoundError", max_length=100)
+    resource_type: str | None = Field(None, max_length=100, description="Type of resource not found")
+    resource_id: str | None = Field(None, max_length=200, description="ID of resource not found")
 
 
-class InsufficientResourcesError(ErrorResponse):
+class InsufficientResourcesErrorResponse(ErrorResponse):
     """Insufficient resources error (memory, disk, etc.)."""
 
-    error: str = Field(default="InsufficientResourcesError")
-    resource_type: str = Field(description="Type of resource (memory, disk, gpu)")
-    required: str | None = Field(None, description="Required amount")
-    available: str | None = Field(None, description="Available amount")
-    suggestion: str | None = Field(None, description="Suggestion to resolve the issue")
+    error: str = Field(default="InsufficientResourcesError", max_length=100)
+    resource_type: str = Field(..., max_length=50, description="Type of resource (memory, disk, gpu)")
+    required: str | None = Field(None, max_length=50, description="Required amount")
+    available: str | None = Field(None, max_length=50, description="Available amount")
+    suggestion: str | None = Field(None, max_length=500, description="Suggestion to resolve the issue")
 
 
 class ServiceUnavailableError(ErrorResponse):
     """Service unavailable error."""
 
-    error: str = Field(default="ServiceUnavailableError")
-    service: str | None = Field(None, description="Name of unavailable service")
+    error: str = Field(default="ServiceUnavailableError", max_length=100)
+    service: str | None = Field(None, max_length=100, description="Name of unavailable service")
     retry_after: int | None = Field(None, description="Seconds to wait before retry")
 
 
 class RateLimitError(ErrorResponse):
     """Rate limit exceeded error."""
 
-    error: str = Field(default="RateLimitError")
+    error: str = Field(default="RateLimitError", max_length=100)
     limit: int | None = Field(None, description="Rate limit")
-    window: str | None = Field(None, description="Time window (e.g., '1 hour')")
+    window: str | None = Field(None, max_length=50, description="Time window (e.g., '1 hour')")
     retry_after: int | None = Field(None, description="Seconds to wait before retry")
 
 
