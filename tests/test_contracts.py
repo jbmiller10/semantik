@@ -416,7 +416,7 @@ class TestJobContractsExtended:
         long_name = "x" * 255  # Max allowed name length
         req = CreateJobRequest(name=long_name, directory_path="/test")
         assert req.name == long_name
-        
+
         # Test exceeding max length should fail
         too_long_name = "x" * 256
         with pytest.raises(ValidationError) as exc_info:
