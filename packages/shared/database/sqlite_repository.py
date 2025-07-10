@@ -28,25 +28,30 @@ class SQLiteJobRepository(JobRepository):
     async def create_job(self, job_data: dict[str, Any]) -> dict[str, Any]:
         """Create a new job."""
         # Convert async to sync for now (database module is sync)
-        return self.db.create_job(**job_data)
+        result: dict[str, Any] = self.db.create_job(**job_data)
+        return result
 
     async def get_job(self, job_id: str) -> dict[str, Any] | None:
         """Get a job by ID."""
-        return self.db.get_job(job_id)
+        result: dict[str, Any] | None = self.db.get_job(job_id)
+        return result
 
     async def update_job(self, job_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
         """Update a job."""
-        return self.db.update_job(job_id, updates)
+        result: dict[str, Any] | None = self.db.update_job(job_id, updates)
+        return result
 
     async def delete_job(self, job_id: str) -> bool:
         """Delete a job."""
-        return self.db.delete_job(job_id)
+        result: bool = self.db.delete_job(job_id)
+        return result
 
     async def list_jobs(self, user_id: str | None = None, **filters: Any) -> list[dict[str, Any]]:
         """List jobs with optional filters."""
         # Note: filters are accepted for interface compatibility but not used in SQLite implementation
         _ = filters
-        return self.db.list_jobs(user_id=user_id)
+        result: list[dict[str, Any]] = self.db.list_jobs(user_id=user_id)
+        return result
 
     async def get_all_job_ids(self) -> list[str]:
         """Get all job IDs."""
@@ -63,21 +68,24 @@ class SQLiteUserRepository(UserRepository):
 
     async def create_user(self, user_data: dict[str, Any]) -> dict[str, Any]:
         """Create a new user."""
-        return self.db.create_user(**user_data)
+        result: dict[str, Any] = self.db.create_user(**user_data)
+        return result
 
     async def get_user(self, user_id: str) -> dict[str, Any] | None:
         """Get a user by ID."""
-        return self.db.get_user(user_id)
+        result: dict[str, Any] | None = self.db.get_user(user_id)
+        return result
 
     async def get_user_by_username(self, username: str) -> dict[str, Any] | None:
         """Get a user by username."""
-        return self.db.get_user_by_username(username)
+        result: dict[str, Any] | None = self.db.get_user_by_username(username)
+        return result
 
     async def update_user(self, user_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
         """Update a user."""
         # Note: Current database module might not have this method
         # This is a placeholder for future implementation
-        user = self.db.get_user(user_id)
+        user: dict[str, Any] | None = self.db.get_user(user_id)
         if not user:
             return None
         # In a real implementation, this would update the database

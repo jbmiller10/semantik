@@ -113,9 +113,14 @@ class RateLimitError(ErrorResponse):
 
 def create_validation_error(errors: list[tuple[str, str]]) -> ValidationErrorResponse:
     """Create a validation error response from a list of field errors."""
-    details = [ErrorDetail(field=field, message=message) for field, message in errors]
+    details = [ErrorDetail(field=field, message=message, code="validation_error") for field, message in errors]
     return ValidationErrorResponse(
-        error="ValidationError", message="Validation failed", details=details, status_code=400
+        error="ValidationError",
+        message="Validation failed",
+        details=details,
+        status_code=400,
+        request_id=None,
+        timestamp=None,
     )
 
 
@@ -127,6 +132,9 @@ def create_not_found_error(resource_type: str, resource_id: str) -> NotFoundErro
         resource_type=resource_type,
         resource_id=resource_id,
         status_code=404,
+        details=None,
+        request_id=None,
+        timestamp=None,
     )
 
 
@@ -137,6 +145,9 @@ def create_insufficient_memory_error(
     return InsufficientResourcesErrorResponse(
         error="InsufficientResourcesError",
         message="Insufficient GPU memory for operation",
+        details=None,
+        request_id=None,
+        timestamp=None,
         resource_type="gpu_memory",
         required=required,
         available=available,

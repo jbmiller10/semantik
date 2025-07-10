@@ -128,7 +128,7 @@ class ManagedEmbeddingService:
         self._service = await get_embedding_service(**self.kwargs)
         return self._service
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> bool:
         """Async context manager exit."""
         if self._service is not None:
             try:
@@ -137,11 +137,11 @@ class ManagedEmbeddingService:
                 logger.error(f"Error during managed service cleanup: {e}")
         return False  # Don't suppress exceptions
 
-    def __enter__(self):
+    def __enter__(self) -> None:
         """Sync context manager entry - not supported."""
         raise RuntimeError(
             "Synchronous context manager not supported. Use 'async with ManagedEmbeddingService()' instead."
         )
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:
         """Sync context manager exit - not supported."""

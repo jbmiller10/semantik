@@ -109,7 +109,7 @@ class BaseEmbeddingService(ABC):
         """
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
+    async def __aexit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> bool:
         """Async context manager exit.
 
         Ensures cleanup is called when exiting the context, even if an

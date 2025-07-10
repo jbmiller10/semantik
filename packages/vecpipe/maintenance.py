@@ -11,6 +11,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import httpx
 from qdrant_client import QdrantClient
@@ -49,9 +50,9 @@ class QdrantMaintenanceService:
         self.tracker = FileChangeTracker()
         self.webui_base_url = f"http://{webui_host}:{webui_port}"
 
-    def _retry_request(self, func, max_attempts: int = 3, base_delay: float = 1.0):
+    def _retry_request(self, func: Any, max_attempts: int = 3, base_delay: float = 1.0) -> Any:
         """Execute a request with exponential backoff retry logic."""
-        last_exception = None
+        last_exception: Exception | None = None
 
         for attempt in range(max_attempts):
             try:
@@ -72,7 +73,9 @@ class QdrantMaintenanceService:
                 time.sleep(delay)
 
         logger.error(f"Request failed after {max_attempts} attempts")
-        raise last_exception
+        if last_exception:
+            raise last_exception
+        raise RuntimeError(f"Request failed after {max_attempts} attempts")
 
     def get_current_files(self, file_list_path: str) -> list[str]:
         """Read current file list from null-delimited file"""
@@ -100,10 +103,11 @@ class QdrantMaintenanceService:
             if settings.INTERNAL_API_KEY:
                 headers["X-Internal-Api-Key"] = settings.INTERNAL_API_KEY
 
-            def make_request():
+            def make_request() -> list[str]:
                 response = httpx.get(f"{self.webui_base_url}/api/internal/jobs/all-ids", headers=headers, timeout=30.0)
                 response.raise_for_status()
-                return response.json()
+                result: list[str] = response.json()
+                return result
 
             job_ids = self._retry_request(make_request)
 

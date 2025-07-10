@@ -5,11 +5,12 @@ embedding service lifecycle management.
 """
 
 import asyncio
+from typing import Any
 
 from shared.embedding import ManagedEmbeddingService, embedding_service_context, temporary_embedding_service
 
 
-async def basic_context_manager_example():
+async def basic_context_manager_example() -> None:
     """Basic usage of embedding service context manager."""
     # The service will be automatically cleaned up after use
     async with embedding_service_context() as service:
@@ -27,7 +28,7 @@ async def basic_context_manager_example():
     # Service is automatically cleaned up here
 
 
-async def temporary_model_example():
+async def temporary_model_example() -> None:
     """Using a temporary model without affecting global state."""
     # Load a model just for this operation
     async with temporary_embedding_service("sentence-transformers/all-MiniLM-L6-v2") as temp_service:
@@ -41,7 +42,7 @@ async def temporary_model_example():
     # Temporary service is cleaned up, GPU memory freed
 
 
-async def compare_models_example():
+async def compare_models_example() -> None:
     """Compare embeddings from different models."""
     test_text = "Compare embeddings from different models"
 
@@ -59,7 +60,7 @@ async def compare_models_example():
     print(f"MiniLM dimension: {minilm_dim}")
 
 
-async def exception_handling_example():
+async def exception_handling_example() -> None:
     """Context managers handle exceptions properly."""
     try:
         async with embedding_service_context() as service:
@@ -75,7 +76,7 @@ async def exception_handling_example():
     # The service cleanup happened despite the exception
 
 
-async def fastapi_endpoint_example():
+async def fastapi_endpoint_example() -> None:
     """Example of using context manager in a FastAPI endpoint."""
     from fastapi import FastAPI, HTTPException
     from pydantic import BaseModel
@@ -87,7 +88,7 @@ async def fastapi_endpoint_example():
         model_name: str = "BAAI/bge-base-en-v1.5"
 
     @app.post("/embed")
-    async def create_embeddings(request: EmbeddingRequest):
+    async def create_embeddings(request: EmbeddingRequest) -> dict[str, Any]:
         """Create embeddings with automatic cleanup."""
         try:
             # Use a temporary service for this request
@@ -104,7 +105,7 @@ async def fastapi_endpoint_example():
             raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-async def managed_service_example():
+async def managed_service_example() -> None:
     """Using ManagedEmbeddingService for more control."""
     # Create a managed service instance
     managed = ManagedEmbeddingService(mock_mode=False)
@@ -119,15 +120,15 @@ async def managed_service_example():
     # Automatically cleaned up
 
 
-async def process_documents(service, documents):
+async def process_documents(service: Any, documents: list[str]) -> Any:
     """Helper function that uses an embedding service."""
     return await service.embed_texts(documents)
 
 
-async def concurrent_services_example():
+async def concurrent_services_example() -> None:
     """Using multiple services concurrently."""
 
-    async def process_with_model(model_name: str, texts: list[str]):
+    async def process_with_model(model_name: str, texts: list[str]) -> tuple[str, int]:
         async with temporary_embedding_service(model_name) as service:
             embeddings = await service.embed_texts(texts)
             return model_name, len(embeddings)
