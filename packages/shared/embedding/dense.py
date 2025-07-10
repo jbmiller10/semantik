@@ -13,9 +13,10 @@ import numpy as np
 import torch
 import torch.nn.functional as F  # noqa: N812
 from sentence_transformers import SentenceTransformer
-from shared.config.vecpipe import VecpipeConfig
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
+
+from shared.config.vecpipe import VecpipeConfig
 
 from .base import BaseEmbeddingService
 
