@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 
 class JobStatus(str, Enum):
@@ -38,8 +38,9 @@ class CreateJobRequest(BaseModel):
     file_extensions: list[str] | None = Field(None, description="File extensions to process")
     metadata: dict[str, Any] | None = Field(None, description="Additional metadata")
 
-    @validator("chunk_size")
-    def validate_chunk_size(cls: type["CreateJobRequest"], v: int) -> int:  # noqa: N805
+    @field_validator("chunk_size")
+    @classmethod
+    def validate_chunk_size(cls, v: int) -> int:
         """Validate chunk size is within reasonable bounds."""
         if v < 100:
             raise ValueError("chunk_size must be at least 100 tokens")
@@ -47,17 +48,19 @@ class CreateJobRequest(BaseModel):
             raise ValueError("chunk_size must not exceed 50000 tokens")
         return v
 
-    @validator("chunk_overlap")
-    def validate_chunk_overlap(cls: type["CreateJobRequest"], v: int, values: dict[str, Any]) -> int:  # noqa: N805
+    @field_validator("chunk_overlap")
+    @classmethod
+    def validate_chunk_overlap(cls, v: int, info: ValidationInfo) -> int:
         """Validate chunk overlap is less than chunk size."""
         if v < 0:
             raise ValueError("chunk_overlap cannot be negative")
-        if "chunk_size" in values and v >= values["chunk_size"]:
-            raise ValueError(f'chunk_overlap ({v}) must be less than chunk_size ({values["chunk_size"]})')
+        if info.data.get("chunk_size") and v >= info.data["chunk_size"]:
+            raise ValueError(f'chunk_overlap ({v}) must be less than chunk_size ({info.data["chunk_size"]})')
         return v
 
-    @validator("directory_path")
-    def validate_path(cls: type["CreateJobRequest"], v: str) -> str:  # noqa: N805
+    @field_validator("directory_path")
+    @classmethod
+    def validate_path(cls, v: str) -> str:
         """Clean and validate directory path with security checks.
 
         Note: This validator resolves symbolic links to their real paths,
@@ -88,8 +91,9 @@ class CreateJobRequest(BaseModel):
 
         return str(resolved_path)
 
-    @validator("quantization")
-    def validate_quantization(cls: type["CreateJobRequest"], v: str) -> str:  # noqa: N805
+    @field_validator("quantization")
+    @classmethod
+    def validate_quantization(cls, v: str) -> str:
         """Validate quantization type."""
         # Accept both original and shorthand formats
         accepted_values = {"float32", "float16", "int8", "fp32", "fp16"}
@@ -104,8 +108,9 @@ class CreateJobRequest(BaseModel):
             )
         return v
 
-    @validator("file_extensions")
-    def validate_file_extensions(cls: type["CreateJobRequest"], v: list[str] | None) -> list[str] | None:  # noqa: N805
+    @field_validator("file_extensions")
+    @classmethod
+    def validate_file_extensions(cls, v: list[str] | None) -> list[str] | None:
         """Validate file extensions format."""
         if v is None:
             return v

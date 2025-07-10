@@ -1,122 +1,417 @@
-### **Project Semantik: Agentic Coding Mandate**
+# Task Master AI - Claude Code Integration Guide
 
-This file is your primary directive. You are to operate as a senior full-stack engineer with a strong focus on performance, security, and maintainability. Your goal is to develop and enhance Project Semantik according to the principles and procedures outlined below.
+## Essential Commands
+
+### Core Workflow Commands
+
+```bash
+# Project Setup
+task-master init                                    # Initialize Task Master in current project
+task-master parse-prd .taskmaster/docs/prd.txt      # Generate tasks from PRD document
+task-master models --setup                        # Configure AI models interactively
+
+# Daily Development Workflow
+task-master list                                   # Show all tasks with status
+task-master next                                   # Get next available task to work on
+task-master show <id>                             # View detailed task information (e.g., task-master show 1.2)
+task-master set-status --id=<id> --status=done    # Mark task complete
+
+# Task Management
+task-master add-task --prompt="description" --research        # Add new task with AI assistance
+task-master expand --id=<id> --research --force              # Break task into subtasks
+task-master update-task --id=<id> --prompt="changes"         # Update specific task
+task-master update --from=<id> --prompt="changes"            # Update multiple tasks from ID onwards
+task-master update-subtask --id=<id> --prompt="notes"        # Add implementation notes to subtask
+
+# Analysis & Planning
+task-master analyze-complexity --research          # Analyze task complexity
+task-master complexity-report                      # View complexity analysis
+task-master expand --all --research               # Expand all eligible tasks
+
+# Dependencies & Organization
+task-master add-dependency --id=<id> --depends-on=<id>       # Add task dependency
+task-master move --from=<id> --to=<id>                       # Reorganize task hierarchy
+task-master validate-dependencies                            # Check for dependency issues
+task-master generate                                         # Update task markdown files (usually auto-called)
+```
+
+## Key Files & Project Structure
+
+### Core Files
+
+- `.taskmaster/tasks/tasks.json` - Main task data file (auto-managed)
+- `.taskmaster/config.json` - AI model configuration (use `task-master models` to modify)
+- `.taskmaster/docs/prd.txt` - Product Requirements Document for parsing
+- `.taskmaster/tasks/*.txt` - Individual task files (auto-generated from tasks.json)
+- `.env` - API keys for CLI usage
+
+### Claude Code Integration Files
+
+- `CLAUDE.md` - Auto-loaded context for Claude Code (this file)
+- `.claude/settings.json` - Claude Code tool allowlist and preferences
+- `.claude/commands/` - Custom slash commands for repeated workflows
+- `.mcp.json` - MCP server configuration (project-specific)
+
+### Directory Structure
+
+```
+project/
+├── .taskmaster/
+│   ├── tasks/              # Task files directory
+│   │   ├── tasks.json      # Main task database
+│   │   ├── task-1.md      # Individual task files
+│   │   └── task-2.md
+│   ├── docs/              # Documentation directory
+│   │   ├── prd.txt        # Product requirements
+│   ├── reports/           # Analysis reports directory
+│   │   └── task-complexity-report.json
+│   ├── templates/         # Template files
+│   │   └── example_prd.txt  # Example PRD template
+│   └── config.json        # AI models & settings
+├── .claude/
+│   ├── settings.json      # Claude Code configuration
+│   └── commands/         # Custom slash commands
+├── .env                  # API keys
+├── .mcp.json            # MCP configuration
+└── CLAUDE.md            # This file - auto-loaded by Claude Code
+```
+
+## MCP Integration
+
+Task Master provides an MCP server that Claude Code can connect to. Configure in `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "task-master-ai": {
+      "command": "npx",
+      "args": ["-y", "--package=task-master-ai", "task-master-ai"],
+      "env": {
+        "ANTHROPIC_API_KEY": "your_key_here",
+        "PERPLEXITY_API_KEY": "your_key_here",
+        "OPENAI_API_KEY": "OPENAI_API_KEY_HERE",
+        "GOOGLE_API_KEY": "GOOGLE_API_KEY_HERE",
+        "XAI_API_KEY": "XAI_API_KEY_HERE",
+        "OPENROUTER_API_KEY": "OPENROUTER_API_KEY_HERE",
+        "MISTRAL_API_KEY": "MISTRAL_API_KEY_HERE",
+        "AZURE_OPENAI_API_KEY": "AZURE_OPENAI_API_KEY_HERE",
+        "OLLAMA_API_KEY": "OLLAMA_API_KEY_HERE"
+      }
+    }
+  }
+}
+```
+
+### Essential MCP Tools
+
+```javascript
+help; // = shows available taskmaster commands
+// Project setup
+initialize_project; // = task-master init
+parse_prd; // = task-master parse-prd
+
+// Daily workflow
+get_tasks; // = task-master list
+next_task; // = task-master next
+get_task; // = task-master show <id>
+set_task_status; // = task-master set-status
+
+// Task management
+add_task; // = task-master add-task
+expand_task; // = task-master expand
+update_task; // = task-master update-task
+update_subtask; // = task-master update-subtask
+update; // = task-master update
+
+// Analysis
+analyze_project_complexity; // = task-master analyze-complexity
+complexity_report; // = task-master complexity-report
+```
+
+## Claude Code Workflow Integration
+
+### Standard Development Workflow
+
+#### 1. Project Initialization
+
+```bash
+# Initialize Task Master
+task-master init
+
+# Create or obtain PRD, then parse it
+task-master parse-prd .taskmaster/docs/prd.txt
+
+# Analyze complexity and expand tasks
+task-master analyze-complexity --research
+task-master expand --all --research
+```
+
+If tasks already exist, another PRD can be parsed (with new information only!) using parse-prd with --append flag. This will add the generated tasks to the existing list of tasks..
+
+#### 2. Daily Development Loop
+
+```bash
+# Start each session
+task-master next                           # Find next available task
+task-master show <id>                     # Review task details
+
+# During implementation, check in code context into the tasks and subtasks
+task-master update-subtask --id=<id> --prompt="implementation notes..."
+
+# Complete tasks
+task-master set-status --id=<id> --status=done
+```
+
+#### 3. Multi-Claude Workflows
+
+For complex projects, use multiple Claude Code sessions:
+
+```bash
+# Terminal 1: Main implementation
+cd project && claude
+
+# Terminal 2: Testing and validation
+cd project-test-worktree && claude
+
+# Terminal 3: Documentation updates
+cd project-docs-worktree && claude
+```
+
+### Custom Slash Commands
+
+Create `.claude/commands/taskmaster-next.md`:
+
+```markdown
+Find the next available Task Master task and show its details.
+
+Steps:
+
+1. Run `task-master next` to get the next task
+2. If a task is available, run `task-master show <id>` for full details
+3. Provide a summary of what needs to be implemented
+4. Suggest the first implementation step
+```
+
+Create `.claude/commands/taskmaster-complete.md`:
+
+```markdown
+Complete a Task Master task: $ARGUMENTS
+
+Steps:
+
+1. Review the current task with `task-master show $ARGUMENTS`
+2. Verify all implementation is complete
+3. Run any tests related to this task
+4. Mark as complete: `task-master set-status --id=$ARGUMENTS --status=done`
+5. Show the next available task with `task-master next`
+```
+
+## Tool Allowlist Recommendations
+
+Add to `.claude/settings.json`:
+
+```json
+{
+  "allowedTools": [
+    "Edit",
+    "Bash(task-master *)",
+    "Bash(git commit:*)",
+    "Bash(git add:*)",
+    "Bash(npm run *)",
+    "mcp__task_master_ai__*"
+  ]
+}
+```
+
+## Configuration & Setup
+
+### API Keys Required
+
+At least **one** of these API keys must be configured:
+
+- `ANTHROPIC_API_KEY` (Claude models) - **Recommended**
+- `PERPLEXITY_API_KEY` (Research features) - **Highly recommended**
+- `OPENAI_API_KEY` (GPT models)
+- `GOOGLE_API_KEY` (Gemini models)
+- `MISTRAL_API_KEY` (Mistral models)
+- `OPENROUTER_API_KEY` (Multiple models)
+- `XAI_API_KEY` (Grok models)
+
+An API key is required for any provider used across any of the 3 roles defined in the `models` command.
+
+### Model Configuration
+
+```bash
+# Interactive setup (recommended)
+task-master models --setup
+
+# Set specific models
+task-master models --set-main claude-3-5-sonnet-20241022
+task-master models --set-research perplexity-llama-3.1-sonar-large-128k-online
+task-master models --set-fallback gpt-4o-mini
+```
+
+## Task Structure & IDs
+
+### Task ID Format
+
+- Main tasks: `1`, `2`, `3`, etc.
+- Subtasks: `1.1`, `1.2`, `2.1`, etc.
+- Sub-subtasks: `1.1.1`, `1.1.2`, etc.
+
+### Task Status Values
+
+- `pending` - Ready to work on
+- `in-progress` - Currently being worked on
+- `done` - Completed and verified
+- `deferred` - Postponed
+- `cancelled` - No longer needed
+- `blocked` - Waiting on external factors
+
+### Task Fields
+
+```json
+{
+  "id": "1.2",
+  "title": "Implement user authentication",
+  "description": "Set up JWT-based auth system",
+  "status": "pending",
+  "priority": "high",
+  "dependencies": ["1.1"],
+  "details": "Use bcrypt for hashing, JWT for tokens...",
+  "testStrategy": "Unit tests for auth functions, integration tests for login flow",
+  "subtasks": []
+}
+```
+
+## Claude Code Best Practices with Task Master
+
+### Context Management
+
+- Use `/clear` between different tasks to maintain focus
+- This CLAUDE.md file is automatically loaded for context
+- Use `task-master show <id>` to pull specific task context when needed
+
+### Iterative Implementation
+
+1. `task-master show <subtask-id>` - Understand requirements
+2. Explore codebase and plan implementation
+3. `task-master update-subtask --id=<id> --prompt="detailed plan"` - Log plan
+4. `task-master set-status --id=<id> --status=in-progress` - Start work
+5. Implement code following logged plan
+6. `task-master update-subtask --id=<id> --prompt="what worked/didn't work"` - Log progress
+7. `task-master set-status --id=<id> --status=done` - Complete task
+
+### Complex Workflows with Checklists
+
+For large migrations or multi-step processes:
+
+1. Create a markdown PRD file describing the new changes: `touch task-migration-checklist.md` (prds can be .txt or .md)
+2. Use Taskmaster to parse the new prd with `task-master parse-prd --append` (also available in MCP)
+3. Use Taskmaster to expand the newly generated tasks into subtasks. Consdier using `analyze-complexity` with the correct --to and --from IDs (the new ids) to identify the ideal subtask amounts for each task. Then expand them.
+4. Work through items systematically, checking them off as completed
+5. Use `task-master update-subtask` to log progress on each task/subtask and/or updating/researching them before/during implementation if getting stuck
+
+### Git Integration
+
+Task Master works well with `gh` CLI:
+
+```bash
+# Create PR for completed task
+gh pr create --title "Complete task 1.2: User authentication" --body "Implements JWT auth system as specified in task 1.2"
+
+# Reference task in commits
+git commit -m "feat: implement JWT auth (task 1.2)"
+```
+
+### Parallel Development with Git Worktrees
+
+```bash
+# Create worktrees for parallel task development
+git worktree add ../project-auth feature/auth-system
+git worktree add ../project-api feature/api-refactor
+
+# Run Claude Code in each worktree
+cd ../project-auth && claude    # Terminal 1: Auth work
+cd ../project-api && claude     # Terminal 2: API work
+```
+
+## Troubleshooting
+
+### AI Commands Failing
+
+```bash
+# Check API keys are configured
+cat .env                           # For CLI usage
+
+# Verify model configuration
+task-master models
+
+# Test with different model
+task-master models --set-fallback gpt-4o-mini
+```
+
+### MCP Connection Issues
+
+- Check `.mcp.json` configuration
+- Verify Node.js installation
+- Use `--mcp-debug` flag when starting Claude Code
+- Use CLI as fallback if MCP unavailable
+
+### Task File Sync Issues
+
+```bash
+# Regenerate task files from tasks.json
+task-master generate
+
+# Fix dependency issues
+task-master fix-dependencies
+```
+
+DO NOT RE-INITIALIZE. That will not do anything beyond re-adding the same Taskmaster core files.
+
+## Important Notes
+
+### AI-Powered Operations
+
+These commands make AI calls and may take up to a minute:
+
+- `parse_prd` / `task-master parse-prd`
+- `analyze_project_complexity` / `task-master analyze-complexity`
+- `expand_task` / `task-master expand`
+- `expand_all` / `task-master expand --all`
+- `add_task` / `task-master add-task`
+- `update` / `task-master update`
+- `update_task` / `task-master update-task`
+- `update_subtask` / `task-master update-subtask`
+
+### File Management
+
+- Never manually edit `tasks.json` - use commands instead
+- Never manually edit `.taskmaster/config.json` - use `task-master models`
+- Task markdown files in `tasks/` are auto-generated
+- Run `task-master generate` after manual changes to tasks.json
+
+### Claude Code Session Management
+
+- Use `/clear` frequently to maintain focused context
+- Create custom slash commands for repeated Task Master workflows
+- Configure tool allowlist to streamline permissions
+- Use headless mode for automation: `claude -p "task-master next"`
+
+### Multi-Task Updates
+
+- Use `update --from=<id>` to update multiple future tasks
+- Use `update-task --id=<id>` for single task updates
+- Use `update-subtask --id=<id>` for implementation logging
+
+### Research Mode
+
+- Add `--research` flag for research-based AI enhancement
+- Requires a research model API key like Perplexity (`PERPLEXITY_API_KEY`) in environment
+- Provides more informed task creation and updates
+- Recommended for complex technical tasks
 
 ---
 
-### **1. Mission Statement**
-
-To build and maintain a **high-performance, resource-efficient, and self-hostable semantic search engine** for technical users. Prioritize performance and control over simplified UI. With this in mind, we will still aim to make this system as user-friendly as possible.
-
----
-
-### **2. Core Architecture & Key Files**
-
-The system is a monorepo with two primary packages and a React frontend app.
-
-*   **`packages/vecpipe/` (The Core Engine):** Data processing and search API.
-    *   `extract_chunks.py`: Document parsing/chunking.
-    *   `model_manager.py`: GPU memory management via model lazy-loading and unloading.
-    *   `search_api.py`: FastAPI service exposing search functionality. This is the **only** entry point for search logic.
-    *   `cleanup.py`: Cleanup utilities that currently access the webui SQLite database.
-
-*   **`packages/webui/` (The Control Plane & API):** User-facing API for job management and search.
-    *   `main.py`: The main FastAPI app that serves the UI and its API.
-    *   `api/`: Routers for jobs, users, search proxying, etc.
-    *   `database.py`: Manages the **SQLite database** (jobs, users).
-    *   `embedding_service.py`: **The heart of embedding generation.** Handles models, quantization, and adaptive batching. Currently imported by both webui and vecpipe components.
-
-*   **`apps/webui-react/` (The Frontend):** React-based user interface.
-    *   Modern React application with TypeScript
-    *   Communicates with webui backend via API endpoints
-    *   WebSocket support for real-time updates
-
-*   **Current Architecture Notes:** While the original design intended for complete separation between vecpipe and webui, the current implementation has some interdependencies:
-    *   vecpipe imports `embedding_service.py` from webui
-    *   vecpipe's `cleanup.py` accesses the webui SQLite database
-    *   The webui search endpoints properly proxy to vecpipe's search_api
-
----
-
-### **3. Development Environment & Tooling**
-
-You have access to and are expected to use the following tools.
-
-*   **`poetry`**: For all Python dependency management. Use `poetry install`.
-*   **`make`**: For common development tasks.
-    *   `make format`: **Run this before committing any code changes.**
-    *   `make lint`: Check for code quality issues.
-    *   `make type-check`: **Run this to ensure all type hints are correct.**
-    *   `make test`: Run the full test suite.
-*   **`git`**: For all version control. Write clear, conventional commit messages.
-*   **`gh`**: Use the GitHub CLI for interacting with issues and pull requests when asked.
-
----
-
-### **4. Golden Rules & Directives (Non-Negotiable)**
-
-These are your core operational constraints.
-
-> **1. CURRENT ARCHITECTURE GUIDELINES.**
-> *   Core search logic resides in `packages/vecpipe/search_api.py`. The Web UI's search endpoints are **proxies** to vecpipe's search API.
-> *   The embedding service (`packages/webui/embedding_service.py`) is currently shared between packages, imported by both webui and vecpipe.
-> *   While vecpipe's `cleanup.py` currently accesses the webui SQLite database, new features should minimize cross-package dependencies where possible.
-
-> **2. YOU MUST ADHERE TO STRICT QUALITY STANDARDS.**
-> *   All new Python code **MUST** be fully type-hinted and pass `make type-check`.
-> *   All code **MUST** pass `make format` and `make lint` before completion.
-> *   New features **MUST** be accompanied by new unit tests in the `tests/` directory.
-
-> **3. YOU MUST PRIORITIZE SECURITY.**
-> *   Treat all user input as untrusted.
-> *   Validate all file paths to prevent directory traversal.
-> *   Sanitize all content rendered in the UI to prevent XSS.
-
----
-
-### **5. Standard Operating Procedures (SOPs)**
-
-For any given task, identify and follow the relevant SOP.
-
-#### **SOP-01: Adding or Modifying a Backend Feature**
-
-1.  **Analyze & Plan:** Verbally confirm your understanding of the request. Use `think hard` to create a step-by-step implementation plan. State which files you will modify. Await approval before proceeding.
-2.  **Implement Core Logic:** Make changes inside the `packages/vecpipe/` package first.
-3.  **Write Tests:** Add or update unit tests in `tests/` to cover the new logic. Run `make test` and confirm they pass.
-4.  **Expose via API:** If necessary, expose the new functionality by adding/updating an endpoint in `packages/vecpipe/search_api.py`.
-5.  **Update Control Plane:** If the feature is user-facing, update the `packages/webui/` API to proxy requests to the `search_api`.
-6.  **Final Verification:** Run `make format`, `make lint`, and `make type-check`.
-
-#### **SOP-02: Fixing a Bug**
-
-1.  **Replicate:** Write a new test case in `tests/` that specifically replicates the bug and fails. Run `make test` to confirm the failure.
-2.  **Analyze & Plan:** Use `git log` and file analysis to understand the root cause. State your hypothesis and your plan to fix it. Await approval.
-3.  **Implement Fix:** Apply the necessary code changes.
-4.  **Verify:** Run `make test`. Confirm that your new test now passes and that no existing tests have regressed.
-5.  **Cleanup:** Run `make format` and `make type-check`.
-
-#### **SOP-03: Refactoring a Frontend Component (React)**
-
-1.  **Identify Component:** State the functionality you are about to implement or refactor as a React component (e.g., "I will now refactor the job creation form").
-2.  **Create Component File:** Create a new `.tsx` file in `apps/webui-react/src/components/`.
-3.  **Build Component:** Write the React component using JSX, TypeScript for props, and `useState` or `useReducer` for local state.
-4.  **Centralize Logic:**
-    *   Move API calls into the dedicated API service.
-    *   Move shared state into the Zustand store if applicable.
-5.  **Integrate and Test:** Import and use the new component in its parent. Verify its functionality works as expected.
-6.  **Cleanup:** Once verified, remove any corresponding legacy code if this was a refactoring task.
-
----
-
-### **6. Planning and Complex Tasks**
-
-For any task that is non-trivial or requires changes to multiple files, **you must start by creating a plan.**
-
-*   Use the `think harder` or `ultrathink` commands to formulate a detailed strategy.
-*   Your first action should be to **create a new file named `PLAN.md`**.
-*   In this file, outline:
-    1.  Your understanding of the objective.
-    2.  A list of all files you intend to create or modify.
-    3.  A step-by-step description of the changes you will make.
-    4.  Any potential risks or edge cases you've identified.
-*   **Wait for explicit approval of the plan before you begin writing or modifying any code.**
+_This guide ensures Claude Code has immediate access to Task Master's essential functionality for agentic development workflows._

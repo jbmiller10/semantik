@@ -11,8 +11,8 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from shared.text_processing import FileChangeTracker
-from vecpipe.cleanup import QdrantCleanupService
+from vecpipe.extract_chunks import FileChangeTracker
+from vecpipe.maintenance import QdrantMaintenanceService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -32,7 +32,7 @@ def test_cleanup_dry_run():
 
     try:
         # Initialize service
-        service = QdrantCleanupService()
+        service = QdrantMaintenanceService()
 
         # Get current files
         current_files = service.get_current_files(temp_file_list)
@@ -45,8 +45,6 @@ def test_cleanup_dry_run():
         # Run cleanup in dry-run mode
         result = service.cleanup_removed_files(current_files, dry_run=True)
         logger.info(f"Dry-run result: {result}")
-
-        service.close()
 
     finally:
         # Clean up temp file

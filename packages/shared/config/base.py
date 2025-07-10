@@ -20,6 +20,9 @@ class BaseConfig(BaseSettings):
     QDRANT_PORT: int = 6333
     DEFAULT_COLLECTION: str = "work_docs"
 
+    # Internal API Configuration
+    INTERNAL_API_KEY: str | None = None
+
     # Data & Processing Paths
     DATA_DIR: Path = PROJECT_ROOT / "data"
     LOGS_DIR: Path = PROJECT_ROOT / "logs"

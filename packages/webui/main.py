@@ -4,6 +4,7 @@ Creates and configures the FastAPI application
 """
 
 import logging
+import secrets
 import sys
 from pathlib import Path
 
@@ -22,7 +23,20 @@ from shared.embedding import configure_global_embedding_service
 
 logger = logging.getLogger(__name__)
 
-from .api import auth, collections, documents, files, jobs, metrics, models, root, search, settings  # noqa: E402
+from .api import (  # noqa: E402
+    auth,
+    collections,
+    documents,
+    files,
+    health,
+    internal,
+    jobs,
+    metrics,
+    models,
+    root,
+    search,
+    settings,
+)
 from .api.files import scan_websocket  # noqa: E402
 from .api.jobs import websocket_endpoint  # noqa: E402
 from .rate_limiter import limiter  # noqa: E402
@@ -52,6 +66,21 @@ def _configure_embedding_service() -> None:
         raise RuntimeError(f"Critical error: Failed to configure embedding service: {e}") from e
 
 
+def _configure_internal_api_key() -> None:
+    """Configure internal API key, generating one if using the default value."""
+    if shared_settings.INTERNAL_API_KEY == "change-me-in-production":
+        # Generate a secure random key
+        generated_key = secrets.token_urlsafe(32)
+        shared_settings.INTERNAL_API_KEY = generated_key
+        logger.warning(
+            f"Generated internal API key for development. "
+            f"Set INTERNAL_API_KEY environment variable for production. "
+            f"Current key: {generated_key}"
+        )
+    else:
+        logger.info("Using configured internal API key")
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application"""
     app = FastAPI(
@@ -64,6 +93,9 @@ def create_app() -> FastAPI:
     # Configure global embedding service at app startup
     _configure_embedding_service()
 
+    # Configure internal API key
+    _configure_internal_api_key()
+
     # Include routers with their specific prefixes
     app.include_router(auth.router)
     app.include_router(jobs.router)
@@ -74,6 +106,8 @@ def create_app() -> FastAPI:
     app.include_router(models.router)
     app.include_router(search.router)
     app.include_router(documents.router)
+    app.include_router(health.router)
+    app.include_router(internal.router)
     app.include_router(root.router)  # No prefix for static + root
 
     # Mount WebSocket endpoints at the app level

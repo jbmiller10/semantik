@@ -13,9 +13,10 @@ import numpy as np
 import torch
 import torch.nn.functional as F  # noqa: N812
 from sentence_transformers import SentenceTransformer
-from shared.config.vecpipe import VecpipeConfig
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
+
+from shared.config.vecpipe import VecpipeConfig
 
 from .base import BaseEmbeddingService
 
@@ -255,7 +256,9 @@ class DenseEmbeddingService(BaseEmbeddingService):
             # Get dimension from the model directly
             if self.is_qwen_model and self.model is not None:
                 # For Qwen models, get dimension from model config
-                self.dimension = self.model.config.hidden_size
+                # Type assertion: Qwen models are always AutoModel
+                assert hasattr(self.model, "config"), "Qwen model should have config attribute"
+                self.dimension = getattr(self.model.config, "hidden_size", None)
             elif self.model is not None and hasattr(self.model, "get_sentence_embedding_dimension"):
                 # For sentence-transformers
                 self.dimension = self.model.get_sentence_embedding_dimension()
@@ -373,7 +376,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
             # Tokenize
             if self.tokenizer is None:
                 raise RuntimeError("Tokenizer not initialized")
-            batch_dict = self.tokenizer(
+            batch_dict = self.tokenizer(  # type: ignore[operator]
                 batch_texts, padding=True, truncation=True, max_length=self.max_sequence_length, return_tensors="pt"
             ).to(self.device)
 
@@ -383,9 +386,9 @@ class DenseEmbeddingService(BaseEmbeddingService):
             with torch.no_grad():
                 if self.dtype == torch.float16:
                     with torch.cuda.amp.autocast(dtype=torch.float16):
-                        outputs = self.model(**batch_dict)
+                        outputs = self.model(**batch_dict)  # type: ignore[operator]
                 else:
-                    outputs = self.model(**batch_dict)
+                    outputs = self.model(**batch_dict)  # type: ignore[operator]
 
                 embeddings = last_token_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
 
@@ -402,6 +405,8 @@ class DenseEmbeddingService(BaseEmbeddingService):
         """Embed texts using sentence-transformers."""
         if self.model is None:
             raise RuntimeError("Model not initialized")
+        # Type assertion: This method is only called when we have a SentenceTransformer
+        assert isinstance(self.model, SentenceTransformer)
         embeddings: np.ndarray = self.model.encode(
             texts,
             batch_size=batch_size,

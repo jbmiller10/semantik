@@ -3,10 +3,11 @@ Metrics and monitoring routes for the Web UI
 """
 
 import logging
-import os
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from shared.config import settings as webui_settings
+
 from webui.auth import User, get_current_user
 
 logger = logging.getLogger(__name__)
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["metrics"])
 
 # Start metrics server if metrics port is configured
-METRICS_PORT = int(os.getenv("WEBUI_METRICS_PORT", "9092"))
+METRICS_PORT = webui_settings.WEBUI_METRICS_PORT
 METRICS_AVAILABLE = False
 generate_latest: Any | None = None
 registry: Any | None = None
