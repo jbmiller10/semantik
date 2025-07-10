@@ -39,7 +39,7 @@ class CreateJobRequest(BaseModel):
     metadata: dict[str, Any] | None = Field(None, description="Additional metadata")
 
     @validator("chunk_size")
-    def validate_chunk_size(cls, v: int) -> int:
+    def validate_chunk_size(cls, v: int) -> int:  # noqa: N805
         """Validate chunk size is within reasonable bounds."""
         if v < 100:
             raise ValueError("chunk_size must be at least 100 tokens")
@@ -48,7 +48,7 @@ class CreateJobRequest(BaseModel):
         return v
 
     @validator("chunk_overlap")
-    def validate_chunk_overlap(cls, v: int, values: dict[str, Any]) -> int:
+    def validate_chunk_overlap(cls, v: int, values: dict[str, Any]) -> int:  # noqa: N805
         """Validate chunk overlap is less than chunk size."""
         if v < 0:
             raise ValueError("chunk_overlap cannot be negative")
@@ -57,12 +57,12 @@ class CreateJobRequest(BaseModel):
         return v
 
     @validator("directory_path")
-    def validate_path(cls, v: str) -> str:
+    def validate_path(cls, v: str) -> str:  # noqa: N805
         """Clean and validate directory path."""
         return v.strip()
 
     @validator("quantization")
-    def validate_quantization(cls, v: str) -> str:
+    def validate_quantization(cls, v: str) -> str:  # noqa: N805
         """Validate quantization type."""
         valid_types = {"float32", "float16", "int8", "fp32", "fp16"}
         # Normalize fp32/fp16 to float32/float16
