@@ -18,7 +18,6 @@ from typing import Any
 import httpx
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Query
-from pydantic import Field
 
 # Import contracts from shared
 from shared.contracts.search import (
@@ -910,7 +909,11 @@ async def batch_search(request: BatchSearchRequest = Body(...)) -> BatchSearchRe
                     for r in parsed:
                         parsed_results.append(
                             SearchResult(
-                                path=r["path"], chunk_id=r["chunk_id"], score=r["score"], doc_id=r.get("doc_id", ""), content=None
+                                path=r["path"],
+                                chunk_id=r["chunk_id"],
+                                score=r["score"],
+                                doc_id=r.get("doc_id", ""),
+                                content=None,
                             )
                         )
                     break
