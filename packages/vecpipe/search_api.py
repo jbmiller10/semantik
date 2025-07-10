@@ -348,10 +348,9 @@ async def search(
     - **quantization**: Override default quantization
     """
     # Create request object for unified handling
-    # Use top_k as the field name since it's the alias
     request = SearchRequest(
         query=q,
-        top_k=k,  # Use the alias name
+        k=k,  # Use the canonical field name
         search_type=search_type,
         model_name=model_name,
         quantization=quantization,
@@ -546,7 +545,7 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
                         path=parsed_item["path"],
                         chunk_id=parsed_item["chunk_id"],
                         score=parsed_item["score"],
-                        doc_id=parsed_item.get("doc_id", ""),
+                        doc_id=parsed_item.get("doc_id"),
                         content=parsed_item.get("content") if should_include_content else None,
                         metadata=parsed_item.get("metadata"),
                     )
@@ -899,7 +898,7 @@ async def batch_search(request: BatchSearchRequest = Body(...)) -> BatchSearchRe
                             path=payload.get("path", ""),
                             chunk_id=payload.get("chunk_id", ""),
                             score=point["score"],
-                            doc_id=payload.get("doc_id", ""),
+                            doc_id=payload.get("doc_id"),
                             content=None,
                         )
                     )
@@ -912,7 +911,7 @@ async def batch_search(request: BatchSearchRequest = Body(...)) -> BatchSearchRe
                                 path=r["path"],
                                 chunk_id=r["chunk_id"],
                                 score=r["score"],
-                                doc_id=r.get("doc_id", ""),
+                                doc_id=r.get("doc_id"),
                                 content=None,
                             )
                         )
