@@ -144,7 +144,7 @@ class HybridSearchResult(BaseModel):
     path: str
     chunk_id: str
     score: float
-    doc_id: str | None = None
+    doc_id: str
     matched_keywords: list[str] = Field(default_factory=list)
     keyword_score: float | None = None
     combined_score: float | None = None

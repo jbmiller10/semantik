@@ -56,12 +56,7 @@ class TestSearchContracts:
 
     def test_search_result_optional_fields(self):
         """Test SearchResult with optional fields."""
-        result = SearchResult(
-            doc_id="doc123",
-            chunk_id="chunk456",
-            score=0.95,
-            path="/data/test.txt"
-        )
+        result = SearchResult(doc_id="doc123", chunk_id="chunk456", score=0.95, path="/data/test.txt")
         assert result.content is None
         assert result.metadata == {}  # default factory
         assert result.file_name is None
@@ -72,10 +67,7 @@ class TestJobContracts:
 
     def test_create_job_request_defaults(self):
         """Test CreateJobRequest with default values."""
-        req = CreateJobRequest(
-            name="Test Job",
-            directory_path="/data/test"
-        )
+        req = CreateJobRequest(name="Test Job", directory_path="/data/test")
         assert req.name == "Test Job"
         assert req.directory_path == "/data/test"
         assert req.chunk_size == 600
@@ -153,7 +145,7 @@ class TestJobContracts:
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
             directory_path="/test",
-            model_name="test-model"
+            model_name="test-model",
         )
         assert resp.id == "job123"
 
@@ -170,7 +162,7 @@ class TestJobContracts:
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
             directory_path="/test2",
-            model_name="test-model2"
+            model_name="test-model2",
         )
         assert resp2.id == "job456"
 
@@ -180,11 +172,7 @@ class TestErrorContracts:
 
     def test_basic_error_response(self):
         """Test basic ErrorResponse."""
-        error = ErrorResponse(
-            error="TestError",
-            message="Something went wrong",
-            status_code=500
-        )
+        error = ErrorResponse(error="TestError", message="Something went wrong", status_code=500)
         assert error.error == "TestError"
         assert error.message == "Something went wrong"
         assert error.status_code == 500
@@ -192,10 +180,7 @@ class TestErrorContracts:
 
     def test_create_validation_error(self):
         """Test create_validation_error helper."""
-        errors = [
-            ("field1", "Field 1 is required"),
-            ("field2", "Field 2 must be positive")
-        ]
+        errors = [("field1", "Field 1 is required"), ("field2", "Field 2 must be positive")]
         error = create_validation_error(errors)
 
         assert error.error == "ValidationError"
@@ -218,9 +203,7 @@ class TestErrorContracts:
     def test_create_insufficient_memory_error(self):
         """Test create_insufficient_memory_error helper."""
         error = create_insufficient_memory_error(
-            required="4GB",
-            available="2GB",
-            suggestion="Try using a smaller model"
+            required="4GB", available="2GB", suggestion="Try using a smaller model"
         )
 
         assert error.error == "InsufficientResourcesError"
