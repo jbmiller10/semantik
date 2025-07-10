@@ -8,6 +8,8 @@ import asyncio
 import logging
 from typing import Any
 
+import numpy as np
+
 from shared.config.vecpipe import VecpipeConfig
 
 from .base import BaseEmbeddingService
@@ -35,15 +37,19 @@ async def get_embedding_service(config: VecpipeConfig | None = None, **kwargs: A
     """
     global _embedding_service
 
-    async with _service_lock:
-        if _embedding_service is None:
-            logger.info("Creating new embedding service instance")
-            if config is not None:
-                _embedding_service = DenseEmbeddingService(config=config)
-            else:
-                _embedding_service = DenseEmbeddingService(**kwargs)
+    try:
+        async with _service_lock:
+            if _embedding_service is None:
+                logger.info("Creating new embedding service instance")
+                if config is not None:
+                    _embedding_service = DenseEmbeddingService(config=config)
+                else:
+                    _embedding_service = DenseEmbeddingService(**kwargs)
 
-        return _embedding_service
+            return _embedding_service
+    except Exception as e:
+        logger.error(f"Failed to create embedding service: {e}")
+        raise RuntimeError(f"Failed to create embedding service: {e}") from e
 
 
 async def initialize_embedding_service(
@@ -58,15 +64,22 @@ async def initialize_embedding_service(
 
     Returns:
         The initialized embedding service
+
+    Raises:
+        RuntimeError: If service initialization fails
     """
-    # Extract service creation kwargs
-    mock_mode = kwargs.get("mock_mode", False)
-    service = await get_embedding_service(config=config, mock_mode=mock_mode)
+    try:
+        # Extract service creation kwargs
+        mock_mode = kwargs.get("mock_mode", False)
+        service = await get_embedding_service(config=config, mock_mode=mock_mode)
 
-    if not service.is_initialized or (hasattr(service, "model_name") and service.model_name != model_name):
-        await service.initialize(model_name, **kwargs)
+        if not service.is_initialized or (hasattr(service, "model_name") and service.model_name != model_name):
+            await service.initialize(model_name, **kwargs)
 
-    return service
+        return service
+    except Exception as e:
+        logger.error(f"Failed to initialize embedding service with model {model_name}: {e}")
+        raise RuntimeError(f"Failed to initialize embedding service with model {model_name}: {e}") from e
 
 
 def get_embedding_service_sync(config: VecpipeConfig | None = None) -> BaseEmbeddingService:
@@ -80,50 +93,99 @@ def get_embedding_service_sync(config: VecpipeConfig | None = None) -> BaseEmbed
 
     Returns:
         The embedding service instance (may not be initialized)
+
+    Raises:
+        RuntimeError: If service cannot be created or if called from async context
     """
     try:
         loop = asyncio.get_running_loop()
         # We're in an async context, can't use sync
-        raise RuntimeError("Cannot use get_embedding_service_sync() from async context")
-    except RuntimeError:
+        error_msg = "Cannot use get_embedding_service_sync() from async context. Use get_embedding_service() instead."
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
+    except RuntimeError as e:
+        if "async context" in str(e):
+            raise  # Re-raise async context error
         # No running loop, we can proceed
-        pass
 
     # Create new event loop for sync access
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
         return loop.run_until_complete(get_embedding_service(config=config))
+    except Exception as e:
+        logger.error(f"Failed to get embedding service synchronously: {e}")
+        raise RuntimeError(f"Failed to get embedding service synchronously: {e}") from e
     finally:
         loop.close()
         asyncio.set_event_loop(None)
 
 
 # Export convenience functions for common operations
-async def embed_texts(texts: list[str], model_name: str, batch_size: int = 32, **kwargs: Any) -> Any:
+async def embed_texts(texts: list[str], model_name: str, batch_size: int = 32, **kwargs: Any) -> np.ndarray:
     """Convenience function to embed texts with a specific model.
 
     This will initialize the service if needed.
+
+    Args:
+        texts: List of texts to embed
+        model_name: HuggingFace model name
+        batch_size: Batch size for processing
+        **kwargs: Additional options
+
+    Returns:
+        Embeddings array
+
+    Raises:
+        RuntimeError: If embedding fails
     """
-    service = await initialize_embedding_service(model_name, **kwargs)
-    return await service.embed_texts(texts, batch_size, **kwargs)
+    try:
+        service = await initialize_embedding_service(model_name, **kwargs)
+        return await service.embed_texts(texts, batch_size, **kwargs)
+    except Exception as e:
+        logger.error(f"Failed to embed texts with model {model_name}: {e}")
+        raise RuntimeError(f"Failed to embed texts with model {model_name}: {e}") from e
 
 
-async def embed_single(text: str, model_name: str, **kwargs: Any) -> Any:
+async def embed_single(text: str, model_name: str, **kwargs: Any) -> np.ndarray:
     """Convenience function to embed a single text with a specific model.
 
     This will initialize the service if needed.
+
+    Args:
+        text: Text to embed
+        model_name: HuggingFace model name
+        **kwargs: Additional options
+
+    Returns:
+        Single embedding array
+
+    Raises:
+        RuntimeError: If embedding fails
     """
-    service = await initialize_embedding_service(model_name, **kwargs)
-    return await service.embed_single(text, **kwargs)
+    try:
+        service = await initialize_embedding_service(model_name, **kwargs)
+        return await service.embed_single(text, **kwargs)
+    except Exception as e:
+        logger.error(f"Failed to embed single text with model {model_name}: {e}")
+        raise RuntimeError(f"Failed to embed single text with model {model_name}: {e}") from e
 
 
 # Clean up on module unload
 async def cleanup() -> None:
-    """Clean up the embedding service."""
+    """Clean up the embedding service.
+
+    Raises:
+        RuntimeError: If cleanup fails
+    """
     global _embedding_service
 
-    async with _service_lock:
-        if _embedding_service is not None:
-            await _embedding_service.cleanup()
-            _embedding_service = None
+    try:
+        async with _service_lock:
+            if _embedding_service is not None:
+                await _embedding_service.cleanup()
+                _embedding_service = None
+                logger.info("Embedding service cleaned up successfully")
+    except Exception as e:
+        logger.error(f"Failed to clean up embedding service: {e}")
+        raise RuntimeError(f"Failed to clean up embedding service: {e}") from e

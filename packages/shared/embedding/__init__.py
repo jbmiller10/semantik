@@ -7,6 +7,7 @@ from .base import BaseEmbeddingService
 from .dense import (
     DenseEmbeddingService,
     EmbeddingService,
+    EmbeddingServiceProtocol,
     configure_global_embedding_service,
     embedding_service,
     enhanced_embedding_service,
@@ -33,6 +34,7 @@ __all__ = [
     "BaseEmbeddingService",
     "DenseEmbeddingService",
     "EmbeddingService",
+    "EmbeddingServiceProtocol",
     # Service functions
     "get_embedding_service",
     "get_embedding_service_sync",
