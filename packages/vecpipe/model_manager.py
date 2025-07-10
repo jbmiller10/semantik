@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from typing import Any
 
+from shared.config import settings
 from shared.embedding import EmbeddingService
 
 from .memory_utils import InsufficientMemoryError, check_memory_availability, get_gpu_memory_info
@@ -51,7 +52,7 @@ class ModelManager:
         with self.lock:
             if self.embedding_service is None:
                 logger.info("Initializing embedding service")
-                self.embedding_service = EmbeddingService()
+                self.embedding_service = EmbeddingService(mock_mode=settings.USE_MOCK_EMBEDDINGS)
                 self.executor = ThreadPoolExecutor(max_workers=4)
                 self.is_mock_mode = self.embedding_service.mock_mode
 

@@ -36,31 +36,31 @@ class TestEmbeddingIntegration(unittest.TestCase):
         service.get_model_info("dummy", "float32")
         # Note: The loop is closed after each operation in the current implementation
 
-    @patch("torch.cuda.is_available")
-    def test_concurrent_embedding_requests(self, mock_cuda):
+    def test_concurrent_embedding_requests(self):
         """Test handling concurrent embedding requests"""
-        mock_cuda.return_value = False
+        # Patch torch.cuda.is_available before importing the service
+        with patch("torch.cuda.is_available", return_value=False):
+            from shared.embedding import get_embedding_service_sync
 
-        from shared.embedding import get_embedding_service_sync
+            # This tests thread safety of the sync wrapper
+            def make_request(i):
+                try:
+                    service = get_embedding_service_sync()
+                    # Just verify we can get the service
+                    return f"Request {i}: {service.device}"
+                except Exception as e:
+                    return f"Request {i} failed: {e}"
 
-        # This tests thread safety of the sync wrapper
-        def make_request(i):
-            try:
-                service = get_embedding_service_sync()
-                # Just verify we can get the service
-                return f"Request {i}: {service.device}"
-            except Exception as e:
-                return f"Request {i} failed: {e}"
+            # Run multiple requests concurrently
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = [executor.submit(make_request, i) for i in range(10)]
+                results = [f.result() for f in futures]
 
-        # Run multiple requests concurrently
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [executor.submit(make_request, i) for i in range(10)]
-            results = [f.result() for f in futures]
-
-        # All requests should succeed
-        for result in results:
-            assert "failed" not in result
-            assert "cpu" in result
+            # All requests should succeed
+            for result in results:
+                assert "failed" not in result
+                # Device should be cpu since we mocked cuda.is_available to False
+                assert "cpu" in result.lower()
 
     def test_performance_baseline(self):
         """Establish performance baseline for embedding generation"""
