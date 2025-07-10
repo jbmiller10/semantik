@@ -1,8 +1,9 @@
 """Unit tests for shared API contracts."""
 
+from datetime import UTC, datetime
+
 import pytest
 from pydantic import ValidationError
-
 from shared.contracts.errors import (
     ErrorResponse,
     create_insufficient_memory_error,
@@ -10,7 +11,7 @@ from shared.contracts.errors import (
     create_validation_error,
 )
 from shared.contracts.jobs import CreateJobRequest, JobResponse
-from shared.contracts.search import SearchRequest, SearchResponse, SearchResult
+from shared.contracts.search import SearchRequest, SearchResult
 
 
 class TestSearchContracts:
@@ -144,20 +145,18 @@ class TestJobContracts:
 
     def test_job_response_aliasing(self):
         """Test JobResponse field aliasing."""
-        from datetime import datetime
-
         # Test with 'id' field
         resp = JobResponse(
             id="job123",
             name="Test Job",
             status="running",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             directory_path="/test",
             model_name="test-model"
         )
         assert resp.id == "job123"
-        
+
         # Test to_dict includes both id and job_id
         resp_dict = resp.to_dict()
         assert resp_dict["id"] == "job123"
@@ -168,8 +167,8 @@ class TestJobContracts:
             job_id="job456",
             name="Test Job 2",
             status="completed",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             directory_path="/test2",
             model_name="test-model2"
         )
@@ -198,7 +197,7 @@ class TestErrorContracts:
             ("field2", "Field 2 must be positive")
         ]
         error = create_validation_error(errors)
-        
+
         assert error.error == "ValidationError"
         assert error.message == "Validation failed"
         assert error.status_code == 400
@@ -209,7 +208,7 @@ class TestErrorContracts:
     def test_create_not_found_error(self):
         """Test create_not_found_error helper."""
         error = create_not_found_error("Job", "job123")
-        
+
         assert error.error == "NotFoundError"
         assert error.message == "Job not found"
         assert error.resource_type == "Job"
@@ -223,7 +222,7 @@ class TestErrorContracts:
             available="2GB",
             suggestion="Try using a smaller model"
         )
-        
+
         assert error.error == "InsufficientResourcesError"
         assert error.message == "Insufficient GPU memory for operation"
         assert error.resource_type == "gpu_memory"
