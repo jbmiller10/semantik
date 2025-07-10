@@ -82,6 +82,7 @@ class TestWebuiHealthEndpoints:
 
         # Reset the singleton to ensure our mock takes effect
         import shared.embedding.service
+
         original_service = shared.embedding.service._embedding_service
         shared.embedding.service._embedding_service = None
 
