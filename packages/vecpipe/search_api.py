@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from prometheus_client import Counter, Histogram
 from shared.config import settings
-from shared.embedding.service import get_embedding_service_sync
+from shared.embedding.service import get_embedding_service
 from shared.metrics.prometheus import metrics_collector, registry, start_metrics_server
 
 from .hybrid_search import HybridSearchEngine
@@ -198,7 +198,7 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     from shared.embedding.dense import EmbeddingServiceProtocol
 
     # Create embedding service using the factory function
-    base_service = get_embedding_service_sync(config=settings)
+    base_service = await get_embedding_service(config=settings)
 
     # Create a wrapper that implements the expected protocol
     class LegacyEmbeddingServiceWrapper:
