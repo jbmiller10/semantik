@@ -40,7 +40,7 @@ class TestEmbeddingIntegration(unittest.TestCase):
         """Test handling concurrent embedding requests"""
         # This tests thread safety of the sync wrapper
         from shared.embedding import get_embedding_service_sync
-        
+
         def make_request(i):
             try:
                 service = get_embedding_service_sync()
@@ -58,7 +58,7 @@ class TestEmbeddingIntegration(unittest.TestCase):
         for result in results:
             assert "failed" not in result
             # Just check that device is available (either cpu or cuda)
-            assert ("cpu" in result.lower() or "cuda" in result.lower())
+            assert "cpu" in result.lower() or "cuda" in result.lower()
 
     def test_performance_baseline(self):
         """Establish performance baseline for embedding generation"""

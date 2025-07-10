@@ -6,7 +6,6 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 from shared.embedding import POPULAR_MODELS, embedding_service
-
 from webui.auth import get_current_user
 
 router = APIRouter(prefix="/api", tags=["models"])

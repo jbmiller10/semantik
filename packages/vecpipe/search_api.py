@@ -533,7 +533,7 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
                     path=payload.get("path", ""),
                     chunk_id=payload.get("chunk_id", ""),
                     score=point["score"],
-                    doc_id=payload.get("doc_id"),
+                    doc_id=payload["doc_id"],
                     content=payload.get("content") if should_include_content else None,
                     metadata=payload.get("metadata"),
                 )
@@ -545,7 +545,7 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
                         path=parsed_item["path"],
                         chunk_id=parsed_item["chunk_id"],
                         score=parsed_item["score"],
-                        doc_id=parsed_item.get("doc_id"),
+                        doc_id=parsed_item["doc_id"],
                         content=parsed_item.get("content") if should_include_content else None,
                         metadata=parsed_item.get("metadata"),
                     )
@@ -818,7 +818,7 @@ async def hybrid_search(
                 path=r["payload"].get("path", ""),
                 chunk_id=r["payload"].get("chunk_id", ""),
                 score=r["score"],
-                doc_id=r["payload"].get("doc_id"),
+                doc_id=r["payload"]["doc_id"],
                 matched_keywords=r.get("matched_keywords", []),
                 keyword_score=r.get("keyword_score"),
                 combined_score=r.get("combined_score"),
@@ -898,7 +898,7 @@ async def batch_search(request: BatchSearchRequest = Body(...)) -> BatchSearchRe
                             path=payload.get("path", ""),
                             chunk_id=payload.get("chunk_id", ""),
                             score=point["score"],
-                            doc_id=payload.get("doc_id"),
+                            doc_id=payload["doc_id"],
                             content=None,
                         )
                     )
@@ -911,7 +911,7 @@ async def batch_search(request: BatchSearchRequest = Body(...)) -> BatchSearchRe
                                 path=r["path"],
                                 chunk_id=r["chunk_id"],
                                 score=r["score"],
-                                doc_id=r.get("doc_id"),
+                                doc_id=r["doc_id"],
                                 content=None,
                             )
                         )
@@ -976,7 +976,7 @@ async def keyword_search(
                 path=r["payload"].get("path", ""),
                 chunk_id=r["payload"].get("chunk_id", ""),
                 score=0.0,  # No vector score for keyword-only search
-                doc_id=r["payload"].get("doc_id"),
+                doc_id=r["payload"]["doc_id"],
                 matched_keywords=r.get("matched_keywords", []),
             )
             hybrid_results.append(result)
