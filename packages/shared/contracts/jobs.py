@@ -39,7 +39,7 @@ class CreateJobRequest(BaseModel):
     metadata: dict[str, Any] | None = Field(None, description="Additional metadata")
 
     @validator("chunk_size")
-    def validate_chunk_size(cls, v: int) -> int:  # noqa: N805
+    def validate_chunk_size(cls: type["CreateJobRequest"], v: int) -> int:  # noqa: N805
         """Validate chunk size is within reasonable bounds."""
         if v < 100:
             raise ValueError("chunk_size must be at least 100 tokens")
@@ -48,7 +48,7 @@ class CreateJobRequest(BaseModel):
         return v
 
     @validator("chunk_overlap")
-    def validate_chunk_overlap(cls, v: int, values: dict[str, Any]) -> int:  # noqa: N805
+    def validate_chunk_overlap(cls: type["CreateJobRequest"], v: int, values: dict[str, Any]) -> int:  # noqa: N805
         """Validate chunk overlap is less than chunk size."""
         if v < 0:
             raise ValueError("chunk_overlap cannot be negative")
@@ -57,12 +57,37 @@ class CreateJobRequest(BaseModel):
         return v
 
     @validator("directory_path")
-    def validate_path(cls, v: str) -> str:  # noqa: N805
-        """Clean and validate directory path."""
-        return v.strip()
+    def validate_path(cls: type["CreateJobRequest"], v: str) -> str:  # noqa: N805
+        """Clean and validate directory path with security checks."""
+        import os
+        from pathlib import Path
+        
+        # Strip whitespace
+        cleaned_path = v.strip()
+        
+        # Check for empty path
+        if not cleaned_path:
+            raise ValueError("Directory path cannot be empty")
+        
+        # Check for path traversal attempts
+        if ".." in cleaned_path or cleaned_path.startswith("~"):
+            raise ValueError("Path traversal not allowed")
+        
+        # Check if it's a relative path before resolving
+        path_obj = Path(cleaned_path)
+        if not path_obj.is_absolute():
+            raise ValueError("Only absolute paths are allowed")
+        
+        # Normalize the path and resolve any symbolic links
+        try:
+            resolved_path = path_obj.resolve()
+        except (ValueError, RuntimeError) as e:
+            raise ValueError(f"Invalid directory path: {e}")
+        
+        return str(resolved_path)
 
     @validator("quantization")
-    def validate_quantization(cls, v: str) -> str:  # noqa: N805
+    def validate_quantization(cls: type["CreateJobRequest"], v: str) -> str:  # noqa: N805
         """Validate quantization type."""
         valid_types = {"float32", "float16", "int8", "fp32", "fp16"}
         # Normalize fp32/fp16 to float32/float16
