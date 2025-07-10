@@ -316,16 +316,50 @@ async def root() -> dict[str, Any]:
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
-    """Simple health check endpoint"""
+async def health() -> dict[str, Any]:
+    """Comprehensive health check endpoint"""
+    health_status = {"status": "healthy", "components": {}}
+
+    # Check Qdrant client
     try:
-        # Just check if the service is up
         if qdrant_client is None:
-            raise HTTPException(status_code=503, detail="Service not ready")
-        return {"status": "healthy"}
+            health_status["components"]["qdrant"] = {"status": "unhealthy", "error": "Client not initialized"}
+            health_status["status"] = "unhealthy"
+        else:
+            # Try to get collection info to verify connection
+            collections = await qdrant_client.get_collections()
+            health_status["components"]["qdrant"] = {
+                "status": "healthy",
+                "collections_count": len(collections.collections),
+            }
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        raise HTTPException(status_code=503, detail=f"Service unavailable: {str(e)}") from e
+        health_status["components"]["qdrant"] = {"status": "unhealthy", "error": str(e)}
+        health_status["status"] = "unhealthy"
+
+    # Check embedding service
+    try:
+        if embedding_service is None:
+            health_status["components"]["embedding"] = {"status": "unhealthy", "error": "Service not initialized"}
+            health_status["status"] = "degraded" if health_status["status"] == "healthy" else "unhealthy"
+        else:
+            if embedding_service.is_initialized:
+                model_info = embedding_service.get_model_info()
+                health_status["components"]["embedding"] = {
+                    "status": "healthy",
+                    "model": model_info.get("model_name"),
+                    "dimension": model_info.get("dimension"),
+                }
+            else:
+                health_status["components"]["embedding"] = {"status": "unhealthy", "error": "Service not initialized"}
+                health_status["status"] = "degraded" if health_status["status"] == "healthy" else "unhealthy"
+    except Exception as e:
+        health_status["components"]["embedding"] = {"status": "unhealthy", "error": str(e)}
+        health_status["status"] = "degraded" if health_status["status"] == "healthy" else "unhealthy"
+
+    if health_status["status"] == "unhealthy":
+        raise HTTPException(status_code=503, detail=health_status)
+
+    return health_status
 
 
 @app.get("/search", response_model=SearchResponse)

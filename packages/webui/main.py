@@ -28,6 +28,7 @@ from .api import (  # noqa: E402
     collections,
     documents,
     files,
+    health,
     internal,
     jobs,
     metrics,
@@ -105,6 +106,7 @@ def create_app() -> FastAPI:
     app.include_router(models.router)
     app.include_router(search.router)
     app.include_router(documents.router)
+    app.include_router(health.router)
     app.include_router(internal.router)
     app.include_router(root.router)  # No prefix for static + root
 
