@@ -92,7 +92,7 @@ def test_model_loading(model_name: str, quantization: str, has_gpu: bool) -> boo
     print(f"\n4. Testing Model Loading: {model_name}")
 
     try:
-        from webui.embedding_service import EmbeddingService
+        from shared.embedding import EmbeddingService
 
         print(f"   Loading with {quantization} quantization...")
         service = EmbeddingService()

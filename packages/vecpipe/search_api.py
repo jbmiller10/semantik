@@ -24,8 +24,8 @@ from pydantic import BaseModel, Field
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from prometheus_client import Counter, Histogram
 from shared.config import settings
+from shared.embedding import EmbeddingService
 from shared.metrics.prometheus import metrics_collector, registry, start_metrics_server
-from webui.embedding_service import EmbeddingService
 
 from .hybrid_search import HybridSearchEngine
 from .memory_utils import InsufficientMemoryError
@@ -1024,7 +1024,7 @@ async def collection_info() -> dict[str, Any]:
 @app.get("/models")
 async def list_models() -> dict[str, Any]:
     """List available embedding models and their properties"""
-    from webui.embedding_service import QUANTIZED_MODEL_INFO
+    from shared.embedding import QUANTIZED_MODEL_INFO
 
     models = []
     for model_name, info in QUANTIZED_MODEL_INFO.items():

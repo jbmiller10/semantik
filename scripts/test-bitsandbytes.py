@@ -125,7 +125,7 @@ def test_embedding_service():
         # Add packages to path
         sys.path.insert(0, "/app/packages")
 
-        from webui.embedding_service import EmbeddingService
+        from shared.embedding import EmbeddingService
 
         service = EmbeddingService()
 
