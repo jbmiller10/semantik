@@ -58,7 +58,10 @@ class CreateJobRequest(BaseModel):
 
     @validator("directory_path")
     def validate_path(cls: type["CreateJobRequest"], v: str) -> str:  # noqa: N805
-        """Clean and validate directory path with security checks."""
+        """Clean and validate directory path with security checks.
+
+        Note: This validator resolves symbolic links to their real paths,
+        which may change the expected path but provides better security."""
         from pathlib import Path
 
         # Strip whitespace
@@ -88,15 +91,42 @@ class CreateJobRequest(BaseModel):
     @validator("quantization")
     def validate_quantization(cls: type["CreateJobRequest"], v: str) -> str:  # noqa: N805
         """Validate quantization type."""
-        valid_types = {"float32", "float16", "int8", "fp32", "fp16"}
+        # Accept both original and shorthand formats
+        accepted_values = {"float32", "float16", "int8", "fp32", "fp16"}
         # Normalize fp32/fp16 to float32/float16
         if v == "fp32":
             return "float32"
         if v == "fp16":
             return "float16"
-        if v not in valid_types:
-            raise ValueError(f"Invalid quantization: {v}. Must be one of {valid_types}")
+        if v not in accepted_values:
+            raise ValueError(
+                f"Invalid quantization: {v}. Must be one of: float32, float16, int8 (also accepts fp32, fp16)"
+            )
         return v
+
+    @validator("file_extensions")
+    def validate_file_extensions(cls: type["CreateJobRequest"], v: list[str] | None) -> list[str] | None:  # noqa: N805
+        """Validate file extensions format."""
+        if v is None:
+            return v
+
+        validated_extensions = []
+        for ext in v:
+            # Ensure extension starts with dot
+            if not ext.startswith("."):
+                ext = f".{ext}"
+
+            # Validate extension format
+            if len(ext) < 2:  # At least . and one character
+                raise ValueError(f"Invalid file extension: {ext}")
+            if len(ext) > 10:  # Reasonable max length
+                raise ValueError(f"File extension too long: {ext}")
+            if not ext[1:].replace("_", "").isalnum():
+                raise ValueError(f"Invalid characters in file extension: {ext}")
+
+            validated_extensions.append(ext.lower())
+
+        return validated_extensions
 
 
 class AddToCollectionRequest(BaseModel):
@@ -133,6 +163,7 @@ class JobResponse(BaseModel):
     chunk_overlap: int | None = Field(None, description="Chunk overlap")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
     user_id: str | None = Field(None, description="User ID who created the job")
+    api_version: str = Field(default="1.0", description="API version")
 
     class Config:
         populate_by_name = True  # Allow both 'id' and 'job_id', 'error' and 'error_message'
@@ -156,6 +187,7 @@ class JobListResponse(BaseModel):
     page: int = Field(1, description="Current page number")
     page_size: int = Field(100, description="Number of items per page")
     has_more: bool = Field(False, description="Whether more pages are available")
+    api_version: str = Field(default="1.0", description="API version")
 
 
 class JobMetrics(BaseModel):

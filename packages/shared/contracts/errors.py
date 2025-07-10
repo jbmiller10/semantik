@@ -130,9 +130,11 @@ def create_not_found_error(resource_type: str, resource_id: str) -> NotFoundErro
     )
 
 
-def create_insufficient_memory_error(required: str, available: str, suggestion: str) -> InsufficientResourcesError:
+def create_insufficient_memory_error(
+    required: str, available: str, suggestion: str
+) -> InsufficientResourcesErrorResponse:
     """Create an insufficient memory error response."""
-    return InsufficientResourcesError(
+    return InsufficientResourcesErrorResponse(
         error="InsufficientResourcesError",
         message="Insufficient GPU memory for operation",
         resource_type="gpu_memory",
