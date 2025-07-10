@@ -308,7 +308,8 @@ class TestValidation:
 
         assert response.status_code == 422
         errors = response.json()["detail"]
-        assert any("chunk_size must be at least 100" in str(error) for error in errors)
+        assert any(("chunk_size must be at least 100" in str(error) or 
+                    "Input should be greater than or equal to 100" in str(error)) for error in errors)
 
     def test_create_job_invalid_chunk_overlap(self, test_client: TestClient):
         """Test job creation with invalid chunk overlap"""
