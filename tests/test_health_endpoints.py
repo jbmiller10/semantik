@@ -71,24 +71,35 @@ class TestWebuiHealthEndpoints:
             assert "message" in data
 
     def test_embedding_health_service_error(self, test_client):
-        """Test embedding health when service throws error"""
+        """Test embedding health when service throws error or is not initialized"""
+
+        # In CI environment with USE_MOCK_EMBEDDINGS=true, the service may be created
+        # but not initialized, or we may successfully mock an exception.
+        # This test handles both cases.
 
         # Mock get_embedding_service to raise an exception
         async def async_error(*_args, **_kwargs):
             raise Exception("Service error")
 
-        # We need to patch the function where it's actually used in the health module
-        # The health endpoint imports it at the top, so we patch it in the health module directly
+        # Patch the function in the health module
         with patch("packages.webui.api.health.get_embedding_service", side_effect=async_error):
             response = test_client.get("/api/health/embedding")
             assert response.status_code == 200
             data = response.json()
+
+            # The endpoint should return unhealthy status
             assert data["status"] == "unhealthy"
-            # The response should either have 'error' or 'message' when unhealthy
+
+            # It should have either 'error' (exception case) or 'message' (uninitialized case)
             assert "error" in data or "message" in data
-            # If it has an error field, check it contains expected text
+
+            # Verify the response indicates a problem
             if "error" in data:
+                # Exception was thrown
                 assert "Failed to access embedding service" in data["error"]
+            elif "message" in data:
+                # Service created but not initialized
+                assert "not initialized" in data["message"].lower()
 
     def test_readiness_check_ready(self, test_client, mock_embedding_service):
         """Test readiness check when service is ready"""
