@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from prometheus_client import Counter, Histogram
 from shared.config import settings
-from shared.embedding import EmbeddingService
+from shared.embedding.service import get_embedding_service_sync
 from shared.metrics.prometheus import metrics_collector, registry, start_metrics_server
 
 from .hybrid_search import HybridSearchEngine
@@ -171,7 +171,7 @@ class HybridSearchResponse(BaseModel):
 # Global resources
 qdrant_client: httpx.AsyncClient | None = None
 model_manager: Any | None = None  # Will be ModelManager once imported
-embedding_service: EmbeddingService | None = None
+embedding_service: Any | None = None  # Will be BaseEmbeddingService once initialized
 executor: ThreadPoolExecutor | None = None
 
 
@@ -195,7 +195,42 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     logger.info(f"Initialized model manager with {unload_after}s inactivity timeout")
 
     # Initialize embedding service for backward compatibility
-    embedding_service = EmbeddingService(mock_mode=settings.USE_MOCK_EMBEDDINGS)
+    from shared.embedding.dense import EmbeddingServiceProtocol
+
+    # Create embedding service using the factory function
+    base_service = get_embedding_service_sync(config=settings)
+
+    # Create a wrapper that implements the expected protocol
+    class LegacyEmbeddingServiceWrapper:
+        def __init__(self, service: Any):
+            self._service = service
+            self.mock_mode = settings.USE_MOCK_EMBEDDINGS
+            self.allow_quantization_fallback = True
+
+        @property
+        def current_model_name(self) -> str | None:
+            return getattr(self._service, "model_name", None)
+
+        @property
+        def current_quantization(self) -> str:
+            return getattr(self._service, "quantization", "float32")
+
+        @property
+        def current_model(self) -> Any:
+            return getattr(self._service, "model", None)
+
+        @property
+        def current_tokenizer(self) -> Any:
+            return getattr(self._service, "tokenizer", None)
+
+        @property
+        def device(self) -> str:
+            return getattr(self._service, "device", "cpu")
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(self._service, name)
+
+    embedding_service = LegacyEmbeddingServiceWrapper(base_service)
     logger.info(f"Initialized embedding service (mock_mode={settings.USE_MOCK_EMBEDDINGS})")
 
     # Initialize thread pool executor for async operations
@@ -333,6 +368,19 @@ async def root() -> dict[str, Any]:
             }
 
         return health_info
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        raise HTTPException(status_code=503, detail=f"Service unavailable: {str(e)}") from e
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    """Simple health check endpoint"""
+    try:
+        # Just check if the service is up
+        if qdrant_client is None:
+            raise HTTPException(status_code=503, detail="Service not ready")
+        return {"status": "healthy"}
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         raise HTTPException(status_code=503, detail=f"Service unavailable: {str(e)}") from e
