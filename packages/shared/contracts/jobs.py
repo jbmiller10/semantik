@@ -23,17 +23,17 @@ class JobStatus(str, Enum):
 class CreateJobRequest(BaseModel):
     """Create job request model."""
 
-    name: str = Field(..., min_length=1, description="Job name")
-    description: str = Field("", description="Job description")
-    directory_path: str = Field(..., min_length=1, description="Directory path to process")
-    model_name: str = Field("Qwen/Qwen3-Embedding-0.6B", description="Embedding model to use")
+    name: str = Field(..., min_length=1, max_length=255, description="Job name")
+    description: str = Field("", max_length=1000, description="Job description")
+    directory_path: str = Field(..., min_length=1, max_length=4096, description="Directory path to process")
+    model_name: str = Field("Qwen/Qwen3-Embedding-0.6B", max_length=500, description="Embedding model to use")
     chunk_size: int = Field(600, ge=100, le=50000, description="Chunk size in tokens")
     chunk_overlap: int = Field(200, ge=0, description="Chunk overlap in tokens")
     batch_size: int = Field(96, ge=1, description="Batch size for processing")
     vector_dim: int | None = Field(None, description="Vector dimension (auto-detected if not provided)")
-    quantization: str = Field("float32", description="Model quantization: float32, float16, or int8")
-    instruction: str | None = Field(None, description="Custom instruction for embeddings")
-    job_id: str | None = Field(None, description="Pre-generated job ID (for WebSocket connection)")
+    quantization: str = Field("float32", max_length=20, description="Model quantization: float32, float16, or int8")
+    instruction: str | None = Field(None, max_length=1000, description="Custom instruction for embeddings")
+    job_id: str | None = Field(None, max_length=200, description="Pre-generated job ID (for WebSocket connection)")
     scan_subdirs: bool = Field(True, description="Scan subdirectories")
     file_extensions: list[str] | None = Field(None, description="File extensions to process")
     metadata: dict[str, Any] | None = Field(None, description="Additional metadata")
@@ -102,30 +102,32 @@ class CreateJobRequest(BaseModel):
 class AddToCollectionRequest(BaseModel):
     """Request to add documents to an existing collection."""
 
-    collection_name: str = Field(..., min_length=1, description="Collection name")
-    directory_path: str = Field(..., min_length=1, description="Directory path to process")
-    description: str = Field("", description="Description of the addition")
-    job_id: str | None = Field(None, description="Pre-generated job ID (for WebSocket connection)")
+    collection_name: str = Field(..., min_length=1, max_length=200, description="Collection name")
+    directory_path: str = Field(..., min_length=1, max_length=4096, description="Directory path to process")
+    description: str = Field("", max_length=1000, description="Description of the addition")
+    job_id: str | None = Field(None, max_length=200, description="Pre-generated job ID (for WebSocket connection)")
 
 
 class JobResponse(BaseModel):
     """Job information response."""
 
-    id: str = Field(description="Job ID", alias="job_id")
-    name: str = Field(description="Job name")
-    status: str = Field(description="Job status")  # Using str to support both enum and legacy string values
+    id: str = Field(..., max_length=200, description="Job ID", alias="job_id")
+    name: str = Field(..., max_length=255, description="Job name")
+    status: str = Field(
+        ..., max_length=50, description="Job status"
+    )  # Using str to support both enum and legacy string values
     created_at: datetime = Field(description="Creation timestamp")
     updated_at: datetime = Field(description="Last update timestamp")
     completed_at: datetime | None = Field(None, description="Completion timestamp")
-    directory_path: str = Field(description="Directory being processed")
-    error: str | None = Field(None, description="Error message if failed", alias="error_message")
+    directory_path: str = Field(..., max_length=4096, description="Directory being processed")
+    error: str | None = Field(None, max_length=2000, description="Error message if failed", alias="error_message")
     progress: float = Field(0.0, ge=0.0, le=1.0, description="Progress percentage")
     total_files: int = Field(0, description="Total number of files to process")
     processed_files: int = Field(0, description="Number of processed files")
     failed_files: int = Field(0, description="Number of failed files")
-    current_file: str | None = Field(None, description="Currently processing file")
-    model_name: str = Field(description="Embedding model used")
-    quantization: str | None = Field(None, description="Model quantization")
+    current_file: str | None = Field(None, max_length=4096, description="Currently processing file")
+    model_name: str = Field(..., max_length=500, description="Embedding model used")
+    quantization: str | None = Field(None, max_length=20, description="Model quantization")
     batch_size: int | None = Field(None, description="Batch size")
     chunk_size: int | None = Field(None, description="Chunk size")
     chunk_overlap: int | None = Field(None, description="Chunk overlap")
@@ -169,21 +171,21 @@ class JobMetrics(BaseModel):
 class JobUpdateRequest(BaseModel):
     """Request to update job status or progress."""
 
-    status: str | None = Field(None, description="New status")
+    status: str | None = Field(None, max_length=50, description="New status")
     progress: float | None = Field(None, ge=0.0, le=1.0, description="Progress percentage")
     processed_files: int | None = Field(None, ge=0, description="Number of processed files")
     failed_files: int | None = Field(None, ge=0, description="Number of failed files")
-    current_file: str | None = Field(None, description="Currently processing file")
-    error: str | None = Field(None, description="Error message")
+    current_file: str | None = Field(None, max_length=4096, description="Currently processing file")
+    error: str | None = Field(None, max_length=2000, description="Error message")
     metrics: JobMetrics | None = Field(None, description="Processing metrics")
 
 
 class JobFilter(BaseModel):
     """Filter criteria for listing jobs."""
 
-    status: str | None = Field(None, description="Filter by status")
-    user_id: str | None = Field(None, description="Filter by user ID")
+    status: str | None = Field(None, max_length=50, description="Filter by status")
+    user_id: str | None = Field(None, max_length=200, description="Filter by user ID")
     created_after: datetime | None = Field(None, description="Filter by creation date")
     created_before: datetime | None = Field(None, description="Filter by creation date")
-    name_contains: str | None = Field(None, description="Filter by name substring")
-    model_name: str | None = Field(None, description="Filter by model name")
+    name_contains: str | None = Field(None, max_length=255, description="Filter by name substring")
+    model_name: str | None = Field(None, max_length=500, description="Filter by model name")

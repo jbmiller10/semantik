@@ -66,19 +66,19 @@ class SearchRequest(BaseModel):
 class SearchResult(BaseModel):
     """Individual search result."""
 
-    doc_id: str
-    chunk_id: str
+    doc_id: str = Field(..., max_length=200)
+    chunk_id: str = Field(..., max_length=200)
     score: float
-    path: str = Field(description="File path")
-    content: str | None = Field(None, description="Chunk content (if include_content=True)")
+    path: str = Field(..., max_length=4096, description="File path")
+    content: str | None = Field(None, max_length=10000, description="Chunk content (if include_content=True)")
     metadata: dict[str, Any] | None = Field(default_factory=dict)
     highlights: list[str] | None = None
     # Additional fields for frontend compatibility
-    file_path: str | None = None  # Duplicate of path for frontend
-    file_name: str | None = None
+    file_path: str | None = Field(None, max_length=4096)  # Duplicate of path for frontend
+    file_name: str | None = Field(None, max_length=255)
     chunk_index: int | None = None
     total_chunks: int | None = None
-    job_id: str | None = None
+    job_id: str | None = Field(None, max_length=200)
 
 
 class SearchResponse(BaseModel):
@@ -123,12 +123,21 @@ class SearchResponse(BaseModel):
 class BatchSearchRequest(BaseModel):
     """Batch search request for multiple queries."""
 
-    queries: list[str] = Field(..., description="List of search queries")
+    queries: list[str] = Field(..., min_length=1, max_length=100, description="List of search queries (max 100)")
     k: int = Field(10, ge=1, le=100, description="Number of results per query")
-    search_type: str = Field("semantic", description="Type of search")
-    model_name: str | None = Field(None, description="Override embedding model")
-    quantization: str | None = Field(None, description="Override quantization")
-    collection: str | None = Field(None, description="Collection name")
+    search_type: str = Field("semantic", max_length=50, description="Type of search")
+    model_name: str | None = Field(None, max_length=500, description="Override embedding model")
+    quantization: str | None = Field(None, max_length=20, description="Override quantization")
+    collection: str | None = Field(None, max_length=200, description="Collection name")
+
+    @validator("queries", each_item=True)
+    def validate_query_length(cls: type["BatchSearchRequest"], v: str) -> str:  # noqa: N805
+        """Validate each query doesn't exceed max length."""
+        if len(v) > 1000:
+            raise ValueError("Each query must not exceed 1000 characters")
+        if len(v) < 1:
+            raise ValueError("Each query must have at least 1 character")
+        return v
 
 
 class BatchSearchResponse(BaseModel):
@@ -141,15 +150,15 @@ class BatchSearchResponse(BaseModel):
 class HybridSearchResult(BaseModel):
     """Hybrid search result with keyword matching information."""
 
-    path: str
-    chunk_id: str
+    path: str = Field(..., max_length=4096)
+    chunk_id: str = Field(..., max_length=200)
     score: float
-    doc_id: str
+    doc_id: str = Field(..., max_length=200)
     matched_keywords: list[str] = Field(default_factory=list)
     keyword_score: float | None = None
     combined_score: float | None = None
     metadata: dict[str, Any] | None = None
-    content: str | None = None
+    content: str | None = Field(None, max_length=10000)
 
 
 class HybridSearchResponse(BaseModel):
@@ -165,15 +174,15 @@ class HybridSearchResponse(BaseModel):
 class HybridSearchRequest(BaseModel):
     """Hybrid search request model (simplified version for backward compatibility)."""
 
-    query: str
+    query: str = Field(..., min_length=1, max_length=1000)
     k: int = Field(default=10, ge=1, le=100)
-    job_id: str | None = None
-    mode: str = Field(default="filter", description="Hybrid search mode: 'filter' or 'rerank'")
-    keyword_mode: str = Field(default="any", description="Keyword matching: 'any' or 'all'")
+    job_id: str | None = Field(None, max_length=200)
+    mode: str = Field(default="filter", max_length=20, description="Hybrid search mode: 'filter' or 'rerank'")
+    keyword_mode: str = Field(default="any", max_length=20, description="Keyword matching: 'any' or 'all'")
     score_threshold: float | None = None
-    collection: str | None = None
-    model_name: str | None = None
-    quantization: str | None = None
+    collection: str | None = Field(None, max_length=200)
+    model_name: str | None = Field(None, max_length=500)
+    quantization: str | None = Field(None, max_length=20)
 
 
 # Additional models for specialized endpoints
@@ -182,12 +191,12 @@ class HybridSearchRequest(BaseModel):
 class PreloadModelRequest(BaseModel):
     """Request to preload a model for faster initial searches."""
 
-    model_name: str = Field(..., description="Model name to preload")
-    quantization: str = Field(default="float16", description="Quantization type")
+    model_name: str = Field(..., max_length=500, description="Model name to preload")
+    quantization: str = Field(default="float16", max_length=20, description="Quantization type")
 
 
 class PreloadModelResponse(BaseModel):
     """Response for model preload request."""
 
-    status: str
-    message: str
+    status: str = Field(..., max_length=50)
+    message: str = Field(..., max_length=500)

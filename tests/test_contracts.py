@@ -213,3 +213,362 @@ class TestErrorContracts:
         assert error.available == "2GB"
         assert error.suggestion == "Try using a smaller model"
         assert error.status_code == 507
+
+
+class TestSearchContractsExtended:
+    """Extended tests for search contracts including edge cases."""
+
+    def test_search_result_required_doc_id(self):
+        """Test that doc_id is required in SearchResult."""
+        # Should fail without doc_id
+        with pytest.raises(ValidationError) as exc_info:
+            SearchResult(chunk_id="chunk1", score=0.95, path="/test.txt")
+        assert "doc_id" in str(exc_info.value)
+
+    def test_hybrid_search_result_required_doc_id(self):
+        """Test that doc_id is required in HybridSearchResult."""
+        from shared.contracts.search import HybridSearchResult
+
+        # Should fail without doc_id
+        with pytest.raises(ValidationError) as exc_info:
+            HybridSearchResult(path="/test.txt", chunk_id="chunk1", score=0.95)
+        assert "doc_id" in str(exc_info.value)
+
+        # Should succeed with doc_id
+        result = HybridSearchResult(
+            path="/test.txt",
+            chunk_id="chunk1",
+            score=0.95,
+            doc_id="doc123",
+            matched_keywords=["test", "keyword"],
+            keyword_score=0.8,
+            combined_score=0.875,
+        )
+        assert result.doc_id == "doc123"
+        assert result.matched_keywords == ["test", "keyword"]
+
+    def test_batch_search_request(self):
+        """Test BatchSearchRequest validation."""
+        from shared.contracts.search import BatchSearchRequest
+
+        # Valid batch request
+        batch = BatchSearchRequest(queries=["query1", "query2", "query3"], k=5, search_type="semantic")
+        assert len(batch.queries) == 3
+        assert batch.k == 5
+
+        # Empty queries should fail
+        with pytest.raises(ValidationError) as exc_info:
+            BatchSearchRequest(queries=[])
+        assert "at least 1 item" in str(exc_info.value)
+
+        # Too many queries should fail
+        with pytest.raises(ValidationError) as exc_info:
+            BatchSearchRequest(queries=["q"] * 101)
+        assert "at most 100 items" in str(exc_info.value)
+
+    def test_hybrid_search_request(self):
+        """Test HybridSearchRequest validation."""
+        from shared.contracts.search import HybridSearchRequest
+
+        req = HybridSearchRequest(query="test query", k=15, mode="rerank", keyword_mode="all", score_threshold=0.7)
+        assert req.query == "test query"
+        assert req.k == 15
+        assert req.mode == "rerank"
+        assert req.keyword_mode == "all"
+
+    def test_preload_model_request_response(self):
+        """Test PreloadModelRequest and Response."""
+        from shared.contracts.search import PreloadModelRequest, PreloadModelResponse
+
+        # Request
+        req = PreloadModelRequest(model_name="sentence-transformers/all-MiniLM-L6-v2", quantization="float16")
+        assert req.model_name == "sentence-transformers/all-MiniLM-L6-v2"
+        assert req.quantization == "float16"
+
+        # Response
+        resp = PreloadModelResponse(status="success", message="Model preloaded successfully")
+        assert resp.status == "success"
+
+    def test_search_response(self):
+        """Test SearchResponse model."""
+        from shared.contracts.search import SearchResponse
+
+        response = SearchResponse(
+            query="test query",
+            results=[
+                SearchResult(doc_id="doc1", chunk_id="chunk1", score=0.95, path="/test1.txt"),
+                SearchResult(doc_id="doc2", chunk_id="chunk2", score=0.90, path="/test2.txt"),
+            ],
+            num_results=2,
+            search_type="semantic",
+            model_used="test-model",
+            embedding_time_ms=10.5,
+            search_time_ms=5.3,
+            reranking_used=True,
+            reranker_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+            reranking_time_ms=15.2,
+        )
+        assert len(response.results) == 2
+        assert response.embedding_time_ms == 10.5
+        assert response.reranking_used is True
+
+    def test_populate_by_name_behavior(self):
+        """Test that populate_by_name allows both field names."""
+        from shared.contracts.search import SearchRequest
+
+        # Should accept both 'k' and 'top_k'
+        req1 = SearchRequest.model_validate({"query": "test", "k": 5})
+        req2 = SearchRequest.model_validate({"query": "test", "top_k": 5})
+        assert req1.k == 5
+        assert req2.k == 5
+
+        # Should not accept random field names
+        with pytest.raises(ValidationError):
+            SearchRequest.model_validate({"query": "test", "random_field": "value"})
+
+
+class TestJobContractsExtended:
+    """Extended tests for job contracts."""
+
+    def test_job_list_response(self):
+        """Test JobListResponse model."""
+        from shared.contracts.jobs import JobListResponse
+
+        response = JobListResponse(
+            jobs=[
+                JobResponse(
+                    id="job1",
+                    name="Job 1",
+                    status="completed",
+                    created_at=datetime.now(UTC),
+                    updated_at=datetime.now(UTC),
+                    directory_path="/data",
+                    model_name="test-model",
+                )
+            ],
+            total=1,
+            page=1,
+            page_size=100,
+            has_more=False,
+        )
+        assert len(response.jobs) == 1
+        assert response.total == 1
+        assert response.has_more is False
+
+    def test_job_metrics(self):
+        """Test JobMetrics model."""
+        from shared.contracts.jobs import JobMetrics
+
+        metrics = JobMetrics(
+            embeddings_generated=1000,
+            tokens_processed=50000,
+            processing_time_seconds=120.5,
+            average_chunk_size=250.0,
+            files_per_second=2.5,
+        )
+        assert metrics.embeddings_generated == 1000
+        assert metrics.processing_time_seconds == 120.5
+
+    def test_job_update_request(self):
+        """Test JobUpdateRequest validation."""
+        from shared.contracts.jobs import JobMetrics, JobUpdateRequest
+
+        # Valid update with metrics
+        update = JobUpdateRequest(
+            status="processing",
+            progress=0.75,
+            processed_files=75,
+            failed_files=2,
+            current_file="/data/file75.txt",
+            metrics=JobMetrics(embeddings_generated=750),
+        )
+        assert update.progress == 0.75
+        assert update.processed_files == 75
+
+        # Invalid progress (> 1.0)
+        with pytest.raises(ValidationError) as exc_info:
+            JobUpdateRequest(progress=1.5)
+        assert "less than or equal to 1" in str(exc_info.value)
+
+        # Invalid progress (< 0.0)
+        with pytest.raises(ValidationError) as exc_info:
+            JobUpdateRequest(progress=-0.1)
+        assert "greater than or equal to 0" in str(exc_info.value)
+
+    def test_job_filter(self):
+        """Test JobFilter model."""
+        from shared.contracts.jobs import JobFilter
+
+        filter_obj = JobFilter(
+            status="completed",
+            user_id="user123",
+            created_after=datetime(2024, 1, 1, tzinfo=UTC),
+            created_before=datetime(2024, 12, 31, tzinfo=UTC),
+            name_contains="embedding",
+            model_name="Qwen/Qwen3-Embedding-0.6B",
+        )
+        assert filter_obj.status == "completed"
+        assert filter_obj.name_contains == "embedding"
+
+    def test_create_job_request_name_validation(self):
+        """Test name field constraints for CreateJobRequest."""
+        # Test max length for name (assuming reasonable limit)
+        long_name = "x" * 256  # Reasonable name length
+        req = CreateJobRequest(name=long_name, directory_path="/test")
+        assert req.name == long_name
+
+        # Empty name should fail
+        with pytest.raises(ValidationError) as exc_info:
+            CreateJobRequest(name="", directory_path="/test")
+        assert "at least 1 character" in str(exc_info.value)
+
+    def test_create_job_request_field_edge_cases(self):
+        """Test edge cases for CreateJobRequest fields."""
+        # Test batch_size boundaries
+        req1 = CreateJobRequest(name="Test", directory_path="/test", batch_size=1)
+        assert req1.batch_size == 1
+
+        req2 = CreateJobRequest(name="Test", directory_path="/test", batch_size=500)
+        assert req2.batch_size == 500
+
+        # Test include/exclude patterns
+        req3 = CreateJobRequest(
+            name="Test",
+            directory_path="/test",
+            include_patterns=["*.txt", "*.md"],
+            exclude_patterns=["**/node_modules/**", "*.tmp"],
+        )
+        assert len(req3.include_patterns) == 2
+        assert len(req3.exclude_patterns) == 2
+
+
+class TestErrorContractsExtended:
+    """Extended tests for error contracts."""
+
+    def test_validation_error_response(self):
+        """Test ValidationErrorResponse model."""
+        from shared.contracts.errors import ErrorDetail, ValidationErrorResponse
+
+        error = ValidationErrorResponse(
+            error="ValidationError",
+            message="Multiple validation errors",
+            status_code=400,
+            details=[
+                ErrorDetail(field="name", message="Name is required"),
+                ErrorDetail(field="age", message="Age must be positive"),
+            ],
+        )
+        assert len(error.details) == 2
+        assert error.details[0].field == "name"
+
+    def test_not_found_error_response(self):
+        """Test NotFoundErrorResponse model."""
+        from shared.contracts.errors import NotFoundErrorResponse
+
+        error = NotFoundErrorResponse(
+            error="NotFoundError",
+            message="Resource not found",
+            status_code=404,
+            resource_type="Job",
+            resource_id="job123",
+        )
+        assert error.resource_type == "Job"
+        assert error.resource_id == "job123"
+
+    def test_insufficient_resources_error(self):
+        """Test InsufficientResourcesErrorResponse model."""
+        from shared.contracts.errors import InsufficientResourcesErrorResponse
+
+        error = InsufficientResourcesErrorResponse(
+            error="InsufficientResourcesError",
+            message="Not enough GPU memory",
+            status_code=507,
+            resource_type="gpu_memory",
+            required="8GB",
+            available="4GB",
+            suggestion="Try reducing batch size",
+        )
+        assert error.required == "8GB"
+        assert error.available == "4GB"
+
+
+class TestStringLengthValidation:
+    """Test max_length validation for string fields to prevent DoS attacks."""
+
+    def test_search_result_max_length_validation(self):
+        """Test that string fields in SearchResult respect max_length."""
+        # Valid lengths
+        result = SearchResult(
+            doc_id="d" * 200,  # Max length 200
+            chunk_id="c" * 200,  # Max length 200
+            score=0.95,
+            path="/" + "p" * 4095,  # Max length 4096
+            content="x" * 10000,  # Max length 10000
+            file_name="f" * 255,  # Max length 255
+            job_id="j" * 200,  # Max length 200
+        )
+        assert len(result.doc_id) == 200
+        assert len(result.path) == 4096
+
+        # Exceeding max length should fail
+        with pytest.raises(ValidationError) as exc_info:
+            SearchResult(doc_id="d" * 201, chunk_id="chunk1", score=0.95, path="/test.txt")  # Exceeds max length
+        assert "at most 200 characters" in str(exc_info.value)
+
+        # Path exceeding max length
+        with pytest.raises(ValidationError) as exc_info:
+            SearchResult(doc_id="doc1", chunk_id="chunk1", score=0.95, path="/" + "p" * 4096)  # 4097 chars, exceeds max
+        assert "at most 4096 characters" in str(exc_info.value)
+
+    def test_create_job_request_max_length_validation(self):
+        """Test max_length validation for CreateJobRequest fields."""
+        # Valid lengths
+        req = CreateJobRequest(
+            name="n" * 255,  # Max length 255
+            description="d" * 1000,  # Max length 1000
+            directory_path="/" + "p" * 4095,  # Max length 4096
+            model_name="m" * 500,  # Max length 500
+            instruction="i" * 1000,  # Max length 1000
+        )
+        assert len(req.name) == 255
+        assert len(req.description) == 1000
+
+        # Name exceeding max length
+        with pytest.raises(ValidationError) as exc_info:
+            CreateJobRequest(name="n" * 256, directory_path="/test")  # Exceeds max length
+        assert "at most 255 characters" in str(exc_info.value)
+
+        # Model name exceeding max length
+        with pytest.raises(ValidationError) as exc_info:
+            CreateJobRequest(name="Test", directory_path="/test", model_name="m" * 501)  # Exceeds max length
+        assert "at most 500 characters" in str(exc_info.value)
+
+    def test_batch_search_request_query_validation(self):
+        """Test that each query in BatchSearchRequest respects max length."""
+        from shared.contracts.search import BatchSearchRequest
+
+        # Valid queries
+        batch = BatchSearchRequest(queries=["q" * 1000, "short query", "x" * 500])
+        assert len(batch.queries[0]) == 1000
+
+        # Query exceeding max length
+        with pytest.raises(ValidationError) as exc_info:
+            BatchSearchRequest(queries=["valid query", "x" * 1001])  # Second query exceeds max
+        assert "Each query must not exceed 1000 characters" in str(exc_info.value)
+
+    def test_error_response_max_length_validation(self):
+        """Test max_length validation for error response models."""
+        # Valid lengths
+        error = ErrorResponse(
+            error="E" * 100,  # Max length 100
+            message="M" * 1000,  # Max length 1000
+            request_id="R" * 100,  # Max length 100
+            timestamp="2024-01-01T00:00:00Z",
+        )
+        assert len(error.error) == 100
+        assert len(error.message) == 1000
+
+        # Message exceeding max length
+        with pytest.raises(ValidationError) as exc_info:
+            ErrorResponse(error="TestError", message="M" * 1001)  # Exceeds max length
+        assert "at most 1000 characters" in str(exc_info.value)
