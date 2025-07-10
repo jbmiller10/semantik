@@ -18,7 +18,17 @@ from typing import Any
 import httpx
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Query
-from pydantic import BaseModel, Field
+
+# Import contracts from shared
+from shared.contracts.search import (
+    BatchSearchRequest,
+    BatchSearchResponse,
+    HybridSearchResponse,
+    HybridSearchResult,
+    SearchRequest,
+    SearchResponse,
+    SearchResult,
+)
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -98,74 +108,7 @@ SEARCH_INSTRUCTIONS = {
 }
 
 
-# Response models
-class SearchResult(BaseModel):
-    path: str
-    chunk_id: str
-    score: float
-    doc_id: str | None = None
-    content: str | None = None
-    metadata: dict | None = None
-
-
-class SearchRequest(BaseModel):
-    query: str = Field(..., description="Search query text")
-    k: int = Field(DEFAULT_K, ge=1, le=100, description="Number of results")
-    search_type: str = Field("semantic", description="Type of search: semantic, question, code, hybrid")
-    model_name: str | None = Field(None, description="Override embedding model")
-    quantization: str | None = Field(None, description="Override quantization: float32, float16, int8")
-    filters: dict | None = Field(None, description="Metadata filters for search")
-    include_content: bool = Field(False, description="Include chunk content in results")
-    collection: str | None = Field(None, description="Collection name (e.g., job_123)")
-    use_reranker: bool = Field(False, description="Enable cross-encoder reranking")
-    rerank_model: str | None = Field(None, description="Override reranker model")
-    rerank_quantization: str | None = Field(None, description="Override reranker quantization: float32, float16, int8")
-
-
-class BatchSearchRequest(BaseModel):
-    queries: list[str] = Field(..., description="List of search queries")
-    k: int = Field(DEFAULT_K, ge=1, le=100, description="Number of results per query")
-    search_type: str = Field("semantic", description="Type of search")
-    model_name: str | None = Field(None, description="Override embedding model")
-    quantization: str | None = Field(None, description="Override quantization")
-    collection: str | None = Field(None, description="Collection name")
-
-
-class SearchResponse(BaseModel):
-    query: str
-    results: list[SearchResult]
-    num_results: int
-    search_type: str | None = None
-    model_used: str | None = None
-    embedding_time_ms: float | None = None
-    search_time_ms: float | None = None
-    reranking_used: bool | None = None
-    reranker_model: str | None = None
-    reranking_time_ms: float | None = None
-
-
-class BatchSearchResponse(BaseModel):
-    responses: list[SearchResponse]
-    total_time_ms: float
-
-
-class HybridSearchResult(BaseModel):
-    path: str
-    chunk_id: str
-    score: float
-    doc_id: str | None = None
-    matched_keywords: list[str] = []
-    keyword_score: float | None = None
-    combined_score: float | None = None
-    metadata: dict[str, Any] | None = None
-
-
-class HybridSearchResponse(BaseModel):
-    query: str
-    results: list[HybridSearchResult]
-    num_results: int
-    keywords_extracted: list[str]
-    search_mode: str
+# Response models are now imported from shared.contracts.search above
 
 
 # Global resources
@@ -407,7 +350,7 @@ async def search(
     # Create request object for unified handling
     request = SearchRequest(
         query=q,
-        k=k,
+        k=k,  # Use the canonical field name
         search_type=search_type,
         model_name=model_name,
         quantization=quantization,
@@ -590,7 +533,7 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
                     path=payload.get("path", ""),
                     chunk_id=payload.get("chunk_id", ""),
                     score=point["score"],
-                    doc_id=payload.get("doc_id"),
+                    doc_id=payload["doc_id"],
                     content=payload.get("content") if should_include_content else None,
                     metadata=payload.get("metadata"),
                 )
@@ -602,7 +545,7 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
                         path=parsed_item["path"],
                         chunk_id=parsed_item["chunk_id"],
                         score=parsed_item["score"],
-                        doc_id=parsed_item.get("doc_id"),
+                        doc_id=parsed_item["doc_id"],
                         content=parsed_item.get("content") if should_include_content else None,
                         metadata=parsed_item.get("metadata"),
                     )
@@ -875,7 +818,7 @@ async def hybrid_search(
                 path=r["payload"].get("path", ""),
                 chunk_id=r["payload"].get("chunk_id", ""),
                 score=r["score"],
-                doc_id=r["payload"].get("doc_id"),
+                doc_id=r["payload"]["doc_id"],
                 matched_keywords=r.get("matched_keywords", []),
                 keyword_score=r.get("keyword_score"),
                 combined_score=r.get("combined_score"),
@@ -955,7 +898,8 @@ async def batch_search(request: BatchSearchRequest = Body(...)) -> BatchSearchRe
                             path=payload.get("path", ""),
                             chunk_id=payload.get("chunk_id", ""),
                             score=point["score"],
-                            doc_id=payload.get("doc_id"),
+                            doc_id=payload["doc_id"],
+                            content=None,
                         )
                     )
                 else:
@@ -964,7 +908,11 @@ async def batch_search(request: BatchSearchRequest = Body(...)) -> BatchSearchRe
                     for r in parsed:
                         parsed_results.append(
                             SearchResult(
-                                path=r["path"], chunk_id=r["chunk_id"], score=r["score"], doc_id=r.get("doc_id")
+                                path=r["path"],
+                                chunk_id=r["chunk_id"],
+                                score=r["score"],
+                                doc_id=r["doc_id"],
+                                content=None,
                             )
                         )
                     break
@@ -1028,7 +976,7 @@ async def keyword_search(
                 path=r["payload"].get("path", ""),
                 chunk_id=r["payload"].get("chunk_id", ""),
                 score=0.0,  # No vector score for keyword-only search
-                doc_id=r["payload"].get("doc_id"),
+                doc_id=r["payload"]["doc_id"],
                 matched_keywords=r.get("matched_keywords", []),
             )
             hybrid_results.append(result)
