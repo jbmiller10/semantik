@@ -25,9 +25,10 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 import contextlib
 
 from shared.config import settings
-from shared.embedding import POPULAR_MODELS, configure_global_embedding_service, embedding_service
+from shared.embedding import POPULAR_MODELS, embedding_service
 from shared.text_processing.chunking import TokenChunker
 from shared.text_processing.extraction import extract_text
+
 from webui import database
 from webui.auth import get_current_user
 from webui.utils.qdrant_manager import qdrant_manager
@@ -36,9 +37,6 @@ logger = logging.getLogger(__name__)
 
 # Constants
 JOBS_DIR = str(settings.jobs_dir)
-
-# Configure global embedding service with settings
-configure_global_embedding_service(mock_mode=settings.USE_MOCK_EMBEDDINGS)
 OUTPUT_DIR = str(settings.output_dir)
 SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".doc", ".txt", ".text", ".pptx", ".eml", ".md", ".html"]
 

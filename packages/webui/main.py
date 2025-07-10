@@ -3,6 +3,7 @@ Main entry point for Document Embedding Web UI
 Creates and configures the FastAPI application
 """
 
+import logging
 import sys
 from pathlib import Path
 
@@ -16,10 +17,15 @@ from starlette.responses import Response
 # Add parent directory to path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from .api import auth, collections, documents, files, jobs, metrics, models, root, search, settings
-from .api.files import scan_websocket
-from .api.jobs import websocket_endpoint
-from .rate_limiter import limiter
+from shared.config import settings as shared_settings
+from shared.embedding import configure_global_embedding_service
+
+logger = logging.getLogger(__name__)
+
+from .api import auth, collections, documents, files, jobs, metrics, models, root, search, settings  # noqa: E402
+from .api.files import scan_websocket  # noqa: E402
+from .api.jobs import websocket_endpoint  # noqa: E402
+from .rate_limiter import limiter  # noqa: E402
 
 
 def rate_limit_handler(request: Request, exc: Exception) -> Response:
@@ -30,6 +36,22 @@ def rate_limit_handler(request: Request, exc: Exception) -> Response:
     return Response(content="Rate limit error", status_code=429)
 
 
+def _configure_embedding_service() -> None:
+    """Configure the global embedding service at app startup.
+
+    This centralizes the embedding service configuration to avoid redundant calls
+    across multiple API modules.
+    """
+    try:
+        logger.info("Configuring global embedding service at app startup")
+        configure_global_embedding_service(mock_mode=shared_settings.USE_MOCK_EMBEDDINGS)
+        logger.info(f"Embedding service configured with mock_mode={shared_settings.USE_MOCK_EMBEDDINGS}")
+    except Exception as e:
+        logger.error(f"Failed to configure embedding service: {e}")
+        # Re-raise to prevent app startup with misconfigured service
+        raise RuntimeError(f"Critical error: Failed to configure embedding service: {e}") from e
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application"""
     app = FastAPI(
@@ -38,6 +60,9 @@ def create_app() -> FastAPI:
 
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+
+    # Configure global embedding service at app startup
+    _configure_embedding_service()
 
     # Include routers with their specific prefixes
     app.include_router(auth.router)
@@ -89,6 +114,5 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-    from shared.config import settings as vecpipe_settings
 
-    uvicorn.run(app, host="0.0.0.0", port=vecpipe_settings.WEBUI_PORT)
+    uvicorn.run(app, host="0.0.0.0", port=shared_settings.WEBUI_PORT)
