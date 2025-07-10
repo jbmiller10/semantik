@@ -13,6 +13,17 @@ class ImportUpdater:
     """Automated import path updater"""
 
     IMPORT_MAPPINGS = {
+        # Embedding service moves
+        r"from webui\.embedding_service import EmbeddingService": "from shared.embedding import DenseEmbeddingService",
+        r"from packages\.webui\.embedding_service import EmbeddingService": "from shared.embedding import DenseEmbeddingService",
+        r"from webui\.embedding_service import embedding_service": "from shared.embedding import get_embedding_service",
+        r"from packages\.webui\.embedding_service import embedding_service": "from shared.embedding import get_embedding_service",
+        r"from webui\.embedding_service import enhanced_embedding_service": "from shared.embedding import get_embedding_service",
+        r"from packages\.webui\.embedding_service import enhanced_embedding_service": "from shared.embedding import get_embedding_service",
+        r"from webui\.embedding_service import": "from shared.embedding import",
+        r"from packages\.webui\.embedding_service import": "from shared.embedding import",
+        r"import webui\.embedding_service": "import shared.embedding",
+        r"import packages\.webui\.embedding_service": "import shared.embedding",
         # Config moves
         r"from vecpipe\.config import": "from shared.config import",
         r"from packages\.vecpipe\.config import": "from shared.config import",

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Unified CLI entry point for embedding generation
-Uses the webui.embedding_service.EmbeddingService for all embedding operations
+Uses the shared.embedding.EmbeddingService for all embedding operations
 """
 
 import argparse
@@ -20,6 +20,7 @@ from tqdm.asyncio import tqdm
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from shared.config import settings
+from shared.embedding import EmbeddingService
 from shared.metrics.prometheus import (
     TimingContext,
     embedding_batch_duration,
@@ -32,7 +33,6 @@ from shared.metrics.prometheus import (
     record_file_processed,
     start_metrics_server,
 )
-from webui.embedding_service import EmbeddingService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
