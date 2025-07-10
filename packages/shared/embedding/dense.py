@@ -13,10 +13,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F  # noqa: N812
 from sentence_transformers import SentenceTransformer
+from shared.config.vecpipe import VecpipeConfig
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
-
-from shared.config.vecpipe import VecpipeConfig
 
 from .base import BaseEmbeddingService
 
@@ -253,9 +252,17 @@ class DenseEmbeddingService(BaseEmbeddingService):
             # Run model loading in thread pool to avoid blocking
             await asyncio.get_running_loop().run_in_executor(None, self._load_model_sync, model_name, kwargs)
 
-            # Test the model and get dimension
-            test_embedding = await self.embed_single("test")
-            self.dimension = len(test_embedding)
+            # Get dimension from the model directly
+            if self.is_qwen_model and self.model is not None:
+                # For Qwen models, get dimension from model config
+                self.dimension = self.model.config.hidden_size
+            elif self.model is not None and hasattr(self.model, "get_sentence_embedding_dimension"):
+                # For sentence-transformers
+                self.dimension = self.model.get_sentence_embedding_dimension()
+            else:
+                # Fallback: generate test embedding to determine dimension
+                test_embedding = await self._embed_single_internal("test")
+                self.dimension = len(test_embedding)
 
             self._initialized = True
             logger.info(f"Model initialized successfully. Dimension: {self.dimension}")
@@ -311,48 +318,17 @@ class DenseEmbeddingService(BaseEmbeddingService):
 
         return kwargs
 
-    async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> np.ndarray:
-        """Generate embeddings for multiple texts.
+    async def _embed_texts_internal(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> np.ndarray:
+        """Internal method for embedding texts without validation checks.
 
-        Args:
-            texts: List of texts to embed
-            batch_size: Batch size for processing
-            **kwargs: Additional options:
-                - normalize: bool (default: True)
-                - show_progress: bool (default: False)
-                - instruction: str (for Qwen models)
-
-        Raises:
-            RuntimeError: If service is not initialized
-            ValueError: If input parameters are invalid
+        This is used during initialization and other internal operations.
         """
-        # Validate service state
-        if not self._initialized:
-            raise RuntimeError("Embedding service not initialized. Call initialize() first.")
-
-        # Validate input parameters
-        if not isinstance(texts, list):
-            raise ValueError("texts must be a list of strings")
-
+        # Handle empty texts gracefully for internal use
         if not texts:
-            logger.warning("Empty text list provided to embed_texts")
             return np.array([]).reshape(0, self.dimension or 384)
 
-        if batch_size <= 0:
-            raise ValueError(f"batch_size must be positive, got {batch_size}")
-
-        # Validate text content
-        if not all(isinstance(text, str) for text in texts):
-            raise ValueError("All items in texts must be strings")
-
-        # Check for empty strings
-        empty_indices = [i for i, text in enumerate(texts) if not text.strip()]
-        if empty_indices:
-            logger.warning(
-                f"Found {len(empty_indices)} empty or whitespace-only texts at indices: {empty_indices[:5]}..."
-            )
-            # Replace empty strings with single space to avoid tokenization issues
-            texts = [text if text.strip() else " " for text in texts]
+        # Ensure no empty strings for tokenization
+        texts = [text if text.strip() else " " for text in texts]
 
         # Mock mode - return random embeddings
         if self.mock_mode:
@@ -435,8 +411,64 @@ class DenseEmbeddingService(BaseEmbeddingService):
         )
         return embeddings
 
+    async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> np.ndarray:
+        """Generate embeddings for multiple texts.
+
+        Args:
+            texts: List of texts to embed
+            batch_size: Batch size for processing
+            **kwargs: Additional options:
+                - normalize: bool (default: True)
+                - show_progress: bool (default: False)
+                - instruction: str (for Qwen models)
+
+        Raises:
+            RuntimeError: If service is not initialized
+            ValueError: If input parameters are invalid
+        """
+        # Validate service state
+        if not self._initialized:
+            raise RuntimeError("Embedding service not initialized. Call initialize() first.")
+
+        # Validate input parameters
+        if not isinstance(texts, list):
+            raise ValueError("texts must be a list of strings")
+
+        if not texts:
+            logger.warning("Empty text list provided to embed_texts")
+            return np.array([]).reshape(0, self.dimension or 384)
+
+        if batch_size <= 0:
+            raise ValueError(f"batch_size must be positive, got {batch_size}")
+
+        # Validate text content
+        if not all(isinstance(text, str) for text in texts):
+            raise ValueError("All items in texts must be strings")
+
+        # Check for empty strings
+        empty_indices = [i for i, text in enumerate(texts) if not text.strip()]
+        if empty_indices:
+            logger.warning(
+                f"Found {len(empty_indices)} empty or whitespace-only texts at indices: {empty_indices[:5]}..."
+            )
+
+        # Delegate to internal method
+        return await self._embed_texts_internal(texts, batch_size, **kwargs)
+
+    async def _embed_single_internal(self, text: str, **kwargs: Any) -> np.ndarray:
+        """Internal method for embedding a single text without validation."""
+        embeddings = await self._embed_texts_internal([text], batch_size=1, **kwargs)
+        result: np.ndarray = embeddings[0]
+        return result
+
     async def embed_single(self, text: str, **kwargs: Any) -> np.ndarray:
         """Generate embedding for a single text."""
+        if not self._initialized:
+            raise RuntimeError("Embedding service not initialized. Call initialize() first.")
+
+        if not isinstance(text, str):
+            raise ValueError("text must be a string")
+
         embeddings = await self.embed_texts([text], batch_size=1, **kwargs)
         result: np.ndarray = embeddings[0]
         return result
