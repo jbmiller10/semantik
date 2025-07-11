@@ -25,8 +25,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
-
-from webui import database
+from shared import database
 from webui.auth import get_current_user
 from webui.rate_limiter import limiter
 
@@ -139,7 +138,7 @@ def validate_file_access(job_id: str, doc_id: str, current_user: dict[str, Any])
 
     # Get file record from database
     files = database.get_job_files(job_id)
-    file_record = None
+    file_record: dict[str, Any] | None = None
 
     for file in files:
         if file.get("doc_id") == doc_id:

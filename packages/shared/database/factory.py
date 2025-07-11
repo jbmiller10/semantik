@@ -4,17 +4,12 @@ This module provides factory functions to create repository instances,
 allowing for easy switching between different implementations.
 """
 
-from typing import Any
-
 from .base import JobRepository, UserRepository
 from .sqlite_repository import SQLiteJobRepository, SQLiteUserRepository
 
 
-def create_job_repository(database_module: Any | None = None) -> JobRepository:
+def create_job_repository() -> JobRepository:
     """Create a job repository instance.
-
-    Args:
-        database_module: The database module to use (for SQLite implementation)
 
     Returns:
         JobRepository instance
@@ -23,31 +18,16 @@ def create_job_repository(database_module: Any | None = None) -> JobRepository:
         In the future, this can check configuration to decide whether to
         return SQLiteJobRepository or PostgreSQLJobRepository.
     """
-    if database_module is None:
-        # Lazy import to avoid circular dependency
-        from webui import database
-
-        database_module = database
-
-    return SQLiteJobRepository(database_module)
+    return SQLiteJobRepository()
 
 
-def create_user_repository(database_module: Any | None = None) -> UserRepository:
+def create_user_repository() -> UserRepository:
     """Create a user repository instance.
-
-    Args:
-        database_module: The database module to use (for SQLite implementation)
 
     Returns:
         UserRepository instance
     """
-    if database_module is None:
-        # Lazy import to avoid circular dependency
-        from webui import database
-
-        database_module = database
-
-    return SQLiteUserRepository(database_module)
+    return SQLiteUserRepository()
 
 
 # Future implementation example:

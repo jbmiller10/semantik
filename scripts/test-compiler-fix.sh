@@ -6,7 +6,7 @@ echo "============================================="
 
 # Copy updated files to container
 echo "1. Copying updated files to container..."
-docker cp packages/webui/embedding_service.py semantik-webui:/app/packages/webui/embedding_service.py
+docker cp packages/shared/embedding_service.py semantik-webui:/app/packages/shared/embedding_service.py
 docker cp docker-entrypoint.sh semantik-webui:/app/docker-entrypoint.sh
 
 # Test with CC environment variable
@@ -18,14 +18,14 @@ print(f'CXX={os.environ.get(\"CXX\")}')
 
 import sys
 sys.path.insert(0, '/app/packages')
-from webui.embedding_service import check_int8_compatibility
+from shared.embedding_service import check_int8_compatibility
 
 is_compatible, msg = check_int8_compatibility()
 print(f'INT8 Compatible: {is_compatible}')
 print(f'Message: {msg}')
 
 if is_compatible:
-    from webui.embedding_service import EmbeddingService
+    from shared.embedding_service import EmbeddingService
     service = EmbeddingService()
     model = 'Qwen/Qwen3-Embedding-0.6B'
     loaded = service.load_model(model, quantization='int8')
