@@ -11,7 +11,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from vecpipe.extract_chunks import FileChangeTracker
+from vecpipe.file_tracker import FileChangeTracker
 from vecpipe.maintenance import QdrantMaintenanceService
 
 # Configure logging

@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException
 from shared.config import settings
 
-from webui import database
+from shared import database
 
 router = APIRouter(prefix="/api/internal", tags=["internal"])
 

@@ -27,9 +27,9 @@ class TempDatabaseContext:
 @pytest.fixture()
 def test_db():
     """Create a test database for each test."""
-    with TempDatabaseContext() as db_path, patch("webui.database.DB_PATH", db_path):
+    with TempDatabaseContext() as db_path, patch("shared.database.DB_PATH", db_path):
         # Import and initialize after patching
-        from webui.database import init_db
+        from shared.database import init_db
 
         init_db()
         yield db_path
@@ -75,7 +75,7 @@ class TestJobOperations:
 
     def test_create_job(self, test_db, sample_job_data):
         """Test creating a new job."""
-        from webui.database import create_job, get_job
+        from shared.database import create_job, get_job
 
         job_id = create_job(sample_job_data)
         assert job_id == sample_job_data["id"]
@@ -89,14 +89,14 @@ class TestJobOperations:
 
     def test_get_job_nonexistent(self, test_db):
         """Test getting a non-existent job returns None."""
-        from webui.database import get_job
+        from shared.database import get_job
 
         job = get_job("nonexistent-job-id")
         assert job is None
 
     def test_update_job(self, test_db, sample_job_data):
         """Test updating job information."""
-        from webui.database import create_job, get_job, update_job
+        from shared.database import create_job, get_job, update_job
 
         job_id = create_job(sample_job_data)
 
@@ -118,7 +118,7 @@ class TestJobOperations:
 
     def test_list_jobs(self, test_db, sample_job_data):
         """Test listing all jobs."""
-        from webui.database import create_job, list_jobs
+        from shared.database import create_job, list_jobs
 
         # Create multiple jobs
         job_ids = []
@@ -137,7 +137,7 @@ class TestJobOperations:
 
     def test_list_jobs_by_user(self, test_db, sample_job_data):
         """Test listing jobs filtered by user_id."""
-        from webui.database import create_job, list_jobs
+        from shared.database import create_job, list_jobs
 
         # Create jobs for different users
         job_data_user1 = sample_job_data.copy()
@@ -165,7 +165,7 @@ class TestJobOperations:
 
     def test_delete_job(self, test_db, sample_job_data):
         """Test deleting a job and its files."""
-        from webui.database import add_files_to_job, create_job, delete_job, get_job, get_job_files
+        from shared.database import add_files_to_job, create_job, delete_job, get_job, get_job_files
 
         job_id = create_job(sample_job_data)
 
@@ -195,7 +195,7 @@ class TestFileOperations:
 
     def test_add_files_to_job(self, test_db, sample_job_data):
         """Test adding files to a job."""
-        from webui.database import add_files_to_job, create_job, get_job, get_job_files
+        from shared.database import add_files_to_job, create_job, get_job, get_job_files
 
         job_id = create_job(sample_job_data)
 
@@ -233,7 +233,7 @@ class TestFileOperations:
 
     def test_update_file_status(self, test_db, sample_job_data):
         """Test updating file processing status."""
-        from webui.database import add_files_to_job, create_job, get_job_files, update_file_status
+        from shared.database import add_files_to_job, create_job, get_job_files, update_file_status
 
         job_id = create_job(sample_job_data)
 
@@ -264,7 +264,7 @@ class TestFileOperations:
 
     def test_update_file_status_with_error(self, test_db, sample_job_data):
         """Test updating file status with error."""
-        from webui.database import add_files_to_job, create_job, get_job_files, update_file_status
+        from shared.database import add_files_to_job, create_job, get_job_files, update_file_status
 
         job_id = create_job(sample_job_data)
 
@@ -293,7 +293,7 @@ class TestFileOperations:
 
     def test_get_job_files_by_status(self, test_db, sample_job_data):
         """Test getting files filtered by status."""
-        from webui.database import add_files_to_job, create_job, get_job_files, update_file_status
+        from shared.database import add_files_to_job, create_job, get_job_files, update_file_status
 
         job_id = create_job(sample_job_data)
 
@@ -324,7 +324,7 @@ class TestFileOperations:
 
     def test_get_job_total_vectors(self, test_db, sample_job_data):
         """Test getting total vectors for a job."""
-        from webui.database import add_files_to_job, create_job, get_job_total_vectors, update_file_status
+        from shared.database import add_files_to_job, create_job, get_job_total_vectors, update_file_status
 
         job_id = create_job(sample_job_data)
 
@@ -350,7 +350,7 @@ class TestUserOperations:
 
     def test_create_user(self, test_db, sample_user_data):
         """Test creating a new user."""
-        from webui.database import create_user, pwd_context
+        from shared.database import create_user, pwd_context
 
         hashed_password = pwd_context.hash(sample_user_data["password"])
         user = create_user(
@@ -370,7 +370,7 @@ class TestUserOperations:
 
     def test_create_duplicate_user(self, test_db, sample_user_data):
         """Test creating duplicate user raises error."""
-        from webui.database import create_user, pwd_context
+        from shared.database import create_user, pwd_context
 
         hashed_password = pwd_context.hash(sample_user_data["password"])
 
@@ -391,7 +391,7 @@ class TestUserOperations:
 
     def test_get_user(self, test_db, sample_user_data):
         """Test getting user by username."""
-        from webui.database import create_user, get_user, pwd_context
+        from shared.database import create_user, get_user, pwd_context
 
         hashed_password = pwd_context.hash(sample_user_data["password"])
         created_user = create_user(
@@ -408,14 +408,14 @@ class TestUserOperations:
 
     def test_get_user_nonexistent(self, test_db):
         """Test getting non-existent user returns None."""
-        from webui.database import get_user
+        from shared.database import get_user
 
         user = get_user("nonexistent")
         assert user is None
 
     def test_get_user_by_id(self, test_db, sample_user_data):
         """Test getting user by ID."""
-        from webui.database import create_user, get_user_by_id, pwd_context
+        from shared.database import create_user, get_user_by_id, pwd_context
 
         hashed_password = pwd_context.hash(sample_user_data["password"])
         created_user = create_user(
@@ -432,7 +432,7 @@ class TestUserOperations:
 
     def test_update_user_last_login(self, test_db, sample_user_data):
         """Test updating user's last login timestamp."""
-        from webui.database import create_user, get_user_by_id, pwd_context, update_user_last_login
+        from shared.database import create_user, get_user_by_id, pwd_context, update_user_last_login
 
         hashed_password = pwd_context.hash(sample_user_data["password"])
         user = create_user(
@@ -454,7 +454,7 @@ class TestCollectionOperations:
 
     def test_get_collection_metadata(self, test_db, sample_job_data):
         """Test getting collection metadata from parent job."""
-        from webui.database import create_job, get_collection_metadata
+        from shared.database import create_job, get_collection_metadata
 
         # Create parent job
         parent_job = sample_job_data.copy()
@@ -477,14 +477,14 @@ class TestCollectionOperations:
 
     def test_get_collection_metadata_nonexistent(self, test_db):
         """Test getting metadata for non-existent collection."""
-        from webui.database import get_collection_metadata
+        from shared.database import get_collection_metadata
 
         metadata = get_collection_metadata("nonexistent-collection")
         assert metadata is None
 
     def test_list_collections(self, test_db):
         """Test listing unique collections with stats."""
-        from webui.database import add_files_to_job, create_job, list_collections, update_file_status
+        from shared.database import add_files_to_job, create_job, list_collections, update_file_status
 
         # Create jobs for different collections
         collections = ["Collection A", "Collection B", "Collection A"]  # A has 2 jobs
@@ -535,7 +535,7 @@ class TestCollectionOperations:
 
     def test_list_collections_by_user(self, test_db):
         """Test listing collections filtered by user."""
-        from webui.database import create_job, list_collections
+        from shared.database import create_job, list_collections
 
         # Create jobs for different users
         for i, user_id in enumerate([1, 2, None]):  # None = legacy job
@@ -566,7 +566,7 @@ class TestCollectionOperations:
 
     def test_rename_collection(self, test_db, sample_job_data):
         """Test renaming a collection."""
-        from webui.database import create_job, get_job, rename_collection
+        from shared.database import create_job, get_job, rename_collection
 
         # Create job
         job_id = create_job(sample_job_data)
@@ -585,7 +585,7 @@ class TestCollectionOperations:
 
     def test_rename_collection_duplicate_name(self, test_db, sample_job_data):
         """Test renaming to existing collection name fails."""
-        from webui.database import create_job, rename_collection
+        from shared.database import create_job, rename_collection
 
         # Create two collections
         job_data1 = sample_job_data.copy()
@@ -608,7 +608,7 @@ class TestCollectionOperations:
 
     def test_rename_collection_no_access(self, test_db, sample_job_data):
         """Test renaming collection without access fails."""
-        from webui.database import create_job, rename_collection
+        from shared.database import create_job, rename_collection
 
         # Create job for user 2
         job_data = sample_job_data.copy()
@@ -625,7 +625,7 @@ class TestCollectionOperations:
 
     def test_delete_collection(self, test_db, sample_job_data):
         """Test deleting a collection."""
-        from webui.database import add_files_to_job, create_job, delete_collection, get_job, get_job_files
+        from shared.database import add_files_to_job, create_job, delete_collection, get_job, get_job_files
 
         # Create multiple jobs for collection
         job_ids = []
@@ -662,7 +662,7 @@ class TestCollectionOperations:
 
     def test_get_duplicate_files_in_collection(self, test_db, sample_job_data):
         """Test finding duplicate files in collection."""
-        from webui.database import add_files_to_job, create_job, get_duplicate_files_in_collection
+        from shared.database import add_files_to_job, create_job, get_duplicate_files_in_collection
 
         # Create completed job
         job_data = sample_job_data.copy()
@@ -699,14 +699,14 @@ class TestCollectionOperations:
 
     def test_get_duplicate_files_empty_collection(self, test_db):
         """Test duplicate check on non-existent collection."""
-        from webui.database import get_duplicate_files_in_collection
+        from shared.database import get_duplicate_files_in_collection
 
         duplicates = get_duplicate_files_in_collection("nonexistent", ["hash1", "hash2"])
         assert len(duplicates) == 0
 
     def test_get_collection_details(self, test_db):
         """Test getting detailed collection information."""
-        from webui.database import add_files_to_job, create_job, get_collection_details, update_file_status
+        from shared.database import add_files_to_job, create_job, get_collection_details, update_file_status
 
         # Create parent job
         parent_job = {
@@ -789,7 +789,7 @@ class TestCollectionOperations:
 
     def test_get_collection_files(self, test_db, sample_job_data):
         """Test getting paginated files for a collection."""
-        from webui.database import add_files_to_job, create_job, get_collection_files
+        from shared.database import add_files_to_job, create_job, get_collection_files
 
         # Create job
         job_id = create_job(sample_job_data)
@@ -836,7 +836,7 @@ class TestAuthOperations:
 
     def test_save_and_verify_refresh_token(self, test_db):
         """Test saving and verifying refresh tokens."""
-        from webui.database import pwd_context, save_refresh_token, verify_refresh_token
+        from shared.database import pwd_context, save_refresh_token, verify_refresh_token
 
         user_id = 1
         token = "test_refresh_token_123"
@@ -852,7 +852,7 @@ class TestAuthOperations:
 
     def test_verify_expired_token(self, test_db):
         """Test verifying expired token returns None."""
-        from webui.database import pwd_context, save_refresh_token, verify_refresh_token
+        from shared.database import pwd_context, save_refresh_token, verify_refresh_token
 
         user_id = 1
         token = "expired_token"
@@ -867,7 +867,7 @@ class TestAuthOperations:
 
     def test_revoke_refresh_token(self, test_db):
         """Test revoking refresh tokens."""
-        from webui.database import revoke_refresh_token
+        from shared.database import revoke_refresh_token
 
         # This test just ensures the function runs without error
         # The actual implementation doesn't check the token parameter
@@ -880,7 +880,7 @@ class TestDatabaseManagement:
 
     def test_get_database_stats(self, test_db, sample_job_data, sample_user_data):
         """Test getting database statistics."""
-        from webui.database import add_files_to_job, create_job, create_user, get_database_stats, pwd_context
+        from shared.database import add_files_to_job, create_job, create_user, get_database_stats, pwd_context
 
         # Create test data
         # Jobs
@@ -922,7 +922,7 @@ class TestDatabaseManagement:
 
     def test_reset_database(self, test_db):
         """Test resetting the database."""
-        from webui.database import create_job, get_database_stats, get_job, reset_database
+        from shared.database import create_job, get_database_stats, get_job, reset_database
 
         # Create some data
         job_data = {
@@ -1004,8 +1004,8 @@ class TestSchemaMigration:
         conn.close()
 
         # Now run init_db to migrate
-        with patch("webui.database.DB_PATH", db_path):
-            from webui.database import init_db
+        with patch("shared.database.DB_PATH", db_path):
+            from shared.database import init_db
 
             init_db()
 
@@ -1045,7 +1045,7 @@ class TestEdgeCases:
 
     def test_empty_database_operations(self, test_db):
         """Test operations on empty database."""
-        from webui.database import (
+        from shared.database import (
             get_collection_metadata,
             get_database_stats,
             get_job,
@@ -1071,7 +1071,7 @@ class TestEdgeCases:
 
     def test_null_values_handling(self, test_db):
         """Test handling of null/None values."""
-        from webui.database import create_job, get_job
+        from shared.database import create_job, get_job
 
         # Create job with minimal required fields
         job_data = {
@@ -1104,7 +1104,7 @@ class TestEdgeCases:
 
     def test_sql_injection_protection(self, test_db):
         """Test that SQL injection attempts are handled safely."""
-        from webui.database import create_job, get_database_stats, get_job
+        from shared.database import create_job, get_database_stats, get_job
 
         # Try SQL injection in job name
         malicious_name = "'; DROP TABLE jobs; --"

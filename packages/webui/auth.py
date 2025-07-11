@@ -21,7 +21,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from shared.config import settings
 
 # Import database module
-from . import database
+from shared import database
 
 # Configure logging
 logger = logging.getLogger(__name__)

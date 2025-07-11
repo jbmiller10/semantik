@@ -31,7 +31,7 @@ from shared.embedding import POPULAR_MODELS, embedding_service
 from shared.text_processing.chunking import TokenChunker
 from shared.text_processing.extraction import extract_text
 
-from webui import database
+from shared import database
 from webui.auth import get_current_user
 from webui.utils.qdrant_manager import qdrant_manager
 

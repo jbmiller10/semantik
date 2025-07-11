@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from webui import database
+from shared import database
 from webui.auth import (
     Token,
     User,

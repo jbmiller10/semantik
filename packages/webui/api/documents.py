@@ -26,7 +26,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
 
-from webui import database
+from shared import database
 from webui.auth import get_current_user
 from webui.rate_limiter import limiter
 

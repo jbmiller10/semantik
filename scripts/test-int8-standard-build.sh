@@ -21,7 +21,7 @@ echo -e "\n5. Testing INT8 quantization..."
 docker exec semantik-webui python -c "
 import sys
 sys.path.insert(0, '/app/packages')
-from webui.embedding_service import check_int8_compatibility, EmbeddingService
+from shared.embedding_service import check_int8_compatibility, EmbeddingService
 
 # Check compatibility
 is_compatible, msg = check_int8_compatibility()

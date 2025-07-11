@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 """
-Database access layer for Document Embedding Web UI
-Centralizes all database operations for jobs, files, users, and tokens
+SQLite database implementation for shared package.
+Centralizes all database operations for jobs, files, users, and tokens.
+
+This module contains the actual database implementation that was previously
+in webui/database.py. It's now part of the shared package to enable proper
+service decoupling.
 """
 
 import hashlib
 import logging
 import sqlite3
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from passlib.context import CryptContext
 
-# Add parent directory to path for imports
-sys.path.append(str(Path(__file__).resolve().parent.parent))
-from shared.config import settings
+from ...config import settings
 
 # Configure logging
 logger = logging.getLogger(__name__)

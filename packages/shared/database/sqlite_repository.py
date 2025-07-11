@@ -8,6 +8,7 @@ abstraction layer that can be replaced in the future.
 from typing import Any
 
 from .base import JobRepository, UserRepository
+from . import sqlite_implementation as db_impl
 
 
 class SQLiteJobRepository(JobRepository):
@@ -17,19 +18,19 @@ class SQLiteJobRepository(JobRepository):
     providing an async interface that matches the repository pattern.
     """
 
-    def __init__(self, database_module: Any):
-        """Initialize with the webui database module.
-
-        Args:
-            database_module: The webui.database module (injected to avoid circular imports)
-        """
-        self.db = database_module
+    def __init__(self) -> None:
+        """Initialize with the local database implementation."""
+        self.db = db_impl
 
     async def create_job(self, job_data: dict[str, Any]) -> dict[str, Any]:
         """Create a new job."""
         # Convert async to sync for now (database module is sync)
-        result: dict[str, Any] = self.db.create_job(**job_data)
-        return result
+        job_id = self.db.create_job(job_data)
+        # create_job returns just the ID, but the interface expects the full job object
+        job = self.db.get_job(job_id)
+        if job is None:
+            raise ValueError(f"Failed to retrieve created job with ID: {job_id}")
+        return job
 
     async def get_job(self, job_id: str) -> dict[str, Any] | None:
         """Get a job by ID."""
@@ -38,19 +39,23 @@ class SQLiteJobRepository(JobRepository):
 
     async def update_job(self, job_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
         """Update a job."""
-        result: dict[str, Any] | None = self.db.update_job(job_id, updates)
-        return result
+        self.db.update_job(job_id, updates)
+        # update_job returns None, but the interface expects the updated job object
+        return self.db.get_job(job_id)
 
     async def delete_job(self, job_id: str) -> bool:
         """Delete a job."""
-        result: bool = self.db.delete_job(job_id)
-        return result
+        self.db.delete_job(job_id)
+        # delete_job returns None, but the interface expects a boolean
+        return True
 
     async def list_jobs(self, user_id: str | None = None, **filters: Any) -> list[dict[str, Any]]:
         """List jobs with optional filters."""
         # Note: filters are accepted for interface compatibility but not used in SQLite implementation
         _ = filters
-        result: list[dict[str, Any]] = self.db.list_jobs(user_id=user_id)
+        # Convert string user_id to int if provided
+        user_id_int = int(user_id) if user_id else None
+        result: list[dict[str, Any]] = self.db.list_jobs(user_id=user_id_int)
         return result
 
     async def get_all_job_ids(self) -> list[str]:
@@ -62,9 +67,9 @@ class SQLiteJobRepository(JobRepository):
 class SQLiteUserRepository(UserRepository):
     """SQLite implementation of UserRepository."""
 
-    def __init__(self, database_module: Any):
-        """Initialize with the webui database module."""
-        self.db = database_module
+    def __init__(self) -> None:
+        """Initialize with the local database implementation."""
+        self.db = db_impl
 
     async def create_user(self, user_data: dict[str, Any]) -> dict[str, Any]:
         """Create a new user."""
@@ -78,7 +83,8 @@ class SQLiteUserRepository(UserRepository):
 
     async def get_user_by_username(self, username: str) -> dict[str, Any] | None:
         """Get a user by username."""
-        result: dict[str, Any] | None = self.db.get_user_by_username(username)
+        # The sqlite implementation uses get_user for username lookup
+        result: dict[str, Any] | None = self.db.get_user(username)
         return result
 
     async def update_user(self, user_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
