@@ -21,33 +21,37 @@ semantik/
 ```mermaid
 graph TB
     subgraph "Docker Network: semantik-network"
-        A[Qdrant Container<br/>Port: 6333]
-        B[Search API Container<br/>Port: 8000]
-        C[WebUI Container<br/>Port: 8080]
+        A[Qdrant Container<br/>Vector Database<br/>Port: 6333]
+        B[Vecpipe Container<br/>Search Engine<br/>Port: 8000]
+        C[WebUI Container<br/>Control Plane<br/>Port: 8080]
         
-        C --> B
-        B --> A
-        C --> A
+        C -->|Search Proxy| B
+        B -->|Vector Ops| A
+        C -->|Collection Mgmt| A
     end
     
-    D[Host Machine] --> C
+    D[Host Machine] -->|User Access| C
     
     subgraph "Volumes"
-        E[data/]
-        F[models/]
-        G[logs/]
-        H[documents/]
+        E[data/<br/>SQLite DB]
+        F[models/<br/>ML Models]
+        G[logs/<br/>App Logs]
+        H[documents/<br/>User Files]
     end
     
-    A -.-> E
-    B -.-> E
-    B -.-> F
-    B -.-> G
-    C -.-> E
-    C -.-> F
-    C -.-> G
-    B -.-> H
-    C -.-> H
+    subgraph "Volume Access"
+        C -->|RW| E
+        B -.->|RO| E
+        B -->|RW| F
+        C -->|RW| F
+        B -->|RW| G
+        C -->|RW| G
+        B -.->|RO| H
+        C -.->|RO| H
+    end
+    
+    style C fill:#f9f,stroke:#333,stroke-width:2px
+    style B fill:#9ff,stroke:#333,stroke-width:2px
 ```
 
 ## Docker Images
@@ -167,6 +171,7 @@ docker buildx build --platform linux/amd64,linux/arm64 -t semantik:multi .
 version: '3.8'
 
 services:
+  # Vector Database
   qdrant:
     image: qdrant/qdrant:latest
     container_name: semantik-qdrant
@@ -188,18 +193,19 @@ services:
       retries: 3
       start_period: 40s
 
-  search-api:
+  # Core Search Engine (Vecpipe)
+  vecpipe:
     build:
       context: .
       dockerfile: Dockerfile
     image: semantik:latest
-    container_name: semantik-search-api
+    container_name: semantik-vecpipe
     restart: unless-stopped
     ports:
       - "8000:8000"
       - "9091:9091"  # Metrics port
     volumes:
-      - ./data:/app/data
+      - ./data:/app/data:ro  # Read-only access to SQLite
       - ./models:/app/models
       - ./logs:/app/logs
       - ./documents:/documents:ro
@@ -219,6 +225,7 @@ services:
     networks:
       - semantik-network
 
+  # Control Plane and UI (WebUI)
   webui:
     build:
       context: .
@@ -228,8 +235,9 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
+      - "9092:9092"  # Metrics port
     volumes:
-      - ./data:/app/data
+      - ./data:/app/data  # Full access to SQLite (owns the DB)
       - ./models:/app/models
       - ./logs:/app/logs
       - ./documents:/documents:ro
@@ -237,12 +245,13 @@ services:
     environment:
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
-      - SEARCH_API_URL=http://search-api:8000
+      - VECPIPE_API_URL=http://vecpipe:8000
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-secret-key}
       - DISABLE_AUTH=${DISABLE_AUTH:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - METRICS_PORT=9092
     depends_on:
-      - search-api
+      - vecpipe
       - qdrant
     command: ["python", "-m", "webui.main"]
     networks:
@@ -262,6 +271,7 @@ networks:
 version: '3.8'
 
 services:
+  # Vector Database
   qdrant:
     image: qdrant/qdrant:v1.8.0
     deploy:
@@ -282,10 +292,11 @@ services:
         max-size: "100m"
         max-file: "5"
 
-  search-api:
+  # Core Search Engine (Vecpipe) - Can scale independently
+  vecpipe:
     image: semantik:cuda
     deploy:
-      replicas: 2
+      replicas: 2  # Scale search independently
       resources:
         limits:
           memory: 8G
@@ -296,12 +307,13 @@ services:
               count: 1
               capabilities: [gpu]
     volumes:
-      - /opt/semantik/data:/app/data
+      - /opt/semantik/data:/app/data:ro  # Read-only SQLite access
       - /opt/semantik/models:/app/models
-      - /opt/semantik/logs:/app/logs
+      - /opt/semantik/logs/vecpipe:/app/logs
       - /mnt/documents:/documents:ro
     environment:
       - ENVIRONMENT=production
+      - SERVICE_NAME=vecpipe
       - USE_MOCK_EMBEDDINGS=false
       - CUDA_VISIBLE_DEVICES=0
     logging:
@@ -310,20 +322,24 @@ services:
         max-size: "100m"
         max-file: "10"
 
+  # Control Plane (WebUI) - Can scale independently
   webui:
     image: semantik:latest
     deploy:
-      replicas: 2
+      replicas: 2  # Scale UI independently
       resources:
         limits:
           memory: 4G
         reservations:
           memory: 2G
     volumes:
-      - /opt/semantik/data:/app/data:ro
-      - /opt/semantik/logs:/app/logs
+      - /opt/semantik/data:/app/data  # Full access (owns DB)
+      - /opt/semantik/logs/webui:/app/logs
+      - /opt/semantik/models:/app/models:ro  # Read-only models
     environment:
       - ENVIRONMENT=production
+      - SERVICE_NAME=webui
+      - VECPIPE_API_URL=http://vecpipe:8000
       - JWT_SECRET_KEY_FILE=/run/secrets/jwt_secret
     secrets:
       - jwt_secret
@@ -455,19 +471,27 @@ networks:
 ### Service Discovery
 Services can communicate using container names:
 - `qdrant:6333` - Vector database
-- `search-api:8000` - Search API
-- `webui:8080` - Web interface
+- `vecpipe:8000` - Core search engine API
+- `webui:8080` - Control plane and web interface
+
+**Communication Flow**:
+- WebUI → Vecpipe: Search requests (HTTP)
+- WebUI → Qdrant: Collection management
+- Vecpipe → Qdrant: Vector search operations
+- WebUI owns SQLite database exclusively
 
 ### External Access
 ```yaml
 # Expose only necessary ports
 ports:
-  - "8080:8080"  # WebUI only
+  - "8080:8080"  # WebUI - User-facing interface
   
-# Internal services
+# Internal services (not exposed externally)
 expose:
-  - "8000"  # Search API (internal only)
+  - "8000"  # Vecpipe API (internal only)
   - "6333"  # Qdrant (internal only)
+  - "9091"  # Vecpipe metrics (internal)
+  - "9092"  # WebUI metrics (internal)
 ```
 
 ## Environment Variables

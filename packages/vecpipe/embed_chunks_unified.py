@@ -16,7 +16,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from tqdm.asyncio import tqdm
 
-# Add parent directory to path to import webui module
+# Add parent directory to path to import shared modules
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from shared.config import settings

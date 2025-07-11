@@ -82,8 +82,6 @@ The ModelManager provides intelligent model lifecycle management:
 - Supports multiple embedding models and quantization levels
 - Robust error handling and recovery
 
-For detailed documentation, see [SEMANTIK_CORE.md](./SEMANTIK_CORE.md)
-
 ### 2. WebUI Control Plane (`packages/webui/`)
 
 User-facing application for job management and search interface.
@@ -112,8 +110,9 @@ While the architecture emphasizes separation between vecpipe and webui packages,
 For detailed documentation, see:
 - [WEBUI_BACKEND.md](./WEBUI_BACKEND.md)
 - [FRONTEND_ARCH.md](./FRONTEND_ARCH.md)
+- [SEARCH_SYSTEM.md](./SEARCH_SYSTEM.md)
 
-### 3. Database Architecture
+### 4. Database Architecture
 
 **Hybrid Database Design:**
 - **SQLite**: Relational data (jobs, files, users, auth tokens)
