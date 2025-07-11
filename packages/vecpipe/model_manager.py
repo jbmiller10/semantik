@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from threading import Lock
 from typing import Any
 
@@ -31,7 +31,8 @@ class ModelManager:
         """
         self.embedding_service: EmbeddingService | None = None
         self.reranker: CrossEncoderReranker | None = None
-        self.executor: ThreadPoolExecutor | None = None
+        # Initialize executor immediately to avoid hasattr checks
+        self.executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="model_manager")
         self.unload_after_seconds = unload_after_seconds
         self.last_used: float = 0
         self.last_reranker_used: float = 0
@@ -53,7 +54,6 @@ class ModelManager:
             if self.embedding_service is None:
                 logger.info("Initializing embedding service")
                 self.embedding_service = EmbeddingService(mock_mode=settings.USE_MOCK_EMBEDDINGS)
-                self.executor = ThreadPoolExecutor(max_workers=4)
                 self.is_mock_mode = self.embedding_service.mock_mode
 
     def _update_last_used(self) -> None:
@@ -104,22 +104,22 @@ class ModelManager:
             logger.info(f"Loading model: {model_name} with {quantization}")
             if self.embedding_service is not None:
                 # Run load_model in executor to avoid async/sync deadlock
+                # Note: EmbeddingService.load_model is thread-safe as it uses internal locking
                 try:
-                    # If we have an executor, use it. Otherwise create a temporary one
-                    if hasattr(self, 'executor') and self.executor:
-                        success = self.executor.submit(
-                            self.embedding_service.load_model, model_name, quantization
-                        ).result()
-                    else:
-                        # Fallback to direct call if no executor available
-                        success = self.embedding_service.load_model(model_name, quantization)
+                    # Use executor with timeout to prevent hanging
+                    future = self.executor.submit(
+                        self.embedding_service.load_model, model_name, quantization
+                    )
+                    success = future.result(timeout=300)  # 5 minute timeout
                     
                     if success:
                         self.current_model_key = model_key
                         self._update_last_used()
                         return True
+                except TimeoutError:
+                    logger.error(f"Model loading timed out for {model_name} with {quantization} after 5 minutes")
                 except Exception as e:
-                    logger.error(f"Exception loading model {model_name}: {e}")
+                    logger.error(f"Unexpected error loading model {model_name}: {type(e).__name__}: {e}")
             
             logger.error(f"Failed to load model: {model_name}")
             return False
