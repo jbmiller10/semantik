@@ -6,6 +6,11 @@ the vecpipe and webui packages.
 
 The repository pattern provides an abstraction layer over the database,
 making it easier to switch between different storage backends (SQLite, PostgreSQL, etc).
+
+Import Organization:
+- Repository Pattern (Recommended): Interfaces, implementations, and factories
+- Legacy Functions (Deprecated): Direct database functions with deprecation warnings
+- Utilities: Database initialization, password hashing, and metadata management
 """
 
 from .base import BaseRepository, JobRepository, UserRepository
