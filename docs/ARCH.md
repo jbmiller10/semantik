@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Semantik is a production-ready, high-performance document embedding and vector search system designed for technical users who prioritize performance and control. The system features a largely clean separation between its core search engine (vecpipe) and control plane (WebUI), with a pragmatic exception for the embedding service to avoid code duplication. This architecture enables both standalone usage and user-friendly management through a modern React interface.
+Semantik is a production-ready, high-performance document embedding and vector search system designed for technical users who prioritize performance and control. The system features a clean three-package architecture with clear separation between its core search engine (vecpipe), control plane (webui), and shared components. This modular design enables both standalone usage and user-friendly management through a modern React interface.
 
 ### Key Features
 - 🚀 High-performance vector search powered by Qdrant
@@ -23,28 +23,41 @@ Semantik is a production-ready, high-performance document embedding and vector s
 └────────────────────────────────┬───────────────────────────────────────┘
                                  │ HTTP/WebSocket
 ┌────────────────────────────────┴───────────────────────────────────────┐
-│                           WebUI Backend                                 │
-│                     FastAPI Control Plane (Port 8080)                   │
+│                        WebUI Package (Port 8080)                        │
+│                         FastAPI Control Plane                           │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐  ┌─────────────┐ │
 │  │Auth Service │  │Job Management│  │Search Proxy │  │ WebSockets  │ │
 │  └─────────────┘  └──────────────┘  └─────────────┘  └─────────────┘ │
-└────────┬───────────────────┬──────────────┬────────────────────────────┘
-         │                   │              │
-         │ SQLite           │              │ HTTP Proxy
-┌────────┴─────────┐        │              │
-│   User Database  │        │              │
-│  Jobs, Files,    │        │              │
-│  Users, Tokens   │        │              │
-└──────────────────┘        │              │
-                           │              │
-┌──────────────────────────┴──────────────┴─────────────────────────────┐
-│                          Semantik Core Engine                          │
-│                      Search API (Port 8000)                            │
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐  ┌────────────┐ │
-│  │  Extract    │  │   Embed      │  │   Ingest    │  │   Search   │ │
-│  │  Chunks     │  │   Chunks     │  │   Qdrant    │  │   Utils    │ │
-│  └─────────────┘  └──────────────┘  └─────────────┘  └────────────┘ │
-└────────────────────────────┬──────────────────────────────────────────┘
+└────────┬──────────────────────────────┬────────────────────────────────┘
+         │                              │
+         │                              │ HTTP Proxy
+         │ ┌────────────────────────────┴──────────────────────────────┐
+         │ │                    Shared Package                          │
+         │ │  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  │
+         │ │  │   Database    │  │   Contracts  │  │    Config     │  │
+         │ │  │ Repositories  │  │   & Models   │  │  Management   │  │
+         │ │  └──────────────┘  └──────────────┘  └───────────────┘  │
+         │ │  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  │
+         │ │  │  Embedding    │  │    Metrics   │  │     Text      │  │
+         │ │  │   Service     │  │   Tracking   │  │  Processing   │  │
+         │ │  └──────────────┘  └──────────────┘  └───────────────┘  │
+         │ └────────────────────────────────────────────────────────────┘
+         │                              │
+┌────────┴─────────┐                   │
+│   SQLite DB      │                   │
+│  (WebUI-owned)   │                   │
+│  Jobs, Files,    │                   │
+│  Users, Tokens   │                   │
+└──────────────────┘                   │
+                                      │
+┌──────────────────────────────────────┴─────────────────────────────────┐
+│                         VecPipe Package (Port 8000)                    │
+│                          Search & Processing API                        │
+│  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐  ┌────────────┐  │
+│  │  Extract    │  │  Maintenance │  │   Ingest    │  │   Search   │  │
+│  │  Service    │  │   Service    │  │   Service   │  │    API     │  │
+│  └─────────────┘  └──────────────┘  └─────────────┘  └────────────┘  │
+└────────────────────────────┬───────────────────────────────────────────┘
                             │
                             │ gRPC/HTTP
 ┌───────────────────────────┴────────────────────────────────────────────┐
@@ -55,51 +68,36 @@ Semantik is a production-ready, high-performance document embedding and vector s
 
 ## Component Architecture
 
-### 1. Semantik Core Engine (`packages/vecpipe/`)
+### 1. VecPipe Package (`packages/vecpipe/`)
 
-The headless data processing and search API that forms the heart of the system.
+The headless data processing and search API that forms the heart of the system. This package is completely independent and has no dependencies on the webui package.
 
-**Key Components:**
-- **extract_chunks.py**: Document parsing and token-based chunking
-- **embed_chunks_unified.py**: Unified embedding generation with adaptive batching
-- **ingest_qdrant.py**: Vector database ingestion with retry mechanisms
-- **search_api.py**: FastAPI service exposing search functionality
+**Key Services:**
+- **Extract Service** (`extract_service.py`): Document parsing and intelligent chunking
+- **Maintenance Service** (`maintenance_service.py`): Vector database operations and health monitoring
+- **Ingest Service** (`ingest_service.py`): Efficient vector database population
+- **Search API** (`search_api.py`): FastAPI service exposing search functionality
+
+**Core Components:**
 - **model_manager.py**: GPU memory management with lazy loading and automatic unloading
 - **hybrid_search.py**: Combined vector and keyword search implementation
 - **reranker.py**: Cross-encoder reranking for improved search accuracy
 
-**ModelManager Architecture:**
-The ModelManager provides intelligent model lifecycle management:
-- **Lazy Loading**: Models are loaded only when needed
-- **Automatic Unloading**: Models are unloaded after configurable inactivity (default: 300s)
-- **Memory Tracking**: Monitors GPU memory usage and prevents OOM errors
-- **Multi-Model Support**: Manages both embedding and reranker models independently
-- **Thread-Safe**: Handles concurrent requests with proper locking
-
 **Design Principles:**
-- Modular pipeline architecture
-- Resource-efficient with automatic GPU memory management
-- Supports multiple embedding models and quantization levels
-- Robust error handling and recovery
+- Completely standalone operation
+- No awareness of users, jobs, or authentication
+- Direct interaction with Qdrant vector database
+- Resource-efficient GPU memory management
 
-### 2. WebUI Control Plane (`packages/webui/`)
+### 2. WebUI Package (`packages/webui/`)
 
-User-facing application for job management and search interface.
+User-facing application providing authentication, job management, and search interface. Owns and manages the SQLite database containing user data, jobs, and files.
 
 **Backend Components:**
 - **main.py**: FastAPI application with modular router architecture
 - **api/**: RESTful API routers for auth, jobs, search, files, metrics
-- **database.py**: SQLite database management
-- **auth.py**: JWT-based authentication
-- **embedding_service.py**: Embedding generation service (see Architectural Note below)
-
-**Architectural Note - embedding_service.py:**
-While the architecture emphasizes separation between vecpipe and webui packages, `embedding_service.py` is an intentional exception:
-- **Location**: `packages/webui/embedding_service.py`
-- **Used by**: Both webui (for job processing) and vecpipe (for search)
-- **Rationale**: Avoids code duplication for complex embedding logic
-- **Impact**: Creates coupling between packages but ensures consistency
-- **Future**: May be refactored into a separate shared package
+- **auth.py**: JWT-based authentication system
+- **job_processing.py**: Orchestrates document processing pipeline
 
 **Frontend (React):**
 - Modern React 19 with TypeScript
@@ -107,10 +105,44 @@ While the architecture emphasizes separation between vecpipe and webui packages,
 - Real-time WebSocket updates
 - Tailwind CSS for styling
 
-For detailed documentation, see:
-- [WEBUI_BACKEND.md](./WEBUI_BACKEND.md)
-- [FRONTEND_ARCH.md](./FRONTEND_ARCH.md)
-- [SEARCH_SYSTEM.md](./SEARCH_SYSTEM.md)
+**Key Responsibilities:**
+- User authentication and authorization
+- Job creation and management
+- File tracking and status updates
+- Search request proxying with authentication
+- Real-time progress updates via WebSocket
+
+### 3. Shared Package (`packages/shared/`)
+
+Common components and utilities used by both webui and vecpipe packages. This package ensures consistency and avoids code duplication.
+
+**Core Modules:**
+
+**Database Module (`shared/database/`):**
+- **Repository Pattern**: Clean data access layer with type-safe interfaces
+- **SQLite Implementation**: Concrete implementations of repository interfaces
+- **Legacy Wrappers**: Deprecated direct database functions for backward compatibility
+- **Schema Management**: Centralized database schema definitions
+
+**Contracts Module (`shared/contracts/`):**
+- **API Models**: Pydantic models for request/response validation
+- **Search Models**: Unified search request and response structures
+- **Job Models**: Shared job and file status definitions
+
+**Config Module (`shared/config/`):**
+- **Settings Management**: Environment-based configuration
+- **Model Configuration**: Embedding and reranker model settings
+- **Service URLs**: Centralized service endpoint configuration
+
+**Embedding Module (`shared/embedding/`):**
+- **Embedding Service**: Core embedding generation logic
+- **Model Management**: Shared model loading and caching
+- **Batch Processing**: Efficient batch embedding generation
+
+**Other Utilities:**
+- **Metrics** (`shared/metrics/`): Prometheus metrics collection
+- **Text Processing** (`shared/text_processing/`): Document parsing and chunking
+- **Logging** (`shared/logging_config.py`): Structured logging configuration
 
 ### 4. Database Architecture
 

@@ -863,6 +863,78 @@ Authorization: Bearer {access_token}
 }
 ```
 
+### Internal API Endpoints
+
+The WebUI service exposes internal API endpoints for the vecpipe maintenance service. These endpoints do not require authentication and are designed for service-to-service communication.
+
+#### 1. List All Jobs (Internal)
+```http
+GET /internal/api/jobs
+```
+
+**Response:**
+```json
+{
+  "jobs": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "name": "Technical Documentation",
+      "status": "completed",
+      "created_at": "2024-01-15T10:00:00Z",
+      "updated_at": "2024-01-15T10:30:00Z",
+      "model_name": "Qwen/Qwen3-Embedding-0.6B",
+      "directory_path": "/docs",
+      "total_files": 50,
+      "processed_files": 50,
+      "failed_files": 0,
+      "user_id": 1
+    }
+  ]
+}
+```
+
+#### 2. Get Job Files (Internal)
+```http
+GET /internal/api/jobs/{job_id}/files
+```
+
+**Response:**
+```json
+{
+  "files": [
+    {
+      "id": 1,
+      "job_id": "123e4567-e89b-12d3-a456-426614174000",
+      "path": "/docs/guide.pdf",
+      "size": 1048576,
+      "modified": "2024-01-15T09:00:00Z",
+      "extension": ".pdf",
+      "hash": "abc123...",
+      "doc_id": "def456",
+      "status": "completed",
+      "chunks_created": 15,
+      "vectors_created": 15
+    }
+  ]
+}
+```
+
+#### 3. Delete Collection Data (Internal)
+```http
+DELETE /internal/api/jobs/{job_id}/collection
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Collection data deleted",
+  "points_deleted": 500
+}
+```
+
+**Note:** These internal endpoints are intended for use by the vecpipe maintenance service only. They bypass authentication to allow the maintenance service to perform cleanup operations without requiring user credentials.
+
 ## Request/Response Patterns
 
 ### Standard Response Format
