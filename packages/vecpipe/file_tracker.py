@@ -8,7 +8,7 @@ import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +133,11 @@ class FileChangeTracker:
         Returns:
             Dict with file info or None if not tracked
         """
-        return self.tracking_data.get("files", {}).get(file_path)
+        result = self.tracking_data.get("files", {}).get(file_path)
+        if result is None or not isinstance(result, dict):
+            return None
+        # Type cast to satisfy mypy - we've verified it's a dict
+        return cast(dict[str, str], result)
 
     def is_file_changed(self, file_path: str, new_hash: str) -> bool:
         """

@@ -138,7 +138,7 @@ def validate_file_access(job_id: str, doc_id: str, current_user: dict[str, Any])
 
     # Get file record from database
     files = database.get_job_files(job_id)
-    file_record = None
+    file_record: dict[str, Any] | None = None
 
     for file in files:
         if file.get("doc_id") == doc_id:

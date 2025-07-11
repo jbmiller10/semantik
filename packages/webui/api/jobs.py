@@ -12,7 +12,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeAlias
 
 from fastapi import APIRouter, Body, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
@@ -49,8 +49,8 @@ router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 
 # Request/Response models are imported from shared.contracts.jobs
-# We'll use SharedCreateJobRequest directly as CreateJobRequest
-CreateJobRequest = SharedCreateJobRequest
+# Create a proper type alias for mypy
+CreateJobRequest: TypeAlias = SharedCreateJobRequest
 
 
 # Legacy JobStatus for WebSocket updates (different from JobResponse)
@@ -115,14 +115,16 @@ executor = ThreadPoolExecutor(max_workers=8)
 
 def extract_text_thread_safe(filepath: str) -> str:
     """Thread-safe version of extract_text that uses the unified extraction"""
-    return extract_text(filepath)
+    result: str = extract_text(filepath)
+    return result
 
 
 def extract_and_serialize_thread_safe(filepath: str) -> list[tuple[str, dict[str, Any]]]:
     """Thread-safe version of extract_and_serialize that preserves metadata"""
     from shared.text_processing.extraction import extract_and_serialize
 
-    return extract_and_serialize(filepath)
+    result: list[tuple[str, dict[str, Any]]] = extract_and_serialize(filepath)
+    return result
 
 
 # Import will be done inside functions to avoid circular import
