@@ -17,7 +17,7 @@ from typing import Any
 
 from passlib.context import CryptContext
 
-from ...config import settings
+from shared.config import settings
 
 # Configure logging
 logger = logging.getLogger(__name__)
