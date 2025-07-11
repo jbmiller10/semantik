@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Unified CLI entry point for embedding generation
-Uses the webui.embedding_service.EmbeddingService for all embedding operations
+Uses the shared.embedding.EmbeddingService for all embedding operations
 """
 
 import argparse
@@ -16,13 +16,12 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from tqdm.asyncio import tqdm
 
-# Add parent directory to path to import webui module
+# Add parent directory to path to import shared modules
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from webui.embedding_service import EmbeddingService
-
-from .config import settings
-from .metrics import (
+from shared.config import settings
+from shared.embedding import EmbeddingService
+from shared.metrics.prometheus import (
     TimingContext,
     embedding_batch_duration,
     extraction_duration,
@@ -42,8 +41,8 @@ logger = logging.getLogger(__name__)
 # Constants - matching the old embed_chunks.py
 MODEL_NAME = "BAAI/bge-large-en-v1.5"
 BATCH_SIZE = 96
-INPUT_DIR = str(settings.EXTRACT_DIR)
-OUTPUT_DIR = str(settings.INGEST_DIR)
+INPUT_DIR = str(settings.extract_dir)
+OUTPUT_DIR = str(settings.ingest_dir)
 MAX_CONCURRENT_IO = 4
 
 

@@ -13,15 +13,14 @@ from qdrant_client import AsyncQdrantClient
 # Add parent directory to path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
-from vecpipe.config import settings
-
-from webui import database
+from shared import database
+from shared.config import settings
 from webui.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
 # Constants
-OUTPUT_DIR = str(settings.OUTPUT_DIR)
+OUTPUT_DIR = str(settings.output_dir)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 

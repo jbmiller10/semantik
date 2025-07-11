@@ -4,7 +4,9 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main ]
+    # Run on all pull requests regardless of target branch
+    # This allows CI to run on feature branch PRs (e.g., feature->develop)
+    # not just PRs targeting main
 
 jobs:
   lint:
@@ -33,7 +35,7 @@ jobs:
     
     - name: Type check with Mypy
       run: |
-        poetry run mypy packages/vecpipe packages/webui --ignore-missing-imports
+        poetry run mypy packages/vecpipe packages/webui packages/shared --ignore-missing-imports
 
   test:
     runs-on: ubuntu-latest
@@ -74,7 +76,7 @@ jobs:
     
     - name: Run tests with pytest (excluding E2E)
       run: |
-        poetry run pytest -m "not e2e" --cov=vecpipe --cov=webui --cov-report=xml
+        poetry run pytest -m "not e2e" --cov=vecpipe --cov=webui --cov=shared --cov-report=xml
       env:
         QDRANT_HOST: localhost
         QDRANT_PORT: 6333

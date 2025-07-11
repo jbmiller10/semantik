@@ -3,6 +3,8 @@ Main entry point for Document Embedding Web UI
 Creates and configures the FastAPI application
 """
 
+import logging
+import secrets
 import sys
 from pathlib import Path
 
@@ -16,10 +18,28 @@ from starlette.responses import Response
 # Add parent directory to path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from .api import auth, collections, documents, files, jobs, metrics, models, root, search, settings
-from .api.files import scan_websocket
-from .api.jobs import websocket_endpoint
-from .rate_limiter import limiter
+from shared.config import settings as shared_settings
+from shared.embedding import configure_global_embedding_service
+
+logger = logging.getLogger(__name__)
+
+from .api import (  # noqa: E402
+    auth,
+    collections,
+    documents,
+    files,
+    health,
+    internal,
+    jobs,
+    metrics,
+    models,
+    root,
+    search,
+    settings,
+)
+from .api.files import scan_websocket  # noqa: E402
+from .api.jobs import websocket_endpoint  # noqa: E402
+from .rate_limiter import limiter  # noqa: E402
 
 
 def rate_limit_handler(request: Request, exc: Exception) -> Response:
@@ -28,6 +48,37 @@ def rate_limit_handler(request: Request, exc: Exception) -> Response:
         return _rate_limit_exceeded_handler(request, exc)
     # This shouldn't happen, but handle gracefully
     return Response(content="Rate limit error", status_code=429)
+
+
+def _configure_embedding_service() -> None:
+    """Configure the global embedding service at app startup.
+
+    This centralizes the embedding service configuration to avoid redundant calls
+    across multiple API modules.
+    """
+    try:
+        logger.info("Configuring global embedding service at app startup")
+        configure_global_embedding_service(mock_mode=shared_settings.USE_MOCK_EMBEDDINGS)
+        logger.info(f"Embedding service configured with mock_mode={shared_settings.USE_MOCK_EMBEDDINGS}")
+    except Exception as e:
+        logger.error(f"Failed to configure embedding service: {e}")
+        # Re-raise to prevent app startup with misconfigured service
+        raise RuntimeError(f"Critical error: Failed to configure embedding service: {e}") from e
+
+
+def _configure_internal_api_key() -> None:
+    """Configure internal API key, generating one if using the default value."""
+    if shared_settings.INTERNAL_API_KEY == "change-me-in-production":
+        # Generate a secure random key
+        generated_key = secrets.token_urlsafe(32)
+        shared_settings.INTERNAL_API_KEY = generated_key
+        logger.warning(
+            f"Generated internal API key for development. "
+            f"Set INTERNAL_API_KEY environment variable for production. "
+            f"Current key: {generated_key}"
+        )
+    else:
+        logger.info("Using configured internal API key")
 
 
 def create_app() -> FastAPI:
@@ -39,6 +90,12 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
+    # Configure global embedding service at app startup
+    _configure_embedding_service()
+
+    # Configure internal API key
+    _configure_internal_api_key()
+
     # Include routers with their specific prefixes
     app.include_router(auth.router)
     app.include_router(jobs.router)
@@ -49,6 +106,8 @@ def create_app() -> FastAPI:
     app.include_router(models.router)
     app.include_router(search.router)
     app.include_router(documents.router)
+    app.include_router(health.router)
+    app.include_router(internal.router)
     app.include_router(root.router)  # No prefix for static + root
 
     # Mount WebSocket endpoints at the app level
@@ -89,6 +148,5 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-    from vecpipe.config import settings as vecpipe_settings
 
-    uvicorn.run(app, host="0.0.0.0", port=vecpipe_settings.WEBUI_PORT)
+    uvicorn.run(app, host="0.0.0.0", port=shared_settings.WEBUI_PORT)

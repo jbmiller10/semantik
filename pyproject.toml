@@ -4,7 +4,7 @@ version = "2.0.0"
 description = "Production-ready document embedding system with Qdrant"
 authors = ["Your Name <you@example.com>"]
 readme = "README.md"
-packages = [{include = "vecpipe", from = "packages"}, {include = "webui", from = "packages"}]
+packages = [{include = "vecpipe", from = "packages"}, {include = "webui", from = "packages"}, {include = "shared", from = "packages"}]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"

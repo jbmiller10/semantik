@@ -27,9 +27,9 @@ class TempDatabase:
 @pytest.fixture()
 def test_db():
     """Create a temporary database for each test."""
-    with TempDatabase() as db_path, patch("webui.database.DB_PATH", db_path):
+    with TempDatabase() as db_path, patch("shared.database.DB_PATH", db_path):
         # Import and initialize after patching
-        from webui.database import init_db
+        from shared.database import init_db
 
         init_db()
         yield db_path

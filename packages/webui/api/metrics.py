@@ -3,11 +3,10 @@ Metrics and monitoring routes for the Web UI
 """
 
 import logging
-import os
 from typing import Any
 
 from fastapi import APIRouter, Depends
-
+from shared.config import settings as webui_settings
 from webui.auth import User, get_current_user
 
 logger = logging.getLogger(__name__)
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["metrics"])
 
 # Start metrics server if metrics port is configured
-METRICS_PORT = int(os.getenv("WEBUI_METRICS_PORT", "9092"))
+METRICS_PORT = webui_settings.WEBUI_METRICS_PORT
 METRICS_AVAILABLE = False
 generate_latest: Any | None = None
 registry: Any | None = None
@@ -26,7 +25,7 @@ def update_metrics_loop() -> None:
     """Background thread to continuously update metrics"""
     import time
 
-    from vecpipe.metrics import metrics_collector
+    from shared.metrics.prometheus import metrics_collector
 
     while True:
         try:
@@ -39,8 +38,8 @@ def update_metrics_loop() -> None:
 if METRICS_PORT:
     try:
         from prometheus_client import generate_latest as _generate_latest
-        from vecpipe.metrics import registry as _registry
-        from vecpipe.metrics import start_metrics_server
+        from shared.metrics.prometheus import registry as _registry
+        from shared.metrics.prometheus import start_metrics_server
 
         generate_latest = _generate_latest
         registry = _registry

@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from webui import database
+from shared import database
 from webui.api.files import compute_file_content_hash
 
 
@@ -103,7 +103,9 @@ class TestDuplicateDetection:
     def test_get_duplicate_files_with_matches(self):
         """Test finding duplicate files"""
         # Create a job
-        job_id = "test_job_123"
+        import uuid
+
+        job_id = f"test_job_{uuid.uuid4().hex[:8]}"
         database.create_job(
             {
                 "id": job_id,
@@ -151,11 +153,13 @@ class TestDuplicateDetection:
     def test_get_duplicate_files_incomplete_job(self):
         """Test that incomplete jobs are ignored"""
         # Create a failed job
-        job_id = "failed_job_123"
+        import uuid
+
+        job_id = f"failed_job_{uuid.uuid4().hex[:8]}"
         database.create_job(
             {
                 "id": job_id,
-                "name": "test_collection",
+                "name": "incomplete_test_collection",
                 "description": "Test collection",
                 "status": "failed",  # Not completed
                 "created_at": "2024-01-01T00:00:00",
@@ -185,7 +189,7 @@ class TestDuplicateDetection:
         )
 
         # Should not find duplicates from failed job
-        duplicates = database.get_duplicate_files_in_collection("test_collection", ["hash1"])
+        duplicates = database.get_duplicate_files_in_collection("incomplete_test_collection", ["hash1"])
 
         assert duplicates == set()
 
@@ -209,11 +213,14 @@ class TestSettingsInheritance:
     def test_get_collection_metadata(self):
         """Test retrieving collection metadata"""
         # Create a parent job
-        parent_job_id = "parent_job_123"
+        import uuid
+
+        parent_job_id = f"parent_job_{uuid.uuid4().hex[:8]}"
+        collection_name = f"metadata_test_collection_{uuid.uuid4().hex[:8]}"
         database.create_job(
             {
                 "id": parent_job_id,
-                "name": "test_collection",
+                "name": collection_name,
                 "description": "Test collection",
                 "status": "completed",
                 "created_at": "2024-01-01T00:00:00",
@@ -232,7 +239,7 @@ class TestSettingsInheritance:
         )
 
         # Get metadata
-        metadata = database.get_collection_metadata("test_collection")
+        metadata = database.get_collection_metadata(collection_name)
 
         assert metadata is not None
         assert metadata["id"] == parent_job_id
@@ -252,7 +259,9 @@ class TestSettingsInheritance:
     def test_append_job_inherits_settings(self):
         """Test that append jobs inherit parent settings"""
         # Create parent job
-        parent_job_id = "parent_job_456"
+        import uuid
+
+        parent_job_id = f"parent_job_{uuid.uuid4().hex[:8]}"
         database.create_job(
             {
                 "id": parent_job_id,
@@ -275,7 +284,7 @@ class TestSettingsInheritance:
         )
 
         # Create append job
-        append_job_id = "append_job_789"
+        append_job_id = f"append_job_{uuid.uuid4().hex[:8]}"
         database.create_job(
             {
                 "id": append_job_id,
