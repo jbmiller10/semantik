@@ -7,7 +7,6 @@ REST API for vector similarity search with Qwen3 support
 import asyncio
 import hashlib
 import logging
-import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -18,17 +17,27 @@ from typing import Any
 import httpx
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Query
-from pydantic import BaseModel, Field
+
+# Import contracts from shared
+from shared.contracts.search import (
+    BatchSearchRequest,
+    BatchSearchResponse,
+    HybridSearchResponse,
+    HybridSearchResult,
+    SearchRequest,
+    SearchResponse,
+    SearchResult,
+)
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from prometheus_client import Counter, Histogram
-from webui.embedding_service import EmbeddingService
+from shared.config import settings
+from shared.embedding.service import get_embedding_service
+from shared.metrics.prometheus import metrics_collector, registry, start_metrics_server
 
-from .config import settings
 from .hybrid_search import HybridSearchEngine
 from .memory_utils import InsufficientMemoryError
-from .metrics import metrics_collector, registry, start_metrics_server
 from .qwen3_search_config import RERANK_CONFIG, RERANKING_INSTRUCTIONS, get_reranker_for_embedding_model
 from .search_utils import parse_search_results, search_qdrant
 
@@ -46,11 +55,17 @@ def get_or_create_metric(
     **kwargs: Any,
 ) -> Any:
     """Create a metric or return existing one if already registered"""
-    from prometheus_client import REGISTRY
+    # Use the shared registry instead of the default one
 
     # Check if metric already exists
-    if name in REGISTRY._names_to_collectors:
-        return REGISTRY._names_to_collectors[name]
+    try:
+        # Try to get existing collector from registry
+        for collector in registry._collector_to_names:
+            if hasattr(collector, "_name") and collector._name == name:
+                return collector
+    except AttributeError:
+        # Registry structure might be different, continue to create new metric
+        pass
 
     # Create new metric
     if labels:
@@ -81,7 +96,7 @@ embedding_generation_latency = get_or_create_metric(
 
 # Constants
 DEFAULT_K = 10
-METRICS_PORT = int(os.getenv("METRICS_PORT", "9091"))
+METRICS_PORT = settings.METRICS_PORT
 
 # Search instructions for different use cases
 SEARCH_INSTRUCTIONS = {
@@ -92,80 +107,13 @@ SEARCH_INSTRUCTIONS = {
 }
 
 
-# Response models
-class SearchResult(BaseModel):
-    path: str
-    chunk_id: str
-    score: float
-    doc_id: str | None = None
-    content: str | None = None
-    metadata: dict | None = None
-
-
-class SearchRequest(BaseModel):
-    query: str = Field(..., description="Search query text")
-    k: int = Field(DEFAULT_K, ge=1, le=100, description="Number of results")
-    search_type: str = Field("semantic", description="Type of search: semantic, question, code, hybrid")
-    model_name: str | None = Field(None, description="Override embedding model")
-    quantization: str | None = Field(None, description="Override quantization: float32, float16, int8")
-    filters: dict | None = Field(None, description="Metadata filters for search")
-    include_content: bool = Field(False, description="Include chunk content in results")
-    collection: str | None = Field(None, description="Collection name (e.g., job_123)")
-    use_reranker: bool = Field(False, description="Enable cross-encoder reranking")
-    rerank_model: str | None = Field(None, description="Override reranker model")
-    rerank_quantization: str | None = Field(None, description="Override reranker quantization: float32, float16, int8")
-
-
-class BatchSearchRequest(BaseModel):
-    queries: list[str] = Field(..., description="List of search queries")
-    k: int = Field(DEFAULT_K, ge=1, le=100, description="Number of results per query")
-    search_type: str = Field("semantic", description="Type of search")
-    model_name: str | None = Field(None, description="Override embedding model")
-    quantization: str | None = Field(None, description="Override quantization")
-    collection: str | None = Field(None, description="Collection name")
-
-
-class SearchResponse(BaseModel):
-    query: str
-    results: list[SearchResult]
-    num_results: int
-    search_type: str | None = None
-    model_used: str | None = None
-    embedding_time_ms: float | None = None
-    search_time_ms: float | None = None
-    reranking_used: bool | None = None
-    reranker_model: str | None = None
-    reranking_time_ms: float | None = None
-
-
-class BatchSearchResponse(BaseModel):
-    responses: list[SearchResponse]
-    total_time_ms: float
-
-
-class HybridSearchResult(BaseModel):
-    path: str
-    chunk_id: str
-    score: float
-    doc_id: str | None = None
-    matched_keywords: list[str] = []
-    keyword_score: float | None = None
-    combined_score: float | None = None
-    metadata: dict[str, Any] | None = None
-
-
-class HybridSearchResponse(BaseModel):
-    query: str
-    results: list[HybridSearchResult]
-    num_results: int
-    keywords_extracted: list[str]
-    search_mode: str
+# Response models are now imported from shared.contracts.search above
 
 
 # Global resources
 qdrant_client: httpx.AsyncClient | None = None
 model_manager: Any | None = None  # Will be ModelManager once imported
-embedding_service: EmbeddingService | None = None
+embedding_service: Any | None = None  # Will be BaseEmbeddingService once initialized
 executor: ThreadPoolExecutor | None = None
 
 
@@ -184,12 +132,46 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     # Initialize model manager with lazy loading
     from .model_manager import ModelManager
 
-    unload_after = int(os.getenv("MODEL_UNLOAD_AFTER_SECONDS", "300"))  # 5 minutes default
+    unload_after = settings.MODEL_UNLOAD_AFTER_SECONDS
     model_manager = ModelManager(unload_after_seconds=unload_after)
     logger.info(f"Initialized model manager with {unload_after}s inactivity timeout")
 
     # Initialize embedding service for backward compatibility
-    embedding_service = EmbeddingService(mock_mode=settings.USE_MOCK_EMBEDDINGS)
+
+    # Create embedding service using the factory function
+    base_service = await get_embedding_service(config=settings)
+
+    # Create a wrapper that implements the expected protocol
+    class LegacyEmbeddingServiceWrapper:
+        def __init__(self, service: Any):
+            self._service = service
+            self.mock_mode = settings.USE_MOCK_EMBEDDINGS
+            self.allow_quantization_fallback = True
+
+        @property
+        def current_model_name(self) -> str | None:
+            return getattr(self._service, "model_name", None)
+
+        @property
+        def current_quantization(self) -> str:
+            return getattr(self._service, "quantization", "float32")
+
+        @property
+        def current_model(self) -> Any:
+            return getattr(self._service, "model", None)
+
+        @property
+        def current_tokenizer(self) -> Any:
+            return getattr(self._service, "tokenizer", None)
+
+        @property
+        def device(self) -> str:
+            return getattr(self._service, "device", "cpu")
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(self._service, name)
+
+    embedding_service = LegacyEmbeddingServiceWrapper(base_service)
     logger.info(f"Initialized embedding service (mock_mode={settings.USE_MOCK_EMBEDDINGS})")
 
     # Initialize thread pool executor for async operations
@@ -332,6 +314,58 @@ async def root() -> dict[str, Any]:
         raise HTTPException(status_code=503, detail=f"Service unavailable: {str(e)}") from e
 
 
+@app.get("/health")
+async def health() -> dict[str, Any]:
+    """Comprehensive health check endpoint"""
+    health_status: dict[str, Any] = {"status": "healthy", "components": {}}
+
+    # Check Qdrant client
+    try:
+        if qdrant_client is None:
+            health_status["components"]["qdrant"] = {"status": "unhealthy", "error": "Client not initialized"}
+            health_status["status"] = "unhealthy"
+        else:
+            # Try to get collection info to verify connection
+            response = await qdrant_client.get("/collections")
+            if response.status_code == 200:
+                collections_data = response.json()
+                health_status["components"]["qdrant"] = {
+                    "status": "healthy",
+                    "collections_count": len(collections_data.get("result", {}).get("collections", [])),
+                }
+            else:
+                health_status["components"]["qdrant"] = {"status": "unhealthy", "error": f"HTTP {response.status_code}"}
+                health_status["status"] = "unhealthy"
+    except Exception as e:
+        health_status["components"]["qdrant"] = {"status": "unhealthy", "error": str(e)}
+        health_status["status"] = "unhealthy"
+
+    # Check embedding service
+    try:
+        if embedding_service is None:
+            health_status["components"]["embedding"] = {"status": "unhealthy", "error": "Service not initialized"}
+            health_status["status"] = "degraded" if health_status["status"] == "healthy" else "unhealthy"
+        else:
+            if embedding_service.is_initialized:
+                model_info = embedding_service.get_model_info()
+                health_status["components"]["embedding"] = {
+                    "status": "healthy",
+                    "model": model_info.get("model_name"),
+                    "dimension": model_info.get("dimension"),
+                }
+            else:
+                health_status["components"]["embedding"] = {"status": "unhealthy", "error": "Service not initialized"}
+                health_status["status"] = "degraded" if health_status["status"] == "healthy" else "unhealthy"
+    except Exception as e:
+        health_status["components"]["embedding"] = {"status": "unhealthy", "error": str(e)}
+        health_status["status"] = "degraded" if health_status["status"] == "healthy" else "unhealthy"
+
+    if health_status["status"] == "unhealthy":
+        raise HTTPException(status_code=503, detail=health_status)
+
+    return health_status
+
+
 @app.get("/search", response_model=SearchResponse)
 async def search(
     q: str = Query(..., description="Search query"),
@@ -354,16 +388,21 @@ async def search(
     # Create request object for unified handling
     request = SearchRequest(
         query=q,
-        k=k,
+        top_k=k,  # Use the alias since 'k' has alias="top_k"
         search_type=search_type,
         model_name=model_name,
         quantization=quantization,
         collection=collection,
         filters=None,
         include_content=False,
+        job_id=None,
         use_reranker=False,
         rerank_model=None,
         rerank_quantization=None,
+        score_threshold=0.0,
+        hybrid_alpha=0.7,
+        hybrid_mode="rerank",
+        keyword_mode="any",
     )
     result = await search_post(request)
     return SearchResponse(**result.model_dump())
@@ -412,7 +451,7 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
             from qdrant_client import QdrantClient
 
             sync_client = QdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
-            from webui.api.collection_metadata import get_collection_metadata
+            from shared.database.collection_metadata import get_collection_metadata
 
             metadata = get_collection_metadata(sync_client, collection_name)
             if metadata:
@@ -537,9 +576,12 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
                     path=payload.get("path", ""),
                     chunk_id=payload.get("chunk_id", ""),
                     score=point["score"],
-                    doc_id=payload.get("doc_id"),
+                    doc_id=payload["doc_id"],
                     content=payload.get("content") if should_include_content else None,
                     metadata=payload.get("metadata"),
+                    file_path=None,
+                    file_name=None,
+                    job_id=None,
                 )
             else:
                 # Parsed format from search_utils
@@ -549,9 +591,12 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
                         path=parsed_item["path"],
                         chunk_id=parsed_item["chunk_id"],
                         score=parsed_item["score"],
-                        doc_id=parsed_item.get("doc_id"),
+                        doc_id=parsed_item["doc_id"],
                         content=parsed_item.get("content") if should_include_content else None,
                         metadata=parsed_item.get("metadata"),
+                        file_path=None,
+                        file_name=None,
+                        job_id=None,
                     )
                     results.append(result)
                 break
@@ -754,7 +799,7 @@ async def hybrid_search(
             from qdrant_client import QdrantClient
 
             sync_client = QdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
-            from webui.api.collection_metadata import get_collection_metadata
+            from shared.database.collection_metadata import get_collection_metadata
 
             metadata = get_collection_metadata(sync_client, collection_name)
             if metadata:
@@ -822,11 +867,12 @@ async def hybrid_search(
                 path=r["payload"].get("path", ""),
                 chunk_id=r["payload"].get("chunk_id", ""),
                 score=r["score"],
-                doc_id=r["payload"].get("doc_id"),
+                doc_id=r["payload"]["doc_id"],
                 matched_keywords=r.get("matched_keywords", []),
                 keyword_score=r.get("keyword_score"),
                 combined_score=r.get("combined_score"),
                 metadata=r["payload"].get("metadata"),
+                content=None,
             )
             hybrid_results.append(result)
 
@@ -902,7 +948,11 @@ async def batch_search(request: BatchSearchRequest = Body(...)) -> BatchSearchRe
                             path=payload.get("path", ""),
                             chunk_id=payload.get("chunk_id", ""),
                             score=point["score"],
-                            doc_id=payload.get("doc_id"),
+                            doc_id=payload["doc_id"],
+                            content=None,
+                            file_path=None,
+                            file_name=None,
+                            job_id=None,
                         )
                     )
                 else:
@@ -911,7 +961,14 @@ async def batch_search(request: BatchSearchRequest = Body(...)) -> BatchSearchRe
                     for r in parsed:
                         parsed_results.append(
                             SearchResult(
-                                path=r["path"], chunk_id=r["chunk_id"], score=r["score"], doc_id=r.get("doc_id")
+                                path=r["path"],
+                                chunk_id=r["chunk_id"],
+                                score=r["score"],
+                                doc_id=r["doc_id"],
+                                content=None,
+                                file_path=None,
+                                file_name=None,
+                                job_id=None,
                             )
                         )
                     break
@@ -975,8 +1032,9 @@ async def keyword_search(
                 path=r["payload"].get("path", ""),
                 chunk_id=r["payload"].get("chunk_id", ""),
                 score=0.0,  # No vector score for keyword-only search
-                doc_id=r["payload"].get("doc_id"),
+                doc_id=r["payload"]["doc_id"],
                 matched_keywords=r.get("matched_keywords", []),
+                content=None,
             )
             hybrid_results.append(result)
 
@@ -1018,7 +1076,7 @@ async def collection_info() -> dict[str, Any]:
 @app.get("/models")
 async def list_models() -> dict[str, Any]:
     """List available embedding models and their properties"""
-    from webui.embedding_service import QUANTIZED_MODEL_INFO
+    from shared.embedding import QUANTIZED_MODEL_INFO
 
     models = []
     for model_name, info in QUANTIZED_MODEL_INFO.items():

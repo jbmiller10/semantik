@@ -43,14 +43,14 @@ dev-install:
 	poetry install
 
 format:
-	black packages/vecpipe packages/webui tests
-	isort packages/vecpipe packages/webui tests
+	black packages/vecpipe packages/webui packages/shared tests
+	isort packages/vecpipe packages/webui packages/shared tests
 
 lint:
-	ruff check packages/vecpipe packages/webui tests
+	ruff check packages/vecpipe packages/webui packages/shared tests
 
 type-check:
-	mypy packages/vecpipe packages/webui --ignore-missing-imports
+	mypy packages/vecpipe packages/webui packages/shared --ignore-missing-imports
 
 test:
 	pytest tests -v
@@ -62,7 +62,7 @@ test-e2e:
 	pytest tests -v -m e2e
 
 test-coverage:
-	pytest tests -v --cov=packages.vecpipe --cov=packages.webui --cov-report=html --cov-report=term
+	pytest tests -v --cov=packages.vecpipe --cov=packages.webui --cov=packages.shared --cov-report=html --cov-report=term
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +

@@ -8,6 +8,12 @@ The Document Embedding System uses a hybrid database architecture combining:
 
 This architecture separates transactional/metadata storage from high-performance vector operations, following the architectural principle of using the right tool for each job.
 
+**Key Architectural Decisions**:
+- The SQLite database is owned and managed exclusively by the **webui package**
+- All database operations use the **repository pattern** implemented in `packages/shared/database/`
+- The **vecpipe package** has no direct database access - it must use webui API endpoints
+- The **shared package** provides the repository interfaces and implementations used by webui
+
 ## Database Distribution Strategy
 
 ### SQLite (Relational Data)
@@ -26,6 +32,9 @@ This architecture separates transactional/metadata storage from high-performance
 
 ### Location and Configuration
 - **Primary Database**: `data/webui.db`
+- **Ownership**: Exclusively owned by webui service
+- **Access Pattern**: Repository pattern via `packages/shared/database/`
+- **Legacy Access**: Deprecated wrappers in `packages/shared/database/legacy_wrappers.py`
 - **Backup Strategy**: Manual backups to `data/webui.db.backup`
 - **Connection Management**: Handled by `packages/webui/database.py`
 - **Initialization**: Auto-creates tables on first run via `init_db()`
@@ -249,12 +258,67 @@ class JobStatus(BaseModel):
 
 ## Database Operations
 
+### Repository Pattern Implementation
+
+The system uses a clean repository pattern for all database operations, implemented in the shared package:
+
+**Repository Structure** (in `packages/shared/database/`):
+
+**Repository Interfaces** (`repositories.py`):
+- `JobRepository`: Abstract interface for job operations
+- `FileRepository`: Abstract interface for file operations  
+- `UserRepository`: Abstract interface for user management
+- `AuthTokenRepository`: Abstract interface for authentication tokens
+- `CollectionRepository`: Abstract interface for collection metadata
+
+**Concrete Implementations** (`sqlite_implementation.py`):
+- SQLite-specific implementations of all repository interfaces
+- Handles connection management, transactions, and SQL queries
+- Type-safe operations with proper error handling
+
+**Factory Functions**:
+```python
+# From shared.database package
+def create_job_repository() -> JobRepository
+def create_file_repository() -> FileRepository
+def create_user_repository() -> UserRepository
+def create_auth_token_repository() -> AuthTokenRepository
+def create_collection_repository() -> CollectionRepository
+```
+
+**Usage Example** (from webui package):
+```python
+from shared.database import create_job_repository
+
+# Repository handles connection lifecycle
+with create_job_repository() as repo:
+    # Type-safe operations with proper models
+    job = repo.create_job({
+        "name": "My Job",
+        "directory_path": "/docs",
+        "model_name": "BAAI/bge-base-en-v1.5",
+        "user_id": 1
+    })
+    
+    # Update with validation
+    repo.update_job(job["id"], {"status": "processing"})
+    
+    # Query with filters
+    user_jobs = repo.list_jobs(user_id=1)
+```
+
+**Legacy Migration Path**:
+- Deprecated direct database functions wrapped in `legacy_wrappers.py`
+- All functions include `@deprecated` decorator with migration guidance
+- Ensures smooth transition to repository pattern
+
 ### Connection Management
 
 **SQLite**:
 - Direct connection per operation (no pooling needed)
 - Thread-safe with proper transaction handling
 - Connection string: `sqlite:///data/webui.db`
+- Access only through repository pattern
 
 **Qdrant**:
 - Singleton connection manager with retry logic
@@ -283,6 +347,12 @@ class JobStatus(BaseModel):
 - Foreign key violations (orphaned files)
 - Graceful handling with meaningful error messages
 
+**Repository Pattern Benefits**:
+- Centralized error handling
+- Consistent transaction management
+- Type-safe operations with proper models
+- Easy to mock for testing
+
 **Qdrant Errors**:
 - Connection failures trigger retry mechanism
 - Collection not found errors handled gracefully
@@ -294,35 +364,35 @@ class JobStatus(BaseModel):
 
 ```
 1. User uploads directory
-   └─> Create job record (SQLite)
+   └─> WebUI creates job via JobRepository
    
 2. Scan directory for files
-   └─> Insert file records (SQLite)
+   └─> WebUI creates file records via FileRepository
    
-3. Extract and chunk text
-   └─> Update file chunks_created (SQLite)
+3. Extract and chunk text (using shared.text_processing)
+   └─> WebUI updates file status via FileRepository
    
-4. Generate embeddings
+4. Generate embeddings (using shared.embedding)
    └─> Batch upload to Qdrant
-   └─> Update file vectors_created (SQLite)
+   └─> WebUI updates vectors_created via FileRepository
    
 5. Complete job
-   └─> Update job status (SQLite)
+   └─> WebUI updates job status via JobRepository
    └─> Vectors available for search (Qdrant)
 ```
 
 ### Search Flow
 
 ```
-1. User enters query
-   └─> Generate query embedding
+1. User enters query in WebUI
+   └─> WebUI proxies to Vecpipe Search API
    
-2. Search Qdrant
-   └─> Vector similarity search
-   └─> Optional keyword filtering
+2. Vecpipe generates query embedding
+   └─> Uses shared.embedding service
+   └─> Searches Qdrant for similar vectors
    
-3. Return results
-   └─> Enrich with file metadata
+3. Vecpipe returns results to WebUI
+   └─> WebUI enriches with file metadata (from SQLite)
    └─> Format for UI display
 ```
 
@@ -418,6 +488,8 @@ client.create_snapshot(collection_name="work_docs")
 6. **Backup Automation**: Scheduled backups with retention
 7. **Performance Monitoring**: Query performance tracking
 8. **Data Versioning**: Track embedding model versions
+9. **Migration to PostgreSQL**: For better concurrency and scaling
+10. **Remove Legacy Wrappers**: Complete migration from legacy database functions
 
 ### Scalability Path
 1. **SQLite → PostgreSQL**: For concurrent write scaling

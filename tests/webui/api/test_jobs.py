@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock, Mock
 
 from fastapi.testclient import TestClient
-from vecpipe.config import settings
+from shared.config import settings
 from webui.api.jobs import ConnectionManager, active_job_tasks
 
 
@@ -74,7 +74,7 @@ class TestJobManagement:
             },
         ]
 
-        monkeypatch.setattr("webui.database.list_jobs", Mock(return_value=mock_jobs))
+        monkeypatch.setattr("shared.database.list_jobs", Mock(return_value=mock_jobs))
 
         response = test_client.get("/api/jobs", headers={})
 
@@ -108,7 +108,7 @@ class TestJobManagement:
             "chunk_overlap": 200,
         }
 
-        monkeypatch.setattr("webui.database.get_job", Mock(return_value=mock_job))
+        monkeypatch.setattr("shared.database.get_job", Mock(return_value=mock_job))
 
         response = test_client.get(f"/api/jobs/{job_id}", headers={})
 
@@ -120,7 +120,7 @@ class TestJobManagement:
 
     def test_get_job_not_found(self, test_client: TestClient, monkeypatch):
         """Test getting non-existent job"""
-        monkeypatch.setattr("webui.database.get_job", Mock(return_value=None))
+        monkeypatch.setattr("shared.database.get_job", Mock(return_value=None))
 
         response = test_client.get("/api/jobs/non-existent", headers={})
 
@@ -132,11 +132,11 @@ class TestJobManagement:
         job_id = "running-job"
 
         # Mock get_job to return a running job
-        monkeypatch.setattr("webui.database.get_job", Mock(return_value={"id": job_id, "status": "processing"}))
+        monkeypatch.setattr("shared.database.get_job", Mock(return_value={"id": job_id, "status": "processing"}))
 
         # Mock update_job
         mock_update_job = Mock()
-        monkeypatch.setattr("webui.database.update_job", mock_update_job)
+        monkeypatch.setattr("shared.database.update_job", mock_update_job)
 
         # Mock active task
         mock_task = Mock()
@@ -158,7 +158,7 @@ class TestJobManagement:
         job_id = "completed-job"
 
         # Mock get_job to return a completed job
-        monkeypatch.setattr("webui.database.get_job", Mock(return_value={"id": job_id, "status": "completed"}))
+        monkeypatch.setattr("shared.database.get_job", Mock(return_value={"id": job_id, "status": "completed"}))
 
         response = test_client.post(f"/api/jobs/{job_id}/cancel", headers={})
 
@@ -170,7 +170,7 @@ class TestJobManagement:
         job_id = "job-to-delete"
 
         # Mock get_job
-        monkeypatch.setattr("webui.database.get_job", Mock(return_value={"id": job_id, "status": "completed"}))
+        monkeypatch.setattr("shared.database.get_job", Mock(return_value={"id": job_id, "status": "completed"}))
 
         # Mock AsyncQdrantClient - delete endpoint creates its own client
         mock_async_qdrant = AsyncMock()
@@ -182,7 +182,7 @@ class TestJobManagement:
 
         # Mock database delete
         mock_delete_job = Mock()
-        monkeypatch.setattr("webui.database.delete_job", mock_delete_job)
+        monkeypatch.setattr("shared.database.delete_job", mock_delete_job)
 
         response = test_client.delete(f"/api/jobs/{job_id}", headers={})
 
@@ -243,7 +243,7 @@ class TestCollectionOperations:
             "vector_dim": 768,
         }
 
-        monkeypatch.setattr("webui.database.get_collection_metadata", Mock(return_value=mock_metadata))
+        monkeypatch.setattr("shared.database.get_collection_metadata", Mock(return_value=mock_metadata))
 
         response = test_client.get(f"/api/jobs/collection-metadata/{collection_name}", headers={})
 
@@ -255,7 +255,7 @@ class TestCollectionOperations:
 
     def test_get_collection_metadata_not_found(self, test_client: TestClient, monkeypatch):
         """Test getting metadata for non-existent collection"""
-        monkeypatch.setattr("webui.database.get_collection_metadata", Mock(return_value=None))
+        monkeypatch.setattr("shared.database.get_collection_metadata", Mock(return_value=None))
 
         response = test_client.get("/api/jobs/collection-metadata/non-existent", headers={})
 
@@ -308,7 +308,13 @@ class TestValidation:
 
         assert response.status_code == 422
         errors = response.json()["detail"]
-        assert any("chunk_size must be at least 100" in str(error) for error in errors)
+        assert any(
+            (
+                "chunk_size must be at least 100" in str(error)
+                or "Input should be greater than or equal to 100" in str(error)
+            )
+            for error in errors
+        )
 
     def test_create_job_invalid_chunk_overlap(self, test_client: TestClient):
         """Test job creation with invalid chunk overlap"""

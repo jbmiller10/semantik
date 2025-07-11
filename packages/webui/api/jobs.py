@@ -12,31 +12,33 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeAlias
 
 from fastapi import APIRouter, Body, Depends, HTTPException, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, validator
+from pydantic import BaseModel
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Distance, PointStruct
+from shared.contracts.jobs import AddToCollectionRequest
+from shared.contracts.jobs import CreateJobRequest as SharedCreateJobRequest
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 import contextlib
 
-from vecpipe.config import settings
-from vecpipe.extract_chunks import TokenChunker, extract_text
-
-from webui import database
+from shared import database
+from shared.config import settings
+from shared.embedding import POPULAR_MODELS, embedding_service
+from shared.text_processing.chunking import TokenChunker
+from shared.text_processing.extraction import extract_text
 from webui.auth import get_current_user
-from webui.embedding_service import POPULAR_MODELS, embedding_service
 from webui.utils.qdrant_manager import qdrant_manager
 
 logger = logging.getLogger(__name__)
 
 # Constants
-JOBS_DIR = str(settings.JOBS_DIR)
-OUTPUT_DIR = str(settings.OUTPUT_DIR)
+JOBS_DIR = str(settings.jobs_dir)
+OUTPUT_DIR = str(settings.output_dir)
 SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".doc", ".txt", ".text", ".pptx", ".eml", ".md", ".html"]
 
 # Create necessary directories
@@ -46,46 +48,12 @@ Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 
-# Request/Response models
-class CreateJobRequest(BaseModel):
-    name: str
-    description: str = ""
-    directory_path: str
-    model_name: str = "Qwen/Qwen3-Embedding-0.6B"
-    chunk_size: int = 600
-    chunk_overlap: int = 200
-    batch_size: int = 96
-    vector_dim: int | None = None
-    quantization: str = "float32"
-    instruction: str | None = None
-    job_id: str | None = None  # Allow pre-generated job_id for WebSocket connection
-
-    @validator("chunk_size")
-    def validate_chunk_size(cls, v: int) -> int:  # noqa: N805
-        if v <= 0:
-            raise ValueError("chunk_size must be positive")
-        if v < 100:
-            raise ValueError("chunk_size must be at least 100 tokens")
-        if v > 50000:
-            raise ValueError("chunk_size must not exceed 50000 tokens")
-        return v
-
-    @validator("chunk_overlap")
-    def validate_chunk_overlap(cls, v: int, values: dict[str, Any]) -> int:  # noqa: N805
-        if v < 0:
-            raise ValueError("chunk_overlap cannot be negative")
-        if "chunk_size" in values and v >= values["chunk_size"]:
-            raise ValueError(f'chunk_overlap ({v}) must be less than chunk_size ({values["chunk_size"]})')
-        return v
+# Request/Response models are imported from shared.contracts.jobs
+# Create a proper type alias for mypy
+CreateJobRequest: TypeAlias = SharedCreateJobRequest
 
 
-class AddToCollectionRequest(BaseModel):
-    collection_name: str
-    directory_path: str
-    description: str = ""
-    job_id: str | None = None  # Allow pre-generated job_id for WebSocket connection
-
-
+# Legacy JobStatus for WebSocket updates (different from JobResponse)
 class JobStatus(BaseModel):
     id: str
     name: str
@@ -147,14 +115,16 @@ executor = ThreadPoolExecutor(max_workers=8)
 
 def extract_text_thread_safe(filepath: str) -> str:
     """Thread-safe version of extract_text that uses the unified extraction"""
-    return extract_text(filepath)
+    result: str = extract_text(filepath)
+    return result
 
 
 def extract_and_serialize_thread_safe(filepath: str) -> list[tuple[str, dict[str, Any]]]:
     """Thread-safe version of extract_and_serialize that preserves metadata"""
-    from vecpipe.extract_chunks import extract_and_serialize
+    from shared.text_processing.extraction import extract_and_serialize
 
-    return extract_and_serialize(filepath)
+    result: list[tuple[str, dict[str, Any]]] = extract_and_serialize(filepath)
+    return result
 
 
 # Import will be done inside functions to avoid circular import
@@ -166,7 +136,7 @@ async def update_metrics_continuously() -> None:
     # we only need to ensure metrics are being updated, not force updates
     while True:
         try:
-            from vecpipe.metrics import metrics_collector
+            from shared.metrics.prometheus import metrics_collector
 
             # Only update if it's been more than 0.5 seconds since last update
             current_time = time.time()
@@ -183,7 +153,7 @@ async def process_embedding_job(job_id: str) -> None:
 
     # Import metrics if available
     try:
-        from vecpipe.metrics import (
+        from shared.metrics.prometheus import (
             embedding_batch_duration,
             metrics_collector,
             record_chunks_created,
@@ -653,7 +623,7 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
             logger.info(f"Successfully created collection {collection_name}")
 
             # Store metadata about this collection
-            from .collection_metadata import store_collection_metadata
+            from shared.database.collection_metadata import store_collection_metadata
 
             store_collection_metadata(
                 qdrant=qdrant,

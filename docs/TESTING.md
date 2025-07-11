@@ -465,7 +465,7 @@ tests/fixtures/
 ```python
 # tests/factories.py
 import factory
-from webui.database import User
+from shared.database import User
 
 class UserFactory(factory.Factory):
     class Meta:

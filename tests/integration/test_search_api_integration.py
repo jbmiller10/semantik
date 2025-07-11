@@ -19,7 +19,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-# TODO: Update patch path in this test after CORE-003 is merged
 # NOTE: This test verifies that generate_embedding_async is called correctly,
 # but due to settings being loaded at module import time, it may use mock embeddings
 # depending on the environment configuration
@@ -59,7 +58,7 @@ class TestSearchAPIIntegration:
     @patch("packages.vecpipe.search_api.generate_mock_embedding")
     @patch("packages.vecpipe.search_api.generate_embedding_async")
     @patch("packages.vecpipe.search_utils.AsyncQdrantClient")
-    @patch("packages.vecpipe.model_manager.EmbeddingService")
+    @patch("shared.embedding.EmbeddingService")
     @patch("httpx.AsyncClient.get")
     @patch("httpx.AsyncClient.post")
     def test_search_endpoint_uses_embedding_service(
@@ -73,7 +72,8 @@ class TestSearchAPIIntegration:
     ):
         """Test that the /search endpoint correctly uses the embedding service."""
         # Import settings to check which mode we're in
-        from packages.vecpipe.config import settings
+
+        from shared.config import settings
 
         # Set up mocks
         # Mock the embedding service instance
@@ -214,7 +214,7 @@ class TestSearchAPIIntegration:
     @patch("packages.vecpipe.search_api.generate_mock_embedding")
     @patch("packages.vecpipe.search_api.generate_embedding_async")
     @patch("packages.vecpipe.search_utils.AsyncQdrantClient")
-    @patch("packages.vecpipe.model_manager.EmbeddingService")
+    @patch("shared.embedding.EmbeddingService")
     @patch("httpx.AsyncClient.get")
     @patch("httpx.AsyncClient.post")
     def test_search_with_custom_model_params(
@@ -228,7 +228,8 @@ class TestSearchAPIIntegration:
     ):
         """Test search with custom model name and quantization parameters."""
         # Import settings to check which mode we're in
-        from packages.vecpipe.config import settings
+
+        from shared.config import settings
 
         # Set up mocks
         mock_embedding_instance = mock_embedding_service_class.return_value

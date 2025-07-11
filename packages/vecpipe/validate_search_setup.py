@@ -5,7 +5,6 @@ Helps diagnose configuration and model loading issues
 """
 
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -13,6 +12,8 @@ import torch
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+from shared.config import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -26,9 +27,9 @@ def check_environment() -> tuple[bool, str, str]:
 
     # Check environment variables
     print("\n1. Environment Variables:")
-    use_mock = os.getenv("USE_MOCK_EMBEDDINGS", "false").lower() == "true"
-    model = os.getenv("DEFAULT_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B")
-    quantization = os.getenv("DEFAULT_QUANTIZATION", "float16")
+    use_mock = settings.USE_MOCK_EMBEDDINGS
+    model = settings.DEFAULT_EMBEDDING_MODEL
+    quantization = settings.DEFAULT_QUANTIZATION
 
     print(f"   USE_MOCK_EMBEDDINGS: {use_mock}")
     print(f"   DEFAULT_EMBEDDING_MODEL: {model}")
@@ -92,7 +93,7 @@ def test_model_loading(model_name: str, quantization: str, has_gpu: bool) -> boo
     print(f"\n4. Testing Model Loading: {model_name}")
 
     try:
-        from webui.embedding_service import EmbeddingService
+        from shared.embedding import EmbeddingService
 
         print(f"   Loading with {quantization} quantization...")
         service = EmbeddingService()

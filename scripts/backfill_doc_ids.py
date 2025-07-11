@@ -5,9 +5,9 @@ from pathlib import Path
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from vecpipe.config import settings
+from shared.config import settings
 
-DB_PATH = str(settings.WEBUI_DB)
+DB_PATH = str(settings.webui_db)
 
 
 def backfill_doc_ids():

@@ -8,7 +8,7 @@ import logging
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -18,10 +18,9 @@ from pydantic import BaseModel, EmailStr, validator
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from vecpipe.config import settings
-
 # Import database module
-from . import database
+from shared import database
+from shared.config import settings
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -143,7 +142,8 @@ def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
     # Update last login
     database.update_user_last_login(user["id"])
 
-    return user
+    # Type cast to satisfy mypy - we've verified user is not None
+    return cast(dict[str, Any], user)
 
 
 # FastAPI dependency
@@ -170,7 +170,8 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     if not user.get("is_active", True):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
 
-    return user
+    # Type cast to satisfy mypy - we know user is not None here
+    return cast(dict[str, Any], user)
 
 
 # Removed unused function: get_current_admin_user
