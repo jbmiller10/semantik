@@ -107,11 +107,9 @@ class ModelManager:
                 # Note: EmbeddingService.load_model is thread-safe as it uses internal locking
                 try:
                     # Use executor with timeout to prevent hanging
-                    future = self.executor.submit(
-                        self.embedding_service.load_model, model_name, quantization
-                    )
+                    future = self.executor.submit(self.embedding_service.load_model, model_name, quantization)
                     success = future.result(timeout=300)  # 5 minute timeout
-                    
+
                     if success:
                         self.current_model_key = model_key
                         self._update_last_used()
@@ -120,7 +118,7 @@ class ModelManager:
                     logger.error(f"Model loading timed out for {model_name} with {quantization} after 5 minutes")
                 except Exception as e:
                     logger.error(f"Unexpected error loading model {model_name}: {type(e).__name__}: {e}")
-            
+
             logger.error(f"Failed to load model: {model_name}")
             return False
 
