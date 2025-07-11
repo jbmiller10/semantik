@@ -1032,7 +1032,8 @@ class TestSchemaMigration:
         conn.close()
 
         # Now run init_db to migrate
-        with patch("shared.database.DB_PATH", db_path):
+        # Patch at the implementation level where DB_PATH is actually used
+        with patch("shared.database.sqlite_implementation.DB_PATH", db_path):
             from shared.database import init_db
 
             init_db()

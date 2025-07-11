@@ -140,7 +140,7 @@ class TestQdrantConnectionManager:
         # All instances should be the same
         assert all(m is managers[0] for m in managers)
 
-    @patch("packages.webui.utils.qdrant_manager.QdrantClient")
+    @patch("webui.utils.qdrant_manager.QdrantClient")
     def test_get_client_creates_new_client(self, mock_qdrant_client_class):
         """Test get_client creates a new client when none exists"""
         # Reset singleton
@@ -160,7 +160,7 @@ class TestQdrantConnectionManager:
         )
         mock_client.get_collections.assert_called_once()  # Verify connection check
 
-    @patch("packages.webui.utils.qdrant_manager.QdrantClient")
+    @patch("webui.utils.qdrant_manager.QdrantClient")
     def test_get_client_reuses_existing_client(self, mock_qdrant_client_class):
         """Test get_client reuses existing valid client"""
         # Reset singleton
@@ -178,7 +178,7 @@ class TestQdrantConnectionManager:
         assert client1 is client2
         assert mock_qdrant_client_class.call_count == 1  # Only created once
 
-    @patch("packages.webui.utils.qdrant_manager.QdrantClient")
+    @patch("webui.utils.qdrant_manager.QdrantClient")
     def test_get_client_recreates_on_connection_failure(self, mock_qdrant_client_class):
         """Test get_client creates new client when existing one fails verification"""
         # Reset singleton
@@ -206,7 +206,7 @@ class TestQdrantConnectionManager:
         assert client is mock_client2
         assert mock_qdrant_client_class.call_count == 1  # Only one new client creation
 
-    @patch("packages.webui.utils.qdrant_manager.QdrantClient")
+    @patch("webui.utils.qdrant_manager.QdrantClient")
     def test_get_client_retry_on_creation_failure(self, mock_qdrant_client_class):
         """Test get_client retries when client creation fails"""
         # Reset singleton
@@ -226,7 +226,7 @@ class TestQdrantConnectionManager:
         assert client is mock_client
         assert mock_qdrant_client_class.call_count == 3
 
-    @patch("packages.webui.utils.qdrant_manager.QdrantClient")
+    @patch("webui.utils.qdrant_manager.QdrantClient")
     def test_create_collection_success(self, mock_qdrant_client_class):
         """Test successful collection creation"""
         # Reset singleton
@@ -249,7 +249,7 @@ class TestQdrantConnectionManager:
         assert call_args.kwargs["collection_name"] == "test_collection"
         assert call_args.kwargs["vectors_config"].size == 768
 
-    @patch("packages.webui.utils.qdrant_manager.QdrantClient")
+    @patch("webui.utils.qdrant_manager.QdrantClient")
     def test_create_collection_with_retry(self, mock_qdrant_client_class):
         """Test collection creation with retry on failure"""
         # Reset singleton
@@ -275,7 +275,7 @@ class TestQdrantConnectionManager:
         # create_collection returns None
         assert mock_client.create_collection.call_count == 3
 
-    @patch("packages.webui.utils.qdrant_manager.QdrantClient")
+    @patch("webui.utils.qdrant_manager.QdrantClient")
     def test_verify_collection_exists(self, mock_qdrant_client_class):
         """Test verify_collection when collection exists"""
         # Reset singleton
@@ -294,7 +294,7 @@ class TestQdrantConnectionManager:
         assert result["name"] == "test_collection"
         mock_client.get_collection.assert_called_once_with("test_collection")
 
-    @patch("packages.webui.utils.qdrant_manager.QdrantClient")
+    @patch("webui.utils.qdrant_manager.QdrantClient")
     def test_verify_collection_not_exists(self, mock_qdrant_client_class):
         """Test verify_collection when collection doesn't exist"""
         # Reset singleton
@@ -328,7 +328,7 @@ class TestQdrantConnectionManager:
 class TestIntegrationScenarios:
     """Test realistic integration scenarios"""
 
-    @patch("packages.webui.utils.qdrant_manager.QdrantClient")
+    @patch("webui.utils.qdrant_manager.QdrantClient")
     def test_connection_recovery_scenario(self, mock_qdrant_client_class):
         """Test that manager recovers from connection failures"""
         # Reset singleton
