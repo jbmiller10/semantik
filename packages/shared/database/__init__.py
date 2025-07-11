@@ -13,10 +13,11 @@ from .collection_metadata import ensure_metadata_collection, store_collection_me
 from .collection_metadata import get_collection_metadata as get_collection_metadata_qdrant
 from .factory import create_job_repository, create_user_repository
 
-# Import database functions from the sqlite implementation
-# TODO: These should be replaced with repository pattern usage
-from .sqlite_implementation import (
-    DB_PATH,
+# Import database constants directly
+from .sqlite_implementation import DB_PATH, pwd_context
+
+# Import legacy database functions with deprecation warnings
+from .legacy_wrappers import (
     # File operations
     add_files_to_job,
     # Job operations
@@ -40,7 +41,6 @@ from .sqlite_implementation import (
     # Collection operations
     list_collections,
     list_jobs,
-    pwd_context,
     rename_collection,
     reset_database,
     revoke_refresh_token,
