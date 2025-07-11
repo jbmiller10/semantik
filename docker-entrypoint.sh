@@ -86,7 +86,7 @@ case "$SERVICE" in
         
         # Run database migrations if needed
         echo "Setting up database..."
-        python -c "from webui.database import init_db; init_db()"
+        python -c "from shared.database import init_db; init_db()"
         
         # Start the WebUI service
         exec uvicorn webui.main:app \

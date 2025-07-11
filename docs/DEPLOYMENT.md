@@ -51,7 +51,7 @@ docker-compose logs -f
 poetry install
 
 # Initialize database
-poetry run python -c "from webui.database import init_db; init_db()"
+poetry run python -c "from shared.database import init_db; init_db()"
 
 # Start all services
 ./start_all_services.sh

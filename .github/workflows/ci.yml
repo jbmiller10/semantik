@@ -4,7 +4,9 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main ]
+    # Run on all pull requests regardless of target branch
+    # This allows CI to run on feature branch PRs (e.g., feature->develop)
+    # not just PRs targeting main
 
 jobs:
   lint:

@@ -22,7 +22,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from shared.config import settings
 
-from .extract_chunks import FileChangeTracker
+from .file_tracker import FileChangeTracker
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

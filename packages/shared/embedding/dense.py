@@ -13,10 +13,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F  # noqa: N812
 from sentence_transformers import SentenceTransformer
+from shared.config.vecpipe import VecpipeConfig
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
-
-from shared.config.vecpipe import VecpipeConfig
 
 from .base import BaseEmbeddingService
 
@@ -940,7 +939,8 @@ class _LazyEmbeddingService:
     @property
     def mock_mode(self) -> bool:
         """Get mock mode setting."""
-        return self._get_instance().mock_mode
+        result: bool = self._get_instance().mock_mode
+        return result
 
     @mock_mode.setter
     def mock_mode(self, value: bool) -> None:
