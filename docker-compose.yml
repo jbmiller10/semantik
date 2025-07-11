@@ -68,7 +68,6 @@ services:
     volumes:
       # Mount data directories
       # Note: Ensure host directories have appropriate permissions (uid 1000)
-      - ./data:/app/data
       - ./logs:/app/logs
       # Mount HuggingFace cache for persistent model storage
       - ${HF_CACHE_DIR:-./models}:/app/.cache/huggingface
