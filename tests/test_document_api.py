@@ -23,8 +23,8 @@ def temp_test_dir():
 class TestDocumentAPI:
     """Test document serving API endpoints"""
 
-    @patch("shared.database.get_job_files")
-    @patch("shared.database.get_job")
+    @patch("webui.api.documents.database.get_job_files")
+    @patch("webui.api.documents.database.get_job")
     def test_get_document_success(self, mock_get_job, mock_get_files, test_client, test_user, temp_test_dir):
         """Test successful document retrieval"""
         # Setup
@@ -52,8 +52,8 @@ class TestDocumentAPI:
 
         assert response.status_code == 404
 
-    @patch("shared.database.get_job_files")
-    @patch("shared.database.get_job")
+    @patch("webui.api.documents.database.get_job_files")
+    @patch("webui.api.documents.database.get_job")
     def test_file_size_limit(self, mock_get_job, mock_get_files, test_client, test_user, temp_test_dir):
         """Test file size limit enforcement"""
 
@@ -118,8 +118,8 @@ class TestDocumentViewer:
         response = unauthenticated_test_client.get("/api/documents/test-job/test-doc")
         assert response.status_code == 403
 
-    @patch("shared.database.get_job_files")
-    @patch("shared.database.get_job")
+    @patch("webui.api.documents.database.get_job_files")
+    @patch("webui.api.documents.database.get_job")
     def test_authorization_check(self, mock_get_job, mock_get_files, test_client, temp_test_dir):
         """Test that user authorization is checked"""
 
@@ -146,8 +146,8 @@ class TestPPTXConversion:
 
     @patch("webui.api.documents.PPTX2MD_AVAILABLE", True)
     @patch("subprocess.run")
-    @patch("shared.database.get_job_files")
-    @patch("shared.database.get_job")
+    @patch("webui.api.documents.database.get_job_files")
+    @patch("webui.api.documents.database.get_job")
     def test_pptx_conversion_success(
         self, mock_get_job, mock_get_files, mock_run, test_client, test_user, temp_test_dir
     ):
