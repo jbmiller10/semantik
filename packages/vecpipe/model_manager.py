@@ -102,10 +102,25 @@ class ModelManager:
 
             # Need to load the model
             logger.info(f"Loading model: {model_name} with {quantization}")
-            if self.embedding_service is not None and self.embedding_service.load_model(model_name, quantization):
-                self.current_model_key = model_key
-                self._update_last_used()
-                return True
+            if self.embedding_service is not None:
+                # Run load_model in executor to avoid async/sync deadlock
+                try:
+                    # If we have an executor, use it. Otherwise create a temporary one
+                    if hasattr(self, 'executor') and self.executor:
+                        success = self.executor.submit(
+                            self.embedding_service.load_model, model_name, quantization
+                        ).result()
+                    else:
+                        # Fallback to direct call if no executor available
+                        success = self.embedding_service.load_model(model_name, quantization)
+                    
+                    if success:
+                        self.current_model_key = model_key
+                        self._update_last_used()
+                        return True
+                except Exception as e:
+                    logger.error(f"Exception loading model {model_name}: {e}")
+            
             logger.error(f"Failed to load model: {model_name}")
             return False
 
