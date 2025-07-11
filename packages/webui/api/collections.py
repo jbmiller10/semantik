@@ -10,7 +10,6 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from qdrant_client.models import CollectionInfo
-
 from shared import database
 from webui.auth import get_current_user
 from webui.utils.qdrant_manager import qdrant_manager

@@ -3,9 +3,8 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from shared.config import settings
-
 from shared import database
+from shared.config import settings
 
 router = APIRouter(prefix="/api/internal", tags=["internal"])
 

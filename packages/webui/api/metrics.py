@@ -7,7 +7,6 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 from shared.config import settings as webui_settings
-
 from webui.auth import User, get_current_user
 
 logger = logging.getLogger(__name__)

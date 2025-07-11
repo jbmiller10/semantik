@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any
 
 from passlib.context import CryptContext
-
 from shared.config import settings
 
 # Configure logging

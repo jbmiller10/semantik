@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-
 from webui.api.internal import router, verify_internal_api_key
 
 
@@ -50,7 +49,7 @@ class TestInternalAPIEndpoints:
     @pytest.fixture()
     def mock_database(self):
         """Mock the database module."""
-        with patch("shared.database") as mock_db:
+        with patch("webui.api.internal.database") as mock_db:
             yield mock_db
 
     @pytest.fixture()

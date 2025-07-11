@@ -4,7 +4,6 @@ import threading
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
-
 from webui.utils.qdrant_manager import QdrantConnectionManager
 from webui.utils.retry import exponential_backoff_retry
 

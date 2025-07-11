@@ -104,6 +104,7 @@ class TestDuplicateDetection:
         """Test finding duplicate files"""
         # Create a job
         import uuid
+
         job_id = f"test_job_{uuid.uuid4().hex[:8]}"
         database.create_job(
             {
@@ -153,6 +154,7 @@ class TestDuplicateDetection:
         """Test that incomplete jobs are ignored"""
         # Create a failed job
         import uuid
+
         job_id = f"failed_job_{uuid.uuid4().hex[:8]}"
         database.create_job(
             {
@@ -212,6 +214,7 @@ class TestSettingsInheritance:
         """Test retrieving collection metadata"""
         # Create a parent job
         import uuid
+
         parent_job_id = f"parent_job_{uuid.uuid4().hex[:8]}"
         collection_name = f"metadata_test_collection_{uuid.uuid4().hex[:8]}"
         database.create_job(
@@ -256,7 +259,8 @@ class TestSettingsInheritance:
     def test_append_job_inherits_settings(self):
         """Test that append jobs inherit parent settings"""
         # Create parent job
-        import uuid  
+        import uuid
+
         parent_job_id = f"parent_job_{uuid.uuid4().hex[:8]}"
         database.create_job(
             {

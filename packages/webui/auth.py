@@ -18,10 +18,9 @@ from pydantic import BaseModel, EmailStr, validator
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from shared.config import settings
-
 # Import database module
 from shared import database
+from shared.config import settings
 
 # Configure logging
 logger = logging.getLogger(__name__)

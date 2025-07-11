@@ -7,8 +7,8 @@ abstraction layer that can be replaced in the future.
 
 from typing import Any
 
-from .base import JobRepository, UserRepository
 from . import sqlite_implementation as db_impl
+from .base import JobRepository, UserRepository
 
 
 class SQLiteJobRepository(JobRepository):
