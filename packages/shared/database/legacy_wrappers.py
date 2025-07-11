@@ -6,26 +6,26 @@ These wrappers add deprecation warnings to encourage migration to the repository
 
 import functools
 import warnings
-from typing import Any, TypeVar, Callable
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from . import sqlite_implementation as db_impl
 
 # Type variable for preserving function signatures
-F = TypeVar('F', bound=Callable[..., Any])
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 def deprecated(message: str) -> Callable[[F], F]:
     """Decorator to mark functions as deprecated."""
+
     def decorator(func: F) -> F:
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            warnings.warn(
-                f"{func.__name__} is deprecated. {message}",
-                DeprecationWarning,
-                stacklevel=2
-            )
+            warnings.warn(f"{func.__name__} is deprecated. {message}", DeprecationWarning, stacklevel=2)
             return func(*args, **kwargs)
+
         return wrapper  # type: ignore
+
     return decorator
 
 
@@ -124,7 +124,14 @@ def get_job_files(job_id: str, status: str | None = None) -> list[dict[str, Any]
 
 
 @deprecated("Use repository pattern for file operations")
-def update_file_status(job_id: str, file_path: str, status: str, error: str | None = None, chunks_created: int = 0, vectors_created: int = 0) -> None:
+def update_file_status(
+    job_id: str,
+    file_path: str,
+    status: str,
+    error: str | None = None,
+    chunks_created: int = 0,
+    vectors_created: int = 0,
+) -> None:
     """Update file status."""
     return db_impl.update_file_status(job_id, file_path, status, error, chunks_created, vectors_created)
 
@@ -159,9 +166,10 @@ def save_refresh_token(user_id: int, token_hash: str, expires_at: Any) -> None:
     """Save a refresh token."""
     # Import datetime to handle the type
     from datetime import datetime
+
     if isinstance(expires_at, str):
         # Convert string to datetime if needed
-        expires_at = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
+        expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
     return db_impl.save_refresh_token(user_id, token_hash, expires_at)
 
 

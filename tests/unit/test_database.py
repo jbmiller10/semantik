@@ -25,11 +25,12 @@ class TempDatabaseContext:
     def __exit__(self, exc_type, exc_val, exc_tb):
         # Ensure database is closed before deleting
         import sqlite3
+
         # Try to close any open connections
         try:
             conn = sqlite3.connect(self.db_path)
             conn.close()
-        except:
+        except Exception:
             pass
         Path(self.db_path).unlink(missing_ok=True)
 
@@ -40,24 +41,26 @@ def test_db(monkeypatch):
     with TempDatabaseContext() as db_path:
         # Monkeypatch the sqlite3.connect function to use our test database
         import sqlite3
+
         original_connect = sqlite3.connect
-        
+
         def mock_connect(path, *args, **kwargs):
             # If trying to connect to the production database, redirect to test database
-            if 'semantik.db' in str(path) or str(path) == str(settings.webui_db):
+            if "semantik.db" in str(path) or str(path) == str(settings.webui_db):
                 return original_connect(db_path, *args, **kwargs)
             return original_connect(path, *args, **kwargs)
-        
-        monkeypatch.setattr(sqlite3, 'connect', mock_connect)
-        
+
+        monkeypatch.setattr(sqlite3, "connect", mock_connect)
+
         # Also patch the DB_PATH for good measure
-        monkeypatch.setattr('shared.database.DB_PATH', db_path)
-        monkeypatch.setattr('shared.database.sqlite_implementation.DB_PATH', db_path)
-        
+        monkeypatch.setattr("shared.database.DB_PATH", db_path)
+        monkeypatch.setattr("shared.database.sqlite_implementation.DB_PATH", db_path)
+
         # Initialize the test database
         from shared.database import init_db
+
         init_db()
-        
+
         yield db_path
 
 
@@ -65,7 +68,7 @@ def test_db(monkeypatch):
 def sample_job_data(request):
     """Sample job data for testing."""
     # Use test name to ensure unique IDs
-    test_name = request.node.name if hasattr(request, 'node') else 'test'
+    test_name = request.node.name if hasattr(request, "node") else "test"
     return {
         "id": f"{test_name}-job-123",
         "name": "Test Collection",

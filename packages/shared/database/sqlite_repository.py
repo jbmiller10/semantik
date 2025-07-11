@@ -19,7 +19,7 @@ class SQLiteJobRepository(JobRepository):
 
     This is a wrapper around the existing database functions,
     providing an async interface that matches the repository pattern.
-    
+
     Note on Error Handling:
     - Methods that modify data (create, update, delete) will raise exceptions on failure
     - Methods that retrieve data (get, list) return None or empty list when not found
@@ -32,13 +32,13 @@ class SQLiteJobRepository(JobRepository):
 
     async def create_job(self, job_data: dict[str, Any]) -> dict[str, Any]:
         """Create a new job.
-        
+
         Args:
             job_data: Dictionary containing job fields
-            
+
         Returns:
             The created job object
-            
+
         Raises:
             ValueError: If the job cannot be created or retrieved
             Exception: For database errors
@@ -67,17 +67,17 @@ class SQLiteJobRepository(JobRepository):
 
     async def update_job(self, job_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
         """Update a job.
-        
+
         Note: This differs from the original database function which returned None.
         The repository pattern returns the updated object for consistency.
-        
+
         Args:
             job_id: ID of the job to update
             updates: Dictionary of fields to update
-            
+
         Returns:
             The updated job object, or None if job doesn't exist
-            
+
         Raises:
             Exception: For database errors
         """
@@ -87,7 +87,7 @@ class SQLiteJobRepository(JobRepository):
             if existing_job is None:
                 logger.warning(f"Attempted to update non-existent job: {job_id}")
                 return None
-                
+
             self.db.update_job(job_id, updates)
             # update_job returns None, but the interface expects the updated job object
             updated_job = self.db.get_job(job_id)
@@ -108,9 +108,9 @@ class SQLiteJobRepository(JobRepository):
             if job is None:
                 logger.warning(f"Attempted to delete non-existent job: {job_id}")
                 return False
-            
+
             self.db.delete_job(job_id)
-            
+
             # Verify deletion was successful
             deleted_job = self.db.get_job(job_id)
             success = deleted_job is None
@@ -123,18 +123,18 @@ class SQLiteJobRepository(JobRepository):
 
     async def list_jobs(self, user_id: str | None = None, **filters: Any) -> list[dict[str, Any]]:
         """List jobs with optional filters.
-        
+
         Note on user_id type: The repository interface uses string IDs for consistency
         across different storage backends (some databases use UUIDs, others use integers).
         The SQLite implementation converts to int internally.
-        
+
         Args:
             user_id: Optional user ID as string
             **filters: Additional filters (not used in SQLite implementation)
-            
+
         Returns:
             List of job dictionaries
-            
+
         Raises:
             ValueError: If user_id is not a valid integer string
             Exception: For database errors
@@ -142,7 +142,7 @@ class SQLiteJobRepository(JobRepository):
         try:
             # Note: filters are accepted for interface compatibility but not used in SQLite implementation
             _ = filters
-            
+
             # Convert string user_id to int if provided
             # This conversion is necessary because the repository interface uses strings
             # for IDs to support different backend storage systems
@@ -152,8 +152,8 @@ class SQLiteJobRepository(JobRepository):
                     user_id_int = int(user_id)
                 except ValueError:
                     logger.error(f"Invalid user_id format: {user_id}")
-                    raise ValueError(f"user_id must be a valid integer, got: {user_id}")
-            
+                    raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
+
             result: list[dict[str, Any]] = self.db.list_jobs(user_id=user_id_int)
             return result
         except ValueError:
@@ -210,24 +210,25 @@ class SQLiteUserRepository(UserRepository):
 
     async def update_user(self, user_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
         """Update a user.
-        
+
         TODO: Implement in sqlite_implementation.py by Q1 2025
         Currently the database layer only supports create_user and get_user.
         This method will be implemented when user profile editing is added to the UI.
-        
+
         Args:
             user_id: ID of the user to update
             updates: Dictionary of fields to update
-            
+
         Returns:
             The existing user object (updates not applied)
-            
+
         Raises:
             NotImplementedError: When proper implementation is needed
         """
         try:
             # Note: Current database module doesn't have an update_user method
             # This is a placeholder implementation
+            _ = updates  # Mark as intentionally unused until implementation is added
             user: dict[str, Any] | None = self.db.get_user(user_id)
             if not user:
                 logger.warning(f"User {user_id} not found for update")
@@ -241,17 +242,17 @@ class SQLiteUserRepository(UserRepository):
 
     async def delete_user(self, user_id: str) -> bool:
         """Delete a user.
-        
+
         TODO: Implement in sqlite_implementation.py by Q1 2025
         Currently not implemented as user deletion has GDPR implications
         and requires careful handling of related data (jobs, tokens, etc).
-        
+
         Args:
             user_id: ID of the user to delete
-            
+
         Returns:
             False (deletion not implemented)
-            
+
         Raises:
             NotImplementedError: When proper implementation is needed
         """
