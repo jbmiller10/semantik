@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from packages.webui.api.internal import router, verify_internal_api_key
+from webui.api.internal import router, verify_internal_api_key
 
 
 class TestInternalAPIAuth:
@@ -14,7 +14,7 @@ class TestInternalAPIAuth:
 
     def test_verify_internal_api_key_valid(self):
         """Test successful API key verification."""
-        with patch("packages.webui.api.internal.settings") as mock_settings:
+        with patch("webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "valid-key"
 
             # Should not raise exception
@@ -22,7 +22,7 @@ class TestInternalAPIAuth:
 
     def test_verify_internal_api_key_invalid(self):
         """Test API key verification with invalid key."""
-        with patch("packages.webui.api.internal.settings") as mock_settings:
+        with patch("webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "valid-key"
 
             # Should raise HTTPException
@@ -34,7 +34,7 @@ class TestInternalAPIAuth:
 
     def test_verify_internal_api_key_missing(self):
         """Test API key verification with missing key."""
-        with patch("packages.webui.api.internal.settings") as mock_settings:
+        with patch("webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "valid-key"
 
             # Should raise HTTPException
@@ -50,7 +50,7 @@ class TestInternalAPIEndpoints:
     @pytest.fixture()
     def mock_database(self):
         """Mock the database module."""
-        with patch("packages.webui.api.internal.database") as mock_db:
+        with patch("shared.database") as mock_db:
             yield mock_db
 
     @pytest.fixture()
@@ -72,7 +72,7 @@ class TestInternalAPIEndpoints:
         ]
 
         # Mock settings for API key
-        with patch("packages.webui.api.internal.settings") as mock_settings:
+        with patch("webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"
 
             response = client.get("/api/internal/jobs/all-ids", headers={"X-Internal-Api-Key": "test-key"})
@@ -83,7 +83,7 @@ class TestInternalAPIEndpoints:
 
     def test_get_all_job_ids_unauthorized(self, client, mock_database):
         """Test unauthorized access to job IDs endpoint."""
-        with patch("packages.webui.api.internal.settings") as mock_settings:
+        with patch("webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"
 
             # Test without API key
@@ -101,7 +101,7 @@ class TestInternalAPIEndpoints:
         """Test retrieval when no jobs exist."""
         mock_database.list_jobs.return_value = []
 
-        with patch("packages.webui.api.internal.settings") as mock_settings:
+        with patch("webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"
 
             response = client.get("/api/internal/jobs/all-ids", headers={"X-Internal-Api-Key": "test-key"})

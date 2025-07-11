@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from packages.webui.utils.qdrant_manager import QdrantConnectionManager
-from packages.webui.utils.retry import exponential_backoff_retry
+from webui.utils.qdrant_manager import QdrantConnectionManager
+from webui.utils.retry import exponential_backoff_retry
 
 # from qdrant_client.exceptions import UnexpectedResponse  # Not available in all versions
 

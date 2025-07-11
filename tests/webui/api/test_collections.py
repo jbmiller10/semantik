@@ -29,7 +29,7 @@ def mock_current_user():
 @pytest.fixture()
 def mock_database():
     """Create a mock database module"""
-    with patch("webui.api.collections.database") as mock_db:
+    with patch("shared.database") as mock_db:
         yield mock_db
 
 
