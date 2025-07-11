@@ -14,32 +14,38 @@
 
 ## API Architecture Overview
 
-Semantik follows a microservices architecture with two main services:
+Semantik follows a clean three-package architecture with two main services:
 
-1. **Search API Service** (`vecpipe/search_api.py`) - Core vector search engine
+1. **Vecpipe Service** (`vecpipe/search_api.py`) - Core search engine
    - Port: 8001 (default)
    - Pure REST API for vector similarity and hybrid search
    - Stateless service with Qdrant backend
+   - Uses shared package for embeddings and text processing
+   - No direct database access (uses webui API when needed)
    - Prometheus metrics on port 9091
 
-2. **WebUI Service** (`webui/main.py`) - User interface and control plane
+2. **WebUI Service** (`webui/main.py`) - Control plane and user interface
    - Port: 8000 (default)
    - REST API + WebSocket support
    - User authentication and job management
-   - Proxies search requests to Search API
+   - Owns and manages the SQLite database
+   - Proxies search requests to Vecpipe API
+   - Uses shared package for embeddings and database operations
 
 ### Key Design Principles
 
-- **Separation of Concerns**: Search logic isolated in vecpipe, UI/auth in webui
+- **Clean Architecture**: Three packages - vecpipe (search), webui (control plane), shared (utilities)
+- **No Circular Dependencies**: Both services depend on shared, but not on each other
+- **Database Ownership**: WebUI exclusively owns the SQLite database
 - **RESTful Design**: Standard HTTP methods and status codes
 - **Stateless Search**: All search state stored in Qdrant
 - **JWT Authentication**: Secure token-based auth for WebUI
 - **Real-time Updates**: WebSocket support for job progress
 - **Metrics Integration**: Prometheus metrics for monitoring
 
-## Search API (vecpipe/search_api.py)
+## Vecpipe Search API (vecpipe/search_api.py)
 
-The Search API provides high-performance vector similarity and hybrid search capabilities.
+The Vecpipe service is the core search engine, providing high-performance vector similarity and hybrid search capabilities. It operates independently and has no knowledge of users, authentication, or job management.
 
 ### Base URL
 ```
@@ -996,23 +1002,35 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ## API Integration Patterns
 
-### WebUI to Search API Proxy
+### WebUI to Vecpipe API Proxy
 
-The WebUI service acts as a proxy for search requests:
+The WebUI service acts as a control plane and proxy for search requests:
 
 1. **Client** → WebUI: Authenticated request with job context
-2. **WebUI** → Search API: Transform and forward request
-3. **Search API** → Qdrant: Execute vector search
+2. **WebUI** → Vecpipe API: Transform and forward request
+3. **Vecpipe** → Qdrant: Execute vector search using shared embedding service
 4. **Response flows back** with transformed format
+
+**Key Points**:
+- WebUI handles all authentication and authorization
+- Vecpipe focuses purely on search functionality
+- Both services use the shared package for common operations
 
 ### Service Communication
 
 ```mermaid
-graph LR
-    Client[Client] --> WebUI[WebUI Service]
-    WebUI --> SearchAPI[Search API]
-    SearchAPI --> Qdrant[Qdrant DB]
-    WebUI --> SQLite[SQLite DB]
+graph TD
+    Client[Client] --> WebUI[WebUI Service<br/>Control Plane]
+    WebUI --> Vecpipe[Vecpipe Service<br/>Search Engine]
+    WebUI --> SQLite[(SQLite DB<br/>Owned by WebUI)]
+    Vecpipe --> Qdrant[(Qdrant<br/>Vector DB)]
+    
+    WebUI -.->|uses| Shared[Shared Package]
+    Vecpipe -.->|uses| Shared
+    
+    style WebUI fill:#f9f,stroke:#333,stroke-width:2px
+    style Vecpipe fill:#9ff,stroke:#333,stroke-width:2px
+    style Shared fill:#ff9,stroke:#333,stroke-width:2px
 ```
 
 ### Retry Strategy
@@ -1025,10 +1043,11 @@ For inter-service communication:
 ### Collection Metadata Synchronization
 
 When creating a job:
-1. WebUI creates job in SQLite
-2. WebUI creates collection in Qdrant
-3. WebUI stores metadata in Qdrant's `_collection_metadata`
-4. Search API reads metadata to determine correct model
+1. WebUI creates job in SQLite via JobRepository
+2. WebUI processes documents using shared.text_processing
+3. WebUI generates embeddings using shared.embedding
+4. WebUI stores vectors in Qdrant
+5. Vecpipe reads collection metadata to determine correct model for search
 
 ## Batch Operations
 
