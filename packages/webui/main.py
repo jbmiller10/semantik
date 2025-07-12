@@ -104,10 +104,9 @@ def _validate_cors_origins(origins: list[str]) -> list[str]:
             if shared_settings.ENVIRONMENT == "production":
                 logger.error(f"Rejecting insecure origin '{origin}' in production environment")
                 continue
-            else:
-                # In development, allow wildcards
-                valid_origins.append(origin)
-                continue
+            # In development, allow wildcards
+            valid_origins.append(origin)
+            continue
 
         # Validate URL format
         try:

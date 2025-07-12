@@ -42,14 +42,14 @@ class TestCORSOriginValidation:
         origins = ["*", "http://localhost:3000"]
 
         # Patch both the module-level import and the function's access
-        with patch.object(packages.webui.main.shared_settings, "ENVIRONMENT", "development"):
-            with patch("packages.webui.main.logger") as mock_logger:
-                result = _validate_cors_origins(origins)
+        with patch.object(packages.webui.main.shared_settings, "ENVIRONMENT", "development"), \
+             patch("packages.webui.main.logger") as mock_logger:
+            result = _validate_cors_origins(origins)
 
-                # In development, wildcard should be allowed but warned
-                assert len(result) == 2
-                assert "*" in result
-                mock_logger.warning.assert_called()
+            # In development, wildcard should be allowed but warned
+            assert len(result) == 2
+            assert "*" in result
+            mock_logger.warning.assert_called()
 
     @patch("packages.webui.main.logger")
     def test_wildcard_origin_production(self, mock_logger):
@@ -107,7 +107,7 @@ class TestCORSConfiguration:
         mock_settings.INTERNAL_API_KEY = "test-key"
         mock_settings.ENVIRONMENT = "development"
 
-        app = create_app()
+        create_app()
 
         # Check that warning was logged
         warning_calls = [
