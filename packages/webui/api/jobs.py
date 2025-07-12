@@ -26,8 +26,9 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 import contextlib
 
-from shared import database
 from shared.config import settings
+from shared.database.base import CollectionRepository, FileRepository, JobRepository
+from shared.database.factory import create_collection_repository, create_file_repository, create_job_repository
 from shared.embedding import POPULAR_MODELS, embedding_service
 from shared.text_processing.chunking import TokenChunker
 from shared.text_processing.extraction import extract_text
@@ -147,7 +148,9 @@ async def update_metrics_continuously() -> None:
         await asyncio.sleep(1)  # Check every 1 second
 
 
-async def process_embedding_job(job_id: str) -> None:
+async def process_embedding_job(
+    job_id: str, job_repo: JobRepository, file_repo: FileRepository, collection_repo: CollectionRepository
+) -> None:
     """Process an embedding job asynchronously"""
     metrics_task = None  # Initialize to avoid undefined reference
 
@@ -171,10 +174,10 @@ async def process_embedding_job(job_id: str) -> None:
 
     try:
         # Update job status and set start time
-        database.update_job(job_id, {"status": "processing", "start_time": datetime.now(UTC).isoformat()})
+        await job_repo.update_job(job_id, {"status": "processing", "start_time": datetime.now(UTC).isoformat()})
 
         # Get job details
-        job = database.get_job(job_id)
+        job = await job_repo.get_job(job_id)
         if not job:
             raise Exception(f"Job {job_id} not found")
 
@@ -187,7 +190,7 @@ async def process_embedding_job(job_id: str) -> None:
             collection_name = f"job_{job_id}"
 
         # Get pending files
-        files = database.get_job_files(job_id, status="pending")
+        files = await file_repo.get_job_files(job_id, status="pending")
 
         # Send initial update with total files
         await manager.send_update(job_id, {"type": "job_started", "total_files": len(files)})
@@ -198,7 +201,7 @@ async def process_embedding_job(job_id: str) -> None:
         except Exception as e:
             error_msg = f"Failed to connect to Qdrant after retries: {e}"
             logger.error(error_msg)
-            database.update_job(job_id, {"status": "failed", "error": error_msg})
+            await job_repo.update_job(job_id, {"status": "failed", "error": error_msg})
             await manager.send_update(job_id, {"type": "error", "message": error_msg})
             return
 
@@ -207,7 +210,7 @@ async def process_embedding_job(job_id: str) -> None:
                 # For append mode, check if file already exists in collection
                 if job.get("mode") == "append" and file_row.get("content_hash"):
                     # Check if this content hash already exists in the collection
-                    existing_hashes = database.get_duplicate_files_in_collection(
+                    existing_hashes = await file_repo.get_duplicate_files_in_collection(
                         job["name"], [file_row["content_hash"]]
                     )
                     if file_row["content_hash"] in existing_hashes:
@@ -215,17 +218,17 @@ async def process_embedding_job(job_id: str) -> None:
                             f"Skipping duplicate file: {file_row['path']} (content_hash: {file_row['content_hash']})"
                         )
                         # Mark as completed since it already exists
-                        database.update_file_status(
+                        await file_repo.update_file_status(
                             job_id, file_row["path"], "completed", chunks_created=0, vectors_created=0
                         )
                         # Update processed files count
-                        current_job = database.get_job(job_id)
+                        current_job = await job_repo.get_job(job_id)
                         if current_job:
-                            database.update_job(job_id, {"processed_files": current_job.get("processed_files", 0) + 1})
+                            await job_repo.update_job(job_id, {"processed_files": current_job.get("processed_files", 0) + 1})
                         continue
 
                 # Update current file
-                database.update_job(job_id, {"current_file": file_row["path"]})
+                await job_repo.update_job(job_id, {"current_file": file_row["path"]})
 
                 # Send progress update
                 await manager.send_update(
@@ -409,20 +412,20 @@ async def process_embedding_job(job_id: str) -> None:
                         except Exception as e:
                             error_msg = f"Failed to upload vectors to Qdrant: {e}"
                             logger.error(error_msg)
-                            database.update_file_status(job_id, file_row["path"], "failed", error=str(e))
+                            await file_repo.update_file_status(job_id, file_row["path"], "failed", error=str(e))
                             raise  # Re-raise to be caught by outer exception handler
 
                     # Free the points batch
                     del points
 
                 # Update database after all batches uploaded
-                database.update_file_status(
+                await file_repo.update_file_status(
                     job_id, file_row["path"], "completed", vectors_created=total_points, chunks_created=len(chunks)
                 )
                 # Get current job to update processed files count
-                current_job = database.get_job(job_id)
+                current_job = await job_repo.get_job(job_id)
                 if current_job:
-                    database.update_job(job_id, {"processed_files": current_job.get("processed_files", 0) + 1})
+                    await job_repo.update_job(job_id, {"processed_files": current_job.get("processed_files", 0) + 1})
 
                 # Record file processed
                 if metrics_tracking:
@@ -462,13 +465,13 @@ async def process_embedding_job(job_id: str) -> None:
                 # File status already updated in the database.update_file_status call above
 
         # Check total vectors created from database
-        total_vectors_created = database.get_job_total_vectors(job_id)
+        total_vectors_created = await file_repo.get_job_total_vectors(job_id)
 
         if total_vectors_created == 0:
             # No vectors were created - this is a failure condition
             error_msg = "No vectors were created. All files either failed to process or contained no extractable text."
             logger.error(f"Job {job_id} failed: {error_msg}")
-            database.update_job(job_id, {"status": "failed", "error": error_msg})
+            await job_repo.update_job(job_id, {"status": "failed", "error": error_msg})
             await manager.send_update(job_id, {"type": "error", "message": error_msg})
             return
 
@@ -495,18 +498,18 @@ async def process_embedding_job(job_id: str) -> None:
         except Exception as e:
             error_msg = f"Failed to verify Qdrant collection: {e}"
             logger.error(error_msg)
-            database.update_job(job_id, {"status": "failed", "error": error_msg})
+            await job_repo.update_job(job_id, {"status": "failed", "error": error_msg})
             await manager.send_update(job_id, {"type": "error", "message": error_msg})
             return
 
         # Mark job as completed only if vectors were successfully created
-        database.update_job(job_id, {"status": "completed", "current_file": None})
+        await job_repo.update_job(job_id, {"status": "completed", "current_file": None})
 
         await manager.send_update(job_id, {"type": "job_completed", "message": "Job completed successfully"})
 
     except Exception as e:
         logger.error(f"Job {job_id} failed: {e}")
-        database.update_job(job_id, {"status": "failed", "error": str(e)})
+        await job_repo.update_job(job_id, {"status": "failed", "error": str(e)})
 
         await manager.send_update(job_id, {"type": "error", "message": str(e)})
 
@@ -526,7 +529,13 @@ async def get_new_job_id(current_user: dict[str, Any] = Depends(get_current_user
 
 
 @router.post("", response_model=JobStatus)
-async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = Depends(get_current_user)) -> JobStatus:
+async def create_job(
+    request: CreateJobRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    job_repo: JobRepository = Depends(create_job_repository),
+    file_repo: FileRepository = Depends(create_file_repository),
+    collection_repo: CollectionRepository = Depends(create_collection_repository),
+) -> JobStatus:
     """Create a new embedding job"""
     # Accept job_id from request if provided, otherwise generate new one
     job_id = request.job_id if request.job_id else str(uuid.uuid4())
@@ -561,7 +570,7 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
             "instruction": request.instruction,
             "user_id": current_user["id"],
         }
-        database.create_job(job_data)
+        await job_repo.create_job(job_data)
 
         # Create file records
         file_records = [
@@ -575,7 +584,7 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
             }
             for f in files
         ]
-        database.add_files_to_job(job_id, file_records)
+        await file_repo.add_files_to_job(job_id, file_records)
 
         # Get Qdrant client from connection manager
         qdrant = qdrant_manager.get_client()
@@ -609,7 +618,7 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
             vector_size = 1024  # Final fallback
 
         # Update job with actual vector dimension
-        database.update_job(job_id, {"vector_dim": vector_size})
+        await job_repo.update_job(job_id, {"vector_dim": vector_size})
 
         # Create collection using connection manager with retry logic
         collection_name = f"job_{job_id}"
@@ -639,11 +648,11 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
         except Exception as e:
             logger.error(f"Failed to create collection {collection_name}: {e}")
             # Clean up job and return error
-            database.delete_job(job_id)
+            await job_repo.delete_job(job_id)
             raise HTTPException(status_code=500, detail=f"Failed to create Qdrant collection: {str(e)}") from e
 
         # Start processing in background with cancellation support
-        task = asyncio.create_task(process_embedding_job(job_id))
+        task = asyncio.create_task(process_embedding_job(job_id, job_repo, file_repo, collection_repo))
         active_job_tasks[job_id] = task
 
         return JobStatus(
@@ -669,7 +678,11 @@ async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = D
 
 @router.post("/add-to-collection", response_model=JobStatus)
 async def add_to_collection(
-    request: AddToCollectionRequest, current_user: dict[str, Any] = Depends(get_current_user)
+    request: AddToCollectionRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    job_repo: JobRepository = Depends(create_job_repository),
+    file_repo: FileRepository = Depends(create_file_repository),
+    collection_repo: CollectionRepository = Depends(create_collection_repository),
 ) -> JobStatus:
     """Add new documents to an existing collection"""
     # Accept job_id from request if provided, otherwise generate new one
@@ -680,7 +693,7 @@ async def add_to_collection(
         from .files import scan_directory_async
 
         # Get parent collection metadata
-        collection_metadata = database.get_collection_metadata(request.collection_name)
+        collection_metadata = await collection_repo.get_collection_metadata(request.collection_name)
         if not collection_metadata:
             raise HTTPException(status_code=404, detail=f"Collection '{request.collection_name}' not found")
 
@@ -693,7 +706,7 @@ async def add_to_collection(
 
         # Check for duplicates
         content_hashes = [f.content_hash for f in files if f.content_hash]
-        existing_hashes = database.get_duplicate_files_in_collection(request.collection_name, content_hashes)
+        existing_hashes = await file_repo.get_duplicate_files_in_collection(request.collection_name, content_hashes)
 
         # Filter out duplicates
         new_files = [f for f in files if f.content_hash not in existing_hashes]
@@ -775,7 +788,7 @@ async def add_to_collection(
             "parent_job_id": collection_metadata["id"],
             "mode": "append",
         }
-        database.create_job(job_data)
+        await job_repo.create_job(job_data)
 
         # Create file records for new files only
         file_records = [
@@ -789,13 +802,13 @@ async def add_to_collection(
             }
             for f in new_files
         ]
-        database.add_files_to_job(job_id, file_records)
+        await file_repo.add_files_to_job(job_id, file_records)
 
         # Update total files count
-        database.update_job(job_id, {"total_files": len(new_files)})
+        await job_repo.update_job(job_id, {"total_files": len(new_files)})
 
         # Start processing in background with cancellation support
-        task = asyncio.create_task(process_embedding_job(job_id))
+        task = asyncio.create_task(process_embedding_job(job_id, job_repo, file_repo, collection_repo))
         active_job_tasks[job_id] = task
 
         # Return job status
@@ -823,9 +836,12 @@ async def add_to_collection(
 
 
 @router.get("", response_model=list[JobStatus])
-async def list_jobs(current_user: dict[str, Any] = Depends(get_current_user)) -> list[JobStatus]:
+async def list_jobs(
+    current_user: dict[str, Any] = Depends(get_current_user),
+    job_repo: JobRepository = Depends(create_job_repository),
+) -> list[JobStatus]:
     """List all jobs for the current user"""
-    jobs = database.list_jobs(user_id=current_user["id"])
+    jobs = await job_repo.list_jobs(user_id=str(current_user["id"]))
 
     result = []
     for job in jobs:
@@ -855,10 +871,12 @@ async def list_jobs(current_user: dict[str, Any] = Depends(get_current_user)) ->
 
 @router.get("/collection-metadata/{collection_name}")
 async def get_collection_metadata(
-    collection_name: str, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
+    collection_name: str,
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    collection_repo: CollectionRepository = Depends(create_collection_repository),
 ) -> dict[str, Any]:
     """Get metadata for a specific collection"""
-    metadata = database.get_collection_metadata(collection_name)
+    metadata = await collection_repo.get_collection_metadata(collection_name)
     if not metadata:
         raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
 
@@ -881,15 +899,17 @@ async def check_duplicates(
     collection_name: str = Body(...),
     content_hashes: list[str] = Body(...),
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    file_repo: FileRepository = Depends(create_file_repository),
 ) -> dict[str, list[str]]:
     """Check which content hashes already exist in a collection"""
-    existing_hashes = database.get_duplicate_files_in_collection(collection_name, content_hashes)
+    existing_hashes = await file_repo.get_duplicate_files_in_collection(collection_name, content_hashes)
     return {"existing_hashes": list(existing_hashes)}
 
 
 @router.get("/collections-status")
 async def check_collections_status(
-    current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    job_repo: JobRepository = Depends(create_job_repository),
 ) -> dict[str, dict[str, Any]]:
     """Check which job collections exist in Qdrant"""
     try:
@@ -900,7 +920,7 @@ async def check_collections_status(
         collection_names = {c.name for c in collections}
 
         # Get all jobs
-        jobs = database.list_jobs()
+        jobs = await job_repo.list_jobs()
 
         # Check each job's collection
         results = {}
@@ -927,11 +947,13 @@ async def check_collections_status(
 
 @router.post("/{job_id}/cancel")
 async def cancel_job(
-    job_id: str, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
+    job_id: str,
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    job_repo: JobRepository = Depends(create_job_repository),
 ) -> dict[str, str]:
     """Cancel a running job"""
     # Check current job status
-    job = database.get_job(job_id)
+    job = await job_repo.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -939,7 +961,7 @@ async def cancel_job(
         raise HTTPException(status_code=400, detail=f"Cannot cancel job in status: {job['status']}")
 
     # Update job status to cancelled
-    database.update_job(job_id, {"status": "cancelled"})
+    await job_repo.update_job(job_id, {"status": "cancelled"})
 
     # Cancel the task if it's running
     if job_id in active_job_tasks:
@@ -950,11 +972,13 @@ async def cancel_job(
 
 @router.delete("/{job_id}")
 async def delete_job(
-    job_id: str, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
+    job_id: str,
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    job_repo: JobRepository = Depends(create_job_repository),
 ) -> dict[str, str]:
     """Delete a job and its associated collection"""
     # Check if job exists
-    job = database.get_job(job_id)
+    job = await job_repo.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -967,15 +991,19 @@ async def delete_job(
         logger.warning(f"Failed to delete Qdrant collection: {e}")
 
     # Delete from database
-    database.delete_job(job_id)
+    await job_repo.delete_job(job_id)
 
     return {"message": "Job deleted successfully"}
 
 
 @router.get("/{job_id}", response_model=JobStatus)
-async def get_job(job_id: str, current_user: dict[str, Any] = Depends(get_current_user)) -> JobStatus:  # noqa: ARG001
+async def get_job(
+    job_id: str,
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    job_repo: JobRepository = Depends(create_job_repository),
+) -> JobStatus:
     """Get job details"""
-    job = database.get_job(job_id)
+    job = await job_repo.get_job(job_id)
 
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")

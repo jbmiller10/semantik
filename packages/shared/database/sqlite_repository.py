@@ -9,7 +9,7 @@ import logging
 from typing import Any
 
 from . import sqlite_implementation as db_impl
-from .base import JobRepository, UserRepository
+from .base import AuthRepository, CollectionRepository, FileRepository, JobRepository, UserRepository
 
 logger = logging.getLogger(__name__)
 
@@ -192,8 +192,17 @@ class SQLiteUserRepository(UserRepository):
     async def get_user(self, user_id: str) -> dict[str, Any] | None:
         """Get a user by ID."""
         try:
-            result: dict[str, Any] | None = self.db.get_user(user_id)
+            # Convert string user_id to int for SQLite
+            try:
+                user_id_int = int(user_id)
+            except ValueError:
+                logger.error(f"Invalid user_id format: {user_id}")
+                raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
+            
+            result: dict[str, Any] | None = self.db.get_user_by_id(user_id_int)
             return result
+        except ValueError:
+            raise
         except Exception as e:
             logger.error(f"Failed to get user {user_id}: {e}")
             raise
@@ -268,4 +277,257 @@ class SQLiteUserRepository(UserRepository):
             return False  # Return False since we can't actually delete
         except Exception as e:
             logger.error(f"Failed to delete user {user_id}: {e}")
+            raise
+
+
+class SQLiteFileRepository(FileRepository):
+    """SQLite implementation of FileRepository."""
+
+    def __init__(self) -> None:
+        """Initialize with the local database implementation."""
+        self.db = db_impl
+
+    async def add_files_to_job(self, job_id: str, files: list[dict[str, Any]]) -> None:
+        """Add files to a job."""
+        try:
+            self.db.add_files_to_job(job_id, files)
+        except Exception as e:
+            logger.error(f"Failed to add files to job {job_id}: {e}")
+            raise
+
+    async def get_job_files(self, job_id: str, status: str | None = None) -> list[dict[str, Any]]:
+        """Get files for a job with optional status filter."""
+        try:
+            result: list[dict[str, Any]] = self.db.get_job_files(job_id, status)
+            return result
+        except Exception as e:
+            logger.error(f"Failed to get files for job {job_id}: {e}")
+            raise
+
+    async def update_file_status(
+        self,
+        job_id: str,
+        file_path: str,
+        status: str,
+        error: str | None = None,
+        chunks_created: int = 0,
+        vectors_created: int = 0,
+    ) -> None:
+        """Update file processing status."""
+        try:
+            self.db.update_file_status(job_id, file_path, status, error, chunks_created, vectors_created)
+        except Exception as e:
+            logger.error(f"Failed to update file status for {file_path} in job {job_id}: {e}")
+            raise
+
+    async def get_job_total_vectors(self, job_id: str) -> int:
+        """Get total vectors created for all files in a job."""
+        try:
+            result: int = self.db.get_job_total_vectors(job_id)
+            return result
+        except Exception as e:
+            logger.error(f"Failed to get total vectors for job {job_id}: {e}")
+            raise
+
+    async def get_duplicate_files_in_collection(self, collection_name: str, content_hashes: list[str]) -> set[str]:
+        """Check which content hashes already exist in a collection."""
+        try:
+            result: set[str] = self.db.get_duplicate_files_in_collection(collection_name, content_hashes)
+            return result
+        except Exception as e:
+            logger.error(f"Failed to check duplicate files in collection {collection_name}: {e}")
+            raise
+
+
+class SQLiteCollectionRepository(CollectionRepository):
+    """SQLite implementation of CollectionRepository."""
+
+    def __init__(self) -> None:
+        """Initialize with the local database implementation."""
+        self.db = db_impl
+
+    async def list_collections(self, user_id: str | None = None) -> list[dict[str, Any]]:
+        """List all collections with optional user filter.
+
+        Note: Converts string user_id to int for SQLite compatibility.
+        """
+        try:
+            user_id_int: int | None = None
+            if user_id is not None:
+                try:
+                    user_id_int = int(user_id)
+                except ValueError:
+                    logger.error(f"Invalid user_id format: {user_id}")
+                    raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
+
+            result: list[dict[str, Any]] = self.db.list_collections(user_id=user_id_int)
+            return result
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to list collections: {e}")
+            raise
+
+    async def get_collection_details(self, collection_name: str, user_id: str) -> dict[str, Any] | None:
+        """Get detailed information for a collection.
+
+        Note: Converts string user_id to int for SQLite compatibility.
+        """
+        try:
+            try:
+                user_id_int = int(user_id)
+            except ValueError:
+                logger.error(f"Invalid user_id format: {user_id}")
+                raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
+
+            result: dict[str, Any] | None = self.db.get_collection_details(collection_name, user_id_int)
+            return result
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get collection details for {collection_name}: {e}")
+            raise
+
+    async def get_collection_files(
+        self, collection_name: str, user_id: str, page: int = 1, limit: int = 50
+    ) -> dict[str, Any]:
+        """Get paginated files in a collection.
+
+        Note: Converts string user_id to int for SQLite compatibility.
+        """
+        try:
+            try:
+                user_id_int = int(user_id)
+            except ValueError:
+                logger.error(f"Invalid user_id format: {user_id}")
+                raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
+
+            result: dict[str, Any] = self.db.get_collection_files(collection_name, user_id_int, page, limit)
+            return result
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get files for collection {collection_name}: {e}")
+            raise
+
+    async def rename_collection(self, old_name: str, new_name: str, user_id: str) -> bool:
+        """Rename a collection.
+
+        Note: Converts string user_id to int for SQLite compatibility.
+        """
+        try:
+            try:
+                user_id_int = int(user_id)
+            except ValueError:
+                logger.error(f"Invalid user_id format: {user_id}")
+                raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
+
+            result: bool = self.db.rename_collection(old_name, new_name, user_id_int)
+            return result
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to rename collection from {old_name} to {new_name}: {e}")
+            raise
+
+    async def delete_collection(self, collection_name: str, user_id: str) -> dict[str, Any]:
+        """Delete a collection and return deletion info.
+
+        Note: Converts string user_id to int for SQLite compatibility.
+        """
+        try:
+            try:
+                user_id_int = int(user_id)
+            except ValueError:
+                logger.error(f"Invalid user_id format: {user_id}")
+                raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
+
+            result: dict[str, Any] = self.db.delete_collection(collection_name, user_id_int)
+            return result
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to delete collection {collection_name}: {e}")
+            raise
+
+    async def get_collection_metadata(self, collection_name: str) -> dict[str, Any] | None:
+        """Get metadata from the first job of a collection."""
+        try:
+            result: dict[str, Any] | None = self.db.get_collection_metadata(collection_name)
+            return result
+        except Exception as e:
+            logger.error(f"Failed to get metadata for collection {collection_name}: {e}")
+            raise
+
+
+class SQLiteAuthRepository(AuthRepository):
+    """SQLite implementation of AuthRepository."""
+
+    def __init__(self) -> None:
+        """Initialize with the local database implementation."""
+        self.db = db_impl
+
+    async def save_refresh_token(self, user_id: str, token_hash: str, expires_at: Any) -> None:
+        """Save a refresh token for a user.
+
+        Note: Converts string user_id to int for SQLite compatibility.
+        """
+        try:
+            # Import datetime to handle the type
+            from datetime import datetime
+
+            try:
+                user_id_int = int(user_id)
+            except ValueError:
+                logger.error(f"Invalid user_id format: {user_id}")
+                raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
+
+            if isinstance(expires_at, str):
+                # Convert string to datetime if needed
+                expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+
+            self.db.save_refresh_token(user_id_int, token_hash, expires_at)
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to save refresh token: {e}")
+            raise
+
+    async def verify_refresh_token(self, token: str) -> str | None:
+        """Verify a refresh token and return user_id if valid.
+
+        Note: Returns string user_id for repository interface consistency.
+        """
+        try:
+            user_id_int: int | None = self.db.verify_refresh_token(token)
+            return str(user_id_int) if user_id_int is not None else None
+        except Exception as e:
+            logger.error(f"Failed to verify refresh token: {e}")
+            raise
+
+    async def revoke_refresh_token(self, token: str) -> None:
+        """Revoke a refresh token."""
+        try:
+            self.db.revoke_refresh_token(token)
+        except Exception as e:
+            logger.error(f"Failed to revoke refresh token: {e}")
+            raise
+
+    async def update_user_last_login(self, user_id: str) -> None:
+        """Update user's last login timestamp.
+
+        Note: Converts string user_id to int for SQLite compatibility.
+        """
+        try:
+            try:
+                user_id_int = int(user_id)
+            except ValueError:
+                logger.error(f"Invalid user_id format: {user_id}")
+                raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
+
+            self.db.update_user_last_login(user_id_int)
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to update last login: {e}")
             raise
