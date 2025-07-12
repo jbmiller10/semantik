@@ -1,8 +1,6 @@
 # shared/config/webui.py
 
-import os
 import secrets
-from pathlib import Path
 from typing import Any
 
 from .base import BaseConfig
@@ -32,10 +30,10 @@ class WebuiConfig(BaseConfig):
     def __init__(self, **kwargs: Any) -> None:
         """Initialize configuration with JWT secret key validation."""
         super().__init__(**kwargs)
-        
+
         # JWT Secret Key file path (in the data directory)
         jwt_secret_file = self.data_dir / ".jwt_secret"
-        
+
         # Handle JWT secret key based on environment
         if self.ENVIRONMENT == "production":
             # In production, JWT_SECRET_KEY must be explicitly set via environment variable
@@ -55,18 +53,19 @@ class WebuiConfig(BaseConfig):
                         if not self.JWT_SECRET_KEY:
                             raise ValueError("JWT secret file is empty")
                     except Exception as e:
-                        raise ValueError(f"Failed to read JWT secret from {jwt_secret_file}: {e}")
+                        raise ValueError(f"Failed to read JWT secret from {jwt_secret_file}: {e}") from e
                 else:
                     # Generate a new secret and save it to file
                     self.JWT_SECRET_KEY = secrets.token_hex(32)
                     try:
                         jwt_secret_file.write_text(self.JWT_SECRET_KEY)
                         # Set secure permissions (readable only by owner)
-                        os.chmod(jwt_secret_file, 0o600)
+                        jwt_secret_file.chmod(0o600)
                     except Exception as e:
                         # If we can't write the file, continue with the generated secret
                         # but warn the user
                         import logging
+
                         logging.warning(
                             f"Generated JWT secret key but failed to save to {jwt_secret_file}: {e}. "
                             "The key will be regenerated on next startup unless JWT_SECRET_KEY is set."
