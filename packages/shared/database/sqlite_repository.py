@@ -10,6 +10,7 @@ from typing import Any
 
 from . import sqlite_implementation as db_impl
 from .base import AuthRepository, CollectionRepository, FileRepository, JobRepository, UserRepository
+from .utils import parse_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +95,8 @@ class SQLiteJobRepository(JobRepository):
             if updated_job is None:
                 raise ValueError(f"Job {job_id} disappeared during update operation")
             return updated_job
-        except ValueError:
-            raise
+        except ValueError as e:
+            raise e
         except Exception as e:
             logger.error(f"Failed to update job {job_id}: {e}")
             raise
@@ -148,11 +149,7 @@ class SQLiteJobRepository(JobRepository):
             # for IDs to support different backend storage systems
             user_id_int: int | None = None
             if user_id is not None:
-                try:
-                    user_id_int = int(user_id)
-                except ValueError:
-                    logger.error(f"Invalid user_id format: {user_id}")
-                    raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
+                user_id_int = parse_user_id(user_id)
 
             result: list[dict[str, Any]] = self.db.list_jobs(user_id=user_id_int)
             return result
@@ -193,16 +190,12 @@ class SQLiteUserRepository(UserRepository):
         """Get a user by ID."""
         try:
             # Convert string user_id to int for SQLite
-            try:
-                user_id_int = int(user_id)
-            except ValueError:
-                logger.error(f"Invalid user_id format: {user_id}")
-                raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
+            user_id_int = parse_user_id(user_id)
             
             result: dict[str, Any] | None = self.db.get_user_by_id(user_id_int)
             return result
-        except ValueError:
-            raise
+        except ValueError as e:
+            raise e
         except Exception as e:
             logger.error(f"Failed to get user {user_id}: {e}")
             raise
@@ -354,16 +347,12 @@ class SQLiteCollectionRepository(CollectionRepository):
         try:
             user_id_int: int | None = None
             if user_id is not None:
-                try:
-                    user_id_int = int(user_id)
-                except ValueError:
-                    logger.error(f"Invalid user_id format: {user_id}")
-                    raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
+                user_id_int = parse_user_id(user_id)
 
             result: list[dict[str, Any]] = self.db.list_collections(user_id=user_id_int)
             return result
-        except ValueError:
-            raise
+        except ValueError as e:
+            raise e
         except Exception as e:
             logger.error(f"Failed to list collections: {e}")
             raise
@@ -374,16 +363,12 @@ class SQLiteCollectionRepository(CollectionRepository):
         Note: Converts string user_id to int for SQLite compatibility.
         """
         try:
-            try:
-                user_id_int = int(user_id)
-            except ValueError:
-                logger.error(f"Invalid user_id format: {user_id}")
-                raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
+            user_id_int = parse_user_id(user_id)
 
             result: dict[str, Any] | None = self.db.get_collection_details(collection_name, user_id_int)
             return result
-        except ValueError:
-            raise
+        except ValueError as e:
+            raise e
         except Exception as e:
             logger.error(f"Failed to get collection details for {collection_name}: {e}")
             raise
@@ -396,16 +381,12 @@ class SQLiteCollectionRepository(CollectionRepository):
         Note: Converts string user_id to int for SQLite compatibility.
         """
         try:
-            try:
-                user_id_int = int(user_id)
-            except ValueError:
-                logger.error(f"Invalid user_id format: {user_id}")
-                raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
+            user_id_int = parse_user_id(user_id)
 
             result: dict[str, Any] = self.db.get_collection_files(collection_name, user_id_int, page, limit)
             return result
-        except ValueError:
-            raise
+        except ValueError as e:
+            raise e
         except Exception as e:
             logger.error(f"Failed to get files for collection {collection_name}: {e}")
             raise
@@ -416,16 +397,12 @@ class SQLiteCollectionRepository(CollectionRepository):
         Note: Converts string user_id to int for SQLite compatibility.
         """
         try:
-            try:
-                user_id_int = int(user_id)
-            except ValueError:
-                logger.error(f"Invalid user_id format: {user_id}")
-                raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
+            user_id_int = parse_user_id(user_id)
 
             result: bool = self.db.rename_collection(old_name, new_name, user_id_int)
             return result
-        except ValueError:
-            raise
+        except ValueError as e:
+            raise e
         except Exception as e:
             logger.error(f"Failed to rename collection from {old_name} to {new_name}: {e}")
             raise
@@ -436,16 +413,12 @@ class SQLiteCollectionRepository(CollectionRepository):
         Note: Converts string user_id to int for SQLite compatibility.
         """
         try:
-            try:
-                user_id_int = int(user_id)
-            except ValueError:
-                logger.error(f"Invalid user_id format: {user_id}")
-                raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
+            user_id_int = parse_user_id(user_id)
 
             result: dict[str, Any] = self.db.delete_collection(collection_name, user_id_int)
             return result
-        except ValueError:
-            raise
+        except ValueError as e:
+            raise e
         except Exception as e:
             logger.error(f"Failed to delete collection {collection_name}: {e}")
             raise
@@ -476,19 +449,15 @@ class SQLiteAuthRepository(AuthRepository):
             # Import datetime to handle the type
             from datetime import datetime
 
-            try:
-                user_id_int = int(user_id)
-            except ValueError:
-                logger.error(f"Invalid user_id format: {user_id}")
-                raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
+            user_id_int = parse_user_id(user_id)
 
             if isinstance(expires_at, str):
                 # Convert string to datetime if needed
                 expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
 
             self.db.save_refresh_token(user_id_int, token_hash, expires_at)
-        except ValueError:
-            raise
+        except ValueError as e:
+            raise e
         except Exception as e:
             logger.error(f"Failed to save refresh token: {e}")
             raise
@@ -519,15 +488,11 @@ class SQLiteAuthRepository(AuthRepository):
         Note: Converts string user_id to int for SQLite compatibility.
         """
         try:
-            try:
-                user_id_int = int(user_id)
-            except ValueError:
-                logger.error(f"Invalid user_id format: {user_id}")
-                raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
+            user_id_int = parse_user_id(user_id)
 
             self.db.update_user_last_login(user_id_int)
-        except ValueError:
-            raise
+        except ValueError as e:
+            raise e
         except Exception as e:
             logger.error(f"Failed to update last login: {e}")
             raise

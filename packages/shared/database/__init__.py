@@ -43,6 +43,7 @@ from .sqlite_repository import (
     SQLiteJobRepository,
     SQLiteUserRepository,
 )
+from .utils import parse_user_id
 
 __all__ = [
     # Repository interfaces
@@ -74,4 +75,6 @@ __all__ = [
     "get_database_stats",
     "DB_PATH",
     "pwd_context",
+    # Utility functions
+    "parse_user_id",
 ]
