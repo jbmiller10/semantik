@@ -10,7 +10,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from qdrant_client.models import CollectionInfo
-from shared import database
+from shared.database.base import CollectionRepository
+from shared.database.factory import create_collection_repository
 from webui.auth import get_current_user
 from webui.utils.qdrant_manager import qdrant_manager
 
@@ -105,11 +106,14 @@ class PaginatedFileList(BaseModel):
 
 
 @router.get("", response_model=list[CollectionSummary])
-async def list_collections(current_user: dict[str, Any] = Depends(get_current_user)) -> list[CollectionSummary]:
+async def list_collections(
+    current_user: dict[str, Any] = Depends(get_current_user),
+    collection_repo: CollectionRepository = Depends(create_collection_repository),
+) -> list[CollectionSummary]:
     """List all unique collections with summary stats"""
     try:
         # Get collections from database
-        collections = database.list_collections(user_id=current_user["id"])
+        collections = await collection_repo.list_collections(user_id=str(current_user["id"]))
 
         # Get Qdrant client
         qdrant_manager.get_client()
@@ -142,12 +146,14 @@ async def list_collections(current_user: dict[str, Any] = Depends(get_current_us
 
 @router.get("/{collection_name}", response_model=CollectionDetails)
 async def get_collection_details(
-    collection_name: str, current_user: dict[str, Any] = Depends(get_current_user)
+    collection_name: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    collection_repo: CollectionRepository = Depends(create_collection_repository),
 ) -> CollectionDetails:
     """Get detailed information for a single collection"""
     try:
         # Get collection details from database
-        details = database.get_collection_details(collection_name, user_id=current_user["id"])
+        details = await collection_repo.get_collection_details(collection_name, user_id=str(current_user["id"]))
 
         if not details:
             raise HTTPException(
@@ -194,14 +200,15 @@ async def rename_collection(
     collection_name: str,
     request: CollectionRenameRequest,
     current_user: dict[str, Any] = Depends(get_current_user),
+    collection_repo: CollectionRepository = Depends(create_collection_repository),
 ) -> dict[str, str]:
     """Rename the display name of a collection"""
     try:
         # Attempt to rename
-        success = database.rename_collection(
+        success = await collection_repo.rename_collection(
             old_name=collection_name,
             new_name=request.new_name,
-            user_id=current_user["id"],
+            user_id=str(current_user["id"]),
         )
 
         if not success:
@@ -223,12 +230,14 @@ async def rename_collection(
 
 @router.delete("/{collection_name}")
 async def delete_collection(
-    collection_name: str, current_user: dict[str, Any] = Depends(get_current_user)
+    collection_name: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    collection_repo: CollectionRepository = Depends(create_collection_repository),
 ) -> dict[str, Any]:
     """Delete a collection and all associated data"""
     try:
         # Get deletion info from database
-        deletion_info = database.delete_collection(collection_name=collection_name, user_id=current_user["id"])
+        deletion_info = await collection_repo.delete_collection(collection_name=collection_name, user_id=str(current_user["id"]))
 
         if not deletion_info["job_ids"]:
             raise HTTPException(
@@ -305,13 +314,14 @@ async def get_collection_files(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(50, ge=1, le=100, description="Items per page"),
     current_user: dict[str, Any] = Depends(get_current_user),
+    collection_repo: CollectionRepository = Depends(create_collection_repository),
 ) -> PaginatedFileList:
     """Get paginated list of files in a collection"""
     try:
         # Get files from database
-        result = database.get_collection_files(
+        result = await collection_repo.get_collection_files(
             collection_name=collection_name,
-            user_id=current_user["id"],
+            user_id=str(current_user["id"]),
             page=page,
             limit=limit,
         )
