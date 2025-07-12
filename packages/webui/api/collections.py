@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 from qdrant_client.models import CollectionInfo
 from shared.database.base import CollectionRepository
 from shared.database.factory import create_collection_repository
+from shared.database.compat import database  # TODO: Remove once tests are migrated
 from webui.auth import get_current_user
 from webui.utils.qdrant_manager import qdrant_manager
 

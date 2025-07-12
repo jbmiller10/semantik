@@ -29,6 +29,7 @@ import contextlib
 from shared.config import settings
 from shared.database.base import CollectionRepository, FileRepository, JobRepository
 from shared.database.factory import create_collection_repository, create_file_repository, create_job_repository
+from shared.database.compat import database  # TODO: Remove once tests are migrated
 from shared.embedding import POPULAR_MODELS, embedding_service
 from shared.text_processing.chunking import TokenChunker
 from shared.text_processing.extraction import extract_text

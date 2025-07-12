@@ -34,6 +34,34 @@ from .factory import (
 # Import database management functions directly (these don't need the repository pattern)
 # Import database constants directly
 from .sqlite_implementation import DB_PATH, get_database_stats, init_db, pwd_context, reset_database
+
+# Legacy function imports for backward compatibility
+# TODO: Migrate tests and code to use repository pattern instead
+from .sqlite_implementation import (
+    add_files_to_job,
+    create_job,
+    create_user,
+    delete_collection,
+    delete_job,
+    get_collection_details,
+    get_collection_files,
+    get_collection_metadata,
+    get_duplicate_files_in_collection,
+    get_job,
+    get_job_files,
+    get_job_total_vectors,
+    get_user,
+    get_user_by_id,
+    list_collections,
+    list_jobs,
+    rename_collection,
+    revoke_refresh_token,
+    save_refresh_token,
+    update_file_status,
+    update_job,
+    update_user_last_login,
+    verify_refresh_token,
+)
 from .sqlite_repository import (
     SQLiteAuthRepository,
     SQLiteCollectionRepository,
@@ -75,4 +103,29 @@ __all__ = [
     "pwd_context",
     # Utility functions
     "parse_user_id",
+    # Legacy function exports (for backward compatibility)
+    # TODO: Remove these once all code is migrated to repository pattern
+    "create_job",
+    "get_job",
+    "update_job",
+    "delete_job",
+    "list_jobs",
+    "add_files_to_job",
+    "update_file_status",
+    "get_job_files",
+    "get_job_total_vectors",
+    "get_duplicate_files_in_collection",
+    "create_user",
+    "get_user",
+    "get_user_by_id",
+    "update_user_last_login",
+    "get_collection_metadata",
+    "list_collections",
+    "get_collection_details",
+    "get_collection_files",
+    "rename_collection",
+    "delete_collection",
+    "save_refresh_token",
+    "verify_refresh_token",
+    "revoke_refresh_token",
 ]
