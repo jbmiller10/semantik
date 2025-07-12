@@ -77,6 +77,7 @@ celerybeat.pid
 .env
 .env.backup
 .semantik-config.json
+.jwt_secret
 .venv
 env/
 venv/
