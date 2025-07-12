@@ -26,6 +26,9 @@ class WebuiConfig(BaseConfig):
 
     # External service URLs
     SEARCH_API_URL: str = "http://localhost:8000"
+    
+    # CORS Configuration
+    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     def __init__(self, **kwargs: Any) -> None:
         """Initialize configuration with JWT secret key validation."""

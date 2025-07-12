@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -85,6 +86,18 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application"""
     app = FastAPI(
         title="Document Embedding Web UI", description="Create and search document embeddings", version="1.1.0"
+    )
+
+    # Configure CORS middleware
+    # Parse comma-separated origins from configuration
+    cors_origins = [origin.strip() for origin in shared_settings.CORS_ORIGINS.split(",") if origin.strip()]
+    
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     app.state.limiter = limiter
