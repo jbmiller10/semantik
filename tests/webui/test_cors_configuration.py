@@ -42,8 +42,10 @@ class TestCORSOriginValidation:
         origins = ["*", "http://localhost:3000"]
 
         # Patch both the module-level import and the function's access
-        with patch.object(packages.webui.main.shared_settings, "ENVIRONMENT", "development"), \
-             patch("packages.webui.main.logger") as mock_logger:
+        with (
+            patch.object(packages.webui.main.shared_settings, "ENVIRONMENT", "development"),
+            patch("packages.webui.main.logger") as mock_logger,
+        ):
             result = _validate_cors_origins(origins)
 
             # In development, wildcard should be allowed but warned
