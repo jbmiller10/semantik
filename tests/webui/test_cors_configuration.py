@@ -1,10 +1,8 @@
 """Tests for CORS configuration in the WebUI."""
 
-import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 # Import the module so we can patch it properly
