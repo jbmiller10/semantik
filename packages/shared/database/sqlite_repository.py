@@ -95,8 +95,8 @@ class SQLiteJobRepository(JobRepository):
             if updated_job is None:
                 raise ValueError(f"Job {job_id} disappeared during update operation")
             return updated_job
-        except ValueError as e:
-            raise e
+        except ValueError:
+            raise
         except Exception as e:
             logger.error(f"Failed to update job {job_id}: {e}")
             raise
@@ -194,8 +194,8 @@ class SQLiteUserRepository(UserRepository):
 
             result: dict[str, Any] | None = self.db.get_user_by_id(user_id_int)
             return result
-        except ValueError as e:
-            raise e
+        except ValueError:
+            raise
         except Exception as e:
             logger.error(f"Failed to get user {user_id}: {e}")
             raise
@@ -351,8 +351,8 @@ class SQLiteCollectionRepository(CollectionRepository):
 
             result: list[dict[str, Any]] = self.db.list_collections(user_id=user_id_int)
             return result
-        except ValueError as e:
-            raise e
+        except ValueError:
+            raise
         except Exception as e:
             logger.error(f"Failed to list collections: {e}")
             raise
@@ -367,8 +367,8 @@ class SQLiteCollectionRepository(CollectionRepository):
 
             result: dict[str, Any] | None = self.db.get_collection_details(collection_name, user_id_int)
             return result
-        except ValueError as e:
-            raise e
+        except ValueError:
+            raise
         except Exception as e:
             logger.error(f"Failed to get collection details for {collection_name}: {e}")
             raise
@@ -385,8 +385,8 @@ class SQLiteCollectionRepository(CollectionRepository):
 
             result: dict[str, Any] = self.db.get_collection_files(collection_name, user_id_int, page, limit)
             return result
-        except ValueError as e:
-            raise e
+        except ValueError:
+            raise
         except Exception as e:
             logger.error(f"Failed to get files for collection {collection_name}: {e}")
             raise
@@ -401,8 +401,8 @@ class SQLiteCollectionRepository(CollectionRepository):
 
             result: bool = self.db.rename_collection(old_name, new_name, user_id_int)
             return result
-        except ValueError as e:
-            raise e
+        except ValueError:
+            raise
         except Exception as e:
             logger.error(f"Failed to rename collection from {old_name} to {new_name}: {e}")
             raise
@@ -417,8 +417,8 @@ class SQLiteCollectionRepository(CollectionRepository):
 
             result: dict[str, Any] = self.db.delete_collection(collection_name, user_id_int)
             return result
-        except ValueError as e:
-            raise e
+        except ValueError:
+            raise
         except Exception as e:
             logger.error(f"Failed to delete collection {collection_name}: {e}")
             raise
@@ -456,8 +456,8 @@ class SQLiteAuthRepository(AuthRepository):
                 expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
 
             self.db.save_refresh_token(user_id_int, token_hash, expires_at)
-        except ValueError as e:
-            raise e
+        except ValueError:
+            raise
         except Exception as e:
             logger.error(f"Failed to save refresh token: {e}")
             raise
@@ -491,8 +491,8 @@ class SQLiteAuthRepository(AuthRepository):
             user_id_int = parse_user_id(user_id)
 
             self.db.update_user_last_login(user_id_int)
-        except ValueError as e:
-            raise e
+        except ValueError:
+            raise
         except Exception as e:
             logger.error(f"Failed to update last login: {e}")
             raise
