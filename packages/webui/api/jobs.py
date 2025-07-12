@@ -149,7 +149,7 @@ async def update_metrics_continuously() -> None:
 
 
 async def process_embedding_job(
-    job_id: str, job_repo: JobRepository, file_repo: FileRepository, collection_repo: CollectionRepository
+    job_id: str, job_repo: JobRepository, file_repo: FileRepository, collection_repo: CollectionRepository  # noqa: ARG001
 ) -> None:
     """Process an embedding job asynchronously"""
     metrics_task = None  # Initialize to avoid undefined reference
