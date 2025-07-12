@@ -7,8 +7,10 @@ import logging
 import secrets
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -81,10 +83,70 @@ def _configure_internal_api_key() -> None:
         logger.info("Using configured internal API key")
 
 
+def _validate_cors_origins(origins: list[str]) -> list[str]:
+    """Validate CORS origins and return only valid URLs.
+
+    Args:
+        origins: List of origin URLs to validate
+
+    Returns:
+        List of valid origin URLs
+    """
+    valid_origins = []
+
+    for origin in origins:
+        # Check for wildcards or null
+        if origin in ["*", "null"]:
+            logger.warning(
+                f"Wildcard or null origin detected in CORS configuration: '{origin}' - "
+                f"this is insecure in production!"
+            )
+            if shared_settings.ENVIRONMENT == "production":
+                logger.error(f"Rejecting insecure origin '{origin}' in production environment")
+                continue
+            # In development, allow wildcards
+            valid_origins.append(origin)
+            continue
+
+        # Validate URL format
+        try:
+            parsed = urlparse(origin)
+            if parsed.scheme and parsed.netloc:
+                valid_origins.append(origin)
+            else:
+                logger.warning(f"Invalid CORS origin format: {origin}")
+        except Exception as e:
+            logger.error(f"Error parsing CORS origin '{origin}': {e}")
+
+    return valid_origins
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application"""
     app = FastAPI(
         title="Document Embedding Web UI", description="Create and search document embeddings", version="1.1.0"
+    )
+
+    # Configure CORS middleware
+    # Parse comma-separated origins from configuration
+    raw_origins = [origin.strip() for origin in shared_settings.CORS_ORIGINS.split(",") if origin.strip()]
+
+    # Validate origins
+    cors_origins = _validate_cors_origins(raw_origins)
+
+    if not cors_origins:
+        logger.warning(
+            "No valid CORS origins configured - frontend requests may be blocked. "
+            "Set CORS_ORIGINS environment variable with valid origin URLs."
+        )
+
+    # Configure CORS with more restrictive settings
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],  # Explicit methods
+        allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],  # Common headers
     )
 
     app.state.limiter = limiter
