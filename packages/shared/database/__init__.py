@@ -32,10 +32,8 @@ from .factory import (
 )
 
 # Import database management functions directly (these don't need the repository pattern)
-from .sqlite_implementation import init_db, reset_database, get_database_stats
-
 # Import database constants directly
-from .sqlite_implementation import DB_PATH, pwd_context
+from .sqlite_implementation import DB_PATH, get_database_stats, init_db, pwd_context, reset_database
 from .sqlite_repository import (
     SQLiteAuthRepository,
     SQLiteCollectionRepository,

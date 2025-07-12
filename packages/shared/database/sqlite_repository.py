@@ -191,7 +191,7 @@ class SQLiteUserRepository(UserRepository):
         try:
             # Convert string user_id to int for SQLite
             user_id_int = parse_user_id(user_id)
-            
+
             result: dict[str, Any] | None = self.db.get_user_by_id(user_id_int)
             return result
         except ValueError as e:

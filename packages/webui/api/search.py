@@ -8,10 +8,10 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from shared.config import settings
-from shared.database.base import JobRepository
-from shared.database.factory import create_job_repository
 from shared.contracts.search import HybridSearchRequest, PreloadModelRequest
 from shared.contracts.search import SearchRequest as SharedSearchRequest
+from shared.database.base import JobRepository
+from shared.database.factory import create_job_repository
 from webui.auth import get_current_user
 
 logger = logging.getLogger(__name__)

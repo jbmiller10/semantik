@@ -237,7 +237,9 @@ async def delete_collection(
     """Delete a collection and all associated data"""
     try:
         # Get deletion info from database
-        deletion_info = await collection_repo.delete_collection(collection_name=collection_name, user_id=str(current_user["id"]))
+        deletion_info = await collection_repo.delete_collection(
+            collection_name=collection_name, user_id=str(current_user["id"])
+        )
 
         if not deletion_info["job_ids"]:
             raise HTTPException(

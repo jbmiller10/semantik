@@ -34,12 +34,14 @@ async def register(
     """Register a new user"""
     try:
         hashed_password = get_password_hash(user_data.password)
-        user_dict = await user_repo.create_user({
-            "username": user_data.username,
-            "email": user_data.email,
-            "hashed_password": hashed_password,
-            "full_name": user_data.full_name,
-        })
+        user_dict = await user_repo.create_user(
+            {
+                "username": user_data.username,
+                "email": user_data.email,
+                "hashed_password": hashed_password,
+                "full_name": user_data.full_name,
+            }
+        )
         return User(**user_dict)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -59,9 +61,10 @@ async def login(
     user = await user_repo.get_user_by_username(login_data.username)
     if not user:
         raise HTTPException(status_code=401, detail="Incorrect username or password")
-    
+
     # Verify password
     from webui.auth import verify_password
+
     if not verify_password(login_data.password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Incorrect username or password")
 

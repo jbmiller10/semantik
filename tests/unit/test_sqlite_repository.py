@@ -245,7 +245,7 @@ class TestSQLiteUserRepository:
         # Assert
         assert result is None
         mock_db.get_user_by_id.assert_called_once_with(999)
-    
+
     @pytest.mark.asyncio()
     async def test_get_user_invalid_id(self, repository, mock_db):
         """Test user retrieval with invalid user ID."""

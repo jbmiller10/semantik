@@ -224,7 +224,9 @@ async def process_embedding_job(
                         # Update processed files count
                         current_job = await job_repo.get_job(job_id)
                         if current_job:
-                            await job_repo.update_job(job_id, {"processed_files": current_job.get("processed_files", 0) + 1})
+                            await job_repo.update_job(
+                                job_id, {"processed_files": current_job.get("processed_files", 0) + 1}
+                            )
                         continue
 
                 # Update current file
