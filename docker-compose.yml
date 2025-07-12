@@ -49,6 +49,8 @@ services:
     ports:
       - "8000:8000"
     environment:
+      # General configuration
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       # Qdrant configuration
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
@@ -109,6 +111,8 @@ services:
     ports:
       - "8080:8080"
     environment:
+      # General configuration
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       # Service URLs for inter-container communication
       - SEARCH_API_URL=http://vecpipe:8000
       - SEARCH_API_HOST=vecpipe
