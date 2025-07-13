@@ -11,6 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from qdrant_client.models import CollectionInfo
 from shared.database.base import CollectionRepository
+from shared.database.exceptions import (
+    AccessDeniedError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+)
 from shared.database.factory import create_collection_repository
 from webui.auth import get_current_user
 from webui.utils.qdrant_manager import qdrant_manager
@@ -221,6 +226,21 @@ async def rename_collection(
 
         return {"message": "Collection renamed successfully", "new_name": request.new_name}
 
+    except EntityAlreadyExistsError:
+        raise HTTPException(
+            status_code=409,
+            detail=f"A collection with the name '{request.new_name}' already exists.",
+        ) from None
+    except AccessDeniedError:
+        raise HTTPException(
+            status_code=403,
+            detail=f"You don't have permission to rename collection '{collection_name}'.",
+        ) from None
+    except EntityNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Collection '{collection_name}' not found.",
+        ) from None
     except HTTPException:
         raise
     except Exception as e:

@@ -2,6 +2,8 @@
 
 import logging
 
+from .exceptions import InvalidUserIdError
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,4 +29,4 @@ def parse_user_id(user_id: str | int) -> int:
         return int(user_id)
     except ValueError:
         logger.error(f"Invalid user_id format: '{user_id}' must be numeric")
-        raise ValueError(f"Invalid user_id format: '{user_id}' must be numeric") from None
+        raise InvalidUserIdError(str(user_id)) from None

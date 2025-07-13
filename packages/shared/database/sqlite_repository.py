@@ -10,6 +10,13 @@ from typing import Any
 
 from . import sqlite_implementation as db_impl
 from .base import AuthRepository, CollectionRepository, FileRepository, JobRepository, UserRepository
+from .exceptions import (
+    AccessDeniedError,
+    DatabaseOperationError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+    InvalidUserIdError,
+)
 from .utils import parse_user_id
 
 logger = logging.getLogger(__name__)
@@ -187,7 +194,18 @@ class SQLiteUserRepository(UserRepository):
             raise
 
     async def get_user(self, user_id: str) -> dict[str, Any] | None:
-        """Get a user by ID."""
+        """Get a user by numeric ID.
+
+        Args:
+            user_id: Numeric user ID as a string (e.g., "123")
+
+        Returns:
+            User dictionary or None if not found
+
+        Raises:
+            InvalidUserIdError: If user_id is not numeric
+            DatabaseOperationError: For database errors
+        """
         try:
             # Convert string user_id to int for SQLite
             user_id_int = parse_user_id(user_id)
@@ -195,10 +213,10 @@ class SQLiteUserRepository(UserRepository):
             result: dict[str, Any] | None = self.db.get_user_by_id(user_id_int)
             return result
         except ValueError:
-            raise
+            raise InvalidUserIdError(user_id) from None
         except Exception as e:
             logger.error(f"Failed to get user {user_id}: {e}")
-            raise
+            raise DatabaseOperationError("retrieve", "user", str(e)) from e
 
     async def get_user_by_username(self, username: str) -> dict[str, Any] | None:
         """Get a user by username."""
@@ -270,7 +288,33 @@ class SQLiteUserRepository(UserRepository):
             return False  # Return False since we can't actually delete
         except Exception as e:
             logger.error(f"Failed to delete user {user_id}: {e}")
-            raise
+            raise DatabaseOperationError("delete", "user", str(e)) from e
+
+    async def list_users(self, **filters: Any) -> list[dict[str, Any]]:
+        """List all users with optional filters.
+
+        Note: Current SQLite implementation doesn't support filters.
+        This is a placeholder for future functionality.
+
+        Args:
+            **filters: Optional filters (not used in current implementation)
+
+        Returns:
+            List of user dictionaries
+
+        Raises:
+            DatabaseOperationError: For database errors
+        """
+        try:
+            # Note: Current database module doesn't have a list_users method
+            # This would need to be implemented in sqlite_implementation.py
+            # For now, return empty list as a placeholder
+            _ = filters  # Mark as intentionally unused
+            logger.warning("User listing not yet implemented in database layer")
+            return []
+        except Exception as e:
+            logger.error(f"Failed to list users: {e}")
+            raise DatabaseOperationError("list", "users", str(e)) from e
 
 
 class SQLiteFileRepository(FileRepository):
@@ -333,7 +377,24 @@ class SQLiteFileRepository(FileRepository):
 
 
 class SQLiteCollectionRepository(CollectionRepository):
-    """SQLite implementation of CollectionRepository."""
+    """SQLite implementation of CollectionRepository.
+
+    Note on Transactions:
+    The underlying SQLite implementation already handles transactions for
+    operations that modify multiple tables (like delete_collection).
+
+    For custom transaction handling, you can use the transaction support:
+
+    Example:
+        from shared.database import async_sqlite_transaction
+
+        async with async_sqlite_transaction() as conn:
+            cursor = conn.cursor()
+            # Perform multiple operations atomically
+            cursor.execute("DELETE FROM files WHERE job_id = ?", (job_id,))
+            cursor.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+            # Both deletes are committed together
+    """
 
     def __init__(self) -> None:
         """Initialize with the local database implementation."""
@@ -395,17 +456,60 @@ class SQLiteCollectionRepository(CollectionRepository):
         """Rename a collection.
 
         Note: Converts string user_id to int for SQLite compatibility.
+        The underlying implementation already validates that:
+        - The user owns at least one job in the collection
+        - The new name doesn't already exist
+
+        Args:
+            old_name: Current collection name
+            new_name: New collection name
+            user_id: User ID as string
+
+        Returns:
+            True if successful, False if validation failed
+
+        Raises:
+            InvalidUserIdError: If user_id is not numeric
+            EntityAlreadyExistsError: If new_name already exists
+            AccessDeniedError: If user doesn't own the collection
+            DatabaseOperationError: For database errors
         """
         try:
             user_id_int = parse_user_id(user_id)
 
+            # First check if the collection exists and user has access
+            collection_details = self.db.get_collection_details(old_name, user_id_int)
+            if collection_details is None:
+                # Either collection doesn't exist or user doesn't have access
+                # Check if collection exists at all
+                all_collections = self.db.list_collections()
+                collection_exists = any(c["name"] == old_name for c in all_collections)
+
+                if collection_exists:
+                    raise AccessDeniedError(user_id, "collection", old_name)
+                raise EntityNotFoundError("collection", old_name)
+
+            # The rename_collection method returns False if new name already exists
+            # or if user doesn't have access. We need to distinguish these cases.
             result: bool = self.db.rename_collection(old_name, new_name, user_id_int)
+
+            if not result:
+                # Check if it failed due to duplicate name
+                all_collections = self.db.list_collections()
+                name_exists = any(c["name"] == new_name for c in all_collections)
+
+                if name_exists:
+                    raise EntityAlreadyExistsError("collection", new_name)
+                # This shouldn't happen since we already checked access above
+                raise AccessDeniedError(user_id, "collection", old_name)
+
             return result
-        except ValueError:
+        except (InvalidUserIdError, EntityAlreadyExistsError, AccessDeniedError, EntityNotFoundError):
+            # Re-raise our domain exceptions
             raise
         except Exception as e:
             logger.error(f"Failed to rename collection from {old_name} to {new_name}: {e}")
-            raise
+            raise DatabaseOperationError("rename", "collection", str(e)) from e
 
     async def delete_collection(self, collection_name: str, user_id: str) -> dict[str, Any]:
         """Delete a collection and return deletion info.

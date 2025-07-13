@@ -63,20 +63,54 @@ def create_auth_repository() -> AuthRepository:
     return SQLiteAuthRepository()
 
 
-# Future implementation example:
-# def create_repositories(config: Config) -> tuple[JobRepository, UserRepository, FileRepository, CollectionRepository]:
+def create_all_repositories() -> (
+    dict[str, JobRepository | UserRepository | FileRepository | CollectionRepository | AuthRepository]
+):
+    """Create all repository instances at once.
+
+    This function provides a centralized way to create all repositories,
+    ensuring consistency and making it easier to manage dependencies.
+
+    Returns:
+        Dictionary containing all repository instances with keys:
+        - 'job': JobRepository instance
+        - 'user': UserRepository instance
+        - 'file': FileRepository instance
+        - 'collection': CollectionRepository instance
+        - 'auth': AuthRepository instance
+
+    Example:
+        repos = create_all_repositories()
+        job_repo = repos['job']
+        user_repo = repos['user']
+    """
+    return {
+        "job": SQLiteJobRepository(),
+        "user": SQLiteUserRepository(),
+        "file": SQLiteFileRepository(),
+        "collection": SQLiteCollectionRepository(),
+        "auth": SQLiteAuthRepository(),
+    }
+
+
+# Future implementation with configuration support:
+# def create_all_repositories(config: Config | None = None) -> dict[str, Any]:
 #     """Create all repositories based on configuration."""
+#     config = config or get_default_config()
+#
 #     if config.DATABASE_TYPE == "postgresql":
-#         return (
-#             PostgreSQLJobRepository(),
-#             PostgreSQLUserRepository(),
-#             PostgreSQLFileRepository(),
-#             PostgreSQLCollectionRepository()
-#         )
+#         return {
+#             'job': PostgreSQLJobRepository(config.DATABASE_URL),
+#             'user': PostgreSQLUserRepository(config.DATABASE_URL),
+#             'file': PostgreSQLFileRepository(config.DATABASE_URL),
+#             'collection': PostgreSQLCollectionRepository(config.DATABASE_URL),
+#             'auth': PostgreSQLAuthRepository(config.DATABASE_URL),
+#         }
 #     else:
-#         return (
-#             SQLiteJobRepository(),
-#             SQLiteUserRepository(),
-#             SQLiteFileRepository(),
-#             SQLiteCollectionRepository()
-#         )
+#         return {
+#             'job': SQLiteJobRepository(),
+#             'user': SQLiteUserRepository(),
+#             'file': SQLiteFileRepository(),
+#             'collection': SQLiteCollectionRepository(),
+#             'auth': SQLiteAuthRepository(),
+#         }

@@ -23,7 +23,19 @@ from .base import (
 )
 from .collection_metadata import ensure_metadata_collection, store_collection_metadata
 from .collection_metadata import get_collection_metadata as get_collection_metadata_qdrant
+from .exceptions import (
+    AccessDeniedError,
+    ConcurrencyError,
+    DatabaseOperationError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+    InvalidUserIdError,
+    RepositoryError,
+    TransactionError,
+    ValidationError,
+)
 from .factory import (
+    create_all_repositories,
     create_auth_repository,
     create_collection_repository,
     create_file_repository,
@@ -72,6 +84,7 @@ from .sqlite_repository import (
     SQLiteJobRepository,
     SQLiteUserRepository,
 )
+from .transaction import RepositoryTransaction, async_sqlite_transaction, sqlite_transaction
 from .utils import parse_user_id
 
 __all__ = [
@@ -89,11 +102,26 @@ __all__ = [
     "SQLiteCollectionRepository",
     "SQLiteAuthRepository",
     # Factory functions
+    "create_all_repositories",
     "create_job_repository",
     "create_user_repository",
     "create_file_repository",
     "create_collection_repository",
     "create_auth_repository",
+    # Domain exceptions
+    "AccessDeniedError",
+    "ConcurrencyError",
+    "DatabaseOperationError",
+    "EntityAlreadyExistsError",
+    "EntityNotFoundError",
+    "InvalidUserIdError",
+    "RepositoryError",
+    "TransactionError",
+    "ValidationError",
+    # Transaction support
+    "RepositoryTransaction",
+    "async_sqlite_transaction",
+    "sqlite_transaction",
     # Collection metadata functions
     "ensure_metadata_collection",
     "get_collection_metadata_qdrant",

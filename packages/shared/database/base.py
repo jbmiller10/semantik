@@ -93,6 +93,10 @@ class UserRepository(ABC):
     async def delete_user(self, user_id: str) -> bool:
         """Delete a user."""
 
+    @abstractmethod
+    async def list_users(self, **filters: Any) -> list[dict[str, Any]]:
+        """List all users with optional filters."""
+
 
 class FileRepository(ABC):
     """Abstract interface for file data access."""
