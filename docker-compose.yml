@@ -217,7 +217,7 @@ services:
       dockerfile: Dockerfile.cuda
       target: runtime
     container_name: semantik-worker
-    command: ["celery", "-A", "webui.celery_app", "worker", "--loglevel=info", "--concurrency=1"]
+    command: ["sh", "-c", "celery -A webui.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-1}"]
     environment:
       # Python path
       - PYTHONPATH=/app/packages
@@ -286,7 +286,7 @@ services:
       dockerfile: Dockerfile
       target: runtime
     container_name: semantik-flower
-    command: ["celery", "-A", "webui.celery_app", "flower", "--broker=redis://redis:6379/0"]
+    command: ["sh", "-c", "celery -A webui.celery_app flower --broker=redis://redis:6379/0 --basic_auth=${FLOWER_BASIC_AUTH:-admin:admin}"]
     ports:
       - "5555:5555"
     environment:

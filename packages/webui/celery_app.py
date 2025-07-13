@@ -1,5 +1,7 @@
 """Celery application configuration."""
+
 import os
+
 from celery import Celery
 
 # Create Celery instance
@@ -18,29 +20,39 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
-    
     # Task execution limits
     task_soft_time_limit=3600,  # 1 hour soft limit
     task_time_limit=7200,  # 2 hour hard limit
     task_acks_late=True,  # Tasks will be acknowledged after they have been executed
     task_reject_on_worker_lost=True,  # Reject tasks when worker shuts down
-    
     # Worker configuration
     worker_prefetch_multiplier=1,  # Disable prefetching for long-running tasks
     worker_max_tasks_per_child=100,  # Restart worker after 100 tasks to prevent memory leaks
     worker_hijack_root_logger=False,  # Don't hijack the root logger
-    
     # Result backend settings
-    result_expires=86400,  # Results expire after 1 day
+    result_expires=3600,  # Results expire after 1 hour (reduced from 1 day)
     result_persistent=True,  # Store results persistently
-    
+    # Connection retry configuration
+    broker_connection_retry_on_startup=True,  # Retry broker connection on startup
+    broker_connection_max_retries=10,  # Max retries for broker connection
+    broker_connection_retry=True,  # Retry broker connection on failure
+    broker_connection_retry_delay=1.0,  # Initial retry delay
+    broker_connection_retry_max_delay=30.0,  # Max retry delay
+    broker_connection_retry_backoff_factor=2.0,  # Exponential backoff factor
     # Retry configuration
     task_default_retry_delay=60,  # 60 seconds
     task_max_retries=3,
-    
     # Enable task events for monitoring
     worker_send_task_events=True,
     task_send_sent_event=True,
+    # Beat schedule for periodic tasks
+    beat_schedule={
+        "cleanup-old-results": {
+            "task": "webui.tasks.cleanup_old_results",
+            "schedule": 86400.0,  # Run daily (24 hours)
+            "args": (7,),  # Keep results for 7 days
+        },
+    },
 )
 
 # Auto-discover tasks

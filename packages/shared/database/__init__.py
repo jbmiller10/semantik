@@ -87,6 +87,14 @@ from .sqlite_repository import (
 from .transaction import RepositoryTransaction, async_sqlite_transaction, sqlite_transaction
 from .utils import parse_user_id
 
+# Connection pooling for workers
+try:
+    from .connection_pool import get_connection_pool, get_db_connection
+except ImportError:
+    # Connection pool is optional
+    get_connection_pool = None
+    get_db_connection = None
+
 __all__ = [
     # Repository interfaces
     "BaseRepository",
@@ -134,6 +142,9 @@ __all__ = [
     "pwd_context",
     # Utility functions
     "parse_user_id",
+    # Connection pooling (optional, for workers)
+    "get_connection_pool",
+    "get_db_connection",
     # Legacy function exports (for backward compatibility)
     # TODO: Remove these once all code is migrated to repository pattern
     "create_job",
