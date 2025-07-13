@@ -35,7 +35,7 @@ def extract_and_serialize_thread_safe(filepath: str) -> list[tuple[str, dict[str
 
 
 @celery_app.task(bind=True)
-def test_task(self):  # noqa: ARG001
+def test_task(self: Any) -> dict[str, str]:  # noqa: ARG001
     """Test task to verify Celery is working."""
     return {"status": "success", "message": "Celery is working!"}
 
@@ -52,7 +52,7 @@ def cleanup_old_results(days_to_keep: int = 7) -> dict[str, Any]:
     """
     from datetime import timedelta
 
-    stats = {"celery_results_deleted": 0, "old_jobs_marked": 0, "errors": []}
+    stats: dict[str, Any] = {"celery_results_deleted": 0, "old_jobs_marked": 0, "errors": []}
 
     try:
         # Clean up old Celery results from Redis
@@ -84,7 +84,7 @@ def cleanup_old_results(days_to_keep: int = 7) -> dict[str, Any]:
 
 
 @celery_app.task(bind=True, name="webui.tasks.process_embedding_job_task", max_retries=3, default_retry_delay=60)
-def process_embedding_job_task(self, job_id: str) -> dict[str, Any]:
+def process_embedding_job_task(self: Any, job_id: str) -> dict[str, Any]:
     """
     Process an embedding job as a Celery task.
 
@@ -107,7 +107,7 @@ def process_embedding_job_task(self, job_id: str) -> dict[str, Any]:
         loop.close()
 
 
-async def _process_embedding_job_async(job_id: str, celery_task) -> dict[str, Any]:
+async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[str, Any]:
     """Async implementation of the embedding job processing."""
     metrics_task = None
 
@@ -287,7 +287,7 @@ async def _process_embedding_job_async(job_id: str, celery_task) -> dict[str, An
                 task_id = celery_task.request.id if hasattr(celery_task, "request") else str(uuid.uuid4())
 
                 # Function to run in executor with GPU scheduling
-                def generate_embeddings_with_gpu(task_id=task_id, texts=texts):
+                def generate_embeddings_with_gpu(task_id: str = task_id, texts: list[str] = texts) -> Any:
                     with gpu_task(task_id) as gpu_id:
                         if gpu_id is None:
                             logger.warning(f"No GPU available for task {task_id}, proceeding with CPU")

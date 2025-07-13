@@ -28,7 +28,7 @@ class SQLiteConnectionPool:
         """
         self.database_path = database_path
         self.max_connections = max_connections
-        self._pool = Queue(maxsize=max_connections)
+        self._pool: Queue[sqlite3.Connection] = Queue(maxsize=max_connections)
         self._lock = threading.Lock()
         self._created_connections = 0
 
@@ -103,7 +103,7 @@ class SQLiteConnectionPool:
                     except Exception as e:
                         logger.error(f"Failed to create replacement connection: {e}")
 
-    def close_all(self):
+    def close_all(self) -> None:
         """Close all connections in the pool."""
         while not self._pool.empty():
             try:
