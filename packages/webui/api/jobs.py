@@ -25,8 +25,8 @@ from shared.database.base import CollectionRepository, FileRepository, JobReposi
 from shared.database.factory import create_collection_repository, create_file_repository, create_job_repository
 from shared.embedding import POPULAR_MODELS, embedding_service
 from webui.auth import get_current_user
-from webui.utils.qdrant_manager import qdrant_manager
 from webui.tasks import process_embedding_job_task
+from webui.utils.qdrant_manager import qdrant_manager
 
 logger = logging.getLogger(__name__)
 
@@ -236,8 +236,20 @@ async def create_job(
             raise HTTPException(status_code=500, detail=f"Failed to create Qdrant collection: {str(e)}") from e
 
         # Start processing with Celery
-        celery_task = process_embedding_job_task.delay(job_id)
-        active_job_tasks[job_id] = celery_task.id
+        # Store a placeholder first to avoid race condition with WebSocket connection
+        active_job_tasks[job_id] = "pending"
+
+        try:
+            celery_task = process_embedding_job_task.delay(job_id)
+            # Update with actual task ID
+            active_job_tasks[job_id] = celery_task.id
+        except Exception as e:
+            # Clean up on failure
+            if job_id in active_job_tasks:
+                del active_job_tasks[job_id]
+            logger.error(f"Failed to start Celery task for job {job_id}: {e}")
+            await job_repo.update_job(job_id, {"status": "failed", "error": f"Failed to start task: {str(e)}"})
+            raise HTTPException(status_code=500, detail=f"Failed to start processing task: {str(e)}") from e
 
         return JobStatus(
             id=job_id,
@@ -392,8 +404,20 @@ async def add_to_collection(
         await job_repo.update_job(job_id, {"total_files": len(new_files)})
 
         # Start processing with Celery
-        celery_task = process_embedding_job_task.delay(job_id)
-        active_job_tasks[job_id] = celery_task.id
+        # Store a placeholder first to avoid race condition with WebSocket connection
+        active_job_tasks[job_id] = "pending"
+
+        try:
+            celery_task = process_embedding_job_task.delay(job_id)
+            # Update with actual task ID
+            active_job_tasks[job_id] = celery_task.id
+        except Exception as e:
+            # Clean up on failure
+            if job_id in active_job_tasks:
+                del active_job_tasks[job_id]
+            logger.error(f"Failed to start Celery task for job {job_id}: {e}")
+            await job_repo.update_job(job_id, {"status": "failed", "error": f"Failed to start task: {str(e)}"})
+            raise HTTPException(status_code=500, detail=f"Failed to start processing task: {str(e)}") from e
 
         # Return job status
         return JobStatus(
@@ -550,8 +574,22 @@ async def cancel_job(
     # Cancel the Celery task if it's running
     if job_id in active_job_tasks:
         from webui.celery_app import celery_app
-        celery_app.control.revoke(active_job_tasks[job_id], terminate=True)
-        del active_job_tasks[job_id]
+
+        task_id = active_job_tasks.get(job_id)
+        if task_id and task_id != "pending":
+            try:
+                # Try to revoke the task with termination
+                celery_app.control.revoke(task_id, terminate=True, signal="SIGKILL")
+                logger.info(f"Successfully revoked Celery task {task_id} for job {job_id}")
+            except Exception as e:
+                logger.warning(f"Failed to revoke Celery task {task_id} for job {job_id}: {e}")
+                # Still try to clean up even if revoke failed
+
+        # Clean up task tracking
+        try:
+            del active_job_tasks[job_id]
+        except KeyError:
+            pass  # Already deleted
 
     return {"message": "Job cancellation requested"}
 
@@ -647,12 +685,12 @@ async def check_collection_exists(
 async def websocket_endpoint(websocket: WebSocket, job_id: str) -> None:
     """WebSocket for real-time job updates"""
     await manager.connect(websocket, job_id)
-    
+
     # Start polling Celery task state if job is being processed
     poll_task = None
     if job_id in active_job_tasks:
         poll_task = asyncio.create_task(poll_celery_task_state(job_id))
-    
+
     try:
         while True:
             # Keep connection alive
@@ -664,55 +702,94 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str) -> None:
 
 
 async def poll_celery_task_state(job_id: str) -> None:
-    """Poll Celery task state and send WebSocket updates."""
+    """Poll Celery task state and send WebSocket updates with adaptive polling interval."""
     from webui.celery_app import celery_app
-    
+
     if job_id not in active_job_tasks:
         return
-    
+
+    # Wait for actual task ID if still pending
+    wait_count = 0
+    while active_job_tasks.get(job_id) == "pending" and wait_count < 10:
+        await asyncio.sleep(0.5)
+        wait_count += 1
+
+    if job_id not in active_job_tasks or active_job_tasks[job_id] == "pending":
+        logger.error(f"Task ID not available for job {job_id} after waiting")
+        return
+
     task_id = active_job_tasks[job_id]
-    
+
+    # Adaptive polling configuration
+    poll_interval = 1.0  # Start with 1 second
+    max_poll_interval = 10.0  # Max 10 seconds for long-running tasks
+    poll_increase_rate = 1.2  # Increase by 20% each iteration
+    task_start_time = asyncio.get_event_loop().time()
+    consecutive_errors = 0
+    max_consecutive_errors = 5
+
     while True:
         try:
-            # Get task result
-            result = celery_app.AsyncResult(task_id)
-            
-            if result.state == "PENDING":
+            # Get task result with connection error handling
+            try:
+                result = celery_app.AsyncResult(task_id)
+                task_state = result.state
+                task_info = result.info
+                consecutive_errors = 0  # Reset error counter on success
+            except Exception as e:
+                logger.warning(f"Failed to get Celery task state for job {job_id}: {e}")
+                consecutive_errors += 1
+
+                if consecutive_errors >= max_consecutive_errors:
+                    logger.error(f"Too many consecutive errors polling task {task_id}, stopping")
+                    await manager.send_update(job_id, {"type": "error", "message": "Lost connection to task queue"})
+                    break
+
+                await asyncio.sleep(5)  # Wait before retry
+                continue
+
+            if task_state == "PENDING":
                 # Task hasn't started yet
                 pass
-            elif result.state == "PROCESSING":
+            elif task_state == "PROCESSING":
                 # Task is running, send progress update
-                if result.info:
-                    await manager.send_update(job_id, {
-                        "type": result.info.get("status", "processing"),
-                        "total_files": result.info.get("total_files", 0),
-                        "processed_files": result.info.get("processed_files", 0),
-                        "current_file": result.info.get("current_file"),
-                    })
-            elif result.state == "SUCCESS":
+                if task_info:
+                    await manager.send_update(
+                        job_id,
+                        {
+                            "type": task_info.get("status", "processing"),
+                            "total_files": task_info.get("total_files", 0),
+                            "processed_files": task_info.get("processed_files", 0),
+                            "current_file": task_info.get("current_file"),
+                        },
+                    )
+            elif task_state == "SUCCESS":
                 # Task completed successfully
-                await manager.send_update(job_id, {
-                    "type": "job_completed",
-                    "message": "Job completed successfully"
-                })
+                await manager.send_update(job_id, {"type": "job_completed", "message": "Job completed successfully"})
                 # Clean up
                 if job_id in active_job_tasks:
                     del active_job_tasks[job_id]
                 break
-            elif result.state == "FAILURE":
+            elif task_state == "FAILURE":
                 # Task failed
-                await manager.send_update(job_id, {
-                    "type": "error",
-                    "message": str(result.info) if result.info else "Job failed"
-                })
+                await manager.send_update(
+                    job_id, {"type": "error", "message": str(task_info) if task_info else "Job failed"}
+                )
                 # Clean up
                 if job_id in active_job_tasks:
                     del active_job_tasks[job_id]
                 break
-            
-            # Poll every 2 seconds
-            await asyncio.sleep(2)
-            
+
+            # Adaptive polling: increase interval for long-running tasks
+            await asyncio.sleep(poll_interval)
+
+            # Calculate elapsed time
+            elapsed_time = asyncio.get_event_loop().time() - task_start_time
+
+            # Increase polling interval for long-running tasks
+            if elapsed_time > 30:  # After 30 seconds, start increasing interval
+                poll_interval = min(poll_interval * poll_increase_rate, max_poll_interval)
+
         except Exception as e:
-            logger.error(f"Error polling Celery task state: {e}")
+            logger.error(f"Unexpected error in poll_celery_task_state: {e}")
             await asyncio.sleep(5)  # Longer delay on error

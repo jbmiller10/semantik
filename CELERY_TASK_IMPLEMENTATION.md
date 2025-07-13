@@ -107,6 +107,8 @@ The Celery worker will be tested as part of the integration test suite. Key test
 
 - `CELERY_BROKER_URL`: Redis broker URL (default: redis://redis:6379/0)
 - `CELERY_RESULT_BACKEND`: Result backend URL (default: redis://redis:6379/0)
+- `CELERY_CONCURRENCY`: Number of worker processes (default: 1)
+- `FLOWER_BASIC_AUTH`: Flower authentication (default: admin:admin) ⚠️ **CHANGE IN PRODUCTION**
 
 ### Celery Settings
 
@@ -115,6 +117,9 @@ Key settings in `celery_app.py`:
 - `task_time_limit`: 2 hour hard limit
 - `worker_prefetch_multiplier`: 1 (disable prefetching for long tasks)
 - `worker_max_tasks_per_child`: 100 (restart after 100 tasks)
+- `result_expires`: 3600 (results expire after 1 hour)
+- `broker_connection_retry_on_startup`: True (retry connection on startup)
+- `broker_connection_max_retries`: 10 (max connection retries)
 
 ## Migration Notes
 
@@ -122,6 +127,34 @@ Key settings in `celery_app.py`:
 - No database schema changes required
 - WebSocket API remains unchanged
 - Frontend requires no modifications
+
+## Recent Improvements
+
+The following improvements have been made to enhance reliability and security:
+
+1. **Enhanced Error Handling**:
+   - WebSocket polling now handles Celery connection failures gracefully
+   - Task cancellation includes proper error handling and logging
+   - Consecutive error tracking prevents infinite retry loops
+
+2. **Race Condition Fix**:
+   - Task ID assignment is now atomic to prevent WebSocket race conditions
+   - Placeholder "pending" state ensures proper synchronization
+
+3. **Connection Resilience**:
+   - Broker connection retry logic with exponential backoff
+   - Configurable retry limits and delays
+   - Automatic reconnection on startup
+
+4. **Security Enhancements**:
+   - Flower authentication is now configurable via environment variables
+   - Documentation includes security warnings for production deployments
+   - Worker concurrency is configurable for resource control
+
+5. **Operational Improvements**:
+   - Result expiration reduced to 1 hour to prevent Redis memory bloat
+   - Better logging for debugging task lifecycle
+   - Improved task state tracking and cleanup
 
 ## Future Enhancements
 
