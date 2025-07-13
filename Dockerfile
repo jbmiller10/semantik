@@ -66,6 +66,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # C compiler for bitsandbytes JIT compilation
     gcc \
     g++ \
+    # Required for healthchecks
+    wget \
+    curl \
     # Clean up
     && rm -rf /var/lib/apt/lists/*
 

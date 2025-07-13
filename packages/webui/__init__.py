@@ -10,4 +10,7 @@ except ImportError:
     # If main.py doesn't exist yet, try to import from app.py
     from .app import app
 
-__all__ = ["app"]
+# Import Celery app
+from .celery_app import celery_app
+
+__all__ = ["app", "celery_app"]
