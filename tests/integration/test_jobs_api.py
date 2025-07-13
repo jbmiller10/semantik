@@ -10,18 +10,14 @@ class TestJobsAPI:
     """Test suite for job management endpoints."""
 
     @patch("webui.api.jobs.process_embedding_job")
-    @patch("webui.api.jobs.database.get_job")
-    @patch("webui.api.jobs.database.add_files_to_job")
-    @patch("webui.api.jobs.database.create_job")
     @patch("webui.api.files.scan_directory_async")
     def test_create_job_success(
         self,
         mock_scan_directory,
-        mock_create_job,
-        mock_add_files,
-        mock_get_job,
         mock_process_job,
-        test_client: TestClient,
+        test_client_with_mocks: TestClient,
+        mock_job_repository,
+        mock_file_repository,
     ):
         """Test successful job creation."""
 
@@ -45,11 +41,10 @@ class TestJobsAPI:
             "total_size": 3000,
         }
         mock_job_id = "test-job-123"
-        mock_create_job.return_value = mock_job_id
-        mock_add_files.return_value = None
-
-        # Mock the created job that get_job will return
-        mock_job = {
+        
+        # Setup repository mocks
+        # create_job returns the full job object
+        mock_job_repository.create_job = AsyncMock(return_value={
             "id": mock_job_id,
             "name": "Test Job",
             "status": "created",
@@ -66,8 +61,28 @@ class TestJobsAPI:
             "batch_size": 96,
             "chunk_size": 600,
             "chunk_overlap": 200,
-        }
-        mock_get_job.return_value = mock_job
+        })
+        mock_file_repository.add_files_to_job = AsyncMock()
+        
+        # Also setup get_job to return the same job
+        mock_job_repository.get_job = AsyncMock(return_value={
+            "id": mock_job_id,
+            "name": "Test Job",
+            "status": "created",
+            "created_at": "2024-01-01T00:00:00+00:00",
+            "updated_at": "2024-01-01T00:00:00+00:00",
+            "total_files": 2,
+            "processed_files": 0,
+            "failed_files": 0,
+            "current_file": None,
+            "error": None,
+            "model_name": "Qwen/Qwen3-Embedding-0.6B",
+            "directory_path": "/path/to/documents",
+            "quantization": "float32",
+            "batch_size": 96,
+            "chunk_size": 600,
+            "chunk_overlap": 200,
+        })
 
         # Mock process_embedding_job to return immediately
         mock_process_job.return_value = AsyncMock()
@@ -85,7 +100,7 @@ class TestJobsAPI:
         }
 
         # Make request
-        response = test_client.post("/api/jobs", json=job_data)
+        response = test_client_with_mocks.post("/api/jobs", json=job_data)
 
         # Assert response
         assert response.status_code == 200
@@ -113,12 +128,12 @@ class TestJobsAPI:
         # scan_id is the generated job_id
         assert len(scan_args[1]["scan_id"]) == 36
 
-        # Verify create_job was called
-        mock_create_job.assert_called_once()
+        # Verify create_job was called on the repository
+        mock_job_repository.create_job.assert_called_once()
 
-        # Verify add_files_to_job was called
-        mock_add_files.assert_called_once()
-        add_files_args = mock_add_files.call_args
+        # Verify add_files_to_job was called on the repository
+        mock_file_repository.add_files_to_job.assert_called_once()
+        add_files_args = mock_file_repository.add_files_to_job.call_args
         # First arg should be the job ID
         assert len(add_files_args[0][0]) == 36  # UUID length
         # Second arg should be the file records

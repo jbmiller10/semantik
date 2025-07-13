@@ -20,17 +20,19 @@ from webui.api.collections import (
 )
 
 
+def setup_async_mock(mock_obj, method_name, return_value):
+    """Helper to set up async mock methods."""
+    async def async_mock(*args, **kwargs):
+        return return_value
+    setattr(mock_obj, method_name, MagicMock(side_effect=async_mock))
+
+
 @pytest.fixture()
 def mock_current_user():
     """Mock authenticated user"""
     return {"id": "user123", "username": "testuser"}
 
 
-@pytest.fixture()
-def mock_database():
-    """Create a mock database module"""
-    with patch("webui.api.collections.database") as mock_db:
-        yield mock_db
 
 
 @pytest.fixture()
@@ -47,10 +49,11 @@ class TestListCollections:
     """Test cases for list_collections endpoint"""
 
     @pytest.mark.asyncio()
-    async def test_list_collections_single_job_per_collection(self, mock_database, mock_current_user):
+    async def test_list_collections_single_job_per_collection(self, mock_collection_repository, mock_current_user):
         """Test listing collections where each collection has a single job"""
-        # Mock database response
-        mock_database.list_collections.return_value = [
+        # Mock repository response
+        async def mock_list_collections(*args, **kwargs):
+            return [
             {
                 "name": "research_papers",
                 "total_files": 10,
@@ -70,12 +73,17 @@ class TestListCollections:
                 "job_count": 1,
             },
         ]
+        
+        mock_collection_repository.list_collections.side_effect = mock_list_collections
 
-        # Call the function
-        result = await list_collections(current_user=mock_current_user)
+        # Call the function with repository
+        result = await list_collections(
+            current_user=mock_current_user,
+            collection_repo=mock_collection_repository
+        )
 
-        # Verify database call
-        mock_database.list_collections.assert_called_once_with(user_id="user123")
+        # Verify repository call
+        mock_collection_repository.list_collections.assert_called_once_with(user_id="user123")
 
         # Verify result
         assert len(result) == 2
@@ -93,10 +101,10 @@ class TestListCollections:
         assert result[1].job_count == 1
 
     @pytest.mark.asyncio()
-    async def test_list_collections_multiple_jobs_aggregation(self, mock_database, mock_current_user):
+    async def test_list_collections_multiple_jobs_aggregation(self, mock_collection_repository, mock_current_user):
         """Test listing collections with proper aggregation of multiple jobs"""
-        # Mock database response with aggregated data
-        mock_database.list_collections.return_value = [
+        # Mock repository response with aggregated data
+        setup_async_mock(mock_collection_repository, 'list_collections', [
             {
                 "name": "large_dataset",
                 "total_files": 150,  # Aggregated from 3 jobs
@@ -106,10 +114,13 @@ class TestListCollections:
                 "updated_at": "2024-01-05T00:00:00",
                 "job_count": 3,  # Multiple jobs
             }
-        ]
+        ])
 
         # Call the function
-        result = await list_collections(current_user=mock_current_user)
+        result = await list_collections(
+            current_user=mock_current_user,
+            collection_repo=mock_collection_repository
+        )
 
         # Verify result shows aggregated data
         assert len(result) == 1
@@ -119,10 +130,10 @@ class TestListCollections:
         assert result[0].job_count == 3
 
     @pytest.mark.asyncio()
-    async def test_list_collections_handles_null_values(self, mock_database, mock_current_user):
+    async def test_list_collections_handles_null_values(self, mock_collection_repository, mock_current_user):
         """Test that null values in database response are handled correctly"""
         # Mock database response with null values
-        mock_database.list_collections.return_value = [
+        setup_async_mock(mock_collection_repository, 'list_collections', [
             {
                 "name": "incomplete_collection",
                 "total_files": None,
@@ -132,10 +143,10 @@ class TestListCollections:
                 "updated_at": "2024-01-01T00:00:00",
                 "job_count": 1,
             }
-        ]
+        ])
 
         # Call the function
-        result = await list_collections(current_user=mock_current_user)
+        result = await list_collections(current_user=mock_current_user, collection_repo=mock_collection_repository)
 
         # Verify null values are converted to defaults
         assert result[0].total_files == 0
@@ -143,14 +154,14 @@ class TestListCollections:
         assert result[0].model_name == "Unknown"
 
     @pytest.mark.asyncio()
-    async def test_list_collections_error_handling(self, mock_database, mock_current_user):
+    async def test_list_collections_error_handling(self, mock_collection_repository, mock_current_user):
         """Test error handling in list_collections"""
         # Mock database error
-        mock_database.list_collections.side_effect = Exception("Database error")
+        mock_collection_repository.list_collections.side_effect = Exception("Database error")
 
         # Verify HTTPException is raised
         with pytest.raises(HTTPException) as exc_info:
-            await list_collections(current_user=mock_current_user)
+            await list_collections(current_user=mock_current_user, collection_repo=mock_collection_repository)
 
         assert exc_info.value.status_code == 500
         assert "Database error" in str(exc_info.value.detail)
@@ -160,12 +171,12 @@ class TestGetCollectionDetails:
     """Test cases for get_collection_details endpoint"""
 
     @pytest.mark.asyncio()
-    async def test_get_collection_details_single_job(self, mock_database, mock_qdrant_manager, mock_current_user):
+    async def test_get_collection_details_single_job(self, mock_collection_repository, mock_qdrant_manager, mock_current_user):
         """Test getting details for a collection with a single job"""
         mock_qm, mock_client = mock_qdrant_manager
 
         # Mock database response
-        mock_database.get_collection_details.return_value = {
+        setup_async_mock(mock_collection_repository, 'get_collection_details', {
             "name": "research_papers",
             "stats": {
                 "total_files": 10,
@@ -195,7 +206,7 @@ class TestGetCollectionDetails:
                     "mode": "full",
                 }
             ],
-        }
+        })
 
         # Mock Qdrant response
         mock_info = MagicMock(spec=CollectionInfo)
@@ -205,10 +216,10 @@ class TestGetCollectionDetails:
         mock_client.get_collection.return_value = mock_info
 
         # Call the function
-        result = await get_collection_details(collection_name="research_papers", current_user=mock_current_user)
+        result = await get_collection_details(collection_name="research_papers", current_user=mock_current_user, collection_repo=mock_collection_repository)
 
         # Verify database call
-        mock_database.get_collection_details.assert_called_once_with("research_papers", user_id="user123")
+        mock_collection_repository.get_collection_details.assert_called_once_with("research_papers", user_id="user123")
 
         # Verify Qdrant call
         mock_client.get_collection.assert_called_once_with("job_job123")
@@ -223,12 +234,12 @@ class TestGetCollectionDetails:
         assert result.jobs[0].id == "job123"
 
     @pytest.mark.asyncio()
-    async def test_get_collection_details_multiple_jobs(self, mock_database, mock_qdrant_manager, mock_current_user):
+    async def test_get_collection_details_multiple_jobs(self, mock_collection_repository, mock_qdrant_manager, mock_current_user):
         """Test getting details for a collection with multiple jobs (parent/child structure)"""
         mock_qm, mock_client = mock_qdrant_manager
 
         # Mock database response with parent and child jobs
-        mock_database.get_collection_details.return_value = {
+        setup_async_mock(mock_collection_repository, 'get_collection_details', {
             "name": "large_dataset",
             "stats": {
                 "total_files": 150,
@@ -280,7 +291,7 @@ class TestGetCollectionDetails:
                     "mode": "update",
                 },
             ],
-        }
+        })
 
         # Mock Qdrant responses for each job
         mock_info1 = MagicMock(spec=CollectionInfo)
@@ -293,7 +304,7 @@ class TestGetCollectionDetails:
         mock_client.get_collection.side_effect = [mock_info1, mock_info2, mock_info3]
 
         # Call the function
-        result = await get_collection_details(collection_name="large_dataset", current_user=mock_current_user)
+        result = await get_collection_details(collection_name="large_dataset", current_user=mock_current_user, collection_repo=mock_collection_repository)
 
         # Verify Qdrant was called for each job
         assert mock_client.get_collection.call_count == 3
@@ -310,27 +321,27 @@ class TestGetCollectionDetails:
         assert len(result.source_directories) == 3
 
     @pytest.mark.asyncio()
-    async def test_get_collection_details_not_found(self, mock_database, mock_current_user):
+    async def test_get_collection_details_not_found(self, mock_collection_repository, mock_current_user):
         """Test getting details for non-existent collection"""
         # Mock database returning None
-        mock_database.get_collection_details.return_value = None
+        setup_async_mock(mock_collection_repository, 'get_collection_details', None)
 
         # Verify HTTPException is raised
         with pytest.raises(HTTPException) as exc_info:
-            await get_collection_details(collection_name="nonexistent", current_user=mock_current_user)
+            await get_collection_details(collection_name="nonexistent", current_user=mock_current_user, collection_repo=mock_collection_repository)
 
         assert exc_info.value.status_code == 404
         assert "not found" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
     async def test_get_collection_details_qdrant_error_handling(
-        self, mock_database, mock_qdrant_manager, mock_current_user
+        self, mock_collection_repository, mock_qdrant_manager, mock_current_user
     ):
         """Test that Qdrant errors are handled gracefully"""
         mock_qm, mock_client = mock_qdrant_manager
 
         # Mock database response
-        mock_database.get_collection_details.return_value = {
+        setup_async_mock(mock_collection_repository, 'get_collection_details', {
             "name": "test_collection",
             "stats": {
                 "total_files": 10,
@@ -360,13 +371,13 @@ class TestGetCollectionDetails:
                     "mode": "full",
                 }
             ],
-        }
+        })
 
         # Mock Qdrant error
         mock_client.get_collection.side_effect = Exception("Qdrant connection error")
 
         # Call the function - should not raise exception
-        result = await get_collection_details(collection_name="test_collection", current_user=mock_current_user)
+        result = await get_collection_details(collection_name="test_collection", current_user=mock_current_user, collection_repo=mock_collection_repository)
 
         # Verify result uses database vector count
         assert result.stats.total_vectors == 100  # Falls back to database count
@@ -376,10 +387,10 @@ class TestRenameCollection:
     """Test cases for rename_collection endpoint"""
 
     @pytest.mark.asyncio()
-    async def test_rename_collection_success(self, mock_database, mock_current_user):
+    async def test_rename_collection_success(self, mock_collection_repository, mock_current_user):
         """Test successful collection rename"""
         # Mock successful rename
-        mock_database.rename_collection.return_value = True
+        setup_async_mock(mock_collection_repository, 'rename_collection', True)
 
         # Create rename request
         request = CollectionRenameRequest(new_name="new_collection_name")
@@ -389,10 +400,11 @@ class TestRenameCollection:
             collection_name="old_name",
             request=request,
             current_user=mock_current_user,
+            collection_repo=mock_collection_repository,
         )
 
         # Verify database call
-        mock_database.rename_collection.assert_called_once_with(
+        mock_collection_repository.rename_collection.assert_called_once_with(
             old_name="old_name",
             new_name="new_collection_name",
             user_id="user123",
@@ -418,10 +430,10 @@ class TestRenameCollection:
         assert request.new_name == "valid name"
 
     @pytest.mark.asyncio()
-    async def test_rename_collection_failure(self, mock_database, mock_current_user):
+    async def test_rename_collection_failure(self, mock_collection_repository, mock_current_user):
         """Test failed collection rename (e.g., name already exists)"""
         # Mock failed rename
-        mock_database.rename_collection.return_value = False
+        setup_async_mock(mock_collection_repository, 'rename_collection', False)
 
         # Create rename request
         request = CollectionRenameRequest(new_name="existing_name")
@@ -432,6 +444,7 @@ class TestRenameCollection:
                 collection_name="old_name",
                 request=request,
                 current_user=mock_current_user,
+                collection_repo=mock_collection_repository,
             )
 
         assert exc_info.value.status_code == 400
@@ -442,15 +455,15 @@ class TestDeleteCollection:
     """Test cases for delete_collection endpoint"""
 
     @pytest.mark.asyncio()
-    async def test_delete_collection_single_job(self, mock_database, mock_qdrant_manager, mock_current_user):
+    async def test_delete_collection_single_job(self, mock_collection_repository, mock_qdrant_manager, mock_current_user):
         """Test deleting a collection with a single job"""
         mock_qm, mock_client = mock_qdrant_manager
 
         # Mock database response
-        mock_database.delete_collection.return_value = {
+        setup_async_mock(mock_collection_repository, 'delete_collection', {
             "job_ids": ["job123"],
             "qdrant_collections": ["job_job123"],
-        }
+        })
 
         # Mock successful Qdrant deletion
         mock_client.delete_collection.return_value = None
@@ -472,10 +485,11 @@ class TestDeleteCollection:
             result = await delete_collection(
                 collection_name="test_collection",
                 current_user=mock_current_user,
+                collection_repo=mock_collection_repository,
             )
 
         # Verify database call
-        mock_database.delete_collection.assert_called_once_with(collection_name="test_collection", user_id="user123")
+        mock_collection_repository.delete_collection.assert_called_once_with(collection_name="test_collection", user_id="user123")
 
         # Verify Qdrant deletion
         mock_client.delete_collection.assert_called_once_with("job_job123")
@@ -488,15 +502,15 @@ class TestDeleteCollection:
         assert len(result["errors"]["artifact_failures"]) == 0
 
     @pytest.mark.asyncio()
-    async def test_delete_collection_multiple_jobs(self, mock_database, mock_qdrant_manager, mock_current_user):
+    async def test_delete_collection_multiple_jobs(self, mock_collection_repository, mock_qdrant_manager, mock_current_user):
         """Test deleting a collection with multiple jobs"""
         mock_qm, mock_client = mock_qdrant_manager
 
-        # Mock database response with multiple jobs
-        mock_database.delete_collection.return_value = {
+        # Mock repository response with multiple jobs
+        setup_async_mock(mock_collection_repository, 'delete_collection', {
             "job_ids": ["job1", "job2", "job3"],
             "qdrant_collections": ["job_job1", "job_job2", "job_job3"],
-        }
+        })
 
         # Mock successful Qdrant deletions
         mock_client.delete_collection.return_value = None
@@ -510,6 +524,7 @@ class TestDeleteCollection:
             result = await delete_collection(
                 collection_name="large_collection",
                 current_user=mock_current_user,
+                collection_repo=mock_collection_repository
             )
 
         # Verify Qdrant deletions
@@ -524,15 +539,15 @@ class TestDeleteCollection:
         assert result["deleted"]["artifacts"] == 6  # 2 directories per job
 
     @pytest.mark.asyncio()
-    async def test_delete_collection_with_failures(self, mock_database, mock_qdrant_manager, mock_current_user):
+    async def test_delete_collection_with_failures(self, mock_collection_repository, mock_qdrant_manager, mock_current_user):
         """Test delete collection with some operations failing"""
         mock_qm, mock_client = mock_qdrant_manager
 
-        # Mock database response
-        mock_database.delete_collection.return_value = {
+        # Mock repository response
+        setup_async_mock(mock_collection_repository, 'delete_collection', {
             "job_ids": ["job1", "job2"],
             "qdrant_collections": ["job_job1", "job_job2"],
-        }
+        })
 
         # Mock one Qdrant deletion failing
         mock_client.delete_collection.side_effect = [
@@ -557,6 +572,7 @@ class TestDeleteCollection:
                 result = await delete_collection(
                     collection_name="problematic_collection",
                     current_user=mock_current_user,
+                    collection_repo=mock_collection_repository
                 )
 
         # Verify partial success
@@ -568,19 +584,20 @@ class TestDeleteCollection:
         assert len(result["errors"]["artifact_failures"]) == 1
 
     @pytest.mark.asyncio()
-    async def test_delete_collection_not_found(self, mock_database, mock_current_user):
+    async def test_delete_collection_not_found(self, mock_collection_repository, mock_current_user):
         """Test deleting non-existent collection"""
-        # Mock empty response from database
-        mock_database.delete_collection.return_value = {
+        # Mock empty response from repository
+        setup_async_mock(mock_collection_repository, 'delete_collection', {
             "job_ids": [],
             "qdrant_collections": [],
-        }
+        })
 
         # Verify HTTPException is raised
         with pytest.raises(HTTPException) as exc_info:
             await delete_collection(
                 collection_name="nonexistent",
                 current_user=mock_current_user,
+                collection_repo=mock_collection_repository
             )
 
         assert exc_info.value.status_code == 404
@@ -591,10 +608,10 @@ class TestGetCollectionFiles:
     """Test cases for get_collection_files endpoint"""
 
     @pytest.mark.asyncio()
-    async def test_get_collection_files_paginated(self, mock_database, mock_current_user):
+    async def test_get_collection_files_paginated(self, mock_collection_repository, mock_current_user):
         """Test getting paginated list of files in a collection"""
-        # Mock database response
-        mock_database.get_collection_files.return_value = {
+        # Mock repository response
+        setup_async_mock(mock_collection_repository, 'get_collection_files', {
             "files": [
                 {
                     "id": 1,
@@ -624,7 +641,7 @@ class TestGetCollectionFiles:
             "total": 50,
             "page": 1,
             "pages": 5,
-        }
+        })
 
         # Call the function
         result = await get_collection_files(
@@ -632,10 +649,11 @@ class TestGetCollectionFiles:
             page=1,
             limit=10,
             current_user=mock_current_user,
+            collection_repo=mock_collection_repository
         )
 
-        # Verify database call
-        mock_database.get_collection_files.assert_called_once_with(
+        # Verify repository call
+        mock_collection_repository.get_collection_files.assert_called_once_with(
             collection_name="test_collection",
             user_id="user123",
             page=1,
@@ -652,10 +670,10 @@ class TestGetCollectionFiles:
         assert result.files[1].path == "/data/file2.pdf"
 
     @pytest.mark.asyncio()
-    async def test_get_collection_files_error_handling(self, mock_database, mock_current_user):
+    async def test_get_collection_files_error_handling(self, mock_collection_repository, mock_current_user):
         """Test error handling in get_collection_files"""
-        # Mock database error
-        mock_database.get_collection_files.side_effect = Exception("Database error")
+        # Mock repository error
+        mock_collection_repository.get_collection_files.side_effect = Exception("Database error")
 
         # Verify HTTPException is raised
         with pytest.raises(HTTPException) as exc_info:
@@ -664,6 +682,7 @@ class TestGetCollectionFiles:
                 page=1,
                 limit=10,
                 current_user=mock_current_user,
+                collection_repo=mock_collection_repository
             )
 
         assert exc_info.value.status_code == 500
