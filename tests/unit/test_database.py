@@ -987,7 +987,7 @@ class TestSchemaMigration:
 
     def test_schema_migration(self, tmp_path):
         """Test that init_db properly creates schema using Alembic.
-        
+
         Note: This test has been updated for Alembic integration.
         Previously it tested manual ALTER TABLE migrations, but now
         it verifies that Alembic creates the complete schema correctly.

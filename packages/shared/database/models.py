@@ -11,19 +11,15 @@ databases that store ISO format timestamp strings. A future migration could conv
 these to proper DateTime columns, but that would require careful data migration.
 """
 
-from datetime import datetime
-from typing import Any
 
 from sqlalchemy import (
     Boolean,
     Column,
-    DateTime,
     ForeignKey,
     Index,
     Integer,
     String,
     Text,
-    func,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -31,7 +27,6 @@ from sqlalchemy.orm import DeclarativeBase, relationship
 # Create the declarative base
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy models."""
-    pass
 
 
 class Job(Base):
