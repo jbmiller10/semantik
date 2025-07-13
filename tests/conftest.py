@@ -52,8 +52,14 @@ def unauthenticated_test_client():
 
 
 @pytest.fixture()
-def test_client_with_mocks(test_user, mock_job_repository, mock_file_repository, 
-                          mock_collection_repository, mock_user_repository, mock_auth_repository):
+def test_client_with_mocks(
+    test_user,
+    mock_job_repository,
+    mock_file_repository,
+    mock_collection_repository,
+    mock_user_repository,
+    mock_auth_repository,
+):
     """Create a test client with mocked repositories and auth."""
     from shared.database.factory import (
         create_auth_repository,
@@ -145,8 +151,10 @@ def _reset_singletons():
 
 def create_async_mock(return_value=None):
     """Helper to create an async mock that returns a value."""
-    async def async_mock(*args, **kwargs):
+
+    async def async_mock(*_args, **_kwargs):
         return return_value
+
     return MagicMock(side_effect=async_mock)
 
 
