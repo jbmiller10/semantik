@@ -4,6 +4,11 @@ SQLAlchemy declarative models for the Semantik database.
 
 This module defines the database schema using SQLAlchemy's declarative mapping.
 These models are used by Alembic for migrations and can be used for ORM operations.
+
+Note on Timestamps:
+We use String columns for timestamps to maintain backward compatibility with existing
+databases that store ISO format timestamp strings. A future migration could convert
+these to proper DateTime columns, but that would require careful data migration.
 """
 
 from datetime import datetime
@@ -18,6 +23,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    func,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 

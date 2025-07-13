@@ -31,7 +31,16 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Database initialization and management
 def init_db() -> None:
-    """Initialize SQLite database using Alembic migrations"""
+    """Initialize SQLite database using Alembic migrations.
+    
+    IMPORTANT: This function must be called explicitly by all entry points:
+    - docker-entrypoint.sh for Docker deployments
+    - Application startup code for local development
+    - Test fixtures for unit tests
+    
+    The automatic init_db() call on module import was removed to prevent
+    circular dependency issues with Alembic.
+    """
     import os
     import subprocess
     import sys

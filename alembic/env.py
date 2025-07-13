@@ -25,8 +25,17 @@ if config.config_file_name is not None:
 
 # Set the SQLAlchemy URL from environment variable or settings
 import os
+import logging
+
 database_url = os.environ.get("ALEMBIC_DATABASE_URL", f"sqlite:///{settings.webui_db}")
 config.set_main_option("sqlalchemy.url", database_url)
+
+# Log database location without exposing full URL
+if database_url.startswith("sqlite:///"):
+    logging.info(f"Using SQLite database: {database_url.split('///')[-1]}")
+else:
+    # For other databases, only show the type and host
+    logging.info(f"Using database: {database_url.split('@')[0].split('//')[0]}://...")
 
 # add your model's MetaData object here
 # for 'autogenerate' support
