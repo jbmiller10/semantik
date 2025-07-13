@@ -115,7 +115,7 @@ def reset_database() -> None:
     c.execute("DROP TABLE IF EXISTS alembic_version")
     conn.commit()
     conn.close()
-    
+
     # Skip the alembic downgrade in test environments - it won't work with monkeypatched paths
     # The table drops above are sufficient for test cleanup
     # Test databases are typically in /tmp/ or use tempfile patterns
@@ -127,7 +127,7 @@ def reset_database() -> None:
             env = os.environ.copy()
             env["PYTHONPATH"] = str(project_root / "packages") + ":" + env.get("PYTHONPATH", "")
             env["ALEMBIC_DATABASE_URL"] = f"sqlite:///{DB_PATH}"
-            
+
             # It's OK if downgrade fails (e.g., if alembic_version table doesn't exist)
             subprocess.run(
                 [sys.executable, "-m", "alembic", "downgrade", "base"],
