@@ -52,6 +52,46 @@ def unauthenticated_test_client():
 
 
 @pytest.fixture()
+def test_client_with_mocks(
+    test_user,
+    mock_job_repository,
+    mock_file_repository,
+    mock_collection_repository,
+    mock_user_repository,
+    mock_auth_repository,
+):
+    """Create a test client with mocked repositories and auth."""
+    from shared.database.factory import (
+        create_auth_repository,
+        create_collection_repository,
+        create_file_repository,
+        create_job_repository,
+        create_user_repository,
+    )
+    from webui.auth import get_current_user
+    from webui.main import app
+
+    # Override the authentication dependency
+    async def override_get_current_user():
+        return test_user
+
+    # Override repository dependencies
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[create_job_repository] = lambda: mock_job_repository
+    app.dependency_overrides[create_file_repository] = lambda: mock_file_repository
+    app.dependency_overrides[create_collection_repository] = lambda: mock_collection_repository
+    app.dependency_overrides[create_user_repository] = lambda: mock_user_repository
+    app.dependency_overrides[create_auth_repository] = lambda: mock_auth_repository
+
+    client = TestClient(app)
+
+    # Ensure we clean up after the test
+    yield client
+
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture()
 def mock_qdrant_client():
     """Mock Qdrant client for testing."""
     mock = MagicMock()
@@ -107,3 +147,74 @@ def _reset_singletons():
     # This helps ensure test isolation
     return
     # Cleanup code here if needed
+
+
+def create_async_mock(return_value=None):
+    """Helper to create an async mock that returns a value."""
+
+    async def async_mock(*_args, **_kwargs):
+        return return_value
+
+    return MagicMock(side_effect=async_mock)
+
+
+@pytest.fixture()
+def mock_job_repository():
+    """Create a mock JobRepository for testing."""
+    mock = MagicMock()
+    # Set up async methods
+    mock.create_job = create_async_mock()
+    mock.get_job = create_async_mock()
+    mock.update_job = create_async_mock()
+    mock.delete_job = create_async_mock()
+    mock.list_jobs = create_async_mock([])
+    mock.get_all_job_ids = create_async_mock([])
+    return mock
+
+
+@pytest.fixture()
+def mock_file_repository():
+    """Create a mock FileRepository for testing."""
+    mock = MagicMock()
+    mock.add_files_to_job = create_async_mock()
+    mock.get_job_files = create_async_mock([])
+    mock.update_file_status = create_async_mock()
+    mock.get_job_total_vectors = create_async_mock(0)
+    mock.get_duplicate_files_in_collection = create_async_mock(set())
+    return mock
+
+
+@pytest.fixture()
+def mock_collection_repository():
+    """Create a mock CollectionRepository for testing."""
+    mock = MagicMock()
+    mock.list_collections = create_async_mock([])
+    mock.get_collection_details = create_async_mock()
+    mock.get_collection_files = create_async_mock({})
+    mock.rename_collection = create_async_mock(True)
+    mock.delete_collection = create_async_mock({})
+    mock.get_collection_metadata = create_async_mock()
+    return mock
+
+
+@pytest.fixture()
+def mock_user_repository():
+    """Create a mock UserRepository for testing."""
+    mock = MagicMock()
+    mock.create_user = create_async_mock()
+    mock.get_user = create_async_mock()
+    mock.get_user_by_username = create_async_mock()
+    mock.update_user = create_async_mock()
+    mock.delete_user = create_async_mock(False)
+    return mock
+
+
+@pytest.fixture()
+def mock_auth_repository():
+    """Create a mock AuthRepository for testing."""
+    mock = MagicMock()
+    mock.save_refresh_token = create_async_mock()
+    mock.verify_refresh_token = create_async_mock()
+    mock.revoke_refresh_token = create_async_mock()
+    mock.update_user_last_login = create_async_mock()
+    return mock
