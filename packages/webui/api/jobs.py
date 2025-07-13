@@ -571,7 +571,7 @@ async def cancel_job(
 
     logger.warning(f"Job cancellation requested for {job_id} but task revocation not yet implemented")
 
-    return {"message": "Job cancellation requested"}
+    return {"message": "Job marked as cancelled (task revocation pending implementation)"}
 
 
 @router.delete("/{job_id}")
