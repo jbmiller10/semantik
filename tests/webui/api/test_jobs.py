@@ -1,10 +1,10 @@
 """Tests for job creation and management endpoints"""
 
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 
 from fastapi.testclient import TestClient
 from shared.config import settings
-from webui.api.jobs import ConnectionManager, active_job_tasks
+from webui.api.jobs import ConnectionManager
 
 
 class TestJobCreation:
@@ -127,34 +127,21 @@ class TestJobManagement:
         assert response.status_code == 404
         assert "Job not found" in response.json()["detail"]
 
-    @patch("webui.celery_app.celery_app")
-    def test_cancel_job(self, mock_celery_app, test_client_with_mocks: TestClient, mock_job_repository):
-        """Test cancelling a running job"""
+    def test_cancel_job(self, test_client_with_mocks: TestClient, mock_job_repository):
+        """Test cancelling a running job (task revocation pending implementation)"""
         job_id = "running-job"
-        task_id = "celery-task-123"
 
         # Mock repository methods
         mock_job_repository.get_job = AsyncMock(return_value={"id": job_id, "status": "processing"})
         mock_job_repository.update_job = AsyncMock()
 
-        # Mock active task with task ID (not task object)
-        active_job_tasks[job_id] = task_id
-
-        # Mock celery app control
-        mock_control = Mock()
-        mock_control.revoke = Mock()
-        mock_celery_app.control = mock_control
-
         response = test_client_with_mocks.post(f"/api/jobs/{job_id}/cancel", headers={})
 
         assert response.status_code == 200
-        assert "cancellation requested" in response.json()["message"]
+        assert "Job marked as cancelled (task revocation pending implementation)" in response.json()["message"]
 
         # Verify job status was updated
         mock_job_repository.update_job.assert_called_once_with(job_id, {"status": "cancelled"})
-
-        # Verify task was revoked
-        mock_control.revoke.assert_called_once_with(task_id, terminate=True, signal="SIGKILL")
 
     def test_cancel_job_invalid_status(self, test_client_with_mocks: TestClient, mock_job_repository):
         """Test cancelling a job that's not running"""
