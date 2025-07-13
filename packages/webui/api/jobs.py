@@ -3,6 +3,7 @@ Job management routes and WebSocket handlers for the Web UI
 """
 
 import asyncio
+import contextlib
 import logging
 import sys
 import uuid
@@ -118,7 +119,7 @@ async def create_job(
     current_user: dict[str, Any] = Depends(get_current_user),
     job_repo: JobRepository = Depends(create_job_repository),
     file_repo: FileRepository = Depends(create_file_repository),
-    collection_repo: CollectionRepository = Depends(create_collection_repository),
+    collection_repo: CollectionRepository = Depends(create_collection_repository),  # noqa: ARG001
 ) -> JobStatus:
     """Create a new embedding job"""
     # Accept job_id from request if provided, otherwise generate new one
@@ -586,10 +587,8 @@ async def cancel_job(
                 # Still try to clean up even if revoke failed
 
         # Clean up task tracking
-        try:
+        with contextlib.suppress(KeyError):
             del active_job_tasks[job_id]
-        except KeyError:
-            pass  # Already deleted
 
     return {"message": "Job cancellation requested"}
 

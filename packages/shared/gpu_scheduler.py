@@ -47,9 +47,8 @@ class GPUScheduler:
             return None
 
         # Try preferred GPU first
-        if preferred_gpu is not None and 0 <= preferred_gpu < self.gpu_count:
-            if self._try_acquire_gpu(preferred_gpu):
-                return preferred_gpu
+        if preferred_gpu is not None and 0 <= preferred_gpu < self.gpu_count and self._try_acquire_gpu(preferred_gpu):
+            return preferred_gpu
 
         # Try all GPUs
         for gpu_id in range(self.gpu_count):
