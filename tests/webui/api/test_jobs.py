@@ -1,6 +1,6 @@
 """Tests for job creation and management endpoints"""
 
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 
 from fastapi.testclient import TestClient
 from shared.config import settings
