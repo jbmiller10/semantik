@@ -92,8 +92,8 @@ try:
     from .connection_pool import get_connection_pool, get_db_connection
 except ImportError:
     # Connection pool is optional
-    get_connection_pool = None
-    get_db_connection = None
+    get_connection_pool = None  # type: ignore
+    get_db_connection = None  # type: ignore
 
 __all__ = [
     # Repository interfaces

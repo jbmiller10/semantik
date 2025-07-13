@@ -10,6 +10,7 @@ import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Any
 
 import redis
 import torch
@@ -146,13 +147,13 @@ class GPUScheduler:
                 except Exception as e:
                     logger.error(f"Error releasing GPU {gpu_id}: {e}")
 
-    def get_gpu_status(self) -> dict[str, any]:
+    def get_gpu_status(self) -> dict[str, Any]:
         """Get current GPU allocation status.
 
         Returns:
             Dictionary with GPU status information
         """
-        status = {"total_gpus": self.gpu_count, "gpus": {}}
+        status: dict[str, Any] = {"total_gpus": self.gpu_count, "gpus": {}}
 
         for gpu_id in range(self.gpu_count):
             lock_key = f"gpu_lock:{gpu_id}"
@@ -194,8 +195,8 @@ def get_gpu_scheduler(redis_url: str | None = None) -> GPUScheduler:
     if _gpu_scheduler is None:
         with _scheduler_lock:
             if _gpu_scheduler is None:
-                redis_url = redis_url or os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
-                _gpu_scheduler = GPUScheduler(redis_url)
+                final_redis_url = redis_url or os.getenv("CELERY_BROKER_URL") or "redis://localhost:6379/0"
+                _gpu_scheduler = GPUScheduler(final_redis_url)
 
     return _gpu_scheduler
 
