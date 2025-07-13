@@ -4,7 +4,6 @@ Unit tests for Document API endpoints
 
 import shutil
 import tempfile
-import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -22,8 +21,9 @@ def temp_test_dir():
 class TestDocumentAPI:
     """Test document serving API endpoints"""
 
-    def test_get_document_success(self, test_client_with_mocks, test_user, temp_test_dir, 
-                                  mock_job_repository, mock_file_repository):
+    def test_get_document_success(
+        self, test_client_with_mocks, test_user, temp_test_dir, mock_job_repository, mock_file_repository
+    ):
         """Test successful document retrieval"""
         # Setup
         test_file = temp_test_dir / "test.pdf"
@@ -31,10 +31,15 @@ class TestDocumentAPI:
 
         # Mock async methods
         from unittest.mock import AsyncMock
-        mock_job_repository.get_job = AsyncMock(return_value={"id": "test-job", "user_id": test_user["id"], "directory_path": str(temp_test_dir)})
-        mock_file_repository.get_job_files = AsyncMock(return_value=[
-            {"id": 1, "job_id": "test-job", "doc_id": "test-doc", "path": str(test_file), "filename": "test.pdf"}
-        ])
+
+        mock_job_repository.get_job = AsyncMock(
+            return_value={"id": "test-job", "user_id": test_user["id"], "directory_path": str(temp_test_dir)}
+        )
+        mock_file_repository.get_job_files = AsyncMock(
+            return_value=[
+                {"id": 1, "job_id": "test-job", "doc_id": "test-doc", "path": str(test_file), "filename": "test.pdf"}
+            ]
+        )
 
         # Test
         response = test_client_with_mocks.get("/api/documents/test-job/test-doc")
@@ -51,8 +56,9 @@ class TestDocumentAPI:
 
         assert response.status_code == 404
 
-    def test_file_size_limit(self, test_client_with_mocks, test_user, temp_test_dir,
-                             mock_job_repository, mock_file_repository):
+    def test_file_size_limit(
+        self, test_client_with_mocks, test_user, temp_test_dir, mock_job_repository, mock_file_repository
+    ):
         """Test file size limit enforcement"""
 
         # Create a mock file that exceeds size limit
@@ -61,10 +67,15 @@ class TestDocumentAPI:
 
         # Mock async methods
         from unittest.mock import AsyncMock
-        mock_job_repository.get_job = AsyncMock(return_value={"id": "test-job", "user_id": test_user["id"], "directory_path": str(temp_test_dir)})
-        mock_file_repository.get_job_files = AsyncMock(return_value=[
-            {"id": 1, "job_id": "test-job", "doc_id": "test-doc", "path": str(test_file), "filename": "large.pdf"}
-        ])
+
+        mock_job_repository.get_job = AsyncMock(
+            return_value={"id": "test-job", "user_id": test_user["id"], "directory_path": str(temp_test_dir)}
+        )
+        mock_file_repository.get_job_files = AsyncMock(
+            return_value=[
+                {"id": 1, "job_id": "test-job", "doc_id": "test-doc", "path": str(test_file), "filename": "large.pdf"}
+            ]
+        )
 
         # Mock file size to exceed limit
         with patch("pathlib.Path.stat") as mock_stat:
@@ -89,8 +100,9 @@ class TestDocumentViewer:
         response = unauthenticated_test_client.get("/api/documents/test-job/test-doc")
         assert response.status_code == 403
 
-    def test_authorization_check(self, test_client_with_mocks, temp_test_dir, 
-                                 mock_job_repository, mock_file_repository):
+    def test_authorization_check(
+        self, test_client_with_mocks, temp_test_dir, mock_job_repository, mock_file_repository
+    ):
         """Test that user authorization is checked"""
 
         # Create test file
@@ -99,12 +111,17 @@ class TestDocumentViewer:
 
         # Mock async methods - job belongs to different user
         from unittest.mock import AsyncMock
-        mock_job_repository.get_job = AsyncMock(return_value={
-            "id": "test-job",
-            "user_id": 999,  # Different user
-            "directory_path": str(temp_test_dir),
-        })
-        mock_file_repository.get_job_files = AsyncMock(return_value=[{"job_id": "test-job", "doc_id": "test-doc", "path": str(test_file)}])
+
+        mock_job_repository.get_job = AsyncMock(
+            return_value={
+                "id": "test-job",
+                "user_id": 999,  # Different user
+                "directory_path": str(temp_test_dir),
+            }
+        )
+        mock_file_repository.get_job_files = AsyncMock(
+            return_value=[{"job_id": "test-job", "doc_id": "test-doc", "path": str(test_file)}]
+        )
 
         response = test_client_with_mocks.get("/api/documents/test-job/test-doc")
 
@@ -117,8 +134,7 @@ class TestPPTXConversion:
     @patch("webui.api.documents.PPTX2MD_AVAILABLE", True)
     @patch("subprocess.run")
     def test_pptx_conversion_success(
-        self, mock_run, test_client_with_mocks, test_user, temp_test_dir,
-        mock_job_repository, mock_file_repository
+        self, mock_run, test_client_with_mocks, test_user, temp_test_dir, mock_job_repository, mock_file_repository
     ):
         """Test successful PPTX to Markdown conversion"""
 
@@ -128,10 +144,15 @@ class TestPPTXConversion:
 
         # Mock async methods
         from unittest.mock import AsyncMock
-        mock_job_repository.get_job = AsyncMock(return_value={"id": "test-job", "user_id": test_user["id"], "directory_path": str(temp_test_dir)})
-        mock_file_repository.get_job_files = AsyncMock(return_value=[
-            {"id": 1, "job_id": "test-job", "doc_id": "test-doc", "path": str(test_pptx), "filename": "test.pptx"}
-        ])
+
+        mock_job_repository.get_job = AsyncMock(
+            return_value={"id": "test-job", "user_id": test_user["id"], "directory_path": str(temp_test_dir)}
+        )
+        mock_file_repository.get_job_files = AsyncMock(
+            return_value=[
+                {"id": 1, "job_id": "test-job", "doc_id": "test-doc", "path": str(test_pptx), "filename": "test.pptx"}
+            ]
+        )
 
         # Mock conversion output
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")

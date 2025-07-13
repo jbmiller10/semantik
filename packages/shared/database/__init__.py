@@ -33,11 +33,10 @@ from .factory import (
 
 # Import database management functions directly (these don't need the repository pattern)
 # Import database constants directly
-from .sqlite_implementation import DB_PATH, get_database_stats, init_db, pwd_context, reset_database
-
 # Legacy function imports for backward compatibility
 # TODO: Migrate tests and code to use repository pattern instead
 from .sqlite_implementation import (
+    DB_PATH,
     add_files_to_job,
     create_job,
     create_user,
@@ -46,15 +45,19 @@ from .sqlite_implementation import (
     get_collection_details,
     get_collection_files,
     get_collection_metadata,
+    get_database_stats,
     get_duplicate_files_in_collection,
     get_job,
     get_job_files,
     get_job_total_vectors,
     get_user,
     get_user_by_id,
+    init_db,
     list_collections,
     list_jobs,
+    pwd_context,
     rename_collection,
+    reset_database,
     revoke_refresh_token,
     save_refresh_token,
     update_file_status,

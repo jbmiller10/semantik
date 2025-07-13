@@ -41,48 +41,52 @@ class TestJobsAPI:
             "total_size": 3000,
         }
         mock_job_id = "test-job-123"
-        
+
         # Setup repository mocks
         # create_job returns the full job object
-        mock_job_repository.create_job = AsyncMock(return_value={
-            "id": mock_job_id,
-            "name": "Test Job",
-            "status": "created",
-            "created_at": "2024-01-01T00:00:00+00:00",
-            "updated_at": "2024-01-01T00:00:00+00:00",
-            "total_files": 2,
-            "processed_files": 0,
-            "failed_files": 0,
-            "current_file": None,
-            "error": None,
-            "model_name": "Qwen/Qwen3-Embedding-0.6B",
-            "directory_path": "/path/to/documents",
-            "quantization": "float32",
-            "batch_size": 96,
-            "chunk_size": 600,
-            "chunk_overlap": 200,
-        })
+        mock_job_repository.create_job = AsyncMock(
+            return_value={
+                "id": mock_job_id,
+                "name": "Test Job",
+                "status": "created",
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "updated_at": "2024-01-01T00:00:00+00:00",
+                "total_files": 2,
+                "processed_files": 0,
+                "failed_files": 0,
+                "current_file": None,
+                "error": None,
+                "model_name": "Qwen/Qwen3-Embedding-0.6B",
+                "directory_path": "/path/to/documents",
+                "quantization": "float32",
+                "batch_size": 96,
+                "chunk_size": 600,
+                "chunk_overlap": 200,
+            }
+        )
         mock_file_repository.add_files_to_job = AsyncMock()
-        
+
         # Also setup get_job to return the same job
-        mock_job_repository.get_job = AsyncMock(return_value={
-            "id": mock_job_id,
-            "name": "Test Job",
-            "status": "created",
-            "created_at": "2024-01-01T00:00:00+00:00",
-            "updated_at": "2024-01-01T00:00:00+00:00",
-            "total_files": 2,
-            "processed_files": 0,
-            "failed_files": 0,
-            "current_file": None,
-            "error": None,
-            "model_name": "Qwen/Qwen3-Embedding-0.6B",
-            "directory_path": "/path/to/documents",
-            "quantization": "float32",
-            "batch_size": 96,
-            "chunk_size": 600,
-            "chunk_overlap": 200,
-        })
+        mock_job_repository.get_job = AsyncMock(
+            return_value={
+                "id": mock_job_id,
+                "name": "Test Job",
+                "status": "created",
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "updated_at": "2024-01-01T00:00:00+00:00",
+                "total_files": 2,
+                "processed_files": 0,
+                "failed_files": 0,
+                "current_file": None,
+                "error": None,
+                "model_name": "Qwen/Qwen3-Embedding-0.6B",
+                "directory_path": "/path/to/documents",
+                "quantization": "float32",
+                "batch_size": 96,
+                "chunk_size": 600,
+                "chunk_overlap": 200,
+            }
+        )
 
         # Mock process_embedding_job to return immediately
         mock_process_job.return_value = AsyncMock()
@@ -210,7 +214,7 @@ class TestJobsAPI:
             "created_at": datetime.now(UTC).isoformat(),
             "updated_at": datetime.now(UTC).isoformat(),
         }
-        
+
         # Mock repository methods
         mock_job_repository.get_job = AsyncMock(return_value=mock_job)
         mock_job_repository.delete_job = AsyncMock(return_value=True)
@@ -245,7 +249,7 @@ class TestJobsAPI:
             "name": "Someone else's job",
             "status": "completed",
         }
-        
+
         # Mock repository method
         mock_job_repository.get_job = AsyncMock(return_value=mock_job)
         mock_job_repository.delete_job = AsyncMock(return_value=True)
@@ -276,7 +280,7 @@ class TestJobsAPI:
             "created_at": datetime.now(UTC).isoformat(),
             "updated_at": datetime.now(UTC).isoformat(),
         }
-        
+
         # Mock repository methods
         mock_job_repository.get_job = AsyncMock(return_value=mock_job)
         mock_job_repository.update_job = AsyncMock(return_value=None)
@@ -313,7 +317,7 @@ class TestJobsAPI:
             "name": "Completed Job",
             "status": "completed",
         }
-        
+
         # Mock repository method
         mock_job_repository.get_job = AsyncMock(return_value=mock_job)
 

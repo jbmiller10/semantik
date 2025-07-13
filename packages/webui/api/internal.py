@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from shared.config import settings
 from shared.database.base import JobRepository
 from shared.database.factory import create_job_repository
-from shared.database.compat import database  # TODO: Remove once tests are migrated
 
 router = APIRouter(prefix="/api/internal", tags=["internal"])
 

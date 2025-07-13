@@ -54,30 +54,35 @@ class TestInternalAPIEndpoints:
 
         app = FastAPI()
         app.include_router(router)
-        
+
         # Override repository factory
         app.dependency_overrides[create_job_repository] = lambda: mock_job_repository
-        
+
         client = TestClient(app)
         yield client
-        
+
         app.dependency_overrides.clear()
 
     def test_get_all_job_ids_success(self, client_with_mocked_repos, mock_job_repository):
         """Test successful retrieval of all job IDs."""
         # Mock repository response
         from unittest.mock import AsyncMock
-        mock_job_repository.list_jobs = AsyncMock(return_value=[
-            {"id": "job_1", "name": "Test Job 1"},
-            {"id": "job_2", "name": "Test Job 2"},
-            {"id": "job_3", "name": "Test Job 3"},
-        ])
+
+        mock_job_repository.list_jobs = AsyncMock(
+            return_value=[
+                {"id": "job_1", "name": "Test Job 1"},
+                {"id": "job_2", "name": "Test Job 2"},
+                {"id": "job_3", "name": "Test Job 3"},
+            ]
+        )
 
         # Mock settings for API key
         with patch("webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"
 
-            response = client_with_mocked_repos.get("/api/internal/jobs/all-ids", headers={"X-Internal-Api-Key": "test-key"})
+            response = client_with_mocked_repos.get(
+                "/api/internal/jobs/all-ids", headers={"X-Internal-Api-Key": "test-key"}
+            )
 
             assert response.status_code == 200
             assert response.json() == ["job_1", "job_2", "job_3"]
@@ -93,23 +98,28 @@ class TestInternalAPIEndpoints:
             assert response.status_code == 401
 
             # Test with wrong API key
-            response = client_with_mocked_repos.get("/api/internal/jobs/all-ids", headers={"X-Internal-Api-Key": "wrong-key"})
+            response = client_with_mocked_repos.get(
+                "/api/internal/jobs/all-ids", headers={"X-Internal-Api-Key": "wrong-key"}
+            )
             assert response.status_code == 401
 
             # Repository should not be called
-            if hasattr(mock_job_repository, 'get_all_job_ids'):
+            if hasattr(mock_job_repository, "get_all_job_ids"):
                 mock_job_repository.get_all_job_ids.assert_not_called()
 
     def test_get_all_job_ids_empty_list(self, client_with_mocked_repos, mock_job_repository):
         """Test retrieval when no jobs exist."""
         # Mock repository response
         from unittest.mock import AsyncMock
+
         mock_job_repository.list_jobs = AsyncMock(return_value=[])
 
         with patch("webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"
 
-            response = client_with_mocked_repos.get("/api/internal/jobs/all-ids", headers={"X-Internal-Api-Key": "test-key"})
+            response = client_with_mocked_repos.get(
+                "/api/internal/jobs/all-ids", headers={"X-Internal-Api-Key": "test-key"}
+            )
 
             assert response.status_code == 200
             assert response.json() == []

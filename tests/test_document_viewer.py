@@ -22,7 +22,7 @@ class TestDocumentSecurity:
         # Mock repositories
         mock_job_repo = AsyncMock()
         mock_file_repo = AsyncMock()
-        
+
         mock_job_repo.get_job.return_value = {"directory_path": "/safe/job/directory", "user_id": 1}
         mock_file_repo.get_job_files.return_value = [
             {"doc_id": "test123", "path": "/safe/job/directory/../../../etc/passwd"}
@@ -30,13 +30,7 @@ class TestDocumentSecurity:
 
         # Should raise HTTPException for path traversal
         with pytest.raises(HTTPException) as exc_info:
-            await validate_file_access(
-                "job123", 
-                "test123", 
-                {"id": 1, "user": "test"},
-                mock_job_repo,
-                mock_file_repo
-            )
+            await validate_file_access("job123", "test123", {"id": 1, "user": "test"}, mock_job_repo, mock_file_repo)
 
         assert exc_info.value.status_code == 403
         assert exc_info.value.detail == "Access denied"
@@ -52,17 +46,13 @@ class TestDocumentSecurity:
             # Mock repositories
             mock_job_repo = AsyncMock()
             mock_file_repo = AsyncMock()
-            
+
             mock_job_repo.get_job.return_value = {"directory_path": tmpdir, "user_id": 1}
             mock_file_repo.get_job_files.return_value = [{"doc_id": "test123", "path": str(test_file)}]
 
             # Should not raise exception for valid path
             result = await validate_file_access(
-                "job123", 
-                "test123", 
-                {"id": 1, "user": "test"},
-                mock_job_repo,
-                mock_file_repo
+                "job123", "test123", {"id": 1, "user": "test"}, mock_job_repo, mock_file_repo
             )
             assert result["doc_id"] == "test123"
             assert result["path"] == str(test_file)
@@ -73,17 +63,11 @@ class TestDocumentSecurity:
         # Mock repositories
         mock_job_repo = AsyncMock()
         mock_file_repo = AsyncMock()
-        
+
         mock_job_repo.get_job.return_value = None
 
         with pytest.raises(HTTPException) as exc_info:
-            await validate_file_access(
-                "job123", 
-                "test123", 
-                {"id": 1, "user": "test"},
-                mock_job_repo,
-                mock_file_repo
-            )
+            await validate_file_access("job123", "test123", {"id": 1, "user": "test"}, mock_job_repo, mock_file_repo)
 
         assert exc_info.value.status_code == 404
         assert exc_info.value.detail == "Job not found"
@@ -94,18 +78,12 @@ class TestDocumentSecurity:
         # Mock repositories
         mock_job_repo = AsyncMock()
         mock_file_repo = AsyncMock()
-        
+
         mock_job_repo.get_job.return_value = {"directory_path": "/safe/job/directory", "user_id": 1}
         mock_file_repo.get_job_files.return_value = []
 
         with pytest.raises(HTTPException) as exc_info:
-            await validate_file_access(
-                "job123", 
-                "test123", 
-                {"id": 1, "user": "test"},
-                mock_job_repo,
-                mock_file_repo
-            )
+            await validate_file_access("job123", "test123", {"id": 1, "user": "test"}, mock_job_repo, mock_file_repo)
 
         assert exc_info.value.status_code == 404
         assert exc_info.value.detail == "Document not found"
@@ -121,7 +99,7 @@ class TestDocumentSecurity:
             # Mock repositories
             mock_job_repo = AsyncMock()
             mock_file_repo = AsyncMock()
-            
+
             mock_job_repo.get_job.return_value = {"directory_path": tmpdir, "user_id": 1}
             mock_file_repo.get_job_files.return_value = [{"doc_id": "test123", "path": str(test_file)}]
 
@@ -131,11 +109,7 @@ class TestDocumentSecurity:
 
                 with pytest.raises(HTTPException) as exc_info:
                     await validate_file_access(
-                        "job123", 
-                        "test123", 
-                        {"id": 1, "user": "test"},
-                        mock_job_repo,
-                        mock_file_repo
+                        "job123", "test123", {"id": 1, "user": "test"}, mock_job_repo, mock_file_repo
                     )
 
                 assert exc_info.value.status_code == 413
@@ -152,18 +126,14 @@ class TestDocumentSecurity:
             # Mock repositories
             mock_job_repo = AsyncMock()
             mock_file_repo = AsyncMock()
-            
+
             # Job belongs to user_id 2, but current user has id 1
             mock_job_repo.get_job.return_value = {"directory_path": tmpdir, "user_id": 2}
             mock_file_repo.get_job_files.return_value = [{"doc_id": "test123", "path": str(test_file)}]
 
             with pytest.raises(HTTPException) as exc_info:
                 await validate_file_access(
-                    "job123", 
-                    "test123", 
-                    {"id": 1, "user": "test"},
-                    mock_job_repo,
-                    mock_file_repo
+                    "job123", "test123", {"id": 1, "user": "test"}, mock_job_repo, mock_file_repo
                 )
 
             assert exc_info.value.status_code == 403
