@@ -39,6 +39,8 @@ slowapi = "^0.1.9"
 pptx2md = "^0.7.2"
 questionary = "^2.0.1"
 rich = "^13.0.0"
+alembic = "^1.13.1"
+sqlalchemy = "^2.0.23"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

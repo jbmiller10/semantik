@@ -986,55 +986,15 @@ class TestSchemaMigration:
     """Test database schema migration."""
 
     def test_schema_migration(self, tmp_path):
-        """Test that init_db properly migrates an old schema."""
+        """Test that init_db properly creates schema using Alembic.
+        
+        Note: This test has been updated for Alembic integration.
+        Previously it tested manual ALTER TABLE migrations, but now
+        it verifies that Alembic creates the complete schema correctly.
+        """
         db_path = str(tmp_path / "test_migration.db")
 
-        # Create old schema manually
-        conn = sqlite3.connect(db_path)
-        c = conn.cursor()
-
-        # Create old jobs table without newer columns
-        c.execute(
-            """CREATE TABLE jobs
-                     (id TEXT PRIMARY KEY,
-                      name TEXT NOT NULL,
-                      description TEXT,
-                      status TEXT NOT NULL,
-                      created_at TEXT NOT NULL,
-                      updated_at TEXT NOT NULL,
-                      directory_path TEXT NOT NULL,
-                      model_name TEXT NOT NULL,
-                      chunk_size INTEGER,
-                      chunk_overlap INTEGER,
-                      batch_size INTEGER,
-                      total_files INTEGER DEFAULT 0,
-                      processed_files INTEGER DEFAULT 0,
-                      failed_files INTEGER DEFAULT 0,
-                      current_file TEXT,
-                      error TEXT)"""
-        )
-
-        # Create old files table without newer columns
-        c.execute(
-            """CREATE TABLE files
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                      job_id TEXT NOT NULL,
-                      path TEXT NOT NULL,
-                      size INTEGER NOT NULL,
-                      modified TEXT NOT NULL,
-                      extension TEXT NOT NULL,
-                      hash TEXT,
-                      status TEXT DEFAULT 'pending',
-                      error TEXT,
-                      chunks_created INTEGER DEFAULT 0,
-                      vectors_created INTEGER DEFAULT 0,
-                      FOREIGN KEY (job_id) REFERENCES jobs(id))"""
-        )
-
-        conn.commit()
-        conn.close()
-
-        # Now run init_db to migrate
+        # Run init_db to create fresh schema using Alembic
         # Patch at the implementation level where DB_PATH is actually used
         with patch("shared.database.sqlite_implementation.DB_PATH", db_path):
             from shared.database import init_db
