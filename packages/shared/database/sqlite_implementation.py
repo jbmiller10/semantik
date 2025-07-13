@@ -32,12 +32,12 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # Database initialization and management
 def init_db() -> None:
     """Initialize SQLite database using Alembic migrations.
-    
+
     IMPORTANT: This function must be called explicitly by all entry points:
     - docker-entrypoint.sh for Docker deployments
     - Application startup code for local development
     - Test fixtures for unit tests
-    
+
     The automatic init_db() call on module import was removed to prevent
     circular dependency issues with Alembic.
     """
@@ -45,11 +45,11 @@ def init_db() -> None:
     import subprocess
     import sys
     from pathlib import Path
-    
+
     # Find the project root (where alembic.ini is located)
     current_dir = Path(__file__).parent
     project_root = current_dir.parent.parent.parent
-    
+
     # Run alembic upgrade head
     logger.info("Running database migrations with Alembic...")
     try:
@@ -58,7 +58,7 @@ def init_db() -> None:
         env["PYTHONPATH"] = str(project_root / "packages") + ":" + env.get("PYTHONPATH", "")
         # Pass the database path to alembic via environment variable
         env["ALEMBIC_DATABASE_URL"] = f"sqlite:///{DB_PATH}"
-        
+
         # Change to project root directory to find alembic.ini
         result = subprocess.run(
             [sys.executable, "-m", "alembic", "upgrade", "head"],
@@ -66,7 +66,7 @@ def init_db() -> None:
             capture_output=True,
             text=True,
             check=True,
-            env=env
+            env=env,
         )
         if result.stdout:
             logger.info(f"Alembic output: {result.stdout}")
@@ -79,19 +79,19 @@ def init_db() -> None:
         raise RuntimeError(f"Database migration failed: {e.stderr}") from e
 
 
-def init_auth_tables(_conn: sqlite3.Connection, c: sqlite3.Cursor) -> None:
+def init_auth_tables(_conn: sqlite3.Connection, _c: sqlite3.Cursor) -> None:
     """DEPRECATED: Authentication tables are now created via Alembic migrations"""
     # This function is kept for backward compatibility but does nothing
     # All table creation is handled by Alembic migrations
-    pass
 
 
 def reset_database() -> None:
     """Reset the database by dropping all tables and recreating them using Alembic"""
     import subprocess
     import sys
+    from contextlib import suppress
     from pathlib import Path
-    
+
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
@@ -107,21 +107,19 @@ def reset_database() -> None:
     # Find the project root (where alembic.ini is located)
     current_dir = Path(__file__).parent
     project_root = current_dir.parent.parent.parent
-    
+
     # Downgrade to nothing (remove all migrations)
     logger.info("Running database downgrade...")
-    try:
+    with suppress(subprocess.CalledProcessError):
+        # It's OK if downgrade fails (e.g., if alembic_version table doesn't exist)
         subprocess.run(
             [sys.executable, "-m", "alembic", "downgrade", "base"],
             cwd=str(project_root),
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
-    except subprocess.CalledProcessError:
-        # It's OK if downgrade fails (e.g., if alembic_version table doesn't exist)
-        pass
-    
+
     # Recreate tables using Alembic
     init_db()
     logger.info("Database reset successfully")
