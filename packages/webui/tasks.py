@@ -35,7 +35,7 @@ def extract_and_serialize_thread_safe(filepath: str) -> list[tuple[str, dict[str
 
 
 @celery_app.task(bind=True)
-def test_task(self):
+def test_task(self):  # noqa: ARG001
     """Test task to verify Celery is working."""
     return {"status": "success", "message": "Celery is working!"}
 
@@ -52,7 +52,6 @@ def cleanup_old_results(days_to_keep: int = 7) -> dict[str, Any]:
     """
     from datetime import timedelta
 
-
     stats = {"celery_results_deleted": 0, "old_jobs_marked": 0, "errors": []}
 
     try:
@@ -65,7 +64,7 @@ def cleanup_old_results(days_to_keep: int = 7) -> dict[str, Any]:
 
         # Mark old jobs as archived (not deleting to preserve history)
         try:
-            job_repo = create_job_repository()
+            job_repo = create_job_repository()  # noqa: F841
             # This would need a new method in the repository
             # For now, just log what we would do
             logger.info(f"Would archive jobs older than {cutoff_time}")
@@ -96,15 +95,14 @@ def process_embedding_job_task(self, job_id: str) -> dict[str, Any]:
     asyncio.set_event_loop(loop)
 
     try:
-        result = loop.run_until_complete(_process_embedding_job_async(job_id, self))
-        return result
+        return loop.run_until_complete(_process_embedding_job_async(job_id, self))
     except Exception as exc:
         logger.error(f"Task failed for job {job_id}: {exc}")
         # Don't retry for certain exceptions
-        if isinstance(exc, (ValueError, TypeError)):
+        if isinstance(exc, ValueError | TypeError):
             raise  # Don't retry on programming errors
         # Retry for other exceptions (network issues, temporary failures)
-        raise self.retry(exc=exc, countdown=60)
+        raise self.retry(exc=exc, countdown=60) from exc
     finally:
         loop.close()
 
@@ -116,7 +114,7 @@ async def _process_embedding_job_async(job_id: str, celery_task) -> dict[str, An
     # Create repository instances
     job_repo = create_job_repository()
     file_repo = create_file_repository()
-    collection_repo = create_collection_repository()
+    collection_repo = create_collection_repository()  # noqa: F841
 
     # Import metrics if available
     try:
@@ -289,7 +287,7 @@ async def _process_embedding_job_async(job_id: str, celery_task) -> dict[str, An
                 task_id = celery_task.request.id if hasattr(celery_task, "request") else str(uuid.uuid4())
 
                 # Function to run in executor with GPU scheduling
-                def generate_embeddings_with_gpu():
+                def generate_embeddings_with_gpu(task_id=task_id, texts=texts):
                     with gpu_task(task_id) as gpu_id:
                         if gpu_id is None:
                             logger.warning(f"No GPU available for task {task_id}, proceeding with CPU")

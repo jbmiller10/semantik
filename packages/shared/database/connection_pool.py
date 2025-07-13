@@ -77,11 +77,11 @@ class SQLiteConnectionPool:
                         # Wait for a connection to be returned
                         try:
                             conn = self._pool.get(timeout=timeout)
-                        except Empty:
+                        except Empty as err:
                             raise TimeoutError(
                                 f"No database connection available after {timeout}s. "
                                 f"Consider increasing max_connections or scaling workers differently."
-                            )
+                            ) from err
 
             yield conn
 
