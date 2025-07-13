@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 class TestJobsAPI:
     """Test suite for job management endpoints."""
 
-    @patch("webui.api.jobs.process_embedding_job")
+    @patch("webui.api.jobs.process_embedding_job_task")
     @patch("webui.api.files.scan_directory_async")
     def test_create_job_success(
         self,
@@ -88,8 +88,10 @@ class TestJobsAPI:
             }
         )
 
-        # Mock process_embedding_job to return immediately
-        mock_process_job.return_value = AsyncMock()
+        # Mock process_embedding_job_task to return immediately
+        mock_task_result = MagicMock()
+        mock_task_result.id = "celery-task-123"
+        mock_process_job.delay = MagicMock(return_value=mock_task_result)
 
         # Prepare request payload
         job_data = {
@@ -143,9 +145,9 @@ class TestJobsAPI:
         # Second arg should be the file records
         assert len(add_files_args[0][1]) == 2  # 2 files
 
-        # Verify process_embedding_job was called with the generated job ID
-        mock_process_job.assert_called_once()
-        actual_job_id = mock_process_job.call_args[0][0]
+        # Verify process_embedding_job_task.delay was called with the generated job ID
+        mock_process_job.delay.assert_called_once()
+        actual_job_id = mock_process_job.delay.call_args[0][0]
         assert len(actual_job_id) == 36  # Standard UUID length
 
     @patch("webui.api.files.scan_directory_async")
@@ -261,10 +263,12 @@ class TestJobsAPI:
         assert response.status_code == 200
         assert response.json() == {"message": "Job deleted successfully"}
 
+    @patch("webui.celery_app.celery_app")
     @patch("webui.api.jobs.active_job_tasks", new_callable=dict)
     def test_cancel_job(
         self,
         mock_active_tasks,
+        mock_celery_app,
         test_client_with_mocks: TestClient,
         test_user: dict,
         mock_job_repository,
@@ -272,6 +276,7 @@ class TestJobsAPI:
         """Test job cancellation."""
         # Setup mocks
         job_id = "test-job-cancel"
+        task_id = "celery-task-123"
         mock_job = {
             "id": job_id,
             "user_id": test_user["id"],
@@ -285,11 +290,13 @@ class TestJobsAPI:
         mock_job_repository.get_job = AsyncMock(return_value=mock_job)
         mock_job_repository.update_job = AsyncMock(return_value=None)
 
-        # Mock active task
-        mock_task = MagicMock()
-        mock_task.cancelled.return_value = False
-        mock_task.cancel = MagicMock()
-        mock_active_tasks[job_id] = mock_task
+        # Mock active task with task ID
+        mock_active_tasks[job_id] = task_id
+
+        # Mock celery control
+        mock_control = MagicMock()
+        mock_control.revoke = MagicMock()
+        mock_celery_app.control = mock_control
 
         # Make request
         response = test_client_with_mocks.post(f"/api/jobs/{job_id}/cancel")
@@ -298,8 +305,8 @@ class TestJobsAPI:
         assert response.status_code == 200
         assert response.json() == {"message": "Job cancellation requested"}
 
-        # Verify task was cancelled
-        mock_task.cancel.assert_called_once()
+        # Verify task was revoked
+        mock_control.revoke.assert_called_once_with(task_id, terminate=True, signal="SIGKILL")
 
         # Verify status was updated to cancelled
         mock_job_repository.update_job.assert_called_once()
