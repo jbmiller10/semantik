@@ -67,6 +67,8 @@ services:
       # HuggingFace configuration
       - HF_HOME=/app/.cache/huggingface
       - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-false}
+      # Redis configuration (for future Celery integration)
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       # Mount data directories
       # Note: Ensure host directories have appropriate permissions (uid 1000)
@@ -135,6 +137,10 @@ services:
       # HuggingFace configuration
       - HF_HOME=/app/.cache/huggingface
       - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-false}
+      # Redis configuration
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
       # Mount data directories
       # Note: Ensure host directories have appropriate permissions (uid 1000)
@@ -146,6 +152,7 @@ services:
       - ${HF_CACHE_DIR:-./models}:/app/.cache/huggingface
     depends_on:
       - vecpipe
+      - redis
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -171,9 +178,155 @@ services:
       retries: 3
       start_period: 60s
 
+  # Redis message broker for Celery
+  redis:
+    image: redis:7-alpine
+    container_name: semantik-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETPCAP
+      - SETGID
+      - SETUID
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          memory: 256M
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Celery Worker Service
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.cuda
+      target: runtime
+    container_name: semantik-worker
+    command: ["sh", "-c", "celery -A webui.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-1}"]
+    environment:
+      # Python path
+      - PYTHONPATH=/app/packages
+      # General configuration
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      # Redis configuration
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # Qdrant configuration
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      # Model defaults (same for GPU and CPU)
+      - DEFAULT_COLLECTION=${DEFAULT_COLLECTION:-work_docs}
+      - USE_MOCK_EMBEDDINGS=${USE_MOCK_EMBEDDINGS:-false}
+      - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
+      - DEFAULT_QUANTIZATION=${DEFAULT_QUANTIZATION:-float16}
+      # GPU-specific settings
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      - MODEL_MAX_MEMORY_GB=${MODEL_MAX_MEMORY_GB:-8}
+      - MONITOR_GPU_MEMORY=true
+      # HuggingFace configuration
+      - HF_HOME=/app/.cache/huggingface
+      - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-false}
+      # Auth configuration (for database operations)
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_THIS_TO_A_STRONG_SECRET_KEY}
+    volumes:
+      # Mount data directories
+      - ./data:/app/data
+      - ./logs:/app/logs
+      # Mount document directories for processing
+      - ${DOCUMENT_PATH:-./documents}:/mnt/docs:ro
+      # Mount HuggingFace cache for persistent model storage
+      - ${HF_CACHE_DIR:-./models}:/app/.cache/huggingface
+    depends_on:
+      - redis
+      - qdrant
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          memory: 2G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "celery", "-A", "webui.celery_app", "inspect", "ping", "-d", "celery@$$HOSTNAME"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Flower monitoring service for Celery
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: semantik-flower
+    command: ["sh", "-c", "celery -A webui.celery_app flower --broker=redis://redis:6379/0 --basic_auth=${FLOWER_BASIC_AUTH:-admin:admin}"]
+    ports:
+      - "5555:5555"
+    environment:
+      # Python path
+      - PYTHONPATH=/app/packages
+      # Redis configuration
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # Flower configuration
+      - FLOWER_PORT=5555
+      - FLOWER_BASIC_AUTH=${FLOWER_BASIC_AUTH:-admin:admin}
+    depends_on:
+      - redis
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          memory: 256M
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5555/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
 volumes:
   # Named volume for Qdrant data persistence
   qdrant_storage:
+    driver: local
+  # Named volume for Redis data persistence
+  redis_data:
     driver: local
 
 networks:

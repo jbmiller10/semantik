@@ -1,6 +1,6 @@
 """Tests for job creation and management endpoints"""
 
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 from fastapi.testclient import TestClient
 from shared.config import settings
@@ -127,17 +127,23 @@ class TestJobManagement:
         assert response.status_code == 404
         assert "Job not found" in response.json()["detail"]
 
-    def test_cancel_job(self, test_client_with_mocks: TestClient, mock_job_repository):
+    @patch("webui.celery_app.celery_app")
+    def test_cancel_job(self, mock_celery_app, test_client_with_mocks: TestClient, mock_job_repository):
         """Test cancelling a running job"""
         job_id = "running-job"
+        task_id = "celery-task-123"
 
         # Mock repository methods
         mock_job_repository.get_job = AsyncMock(return_value={"id": job_id, "status": "processing"})
         mock_job_repository.update_job = AsyncMock()
 
-        # Mock active task
-        mock_task = Mock()
-        active_job_tasks[job_id] = mock_task
+        # Mock active task with task ID (not task object)
+        active_job_tasks[job_id] = task_id
+
+        # Mock celery app control
+        mock_control = Mock()
+        mock_control.revoke = Mock()
+        mock_celery_app.control = mock_control
 
         response = test_client_with_mocks.post(f"/api/jobs/{job_id}/cancel", headers={})
 
@@ -147,8 +153,8 @@ class TestJobManagement:
         # Verify job status was updated
         mock_job_repository.update_job.assert_called_once_with(job_id, {"status": "cancelled"})
 
-        # Verify task was cancelled
-        mock_task.cancel.assert_called_once()
+        # Verify task was revoked
+        mock_control.revoke.assert_called_once_with(task_id, terminate=True, signal="SIGKILL")
 
     def test_cancel_job_invalid_status(self, test_client_with_mocks: TestClient, mock_job_repository):
         """Test cancelling a job that's not running"""
