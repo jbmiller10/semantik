@@ -28,8 +28,12 @@ class EntityAlreadyExistsError(RepositoryError):
         super().__init__(f"{entity_type} with identifier '{identifier}' already exists")
 
 
-class InvalidUserIdError(RepositoryError):
-    """Raised when a user ID is invalid or in wrong format."""
+class InvalidUserIdError(RepositoryError, ValueError):
+    """Raised when a user ID is invalid or in wrong format.
+
+    Inherits from both RepositoryError and ValueError for backward compatibility
+    with existing tests that expect ValueError.
+    """
 
     def __init__(self, user_id: str) -> None:
         """Initialize with the invalid user ID."""

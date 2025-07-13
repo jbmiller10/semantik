@@ -169,7 +169,7 @@ class TestSQLiteJobRepository:
     async def test_list_jobs_invalid_user_id(self, repository, mock_db):
         """Test listing jobs with invalid user ID."""
         # Act & Assert
-        with pytest.raises(ValueError, match="Invalid user_id format"):
+        with pytest.raises(ValueError, match="Invalid user ID format"):
             await repository.list_jobs(user_id="not_an_int")
 
     @pytest.mark.asyncio()
@@ -250,7 +250,7 @@ class TestSQLiteUserRepository:
     async def test_get_user_invalid_id(self, repository, mock_db):
         """Test user retrieval with invalid user ID."""
         # Act & Assert
-        with pytest.raises(ValueError, match="Invalid user_id format"):
+        with pytest.raises(ValueError, match="Invalid user ID format"):
             await repository.get_user("nonexistent")
 
     @pytest.mark.asyncio()
