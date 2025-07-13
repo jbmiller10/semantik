@@ -12,15 +12,7 @@ these to proper DateTime columns, but that would require careful data migration.
 """
 
 
-from sqlalchemy import (
-    Boolean,
-    Column,
-    ForeignKey,
-    Index,
-    Integer,
-    String,
-    Text,
-)
+from sqlalchemy import Boolean, Column, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -57,6 +49,7 @@ class Job(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     parent_job_id = Column(String)
     mode = Column(String, default="create")
+    celery_task_id = Column(String)
 
     # Relationships
     files = relationship("File", back_populates="job", cascade="all, delete-orphan")

@@ -176,3 +176,25 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 # Removed unused function: get_current_admin_user
 # This function was defined for future admin functionality but is not currently used
+
+
+async def get_current_user_websocket(token: str) -> dict[str, Any]:
+    """Get current authenticated user for WebSocket connections
+
+    WebSocket connections don't support headers the same way as HTTP requests,
+    so we accept the token directly as a parameter (from query params).
+    """
+    username = verify_token(token, "access")
+
+    if username is None:
+        raise ValueError("Invalid authentication token")
+
+    user = database.get_user(username)
+    if user is None:
+        raise ValueError("User not found")
+
+    if not user.get("is_active", True):
+        raise ValueError("Inactive user")
+
+    # Type cast to satisfy mypy - we know user is not None here
+    return cast(dict[str, Any], user)

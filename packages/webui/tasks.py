@@ -18,6 +18,7 @@ from shared.embedding import embedding_service
 from shared.gpu_scheduler import gpu_task
 from shared.text_processing.chunking import TokenChunker
 from webui.celery_app import celery_app
+from webui.redis_streams import publish_job_update
 from webui.utils.qdrant_manager import qdrant_manager
 
 logger = logging.getLogger(__name__)
@@ -90,12 +91,17 @@ def process_embedding_job_task(self: Any, job_id: str) -> dict[str, Any]:
 
     This is a synchronous wrapper that runs the async processing logic.
     """
+    # Get Redis URL from environment
+    import os
+
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
     # Run the async function in an event loop
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
     try:
-        return loop.run_until_complete(_process_embedding_job_async(job_id, self))
+        return loop.run_until_complete(_process_embedding_job_async(job_id, self, redis_url))
     except Exception as exc:
         logger.error(f"Task failed for job {job_id}: {exc}")
         # Don't retry for certain exceptions
@@ -107,7 +113,7 @@ def process_embedding_job_task(self: Any, job_id: str) -> dict[str, Any]:
         loop.close()
 
 
-async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[str, Any]:
+async def _process_embedding_job_async(job_id: str, celery_task: Any, redis_url: str) -> dict[str, Any]:
     """Async implementation of the embedding job processing."""
     metrics_task = None
 
@@ -137,6 +143,11 @@ async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[st
     try:
         # Update job status and set start time
         await job_repo.update_job(job_id, {"status": "processing", "start_time": datetime.now(UTC).isoformat()})
+
+        # Publish job started event
+        publish_job_update(
+            job_id, "job_started", {"status": "processing", "start_time": datetime.now(UTC).isoformat()}, redis_url
+        )
 
         # Get job details
         job = await job_repo.get_job(job_id)
@@ -208,6 +219,19 @@ async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[st
                         "current_file": file_row["path"],
                         "status": "file_processing",
                     },
+                )
+
+                # Publish file processing event
+                publish_job_update(
+                    job_id,
+                    "file_processing",
+                    {
+                        "file_path": file_row["path"],
+                        "file_index": file_idx,
+                        "total_files": len(files),
+                        "processed_files": processed_count,
+                    },
+                    redis_url,
                 )
 
                 # Yield control to event loop to keep UI responsive
@@ -420,6 +444,20 @@ async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[st
                     },
                 )
 
+                # Publish file completed event
+                publish_job_update(
+                    job_id,
+                    "file_completed",
+                    {
+                        "file_path": file_row["path"],
+                        "processed_files": processed_count,
+                        "total_files": len(files),
+                        "chunks_created": len(chunks),
+                        "vectors_created": total_points,
+                    },
+                    redis_url,
+                )
+
                 # Free chunks and embeddings after upload
                 del chunks
                 del embeddings
@@ -443,6 +481,14 @@ async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[st
                     record_file_failed("embedding", type(e).__name__)
                 failed_count += 1
                 # File status already updated in the database.update_file_status call above
+
+                # Publish file failed event
+                publish_job_update(
+                    job_id,
+                    "file_failed",
+                    {"file_path": file_row.get("path", "unknown"), "error": str(e), "failed_files": failed_count},
+                    redis_url,
+                )
 
         # Check total vectors created from database
         total_vectors_created = await file_repo.get_job_total_vectors(job_id)
@@ -480,6 +526,19 @@ async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[st
         # Mark job as completed only if vectors were successfully created
         await job_repo.update_job(job_id, {"status": "completed", "current_file": None})
 
+        # Publish job completed event
+        publish_job_update(
+            job_id,
+            "job_completed",
+            {
+                "status": "completed",
+                "processed_files": processed_count,
+                "failed_files": failed_count,
+                "total_vectors": total_vectors_created,
+            },
+            redis_url,
+        )
+
         return {
             "status": "completed",
             "job_id": job_id,
@@ -491,6 +550,10 @@ async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[st
     except Exception as e:
         logger.error(f"Job {job_id} failed: {e}")
         await job_repo.update_job(job_id, {"status": "failed", "error": str(e)})
+
+        # Publish job failed event
+        publish_job_update(job_id, "job_failed", {"status": "failed", "error": str(e)}, redis_url)
+
         raise
 
     finally:

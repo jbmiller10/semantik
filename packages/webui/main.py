@@ -4,8 +4,11 @@ Creates and configures the FastAPI application
 """
 
 import logging
+import os
 import secrets
 import sys
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -42,6 +45,7 @@ from .api import (  # noqa: E402
 from .api.files import scan_websocket  # noqa: E402
 from .api.jobs import websocket_endpoint  # noqa: E402
 from .rate_limiter import limiter  # noqa: E402
+from .websocket_manager import get_websocket_manager  # noqa: E402
 
 
 def rate_limit_handler(request: Request, exc: Exception) -> Response:
@@ -121,10 +125,42 @@ def _validate_cors_origins(origins: list[str]) -> list[str]:
     return valid_origins
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Manage application lifecycle - startup and shutdown."""
+    # Startup
+    logger.info("Starting up WebUI application...")
+
+    # Configure global embedding service
+    _configure_embedding_service()
+
+    # Configure internal API key
+    _configure_internal_api_key()
+
+    # Initialize WebSocket manager (creates Redis connections)
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    websocket_manager = get_websocket_manager(redis_url)
+    app.state.websocket_manager = websocket_manager
+    logger.info("WebSocket manager initialized with Redis streams support")
+
+    yield
+
+    # Shutdown
+    logger.info("Shutting down WebUI application...")
+
+    # Close WebSocket manager connections
+    if hasattr(app.state, "websocket_manager"):
+        await app.state.websocket_manager.close()
+        logger.info("WebSocket manager closed")
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application"""
     app = FastAPI(
-        title="Document Embedding Web UI", description="Create and search document embeddings", version="1.1.0"
+        title="Document Embedding Web UI",
+        description="Create and search document embeddings",
+        version="1.1.0",
+        lifespan=lifespan,
     )
 
     # Configure CORS middleware
@@ -152,12 +188,6 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
-    # Configure global embedding service at app startup
-    _configure_embedding_service()
-
-    # Configure internal API key
-    _configure_internal_api_key()
-
     # Include routers with their specific prefixes
     app.include_router(auth.router)
     app.include_router(jobs.router)
@@ -174,8 +204,8 @@ def create_app() -> FastAPI:
 
     # Mount WebSocket endpoints at the app level
     @app.websocket("/ws/{job_id}")
-    async def job_websocket(websocket: WebSocket, job_id: str) -> None:
-        await websocket_endpoint(websocket, job_id)
+    async def job_websocket(websocket: WebSocket, job_id: str, token: str | None = None) -> None:
+        await websocket_endpoint(websocket, job_id, token)
 
     @app.websocket("/ws/scan/{scan_id}")
     async def scan_ws(websocket: WebSocket, scan_id: str) -> None:

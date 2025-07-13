@@ -19,13 +19,16 @@ from shared.contracts.jobs import CreateJobRequest as SharedCreateJobRequest
 # Add parent directory to path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
+import os
+
 from shared.config import settings
 from shared.database.base import CollectionRepository, FileRepository, JobRepository
 from shared.database.factory import create_collection_repository, create_file_repository, create_job_repository
 from shared.embedding import POPULAR_MODELS, embedding_service
-from webui.auth import get_current_user
+from webui.auth import get_current_user, get_current_user_websocket
 from webui.tasks import process_embedding_job_task
 from webui.utils.qdrant_manager import qdrant_manager
+from webui.websocket_manager import get_websocket_manager
 
 logger = logging.getLogger(__name__)
 
@@ -66,38 +69,11 @@ class JobStatus(BaseModel):
     chunk_overlap: int | None = None
 
 
-# WebSocket manager for real-time updates
-class ConnectionManager:
-    def __init__(self) -> None:
-        self.active_connections: dict[str, list[WebSocket]] = {}
+# Get Redis URL from environment
+redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-    async def connect(self, websocket: WebSocket, job_id: str) -> None:
-        await websocket.accept()
-        if job_id not in self.active_connections:
-            self.active_connections[job_id] = []
-        self.active_connections[job_id].append(websocket)
-
-    def disconnect(self, websocket: WebSocket, job_id: str) -> None:
-        if job_id in self.active_connections:
-            self.active_connections[job_id].remove(websocket)
-            if not self.active_connections[job_id]:
-                del self.active_connections[job_id]
-
-    async def send_update(self, job_id: str, message: dict[str, Any]) -> None:
-        if job_id in self.active_connections:
-            disconnected = []
-            for connection in self.active_connections[job_id]:
-                try:
-                    await connection.send_json(message)
-                except Exception:
-                    disconnected.append(connection)
-
-            # Clean up disconnected clients
-            for conn in disconnected:
-                self.disconnect(conn, job_id)
-
-
-manager = ConnectionManager()
+# Get WebSocket manager instance
+manager = get_websocket_manager(redis_url)
 
 # Task tracking moved to database in future refactoring
 # TODO: Add celery_task_id field to jobs table for task management
@@ -662,21 +638,80 @@ async def check_collection_exists(
 
 
 # WebSocket handler - export this separately so it can be mounted at the app level
-async def websocket_endpoint(websocket: WebSocket, job_id: str) -> None:
-    """WebSocket for real-time job updates"""
-    await manager.connect(websocket, job_id)
+async def websocket_endpoint(websocket: WebSocket, job_id: str, token: str | None = None) -> None:
+    """WebSocket for real-time job updates with Redis stream support.
 
-    # TODO: Implement Redis pub/sub for real-time updates
-    # Currently, WebSocket will only receive updates sent via manager.send_update()
-    # from within the Celery task itself. Future implementation will use Redis
-    # pub/sub to broadcast updates from Celery workers to WebSocket clients.
+    This endpoint:
+    1. Authenticates the WebSocket client
+    2. Connects the WebSocket client
+    3. Sends the current job state from the database
+    4. Subscribes to Redis streams for live updates
+
+    Args:
+        websocket: The WebSocket connection
+        job_id: The job ID to subscribe to
+        token: JWT authentication token (passed as query parameter)
+    """
+    job_repo = create_job_repository()
 
     try:
+        # Authenticate the user if authentication is enabled
+        user = None
+        if not settings.DISABLE_AUTH:
+            if not token:
+                await websocket.close(code=1008, reason="Missing authentication token")
+                return
+
+            try:
+                user = await get_current_user_websocket(token)
+            except ValueError as e:
+                await websocket.close(code=1008, reason=str(e))
+                return
+
+        # Get current job state from database
+        job = await job_repo.get_job(job_id)
+        if not job:
+            await websocket.close(code=1008, reason="Job not found")
+            return
+
+        # Check if user has access to this job (if auth is enabled)
+        if user and job.get("user_id") != user["id"]:
+            await websocket.close(code=1008, reason="Access denied")
+            return
+
+        # Connect the WebSocket
+        await manager.connect(websocket, job_id)
+
+        if job:
+            # Send initial state to client
+            await manager.send_initial_state(
+                websocket,
+                job_id,
+                {
+                    "id": job["id"],
+                    "name": job["name"],
+                    "status": job["status"],
+                    "total_files": job.get("total_files", 0),
+                    "processed_files": job.get("processed_files", 0),
+                    "failed_files": job.get("failed_files", 0),
+                    "current_file": job.get("current_file"),
+                    "error": job.get("error"),
+                    "created_at": job["created_at"],
+                    "updated_at": job["updated_at"],
+                },
+            )
+
+        # Keep connection alive and handle incoming messages
         while True:
-            # Keep connection alive
+            # Wait for messages from client (like ping/pong)
             await websocket.receive_text()
+            # Could handle client messages here if needed
+
     except WebSocketDisconnect:
-        manager.disconnect(websocket, job_id)
+        await manager.disconnect(websocket, job_id)
+    except Exception as e:
+        logger.error(f"WebSocket error for job {job_id}: {e}")
+        await manager.disconnect(websocket, job_id)
 
 
 # TODO: Remove this function when Redis pub/sub is implemented
