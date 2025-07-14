@@ -25,23 +25,40 @@ class RedisStreamWebSocketManager:
         self.consumer_tasks: Dict[str, asyncio.Task] = {}
         self.consumer_group = f"webui-{uuid.uuid4().hex[:8]}"
         self.redis_url = settings.REDIS_URL
+        self.max_connections_per_user = 10  # Prevent DOS attacks
         
     async def startup(self) -> None:
-        """Initialize Redis connection on application startup."""
-        try:
-            self.redis = await redis.from_url(
-                self.redis_url,
-                decode_responses=True,
-                health_check_interval=30,
-                socket_keepalive=True,
-                retry_on_timeout=True,
-            )
-            # Test connection
-            await self.redis.ping()
-            logger.info(f"WebSocket manager connected to Redis at {self.redis_url}")
-        except Exception as e:
-            logger.error(f"Failed to connect to Redis: {e}")
-            raise
+        """Initialize Redis connection on application startup with retry logic."""
+        max_retries = 3
+        retry_delay = 1.0  # Initial delay in seconds
+        
+        for attempt in range(max_retries):
+            try:
+                self.redis = await redis.from_url(
+                    self.redis_url,
+                    decode_responses=True,
+                    health_check_interval=30,
+                    socket_keepalive=True,
+                    retry_on_timeout=True,
+                    socket_connect_timeout=5,
+                    socket_timeout=5,
+                )
+                # Test connection
+                await self.redis.ping()
+                logger.info(f"WebSocket manager connected to Redis at {self.redis_url}")
+                return
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    wait_time = retry_delay * (2 ** attempt)  # Exponential backoff
+                    logger.warning(
+                        f"Failed to connect to Redis (attempt {attempt + 1}/{max_retries}): {e}. "
+                        f"Retrying in {wait_time:.1f} seconds..."
+                    )
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error(f"Failed to connect to Redis after {max_retries} attempts: {e}")
+                    # Don't raise - allow graceful degradation
+                    self.redis = None
             
     async def shutdown(self) -> None:
         """Clean up resources on application shutdown."""
@@ -68,7 +85,20 @@ class RedisStreamWebSocketManager:
             logger.info("WebSocket manager Redis connection closed")
             
     async def connect(self, websocket: WebSocket, job_id: str, user_id: str) -> None:
-        """Handle new WebSocket connection."""
+        """Handle new WebSocket connection with connection limit enforcement."""
+        # Check connection limit for this user
+        user_connections = sum(
+            len(sockets) for key, sockets in self.connections.items() 
+            if key.startswith(f"{user_id}:")
+        )
+        
+        if user_connections >= self.max_connections_per_user:
+            logger.warning(
+                f"User {user_id} exceeded connection limit ({self.max_connections_per_user})"
+            )
+            await websocket.close(code=1008, reason="Connection limit exceeded")
+            return
+            
         await websocket.accept()
         
         # Store connection
@@ -77,7 +107,7 @@ class RedisStreamWebSocketManager:
             self.connections[key] = set()
         self.connections[key].add(websocket)
         
-        logger.info(f"WebSocket connected: user={user_id}, job={job_id}")
+        logger.info(f"WebSocket connected: user={user_id}, job={job_id} (total user connections: {user_connections + 1})")
         
         # Get current job state from database and send it
         try:
@@ -104,14 +134,21 @@ class RedisStreamWebSocketManager:
         except Exception as e:
             logger.error(f"Failed to send current state for job {job_id}: {e}")
         
-        # Start consumer task if not exists
-        if job_id not in self.consumer_tasks:
-            task = asyncio.create_task(self._consume_updates(job_id))
-            self.consumer_tasks[job_id] = task
-            logger.info(f"Started consumer task for job {job_id}")
-            
-        # Send message history
-        await self._send_history(websocket, job_id)
+        # Only start Redis consumer if Redis is available
+        if self.redis is not None:
+            # Start consumer task if not exists
+            if job_id not in self.consumer_tasks:
+                task = asyncio.create_task(self._consume_updates(job_id))
+                self.consumer_tasks[job_id] = task
+                logger.info(f"Started consumer task for job {job_id}")
+                
+            # Send message history
+            await self._send_history(websocket, job_id)
+        else:
+            logger.warning(
+                f"Redis not available for job {job_id}. WebSocket will work in degraded mode "
+                "(initial state only, no real-time updates)"
+            )
         
     async def disconnect(self, websocket: WebSocket, job_id: str, user_id: str) -> None:
         """Handle WebSocket disconnection."""
@@ -138,32 +175,38 @@ class RedisStreamWebSocketManager:
         """Send an update to Redis Stream for a specific job.
         
         This method is called by Celery tasks to send updates.
+        If Redis is not available, updates are sent directly to connected clients.
         """
-        if not self.redis:
-            logger.warning("Redis not connected, cannot send job update")
-            return
-            
-        stream_key = f"job:updates:{job_id}"
         message = {
             "timestamp": datetime.utcnow().isoformat(),
             "type": update_type,
             "data": data
         }
         
-        try:
-            # Add to stream with automatic ID
-            await self.redis.xadd(
-                stream_key,
-                {"message": json.dumps(message)},
-                maxlen=1000  # Keep last 1000 messages
-            )
+        if self.redis:
+            # Redis available - use streams for persistence
+            stream_key = f"job:updates:{job_id}"
             
-            # Set TTL on first message (24 hours)
-            await self.redis.expire(stream_key, 86400)
-            
-            logger.debug(f"Sent update to stream {stream_key}: type={update_type}")
-        except Exception as e:
-            logger.error(f"Failed to send update to Redis stream: {e}")
+            try:
+                # Add to stream with automatic ID
+                await self.redis.xadd(
+                    stream_key,
+                    {"message": json.dumps(message)},
+                    maxlen=1000  # Keep last 1000 messages
+                )
+                
+                # Set TTL on first message (24 hours)
+                await self.redis.expire(stream_key, 86400)
+                
+                logger.debug(f"Sent update to stream {stream_key}: type={update_type}")
+            except Exception as e:
+                logger.error(f"Failed to send update to Redis stream: {e}")
+                # Fall back to direct broadcast
+                await self._broadcast_to_job(job_id, message)
+        else:
+            # Redis not available - send directly to connected clients
+            logger.debug(f"Redis not available, broadcasting directly for job {job_id}")
+            await self._broadcast_to_job(job_id, message)
             
     async def _consume_updates(self, job_id: str) -> None:
         """Consume updates from Redis Stream for a specific job."""
@@ -239,6 +282,10 @@ class RedisStreamWebSocketManager:
             
     async def _send_history(self, websocket: WebSocket, job_id: str) -> None:
         """Send historical messages to newly connected client."""
+        if not self.redis:
+            logger.debug("Redis not available, skipping message history")
+            return
+            
         stream_key = f"job:updates:{job_id}"
         
         try:
@@ -281,6 +328,39 @@ class RedisStreamWebSocketManager:
             self.connections[key].discard(websocket)
             if not self.connections[key]:
                 del self.connections[key]
+                
+    async def cleanup_job_stream(self, job_id: str) -> None:
+        """Clean up Redis stream for a completed job.
+        
+        This should be called when a job is completed or deleted to free up Redis memory.
+        """
+        if not self.redis:
+            logger.debug("Redis not available, skipping stream cleanup")
+            return
+            
+        stream_key = f"job:updates:{job_id}"
+        
+        try:
+            # Delete the stream
+            deleted = await self.redis.delete(stream_key)
+            if deleted:
+                logger.info(f"Cleaned up Redis stream for job {job_id}")
+            
+            # Also try to delete consumer groups associated with this stream
+            try:
+                # Get all consumer groups for this stream
+                groups = await self.redis.xinfo_groups(stream_key)
+                for group in groups:
+                    group_name = group.get("name", "")
+                    if group_name:
+                        await self.redis.xgroup_destroy(stream_key, group_name)
+                        logger.debug(f"Deleted consumer group {group_name} for job {job_id}")
+            except Exception:
+                # Stream might already be deleted or have no groups
+                pass
+                
+        except Exception as e:
+            logger.warning(f"Failed to clean up stream for job {job_id}: {e}")
 
 
 # Global instance

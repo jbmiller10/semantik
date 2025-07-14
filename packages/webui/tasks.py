@@ -579,6 +579,14 @@ async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[st
             "failed_files": failed_count,
             "total_vectors": total_vectors_created
         })
+        
+        # Clean up Redis stream for completed job
+        try:
+            from webui.websocket_manager import ws_manager
+            await ws_manager.cleanup_job_stream(job_id)
+            logger.info(f"Cleaned up Redis stream for completed job {job_id}")
+        except Exception as e:
+            logger.warning(f"Failed to clean up Redis stream for job {job_id}: {e}")
 
         return {
             "status": "completed",

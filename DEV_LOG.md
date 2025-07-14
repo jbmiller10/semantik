@@ -128,3 +128,65 @@ Need to document REDIS_URL configuration
 - Add integration tests for end-to-end flow
 - Add Prometheus metrics for monitoring
 - Consider batch message delivery for performance
+
+## Code Review Improvements (2025-07-14)
+
+Based on code review feedback, implementing critical improvements:
+
+### 1. WebSocket Authentication
+Adding proper JWT authentication for WebSocket connections to replace the temporary "anonymous" user approach.
+
+✅ Implemented:
+- Added `get_current_user_websocket()` function in auth.py for WebSocket JWT validation
+- Updated websocket_endpoint to authenticate users via token query parameter
+- Added user access verification to ensure users can only access their own jobs
+- Added DISABLE_AUTH setting to webui config for development mode
+- Proper error codes (1008 for policy violation, 1011 for server error)
+
+### 2. Redis Connection Retry with Backoff
+Implementing exponential backoff for Redis connection failures to improve resilience.
+
+✅ Implemented:
+- Added retry logic with exponential backoff (1s, 2s, 4s) in startup()
+- Set connection and socket timeouts (5s) to fail fast
+- Don't raise exception on failure - allow graceful degradation
+
+### 3. Graceful Degradation
+Ensuring WebSocket functionality works even when Redis is unavailable.
+
+✅ Implemented:
+- WebSocket manager checks Redis availability before using it
+- Falls back to direct client broadcast when Redis unavailable
+- Initial state still delivered from database
+- Warning logs inform about degraded mode
+- send_job_update() handles both Redis and non-Redis modes
+
+### 4. Cleanup for Completed Job Streams
+Adding automatic cleanup of Redis streams for completed jobs.
+
+✅ Implemented:
+- Added cleanup_job_stream() method to delete streams and consumer groups
+- Called from tasks.py when job completes successfully
+- Called from jobs.py when job is deleted
+- Frees up Redis memory automatically
+
+### 5. WebSocket Connection Limits
+Preventing DOS attacks by limiting connections per user.
+
+✅ Implemented:
+- Added max_connections_per_user setting (default: 10)
+- Check enforced in connect() method before accepting connection
+- Returns 1008 error code when limit exceeded
+- Logs connection count for monitoring
+
+### Summary of Improvements
+
+All critical security and resilience issues from the code review have been addressed:
+
+1. **Security**: Proper JWT authentication for WebSocket connections
+2. **Resilience**: Redis connection retry with exponential backoff
+3. **Graceful Degradation**: WebSocket works without Redis (degraded mode)
+4. **Resource Management**: Automatic cleanup of completed job streams
+5. **DOS Protection**: Connection limits per user
+
+The remaining lower-priority improvements (message batching, monitoring metrics) can be addressed in future iterations.

@@ -16,6 +16,7 @@ class WebuiConfig(BaseConfig):
     JWT_SECRET_KEY: str = "default-secret-key"  # MUST be overridden in .env
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     ALGORITHM: str = "HS256"
+    DISABLE_AUTH: bool = False  # Set to True for development only
 
     # Service Ports
     WEBUI_PORT: int = 8080

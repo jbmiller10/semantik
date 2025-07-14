@@ -176,3 +176,43 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 # Removed unused function: get_current_admin_user
 # This function was defined for future admin functionality but is not currently used
+
+
+async def get_current_user_websocket(token: str | None) -> dict[str, Any]:
+    """Get current authenticated user for WebSocket connections.
+    
+    WebSocket connections can't use the standard HTTPBearer dependency,
+    so they pass the token as a query parameter or in the first message.
+    
+    Args:
+        token: JWT token from query parameter or WebSocket message
+        
+    Returns:
+        User dictionary if authenticated
+        
+    Raises:
+        ValueError: If authentication fails
+    """
+    if not token:
+        if settings.DISABLE_AUTH:
+            # Return a dummy user for development when auth is disabled
+            return {
+                "id": 0,
+                "username": "dev_user",
+                "email": "dev@example.com",
+                "is_active": True,
+            }
+        raise ValueError("Missing authentication token")
+    
+    username = verify_token(token, "access")
+    if username is None:
+        raise ValueError("Invalid authentication token")
+    
+    user = database.get_user(username)
+    if user is None:
+        raise ValueError("User not found")
+    
+    if not user.get("is_active", True):
+        raise ValueError("User account is inactive")
+    
+    return cast(dict[str, Any], user)
