@@ -1160,7 +1160,7 @@ class DockerSetupTUI:
                 console.print("• This can take 10-30 minutes depending on your internet speed")
                 console.print("• Subsequent builds will be much faster due to Docker layer caching")
                 console.print()
-            
+
             self._run_docker_command(["docker", "compose"] + compose_files + ["build"], "Building images")
             self._run_docker_command(["docker", "compose"] + compose_files + ["up", "-d"], "Starting services")
         elif "Start services" in action:
@@ -1172,7 +1172,7 @@ class DockerSetupTUI:
                 console.print("• This can take 10-30 minutes depending on your internet speed")
                 console.print("• Subsequent builds will be much faster due to Docker layer caching")
                 console.print()
-                
+
             self._run_docker_command(["docker", "compose"] + compose_files + ["build"], "Building images")
             return
 
@@ -1202,17 +1202,16 @@ class DockerSetupTUI:
         if "build" in cmd or "--build" in cmd:
             console.print(f"\n[bold cyan]{description}[/bold cyan]")
             console.print("[dim]This may take several minutes, especially for GPU images...[/dim]\n")
-            
+
             try:
                 # Run without capturing output to show progress in real-time
                 result = subprocess.run(cmd)
-                
+
                 if result.returncode == 0:
                     console.print(f"\n[green]✓ {description} completed successfully[/green]")
                     return True
-                else:
-                    console.print(f"\n[red]✗ {description} failed with exit code {result.returncode}[/red]")
-                    return False
+                console.print(f"\n[red]✗ {description} failed with exit code {result.returncode}[/red]")
+                return False
             except Exception as e:
                 console.print(f"\n[red]Error running command: {e}[/red]")
                 return False
@@ -1359,7 +1358,7 @@ class DockerSetupTUI:
                     console.print("• Rebuilding will re-download any updated base images")
                     console.print("• This may take several minutes")
                     console.print()
-                    
+
                 self._run_docker_command(["docker", "compose"] + compose_files + ["build"], "Building images")
                 self._run_docker_command(["docker", "compose"] + compose_files + ["up", "-d"], "Starting services")
             elif "View logs" in action and "specific" not in action:

@@ -304,13 +304,13 @@ async def scan_directory_endpoint(
 # WebSocket handler for scan progress - export this separately so it can be mounted at the app level
 async def scan_websocket(websocket: WebSocket, scan_id: str) -> None:
     """WebSocket for real-time scan progress.
-    
+
     Authentication is handled via JWT token passed as query parameter.
     The token should be passed as ?token=<jwt_token> in the WebSocket URL.
     """
     # Extract token from query parameters
     token = websocket.query_params.get("token")
-    
+
     try:
         # Authenticate the user
         user = await get_current_user_websocket(token)
@@ -323,7 +323,7 @@ async def scan_websocket(websocket: WebSocket, scan_id: str) -> None:
         logger.error(f"WebSocket authentication error: {e}")
         await websocket.close(code=1011, reason="Internal server error")
         return
-    
+
     # Authentication successful, connect the WebSocket
     await manager.connect(websocket, f"scan_{scan_id}", user_id)
     try:
