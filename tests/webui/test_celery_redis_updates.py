@@ -21,12 +21,14 @@ class TestCeleryTaskWithUpdates:
         mock.expire = AsyncMock()
         mock.close = AsyncMock()
         return mock
-    
+
     @pytest.fixture()
     def mock_redis_from_url(self, mock_redis):
         """Create a mock for redis.from_url that returns the mock_redis."""
-        async def async_from_url(*args, **kwargs):
+
+        async def async_from_url(*_, **__):
             return mock_redis
+
         return async_from_url
 
     @pytest.fixture()

@@ -61,10 +61,11 @@ class TestRedisStreamWebSocketManager:
     @pytest.mark.asyncio()
     async def test_startup_success(self, manager, mock_redis):
         """Test successful startup with Redis connection."""
+
         # Create an async function that returns the mock
-        async def async_from_url(*args, **kwargs):
+        async def async_from_url(*_, **__):
             return mock_redis
-            
+
         with patch("webui.websocket_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
@@ -83,7 +84,10 @@ class TestRedisStreamWebSocketManager:
                 raise Exception("Connection failed")
             return AsyncMock(ping=AsyncMock())
 
-        with patch("webui.websocket_manager.redis.from_url", side_effect=mock_from_url), patch("asyncio.sleep", new_callable=AsyncMock):
+        with (
+            patch("webui.websocket_manager.redis.from_url", side_effect=mock_from_url),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
             await manager.startup()
 
             assert call_count == 3
@@ -92,7 +96,10 @@ class TestRedisStreamWebSocketManager:
     @pytest.mark.asyncio()
     async def test_startup_graceful_degradation(self, manager):
         """Test graceful degradation when Redis is completely unavailable."""
-        with patch("webui.websocket_manager.redis.from_url", side_effect=Exception("Connection failed")), patch("asyncio.sleep", new_callable=AsyncMock):
+        with (
+            patch("webui.websocket_manager.redis.from_url", side_effect=Exception("Connection failed")),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
             await manager.startup()
 
             assert manager.redis is None  # Should degrade gracefully

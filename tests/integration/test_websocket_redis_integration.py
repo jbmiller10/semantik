@@ -334,7 +334,10 @@ class TestWebSocketRedisIntegration:
         manager = RedisStreamWebSocketManager()
 
         # Simulate Redis connection failure
-        with patch("webui.websocket_manager.redis.from_url", side_effect=Exception("Connection failed")), patch("asyncio.sleep", new_callable=AsyncMock):
+        with (
+            patch("webui.websocket_manager.redis.from_url", side_effect=Exception("Connection failed")),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
             await manager.startup()
 
         assert manager.redis is None  # Redis not available
