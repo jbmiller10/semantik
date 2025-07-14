@@ -37,12 +37,13 @@ class CeleryTaskWithUpdates:
         self.job_id = job_id
         self.redis_url = settings.REDIS_URL
         self.stream_key = f"job:updates:{job_id}"
-        self._redis_client = None
+        self._redis_client: redis.Redis | None = None
 
     async def _get_redis(self) -> redis.Redis:
         """Get or create Redis client."""
         if self._redis_client is None:
             self._redis_client = await redis.from_url(self.redis_url, decode_responses=True)
+        assert self._redis_client is not None
         return self._redis_client
 
     async def send_update(self, update_type: str, data: dict) -> None:
