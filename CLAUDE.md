@@ -1,3 +1,6 @@
+You should **NEVER** mention Claude or Anthropic in your PR or Commit messages.
+
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.

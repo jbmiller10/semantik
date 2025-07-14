@@ -80,25 +80,31 @@ class TestEmbeddingIntegration(unittest.TestCase):
         assert len(embeddings) == 100
 
     @patch("torch.cuda.is_available")
-    async def test_async_service_lifecycle(self, mock_cuda):
+    def test_async_service_lifecycle(self, mock_cuda):
         """Test async service lifecycle management"""
         mock_cuda.return_value = False
 
-        from shared.embedding import cleanup, get_embedding_service
+        import asyncio
 
-        # Get service
-        service1 = await get_embedding_service()
-        service2 = await get_embedding_service()
+        async def async_test():
+            from shared.embedding import cleanup, get_embedding_service
 
-        # Should be singleton
-        assert service1 is service2
+            # Get service
+            service1 = await get_embedding_service()
+            service2 = await get_embedding_service()
 
-        # Cleanup
-        await cleanup()
+            # Should be singleton
+            assert service1 is service2
 
-        # After cleanup, should get new instance
-        service3 = await get_embedding_service()
-        assert service3 is not service1
+            # Cleanup
+            await cleanup()
+
+            # After cleanup, should get new instance
+            service3 = await get_embedding_service()
+            assert service3 is not service1
+
+        # Run the async test
+        asyncio.run(async_test())
 
     def test_backwards_compatibility(self):
         """Test that old API still works"""

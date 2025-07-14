@@ -23,9 +23,10 @@ from shared.config import settings
 from shared.database.base import CollectionRepository, FileRepository, JobRepository
 from shared.database.factory import create_collection_repository, create_file_repository, create_job_repository
 from shared.embedding import POPULAR_MODELS, embedding_service
-from webui.auth import get_current_user
+from webui.auth import get_current_user, get_current_user_websocket
 from webui.tasks import process_embedding_job_task
 from webui.utils.qdrant_manager import qdrant_manager
+from webui.websocket_manager import ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -66,38 +67,7 @@ class JobStatus(BaseModel):
     chunk_overlap: int | None = None
 
 
-# WebSocket manager for real-time updates
-class ConnectionManager:
-    def __init__(self) -> None:
-        self.active_connections: dict[str, list[WebSocket]] = {}
-
-    async def connect(self, websocket: WebSocket, job_id: str) -> None:
-        await websocket.accept()
-        if job_id not in self.active_connections:
-            self.active_connections[job_id] = []
-        self.active_connections[job_id].append(websocket)
-
-    def disconnect(self, websocket: WebSocket, job_id: str) -> None:
-        if job_id in self.active_connections:
-            self.active_connections[job_id].remove(websocket)
-            if not self.active_connections[job_id]:
-                del self.active_connections[job_id]
-
-    async def send_update(self, job_id: str, message: dict[str, Any]) -> None:
-        if job_id in self.active_connections:
-            disconnected = []
-            for connection in self.active_connections[job_id]:
-                try:
-                    await connection.send_json(message)
-                except Exception:
-                    disconnected.append(connection)
-
-            # Clean up disconnected clients
-            for conn in disconnected:
-                self.disconnect(conn, job_id)
-
-
-manager = ConnectionManager()
+# WebSocket manager is imported at the top with other webui imports
 
 # Task tracking moved to database in future refactoring
 # TODO: Add celery_task_id field to jobs table for task management
@@ -597,6 +567,13 @@ async def delete_job(
     # Delete from database
     await job_repo.delete_job(job_id)
 
+    # Clean up Redis stream
+    try:
+        await ws_manager.cleanup_job_stream(job_id)
+        logger.info(f"Cleaned up Redis stream for deleted job {job_id}")
+    except Exception as e:
+        logger.warning(f"Failed to clean up Redis stream: {e}")
+
     return {"message": "Job deleted successfully"}
 
 
@@ -663,20 +640,50 @@ async def check_collection_exists(
 
 # WebSocket handler - export this separately so it can be mounted at the app level
 async def websocket_endpoint(websocket: WebSocket, job_id: str) -> None:
-    """WebSocket for real-time job updates"""
-    await manager.connect(websocket, job_id)
+    """WebSocket for real-time job updates with Redis pub/sub.
 
-    # TODO: Implement Redis pub/sub for real-time updates
-    # Currently, WebSocket will only receive updates sent via manager.send_update()
-    # from within the Celery task itself. Future implementation will use Redis
-    # pub/sub to broadcast updates from Celery workers to WebSocket clients.
+    Authentication is handled via JWT token passed as query parameter.
+    The token should be passed as ?token=<jwt_token> in the WebSocket URL.
+    """
+    job_repo = create_job_repository()
+
+    # Extract token from query parameters
+    token = websocket.query_params.get("token")
+
+    try:
+        # Authenticate the user
+        user = await get_current_user_websocket(token)
+        user_id = str(user["id"])
+
+        # Verify the user has access to this job
+        job = await job_repo.get_job(job_id)
+        if not job:
+            await websocket.close(code=1008, reason="Job not found")
+            return
+
+        # Check if user owns this job (unless auth is disabled)
+        if not settings.DISABLE_AUTH and job.get("user_id") != user["id"]:
+            await websocket.close(code=1008, reason="Access denied")
+            return
+
+    except ValueError as e:
+        # Authentication failed
+        await websocket.close(code=1008, reason=str(e))
+        return
+    except Exception as e:
+        logger.error(f"WebSocket authentication error: {e}")
+        await websocket.close(code=1011, reason="Internal server error")
+        return
+
+    # Authentication successful, connect the WebSocket
+    await ws_manager.connect(websocket, job_id, user_id)
 
     try:
         while True:
             # Keep connection alive
             await websocket.receive_text()
     except WebSocketDisconnect:
-        manager.disconnect(websocket, job_id)
+        await ws_manager.disconnect(websocket, job_id, user_id)
 
 
 # TODO: Remove this function when Redis pub/sub is implemented

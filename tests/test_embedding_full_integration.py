@@ -210,37 +210,43 @@ class TestCrossPackageWorkflow(unittest.TestCase):
             assert len(vector["embedding"]) == 384
 
     @patch("torch.cuda.is_available")
-    async def test_async_service_lifecycle_workflow(self, mock_cuda: Mock) -> None:
+    def test_async_service_lifecycle_workflow(self, mock_cuda: Mock) -> None:
         """Test async service lifecycle across packages."""
         mock_cuda.return_value = False
 
-        from shared.embedding import cleanup, get_embedding_service, initialize_embedding_service
+        import asyncio
 
-        # 1. Initialize service (as search_api might)
-        await initialize_embedding_service(
-            "sentence-transformers/all-MiniLM-L6-v2", quantization="float32", mock_mode=True
-        )
+        async def async_test():
+            from shared.embedding import cleanup, get_embedding_service, initialize_embedding_service
 
-        # 2. Get service from multiple places (simulating different packages)
-        service1 = await get_embedding_service()  # vecpipe
-        service2 = await get_embedding_service()  # webui
+            # 1. Initialize service (as search_api might)
+            await initialize_embedding_service(
+                "sentence-transformers/all-MiniLM-L6-v2", quantization="float32", mock_mode=True
+            )
 
-        # Should be same instance
-        assert service1 is service2
+            # 2. Get service from multiple places (simulating different packages)
+            service1 = await get_embedding_service()  # vecpipe
+            service2 = await get_embedding_service()  # webui
 
-        # 3. Use service
-        query = "test query"
-        query_embedding = await service1.embed_single(query)
+            # Should be same instance
+            assert service1 is service2
 
-        assert len(query_embedding) == 384
+            # 3. Use service
+            query = "test query"
+            query_embedding = await service1.embed_single(query)
 
-        # 4. Cleanup (as shutdown handler would)
-        await cleanup()
+            assert len(query_embedding) == 384
 
-        # 5. After cleanup, should get new instance
-        await initialize_embedding_service("test-model", mock_mode=True)
-        service3 = await get_embedding_service()
-        assert service1 is not service3
+            # 4. Cleanup (as shutdown handler would)
+            await cleanup()
+
+            # 5. After cleanup, should get new instance
+            await initialize_embedding_service("test-model", mock_mode=True)
+            service3 = await get_embedding_service()
+            assert service1 is not service3
+
+        # Run the async test
+        asyncio.run(async_test())
 
 
 class TestErrorHandlingIntegration(unittest.TestCase):

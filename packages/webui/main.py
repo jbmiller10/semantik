@@ -6,6 +6,8 @@ Creates and configures the FastAPI application
 import logging
 import secrets
 import sys
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -42,6 +44,7 @@ from .api import (  # noqa: E402
 from .api.files import scan_websocket  # noqa: E402
 from .api.jobs import websocket_endpoint  # noqa: E402
 from .rate_limiter import limiter  # noqa: E402
+from .websocket_manager import ws_manager  # noqa: E402
 
 
 def rate_limit_handler(request: Request, exc: Exception) -> Response:
@@ -121,10 +124,37 @@ def _validate_cors_origins(origins: list[str]) -> list[str]:
     return valid_origins
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
+    """Manage application lifespan events."""
+    # Startup
+    logger.info("Starting up WebUI application...")
+
+    # Initialize WebSocket manager
+    await ws_manager.startup()
+
+    # Configure global embedding service
+    _configure_embedding_service()
+
+    # Configure internal API key
+    _configure_internal_api_key()
+
+    yield
+
+    # Shutdown
+    logger.info("Shutting down WebUI application...")
+
+    # Clean up WebSocket manager
+    await ws_manager.shutdown()
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application"""
     app = FastAPI(
-        title="Document Embedding Web UI", description="Create and search document embeddings", version="1.1.0"
+        title="Document Embedding Web UI",
+        description="Create and search document embeddings",
+        version="1.1.0",
+        lifespan=lifespan,
     )
 
     # Configure CORS middleware
@@ -151,12 +181,6 @@ def create_app() -> FastAPI:
 
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
-
-    # Configure global embedding service at app startup
-    _configure_embedding_service()
-
-    # Configure internal API key
-    _configure_internal_api_key()
 
     # Include routers with their specific prefixes
     app.include_router(auth.router)
