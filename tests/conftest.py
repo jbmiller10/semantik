@@ -250,7 +250,7 @@ def mock_redis_client():
 
         return msg_id
 
-    async def mock_xrange(stream_key, _min="-", _max="+", count=None):
+    async def mock_xrange(stream_key, min="-", max="+", count=None):  # noqa: ARG001
         if stream_key not in mock_streams.streams:
             return []
 
@@ -265,7 +265,7 @@ def mock_redis_client():
             mock_streams.consumer_groups[stream_key] = {}
         mock_streams.consumer_groups[stream_key][group_name] = {"last_delivered_id": id, "consumers": {}}
 
-    async def mock_xreadgroup(group_name, consumer_name, streams, count=None, _block=None):
+    async def mock_xreadgroup(group_name, consumer_name, streams, count=None, block=None):  # noqa: ARG001
         results = []
 
         for stream_key, last_id in streams.items():

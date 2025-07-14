@@ -160,7 +160,7 @@ class TestWebSocketRedisIntegration:
         # Setup
         manager = RedisStreamWebSocketManager()
 
-        async def async_from_url(*_args, **_kwargs):
+        async def async_from_url(*args, **kwargs):  # noqa: ARG001
             return real_redis_mock
 
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
@@ -217,7 +217,7 @@ class TestWebSocketRedisIntegration:
         """Test that multiple clients receive the same updates."""
         manager = RedisStreamWebSocketManager()
 
-        async def async_from_url(*_args, **_kwargs):
+        async def async_from_url(*args, **kwargs):  # noqa: ARG001
             return real_redis_mock
 
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
@@ -260,7 +260,7 @@ class TestWebSocketRedisIntegration:
         """Test that new clients receive message history."""
         manager = RedisStreamWebSocketManager()
 
-        async def async_from_url(*_args, **_kwargs):
+        async def async_from_url(*args, **kwargs):  # noqa: ARG001
             return real_redis_mock
 
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
@@ -307,7 +307,7 @@ class TestWebSocketRedisIntegration:
         manager1 = RedisStreamWebSocketManager()
         manager2 = RedisStreamWebSocketManager()
 
-        async def async_from_url(*_args, **_kwargs):
+        async def async_from_url(*args, **kwargs):  # noqa: ARG001
             return real_redis_mock
 
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
@@ -354,7 +354,7 @@ class TestWebSocketRedisIntegration:
         """Test that Redis streams are cleaned up after job completion."""
         manager = RedisStreamWebSocketManager()
 
-        async def async_from_url(*_args, **_kwargs):
+        async def async_from_url(*args, **kwargs):  # noqa: ARG001
             return real_redis_mock
 
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
@@ -421,7 +421,7 @@ class TestWebSocketRedisIntegration:
         """Test handling of connection failures and reconnections."""
         manager = RedisStreamWebSocketManager()
 
-        async def async_from_url(*_args, **_kwargs):
+        async def async_from_url(*args, **kwargs):  # noqa: ARG001
             return real_redis_mock
 
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
@@ -454,7 +454,7 @@ class TestWebSocketRedisIntegration:
         """Test handling multiple jobs concurrently."""
         manager = RedisStreamWebSocketManager()
 
-        async def async_from_url(*_args, **_kwargs):
+        async def async_from_url(*args, **kwargs):  # noqa: ARG001
             return real_redis_mock
 
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):

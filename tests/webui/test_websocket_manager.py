@@ -78,7 +78,7 @@ class TestRedisStreamWebSocketManager:
         """Test startup retry logic when Redis is initially unavailable."""
         call_count = 0
 
-        async def mock_from_url(*_args, **_kwargs):
+        async def mock_from_url(*args, **kwargs):  # noqa: ARG001
             nonlocal call_count
             call_count += 1
             if call_count < 3:
