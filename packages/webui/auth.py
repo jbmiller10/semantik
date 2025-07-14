@@ -14,7 +14,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, field_validator
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -42,8 +42,9 @@ class UserCreate(BaseModel):
     password: str
     full_name: str | None = None
 
-    @validator("username")
-    def validate_username(cls, v: str) -> str:  # noqa: N805
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, v: str) -> str:
         if len(v) < 3:
             raise ValueError("Username must be at least 3 characters long")
         # Check if username contains only alphanumeric characters and underscores
@@ -51,8 +52,9 @@ class UserCreate(BaseModel):
             raise ValueError("Username must contain only alphanumeric characters and underscores")
         return v
 
-    @validator("password")
-    def validate_password(cls, v: str) -> str:  # noqa: N805
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters long")
         return v

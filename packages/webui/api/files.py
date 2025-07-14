@@ -13,9 +13,9 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from pydantic import BaseModel
 from webui.auth import get_current_user
 from webui.schemas import FileInfo
+from webui.websocket_manager import ws_manager as manager
 
 from .jobs import SUPPORTED_EXTENSIONS
-from webui.websocket_manager import ws_manager as manager
 
 logger = logging.getLogger(__name__)
 

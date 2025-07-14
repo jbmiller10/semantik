@@ -26,6 +26,7 @@ from shared.embedding import POPULAR_MODELS, embedding_service
 from webui.auth import get_current_user, get_current_user_websocket
 from webui.tasks import process_embedding_job_task
 from webui.utils.qdrant_manager import qdrant_manager
+from webui.websocket_manager import ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -66,8 +67,7 @@ class JobStatus(BaseModel):
     chunk_overlap: int | None = None
 
 
-# Import WebSocket manager from the global instance
-from webui.websocket_manager import ws_manager
+# WebSocket manager is imported at the top with other webui imports
 
 # Task tracking moved to database in future refactoring
 # TODO: Add celery_task_id field to jobs table for task management

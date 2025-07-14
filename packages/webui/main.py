@@ -124,7 +124,7 @@ def _validate_cors_origins(origins: list[str]) -> list[str]:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI):  # noqa: ARG001
     """Manage application lifespan events."""
     # Startup
     logger.info("Starting up WebUI application...")

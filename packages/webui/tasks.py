@@ -49,7 +49,7 @@ class CeleryTaskWithUpdates:
         """Send update to Redis Stream."""
         try:
             redis_client = await self._get_redis()
-            message = {"timestamp": datetime.utcnow().isoformat(), "type": update_type, "data": data}
+            message = {"timestamp": datetime.now(UTC).isoformat(), "type": update_type, "data": data}
 
             # Add to stream with automatic ID
             await redis_client.xadd(

@@ -1,15 +1,14 @@
 """WebSocket manager with Redis Streams for distributed state synchronization."""
 
 import asyncio
+import contextlib
 import json
 import logging
 import uuid
-from datetime import datetime
-from typing import Any, Dict, Set
+from datetime import UTC, datetime
 
 import redis.asyncio as redis
 from fastapi import WebSocket
-
 from shared.config import settings
 
 logger = logging.getLogger(__name__)
@@ -21,8 +20,8 @@ class RedisStreamWebSocketManager:
     def __init__(self):
         """Initialize the WebSocket manager."""
         self.redis: redis.Redis | None = None
-        self.connections: Dict[str, Set[WebSocket]] = {}
-        self.consumer_tasks: Dict[str, asyncio.Task] = {}
+        self.connections: dict[str, set[WebSocket]] = {}
+        self.consumer_tasks: dict[str, asyncio.Task] = {}
         self.consumer_group = f"webui-{uuid.uuid4().hex[:8]}"
         self.redis_url = settings.REDIS_URL
         self.max_connections_per_user = 10  # Prevent DOS attacks
@@ -66,18 +65,14 @@ class RedisStreamWebSocketManager:
         for job_id, task in list(self.consumer_tasks.items()):
             logger.info(f"Cancelling consumer task for job {job_id}")
             task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
 
         # Close all WebSocket connections
-        for key, websockets in list(self.connections.items()):
+        for _, websockets in list(self.connections.items()):
             for websocket in list(websockets):
-                try:
+                with contextlib.suppress(Exception):
                     await websocket.close()
-                except Exception:
-                    pass
 
         # Close Redis connection
         if self.redis:
@@ -118,7 +113,7 @@ class RedisStreamWebSocketManager:
             if job:
                 # Send current state
                 state_message = {
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                     "type": "current_state",
                     "data": {
                         "status": job["status"],
@@ -161,15 +156,12 @@ class RedisStreamWebSocketManager:
         logger.info(f"WebSocket disconnected: user={user_id}, job={job_id}")
 
         # Stop consumer if no more connections for this job
-        if not any(job_id in k for k in self.connections):
-            if job_id in self.consumer_tasks:
-                logger.info(f"Stopping consumer task for job {job_id} (no more connections)")
-                self.consumer_tasks[job_id].cancel()
-                try:
-                    await self.consumer_tasks[job_id]
-                except asyncio.CancelledError:
-                    pass
-                del self.consumer_tasks[job_id]
+        if not any(job_id in k for k in self.connections) and job_id in self.consumer_tasks:
+            logger.info(f"Stopping consumer task for job {job_id} (no more connections)")
+            self.consumer_tasks[job_id].cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self.consumer_tasks[job_id]
+            del self.consumer_tasks[job_id]
 
     async def send_job_update(self, job_id: str, update_type: str, data: dict) -> None:
         """Send an update to Redis Stream for a specific job.
@@ -177,7 +169,7 @@ class RedisStreamWebSocketManager:
         This method is called by Celery tasks to send updates.
         If Redis is not available, updates are sent directly to connected clients.
         """
-        message = {"timestamp": datetime.utcnow().isoformat(), "type": update_type, "data": data}
+        message = {"timestamp": datetime.now(UTC).isoformat(), "type": update_type, "data": data}
 
         if self.redis:
             # Redis available - use streams for persistence
@@ -230,7 +222,7 @@ class RedisStreamWebSocketManager:
                     )
 
                     if messages:
-                        for stream, stream_messages in messages:
+                        for _, stream_messages in messages:
                             for msg_id, data in stream_messages:
                                 try:
                                     # Parse message
@@ -278,7 +270,7 @@ class RedisStreamWebSocketManager:
             # Read last 100 messages
             messages = await self.redis.xrange(stream_key, min="-", max="+", count=100)
 
-            for msg_id, data in messages:
+            for _, data in messages:
                 try:
                     message = json.loads(data["message"])
                     await websocket.send_json(message)
