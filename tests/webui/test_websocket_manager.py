@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import redis.asyncio as redis
 from fastapi import WebSocket
+
 from packages.webui.websocket_manager import RedisStreamWebSocketManager
 
 
@@ -77,7 +78,7 @@ class TestRedisStreamWebSocketManager:
         """Test startup retry logic when Redis is initially unavailable."""
         call_count = 0
 
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_args, **_kwargs):
             nonlocal call_count
             call_count += 1
             if call_count < 3:
@@ -113,13 +114,13 @@ class TestRedisStreamWebSocketManager:
 
         # Add a connection and consumer task
         manager.connections["user1:job1"] = {mock_websocket}
-        
+
         # Create a real asyncio task that can be cancelled and awaited
         async def dummy_coro():
             await asyncio.sleep(10)  # Long sleep that will be cancelled
-        
+
         mock_task = asyncio.create_task(dummy_coro())
-        
+
         manager.consumer_tasks["job1"] = mock_task
 
         await manager.shutdown()
@@ -184,9 +185,9 @@ class TestRedisStreamWebSocketManager:
         # Add consumer task
         async def dummy_coro():
             await asyncio.sleep(10)  # Long sleep that will be cancelled
-        
+
         mock_task = asyncio.create_task(dummy_coro())
-        
+
         manager.consumer_tasks["job1"] = mock_task
 
         await manager.disconnect(mock_websocket, "job1", "user1")

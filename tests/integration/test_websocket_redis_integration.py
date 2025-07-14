@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import WebSocket
+
 from packages.webui.tasks import CeleryTaskWithUpdates
 from packages.webui.websocket_manager import RedisStreamWebSocketManager
 
@@ -62,51 +63,48 @@ class TestWebSocketRedisIntegration:
             async def xgroup_create(self, stream_key, group_name, id="0"):
                 if stream_key not in self.consumer_groups:
                     self.consumer_groups[stream_key] = {}
-                self.consumer_groups[stream_key][group_name] = {
-                    "last_delivered_id": id,
-                    "consumers": {}
-                }
+                self.consumer_groups[stream_key][group_name] = {"last_delivered_id": id, "consumers": {}}
 
             async def xreadgroup(self, group_name, consumer_name, streams, count=None, block=None):
                 # Simulate reading from stream with proper consumer group semantics
                 results = []
-                
+
                 for stream_key, last_id in streams.items():
                     if stream_key not in self.streams:
                         continue
-                        
+
                     if stream_key not in self.consumer_groups:
                         continue
-                        
+
                     if group_name not in self.consumer_groups[stream_key]:
                         continue
-                    
+
                     group_info = self.consumer_groups[stream_key][group_name]
-                    
+
                     # Track this consumer
                     if consumer_name not in group_info["consumers"]:
                         group_info["consumers"][consumer_name] = {"last_ack": None}
-                    
+
                     # Get new messages since last delivered to this group
                     all_messages = self.streams[stream_key]
                     new_messages = []
-                    
+
                     if last_id == ">":
                         # Find messages after the group's last delivered ID
                         last_delivered = group_info["last_delivered_id"]
                         for msg_id, data in all_messages:
                             if msg_id > last_delivered:
                                 new_messages.append((msg_id, data))
-                        
+
                         # Update last delivered ID for the group
                         if new_messages:
                             group_info["last_delivered_id"] = new_messages[-1][0]
-                    
+
                     if new_messages:
                         if count:
                             new_messages = new_messages[:count]
                         results.append((stream_key, new_messages))
-                
+
                 return results
 
             async def xack(self, stream_key, group_name, msg_id):
@@ -162,9 +160,9 @@ class TestWebSocketRedisIntegration:
         # Setup
         manager = RedisStreamWebSocketManager()
 
-        async def async_from_url(*args, **kwargs):
+        async def async_from_url(*_args, **_kwargs):
             return real_redis_mock
-            
+
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
@@ -219,9 +217,9 @@ class TestWebSocketRedisIntegration:
         """Test that multiple clients receive the same updates."""
         manager = RedisStreamWebSocketManager()
 
-        async def async_from_url(*args, **kwargs):
+        async def async_from_url(*_args, **_kwargs):
             return real_redis_mock
-            
+
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
@@ -262,9 +260,9 @@ class TestWebSocketRedisIntegration:
         """Test that new clients receive message history."""
         manager = RedisStreamWebSocketManager()
 
-        async def async_from_url(*args, **kwargs):
+        async def async_from_url(*_args, **_kwargs):
             return real_redis_mock
-            
+
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
@@ -309,9 +307,9 @@ class TestWebSocketRedisIntegration:
         manager1 = RedisStreamWebSocketManager()
         manager2 = RedisStreamWebSocketManager()
 
-        async def async_from_url(*args, **kwargs):
+        async def async_from_url(*_args, **_kwargs):
             return real_redis_mock
-            
+
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
             await manager1.startup()
             await manager2.startup()
@@ -356,9 +354,9 @@ class TestWebSocketRedisIntegration:
         """Test that Redis streams are cleaned up after job completion."""
         manager = RedisStreamWebSocketManager()
 
-        async def async_from_url(*args, **kwargs):
+        async def async_from_url(*_args, **_kwargs):
             return real_redis_mock
-            
+
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
@@ -423,9 +421,9 @@ class TestWebSocketRedisIntegration:
         """Test handling of connection failures and reconnections."""
         manager = RedisStreamWebSocketManager()
 
-        async def async_from_url(*args, **kwargs):
+        async def async_from_url(*_args, **_kwargs):
             return real_redis_mock
-            
+
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
@@ -456,9 +454,9 @@ class TestWebSocketRedisIntegration:
         """Test handling multiple jobs concurrently."""
         manager = RedisStreamWebSocketManager()
 
-        async def async_from_url(*args, **kwargs):
+        async def async_from_url(*_args, **_kwargs):
             return real_redis_mock
-            
+
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 

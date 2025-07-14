@@ -223,8 +223,7 @@ def mock_auth_repository():
 @pytest.fixture()
 def mock_redis_client():
     """Create a mock Redis client for testing WebSocket functionality."""
-    from unittest.mock import AsyncMock, MagicMock
-    import json
+    from unittest.mock import AsyncMock
 
     import redis.asyncio as redis
 
@@ -233,81 +232,78 @@ def mock_redis_client():
             self.streams = {}
             self.consumer_groups = {}
             self.message_counter = 0
-    
+
     mock_streams = MockRedisStreams()
-    
+
     async def mock_xadd(stream_key, data, maxlen=None):
         if stream_key not in mock_streams.streams:
             mock_streams.streams[stream_key] = []
-        
+
         # Generate message ID
         mock_streams.message_counter += 1
         msg_id = f"{mock_streams.message_counter}-0"
         mock_streams.streams[stream_key].append((msg_id, data))
-        
+
         # Trim to maxlen if specified
         if maxlen and len(mock_streams.streams[stream_key]) > maxlen:
             mock_streams.streams[stream_key] = mock_streams.streams[stream_key][-maxlen:]
-        
+
         return msg_id
-    
-    async def mock_xrange(stream_key, min="-", max="+", count=None):
+
+    async def mock_xrange(stream_key, _min="-", _max="+", count=None):
         if stream_key not in mock_streams.streams:
             return []
-        
+
         messages = mock_streams.streams[stream_key]
         if count:
             messages = messages[-count:]
-        
+
         return messages
-    
+
     async def mock_xgroup_create(stream_key, group_name, id="0"):
         if stream_key not in mock_streams.consumer_groups:
             mock_streams.consumer_groups[stream_key] = {}
-        mock_streams.consumer_groups[stream_key][group_name] = {
-            "last_delivered_id": id,
-            "consumers": {}
-        }
-    
-    async def mock_xreadgroup(group_name, consumer_name, streams, count=None, block=None):
+        mock_streams.consumer_groups[stream_key][group_name] = {"last_delivered_id": id, "consumers": {}}
+
+    async def mock_xreadgroup(group_name, consumer_name, streams, count=None, _block=None):
         results = []
-        
+
         for stream_key, last_id in streams.items():
             if stream_key not in mock_streams.streams:
                 continue
-                
+
             if stream_key not in mock_streams.consumer_groups:
                 continue
-                
+
             if group_name not in mock_streams.consumer_groups[stream_key]:
                 continue
-            
+
             group_info = mock_streams.consumer_groups[stream_key][group_name]
-            
+
             # Track this consumer
             if consumer_name not in group_info["consumers"]:
                 group_info["consumers"][consumer_name] = {"last_ack": None}
-            
+
             # Get new messages since last delivered to this group
             all_messages = mock_streams.streams[stream_key]
             new_messages = []
-            
+
             if last_id == ">":
                 # Find messages after the group's last delivered ID
                 last_delivered = group_info["last_delivered_id"]
                 for msg_id, data in all_messages:
                     if msg_id > last_delivered:
                         new_messages.append((msg_id, data))
-                
+
                 # Update last delivered ID for the group
                 if new_messages:
                     group_info["last_delivered_id"] = new_messages[-1][0]
-            
+
             if new_messages:
                 if count:
                     new_messages = new_messages[:count]
                 results.append((stream_key, new_messages))
-        
+
         return results
 
     mock = AsyncMock(spec=redis.Redis)
@@ -323,10 +319,10 @@ def mock_redis_client():
     mock.xinfo_groups = AsyncMock(return_value=[])
     mock.xgroup_destroy = AsyncMock()
     mock.close = AsyncMock()
-    
+
     # Attach the streams object for test inspection
     mock._mock_streams = mock_streams
-    
+
     return mock
 
 
