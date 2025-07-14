@@ -218,3 +218,58 @@ def mock_auth_repository():
     mock.revoke_refresh_token = create_async_mock()
     mock.update_user_last_login = create_async_mock()
     return mock
+
+
+@pytest.fixture()
+def mock_redis_client():
+    """Create a mock Redis client for testing WebSocket functionality."""
+    from unittest.mock import AsyncMock
+    import redis.asyncio as redis
+    
+    mock = AsyncMock(spec=redis.Redis)
+    mock.ping = AsyncMock(return_value=True)
+    mock.xadd = AsyncMock()
+    mock.expire = AsyncMock()
+    mock.xrange = AsyncMock(return_value=[])
+    mock.xreadgroup = AsyncMock(return_value=[])
+    mock.xgroup_create = AsyncMock()
+    mock.xack = AsyncMock()
+    mock.xgroup_delconsumer = AsyncMock()
+    mock.delete = AsyncMock(return_value=1)
+    mock.xinfo_groups = AsyncMock(return_value=[])
+    mock.xgroup_destroy = AsyncMock()
+    mock.close = AsyncMock()
+    return mock
+
+
+@pytest.fixture()
+def mock_websocket():
+    """Create a mock WebSocket connection."""
+    from unittest.mock import AsyncMock
+    from fastapi import WebSocket
+    
+    mock = AsyncMock(spec=WebSocket)
+    mock.accept = AsyncMock()
+    mock.send_json = AsyncMock()
+    mock.close = AsyncMock()
+    mock.receive_json = AsyncMock()
+    return mock
+
+
+@pytest.fixture()
+def mock_websocket_manager(mock_redis_client):
+    """Create a mock WebSocket manager with Redis client."""
+    from webui.websocket_manager import RedisStreamWebSocketManager
+    
+    manager = RedisStreamWebSocketManager()
+    manager.redis = mock_redis_client
+    return manager
+
+
+@pytest.fixture()
+def websocket_test_client(test_client):
+    """Create a test client with WebSocket support."""
+    from fastapi.testclient import TestClient
+    
+    # TestClient already supports WebSocket testing
+    return test_client
