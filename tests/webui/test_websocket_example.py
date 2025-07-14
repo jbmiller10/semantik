@@ -4,8 +4,8 @@ import asyncio
 from unittest.mock import patch
 
 import pytest
-from webui.tasks import CeleryTaskWithUpdates
-from webui.websocket_manager import RedisStreamWebSocketManager
+from packages.webui.tasks import CeleryTaskWithUpdates
+from packages.webui.websocket_manager import RedisStreamWebSocketManager
 
 from tests.webui.test_websocket_helpers import (
     WebSocketTestHarness,

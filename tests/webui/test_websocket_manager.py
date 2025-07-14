@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import redis.asyncio as redis
 from fastapi import WebSocket
-from webui.websocket_manager import RedisStreamWebSocketManager
+from packages.webui.websocket_manager import RedisStreamWebSocketManager
 
 
 class TestRedisStreamWebSocketManager:
@@ -73,16 +73,18 @@ class TestRedisStreamWebSocketManager:
             mock_redis.ping.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_startup_retry_logic(self, manager):
+    async def test_startup_retry_logic(self, manager, mock_redis):
         """Test startup retry logic when Redis is initially unavailable."""
         call_count = 0
 
-        async def mock_from_url(*_):
+        async def mock_from_url(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count < 3:
                 raise Exception("Connection failed")
-            return AsyncMock(ping=AsyncMock())
+            # Return a mock redis client on the 3rd attempt
+            mock_redis.ping = AsyncMock(return_value=True)
+            return mock_redis
 
         with (
             patch("webui.websocket_manager.redis.from_url", side_effect=mock_from_url),
@@ -111,13 +113,19 @@ class TestRedisStreamWebSocketManager:
 
         # Add a connection and consumer task
         manager.connections["user1:job1"] = {mock_websocket}
-        mock_task = AsyncMock()
+        
+        # Create a real asyncio task that can be cancelled and awaited
+        async def dummy_coro():
+            await asyncio.sleep(10)  # Long sleep that will be cancelled
+        
+        mock_task = asyncio.create_task(dummy_coro())
+        
         manager.consumer_tasks["job1"] = mock_task
 
         await manager.shutdown()
 
         # Verify cleanup
-        mock_task.cancel.assert_called_once()
+        assert mock_task.cancelled()  # Task should be cancelled
         mock_websocket.close.assert_called_once()
         mock_redis.close.assert_called_once()
 
@@ -174,7 +182,11 @@ class TestRedisStreamWebSocketManager:
         manager.connections["user1:job1"] = {mock_websocket}
 
         # Add consumer task
-        mock_task = AsyncMock()
+        async def dummy_coro():
+            await asyncio.sleep(10)  # Long sleep that will be cancelled
+        
+        mock_task = asyncio.create_task(dummy_coro())
+        
         manager.consumer_tasks["job1"] = mock_task
 
         await manager.disconnect(mock_websocket, "job1", "user1")
@@ -183,7 +195,7 @@ class TestRedisStreamWebSocketManager:
         assert "user1:job1" not in manager.connections
 
         # Verify consumer task cancelled
-        mock_task.cancel.assert_called_once()
+        assert mock_task.cancelled()
 
     @pytest.mark.asyncio()
     async def test_send_job_update_with_redis(self, manager, mock_redis):
