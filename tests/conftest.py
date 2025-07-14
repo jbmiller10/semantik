@@ -224,8 +224,9 @@ def mock_auth_repository():
 def mock_redis_client():
     """Create a mock Redis client for testing WebSocket functionality."""
     from unittest.mock import AsyncMock
+
     import redis.asyncio as redis
-    
+
     mock = AsyncMock(spec=redis.Redis)
     mock.ping = AsyncMock(return_value=True)
     mock.xadd = AsyncMock()
@@ -246,8 +247,9 @@ def mock_redis_client():
 def mock_websocket():
     """Create a mock WebSocket connection."""
     from unittest.mock import AsyncMock
+
     from fastapi import WebSocket
-    
+
     mock = AsyncMock(spec=WebSocket)
     mock.accept = AsyncMock()
     mock.send_json = AsyncMock()
@@ -260,7 +262,7 @@ def mock_websocket():
 def mock_websocket_manager(mock_redis_client):
     """Create a mock WebSocket manager with Redis client."""
     from webui.websocket_manager import RedisStreamWebSocketManager
-    
+
     manager = RedisStreamWebSocketManager()
     manager.redis = mock_redis_client
     return manager
@@ -269,7 +271,6 @@ def mock_websocket_manager(mock_redis_client):
 @pytest.fixture()
 def websocket_test_client(test_client):
     """Create a test client with WebSocket support."""
-    from fastapi.testclient import TestClient
-    
+
     # TestClient already supports WebSocket testing
     return test_client
