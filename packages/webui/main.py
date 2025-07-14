@@ -6,6 +6,7 @@ Creates and configures the FastAPI application
 import logging
 import secrets
 import sys
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
@@ -124,7 +125,7 @@ def _validate_cors_origins(origins: list[str]) -> list[str]:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):  # noqa: ARG001
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     """Manage application lifespan events."""
     # Startup
     logger.info("Starting up WebUI application...")

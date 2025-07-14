@@ -41,7 +41,7 @@ class CeleryTaskWithUpdates:
 
     async def _get_redis(self) -> redis.Redis:
         """Get or create Redis client."""
-        if not self._redis_client:
+        if self._redis_client is None:
             self._redis_client = await redis.from_url(self.redis_url, decode_responses=True)
         return self._redis_client
 

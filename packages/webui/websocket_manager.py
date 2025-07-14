@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class RedisStreamWebSocketManager:
     """WebSocket manager that uses Redis Streams for distributed state synchronization."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the WebSocket manager."""
         self.redis: redis.Redis | None = None
         self.connections: dict[str, set[WebSocket]] = {}
@@ -201,6 +201,8 @@ class RedisStreamWebSocketManager:
         try:
             # Create consumer group
             try:
+                if self.redis is None:
+                    raise RuntimeError("Redis connection not established")
                 await self.redis.xgroup_create(stream_key, self.consumer_group, id="0")
                 logger.info(f"Created consumer group {self.consumer_group} for stream {stream_key}")
             except Exception as e:
@@ -213,6 +215,8 @@ class RedisStreamWebSocketManager:
             while True:
                 try:
                     # Read from stream with blocking
+                    if self.redis is None:
+                        raise RuntimeError("Redis connection not established")
                     messages = await self.redis.xreadgroup(
                         self.consumer_group,
                         consumer_name,
@@ -232,6 +236,8 @@ class RedisStreamWebSocketManager:
                                     await self._broadcast_to_job(job_id, message)
 
                                     # Acknowledge message
+                                    if self.redis is None:
+                                        raise RuntimeError("Redis connection not established")
                                     await self.redis.xack(stream_key, self.consumer_group, msg_id)
 
                                     logger.debug(f"Processed message {msg_id} for job {job_id}")
@@ -243,8 +249,9 @@ class RedisStreamWebSocketManager:
                 except asyncio.CancelledError:
                     # Clean up consumer
                     try:
-                        await self.redis.xgroup_delconsumer(stream_key, self.consumer_group, consumer_name)
-                        logger.info(f"Cleaned up consumer {consumer_name}")
+                        if self.redis is not None:
+                            await self.redis.xgroup_delconsumer(stream_key, self.consumer_group, consumer_name)
+                            logger.info(f"Cleaned up consumer {consumer_name}")
                     except Exception:
                         pass
                     raise
