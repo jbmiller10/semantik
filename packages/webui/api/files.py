@@ -11,7 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
-from webui.auth import get_current_user
+from webui.auth import get_current_user, get_current_user_websocket
 from webui.schemas import FileInfo
 from webui.websocket_manager import ws_manager as manager
 
@@ -222,7 +222,7 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str |
     for _ in path_obj.glob(pattern):
         total_files += 1
         if total_files % 100 == 0 and scan_id:
-            await manager.send_update(f"scan_{scan_id}", {"type": "counting", "count": total_files})
+            await manager.send_job_update(f"scan_{scan_id}", "counting", {"count": total_files})
 
     # Scan phase with warning thresholds
     file_count = 0
@@ -233,9 +233,10 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str |
     for scanned_files, file_path in enumerate(path_obj.glob(pattern), 1):
         # Send progress update every 10 files or at specific percentages
         if scan_id and (scanned_files % 10 == 0 or scanned_files == total_files):
-            await manager.send_update(
+            await manager.send_job_update(
                 f"scan_{scan_id}",
-                {"type": "progress", "scanned": scanned_files, "total": total_files, "current_path": str(file_path)},
+                "progress",
+                {"scanned": scanned_files, "total": total_files, "current_path": str(file_path)},
             )
 
         if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_EXTENSIONS:
@@ -268,7 +269,7 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str |
         }
         warnings.append(warning)
         if scan_id:
-            await manager.send_update(f"scan_{scan_id}", {"type": "warning", "warning": warning})
+            await manager.send_job_update(f"scan_{scan_id}", "warning", {"warning": warning})
 
     if total_size > warning_size_limit:
         warning = {
@@ -278,7 +279,7 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str |
         }
         warnings.append(warning)
         if scan_id:
-            await manager.send_update(f"scan_{scan_id}", {"type": "warning", "warning": warning})
+            await manager.send_job_update(f"scan_{scan_id}", "warning", {"warning": warning})
 
     return {"files": files, "warnings": warnings, "total_files": file_count, "total_size": total_size}
 
@@ -302,8 +303,29 @@ async def scan_directory_endpoint(
 
 # WebSocket handler for scan progress - export this separately so it can be mounted at the app level
 async def scan_websocket(websocket: WebSocket, scan_id: str) -> None:
-    """WebSocket for real-time scan progress"""
-    await manager.connect(websocket, f"scan_{scan_id}")
+    """WebSocket for real-time scan progress.
+    
+    Authentication is handled via JWT token passed as query parameter.
+    The token should be passed as ?token=<jwt_token> in the WebSocket URL.
+    """
+    # Extract token from query parameters
+    token = websocket.query_params.get("token")
+    
+    try:
+        # Authenticate the user
+        user = await get_current_user_websocket(token)
+        user_id = str(user["id"])
+    except ValueError as e:
+        # Authentication failed
+        await websocket.close(code=1008, reason=str(e))
+        return
+    except Exception as e:
+        logger.error(f"WebSocket authentication error: {e}")
+        await websocket.close(code=1011, reason="Internal server error")
+        return
+    
+    # Authentication successful, connect the WebSocket
+    await manager.connect(websocket, f"scan_{scan_id}", user_id)
     try:
         while True:
             data = await websocket.receive_json()
@@ -313,16 +335,16 @@ async def scan_websocket(websocket: WebSocket, scan_id: str) -> None:
 
                 try:
                     # Send initial status
-                    await manager.send_update(f"scan_{scan_id}", {"type": "started", "path": path})
+                    await manager.send_job_update(f"scan_{scan_id}", "started", {"path": path})
 
                     # Perform scan with progress updates
                     result = await scan_directory_async(path, recursive, scan_id)
 
                     # Send completion
-                    await manager.send_update(
+                    await manager.send_job_update(
                         f"scan_{scan_id}",
+                        "completed",
                         {
-                            "type": "completed",
                             "files": [f.dict() for f in result["files"]],
                             "count": result["total_files"],
                             "total_size": result["total_size"],
@@ -330,10 +352,10 @@ async def scan_websocket(websocket: WebSocket, scan_id: str) -> None:
                         },
                     )
                 except Exception as e:
-                    await manager.send_update(f"scan_{scan_id}", {"type": "error", "error": str(e)})
+                    await manager.send_job_update(f"scan_{scan_id}", "error", {"error": str(e)})
             elif data.get("action") == "cancel":
                 # Handle cancellation
-                await manager.send_update(f"scan_{scan_id}", {"type": "cancelled"})
+                await manager.send_job_update(f"scan_{scan_id}", "cancelled", {})
                 break
     except WebSocketDisconnect:
-        manager.disconnect(websocket, f"scan_{scan_id}")
+        await manager.disconnect(websocket, f"scan_{scan_id}", user_id)
