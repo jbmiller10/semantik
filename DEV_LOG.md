@@ -244,3 +244,16 @@ Add Redis service to GitHub Actions workflow and configure REDIS_URL environment
 - Test collection errors resolved
 - CI/CD pipeline should now pass with Redis available
 - WebSocket functionality will work properly in test environment
+
+## Redis Connection Check Issue (2025-07-14)
+
+### Issue
+The Redis readiness check in CI was timing out because `redis-cli` is not installed in GitHub Actions runners by default.
+
+### Fix
+Changed from using `redis-cli` to using `nc` (netcat) to check if Redis port 6379 is open:
+```bash
+nc -zv localhost 6379
+```
+
+This uses netcat which is available by default in GitHub Actions runners.
