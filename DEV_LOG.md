@@ -190,3 +190,57 @@ All critical security and resilience issues from the code review have been addre
 5. **DOS Protection**: Connection limits per user
 
 The remaining lower-priority improvements (message batching, monitoring metrics) can be addressed in future iterations.
+
+## CI/CD Test Collection Failures (2025-07-14)
+
+### Issue Description
+After implementing the Redis-based WebSocket manager, CI/CD tests are failing during test collection phase:
+```
+ERROR tests/test_add_to_collection.py
+ERROR tests/test_document_viewer.py
+ERROR tests/test_internal_api.py
+ERROR tests/webui/api/test_collections.py
+ERROR tests/webui/api/test_files.py
+ERROR tests/webui/api/test_jobs.py
+ERROR tests/webui/test_cors_configuration.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 7 errors during collection !!!!!!!!!!!!!!!!!!!
+```
+
+### Root Cause Analysis
+1. The new `websocket_manager.py` imports `redis.asyncio` and tries to access `settings.REDIS_URL` during module import
+2. The `tasks.py` also imports `redis.asyncio` and uses Redis for WebSocket updates
+3. Test files import from `webui.api` modules, which import these Redis-dependent modules
+4. **Critical Issue**: The GitHub Actions CI environment doesn't have Redis service configured
+5. Only Qdrant service is defined in `.github/workflows/ci.yml`, but not Redis
+
+### Impact
+- All tests that import any webui modules fail during collection phase
+- Tests can't even start running because imports fail
+- This blocks the entire CI/CD pipeline
+
+### Solution
+Add Redis service to GitHub Actions workflow and configure REDIS_URL environment variable.
+
+## Fix Implementation (2025-07-14)
+
+### Changes Made
+
+1. **Updated `.github/workflows/ci.yml`**:
+   - Added Redis service to the test job:
+     ```yaml
+     redis:
+       image: redis:7-alpine
+       ports:
+         - 6379:6379
+     ```
+   - Added Redis readiness check before running tests
+   - Added `REDIS_URL` environment variable: `redis://localhost:6379/0`
+
+2. **Fixed Import Issues**:
+   - Fixed `packages/webui/api/files.py` to import `ws_manager` correctly
+   - Updated `tests/webui/api/test_jobs.py` to remove references to old `ConnectionManager`
+
+### Result
+- Test collection errors resolved
+- CI/CD pipeline should now pass with Redis available
+- WebSocket functionality will work properly in test environment

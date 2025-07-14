@@ -27,7 +27,7 @@ class WebuiConfig(BaseConfig):
 
     # External service URLs
     SEARCH_API_URL: str = "http://localhost:8000"
-    
+
     # Redis Configuration (for Celery and WebSocket pub/sub)
     REDIS_URL: str = "redis://localhost:6379/0"
 

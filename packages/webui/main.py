@@ -128,21 +128,21 @@ async def lifespan(app: FastAPI):
     """Manage application lifespan events."""
     # Startup
     logger.info("Starting up WebUI application...")
-    
+
     # Initialize WebSocket manager
     await ws_manager.startup()
-    
+
     # Configure global embedding service
     _configure_embedding_service()
-    
+
     # Configure internal API key
     _configure_internal_api_key()
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down WebUI application...")
-    
+
     # Clean up WebSocket manager
     await ws_manager.shutdown()
 
@@ -150,10 +150,10 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application"""
     app = FastAPI(
-        title="Document Embedding Web UI", 
-        description="Create and search document embeddings", 
+        title="Document Embedding Web UI",
+        description="Create and search document embeddings",
         version="1.1.0",
-        lifespan=lifespan
+        lifespan=lifespan,
     )
 
     # Configure CORS middleware

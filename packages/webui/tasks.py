@@ -31,47 +31,38 @@ executor = ThreadPoolExecutor(max_workers=8)
 
 class CeleryTaskWithUpdates:
     """Helper class to send updates to Redis Stream from Celery tasks."""
-    
+
     def __init__(self, job_id: str):
         """Initialize with job ID."""
         self.job_id = job_id
         self.redis_url = settings.REDIS_URL
         self.stream_key = f"job:updates:{job_id}"
         self._redis_client = None
-        
+
     async def _get_redis(self) -> redis.Redis:
         """Get or create Redis client."""
         if not self._redis_client:
-            self._redis_client = await redis.from_url(
-                self.redis_url,
-                decode_responses=True
-            )
+            self._redis_client = await redis.from_url(self.redis_url, decode_responses=True)
         return self._redis_client
-        
+
     async def send_update(self, update_type: str, data: dict) -> None:
         """Send update to Redis Stream."""
         try:
             redis_client = await self._get_redis()
-            message = {
-                "timestamp": datetime.utcnow().isoformat(),
-                "type": update_type,
-                "data": data
-            }
-            
+            message = {"timestamp": datetime.utcnow().isoformat(), "type": update_type, "data": data}
+
             # Add to stream with automatic ID
             await redis_client.xadd(
-                self.stream_key,
-                {"message": json.dumps(message)},
-                maxlen=1000  # Keep last 1000 messages
+                self.stream_key, {"message": json.dumps(message)}, maxlen=1000  # Keep last 1000 messages
             )
-            
+
             # Set TTL on first message (24 hours)
             await redis_client.expire(self.stream_key, 86400)
-            
+
             logger.debug(f"Sent update to Redis stream {self.stream_key}: type={update_type}")
         except Exception as e:
             logger.error(f"Failed to send update to Redis stream: {e}")
-            
+
     async def close(self) -> None:
         """Close Redis connection."""
         if self._redis_client:
@@ -168,7 +159,7 @@ async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[st
     job_repo = create_job_repository()
     file_repo = create_file_repository()
     collection_repo = create_collection_repository()  # noqa: F841
-    
+
     # Create updater for sending Redis updates
     updater = CeleryTaskWithUpdates(job_id)
 
@@ -193,7 +184,7 @@ async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[st
     try:
         # Update job status and set start time
         await job_repo.update_job(job_id, {"status": "processing", "start_time": datetime.now(UTC).isoformat()})
-        
+
         # Send job started update via Redis
         await updater.send_update("job_started", {"status": "processing"})
 
@@ -217,13 +208,11 @@ async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[st
         celery_task.update_state(
             state="PROCESSING", meta={"total_files": len(files), "processed_files": 0, "status": "job_started"}
         )
-        
+
         # Send initial file count via Redis
-        await updater.send_update("status_update", {
-            "status": "processing",
-            "total_files": len(files),
-            "processed_files": 0
-        })
+        await updater.send_update(
+            "status_update", {"status": "processing", "total_files": len(files), "processed_files": 0}
+        )
 
         # Get Qdrant client with retry logic
         try:
@@ -275,14 +264,17 @@ async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[st
                         "status": "file_processing",
                     },
                 )
-                
+
                 # Send file processing update via Redis
-                await updater.send_update("file_processing", {
-                    "status": "processing",
-                    "current_file": file_row["path"],
-                    "processed_files": file_idx,
-                    "total_files": len(files)
-                })
+                await updater.send_update(
+                    "file_processing",
+                    {
+                        "status": "processing",
+                        "current_file": file_row["path"],
+                        "processed_files": file_idx,
+                        "total_files": len(files),
+                    },
+                )
 
                 # Yield control to event loop to keep UI responsive
                 await asyncio.sleep(0)
@@ -493,14 +485,17 @@ async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[st
                         "status": "file_completed",
                     },
                 )
-                
+
                 # Send file completed update via Redis
-                await updater.send_update("file_completed", {
-                    "status": "processing",
-                    "current_file": file_row["path"],
-                    "processed_files": processed_count,
-                    "total_files": len(files)
-                })
+                await updater.send_update(
+                    "file_completed",
+                    {
+                        "status": "processing",
+                        "current_file": file_row["path"],
+                        "processed_files": processed_count,
+                        "total_files": len(files),
+                    },
+                )
 
                 # Free chunks and embeddings after upload
                 del chunks
@@ -525,16 +520,19 @@ async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[st
                     record_file_failed("embedding", type(e).__name__)
                 failed_count += 1
                 # File status already updated in the database.update_file_status call above
-                
+
                 # Send error update via Redis
-                await updater.send_update("error", {
-                    "status": "processing",
-                    "current_file": file_row["path"],
-                    "error": str(e),
-                    "processed_files": processed_count,
-                    "failed_files": failed_count,
-                    "total_files": len(files)
-                })
+                await updater.send_update(
+                    "error",
+                    {
+                        "status": "processing",
+                        "current_file": file_row["path"],
+                        "error": str(e),
+                        "processed_files": processed_count,
+                        "failed_files": failed_count,
+                        "total_files": len(files),
+                    },
+                )
 
         # Check total vectors created from database
         total_vectors_created = await file_repo.get_job_total_vectors(job_id)
@@ -571,18 +569,22 @@ async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[st
 
         # Mark job as completed only if vectors were successfully created
         await job_repo.update_job(job_id, {"status": "completed", "current_file": None})
-        
+
         # Send job completed update via Redis
-        await updater.send_update("job_completed", {
-            "status": "completed",
-            "processed_files": processed_count,
-            "failed_files": failed_count,
-            "total_vectors": total_vectors_created
-        })
-        
+        await updater.send_update(
+            "job_completed",
+            {
+                "status": "completed",
+                "processed_files": processed_count,
+                "failed_files": failed_count,
+                "total_vectors": total_vectors_created,
+            },
+        )
+
         # Clean up Redis stream for completed job
         try:
             from webui.websocket_manager import ws_manager
+
             await ws_manager.cleanup_job_stream(job_id)
             logger.info(f"Cleaned up Redis stream for completed job {job_id}")
         except Exception as e:
@@ -599,13 +601,10 @@ async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[st
     except Exception as e:
         logger.error(f"Job {job_id} failed: {e}")
         await job_repo.update_job(job_id, {"status": "failed", "error": str(e)})
-        
+
         # Send job failed update via Redis
-        await updater.send_update("job_failed", {
-            "status": "failed",
-            "error": str(e)
-        })
-        
+        await updater.send_update("job_failed", {"status": "failed", "error": str(e)})
+
         raise
 
     finally:
@@ -614,7 +613,7 @@ async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[st
             metrics_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await metrics_task
-                
+
         # Close Redis connection
         if updater:
             await updater.close()

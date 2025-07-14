@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, Mock
 
 from fastapi.testclient import TestClient
 from shared.config import settings
-from webui.api.jobs import ConnectionManager
+# ConnectionManager has been replaced with ws_manager
 
 
 class TestJobCreation:
@@ -262,21 +262,8 @@ class TestWebSocketOperations:
         assert "job_id" in data
         assert len(data["job_id"]) == 36  # UUID format
 
-    def test_connection_manager_operations(self):
-        """Test ConnectionManager class operations"""
-        cm = ConnectionManager()
-        job_id = "test-job"
-
-        # Mock WebSocket
-        mock_ws = AsyncMock()
-        mock_ws.accept = AsyncMock()
-        mock_ws.send_json = AsyncMock()
-
-        # Test connection tracking
-        assert job_id not in cm.active_connections
-
-        # Note: These are async methods, so we'd need to test them properly
-        # in an async context, but this tests the basic structure exists
+    # Note: ConnectionManager has been replaced with ws_manager
+    # WebSocket functionality is now tested through integration tests
 
 
 class TestValidation:
