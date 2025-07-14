@@ -66,38 +66,8 @@ class JobStatus(BaseModel):
     chunk_overlap: int | None = None
 
 
-# WebSocket manager for real-time updates
-class ConnectionManager:
-    def __init__(self) -> None:
-        self.active_connections: dict[str, list[WebSocket]] = {}
-
-    async def connect(self, websocket: WebSocket, job_id: str) -> None:
-        await websocket.accept()
-        if job_id not in self.active_connections:
-            self.active_connections[job_id] = []
-        self.active_connections[job_id].append(websocket)
-
-    def disconnect(self, websocket: WebSocket, job_id: str) -> None:
-        if job_id in self.active_connections:
-            self.active_connections[job_id].remove(websocket)
-            if not self.active_connections[job_id]:
-                del self.active_connections[job_id]
-
-    async def send_update(self, job_id: str, message: dict[str, Any]) -> None:
-        if job_id in self.active_connections:
-            disconnected = []
-            for connection in self.active_connections[job_id]:
-                try:
-                    await connection.send_json(message)
-                except Exception:
-                    disconnected.append(connection)
-
-            # Clean up disconnected clients
-            for conn in disconnected:
-                self.disconnect(conn, job_id)
-
-
-manager = ConnectionManager()
+# Import WebSocket manager from the global instance
+from webui.websocket_manager import ws_manager
 
 # Task tracking moved to database in future refactoring
 # TODO: Add celery_task_id field to jobs table for task management
@@ -663,20 +633,28 @@ async def check_collection_exists(
 
 # WebSocket handler - export this separately so it can be mounted at the app level
 async def websocket_endpoint(websocket: WebSocket, job_id: str) -> None:
-    """WebSocket for real-time job updates"""
-    await manager.connect(websocket, job_id)
-
-    # TODO: Implement Redis pub/sub for real-time updates
-    # Currently, WebSocket will only receive updates sent via manager.send_update()
-    # from within the Celery task itself. Future implementation will use Redis
-    # pub/sub to broadcast updates from Celery workers to WebSocket clients.
-
+    """WebSocket for real-time job updates with Redis pub/sub"""
+    # TODO: Add proper WebSocket authentication
+    # For now, use a dummy user ID. In production, extract from JWT token
+    user_id = "anonymous"
+    
+    try:
+        # Extract user from query params or headers (temporary solution)
+        # In production, use proper JWT authentication for WebSockets
+        query_params = websocket.query_params
+        if "user_id" in query_params:
+            user_id = query_params["user_id"]
+    except Exception as e:
+        logger.warning(f"Failed to extract user ID from WebSocket connection: {e}")
+    
+    await ws_manager.connect(websocket, job_id, user_id)
+    
     try:
         while True:
             # Keep connection alive
             await websocket.receive_text()
     except WebSocketDisconnect:
-        manager.disconnect(websocket, job_id)
+        await ws_manager.disconnect(websocket, job_id, user_id)
 
 
 # TODO: Remove this function when Redis pub/sub is implemented
