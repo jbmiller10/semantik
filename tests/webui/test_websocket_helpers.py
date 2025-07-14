@@ -141,10 +141,10 @@ def assert_message_order(messages: list[dict[str, Any]], expected_types: list[st
         try:
             index = actual_types.index(expected_type, last_index + 1)
             last_index = index
-        except ValueError:
+        except ValueError as err:
             raise AssertionError(
                 f"Expected message type '{expected_type}' not found in correct order. Actual types: {actual_types}"
-            )
+            ) from err
 
 
 def count_message_types(messages: list[dict[str, Any]]) -> dict[str, int]:

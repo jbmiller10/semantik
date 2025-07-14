@@ -1,6 +1,7 @@
 """Test suite for RedisStreamWebSocketManager."""
 
 import asyncio
+import contextlib
 import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -60,7 +61,11 @@ class TestRedisStreamWebSocketManager:
     @pytest.mark.asyncio()
     async def test_startup_success(self, manager, mock_redis):
         """Test successful startup with Redis connection."""
-        with patch("webui.websocket_manager.redis.from_url", return_value=mock_redis):
+        # Create an async function that returns the mock
+        async def async_from_url(*args, **kwargs):
+            return mock_redis
+            
+        with patch("webui.websocket_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
             assert manager.redis is not None
@@ -71,28 +76,26 @@ class TestRedisStreamWebSocketManager:
         """Test startup retry logic when Redis is initially unavailable."""
         call_count = 0
 
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_):
             nonlocal call_count
             call_count += 1
             if call_count < 3:
                 raise Exception("Connection failed")
             return AsyncMock(ping=AsyncMock())
 
-        with patch("webui.websocket_manager.redis.from_url", side_effect=mock_from_url):
-            with patch("asyncio.sleep", new_callable=AsyncMock):
-                await manager.startup()
+        with patch("webui.websocket_manager.redis.from_url", side_effect=mock_from_url), patch("asyncio.sleep", new_callable=AsyncMock):
+            await manager.startup()
 
-                assert call_count == 3
-                assert manager.redis is not None
+            assert call_count == 3
+            assert manager.redis is not None
 
     @pytest.mark.asyncio()
     async def test_startup_graceful_degradation(self, manager):
         """Test graceful degradation when Redis is completely unavailable."""
-        with patch("webui.websocket_manager.redis.from_url", side_effect=Exception("Connection failed")):
-            with patch("asyncio.sleep", new_callable=AsyncMock):
-                await manager.startup()
+        with patch("webui.websocket_manager.redis.from_url", side_effect=Exception("Connection failed")), patch("asyncio.sleep", new_callable=AsyncMock):
+            await manager.startup()
 
-                assert manager.redis is None  # Should degrade gracefully
+            assert manager.redis is None  # Should degrade gracefully
 
     @pytest.mark.asyncio()
     async def test_shutdown(self, manager, mock_redis, mock_websocket):
@@ -126,7 +129,7 @@ class TestRedisStreamWebSocketManager:
             "current_file": "test.pdf",
         }
 
-        with patch("webui.websocket_manager.create_job_repository") as mock_create_repo:
+        with patch("shared.database.factory.create_job_repository") as mock_create_repo:
             mock_repo = AsyncMock()
             mock_repo.get_job = AsyncMock(return_value=mock_job)
             mock_create_repo.return_value = mock_repo
@@ -185,9 +188,11 @@ class TestRedisStreamWebSocketManager:
 
         # Verify Redis operations
         mock_redis.xadd.assert_called_once()
-        stream_key, message_data, maxlen = mock_redis.xadd.call_args[0]
-        assert stream_key == "job:updates:job1"
-        assert maxlen == 1000
+        call_args = mock_redis.xadd.call_args
+        assert call_args[0][0] == "job:updates:job1"  # stream key
+        assert "maxlen" in call_args[1]  # keyword argument
+        assert call_args[1]["maxlen"] == 1000
+        message_data = call_args[0][1]
 
         # Verify message format
         message = json.loads(message_data["message"])
@@ -228,10 +233,8 @@ class TestRedisStreamWebSocketManager:
         await asyncio.sleep(0.1)
         consumer_task.cancel()
 
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await consumer_task
-        except asyncio.CancelledError:
-            pass
 
         # Verify message sent to WebSocket
         mock_websocket.send_json.assert_called()
@@ -352,7 +355,7 @@ class TestRedisStreamWebSocketManager:
         websockets = [AsyncMock(spec=WebSocket) for _ in range(5)]
 
         # Connect all websockets concurrently
-        with patch("webui.websocket_manager.create_job_repository") as mock_create_repo:
+        with patch("shared.database.factory.create_job_repository") as mock_create_repo:
             mock_repo = AsyncMock()
             mock_repo.get_job = AsyncMock(return_value={"status": "processing"})
             mock_create_repo.return_value = mock_repo

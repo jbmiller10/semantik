@@ -313,3 +313,68 @@ since unittest doesn't natively support async test methods.
 - Added `noqa` comment for required but unused function parameter
 
 All CI/CD warnings and linting issues have been resolved.
+
+## Test Failures Analysis (2025-07-14)
+
+### Issue Overview
+After implementing the WebSocket/Redis functionality, we have 29 test failures across the test suite.
+
+### Failure Categories
+
+1. **Import/Patch Location Issues (16 failures)**
+   - Error: `AttributeError: <module 'webui.websocket_manager'> does not have the attribute 'create_job_repository'`
+   - Affected tests: Most tests in `test_websocket_redis_integration.py`, `test_websocket_example.py`, and some in `test_websocket_manager.py`
+   - Root Cause: `create_job_repository` is imported inside the `connect()` method, not at module level
+   - Fix: Patch at correct location: `shared.database.factory.create_job_repository`
+
+2. **AsyncMock Configuration Issues (4 failures)**
+   - Error: `TypeError: object AsyncMock can't be used in 'await' expression`
+   - Affected tests: `test_get_redis_creates_client`, `test_close`, `test_shutdown`, `test_disconnect`
+   - Root Cause: AsyncMock not properly configured to be awaitable
+   - Fix: Ensure AsyncMock is properly set up for async context managers
+
+3. **Redis Mock Not Working (8 failures)**
+   - Error: `AssertionError: Expected 'xadd' to have been called once. Called 0 times`
+   - Affected tests: All tests in `test_celery_redis_updates.py`
+   - Root Cause: The patch for `redis.from_url` is not working correctly
+   - Fix: Need to fix the patching of `webui.tasks.redis.from_url`
+
+4. **Other Issues (1 failure)**
+   - `ValueError: not enough values to unpack (expected 3, got 2)` in `test_send_job_update_with_redis`
+   - `AttributeError: 'coroutine' object has no attribute 'streams'` in `test_stream_cleanup_after_job_completion`
+
+### Action Plan
+
+1. **Fix Import Patches**: Update all tests to patch `create_job_repository` at the correct location
+2. **Fix AsyncMock Setup**: Ensure AsyncMocks are properly configured for async context managers
+3. **Fix Redis Mock Patching**: Correct the patching of Redis in the tasks module
+4. **Fix API Mismatches**: Update test expectations to match actual implementation
+
+## Test Fixes Applied (2025-07-14)
+
+### 1. Fixed Import Patches ✅
+- Changed all `patch("webui.websocket_manager.create_job_repository")` to `patch("shared.database.factory.create_job_repository")`
+- Affected files: `test_websocket_redis_integration.py`, `test_websocket_example.py`, `test_websocket_manager.py`
+
+### 2. Fixed AsyncMock Setup ✅
+- Updated `test_startup_success` to use proper async function for `redis.from_url`
+- Added `mock_redis_from_url` fixture to `test_celery_redis_updates.py`
+- Updated all test methods to use the fixture correctly
+
+### 3. Fixed Redis Mock Patching ✅
+- Changed patch location from `webui.tasks.redis.from_url` to `redis.asyncio.from_url`
+- Added proper async function wrapper for Redis mock
+- Updated all test methods in `test_celery_redis_updates.py`
+
+### 4. Fixed API Mismatches ✅
+- Updated xadd call expectations to use keyword arguments (`maxlen=1000`)
+- Fixed unpacking of call arguments in test assertions
+- Fixed fixture decorator issue in `test_stream_cleanup_after_job_completion`
+
+### 5. Fixed Ruff Linting Issues ✅
+- Combined nested `with` statements (SIM117)
+- Removed unused variables and parameters (F841, ARG001)
+- Added proper exception chaining (B904)
+- Used `contextlib.suppress` for cleaner exception handling (SIM105)
+
+All test fixes have been applied and are ready for CI validation.

@@ -13,7 +13,7 @@ class TestWebSocketRedisIntegration:
     """Integration tests for WebSocket and Redis streaming."""
 
     @pytest.fixture()
-    async def real_redis_mock(self):
+    def real_redis_mock(self):
         """Create a more realistic Redis mock that simulates stream behavior."""
 
         class RedisStreamMock:
@@ -135,7 +135,7 @@ class TestWebSocketRedisIntegration:
             ws_client = mock_websocket_factory("client1")
 
             # Mock job repository
-            with patch("webui.websocket_manager.create_job_repository") as mock_create_repo:
+            with patch("shared.database.factory.create_job_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 mock_repo.get_job = AsyncMock(
                     return_value={"status": "processing", "total_files": 10, "processed_files": 0}
@@ -189,7 +189,7 @@ class TestWebSocketRedisIntegration:
             clients = [mock_websocket_factory(f"client{i}") for i in range(3)]
 
             # Mock job repository
-            with patch("webui.websocket_manager.create_job_repository") as mock_create_repo:
+            with patch("shared.database.factory.create_job_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 mock_repo.get_job = AsyncMock(return_value={"status": "processing"})
                 mock_create_repo.return_value = mock_repo
@@ -233,7 +233,7 @@ class TestWebSocketRedisIntegration:
             # Now connect a client
             client = mock_websocket_factory("client1")
 
-            with patch("webui.websocket_manager.create_job_repository") as mock_create_repo:
+            with patch("shared.database.factory.create_job_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 mock_repo.get_job = AsyncMock(return_value={"status": "processing"})
                 mock_create_repo.return_value = mock_repo
@@ -274,7 +274,7 @@ class TestWebSocketRedisIntegration:
             client1 = mock_websocket_factory("client1")
             client2 = mock_websocket_factory("client2")
 
-            with patch("webui.websocket_manager.create_job_repository") as mock_create_repo:
+            with patch("shared.database.factory.create_job_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 mock_repo.get_job = AsyncMock(return_value={"status": "processing"})
                 mock_create_repo.return_value = mock_repo
@@ -334,16 +334,15 @@ class TestWebSocketRedisIntegration:
         manager = RedisStreamWebSocketManager()
 
         # Simulate Redis connection failure
-        with patch("webui.websocket_manager.redis.from_url", side_effect=Exception("Connection failed")):
-            with patch("asyncio.sleep", new_callable=AsyncMock):
-                await manager.startup()
+        with patch("webui.websocket_manager.redis.from_url", side_effect=Exception("Connection failed")), patch("asyncio.sleep", new_callable=AsyncMock):
+            await manager.startup()
 
         assert manager.redis is None  # Redis not available
 
         # System should still work for direct broadcasts
         client = mock_websocket_factory("client1")
 
-        with patch("webui.websocket_manager.create_job_repository") as mock_create_repo:
+        with patch("shared.database.factory.create_job_repository") as mock_create_repo:
             mock_repo = AsyncMock()
             mock_repo.get_job = AsyncMock(return_value={"status": "processing", "total_files": 10})
             mock_create_repo.return_value = mock_repo
@@ -378,7 +377,7 @@ class TestWebSocketRedisIntegration:
             # Create a client that will disconnect
             client = mock_websocket_factory("client1")
 
-            with patch("webui.websocket_manager.create_job_repository") as mock_create_repo:
+            with patch("shared.database.factory.create_job_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 mock_repo.get_job = AsyncMock(return_value={"status": "processing"})
                 mock_create_repo.return_value = mock_repo
@@ -412,7 +411,7 @@ class TestWebSocketRedisIntegration:
                 "job3": [mock_websocket_factory(f"job3_client{i}") for i in range(2)],
             }
 
-            with patch("webui.websocket_manager.create_job_repository") as mock_create_repo:
+            with patch("shared.database.factory.create_job_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 mock_repo.get_job = AsyncMock(return_value={"status": "processing"})
                 mock_create_repo.return_value = mock_repo

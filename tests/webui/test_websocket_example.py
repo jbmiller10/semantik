@@ -28,7 +28,7 @@ class TestWebSocketExamples:
         harness = WebSocketTestHarness(manager)
 
         # Mock job repository
-        with patch("webui.websocket_manager.create_job_repository") as mock_create_repo:
+        with patch("shared.database.factory.create_job_repository") as mock_create_repo:
             from unittest.mock import AsyncMock
 
             mock_repo = AsyncMock()
@@ -66,7 +66,7 @@ class TestWebSocketExamples:
 
         harness = WebSocketTestHarness(manager)
 
-        with patch("webui.websocket_manager.create_job_repository") as mock_create_repo:
+        with patch("shared.database.factory.create_job_repository") as mock_create_repo:
             from unittest.mock import AsyncMock
 
             mock_repo = AsyncMock()
@@ -74,7 +74,7 @@ class TestWebSocketExamples:
             mock_create_repo.return_value = mock_repo
 
             # Connect multiple clients
-            clients = await harness.connect_clients("job456", num_clients=3)
+            await harness.connect_clients("job456", num_clients=3)
 
             # Broadcast a message
             results = await harness.broadcast_and_verify("job456", "announcement", {"message": "Processing started"})
@@ -96,7 +96,7 @@ class TestWebSocketExamples:
 
         harness = WebSocketTestHarness(manager)
 
-        with patch("webui.websocket_manager.create_job_repository") as mock_create_repo:
+        with patch("shared.database.factory.create_job_repository") as mock_create_repo:
             from unittest.mock import AsyncMock
 
             mock_repo = AsyncMock()
@@ -146,7 +146,7 @@ class TestWebSocketExamples:
 
         harness = WebSocketTestHarness(manager)
 
-        with patch("webui.websocket_manager.create_job_repository") as mock_create_repo:
+        with patch("shared.database.factory.create_job_repository") as mock_create_repo:
             from unittest.mock import AsyncMock
 
             mock_repo = AsyncMock()
@@ -189,7 +189,7 @@ class TestWebSocketExamples:
 
         harness = WebSocketTestHarness(manager)
 
-        with patch("webui.websocket_manager.create_job_repository") as mock_create_repo:
+        with patch("shared.database.factory.create_job_repository") as mock_create_repo:
             from unittest.mock import AsyncMock
 
             mock_repo = AsyncMock()
