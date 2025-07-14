@@ -16,6 +16,7 @@ class WebuiConfig(BaseConfig):
     JWT_SECRET_KEY: str = "default-secret-key"  # MUST be overridden in .env
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     ALGORITHM: str = "HS256"
+    DISABLE_AUTH: bool = False  # Set to True for development only
 
     # Service Ports
     WEBUI_PORT: int = 8080
@@ -26,6 +27,9 @@ class WebuiConfig(BaseConfig):
 
     # External service URLs
     SEARCH_API_URL: str = "http://localhost:8000"
+
+    # Redis Configuration (for Celery and WebSocket pub/sub)
+    REDIS_URL: str = "redis://localhost:6379/0"
 
     # CORS Configuration
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
