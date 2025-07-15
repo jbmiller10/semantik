@@ -1,39 +1,39 @@
 """Unit tests for SQLAlchemy models timezone handling."""
 
+from datetime import UTC, datetime
+
 import pytest
-from datetime import datetime, timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.engine import Engine
 
 from packages.shared.database.models import (
-    Base,
-    User,
-    Collection,
-    Document,
     ApiKey,
-    CollectionPermission,
-    RefreshToken,
-    CollectionSource,
-    Operation,
+    Base,
+    Collection,
     CollectionAuditLog,
+    CollectionPermission,
     CollectionResourceLimits,
-    OperationMetrics,
+    CollectionSource,
     CollectionStatus,
+    Document,
     DocumentStatus,
+    Operation,
+    OperationMetrics,
     OperationStatus,
     OperationType,
     PermissionType,
+    RefreshToken,
+    User,
 )
 
 
-@pytest.fixture
+@pytest.fixture()
 def db_session():
     """Create an in-memory SQLite database for testing."""
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    session = Session()
+    session_factory = sessionmaker(bind=engine)
+    session = session_factory()
     yield session
     session.close()
 
@@ -53,9 +53,9 @@ class TestDateTimeTimezoneAwareness:
             username="testuser",
             email="test@example.com",
             hashed_password="hashed",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-            last_login=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            last_login=datetime.now(UTC),
         )
 
         db_session.add(user)
@@ -88,8 +88,8 @@ class TestDateTimeTimezoneAwareness:
             chunk_size=1000,
             chunk_overlap=200,
             status=CollectionStatus.READY,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         db_session.add(collection)
@@ -126,8 +126,8 @@ class TestDateTimeTimezoneAwareness:
             file_size=1024,
             content_hash="hash123",
             status=DocumentStatus.COMPLETED,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         db_session.add(document)
@@ -151,9 +151,9 @@ class TestDateTimeTimezoneAwareness:
             user_id=user.id,
             name="test-key",
             key_hash="hash123",
-            created_at=datetime.now(timezone.utc),
-            last_used_at=datetime.now(timezone.utc),
-            expires_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            last_used_at=datetime.now(UTC),
+            expires_at=datetime.now(UTC),
         )
 
         db_session.add(api_key)
@@ -176,8 +176,8 @@ class TestDateTimeTimezoneAwareness:
         token = RefreshToken(
             user_id=user.id,
             token_hash="hash123",
-            expires_at=datetime.now(timezone.utc),
-            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(UTC),
+            created_at=datetime.now(UTC),
         )
 
         db_session.add(token)
@@ -210,9 +210,9 @@ class TestDateTimeTimezoneAwareness:
             collection_id=collection.id,
             source_path="/test/path",
             source_type="directory",
-            last_indexed_at=datetime.now(timezone.utc),
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            last_indexed_at=datetime.now(UTC),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         db_session.add(source)
@@ -249,9 +249,9 @@ class TestDateTimeTimezoneAwareness:
             type=OperationType.INDEX,
             status=OperationStatus.COMPLETED,
             config={},
-            created_at=datetime.now(timezone.utc),
-            started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
         )
 
         db_session.add(operation)
@@ -313,7 +313,7 @@ class TestDateTimeTimezoneAwareness:
             operation_id=operation.id,
             metric_name="duration",
             metric_value=123.45,
-            recorded_at=datetime.now(timezone.utc),
+            recorded_at=datetime.now(UTC),
         )
 
         db_session.add(metrics)
@@ -345,7 +345,7 @@ class TestDateTimeTimezoneAwareness:
             collection_id=collection.id,
             user_id=user.id,
             permission=PermissionType.READ,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         db_session.add(permission)
@@ -377,7 +377,7 @@ class TestDateTimeTimezoneAwareness:
             collection_id=collection.id,
             user_id=user.id,
             action="created",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         db_session.add(audit_log)
@@ -409,8 +409,8 @@ class TestDateTimeTimezoneAwareness:
             collection_id=collection.id,
             max_documents=50000,
             max_storage_gb=25.0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         db_session.add(limits)
