@@ -2,9 +2,14 @@
 Job management routes and WebSocket handlers for the Web UI
 """
 
+import asyncio
+import gc
+import hashlib
 import logging
 import sys
+import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeAlias
@@ -12,21 +17,22 @@ from typing import Any, TypeAlias
 from fastapi import APIRouter, Body, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import Distance
+from qdrant_client.models import Distance, PointStruct
 from shared.contracts.jobs import AddToCollectionRequest
 from shared.contracts.jobs import CreateJobRequest as SharedCreateJobRequest
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
+import contextlib
+
+from shared import database
 from shared.config import settings
-from shared.database.base import CollectionRepository, FileRepository, JobRepository
-from shared.database.factory import create_collection_repository, create_file_repository, create_job_repository
 from shared.embedding import POPULAR_MODELS, embedding_service
-from webui.auth import get_current_user, get_current_user_websocket
-from webui.tasks import process_embedding_job_task
+from shared.text_processing.chunking import TokenChunker
+from shared.text_processing.extraction import extract_text
+from webui.auth import get_current_user
 from webui.utils.qdrant_manager import qdrant_manager
-from webui.websocket_manager import ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -67,10 +73,449 @@ class JobStatus(BaseModel):
     chunk_overlap: int | None = None
 
 
-# WebSocket manager is imported at the top with other webui imports
+# WebSocket manager for real-time updates
+class ConnectionManager:
+    def __init__(self) -> None:
+        self.active_connections: dict[str, list[WebSocket]] = {}
 
-# Task tracking moved to database in future refactoring
-# TODO: Add celery_task_id field to jobs table for task management
+    async def connect(self, websocket: WebSocket, job_id: str) -> None:
+        await websocket.accept()
+        if job_id not in self.active_connections:
+            self.active_connections[job_id] = []
+        self.active_connections[job_id].append(websocket)
+
+    def disconnect(self, websocket: WebSocket, job_id: str) -> None:
+        if job_id in self.active_connections:
+            self.active_connections[job_id].remove(websocket)
+            if not self.active_connections[job_id]:
+                del self.active_connections[job_id]
+
+    async def send_update(self, job_id: str, message: dict[str, Any]) -> None:
+        if job_id in self.active_connections:
+            disconnected = []
+            for connection in self.active_connections[job_id]:
+                try:
+                    await connection.send_json(message)
+                except Exception:
+                    disconnected.append(connection)
+
+            # Clean up disconnected clients
+            for conn in disconnected:
+                self.disconnect(conn, job_id)
+
+
+manager = ConnectionManager()
+
+# Global task tracking for cancellation support
+active_job_tasks: dict[str, asyncio.Task] = {}
+
+# Background task executor - increased workers for parallel processing
+executor = ThreadPoolExecutor(max_workers=8)
+
+
+def extract_text_thread_safe(filepath: str) -> str:
+    """Thread-safe version of extract_text that uses the unified extraction"""
+    result: str = extract_text(filepath)
+    return result
+
+
+def extract_and_serialize_thread_safe(filepath: str) -> list[tuple[str, dict[str, Any]]]:
+    """Thread-safe version of extract_and_serialize that preserves metadata"""
+    from shared.text_processing.extraction import extract_and_serialize
+
+    result: list[tuple[str, dict[str, Any]]] = extract_and_serialize(filepath)
+    return result
+
+
+# Import will be done inside functions to avoid circular import
+
+
+async def update_metrics_continuously() -> None:
+    """Background task to update resource metrics during job processing"""
+    # Since webui/api/metrics.py already has a background thread updating metrics,
+    # we only need to ensure metrics are being updated, not force updates
+    while True:
+        try:
+            from shared.metrics.prometheus import metrics_collector
+
+            # Only update if it's been more than 0.5 seconds since last update
+            current_time = time.time()
+            if current_time - metrics_collector.last_update > 0.5:
+                metrics_collector.update_resource_metrics()
+        except Exception as e:
+            logger.warning(f"Error updating metrics in job: {e}")
+        await asyncio.sleep(1)  # Check every 1 second
+
+
+async def process_embedding_job(job_id: str) -> None:
+    """Process an embedding job asynchronously"""
+    metrics_task = None  # Initialize to avoid undefined reference
+
+    # Import metrics if available
+    try:
+        from shared.metrics.prometheus import (
+            embedding_batch_duration,
+            metrics_collector,
+            record_chunks_created,
+            record_embeddings_generated,
+            record_file_failed,
+            record_file_processed,
+        )
+
+        metrics_tracking = True
+        # Start background metrics updater
+        metrics_task = asyncio.create_task(update_metrics_continuously())
+    except ImportError:
+        metrics_tracking = False
+        logger.warning("Metrics tracking not available for embedding job")
+
+    try:
+        # Update job status and set start time
+        database.update_job(job_id, {"status": "processing", "start_time": datetime.now(UTC).isoformat()})
+
+        # Get job details
+        job = database.get_job(job_id)
+        if not job:
+            raise Exception(f"Job {job_id} not found")
+
+        # Determine collection name based on mode
+        if job.get("mode") == "append" and job.get("parent_job_id"):
+            # For append mode, use the parent job's collection
+            collection_name = f"job_{job['parent_job_id']}"
+        else:
+            # For create mode, use this job's ID
+            collection_name = f"job_{job_id}"
+
+        # Get pending files
+        files = database.get_job_files(job_id, status="pending")
+
+        # Send initial update with total files
+        await manager.send_update(job_id, {"type": "job_started", "total_files": len(files)})
+
+        # Get Qdrant client with retry logic
+        try:
+            qdrant = qdrant_manager.get_client()
+        except Exception as e:
+            error_msg = f"Failed to connect to Qdrant after retries: {e}"
+            logger.error(error_msg)
+            database.update_job(job_id, {"status": "failed", "error": error_msg})
+            await manager.send_update(job_id, {"type": "error", "message": error_msg})
+            return
+
+        for file_idx, file_row in enumerate(files):
+            try:
+                # For append mode, check if file already exists in collection
+                if job.get("mode") == "append" and file_row.get("content_hash"):
+                    # Check if this content hash already exists in the collection
+                    existing_hashes = database.get_duplicate_files_in_collection(
+                        job["name"], [file_row["content_hash"]]
+                    )
+                    if file_row["content_hash"] in existing_hashes:
+                        logger.info(
+                            f"Skipping duplicate file: {file_row['path']} (content_hash: {file_row['content_hash']})"
+                        )
+                        # Mark as completed since it already exists
+                        database.update_file_status(
+                            job_id, file_row["path"], "completed", chunks_created=0, vectors_created=0
+                        )
+                        # Update processed files count
+                        current_job = database.get_job(job_id)
+                        if current_job:
+                            database.update_job(job_id, {"processed_files": current_job.get("processed_files", 0) + 1})
+                        continue
+
+                # Update current file
+                database.update_job(job_id, {"current_file": file_row["path"]})
+
+                # Send progress update
+                await manager.send_update(
+                    job_id,
+                    {
+                        "type": "file_processing",
+                        "current_file": file_row["path"],
+                        "processed_files": file_idx,
+                        "total_files": len(files),
+                        "status": "Processing",
+                    },
+                )
+
+                # Yield control to event loop to keep UI responsive
+                await asyncio.sleep(0)
+
+                # Extract text and create chunks
+                logger.info(f"Processing file: {file_row['path']}")
+
+                # Add memory tracking
+                import psutil
+
+                process = psutil.Process()
+                initial_memory = process.memory_info().rss / 1024 / 1024  # MB
+                logger.info(f"Memory before extraction: {initial_memory:.2f} MB")
+
+                logger.info(f"Starting text extraction for: {file_row['path']}")
+                # Run text extraction in thread pool to avoid blocking
+                try:
+                    loop = asyncio.get_event_loop()
+                    # Use asyncio timeout instead of signal-based timeout
+                    file_path = file_row["path"]
+                    text_blocks = await asyncio.wait_for(
+                        loop.run_in_executor(executor, extract_and_serialize_thread_safe, file_path),
+                        timeout=300,  # 5 minute timeout
+                    )
+                except TimeoutError:
+                    raise TimeoutError(f"Text extraction timed out after 300 seconds for {file_row['path']}") from None
+
+                memory_after_extract = process.memory_info().rss / 1024 / 1024  # MB
+                logger.info(
+                    f"Memory after extraction: {memory_after_extract:.2f} MB (delta: {memory_after_extract - initial_memory:.2f} MB)"
+                )
+                logger.info(f"Extracted {len(text_blocks)} text blocks")
+
+                doc_id = hashlib.md5(file_row["path"].encode()).hexdigest()[:16]
+
+                logger.info(
+                    f"Starting chunking for: {file_row['path']} with chunk_size={job['chunk_size']}, overlap={job['chunk_overlap']}"
+                )
+
+                # Create a chunker with job-specific settings
+                chunker = TokenChunker(chunk_size=job["chunk_size"] or 600, chunk_overlap=job["chunk_overlap"] or 200)
+
+                # Process each text block with its metadata
+                all_chunks = []
+                for text, metadata in text_blocks:
+                    if not text.strip():
+                        continue
+
+                    # Run chunking in thread pool to avoid blocking
+                    chunks = await loop.run_in_executor(
+                        executor, chunker.chunk_text, text, doc_id, metadata  # Pass metadata to preserve page numbers
+                    )
+                    all_chunks.extend(chunks)
+
+                memory_after_chunk = process.memory_info().rss / 1024 / 1024  # MB
+                logger.info(
+                    f"Memory after chunking: {memory_after_chunk:.2f} MB (delta: {memory_after_chunk - memory_after_extract:.2f} MB)"
+                )
+                logger.info(f"Created {len(all_chunks)} chunks")
+
+                # Record chunks created
+                if metrics_tracking:
+                    record_chunks_created(len(all_chunks))
+
+                # Update chunks variable to use all_chunks
+                chunks = all_chunks
+
+                # Generate embeddings
+                texts = [chunk["text"] for chunk in chunks]
+
+                # Use unified embedding service - run in thread pool to avoid blocking
+                loop = asyncio.get_event_loop()
+
+                # Time the embedding generation
+                import time
+
+                embed_start_time = time.time()
+
+                embeddings_array = await loop.run_in_executor(
+                    executor,
+                    embedding_service.generate_embeddings,
+                    texts,
+                    job["model_name"],
+                    job["quantization"] or "float32",
+                    job["batch_size"],
+                    False,  # show_progress
+                    job["instruction"],
+                )
+
+                # Record embedding time
+                if metrics_tracking:
+                    embed_duration = time.time() - embed_start_time
+                    logger.info(f"Embedding generation took {embed_duration:.3f} seconds for {len(texts)} texts")
+                    embedding_batch_duration.observe(embed_duration)
+
+                # Free texts list after embedding generation
+                del texts
+
+                if embeddings_array is None:
+                    raise Exception("Failed to generate embeddings")
+
+                # Record embeddings generated
+                if metrics_tracking:
+                    record_embeddings_generated(len(embeddings_array))
+
+                embeddings = embeddings_array.tolist()
+
+                # Free the numpy array after conversion
+                del embeddings_array
+
+                # Handle dimension override if specified
+                target_dim = job["vector_dim"]
+                if target_dim and len(embeddings) > 0:
+                    model_dim = len(embeddings[0])
+                    if target_dim != model_dim:
+                        logger.info(f"Adjusting embeddings from {model_dim} to {target_dim} dimensions")
+                        adjusted_embeddings = []
+                        for emb in embeddings:
+                            if target_dim < model_dim:
+                                # Truncate
+                                adjusted = emb[:target_dim]
+                            else:
+                                # Pad with zeros
+                                adjusted = emb + [0.0] * (target_dim - model_dim)
+
+                            # Renormalize
+                            norm = sum(x**2 for x in adjusted) ** 0.5
+                            if norm > 0:
+                                adjusted = [x / norm for x in adjusted]
+                            adjusted_embeddings.append(adjusted)
+                        embeddings = adjusted_embeddings
+
+                # Prepare points for Qdrant in batches to avoid memory spikes
+                upload_batch_size = 100
+                total_points = len(chunks)
+                successfully_uploaded = 0
+
+                for batch_start in range(0, total_points, upload_batch_size):
+                    batch_end = min(batch_start + upload_batch_size, total_points)
+                    points = []
+
+                    for i in range(batch_start, batch_end):
+                        chunk = chunks[i]
+                        embedding = embeddings[i]
+                        point = {
+                            "id": str(uuid.uuid4()),
+                            "vector": embedding,
+                            "payload": {
+                                "job_id": job_id,
+                                "doc_id": doc_id,
+                                "chunk_id": chunk["chunk_id"],
+                                "path": file_row["path"],
+                                "content": chunk["text"],  # Store full text for hybrid search
+                                "metadata": chunk.get("metadata", {}),  # Store metadata including page_number
+                            },
+                        }
+                        points.append(point)
+
+                    # Upload batch to Qdrant
+                    if points:
+                        try:
+                            point_structs = [
+                                PointStruct(id=point["id"], vector=point["vector"], payload=point["payload"])
+                                for point in points
+                            ]
+                            qdrant.upsert(collection_name=collection_name, points=point_structs, wait=True)
+                            successfully_uploaded += len(point_structs)
+                            logger.info(f"Successfully uploaded {len(point_structs)} points to Qdrant")
+                        except Exception as e:
+                            error_msg = f"Failed to upload vectors to Qdrant: {e}"
+                            logger.error(error_msg)
+                            database.update_file_status(job_id, file_row["path"], "failed", error=str(e))
+                            raise  # Re-raise to be caught by outer exception handler
+
+                    # Free the points batch
+                    del points
+
+                # Update database after all batches uploaded
+                database.update_file_status(
+                    job_id, file_row["path"], "completed", vectors_created=total_points, chunks_created=len(chunks)
+                )
+                # Get current job to update processed files count
+                current_job = database.get_job(job_id)
+                if current_job:
+                    database.update_job(job_id, {"processed_files": current_job.get("processed_files", 0) + 1})
+
+                # Record file processed
+                if metrics_tracking:
+                    record_file_processed("embedding")
+
+                # Send file completed update
+                await manager.send_update(
+                    job_id,
+                    {
+                        "type": "file_completed",
+                        "processed_files": current_job.get("processed_files", 0) + 1 if current_job else 1,
+                        "total_files": len(files),
+                    },
+                )
+
+                # Free chunks and embeddings after upload
+                del chunks
+                del embeddings
+
+                # Force garbage collection after each file
+                gc.collect()
+
+                # Update resource metrics periodically (force update)
+                if metrics_tracking:
+                    # Force update by resetting the last update time
+                    metrics_collector.last_update = 0
+                    metrics_collector.update_resource_metrics()
+
+                # Yield control to event loop after processing each file
+                await asyncio.sleep(0)
+
+            except Exception as e:
+                logger.error(f"Failed to process file {file_row['path']}: {e}")
+                # Record file failed
+                if metrics_tracking:
+                    record_file_failed("embedding", type(e).__name__)
+                # File status already updated in the database.update_file_status call above
+
+        # Check total vectors created from database
+        total_vectors_created = database.get_job_total_vectors(job_id)
+
+        if total_vectors_created == 0:
+            # No vectors were created - this is a failure condition
+            error_msg = "No vectors were created. All files either failed to process or contained no extractable text."
+            logger.error(f"Job {job_id} failed: {error_msg}")
+            database.update_job(job_id, {"status": "failed", "error": error_msg})
+            await manager.send_update(job_id, {"type": "error", "message": error_msg})
+            return
+
+        # Verify collection has points before marking as completed
+        try:
+            # Use the correct collection name (considering append mode)
+            collection_info = qdrant.get_collection(collection_name)
+
+            if collection_info.points_count == 0:
+                # This shouldn't happen if total_vectors_created > 0, but check anyway
+                error_msg = f"Qdrant collection has 0 points but {total_vectors_created} vectors were expected"
+                raise Exception(error_msg)
+
+            # Allow up to 10% discrepancy between database count and Qdrant count
+            # This accounts for potential race conditions, network issues during upload,
+            # or partial batch failures that were retried. The exact count isn't critical
+            # as long as most vectors were successfully uploaded.
+            if collection_info.points_count is not None and collection_info.points_count < total_vectors_created * 0.9:
+                logger.warning(
+                    f"Vector count mismatch: {collection_info.points_count} in Qdrant vs {total_vectors_created} expected"
+                )
+
+            logger.info(f"Collection {collection_name} has {collection_info.points_count} points")
+        except Exception as e:
+            error_msg = f"Failed to verify Qdrant collection: {e}"
+            logger.error(error_msg)
+            database.update_job(job_id, {"status": "failed", "error": error_msg})
+            await manager.send_update(job_id, {"type": "error", "message": error_msg})
+            return
+
+        # Mark job as completed only if vectors were successfully created
+        database.update_job(job_id, {"status": "completed", "current_file": None})
+
+        await manager.send_update(job_id, {"type": "job_completed", "message": "Job completed successfully"})
+
+    except Exception as e:
+        logger.error(f"Job {job_id} failed: {e}")
+        database.update_job(job_id, {"status": "failed", "error": str(e)})
+
+        await manager.send_update(job_id, {"type": "error", "message": str(e)})
+
+    finally:
+        # Cancel metrics updater task if it exists
+        if metrics_task:
+            metrics_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await metrics_task
 
 
 # API Routes
@@ -81,13 +526,7 @@ async def get_new_job_id(current_user: dict[str, Any] = Depends(get_current_user
 
 
 @router.post("", response_model=JobStatus)
-async def create_job(
-    request: CreateJobRequest,
-    current_user: dict[str, Any] = Depends(get_current_user),
-    job_repo: JobRepository = Depends(create_job_repository),
-    file_repo: FileRepository = Depends(create_file_repository),
-    collection_repo: CollectionRepository = Depends(create_collection_repository),  # noqa: ARG001
-) -> JobStatus:
+async def create_job(request: CreateJobRequest, current_user: dict[str, Any] = Depends(get_current_user)) -> JobStatus:
     """Create a new embedding job"""
     # Accept job_id from request if provided, otherwise generate new one
     job_id = request.job_id if request.job_id else str(uuid.uuid4())
@@ -122,7 +561,7 @@ async def create_job(
             "instruction": request.instruction,
             "user_id": current_user["id"],
         }
-        await job_repo.create_job(job_data)
+        database.create_job(job_data)
 
         # Create file records
         file_records = [
@@ -136,7 +575,7 @@ async def create_job(
             }
             for f in files
         ]
-        await file_repo.add_files_to_job(job_id, file_records)
+        database.add_files_to_job(job_id, file_records)
 
         # Get Qdrant client from connection manager
         qdrant = qdrant_manager.get_client()
@@ -170,7 +609,7 @@ async def create_job(
             vector_size = 1024  # Final fallback
 
         # Update job with actual vector dimension
-        await job_repo.update_job(job_id, {"vector_dim": vector_size})
+        database.update_job(job_id, {"vector_dim": vector_size})
 
         # Create collection using connection manager with retry logic
         collection_name = f"job_{job_id}"
@@ -200,17 +639,12 @@ async def create_job(
         except Exception as e:
             logger.error(f"Failed to create collection {collection_name}: {e}")
             # Clean up job and return error
-            await job_repo.delete_job(job_id)
+            database.delete_job(job_id)
             raise HTTPException(status_code=500, detail=f"Failed to create Qdrant collection: {str(e)}") from e
 
-        # Start processing with Celery
-        try:
-            celery_task = process_embedding_job_task.delay(job_id)
-            logger.info(f"Started Celery task {celery_task.id} for job {job_id}")
-        except Exception as e:
-            logger.error(f"Failed to start Celery task for job {job_id}: {e}")
-            await job_repo.update_job(job_id, {"status": "failed", "error": f"Failed to start task: {str(e)}"})
-            raise HTTPException(status_code=500, detail=f"Failed to start processing task: {str(e)}") from e
+        # Start processing in background with cancellation support
+        task = asyncio.create_task(process_embedding_job(job_id))
+        active_job_tasks[job_id] = task
 
         return JobStatus(
             id=job_id,
@@ -235,11 +669,7 @@ async def create_job(
 
 @router.post("/add-to-collection", response_model=JobStatus)
 async def add_to_collection(
-    request: AddToCollectionRequest,
-    current_user: dict[str, Any] = Depends(get_current_user),
-    job_repo: JobRepository = Depends(create_job_repository),
-    file_repo: FileRepository = Depends(create_file_repository),
-    collection_repo: CollectionRepository = Depends(create_collection_repository),
+    request: AddToCollectionRequest, current_user: dict[str, Any] = Depends(get_current_user)
 ) -> JobStatus:
     """Add new documents to an existing collection"""
     # Accept job_id from request if provided, otherwise generate new one
@@ -250,7 +680,7 @@ async def add_to_collection(
         from .files import scan_directory_async
 
         # Get parent collection metadata
-        collection_metadata = await collection_repo.get_collection_metadata(request.collection_name)
+        collection_metadata = database.get_collection_metadata(request.collection_name)
         if not collection_metadata:
             raise HTTPException(status_code=404, detail=f"Collection '{request.collection_name}' not found")
 
@@ -263,7 +693,7 @@ async def add_to_collection(
 
         # Check for duplicates
         content_hashes = [f.content_hash for f in files if f.content_hash]
-        existing_hashes = await file_repo.get_duplicate_files_in_collection(request.collection_name, content_hashes)
+        existing_hashes = database.get_duplicate_files_in_collection(request.collection_name, content_hashes)
 
         # Filter out duplicates
         new_files = [f for f in files if f.content_hash not in existing_hashes]
@@ -345,7 +775,7 @@ async def add_to_collection(
             "parent_job_id": collection_metadata["id"],
             "mode": "append",
         }
-        await job_repo.create_job(job_data)
+        database.create_job(job_data)
 
         # Create file records for new files only
         file_records = [
@@ -359,19 +789,14 @@ async def add_to_collection(
             }
             for f in new_files
         ]
-        await file_repo.add_files_to_job(job_id, file_records)
+        database.add_files_to_job(job_id, file_records)
 
         # Update total files count
-        await job_repo.update_job(job_id, {"total_files": len(new_files)})
+        database.update_job(job_id, {"total_files": len(new_files)})
 
-        # Start processing with Celery
-        try:
-            celery_task = process_embedding_job_task.delay(job_id)
-            logger.info(f"Started Celery task {celery_task.id} for job {job_id}")
-        except Exception as e:
-            logger.error(f"Failed to start Celery task for job {job_id}: {e}")
-            await job_repo.update_job(job_id, {"status": "failed", "error": f"Failed to start task: {str(e)}"})
-            raise HTTPException(status_code=500, detail=f"Failed to start processing task: {str(e)}") from e
+        # Start processing in background with cancellation support
+        task = asyncio.create_task(process_embedding_job(job_id))
+        active_job_tasks[job_id] = task
 
         # Return job status
         return JobStatus(
@@ -398,12 +823,9 @@ async def add_to_collection(
 
 
 @router.get("", response_model=list[JobStatus])
-async def list_jobs(
-    current_user: dict[str, Any] = Depends(get_current_user),
-    job_repo: JobRepository = Depends(create_job_repository),
-) -> list[JobStatus]:
+async def list_jobs(current_user: dict[str, Any] = Depends(get_current_user)) -> list[JobStatus]:
     """List all jobs for the current user"""
-    jobs = await job_repo.list_jobs(user_id=str(current_user["id"]))
+    jobs = database.list_jobs(user_id=current_user["id"])
 
     result = []
     for job in jobs:
@@ -433,12 +855,10 @@ async def list_jobs(
 
 @router.get("/collection-metadata/{collection_name}")
 async def get_collection_metadata(
-    collection_name: str,
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    collection_repo: CollectionRepository = Depends(create_collection_repository),
+    collection_name: str, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
 ) -> dict[str, Any]:
     """Get metadata for a specific collection"""
-    metadata = await collection_repo.get_collection_metadata(collection_name)
+    metadata = database.get_collection_metadata(collection_name)
     if not metadata:
         raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
 
@@ -461,17 +881,15 @@ async def check_duplicates(
     collection_name: str = Body(...),
     content_hashes: list[str] = Body(...),
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    file_repo: FileRepository = Depends(create_file_repository),
 ) -> dict[str, list[str]]:
     """Check which content hashes already exist in a collection"""
-    existing_hashes = await file_repo.get_duplicate_files_in_collection(collection_name, content_hashes)
+    existing_hashes = database.get_duplicate_files_in_collection(collection_name, content_hashes)
     return {"existing_hashes": list(existing_hashes)}
 
 
 @router.get("/collections-status")
 async def check_collections_status(
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    job_repo: JobRepository = Depends(create_job_repository),
+    current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
 ) -> dict[str, dict[str, Any]]:
     """Check which job collections exist in Qdrant"""
     try:
@@ -482,7 +900,7 @@ async def check_collections_status(
         collection_names = {c.name for c in collections}
 
         # Get all jobs
-        jobs = await job_repo.list_jobs()
+        jobs = database.list_jobs()
 
         # Check each job's collection
         results = {}
@@ -509,13 +927,11 @@ async def check_collections_status(
 
 @router.post("/{job_id}/cancel")
 async def cancel_job(
-    job_id: str,
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    job_repo: JobRepository = Depends(create_job_repository),
+    job_id: str, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
 ) -> dict[str, str]:
     """Cancel a running job"""
     # Check current job status
-    job = await job_repo.get_job(job_id)
+    job = database.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -523,36 +939,22 @@ async def cancel_job(
         raise HTTPException(status_code=400, detail=f"Cannot cancel job in status: {job['status']}")
 
     # Update job status to cancelled
-    await job_repo.update_job(job_id, {"status": "cancelled"})
+    database.update_job(job_id, {"status": "cancelled"})
 
-    # TODO: Implement task cancellation when celery_task_id is added to database
-    # The Celery task ID needs to be stored persistently to support cancellation
-    # after server restarts or when tasks are distributed across workers.
-    #
-    # Future implementation:
-    # task_id = await job_repo.get_celery_task_id(job_id)
-    # if task_id:
-    #     from webui.celery_app import celery_app
-    #     try:
-    #         celery_app.control.revoke(task_id, terminate=True, signal="SIGKILL")
-    #         logger.info(f"Successfully revoked Celery task {task_id} for job {job_id}")
-    #     except Exception as e:
-    #         logger.warning(f"Failed to revoke Celery task {task_id} for job {job_id}: {e}")
+    # Cancel the task if it's running
+    if job_id in active_job_tasks:
+        active_job_tasks[job_id].cancel()
 
-    logger.warning(f"Job cancellation requested for {job_id} but task revocation not yet implemented")
-
-    return {"message": "Job marked as cancelled (task revocation pending implementation)"}
+    return {"message": "Job cancellation requested"}
 
 
 @router.delete("/{job_id}")
 async def delete_job(
-    job_id: str,
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    job_repo: JobRepository = Depends(create_job_repository),
+    job_id: str, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
 ) -> dict[str, str]:
     """Delete a job and its associated collection"""
     # Check if job exists
-    job = await job_repo.get_job(job_id)
+    job = database.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -565,26 +967,15 @@ async def delete_job(
         logger.warning(f"Failed to delete Qdrant collection: {e}")
 
     # Delete from database
-    await job_repo.delete_job(job_id)
-
-    # Clean up Redis stream
-    try:
-        await ws_manager.cleanup_job_stream(job_id)
-        logger.info(f"Cleaned up Redis stream for deleted job {job_id}")
-    except Exception as e:
-        logger.warning(f"Failed to clean up Redis stream: {e}")
+    database.delete_job(job_id)
 
     return {"message": "Job deleted successfully"}
 
 
 @router.get("/{job_id}", response_model=JobStatus)
-async def get_job(
-    job_id: str,
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    job_repo: JobRepository = Depends(create_job_repository),
-) -> JobStatus:
+async def get_job(job_id: str, current_user: dict[str, Any] = Depends(get_current_user)) -> JobStatus:  # noqa: ARG001
     """Get job details"""
-    job = await job_repo.get_job(job_id)
+    job = database.get_job(job_id)
 
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -640,129 +1031,11 @@ async def check_collection_exists(
 
 # WebSocket handler - export this separately so it can be mounted at the app level
 async def websocket_endpoint(websocket: WebSocket, job_id: str) -> None:
-    """WebSocket for real-time job updates with Redis pub/sub.
-
-    Authentication is handled via JWT token passed as query parameter.
-    The token should be passed as ?token=<jwt_token> in the WebSocket URL.
-    """
-    job_repo = create_job_repository()
-
-    # Extract token from query parameters
-    token = websocket.query_params.get("token")
-
-    try:
-        # Authenticate the user
-        user = await get_current_user_websocket(token)
-        user_id = str(user["id"])
-
-        # Verify the user has access to this job
-        job = await job_repo.get_job(job_id)
-        if not job:
-            await websocket.close(code=1008, reason="Job not found")
-            return
-
-        # Check if user owns this job (unless auth is disabled)
-        if not settings.DISABLE_AUTH and job.get("user_id") != user["id"]:
-            await websocket.close(code=1008, reason="Access denied")
-            return
-
-    except ValueError as e:
-        # Authentication failed
-        await websocket.close(code=1008, reason=str(e))
-        return
-    except Exception as e:
-        logger.error(f"WebSocket authentication error: {e}")
-        await websocket.close(code=1011, reason="Internal server error")
-        return
-
-    # Authentication successful, connect the WebSocket
-    await ws_manager.connect(websocket, job_id, user_id)
-
+    """WebSocket for real-time job updates"""
+    await manager.connect(websocket, job_id)
     try:
         while True:
             # Keep connection alive
             await websocket.receive_text()
     except WebSocketDisconnect:
-        await ws_manager.disconnect(websocket, job_id, user_id)
-
-
-# TODO: Remove this function when Redis pub/sub is implemented
-# This polling approach is being replaced with a more efficient pub/sub pattern
-# async def poll_celery_task_state(job_id: str) -> None:
-#     """Poll Celery task state and send WebSocket updates with adaptive polling interval."""
-#     from webui.celery_app import celery_app
-#
-#     # Need celery_task_id from database instead of active_job_tasks
-#     # task_id = await job_repo.get_celery_task_id(job_id)
-#     # if not task_id:
-#         # return
-
-#     # Adaptive polling configuration
-#     poll_interval = 1.0  # Start with 1 second
-#     max_poll_interval = 10.0  # Max 10 seconds for long-running tasks
-#     poll_increase_rate = 1.2  # Increase by 20% each iteration
-#     task_start_time = asyncio.get_event_loop().time()
-#     consecutive_errors = 0
-#     max_consecutive_errors = 5
-#
-#     while True:
-#         try:
-#             # Get task result with connection error handling
-#             try:
-#                 result = celery_app.AsyncResult(task_id)
-#                 task_state = result.state
-#                 task_info = result.info
-#                 consecutive_errors = 0  # Reset error counter on success
-#             except Exception as e:
-#                 logger.warning(f"Failed to get Celery task state for job {job_id}: {e}")
-#                 consecutive_errors += 1
-#
-#                 if consecutive_errors >= max_consecutive_errors:
-#                     logger.error(f"Too many consecutive errors polling task {task_id}, stopping")
-#                     await manager.send_update(job_id, {"type": "error", "message": "Lost connection to task queue"})
-#                     break
-#
-#                 await asyncio.sleep(5)  # Wait before retry
-#                 continue
-#
-#             if task_state == "PENDING":
-#                 # Task hasn't started yet
-#                 pass
-#             elif task_state == "PROCESSING":
-#                 # Task is running, send progress update
-#                 if task_info:
-#                     await manager.send_update(
-#                         job_id,
-#                         {
-#                             "type": task_info.get("status", "processing"),
-#                             "total_files": task_info.get("total_files", 0),
-#                             "processed_files": task_info.get("processed_files", 0),
-#                             "current_file": task_info.get("current_file"),
-#                         },
-#                     )
-#             elif task_state == "SUCCESS":
-#                 # Task completed successfully
-#                 await manager.send_update(job_id, {"type": "job_completed", "message": "Job completed successfully"})
-#                 # Clean up - no longer needed without active_job_tasks
-#                 break
-#             elif task_state == "FAILURE":
-#                 # Task failed
-#                 await manager.send_update(
-#                     job_id, {"type": "error", "message": str(task_info) if task_info else "Job failed"}
-#                 )
-#                 # Clean up - no longer needed without active_job_tasks
-#                 break
-#
-#             # Adaptive polling: increase interval for long-running tasks
-#             await asyncio.sleep(poll_interval)
-#
-#             # Calculate elapsed time
-#             elapsed_time = asyncio.get_event_loop().time() - task_start_time
-#
-#             # Increase polling interval for long-running tasks
-#             if elapsed_time > 30:  # After 30 seconds, start increasing interval
-#                 poll_interval = min(poll_interval * poll_increase_rate, max_poll_interval)
-#
-#         except Exception as e:
-#             logger.error(f"Unexpected error in poll_celery_task_state: {e}")
-#             await asyncio.sleep(5)  # Longer delay on error
+        manager.disconnect(websocket, job_id)

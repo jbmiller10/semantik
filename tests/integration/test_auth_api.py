@@ -27,7 +27,7 @@ class TempDatabase:
 @pytest.fixture()
 def test_db():
     """Create a temporary database for each test."""
-    with TempDatabase() as db_path, patch("shared.database.sqlite_implementation.DB_PATH", db_path):
+    with TempDatabase() as db_path, patch("shared.database.DB_PATH", db_path):
         # Import and initialize after patching
         from shared.database import init_db
 
@@ -180,14 +180,11 @@ def test_user_login_failure(client):
     assert "incorrect username or password" in response.json()["detail"].lower()
 
 
-def test_get_me_protected(client, monkeypatch):
+def test_get_me_protected(client):
     """Test that /me endpoint requires authentication."""
-    # Temporarily disable DISABLE_AUTH for this test
-    monkeypatch.setattr("packages.webui.auth.settings.DISABLE_AUTH", False)
-
     # Test without token - should fail
     response = client.get("/api/auth/me")
-    assert response.status_code == 401
+    assert response.status_code == 403
     assert "not authenticated" in response.json()["detail"].lower()
 
     # Test with invalid token - should fail

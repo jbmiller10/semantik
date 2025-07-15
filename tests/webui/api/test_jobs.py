@@ -4,8 +4,7 @@ from unittest.mock import AsyncMock, Mock
 
 from fastapi.testclient import TestClient
 from shared.config import settings
-
-# ConnectionManager has been replaced with ws_manager
+from webui.api.jobs import ConnectionManager, active_job_tasks
 
 
 class TestJobCreation:
@@ -15,7 +14,7 @@ class TestJobCreation:
         """Test job creation with no supported files"""
         # Mock the scan_directory_async to return empty list to avoid file processing
         mock_scan = AsyncMock(return_value={"files": []})
-        monkeypatch.setattr("packages.webui.api.files.scan_directory_async", mock_scan)
+        monkeypatch.setattr("webui.api.files.scan_directory_async", mock_scan)
 
         # Create job request
         request_data = {
@@ -40,9 +39,9 @@ class TestJobCreation:
 class TestJobManagement:
     """Test job management endpoints"""
 
-    def test_list_jobs(self, test_client_with_mocks: TestClient, mock_job_repository):
+    def test_list_jobs(self, test_client: TestClient, monkeypatch):
         """Test listing jobs for current user"""
-        # Mock repository response
+        # Mock database list_jobs
         mock_jobs = [
             {
                 "id": "job1",
@@ -75,9 +74,9 @@ class TestJobManagement:
             },
         ]
 
-        mock_job_repository.list_jobs = AsyncMock(return_value=mock_jobs)
+        monkeypatch.setattr("shared.database.list_jobs", Mock(return_value=mock_jobs))
 
-        response = test_client_with_mocks.get("/api/jobs", headers={})
+        response = test_client.get("/api/jobs", headers={})
 
         assert response.status_code == 200
         data = response.json()
@@ -87,7 +86,7 @@ class TestJobManagement:
         assert data[1]["id"] == "job2"
         assert data[1]["status"] == "processing"
 
-    def test_get_job_details(self, test_client_with_mocks: TestClient, mock_job_repository):
+    def test_get_job_details(self, test_client: TestClient, monkeypatch):
         """Test getting specific job details"""
         job_id = "test-job-123"
         mock_job = {
@@ -109,9 +108,9 @@ class TestJobManagement:
             "chunk_overlap": 200,
         }
 
-        mock_job_repository.get_job = AsyncMock(return_value=mock_job)
+        monkeypatch.setattr("shared.database.get_job", Mock(return_value=mock_job))
 
-        response = test_client_with_mocks.get(f"/api/jobs/{job_id}", headers={})
+        response = test_client.get(f"/api/jobs/{job_id}", headers={})
 
         assert response.status_code == 200
         data = response.json()
@@ -119,50 +118,59 @@ class TestJobManagement:
         assert data["name"] == "Test Job"
         assert data["status"] == "completed"
 
-    def test_get_job_not_found(self, test_client_with_mocks: TestClient, mock_job_repository):
+    def test_get_job_not_found(self, test_client: TestClient, monkeypatch):
         """Test getting non-existent job"""
-        mock_job_repository.get_job = AsyncMock(return_value=None)
+        monkeypatch.setattr("shared.database.get_job", Mock(return_value=None))
 
-        response = test_client_with_mocks.get("/api/jobs/non-existent", headers={})
+        response = test_client.get("/api/jobs/non-existent", headers={})
 
         assert response.status_code == 404
         assert "Job not found" in response.json()["detail"]
 
-    def test_cancel_job(self, test_client_with_mocks: TestClient, mock_job_repository):
-        """Test cancelling a running job (task revocation pending implementation)"""
+    def test_cancel_job(self, test_client: TestClient, monkeypatch):
+        """Test cancelling a running job"""
         job_id = "running-job"
 
-        # Mock repository methods
-        mock_job_repository.get_job = AsyncMock(return_value={"id": job_id, "status": "processing"})
-        mock_job_repository.update_job = AsyncMock()
+        # Mock get_job to return a running job
+        monkeypatch.setattr("shared.database.get_job", Mock(return_value={"id": job_id, "status": "processing"}))
 
-        response = test_client_with_mocks.post(f"/api/jobs/{job_id}/cancel", headers={})
+        # Mock update_job
+        mock_update_job = Mock()
+        monkeypatch.setattr("shared.database.update_job", mock_update_job)
+
+        # Mock active task
+        mock_task = Mock()
+        active_job_tasks[job_id] = mock_task
+
+        response = test_client.post(f"/api/jobs/{job_id}/cancel", headers={})
 
         assert response.status_code == 200
-        assert "Job marked as cancelled (task revocation pending implementation)" in response.json()["message"]
+        assert "cancellation requested" in response.json()["message"]
 
         # Verify job status was updated
-        mock_job_repository.update_job.assert_called_once_with(job_id, {"status": "cancelled"})
+        mock_update_job.assert_called_once_with(job_id, {"status": "cancelled"})
 
-    def test_cancel_job_invalid_status(self, test_client_with_mocks: TestClient, mock_job_repository):
+        # Verify task was cancelled
+        mock_task.cancel.assert_called_once()
+
+    def test_cancel_job_invalid_status(self, test_client: TestClient, monkeypatch):
         """Test cancelling a job that's not running"""
         job_id = "completed-job"
 
-        # Mock repository method
-        mock_job_repository.get_job = AsyncMock(return_value={"id": job_id, "status": "completed"})
+        # Mock get_job to return a completed job
+        monkeypatch.setattr("shared.database.get_job", Mock(return_value={"id": job_id, "status": "completed"}))
 
-        response = test_client_with_mocks.post(f"/api/jobs/{job_id}/cancel", headers={})
+        response = test_client.post(f"/api/jobs/{job_id}/cancel", headers={})
 
         assert response.status_code == 400
         assert response.json()["detail"] == "Cannot cancel job in status: completed"
 
-    def test_delete_job(self, test_client_with_mocks: TestClient, mock_job_repository, monkeypatch):
+    def test_delete_job(self, test_client: TestClient, monkeypatch):
         """Test deleting a job"""
         job_id = "job-to-delete"
 
-        # Mock repository methods
-        mock_job_repository.get_job = AsyncMock(return_value={"id": job_id, "status": "completed"})
-        mock_job_repository.delete_job = AsyncMock(return_value=True)
+        # Mock get_job
+        monkeypatch.setattr("shared.database.get_job", Mock(return_value={"id": job_id, "status": "completed"}))
 
         # Mock AsyncQdrantClient - delete endpoint creates its own client
         mock_async_qdrant = AsyncMock()
@@ -170,9 +178,13 @@ class TestJobManagement:
 
         # Mock the AsyncQdrantClient constructor
         mock_async_qdrant_class = Mock(return_value=mock_async_qdrant)
-        monkeypatch.setattr("packages.webui.api.jobs.AsyncQdrantClient", mock_async_qdrant_class)
+        monkeypatch.setattr("webui.api.jobs.AsyncQdrantClient", mock_async_qdrant_class)
 
-        response = test_client_with_mocks.delete(f"/api/jobs/{job_id}", headers={})
+        # Mock database delete
+        mock_delete_job = Mock()
+        monkeypatch.setattr("shared.database.delete_job", mock_delete_job)
+
+        response = test_client.delete(f"/api/jobs/{job_id}", headers={})
 
         assert response.status_code == 200
         assert "deleted successfully" in response.json()["message"]
@@ -181,14 +193,14 @@ class TestJobManagement:
         mock_async_qdrant_class.assert_called_once_with(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
         mock_async_qdrant.delete_collection.assert_called_once_with(f"job_{job_id}")
 
-        # Verify repository delete
-        mock_job_repository.delete_job.assert_called_once_with(job_id)
+        # Verify database delete
+        mock_delete_job.assert_called_once_with(job_id)
 
 
 class TestCollectionOperations:
     """Test collection-related operations"""
 
-    def test_check_collection_exists(self, test_client_with_mocks: TestClient, monkeypatch):
+    def test_check_collection_exists(self, test_client: TestClient, monkeypatch):
         """Test checking if a job's collection exists"""
         job_id = "test-job"
         collection_name = f"job_{job_id}"
@@ -207,7 +219,7 @@ class TestCollectionOperations:
 
         monkeypatch.setattr("webui.api.jobs.qdrant_manager.get_client", Mock(return_value=mock_qdrant_client))
 
-        response = test_client_with_mocks.get(f"/api/jobs/{job_id}/collection-exists", headers={})
+        response = test_client.get(f"/api/jobs/{job_id}/collection-exists", headers={})
 
         assert response.status_code == 200
         data = response.json()
@@ -215,7 +227,7 @@ class TestCollectionOperations:
         assert data["collection_name"] == collection_name
         assert data["point_count"] == 100
 
-    def test_get_collection_metadata(self, test_client_with_mocks: TestClient, mock_collection_repository):
+    def test_get_collection_metadata(self, test_client: TestClient, monkeypatch):
         """Test getting collection metadata"""
         collection_name = "Test Collection"
 
@@ -231,9 +243,9 @@ class TestCollectionOperations:
             "vector_dim": 768,
         }
 
-        mock_collection_repository.get_collection_metadata = AsyncMock(return_value=mock_metadata)
+        monkeypatch.setattr("shared.database.get_collection_metadata", Mock(return_value=mock_metadata))
 
-        response = test_client_with_mocks.get(f"/api/jobs/collection-metadata/{collection_name}", headers={})
+        response = test_client.get(f"/api/jobs/collection-metadata/{collection_name}", headers={})
 
         assert response.status_code == 200
         data = response.json()
@@ -241,11 +253,11 @@ class TestCollectionOperations:
         assert data["model_name"] == "test-model"
         assert data["vector_dim"] == 768
 
-    def test_get_collection_metadata_not_found(self, test_client_with_mocks: TestClient, mock_collection_repository):
+    def test_get_collection_metadata_not_found(self, test_client: TestClient, monkeypatch):
         """Test getting metadata for non-existent collection"""
-        mock_collection_repository.get_collection_metadata = AsyncMock(return_value=None)
+        monkeypatch.setattr("shared.database.get_collection_metadata", Mock(return_value=None))
 
-        response = test_client_with_mocks.get("/api/jobs/collection-metadata/non-existent", headers={})
+        response = test_client.get("/api/jobs/collection-metadata/non-existent", headers={})
 
         assert response.status_code == 404
         assert "not found" in response.json()["detail"]
@@ -263,8 +275,21 @@ class TestWebSocketOperations:
         assert "job_id" in data
         assert len(data["job_id"]) == 36  # UUID format
 
-    # Note: ConnectionManager has been replaced with ws_manager
-    # WebSocket functionality is now tested through integration tests
+    def test_connection_manager_operations(self):
+        """Test ConnectionManager class operations"""
+        cm = ConnectionManager()
+        job_id = "test-job"
+
+        # Mock WebSocket
+        mock_ws = AsyncMock()
+        mock_ws.accept = AsyncMock()
+        mock_ws.send_json = AsyncMock()
+
+        # Test connection tracking
+        assert job_id not in cm.active_connections
+
+        # Note: These are async methods, so we'd need to test them properly
+        # in an async context, but this tests the basic structure exists
 
 
 class TestValidation:

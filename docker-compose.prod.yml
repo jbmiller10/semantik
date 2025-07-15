@@ -40,8 +40,6 @@ services:
         max-size: "100m"
         max-file: "5"
     environment:
-      # Production environment
-      - ENVIRONMENT=production
       # Production optimizations
       - PYTHONOPTIMIZE=2  # Remove docstrings and enable optimizations
       - MODEL_UNLOAD_AFTER_SECONDS=600  # Keep models loaded longer in production
@@ -64,8 +62,6 @@ services:
         max-size: "100m"
         max-file: "5"
     environment:
-      # Production environment
-      - ENVIRONMENT=production
       # Production settings
       - PYTHONOPTIMIZE=2
       - LOG_LEVEL=WARNING

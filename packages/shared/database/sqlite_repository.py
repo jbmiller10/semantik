@@ -9,15 +9,7 @@ import logging
 from typing import Any
 
 from . import sqlite_implementation as db_impl
-from .base import AuthRepository, CollectionRepository, FileRepository, JobRepository, UserRepository
-from .exceptions import (
-    AccessDeniedError,
-    DatabaseOperationError,
-    EntityAlreadyExistsError,
-    EntityNotFoundError,
-    InvalidUserIdError,
-)
-from .utils import parse_user_id
+from .base import JobRepository, UserRepository
 
 logger = logging.getLogger(__name__)
 
@@ -102,8 +94,7 @@ class SQLiteJobRepository(JobRepository):
             if updated_job is None:
                 raise ValueError(f"Job {job_id} disappeared during update operation")
             return updated_job
-        except InvalidUserIdError:
-            # Re-raise InvalidUserIdError (which is also a ValueError)
+        except ValueError:
             raise
         except Exception as e:
             logger.error(f"Failed to update job {job_id}: {e}")
@@ -157,12 +148,16 @@ class SQLiteJobRepository(JobRepository):
             # for IDs to support different backend storage systems
             user_id_int: int | None = None
             if user_id is not None:
-                user_id_int = parse_user_id(user_id)
+                try:
+                    user_id_int = int(user_id)
+                except ValueError:
+                    logger.error(f"Invalid user_id format: {user_id}")
+                    raise ValueError(f"user_id must be a valid integer, got: {user_id}") from None
 
             result: list[dict[str, Any]] = self.db.list_jobs(user_id=user_id_int)
             return result
-        except InvalidUserIdError:
-            # Re-raise InvalidUserIdError (which is also a ValueError)
+        except ValueError:
+            # Re-raise ValueError for invalid user_id
             raise
         except Exception as e:
             logger.error(f"Failed to list jobs: {e}")
@@ -195,30 +190,13 @@ class SQLiteUserRepository(UserRepository):
             raise
 
     async def get_user(self, user_id: str) -> dict[str, Any] | None:
-        """Get a user by numeric ID.
-
-        Args:
-            user_id: Numeric user ID as a string (e.g., "123")
-
-        Returns:
-            User dictionary or None if not found
-
-        Raises:
-            InvalidUserIdError: If user_id is not numeric
-            DatabaseOperationError: For database errors
-        """
+        """Get a user by ID."""
         try:
-            # Convert string user_id to int for SQLite
-            user_id_int = parse_user_id(user_id)
-
-            result: dict[str, Any] | None = self.db.get_user_by_id(user_id_int)
+            result: dict[str, Any] | None = self.db.get_user(user_id)
             return result
-        except InvalidUserIdError:
-            # Re-raise InvalidUserIdError directly (which is also a ValueError)
-            raise
         except Exception as e:
             logger.error(f"Failed to get user {user_id}: {e}")
-            raise DatabaseOperationError("retrieve", "user", str(e)) from e
+            raise
 
     async def get_user_by_username(self, username: str) -> dict[str, Any] | None:
         """Get a user by username."""
@@ -290,321 +268,4 @@ class SQLiteUserRepository(UserRepository):
             return False  # Return False since we can't actually delete
         except Exception as e:
             logger.error(f"Failed to delete user {user_id}: {e}")
-            raise DatabaseOperationError("delete", "user", str(e)) from e
-
-    async def list_users(self, **filters: Any) -> list[dict[str, Any]]:
-        """List all users with optional filters.
-
-        Note: Current SQLite implementation doesn't support filters.
-        This is a placeholder for future functionality.
-
-        Args:
-            **filters: Optional filters (not used in current implementation)
-
-        Returns:
-            List of user dictionaries
-
-        Raises:
-            DatabaseOperationError: For database errors
-        """
-        try:
-            # Note: Current database module doesn't have a list_users method
-            # This would need to be implemented in sqlite_implementation.py
-            # For now, return empty list as a placeholder
-            _ = filters  # Mark as intentionally unused
-            logger.warning("User listing not yet implemented in database layer")
-            return []
-        except Exception as e:
-            logger.error(f"Failed to list users: {e}")
-            raise DatabaseOperationError("list", "users", str(e)) from e
-
-
-class SQLiteFileRepository(FileRepository):
-    """SQLite implementation of FileRepository."""
-
-    def __init__(self) -> None:
-        """Initialize with the local database implementation."""
-        self.db = db_impl
-
-    async def add_files_to_job(self, job_id: str, files: list[dict[str, Any]]) -> None:
-        """Add files to a job."""
-        try:
-            self.db.add_files_to_job(job_id, files)
-        except Exception as e:
-            logger.error(f"Failed to add files to job {job_id}: {e}")
-            raise
-
-    async def get_job_files(self, job_id: str, status: str | None = None) -> list[dict[str, Any]]:
-        """Get files for a job with optional status filter."""
-        try:
-            result: list[dict[str, Any]] = self.db.get_job_files(job_id, status)
-            return result
-        except Exception as e:
-            logger.error(f"Failed to get files for job {job_id}: {e}")
-            raise
-
-    async def update_file_status(
-        self,
-        job_id: str,
-        file_path: str,
-        status: str,
-        error: str | None = None,
-        chunks_created: int = 0,
-        vectors_created: int = 0,
-    ) -> None:
-        """Update file processing status."""
-        try:
-            self.db.update_file_status(job_id, file_path, status, error, chunks_created, vectors_created)
-        except Exception as e:
-            logger.error(f"Failed to update file status for {file_path} in job {job_id}: {e}")
-            raise
-
-    async def get_job_total_vectors(self, job_id: str) -> int:
-        """Get total vectors created for all files in a job."""
-        try:
-            result: int = self.db.get_job_total_vectors(job_id)
-            return result
-        except Exception as e:
-            logger.error(f"Failed to get total vectors for job {job_id}: {e}")
-            raise
-
-    async def get_duplicate_files_in_collection(self, collection_name: str, content_hashes: list[str]) -> set[str]:
-        """Check which content hashes already exist in a collection."""
-        try:
-            result: set[str] = self.db.get_duplicate_files_in_collection(collection_name, content_hashes)
-            return result
-        except Exception as e:
-            logger.error(f"Failed to check duplicate files in collection {collection_name}: {e}")
-            raise
-
-
-class SQLiteCollectionRepository(CollectionRepository):
-    """SQLite implementation of CollectionRepository.
-
-    Note on Transactions:
-    The underlying SQLite implementation already handles transactions for
-    operations that modify multiple tables (like delete_collection).
-
-    For custom transaction handling, you can use the transaction support:
-
-    Example:
-        from shared.database import async_sqlite_transaction
-
-        async with async_sqlite_transaction() as conn:
-            cursor = conn.cursor()
-            # Perform multiple operations atomically
-            cursor.execute("DELETE FROM files WHERE job_id = ?", (job_id,))
-            cursor.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
-            # Both deletes are committed together
-    """
-
-    def __init__(self) -> None:
-        """Initialize with the local database implementation."""
-        self.db = db_impl
-
-    async def list_collections(self, user_id: str | None = None) -> list[dict[str, Any]]:
-        """List all collections with optional user filter.
-
-        Note: Converts string user_id to int for SQLite compatibility.
-        """
-        try:
-            user_id_int: int | None = None
-            if user_id is not None:
-                user_id_int = parse_user_id(user_id)
-
-            result: list[dict[str, Any]] = self.db.list_collections(user_id=user_id_int)
-            return result
-        except InvalidUserIdError:
-            # Re-raise InvalidUserIdError (which is also a ValueError)
-            raise
-        except Exception as e:
-            logger.error(f"Failed to list collections: {e}")
-            raise
-
-    async def get_collection_details(self, collection_name: str, user_id: str) -> dict[str, Any] | None:
-        """Get detailed information for a collection.
-
-        Note: Converts string user_id to int for SQLite compatibility.
-        """
-        try:
-            user_id_int = parse_user_id(user_id)
-
-            result: dict[str, Any] | None = self.db.get_collection_details(collection_name, user_id_int)
-            return result
-        except InvalidUserIdError:
-            # Re-raise InvalidUserIdError (which is also a ValueError)
-            raise
-        except Exception as e:
-            logger.error(f"Failed to get collection details for {collection_name}: {e}")
-            raise
-
-    async def get_collection_files(
-        self, collection_name: str, user_id: str, page: int = 1, limit: int = 50
-    ) -> dict[str, Any]:
-        """Get paginated files in a collection.
-
-        Note: Converts string user_id to int for SQLite compatibility.
-        """
-        try:
-            user_id_int = parse_user_id(user_id)
-
-            result: dict[str, Any] = self.db.get_collection_files(collection_name, user_id_int, page, limit)
-            return result
-        except InvalidUserIdError:
-            # Re-raise InvalidUserIdError (which is also a ValueError)
-            raise
-        except Exception as e:
-            logger.error(f"Failed to get files for collection {collection_name}: {e}")
-            raise
-
-    async def rename_collection(self, old_name: str, new_name: str, user_id: str) -> bool:
-        """Rename a collection.
-
-        Note: Converts string user_id to int for SQLite compatibility.
-        The underlying implementation already validates that:
-        - The user owns at least one job in the collection
-        - The new name doesn't already exist
-
-        Args:
-            old_name: Current collection name
-            new_name: New collection name
-            user_id: User ID as string
-
-        Returns:
-            True if successful, False if validation failed
-
-        Raises:
-            InvalidUserIdError: If user_id is not numeric
-            EntityAlreadyExistsError: If new_name already exists
-            AccessDeniedError: If user doesn't own the collection
-            DatabaseOperationError: For database errors
-        """
-        try:
-            user_id_int = parse_user_id(user_id)
-
-            # First check if the collection exists and user has access
-            collection_details = self.db.get_collection_details(old_name, user_id_int)
-            if collection_details is None:
-                # Either collection doesn't exist or user doesn't have access
-                # Check if collection exists at all
-                all_collections = self.db.list_collections()
-                collection_exists = any(c["name"] == old_name for c in all_collections)
-
-                if collection_exists:
-                    raise AccessDeniedError(user_id, "collection", old_name)
-                raise EntityNotFoundError("collection", old_name)
-
-            # The rename_collection method returns False if new name already exists
-            # or if user doesn't have access. We need to distinguish these cases.
-            result: bool = self.db.rename_collection(old_name, new_name, user_id_int)
-
-            if not result:
-                # Check if it failed due to duplicate name
-                all_collections = self.db.list_collections()
-                name_exists = any(c["name"] == new_name for c in all_collections)
-
-                if name_exists:
-                    raise EntityAlreadyExistsError("collection", new_name)
-                # This shouldn't happen since we already checked access above
-                raise AccessDeniedError(user_id, "collection", old_name)
-
-            return result
-        except (InvalidUserIdError, EntityAlreadyExistsError, AccessDeniedError, EntityNotFoundError):
-            # Re-raise our domain exceptions
-            raise
-        except Exception as e:
-            logger.error(f"Failed to rename collection from {old_name} to {new_name}: {e}")
-            raise DatabaseOperationError("rename", "collection", str(e)) from e
-
-    async def delete_collection(self, collection_name: str, user_id: str) -> dict[str, Any]:
-        """Delete a collection and return deletion info.
-
-        Note: Converts string user_id to int for SQLite compatibility.
-        """
-        try:
-            user_id_int = parse_user_id(user_id)
-
-            result: dict[str, Any] = self.db.delete_collection(collection_name, user_id_int)
-            return result
-        except InvalidUserIdError:
-            # Re-raise InvalidUserIdError (which is also a ValueError)
-            raise
-        except Exception as e:
-            logger.error(f"Failed to delete collection {collection_name}: {e}")
-            raise
-
-    async def get_collection_metadata(self, collection_name: str) -> dict[str, Any] | None:
-        """Get metadata from the first job of a collection."""
-        try:
-            result: dict[str, Any] | None = self.db.get_collection_metadata(collection_name)
-            return result
-        except Exception as e:
-            logger.error(f"Failed to get metadata for collection {collection_name}: {e}")
-            raise
-
-
-class SQLiteAuthRepository(AuthRepository):
-    """SQLite implementation of AuthRepository."""
-
-    def __init__(self) -> None:
-        """Initialize with the local database implementation."""
-        self.db = db_impl
-
-    async def save_refresh_token(self, user_id: str, token_hash: str, expires_at: Any) -> None:
-        """Save a refresh token for a user.
-
-        Note: Converts string user_id to int for SQLite compatibility.
-        """
-        try:
-            # Import datetime to handle the type
-            from datetime import datetime
-
-            user_id_int = parse_user_id(user_id)
-
-            if isinstance(expires_at, str):
-                # Convert string to datetime if needed
-                expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-
-            self.db.save_refresh_token(user_id_int, token_hash, expires_at)
-        except InvalidUserIdError:
-            # Re-raise InvalidUserIdError (which is also a ValueError)
-            raise
-        except Exception as e:
-            logger.error(f"Failed to save refresh token: {e}")
-            raise
-
-    async def verify_refresh_token(self, token: str) -> str | None:
-        """Verify a refresh token and return user_id if valid.
-
-        Note: Returns string user_id for repository interface consistency.
-        """
-        try:
-            user_id_int: int | None = self.db.verify_refresh_token(token)
-            return str(user_id_int) if user_id_int is not None else None
-        except Exception as e:
-            logger.error(f"Failed to verify refresh token: {e}")
-            raise
-
-    async def revoke_refresh_token(self, token: str) -> None:
-        """Revoke a refresh token."""
-        try:
-            self.db.revoke_refresh_token(token)
-        except Exception as e:
-            logger.error(f"Failed to revoke refresh token: {e}")
-            raise
-
-    async def update_user_last_login(self, user_id: str) -> None:
-        """Update user's last login timestamp.
-
-        Note: Converts string user_id to int for SQLite compatibility.
-        """
-        try:
-            user_id_int = parse_user_id(user_id)
-
-            self.db.update_user_last_login(user_id_int)
-        except InvalidUserIdError:
-            # Re-raise InvalidUserIdError (which is also a ValueError)
-            raise
-        except Exception as e:
-            logger.error(f"Failed to update last login: {e}")
             raise

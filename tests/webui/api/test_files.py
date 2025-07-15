@@ -2,11 +2,12 @@
 Unit tests for file scanning and hashing functionality
 """
 
+import asyncio
 import hashlib
 from collections.abc import Generator
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pyfakefs.fake_filesystem_unittest import Patcher
@@ -177,20 +178,23 @@ class TestScanDirectoryAsync:
         """Test that scan sends progress updates when scan_id is provided"""
         # Mock the manager to capture updates
         mock_manager = MagicMock()
-        mock_manager.send_job_update = AsyncMock()
+        mock_send_update = MagicMock(return_value=asyncio.Future())
+        mock_send_update.return_value.set_result(None)
+        mock_manager.send_update = mock_send_update
 
         with patch("webui.api.files.manager", mock_manager):
             await scan_directory_async("/test_dir", recursive=True, scan_id="test_scan_123")
 
             # Verify that updates were sent
-            mock_manager.send_job_update.assert_called()
+            mock_send_update.assert_called()
 
             # Check for different types of updates
             update_types = []
-            for call in mock_manager.send_job_update.call_args_list:
-                channel, update_type, data = call[0]
+            for call in mock_send_update.call_args_list:
+                channel, data = call[0]
                 assert channel == "scan_test_scan_123"
-                update_types.append(update_type)
+                if "type" in data:
+                    update_types.append(data["type"])
 
             # Should have counting and progress updates
             assert "counting" in update_types or "progress" in update_types

@@ -1,97 +1,71 @@
-# TEST-102 Implementation Plan
+# Docker Embedding Generation Investigation Plan
 
-## Objective
-Write automated tests for critical frontend components and flows, focusing on the refactored job creation and status monitoring flows, achieving >70% frontend test coverage.
+## UPDATE: Bitsandbytes INT8 Quantization Issue
 
-## Acceptance Criteria
-- [x] Unit tests exist for CollectionCard, JobCard, and SearchInterface components
-- [x] Integration tests exist for the full "Create Job" form submission flow (partially complete)
-- [x] Integration tests exist for the "Job List" page
-- [ ] Frontend test coverage exceeds 70% (pending verification)
+### New Problem
+User reports issues with INT8 quantization through bitsandbytes in Docker container.
 
-## Current Status
-- **Completed**: 
-  - JobCard tests (8/8 passing)
-  - CollectionCard tests (8/8 passing)
-  - SearchInterface tests (12/12 passing)
-  - JobList tests (9/9 passing)
-- **Mostly Complete**: CreateJobForm tests (9/12 passing)
-- **Overall**: 56/61 tests passing (91.8% success rate)
-- **Coverage**: Dependency installed, configuration ready, verification pending
+### Investigation Summary
 
-## Remaining Work
+#### Root Cause Analysis
+1. **Docker Image Mismatch**: The default docker-compose.yml uses the regular Dockerfile which lacks CUDA support
+2. **Missing CUDA Libraries**: Bitsandbytes requires specific CUDA libraries (libcudart, libcublas, libcusparse)
+3. **Dockerfile.cuda Issues**:
+   - Uses Python 3.11 (vs 3.12 in regular Dockerfile)
+   - Wrong Python package paths (dist-packages vs site-packages)
+   - Missing critical environment variables for bitsandbytes
+4. **Configuration Issue**: Users must explicitly use docker-compose.cuda.yml override
 
-### 1. Fix CreateJobForm Tests (High Priority)
-**Issues to resolve:**
-- `shows scan results when available` - Update to match actual UI text
-- `shows warning confirmation dialog` - Fix async handling and mock setup
-- `handles append mode submission` - Complete the full flow test
+### Solution Plan
 
-**Actions:**
-- Debug why scanResult.files.map is failing
-- Update test expectations to match actual component output
-- Ensure all async operations are properly awaited
+#### Immediate Fix - Update Dockerfile.cuda
+1. Fix Python package paths (use site-packages for Python 3.11)
+2. Add CUDA environment variables:
+   - CUDA_HOME=/usr/local/cuda
+   - LD_LIBRARY_PATH with CUDA lib paths
+3. Install bitsandbytes with proper CUDA detection
+4. Add build-time test for bitsandbytes
 
-### 2. Add Missing Integration Tests (High Priority)
-**Create Job Form Submission Flow:**
-- Test complete flow: directory scan → form fill → job creation
-- Test error handling during job creation
-- Test form reset after successful submission
+#### Configuration Updates
+1. Update docker-compose.cuda.yml with required environment variables
+2. Document proper usage for INT8 quantization
+3. Add troubleshooting script
 
-**Job Status Monitoring Flow:**
-- Test WebSocket updates for job progress
-- Test job state transitions
-- Test error state handling
+### Files to Modify
+- Dockerfile.cuda (critical fixes)
+- docker-compose.cuda.yml (env vars)
+- docs/docker-cuda-fixes.md (new documentation)
+- .env.docker.example (update comments)
 
-### 3. Update MSW Handlers (Medium Priority)
-**Missing Endpoints:**
-- `/api/jobs/scan` - Directory scanning endpoint
-- Any WebSocket endpoints for real-time updates
-- Error response scenarios for testing error handling
+---
 
-### 4. Run Coverage Report (High Priority)
-**Steps:**
-1. Run `npm test -- --coverage` to generate coverage report
-2. Identify components/functions with low coverage
-3. Add tests for uncovered critical paths
-4. Verify >70% coverage is achieved
+## Previous Investigation (RESOLVED)
 
-### 5. Additional Test Improvements (Low Priority)
-**If time permits:**
-- Add accessibility tests
-- Add performance tests for large data sets
-- Add visual regression tests for key components
-- Test keyboard navigation flows
+### Root Cause Identified
+The embedding generation was failing due to **undefined variables** in the `embedding_service.py` file:
+- `max_retries` variable was not defined
+- `retry_delay` variable was not defined  
+- `time` module was not imported
 
-## Test Organization Structure
-```
-src/components/__tests__/
-├── JobCard.test.tsx ✅
-├── CollectionCard.test.tsx ✅
-├── SearchInterface.test.tsx ✅
-├── JobList.test.tsx ✅
-└── CreateJobForm.test.tsx ⚠️ (needs fixes)
+These variables were used in the Qwen3 model loading retry logic (lines 163-198).
 
-src/integration/__tests__/ (to be created)
-├── CreateJobFlow.test.tsx
-└── JobMonitoringFlow.test.tsx
-```
+### Fix Applied
+1. Added `import time` to the imports section
+2. Defined `max_retries = 3` before the retry loops
+3. Defined `retry_delay = 2` before the retry loops
 
-## Time Estimate
-- Fix CreateJobForm tests: 1-2 hours
-- Add integration tests: 2-3 hours
-- Coverage verification and gap filling: 1-2 hours
-- **Total remaining**: 4-7 hours
+### Verification
+After rebuilding the Docker containers with the fixed code:
+- The WebUI service started successfully with CUDA enabled
+- Successfully created an embedding job via API
+- Job processed 13+ files out of 138 total files
+- Embeddings were generated using Qwen3-Embedding-0.6B model with float16 quantization
+- Points were successfully uploaded to Qdrant vector database
 
-## Success Metrics
-- All component tests passing (48/48)
-- Integration tests for critical flows implemented
-- Frontend test coverage >70%
-- No flaky tests
-- Tests run in <30 seconds
+### Additional Findings
+- Docker configuration is correct with proper GPU passthrough
+- Volume mounts are working correctly
+- The UI has some minor issues with the registration flow but the API works perfectly
+- The system successfully uses GPU acceleration for embedding generation
 
-## Notes
-- Focus on testing user-facing functionality over implementation details
-- Use MSW for consistent API mocking
-- Keep tests maintainable and readable
-- Document any complex test setups
+The embedding generation is now working correctly in the Docker container!

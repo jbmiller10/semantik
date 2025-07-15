@@ -120,21 +120,12 @@ class TestWebuiHealthEndpoints:
         async def async_get_service(*_args, **_kwargs):
             return mock_embedding_service
 
-        # Mock Redis connection
-        mock_redis = Mock()
-
-        async def async_ping():
-            return True
-
-        mock_redis.ping = async_ping
-
         with (
             patch("packages.webui.api.health.get_embedding_service", side_effect=async_get_service),
             patch("shared.embedding.service.get_embedding_service", side_effect=async_get_service),
             patch("shared.embedding.service._embedding_service", mock_embedding_service),
-            patch("packages.webui.api.health.ws_manager.redis", mock_redis),
         ):
-            response = test_client.get("/api/health/readyz")
+            response = test_client.get("/api/health/ready")
             assert response.status_code == 200
             data = response.json()
             assert data["ready"] is True
@@ -146,22 +137,13 @@ class TestWebuiHealthEndpoints:
         async def async_get_service(*_args, **_kwargs):
             return mock_embedding_service
 
-        # Mock Redis connection - make it healthy so we can test embedding failure
-        mock_redis = Mock()
-
-        async def async_ping():
-            return True
-
-        mock_redis.ping = async_ping
-
         with (
             patch("packages.webui.api.health.get_embedding_service", side_effect=async_get_service),
             patch("shared.embedding.service.get_embedding_service", side_effect=async_get_service),
             patch("shared.embedding.service._embedding_service", mock_embedding_service),
-            patch("packages.webui.api.health.ws_manager.redis", mock_redis),
         ):
-            response = test_client.get("/api/health/readyz")
-            assert response.status_code == 503  # Should be 503 when not ready
+            response = test_client.get("/api/health/ready")
+            assert response.status_code == 200
             data = response.json()
             assert data["ready"] is False
 
