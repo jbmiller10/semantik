@@ -44,28 +44,38 @@ export const handlers = [
 
   // Jobs endpoints
   http.get('/api/jobs', () => {
-    return HttpResponse.json({
-      items: [
-        {
-          id: '1',
-          name: 'Test Collection',
-          directory_path: '/test/path',
-          collection_name: 'test-collection',
-          status: 'completed',
-          progress: 100,
-          total_files: 10,
-          total_documents: 10,
-          processed_files: 10,
-          processed_documents: 10,
-          failed_files: 0,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-      ],
-      total: 1,
-      page: 1,
-      limit: 50,
-    })
+    return HttpResponse.json([
+      {
+        id: '1',
+        name: 'Test Collection',
+        directory_path: '/test/path',
+        collection_name: 'test-collection',
+        status: 'completed',
+        progress: 100,
+        total_files: 10,
+        total_documents: 10,
+        processed_files: 10,
+        processed_documents: 10,
+        failed_files: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      {
+        id: '2',
+        name: 'Test Collection 2',
+        directory_path: '/test/path2',
+        collection_name: 'test-collection-2',
+        status: 'completed',
+        progress: 100,
+        total_files: 20,
+        total_documents: 20,
+        processed_files: 20,
+        processed_documents: 20,
+        failed_files: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+    ])
   }),
 
   http.post('/api/jobs', async ({ request }) => {
@@ -102,16 +112,17 @@ export const handlers = [
 
   // Collections endpoints
   http.get('/api/collections', () => {
-    return HttpResponse.json({
-      collections: [
-        {
-          name: 'test-collection',
-          document_count: 100,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-      ]
-    })
+    return HttpResponse.json([
+      {
+        name: 'test-collection',
+        total_files: 100,
+        total_vectors: 500,
+        model_name: 'Qwen/Qwen3-Embedding-0.6B',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        job_count: 2,
+      }
+    ])
   }),
 
   http.get('/api/collections/:name', ({ params }) => {
@@ -184,15 +195,35 @@ export const handlers = [
       ]
     })
   }),
+  
+  // Collections status endpoint
+  http.get('/api/jobs/collections-status', () => {
+    return HttpResponse.json({
+      '1': {
+        exists: true,
+        point_count: 100,
+        status: 'completed',
+      },
+      '2': {
+        exists: true,
+        point_count: 200,
+        status: 'completed',
+      },
+    })
+  }),
 
   // Settings endpoints
   http.get('/api/settings/stats', () => {
     return HttpResponse.json({
-      total_collections: 1,
-      total_documents: 100,
-      total_chunks: 500,
-      database_size: '100MB',
-      vector_store_size: '200MB',
+      job_count: 10,
+      file_count: 100,
+      database_size_mb: 50,
+      parquet_files_count: 10,
+      parquet_size_mb: 25,
     })
+  }),
+
+  http.post('/api/settings/reset-database', () => {
+    return HttpResponse.json({ message: 'Database reset successfully' })
   }),
 ]
