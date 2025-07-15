@@ -212,7 +212,7 @@ class CollectionPermission(Base):
     collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     api_key_id = Column(String, ForeignKey("api_keys.id", ondelete="CASCADE"), index=True)
-    permission = Column(Enum(PermissionType), nullable=False)
+    permission = Column(Enum(PermissionType), nullable=False)  # type: ignore[var-annotated]
     created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
 
     # Relationships
