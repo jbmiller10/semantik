@@ -112,16 +112,17 @@ export const handlers = [
 
   // Collections endpoints
   http.get('/api/collections', () => {
-    return HttpResponse.json({
-      collections: [
-        {
-          name: 'test-collection',
-          document_count: 100,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-      ]
-    })
+    return HttpResponse.json([
+      {
+        name: 'test-collection',
+        total_files: 100,
+        total_vectors: 500,
+        model_name: 'Qwen/Qwen3-Embedding-0.6B',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        job_count: 2,
+      }
+    ])
   }),
 
   http.get('/api/collections/:name', ({ params }) => {
@@ -194,17 +195,6 @@ export const handlers = [
       ]
     })
   }),
-
-  // Settings endpoints
-  http.get('/api/settings/stats', () => {
-    return HttpResponse.json({
-      total_collections: 1,
-      total_documents: 100,
-      total_chunks: 500,
-      database_size: '100MB',
-      vector_store_size: '200MB',
-    })
-  }),
   
   // Collections status endpoint
   http.get('/api/jobs/collections-status', () => {
@@ -233,7 +223,7 @@ export const handlers = [
     })
   }),
 
-  http.post('/api/settings/reset', () => {
+  http.post('/api/settings/reset-database', () => {
     return HttpResponse.json({ message: 'Database reset successfully' })
   }),
 ]
