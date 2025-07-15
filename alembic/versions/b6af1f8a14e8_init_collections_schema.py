@@ -258,6 +258,4 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_collections_name"), table_name="collections")
     op.drop_table("collections")
 
-    # Drop created enums
-    op.execute("DROP TYPE IF EXISTS document_status")
-    op.execute("DROP TYPE IF EXISTS permission_type")
+    # Note: SQLite doesn't support CREATE TYPE, so no need to drop types
