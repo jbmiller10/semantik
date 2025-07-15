@@ -47,79 +47,63 @@ class TestInternalAPIEndpoints:
     """Test internal API endpoints."""
 
     @pytest.fixture()
-    def client_with_mocked_repos(self, mock_job_repository):
-        """Create test client with mocked repositories."""
+    def mock_database(self):
+        """Mock the database module."""
+        with patch("webui.api.internal.database") as mock_db:
+            yield mock_db
+
+    @pytest.fixture()
+    def client(self):
+        """Create test client with the router."""
         from fastapi import FastAPI
-        from shared.database.factory import create_job_repository
 
         app = FastAPI()
         app.include_router(router)
+        return TestClient(app)
 
-        # Override repository factory
-        app.dependency_overrides[create_job_repository] = lambda: mock_job_repository
-
-        client = TestClient(app)
-        yield client
-
-        app.dependency_overrides.clear()
-
-    def test_get_all_job_ids_success(self, client_with_mocked_repos, mock_job_repository):
+    def test_get_all_job_ids_success(self, client, mock_database):
         """Test successful retrieval of all job IDs."""
-        # Mock repository response
-        from unittest.mock import AsyncMock
-
-        mock_job_repository.list_jobs = AsyncMock(
-            return_value=[
-                {"id": "job_1", "name": "Test Job 1"},
-                {"id": "job_2", "name": "Test Job 2"},
-                {"id": "job_3", "name": "Test Job 3"},
-            ]
-        )
+        # Mock database response
+        mock_database.list_jobs.return_value = [
+            {"id": "job_1", "name": "Test Job 1"},
+            {"id": "job_2", "name": "Test Job 2"},
+            {"id": "job_3", "name": "Test Job 3"},
+        ]
 
         # Mock settings for API key
         with patch("webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"
 
-            response = client_with_mocked_repos.get(
-                "/api/internal/jobs/all-ids", headers={"X-Internal-Api-Key": "test-key"}
-            )
+            response = client.get("/api/internal/jobs/all-ids", headers={"X-Internal-Api-Key": "test-key"})
 
             assert response.status_code == 200
             assert response.json() == ["job_1", "job_2", "job_3"]
-            mock_job_repository.list_jobs.assert_called_once()
+            mock_database.list_jobs.assert_called_once()
 
-    def test_get_all_job_ids_unauthorized(self, client_with_mocked_repos, mock_job_repository):
+    def test_get_all_job_ids_unauthorized(self, client, mock_database):
         """Test unauthorized access to job IDs endpoint."""
         with patch("webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"
 
             # Test without API key
-            response = client_with_mocked_repos.get("/api/internal/jobs/all-ids")
+            response = client.get("/api/internal/jobs/all-ids")
             assert response.status_code == 401
 
             # Test with wrong API key
-            response = client_with_mocked_repos.get(
-                "/api/internal/jobs/all-ids", headers={"X-Internal-Api-Key": "wrong-key"}
-            )
+            response = client.get("/api/internal/jobs/all-ids", headers={"X-Internal-Api-Key": "wrong-key"})
             assert response.status_code == 401
 
-            # Repository should not be called
-            if hasattr(mock_job_repository, "get_all_job_ids"):
-                mock_job_repository.get_all_job_ids.assert_not_called()
+            # Database should not be called
+            mock_database.list_jobs.assert_not_called()
 
-    def test_get_all_job_ids_empty_list(self, client_with_mocked_repos, mock_job_repository):
+    def test_get_all_job_ids_empty_list(self, client, mock_database):
         """Test retrieval when no jobs exist."""
-        # Mock repository response
-        from unittest.mock import AsyncMock
-
-        mock_job_repository.list_jobs = AsyncMock(return_value=[])
+        mock_database.list_jobs.return_value = []
 
         with patch("webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"
 
-            response = client_with_mocked_repos.get(
-                "/api/internal/jobs/all-ids", headers={"X-Internal-Api-Key": "test-key"}
-            )
+            response = client.get("/api/internal/jobs/all-ids", headers={"X-Internal-Api-Key": "test-key"})
 
             assert response.status_code == 200
             assert response.json() == []

@@ -108,18 +108,14 @@ case "$SERVICE" in
         ;;
         
     worker)
-        echo "Starting Celery worker..."
-        exec celery -A webui.celery_app worker --loglevel=info --concurrency="${CELERY_CONCURRENCY:-1}"
-        ;;
-        
-    flower)
-        echo "Starting Flower monitoring..."
-        exec celery -A webui.celery_app flower --broker=redis://redis:6379/0 --basic_auth="${FLOWER_BASIC_AUTH:-admin:admin}"
+        echo "Starting background worker..."
+        # This could be used for future background processing tasks
+        exec python -m vecpipe.worker
         ;;
         
     *)
         echo "Unknown service: $SERVICE"
-        echo "Usage: $0 [webui|vecpipe|worker|flower]"
+        echo "Usage: $0 [webui|vecpipe|worker]"
         exit 1
         ;;
 esac
