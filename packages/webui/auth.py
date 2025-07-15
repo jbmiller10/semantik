@@ -164,14 +164,14 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials | None = De
             "created_at": datetime.now(UTC).isoformat(),
             "last_login": datetime.now(UTC).isoformat(),
         }
-    
+
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     token = credentials.credentials
     username = verify_token(token, "access")
 

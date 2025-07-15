@@ -184,7 +184,7 @@ def test_get_me_protected(client, monkeypatch):
     """Test that /me endpoint requires authentication."""
     # Temporarily disable DISABLE_AUTH for this test
     monkeypatch.setattr("packages.webui.auth.settings.DISABLE_AUTH", False)
-    
+
     # Test without token - should fail
     response = client.get("/api/auth/me")
     assert response.status_code == 401
