@@ -23,8 +23,8 @@ os.environ.setdefault("USE_MOCK_EMBEDDINGS", "true")
 @pytest.fixture()
 def test_client(test_user):
     """Create a test client for the FastAPI app with auth mocked."""
-    from webui.auth import get_current_user
-    from webui.main import app
+    from packages.webui.auth import get_current_user
+    from packages.webui.main import app
 
     # Override the authentication dependency
     async def override_get_current_user():
@@ -68,8 +68,8 @@ def test_client_with_mocks(
         create_job_repository,
         create_user_repository,
     )
-    from webui.auth import get_current_user
-    from webui.main import app
+    from packages.webui.auth import get_current_user
+    from packages.webui.main import app
 
     # Override the authentication dependency
     async def override_get_current_user():
