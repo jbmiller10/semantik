@@ -7,10 +7,11 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from shared import database
 from shared.config import settings
 from shared.contracts.search import HybridSearchRequest, PreloadModelRequest
 from shared.contracts.search import SearchRequest as SharedSearchRequest
+from shared.database.base import JobRepository
+from shared.database.factory import create_job_repository
 from webui.auth import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,11 @@ class SearchRequest(SharedSearchRequest):
 
 
 @router.post("/search")
-async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+async def search(
+    request: SearchRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    job_repo: JobRepository = Depends(create_job_repository),
+) -> dict[str, Any]:
     """Unified search endpoint - handles both vector and hybrid search"""
     logger.info(
         f"Search request received: query='{request.query}', type={request.search_type}, "
@@ -52,7 +57,7 @@ async def search(request: SearchRequest, current_user: dict[str, Any] = Depends(
         quantization = None
 
         if request.job_id:
-            job = database.get_job(request.job_id)
+            job = await job_repo.get_job(request.job_id)
             if not job:
                 raise HTTPException(status_code=404, detail="Job not found")
 
@@ -344,7 +349,9 @@ async def preload_model(
 
 @router.post("/hybrid_search")
 async def hybrid_search(
-    request: HybridSearchRequest, current_user: dict[str, Any] = Depends(get_current_user)
+    request: HybridSearchRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    job_repo: JobRepository = Depends(create_job_repository),
 ) -> dict[str, Any]:
     """Perform hybrid search combining vector similarity and text matching - proxies to REST API"""
     try:
@@ -356,7 +363,7 @@ async def hybrid_search(
         quantization = None
 
         if request.job_id:
-            job = database.get_job(request.job_id)
+            job = await job_repo.get_job(request.job_id)
             if not job:
                 raise HTTPException(status_code=404, detail="Job not found")
 
