@@ -123,8 +123,8 @@ class Collection(Base):
     chunk_size = Column(Integer, nullable=False, default=1000)
     chunk_overlap = Column(Integer, nullable=False, default=200)
     is_public = Column(Boolean, nullable=False, default=False, index=True)
-    created_at = Column(DateTime, nullable=False)
-    updated_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
     meta = Column(JSON)
 
     # New fields from second migration
@@ -164,8 +164,8 @@ class Document(Base):
     status = Column(Enum(DocumentStatus), nullable=False, default=DocumentStatus.PENDING, index=True)
     error_message = Column(Text)
     chunk_count = Column(Integer, nullable=False, default=0)
-    created_at = Column(DateTime, nullable=False)
-    updated_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
     meta = Column(JSON)
 
     # Relationships
@@ -186,9 +186,9 @@ class ApiKey(Base):
     name = Column(String, nullable=False)
     key_hash = Column(String, unique=True, nullable=False, index=True)
     permissions = Column(JSON)  # Store collection access rights
-    last_used_at = Column(DateTime)
-    expires_at = Column(DateTime)
-    created_at = Column(DateTime, nullable=False)
+    last_used_at = Column(DateTime(timezone=True))
+    expires_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), nullable=False)
     is_active = Column(Boolean, nullable=False, default=True, index=True)
 
     # Relationships
@@ -208,7 +208,7 @@ class CollectionPermission(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     api_key_id = Column(String, ForeignKey("api_keys.id", ondelete="CASCADE"), index=True)
     permission = Column(Enum(PermissionType), nullable=False)
-    created_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
 
     # Relationships
     collection = relationship("Collection", back_populates="permissions")
