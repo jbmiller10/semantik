@@ -1237,12 +1237,12 @@ class DockerSetupTUI:
     def _get_compose_files(self) -> list[str]:
         """Get the appropriate docker-compose file arguments based on GPU configuration"""
         files = ["-f", "docker-compose.yml"]
-        
+
         # Add CUDA override if GPU mode is selected
         # This ensures proper CUDA libraries and environment variables for bitsandbytes
         if self.config.get("USE_GPU") == "true":
             files.extend(["-f", "docker-compose.cuda.yml"])
-        
+
         return files
 
     def _check_existing_config(self) -> bool:
