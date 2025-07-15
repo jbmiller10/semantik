@@ -4,7 +4,7 @@ Tests for the document viewer functionality
 
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -16,99 +16,128 @@ from webui.api.documents import validate_file_access
 class TestDocumentSecurity:
     """Test security aspects of document access"""
 
-    def test_validate_file_access_path_traversal_attempt(self):
+    @pytest.mark.asyncio()
+    async def test_validate_file_access_path_traversal_attempt(self):
         """Test that path traversal attempts are blocked"""
-        # Mock database responses
-        with patch("webui.api.documents.database") as mock_db:
-            mock_db.get_job.return_value = {"directory_path": "/safe/job/directory", "user_id": 1}
-            mock_db.get_job_files.return_value = [
-                {"doc_id": "test123", "path": "/safe/job/directory/../../../etc/passwd"}
-            ]
+        # Mock repositories
+        mock_job_repo = AsyncMock()
+        mock_file_repo = AsyncMock()
 
-            # Should raise HTTPException for path traversal
-            with pytest.raises(HTTPException) as exc_info:
-                validate_file_access("job123", "test123", {"id": 1, "user": "test"})
+        mock_job_repo.get_job.return_value = {"directory_path": "/safe/job/directory", "user_id": 1}
+        mock_file_repo.get_job_files.return_value = [
+            {"doc_id": "test123", "path": "/safe/job/directory/../../../etc/passwd"}
+        ]
 
-            assert exc_info.value.status_code == 403
-            assert exc_info.value.detail == "Access denied"
+        # Should raise HTTPException for path traversal
+        with pytest.raises(HTTPException) as exc_info:
+            await validate_file_access("job123", "test123", {"id": 1, "user": "test"}, mock_job_repo, mock_file_repo)
 
-    def test_validate_file_access_valid_path(self):
+        assert exc_info.value.status_code == 403
+        assert exc_info.value.detail == "Access denied"
+
+    @pytest.mark.asyncio()
+    async def test_validate_file_access_valid_path(self):
         """Test that valid file paths are allowed"""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a test file
             test_file = Path(tmpdir) / "test.pdf"
             test_file.write_text("test content")
 
-            with patch("webui.api.documents.database") as mock_db:
-                mock_db.get_job.return_value = {"directory_path": tmpdir, "user_id": 1}
-                mock_db.get_job_files.return_value = [{"doc_id": "test123", "path": str(test_file)}]
+            # Mock repositories
+            mock_job_repo = AsyncMock()
+            mock_file_repo = AsyncMock()
 
-                # Should not raise exception for valid path
-                result = validate_file_access("job123", "test123", {"id": 1, "user": "test"})
-                assert result["doc_id"] == "test123"
-                assert result["path"] == str(test_file)
+            mock_job_repo.get_job.return_value = {"directory_path": tmpdir, "user_id": 1}
+            mock_file_repo.get_job_files.return_value = [{"doc_id": "test123", "path": str(test_file)}]
 
-    def test_validate_file_access_nonexistent_job(self):
+            # Should not raise exception for valid path
+            result = await validate_file_access(
+                "job123", "test123", {"id": 1, "user": "test"}, mock_job_repo, mock_file_repo
+            )
+            assert result["doc_id"] == "test123"
+            assert result["path"] == str(test_file)
+
+    @pytest.mark.asyncio()
+    async def test_validate_file_access_nonexistent_job(self):
         """Test handling of nonexistent job"""
-        with patch("webui.api.documents.database") as mock_db:
-            mock_db.get_job.return_value = None
+        # Mock repositories
+        mock_job_repo = AsyncMock()
+        mock_file_repo = AsyncMock()
 
-            with pytest.raises(HTTPException) as exc_info:
-                validate_file_access("job123", "test123", {"id": 1, "user": "test"})
+        mock_job_repo.get_job.return_value = None
 
-            assert exc_info.value.status_code == 404
-            assert exc_info.value.detail == "Job not found"
+        with pytest.raises(HTTPException) as exc_info:
+            await validate_file_access("job123", "test123", {"id": 1, "user": "test"}, mock_job_repo, mock_file_repo)
 
-    def test_validate_file_access_nonexistent_document(self):
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.detail == "Job not found"
+
+    @pytest.mark.asyncio()
+    async def test_validate_file_access_nonexistent_document(self):
         """Test handling of nonexistent document"""
-        with patch("webui.api.documents.database") as mock_db:
-            mock_db.get_job.return_value = {"directory_path": "/safe/job/directory", "user_id": 1}
-            mock_db.get_job_files.return_value = []
+        # Mock repositories
+        mock_job_repo = AsyncMock()
+        mock_file_repo = AsyncMock()
 
-            with pytest.raises(HTTPException) as exc_info:
-                validate_file_access("job123", "test123", {"id": 1, "user": "test"})
+        mock_job_repo.get_job.return_value = {"directory_path": "/safe/job/directory", "user_id": 1}
+        mock_file_repo.get_job_files.return_value = []
 
-            assert exc_info.value.status_code == 404
-            assert exc_info.value.detail == "Document not found"
+        with pytest.raises(HTTPException) as exc_info:
+            await validate_file_access("job123", "test123", {"id": 1, "user": "test"}, mock_job_repo, mock_file_repo)
 
-    def test_validate_file_access_file_size_limit(self):
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.detail == "Document not found"
+
+    @pytest.mark.asyncio()
+    async def test_validate_file_access_file_size_limit(self):
         """Test that files exceeding size limit are rejected"""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a mock large file
             test_file = Path(tmpdir) / "large.pdf"
             test_file.write_text("x" * 1024)  # Small file for testing
 
-            with patch("webui.api.documents.database") as mock_db:
-                mock_db.get_job.return_value = {"directory_path": tmpdir, "user_id": 1}
-                mock_db.get_job_files.return_value = [{"doc_id": "test123", "path": str(test_file)}]
+            # Mock repositories
+            mock_job_repo = AsyncMock()
+            mock_file_repo = AsyncMock()
 
-                # Mock the file size check
-                with patch("pathlib.Path.stat") as mock_stat:
-                    mock_stat.return_value = Mock(st_size=501 * 1024 * 1024)  # 501 MB
+            mock_job_repo.get_job.return_value = {"directory_path": tmpdir, "user_id": 1}
+            mock_file_repo.get_job_files.return_value = [{"doc_id": "test123", "path": str(test_file)}]
 
-                    with pytest.raises(HTTPException) as exc_info:
-                        validate_file_access("job123", "test123", {"id": 1, "user": "test"})
+            # Mock the file size check
+            with patch("pathlib.Path.stat") as mock_stat:
+                mock_stat.return_value = Mock(st_size=501 * 1024 * 1024)  # 501 MB
 
-                    assert exc_info.value.status_code == 413
-                    assert exc_info.value.detail == "File is too large to preview"
+                with pytest.raises(HTTPException) as exc_info:
+                    await validate_file_access(
+                        "job123", "test123", {"id": 1, "user": "test"}, mock_job_repo, mock_file_repo
+                    )
 
-    def test_validate_file_access_unauthorized_user(self):
+                assert exc_info.value.status_code == 413
+                assert exc_info.value.detail == "File is too large to preview"
+
+    @pytest.mark.asyncio()
+    async def test_validate_file_access_unauthorized_user(self):
         """Test that users cannot access jobs they don't own"""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a test file
             test_file = Path(tmpdir) / "test.pdf"
             test_file.write_text("test content")
 
-            with patch("webui.api.documents.database") as mock_db:
-                # Job belongs to user_id 2, but current user has id 1
-                mock_db.get_job.return_value = {"directory_path": tmpdir, "user_id": 2}
-                mock_db.get_job_files.return_value = [{"doc_id": "test123", "path": str(test_file)}]
+            # Mock repositories
+            mock_job_repo = AsyncMock()
+            mock_file_repo = AsyncMock()
 
-                with pytest.raises(HTTPException) as exc_info:
-                    validate_file_access("job123", "test123", {"id": 1, "user": "test"})
+            # Job belongs to user_id 2, but current user has id 1
+            mock_job_repo.get_job.return_value = {"directory_path": tmpdir, "user_id": 2}
+            mock_file_repo.get_job_files.return_value = [{"doc_id": "test123", "path": str(test_file)}]
 
-                assert exc_info.value.status_code == 403
-                assert exc_info.value.detail == "Access denied"
+            with pytest.raises(HTTPException) as exc_info:
+                await validate_file_access(
+                    "job123", "test123", {"id": 1, "user": "test"}, mock_job_repo, mock_file_repo
+                )
+
+            assert exc_info.value.status_code == 403
+            assert exc_info.value.detail == "Access denied"
 
 
 class TestDocumentEndpoints:

@@ -176,7 +176,7 @@ frontend-dev:
 	cd apps/webui-react && npm run dev
 
 frontend-test:
-	cd apps/webui-react && npm test
+	cd apps/webui-react && npm test -- --run
 
 # Integrated commands
 build: frontend-build
