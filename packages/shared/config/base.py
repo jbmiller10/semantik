@@ -15,9 +15,6 @@ class BaseConfig(BaseSettings):
     # Project root directory, calculated automatically
     PROJECT_ROOT: Path = Path(__file__).parent.parent.parent.parent.resolve()
 
-    # Environment Configuration
-    ENVIRONMENT: str = "development"  # Options: development, production
-
     # Qdrant Configuration
     QDRANT_HOST: str = "localhost"
     QDRANT_PORT: int = 6333
