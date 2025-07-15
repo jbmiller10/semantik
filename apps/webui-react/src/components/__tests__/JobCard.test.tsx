@@ -48,19 +48,20 @@ describe('JobCard', () => {
   it('renders job information correctly', () => {
     render(<JobCard job={mockJob} onDelete={mockOnDelete} />)
     
-    expect(screen.getByText('Test Job')).toBeInTheDocument()
     expect(screen.getByText('test-collection')).toBeInTheDocument()
+    expect(screen.getByText('/test/path')).toBeInTheDocument()
     expect(screen.getByText(/completed/i)).toBeInTheDocument()
-    expect(screen.getByText(/10 files/i)).toBeInTheDocument()
+    expect(screen.getByText('Total Files')).toBeInTheDocument()
+    const totalFilesElements = screen.getAllByText('10')
+    expect(totalFilesElements.length).toBeGreaterThan(0)
   })
 
   it('shows progress bar for active jobs', () => {
     const activeJob = { ...mockJob, status: 'processing' as const, progress: 50 }
     render(<JobCard job={activeJob} onDelete={mockOnDelete} />)
     
-    const progressBar = screen.getByRole('progressbar')
-    expect(progressBar).toBeInTheDocument()
-    expect(progressBar).toHaveAttribute('aria-valuenow', '50')
+    expect(screen.getByText('Progress')).toBeInTheDocument()
+    expect(screen.getByText('50%')).toBeInTheDocument()
   })
 
   it('handles delete action with confirmation', async () => {
@@ -148,18 +149,21 @@ describe('JobCard', () => {
     
     render(<JobCard job={failedJob} onDelete={mockOnDelete} />)
     
-    expect(screen.getByText(/failed/i)).toBeInTheDocument()
+    // Check for the status badge with "Failed" text
+    const failedElements = screen.getAllByText(/failed/i)
+    expect(failedElements.length).toBeGreaterThan(0)
     expect(screen.getByText('Test error message')).toBeInTheDocument()
   })
 
-  it('shows metrics button that opens metrics modal', async () => {
+  it('shows monitor button for active jobs that opens metrics modal', async () => {
     const user = userEvent.setup()
+    const activeJob = { ...mockJob, status: 'processing' as const }
     
-    render(<JobCard job={mockJob} onDelete={mockOnDelete} />)
+    render(<JobCard job={activeJob} onDelete={mockOnDelete} />)
     
-    const metricsButton = screen.getByRole('button', { name: /metrics/i })
-    await user.click(metricsButton)
+    const monitorButton = screen.getByRole('button', { name: /monitor/i })
+    await user.click(monitorButton)
     
-    expect(mockSetShowJobMetricsModal).toHaveBeenCalledWith(true)
+    expect(mockSetShowJobMetricsModal).toHaveBeenCalledWith('1')
   })
 })

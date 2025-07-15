@@ -3,7 +3,7 @@ import { useAuthStore } from '../authStore'
 
 // Mock fetch for logout API call
 const mockFetch = vi.fn()
-global.fetch = mockFetch as any
+vi.stubGlobal('fetch', mockFetch)
 
 describe('authStore', () => {
   beforeEach(() => {
