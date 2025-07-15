@@ -2,7 +2,6 @@
 Unit tests for file scanning and hashing functionality
 """
 
-import asyncio
 import hashlib
 from collections.abc import Generator
 from pathlib import Path
