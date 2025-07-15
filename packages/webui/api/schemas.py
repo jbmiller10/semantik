@@ -85,7 +85,6 @@ class CollectionCreate(CollectionBase):
     """Schema for creating a collection."""
 
 
-
 class CollectionUpdate(BaseModel):
     """Schema for updating a collection."""
 
@@ -178,7 +177,6 @@ class ApiKeyBase(BaseModel):
 
 class ApiKeyCreate(ApiKeyBase):
     """Schema for creating an API key."""
-
 
 
 class ApiKeyResponse(ApiKeyBase):
