@@ -15,7 +15,7 @@ class TestJobCreation:
         """Test job creation with no supported files"""
         # Mock the scan_directory_async to return empty list to avoid file processing
         mock_scan = AsyncMock(return_value={"files": []})
-        monkeypatch.setattr("webui.api.files.scan_directory_async", mock_scan)
+        monkeypatch.setattr("packages.webui.api.files.scan_directory_async", mock_scan)
 
         # Create job request
         request_data = {
@@ -170,7 +170,7 @@ class TestJobManagement:
 
         # Mock the AsyncQdrantClient constructor
         mock_async_qdrant_class = Mock(return_value=mock_async_qdrant)
-        monkeypatch.setattr("webui.api.jobs.AsyncQdrantClient", mock_async_qdrant_class)
+        monkeypatch.setattr("packages.webui.api.jobs.AsyncQdrantClient", mock_async_qdrant_class)
 
         response = test_client_with_mocks.delete(f"/api/jobs/{job_id}", headers={})
 

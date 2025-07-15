@@ -18,6 +18,7 @@ os.environ.setdefault("QDRANT_PORT", "6333")
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-testing-only")
 os.environ.setdefault("DEFAULT_COLLECTION", "test_collection")
 os.environ.setdefault("USE_MOCK_EMBEDDINGS", "true")
+os.environ.setdefault("DISABLE_AUTH", "true")
 
 
 @pytest.fixture()
@@ -43,7 +44,7 @@ def test_client(test_user):
 @pytest.fixture()
 def unauthenticated_test_client():
     """Create a test client without authentication override."""
-    from webui.main import app
+    from packages.webui.main import app
 
     # Clear any existing overrides
     app.dependency_overrides.clear()

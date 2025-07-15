@@ -27,8 +27,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from shared.database.base import FileRepository, JobRepository
 from shared.database.factory import create_file_repository, create_job_repository
-from webui.auth import get_current_user
-from webui.rate_limiter import limiter
+from ..auth import get_current_user
+from ..rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 

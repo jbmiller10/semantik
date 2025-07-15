@@ -9,8 +9,8 @@ from fastapi.testclient import TestClient
 class TestJobsAPI:
     """Test suite for job management endpoints."""
 
-    @patch("webui.api.jobs.process_embedding_job_task")
-    @patch("webui.api.files.scan_directory_async")
+    @patch("packages.webui.api.jobs.process_embedding_job_task")
+    @patch("packages.webui.api.files.scan_directory_async")
     def test_create_job_success(
         self,
         mock_scan_directory,
@@ -150,7 +150,7 @@ class TestJobsAPI:
         actual_job_id = mock_process_job.delay.call_args[0][0]
         assert len(actual_job_id) == 36  # Standard UUID length
 
-    @patch("webui.api.files.scan_directory_async")
+    @patch("packages.webui.api.files.scan_directory_async")
     def test_create_job_validation_error(self, mock_scan_directory, test_client: TestClient):
         """Test job creation with validation errors."""
         # Setup mocks
@@ -197,7 +197,7 @@ class TestJobsAPI:
         response = test_client.post("/api/jobs", json=job_data)
         assert response.status_code == 422
 
-    @patch("webui.api.jobs.AsyncQdrantClient")
+    @patch("packages.webui.api.jobs.AsyncQdrantClient")
     def test_delete_job(
         self,
         mock_qdrant_client,

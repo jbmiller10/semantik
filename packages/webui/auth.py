@@ -32,7 +32,7 @@ REFRESH_TOKEN_EXPIRE_DAYS = 30
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Security
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 # Pydantic models
@@ -149,8 +149,26 @@ def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
 
 
 # FastAPI dependency
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict[str, Any]:
+async def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(security)) -> dict[str, Any]:
     """Get current authenticated user"""
+    # Check if auth is disabled for development
+    if settings.DISABLE_AUTH:
+        # Return a dummy user for development when auth is disabled
+        return {
+            "id": 0,
+            "username": "dev_user",
+            "email": "dev@example.com",
+            "is_active": True,
+            "is_superuser": True,
+        }
+    
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
     token = credentials.credentials
     username = verify_token(token, "access")
 
