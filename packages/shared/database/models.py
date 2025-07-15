@@ -50,6 +50,33 @@ class PermissionType(str, enum.Enum):
     ADMIN = "admin"
 
 
+class CollectionStatus(str, enum.Enum):
+    """Status of a collection."""
+    PENDING = "pending"
+    READY = "ready"
+    PROCESSING = "processing"
+    ERROR = "error"
+    DEGRADED = "degraded"
+
+
+class OperationStatus(str, enum.Enum):
+    """Status of an operation."""
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class OperationType(str, enum.Enum):
+    """Types of collection operations."""
+    INDEX = "index"
+    APPEND = "append"
+    REINDEX = "reindex"
+    REMOVE_SOURCE = "remove_source"
+    DELETE = "delete"
+
+
 class User(Base):
     """User model for authentication."""
 
@@ -62,15 +89,17 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False, nullable=False)
-    created_at = Column(String, nullable=False)  # Kept as String for compatibility
-    updated_at = Column(DateTime)
-    last_login = Column(String)  # Kept as String for compatibility
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True))
+    last_login = Column(DateTime(timezone=True))
 
     # Relationships
     collections = relationship("Collection", back_populates="owner", cascade="all, delete-orphan")
     api_keys = relationship("ApiKey", back_populates="user", cascade="all, delete-orphan")
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
     permissions = relationship("CollectionPermission", back_populates="user", cascade="all, delete-orphan")
+    operations = relationship("Operation", back_populates="user")
+    audit_logs = relationship("CollectionAuditLog", back_populates="user")
 
 
 class Collection(Base):
@@ -90,11 +119,24 @@ class Collection(Base):
     created_at = Column(DateTime, nullable=False)
     updated_at = Column(DateTime, nullable=False)
     meta = Column(JSON)
+    
+    # New fields from second migration
+    status = Column(Enum(CollectionStatus), nullable=False, default=CollectionStatus.PENDING, index=True)
+    status_message = Column(Text)
+    qdrant_collections = Column(JSON)  # List of Qdrant collection names
+    qdrant_staging = Column(JSON)  # Staging collections during reindex
+    document_count = Column(Integer, nullable=False, default=0)
+    vector_count = Column(Integer, nullable=False, default=0)
+    total_size_bytes = Column(Integer, nullable=False, default=0)
 
     # Relationships
     owner = relationship("User", back_populates="collections")
     documents = relationship("Document", back_populates="collection", cascade="all, delete-orphan")
     permissions = relationship("CollectionPermission", back_populates="collection", cascade="all, delete-orphan")
+    sources = relationship("CollectionSource", back_populates="collection", cascade="all, delete-orphan")
+    operations = relationship("Operation", back_populates="collection", cascade="all, delete-orphan")
+    audit_logs = relationship("CollectionAuditLog", back_populates="collection", cascade="all, delete-orphan")
+    resource_limits = relationship("CollectionResourceLimits", back_populates="collection", uselist=False, cascade="all, delete-orphan")
 
 
 class Document(Base):
@@ -104,6 +146,7 @@ class Document(Base):
 
     id = Column(String, primary_key=True)  # UUID as string
     collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_id = Column(Integer, ForeignKey("collection_sources.id"), nullable=True, index=True)
     file_path = Column(String, nullable=False)
     file_name = Column(String, nullable=False)
     file_size = Column(Integer, nullable=False)
@@ -118,6 +161,7 @@ class Document(Base):
 
     # Relationships
     collection = relationship("Collection", back_populates="documents")
+    source = relationship("CollectionSource", back_populates="documents")
 
     # Indexes
     __table_args__ = (
@@ -181,9 +225,115 @@ class RefreshToken(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     token_hash = Column(String, unique=True, nullable=False, index=True)
-    expires_at = Column(String, nullable=False)  # Kept as String for compatibility
-    created_at = Column(String, nullable=False)  # Kept as String for compatibility
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
     is_revoked = Column(Boolean, default=False)
 
     # Relationships
     user = relationship("User", back_populates="refresh_tokens")
+
+
+class CollectionSource(Base):
+    """Source model for tracking collection data sources."""
+    
+    __tablename__ = "collection_sources"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_path = Column(String, nullable=False)
+    source_type = Column(String, nullable=False, default="directory")  # directory, file, url, etc.
+    document_count = Column(Integer, nullable=False, default=0)
+    size_bytes = Column(Integer, nullable=False, default=0)
+    last_indexed_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+    meta = Column(JSON)
+    
+    # Relationships
+    collection = relationship("Collection", back_populates="sources")
+    documents = relationship("Document", back_populates="source")
+    
+    # Constraints
+    __table_args__ = (
+        UniqueConstraint("collection_id", "source_path", name="uq_collection_source_path"),
+    )
+
+
+class Operation(Base):
+    """Operation model for tracking async collection operations."""
+    
+    __tablename__ = "operations"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String, unique=True, nullable=False)  # For external reference
+    collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    type = Column(Enum(OperationType), nullable=False, index=True)
+    status = Column(Enum(OperationStatus), nullable=False, default=OperationStatus.PENDING, index=True)
+    task_id = Column(String)  # Celery task ID
+    config = Column(JSON, nullable=False)
+    error_message = Column(Text)
+    created_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    started_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True))
+    meta = Column(JSON)
+    
+    # Relationships
+    collection = relationship("Collection", back_populates="operations")
+    user = relationship("User")
+    audit_logs = relationship("CollectionAuditLog", back_populates="operation")
+    metrics = relationship("OperationMetrics", back_populates="operation", cascade="all, delete-orphan")
+
+
+class CollectionAuditLog(Base):
+    """Audit log model for tracking collection actions."""
+    
+    __tablename__ = "collection_audit_log"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
+    operation_id = Column(Integer, ForeignKey("operations.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    action = Column(String, nullable=False)  # created, updated, deleted, reindexed, etc.
+    details = Column(JSON)
+    ip_address = Column(String)
+    user_agent = Column(String)
+    created_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    
+    # Relationships
+    collection = relationship("Collection", back_populates="audit_logs")
+    operation = relationship("Operation", back_populates="audit_logs")
+    user = relationship("User")
+
+
+class CollectionResourceLimits(Base):
+    """Resource limits model for collection quotas."""
+    
+    __tablename__ = "collection_resource_limits"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, unique=True)
+    max_documents = Column(Integer, default=100000)
+    max_storage_gb = Column(Float, default=50.0)
+    max_operations_per_hour = Column(Integer, default=10)
+    max_sources = Column(Integer, default=10)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+    
+    # Relationships
+    collection = relationship("Collection", back_populates="resource_limits")
+
+
+class OperationMetrics(Base):
+    """Metrics model for tracking operation performance."""
+    
+    __tablename__ = "operation_metrics"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    operation_id = Column(Integer, ForeignKey("operations.id", ondelete="CASCADE"), nullable=False, index=True)
+    metric_name = Column(String, nullable=False)
+    metric_value = Column(Float, nullable=False)
+    recorded_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    
+    # Relationships
+    operation = relationship("Operation", back_populates="metrics")
