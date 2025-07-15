@@ -12,16 +12,18 @@ these to proper DateTime columns.
 """
 
 import enum
+
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     Column,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Index,
     Integer,
-    JSON,
     String,
     Text,
     UniqueConstraint,
@@ -37,6 +39,7 @@ class Base(DeclarativeBase):
 # Enums
 class DocumentStatus(str, enum.Enum):
     """Status of document processing."""
+
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
@@ -45,6 +48,7 @@ class DocumentStatus(str, enum.Enum):
 
 class PermissionType(str, enum.Enum):
     """Types of permissions for collections."""
+
     READ = "read"
     WRITE = "write"
     ADMIN = "admin"
@@ -52,6 +56,7 @@ class PermissionType(str, enum.Enum):
 
 class CollectionStatus(str, enum.Enum):
     """Status of a collection."""
+
     PENDING = "pending"
     READY = "ready"
     PROCESSING = "processing"
@@ -61,6 +66,7 @@ class CollectionStatus(str, enum.Enum):
 
 class OperationStatus(str, enum.Enum):
     """Status of an operation."""
+
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
@@ -70,6 +76,7 @@ class OperationStatus(str, enum.Enum):
 
 class OperationType(str, enum.Enum):
     """Types of collection operations."""
+
     INDEX = "index"
     APPEND = "append"
     REINDEX = "reindex"
@@ -119,7 +126,7 @@ class Collection(Base):
     created_at = Column(DateTime, nullable=False)
     updated_at = Column(DateTime, nullable=False)
     meta = Column(JSON)
-    
+
     # New fields from second migration
     status = Column(Enum(CollectionStatus), nullable=False, default=CollectionStatus.PENDING, index=True)
     status_message = Column(Text)
@@ -136,7 +143,9 @@ class Collection(Base):
     sources = relationship("CollectionSource", back_populates="collection", cascade="all, delete-orphan")
     operations = relationship("Operation", back_populates="collection", cascade="all, delete-orphan")
     audit_logs = relationship("CollectionAuditLog", back_populates="collection", cascade="all, delete-orphan")
-    resource_limits = relationship("CollectionResourceLimits", back_populates="collection", uselist=False, cascade="all, delete-orphan")
+    resource_limits = relationship(
+        "CollectionResourceLimits", back_populates="collection", uselist=False, cascade="all, delete-orphan"
+    )
 
 
 class Document(Base):
@@ -164,9 +173,7 @@ class Document(Base):
     source = relationship("CollectionSource", back_populates="documents")
 
     # Indexes
-    __table_args__ = (
-        Index("ix_documents_collection_content_hash", "collection_id", "content_hash", unique=True),
-    )
+    __table_args__ = (Index("ix_documents_collection_content_hash", "collection_id", "content_hash", unique=True),)
 
 
 class ApiKey(Base):
@@ -186,7 +193,9 @@ class ApiKey(Base):
 
     # Relationships
     user = relationship("User", back_populates="api_keys")
-    collection_permissions = relationship("CollectionPermission", back_populates="api_key", cascade="all, delete-orphan")
+    collection_permissions = relationship(
+        "CollectionPermission", back_populates="api_key", cascade="all, delete-orphan"
+    )
 
 
 class CollectionPermission(Base):
@@ -210,10 +219,22 @@ class CollectionPermission(Base):
     __table_args__ = (
         CheckConstraint(
             "(user_id IS NOT NULL AND api_key_id IS NULL) OR (user_id IS NULL AND api_key_id IS NOT NULL)",
-            name="check_user_or_api_key"
+            name="check_user_or_api_key",
         ),
-        Index("ix_collection_permissions_unique_user", "collection_id", "user_id", unique=True, postgresql_where="user_id IS NOT NULL"),
-        Index("ix_collection_permissions_unique_api_key", "collection_id", "api_key_id", unique=True, postgresql_where="api_key_id IS NOT NULL"),
+        Index(
+            "ix_collection_permissions_unique_user",
+            "collection_id",
+            "user_id",
+            unique=True,
+            postgresql_where="user_id IS NOT NULL",
+        ),
+        Index(
+            "ix_collection_permissions_unique_api_key",
+            "collection_id",
+            "api_key_id",
+            unique=True,
+            postgresql_where="api_key_id IS NOT NULL",
+        ),
     )
 
 
@@ -235,9 +256,9 @@ class RefreshToken(Base):
 
 class CollectionSource(Base):
     """Source model for tracking collection data sources."""
-    
+
     __tablename__ = "collection_sources"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
     source_path = Column(String, nullable=False)
@@ -248,22 +269,20 @@ class CollectionSource(Base):
     created_at = Column(DateTime(timezone=True), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False)
     meta = Column(JSON)
-    
+
     # Relationships
     collection = relationship("Collection", back_populates="sources")
     documents = relationship("Document", back_populates="source")
-    
+
     # Constraints
-    __table_args__ = (
-        UniqueConstraint("collection_id", "source_path", name="uq_collection_source_path"),
-    )
+    __table_args__ = (UniqueConstraint("collection_id", "source_path", name="uq_collection_source_path"),)
 
 
 class Operation(Base):
     """Operation model for tracking async collection operations."""
-    
+
     __tablename__ = "operations"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     uuid = Column(String, unique=True, nullable=False)  # For external reference
     collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -277,7 +296,7 @@ class Operation(Base):
     started_at = Column(DateTime(timezone=True))
     completed_at = Column(DateTime(timezone=True))
     meta = Column(JSON)
-    
+
     # Relationships
     collection = relationship("Collection", back_populates="operations")
     user = relationship("User")
@@ -287,9 +306,9 @@ class Operation(Base):
 
 class CollectionAuditLog(Base):
     """Audit log model for tracking collection actions."""
-    
+
     __tablename__ = "collection_audit_log"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
     operation_id = Column(Integer, ForeignKey("operations.id"), nullable=True)
@@ -299,7 +318,7 @@ class CollectionAuditLog(Base):
     ip_address = Column(String)
     user_agent = Column(String)
     created_at = Column(DateTime(timezone=True), nullable=False, index=True)
-    
+
     # Relationships
     collection = relationship("Collection", back_populates="audit_logs")
     operation = relationship("Operation", back_populates="audit_logs")
@@ -308,9 +327,9 @@ class CollectionAuditLog(Base):
 
 class CollectionResourceLimits(Base):
     """Resource limits model for collection quotas."""
-    
+
     __tablename__ = "collection_resource_limits"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, unique=True)
     max_documents = Column(Integer, default=100000)
@@ -319,21 +338,21 @@ class CollectionResourceLimits(Base):
     max_sources = Column(Integer, default=10)
     created_at = Column(DateTime(timezone=True), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False)
-    
+
     # Relationships
     collection = relationship("Collection", back_populates="resource_limits")
 
 
 class OperationMetrics(Base):
     """Metrics model for tracking operation performance."""
-    
+
     __tablename__ = "operation_metrics"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     operation_id = Column(Integer, ForeignKey("operations.id", ondelete="CASCADE"), nullable=False, index=True)
     metric_name = Column(String, nullable=False)
     metric_value = Column(Float, nullable=False)
     recorded_at = Column(DateTime(timezone=True), nullable=False, index=True)
-    
+
     # Relationships
     operation = relationship("Operation", back_populates="metrics")
