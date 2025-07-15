@@ -133,7 +133,7 @@ class Collection(Base):
     meta = Column(JSON)
 
     # New fields from second migration
-    status = Column(Enum(CollectionStatus), nullable=False, default=CollectionStatus.PENDING, index=True)
+    status = Column(Enum(CollectionStatus), nullable=False, default=CollectionStatus.PENDING, index=True)  # type: ignore[var-annotated]
     status_message = Column(Text)
     qdrant_collections = Column(JSON)  # List of Qdrant collection names
     qdrant_staging = Column(JSON)  # Staging collections during reindex
@@ -166,7 +166,7 @@ class Document(Base):
     file_size = Column(Integer, nullable=False)
     mime_type = Column(String)
     content_hash = Column(String, nullable=False, index=True)
-    status = Column(Enum(DocumentStatus), nullable=False, default=DocumentStatus.PENDING, index=True)
+    status = Column(Enum(DocumentStatus), nullable=False, default=DocumentStatus.PENDING, index=True)  # type: ignore[var-annotated]
     error_message = Column(Text)
     chunk_count = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
@@ -292,8 +292,8 @@ class Operation(Base):
     uuid = Column(String, unique=True, nullable=False)  # For external reference
     collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    type = Column(Enum(OperationType), nullable=False, index=True)
-    status = Column(Enum(OperationStatus), nullable=False, default=OperationStatus.PENDING, index=True)
+    type = Column(Enum(OperationType), nullable=False, index=True)  # type: ignore[var-annotated]
+    status = Column(Enum(OperationStatus), nullable=False, default=OperationStatus.PENDING, index=True)  # type: ignore[var-annotated]
     task_id = Column(String)  # Celery task ID
     config = Column(JSON, nullable=False)
     error_message = Column(Text)
