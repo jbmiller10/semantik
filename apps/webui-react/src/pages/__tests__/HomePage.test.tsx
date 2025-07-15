@@ -26,7 +26,7 @@ describe('HomePage', () => {
   })
 
   it('renders CreateJobForm when activeTab is create', () => {
-    ;(useUIStore as any).mockImplementation((selector) => {
+    ;(useUIStore as any).mockImplementation((selector: any) => {
       const state = { activeTab: 'create' }
       return selector ? selector(state) : state
     })
@@ -40,7 +40,7 @@ describe('HomePage', () => {
   })
 
   it('renders JobList when activeTab is jobs', () => {
-    ;(useUIStore as any).mockImplementation((selector) => {
+    ;(useUIStore as any).mockImplementation((selector: any) => {
       const state = { activeTab: 'jobs' }
       return selector ? selector(state) : state
     })
@@ -54,7 +54,7 @@ describe('HomePage', () => {
   })
 
   it('renders SearchInterface when activeTab is search', () => {
-    ;(useUIStore as any).mockImplementation((selector) => {
+    ;(useUIStore as any).mockImplementation((selector: any) => {
       const state = { activeTab: 'search' }
       return selector ? selector(state) : state
     })
@@ -68,7 +68,7 @@ describe('HomePage', () => {
   })
 
   it('renders CollectionList when activeTab is collections', () => {
-    ;(useUIStore as any).mockImplementation((selector) => {
+    ;(useUIStore as any).mockImplementation((selector: any) => {
       const state = { activeTab: 'collections' }
       return selector ? selector(state) : state
     })
@@ -82,7 +82,7 @@ describe('HomePage', () => {
   })
 
   it('renders nothing when activeTab is an unknown value', () => {
-    ;(useUIStore as any).mockImplementation((selector) => {
+    ;(useUIStore as any).mockImplementation((selector: any) => {
       const state = { activeTab: 'unknown' }
       return selector ? selector(state) : state
     })
@@ -97,8 +97,7 @@ describe('HomePage', () => {
   })
 
   it('uses the correct store selector', () => {
-    const mockSelector = vi.fn((state) => state.activeTab)
-    ;(useUIStore as any).mockImplementation((selector) => selector({ activeTab: 'create' }))
+    ;(useUIStore as any).mockImplementation((selector: any) => selector({ activeTab: 'create' }))
 
     render(<HomePage />)
     

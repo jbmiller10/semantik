@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
-import { useSearchStore, type SearchResult, type SearchParams } from '../searchStore'
+import { useSearchStore, type SearchResult } from '../searchStore'
 
 describe('searchStore', () => {
   const mockSearchResult1: SearchResult = {

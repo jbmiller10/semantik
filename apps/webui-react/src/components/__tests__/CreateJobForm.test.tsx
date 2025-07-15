@@ -35,7 +35,7 @@ describe('CreateJobForm', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     
-    ;(useUIStore as any).mockImplementation((selector) => {
+    ;(useUIStore as any).mockImplementation((selector: any) => {
       const state = {
         addToast: mockAddToast,
         setActiveTab: mockSetActiveTab,
@@ -43,7 +43,7 @@ describe('CreateJobForm', () => {
       return selector ? selector(state) : state
     })
     
-    ;(useJobsStore as any).mockImplementation((selector) => {
+    ;(useJobsStore as any).mockImplementation((selector: any) => {
       const state = {
         addJob: mockAddJob,
       }

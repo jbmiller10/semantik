@@ -51,7 +51,7 @@ describe('SearchResults', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     
-    ;(useUIStore as any).mockImplementation((selector) => {
+    ;(useUIStore as any).mockImplementation((selector: any) => {
       const state = {
         setShowDocumentViewer: mockSetShowDocumentViewer,
       }

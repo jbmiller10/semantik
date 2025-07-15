@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@/tests/utils/test-utils'
+import { render, screen } from '@/tests/utils/test-utils'
 import userEvent from '@testing-library/user-event'
 import SearchInterface from '../SearchInterface'
 import { useSearchStore } from '@/stores/searchStore'
@@ -71,12 +71,9 @@ describe('SearchInterface', () => {
   })
 
   it('validates empty search query', async () => {
-    const user = userEvent.setup()
-    
     render(<SearchInterface />)
     
     const searchButton = screen.getByRole('button', { name: /search/i })
-    await user.click(searchButton)
     
     // Since the search button is disabled when no collection is selected,
     // the validation won't trigger. Let's just check the button is disabled
@@ -84,7 +81,6 @@ describe('SearchInterface', () => {
   })
 
   it('validates collection selection', async () => {
-    const user = userEvent.setup()
     
     ;(useSearchStore as any).mockReturnValue({
       searchParams: { ...defaultSearchParams, query: 'test query', collection: 'job_1' },
