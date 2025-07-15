@@ -95,10 +95,12 @@ class TestDocumentAPI:
 class TestDocumentViewer:
     """Test document viewer security"""
 
-    def test_authentication_required(self, unauthenticated_test_client):
+    def test_authentication_required(self, unauthenticated_test_client, monkeypatch):
         """Test that authentication is required"""
+        # Temporarily disable DISABLE_AUTH for this test
+        monkeypatch.setattr("packages.webui.auth.settings.DISABLE_AUTH", False)
         response = unauthenticated_test_client.get("/api/documents/test-job/test-doc")
-        assert response.status_code == 403
+        assert response.status_code == 401  # Should be 401 Unauthorized, not 403
 
     def test_authorization_check(
         self, test_client_with_mocks, temp_test_dir, mock_job_repository, mock_file_repository
@@ -131,7 +133,7 @@ class TestDocumentViewer:
 class TestPPTXConversion:
     """Test PPTX conversion functionality"""
 
-    @patch("webui.api.documents.PPTX2MD_AVAILABLE", True)
+    @patch("packages.webui.api.documents.PPTX2MD_AVAILABLE", True)
     @patch("subprocess.run")
     def test_pptx_conversion_success(
         self, mock_run, test_client_with_mocks, test_user, temp_test_dir, mock_job_repository, mock_file_repository
