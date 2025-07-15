@@ -3,8 +3,11 @@
 import logging
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from shared.embedding import get_embedding_service
+from shared.database.connection_pool import get_db_connection
+from webui.utils.qdrant_manager import qdrant_manager
+from webui.websocket_manager import ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -63,3 +66,83 @@ async def readiness_check() -> dict[str, Any]:
     except Exception as e:
         logger.error(f"Readiness check failed: {e}")
         return {"ready": False, "status": "Service unavailable", "error": str(e)}
+
+
+@router.get("/healthz")
+async def liveness_probe() -> dict[str, str]:
+    """
+    Liveness probe endpoint for Kubernetes/container orchestration.
+    
+    This endpoint only checks if the FastAPI process is running.
+    It does not check external dependencies like Redis, database, or Qdrant.
+    
+    Returns:
+        dict: Simple health status indicating the service is alive
+    """
+    return {"status": "healthy", "check": "liveness"}
+
+
+@router.get("/readyz")
+async def readiness_probe() -> dict[str, Any]:
+    """
+    Readiness probe endpoint for Kubernetes/container orchestration.
+    
+    This endpoint checks connectivity to all external dependencies:
+    - Redis (for job queue and WebSocket management)
+    - Database (SQLite connection pool)
+    - Qdrant (vector database)
+    
+    Returns:
+        dict: Detailed readiness status for each dependency
+        
+    Raises:
+        HTTPException: 503 Service Unavailable if any dependency is unreachable
+    """
+    services = {}
+    all_healthy = True
+    
+    # Check Redis connection
+    try:
+        if ws_manager.redis:
+            await ws_manager.redis.ping()
+            services["redis"] = {"status": "healthy", "message": "Redis connection successful"}
+        else:
+            services["redis"] = {"status": "unhealthy", "message": "Redis connection not initialized"}
+            all_healthy = False
+    except Exception as e:
+        services["redis"] = {"status": "unhealthy", "message": f"Redis connection failed: {str(e)}"}
+        all_healthy = False
+    
+    # Check database connection
+    try:
+        with get_db_connection() as conn:
+            conn.execute("SELECT 1")
+            services["database"] = {"status": "healthy", "message": "Database connection successful"}
+    except Exception as e:
+        services["database"] = {"status": "unhealthy", "message": f"Database connection failed: {str(e)}"}
+        all_healthy = False
+    
+    # Check Qdrant connection
+    try:
+        client = qdrant_manager.get_client()
+        # Simple verification that connection works
+        collections = client.get_collections()
+        services["qdrant"] = {
+            "status": "healthy", 
+            "message": "Qdrant connection successful",
+            "collections_count": len(collections.collections)
+        }
+    except Exception as e:
+        services["qdrant"] = {"status": "unhealthy", "message": f"Qdrant connection failed: {str(e)}"}
+        all_healthy = False
+    
+    response = {
+        "ready": all_healthy,
+        "check": "readiness",
+        "services": services
+    }
+    
+    if not all_healthy:
+        raise HTTPException(status_code=503, detail=response)
+    
+    return response
