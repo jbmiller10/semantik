@@ -14,7 +14,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, validator
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -32,7 +32,7 @@ REFRESH_TOKEN_EXPIRE_DAYS = 30
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Security
-security = HTTPBearer(auto_error=False)
+security = HTTPBearer()
 
 
 # Pydantic models
@@ -42,9 +42,8 @@ class UserCreate(BaseModel):
     password: str
     full_name: str | None = None
 
-    @field_validator("username")
-    @classmethod
-    def validate_username(cls, v: str) -> str:
+    @validator("username")
+    def validate_username(cls, v: str) -> str:  # noqa: N805
         if len(v) < 3:
             raise ValueError("Username must be at least 3 characters long")
         # Check if username contains only alphanumeric characters and underscores
@@ -52,9 +51,8 @@ class UserCreate(BaseModel):
             raise ValueError("Username must contain only alphanumeric characters and underscores")
         return v
 
-    @field_validator("password")
-    @classmethod
-    def validate_password(cls, v: str) -> str:
+    @validator("password")
+    def validate_password(cls, v: str) -> str:  # noqa: N805
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters long")
         return v
@@ -149,29 +147,8 @@ def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
 
 
 # FastAPI dependency
-async def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(security)) -> dict[str, Any]:
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict[str, Any]:
     """Get current authenticated user"""
-    # Check if auth is disabled for development
-    if settings.DISABLE_AUTH:
-        # Return a dummy user for development when auth is disabled
-        return {
-            "id": 0,
-            "username": "dev_user",
-            "email": "dev@example.com",
-            "full_name": "Development User",
-            "is_active": True,
-            "is_superuser": True,
-            "created_at": datetime.now(UTC).isoformat(),
-            "last_login": datetime.now(UTC).isoformat(),
-        }
-
-    if not credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
     token = credentials.credentials
     username = verify_token(token, "access")
 
@@ -199,47 +176,3 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials | None = De
 
 # Removed unused function: get_current_admin_user
 # This function was defined for future admin functionality but is not currently used
-
-
-async def get_current_user_websocket(token: str | None) -> dict[str, Any]:
-    """Get current authenticated user for WebSocket connections.
-
-    WebSocket connections can't use the standard HTTPBearer dependency,
-    so they pass the token as a query parameter or in the first message.
-
-    Args:
-        token: JWT token from query parameter or WebSocket message
-
-    Returns:
-        User dictionary if authenticated
-
-    Raises:
-        ValueError: If authentication fails
-    """
-    if not token:
-        if settings.DISABLE_AUTH:
-            # Return a dummy user for development when auth is disabled
-            return {
-                "id": 0,
-                "username": "dev_user",
-                "email": "dev@example.com",
-                "full_name": "Development User",
-                "is_active": True,
-                "is_superuser": True,
-                "created_at": datetime.now(UTC).isoformat(),
-                "last_login": datetime.now(UTC).isoformat(),
-            }
-        raise ValueError("Missing authentication token")
-
-    username = verify_token(token, "access")
-    if username is None:
-        raise ValueError("Invalid authentication token")
-
-    user = database.get_user(username)
-    if user is None:
-        raise ValueError("User not found")
-
-    if not user.get("is_active", True):
-        raise ValueError("User account is inactive")
-
-    return cast(dict[str, Any], user)

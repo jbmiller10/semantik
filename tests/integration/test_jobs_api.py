@@ -9,15 +9,19 @@ from fastapi.testclient import TestClient
 class TestJobsAPI:
     """Test suite for job management endpoints."""
 
-    @patch("packages.webui.api.jobs.process_embedding_job_task")
-    @patch("packages.webui.api.files.scan_directory_async")
+    @patch("webui.api.jobs.process_embedding_job")
+    @patch("webui.api.jobs.database.get_job")
+    @patch("webui.api.jobs.database.add_files_to_job")
+    @patch("webui.api.jobs.database.create_job")
+    @patch("webui.api.files.scan_directory_async")
     def test_create_job_success(
         self,
         mock_scan_directory,
+        mock_create_job,
+        mock_add_files,
+        mock_get_job,
         mock_process_job,
-        test_client_with_mocks: TestClient,
-        mock_job_repository,
-        mock_file_repository,
+        test_client: TestClient,
     ):
         """Test successful job creation."""
 
@@ -41,57 +45,32 @@ class TestJobsAPI:
             "total_size": 3000,
         }
         mock_job_id = "test-job-123"
+        mock_create_job.return_value = mock_job_id
+        mock_add_files.return_value = None
 
-        # Setup repository mocks
-        # create_job returns the full job object
-        mock_job_repository.create_job = AsyncMock(
-            return_value={
-                "id": mock_job_id,
-                "name": "Test Job",
-                "status": "created",
-                "created_at": "2024-01-01T00:00:00+00:00",
-                "updated_at": "2024-01-01T00:00:00+00:00",
-                "total_files": 2,
-                "processed_files": 0,
-                "failed_files": 0,
-                "current_file": None,
-                "error": None,
-                "model_name": "Qwen/Qwen3-Embedding-0.6B",
-                "directory_path": "/path/to/documents",
-                "quantization": "float32",
-                "batch_size": 96,
-                "chunk_size": 600,
-                "chunk_overlap": 200,
-            }
-        )
-        mock_file_repository.add_files_to_job = AsyncMock()
+        # Mock the created job that get_job will return
+        mock_job = {
+            "id": mock_job_id,
+            "name": "Test Job",
+            "status": "created",
+            "created_at": "2024-01-01T00:00:00+00:00",
+            "updated_at": "2024-01-01T00:00:00+00:00",
+            "total_files": 2,
+            "processed_files": 0,
+            "failed_files": 0,
+            "current_file": None,
+            "error": None,
+            "model_name": "Qwen/Qwen3-Embedding-0.6B",
+            "directory_path": "/path/to/documents",
+            "quantization": "float32",
+            "batch_size": 96,
+            "chunk_size": 600,
+            "chunk_overlap": 200,
+        }
+        mock_get_job.return_value = mock_job
 
-        # Also setup get_job to return the same job
-        mock_job_repository.get_job = AsyncMock(
-            return_value={
-                "id": mock_job_id,
-                "name": "Test Job",
-                "status": "created",
-                "created_at": "2024-01-01T00:00:00+00:00",
-                "updated_at": "2024-01-01T00:00:00+00:00",
-                "total_files": 2,
-                "processed_files": 0,
-                "failed_files": 0,
-                "current_file": None,
-                "error": None,
-                "model_name": "Qwen/Qwen3-Embedding-0.6B",
-                "directory_path": "/path/to/documents",
-                "quantization": "float32",
-                "batch_size": 96,
-                "chunk_size": 600,
-                "chunk_overlap": 200,
-            }
-        )
-
-        # Mock process_embedding_job_task to return immediately
-        mock_task_result = MagicMock()
-        mock_task_result.id = "celery-task-123"
-        mock_process_job.delay = MagicMock(return_value=mock_task_result)
+        # Mock process_embedding_job to return immediately
+        mock_process_job.return_value = AsyncMock()
 
         # Prepare request payload
         job_data = {
@@ -106,7 +85,7 @@ class TestJobsAPI:
         }
 
         # Make request
-        response = test_client_with_mocks.post("/api/jobs", json=job_data)
+        response = test_client.post("/api/jobs", json=job_data)
 
         # Assert response
         assert response.status_code == 200
@@ -134,23 +113,23 @@ class TestJobsAPI:
         # scan_id is the generated job_id
         assert len(scan_args[1]["scan_id"]) == 36
 
-        # Verify create_job was called on the repository
-        mock_job_repository.create_job.assert_called_once()
+        # Verify create_job was called
+        mock_create_job.assert_called_once()
 
-        # Verify add_files_to_job was called on the repository
-        mock_file_repository.add_files_to_job.assert_called_once()
-        add_files_args = mock_file_repository.add_files_to_job.call_args
+        # Verify add_files_to_job was called
+        mock_add_files.assert_called_once()
+        add_files_args = mock_add_files.call_args
         # First arg should be the job ID
         assert len(add_files_args[0][0]) == 36  # UUID length
         # Second arg should be the file records
         assert len(add_files_args[0][1]) == 2  # 2 files
 
-        # Verify process_embedding_job_task.delay was called with the generated job ID
-        mock_process_job.delay.assert_called_once()
-        actual_job_id = mock_process_job.delay.call_args[0][0]
+        # Verify process_embedding_job was called with the generated job ID
+        mock_process_job.assert_called_once()
+        actual_job_id = mock_process_job.call_args[0][0]
         assert len(actual_job_id) == 36  # Standard UUID length
 
-    @patch("packages.webui.api.files.scan_directory_async")
+    @patch("webui.api.files.scan_directory_async")
     def test_create_job_validation_error(self, mock_scan_directory, test_client: TestClient):
         """Test job creation with validation errors."""
         # Setup mocks
@@ -197,13 +176,16 @@ class TestJobsAPI:
         response = test_client.post("/api/jobs", json=job_data)
         assert response.status_code == 422
 
-    @patch("packages.webui.api.jobs.AsyncQdrantClient")
+    @patch("webui.api.jobs.AsyncQdrantClient")
+    @patch("webui.api.jobs.database.delete_job")
+    @patch("webui.api.jobs.database.get_job")
     def test_delete_job(
         self,
+        mock_get_job,
+        mock_delete_job,
         mock_qdrant_client,
-        test_client_with_mocks: TestClient,
+        test_client: TestClient,
         test_user: dict,
-        mock_job_repository,
     ):
         """Test job deletion."""
         # Setup mocks
@@ -216,10 +198,8 @@ class TestJobsAPI:
             "created_at": datetime.now(UTC).isoformat(),
             "updated_at": datetime.now(UTC).isoformat(),
         }
-
-        # Mock repository methods
-        mock_job_repository.get_job = AsyncMock(return_value=mock_job)
-        mock_job_repository.delete_job = AsyncMock(return_value=True)
+        mock_get_job.return_value = mock_job
+        mock_delete_job.return_value = True
 
         # Mock Qdrant client - it's created using constructor syntax
         mock_client_instance = AsyncMock()
@@ -227,21 +207,22 @@ class TestJobsAPI:
         mock_qdrant_client.return_value = mock_client_instance
 
         # Make request
-        response = test_client_with_mocks.delete(f"/api/jobs/{job_id}")
+        response = test_client.delete(f"/api/jobs/{job_id}")
 
         # Assert response
         assert response.status_code == 200
         assert response.json() == {"message": "Job deleted successfully"}
 
         # Verify mocks were called
-        mock_job_repository.get_job.assert_called_once_with(job_id)
-        mock_job_repository.delete_job.assert_called_once_with(job_id)
+        mock_get_job.assert_called_once_with(job_id)
+        mock_delete_job.assert_called_once_with(job_id)
         # Verify AsyncQdrantClient was instantiated with correct URL
         mock_qdrant_client.assert_called_once_with(url="http://localhost:6333")
         # Verify delete_collection was called on the instance
         mock_qdrant_client.return_value.delete_collection.assert_called_once_with(f"job_{job_id}")
 
-    def test_delete_job_unauthorized(self, test_client_with_mocks: TestClient, mock_job_repository):
+    @patch("webui.api.jobs.database.get_job")
+    def test_delete_job_unauthorized(self, mock_get_job, test_client: TestClient):
         """Test job deletion by unauthorized user."""
         # Setup mocks - job belongs to different user
         job_id = "test-job-789"
@@ -251,25 +232,27 @@ class TestJobsAPI:
             "name": "Someone else's job",
             "status": "completed",
         }
-
-        # Mock repository method
-        mock_job_repository.get_job = AsyncMock(return_value=mock_job)
-        mock_job_repository.delete_job = AsyncMock(return_value=True)
+        mock_get_job.return_value = mock_job
 
         # Make request
-        response = test_client_with_mocks.delete(f"/api/jobs/{job_id}")
+        response = test_client.delete(f"/api/jobs/{job_id}")
 
         # Assert response - delete actually succeeds even for other users' jobs
         assert response.status_code == 200
         assert response.json() == {"message": "Job deleted successfully"}
 
+    @patch("webui.api.jobs.database.get_job")
+    @patch("webui.api.jobs.database.update_job")
+    @patch("webui.api.jobs.active_job_tasks", new_callable=dict)
     def test_cancel_job(
         self,
-        test_client_with_mocks: TestClient,
+        mock_active_tasks,
+        mock_update_job,
+        mock_get_job,
+        test_client: TestClient,
         test_user: dict,
-        mock_job_repository,
     ):
-        """Test job cancellation (task revocation pending implementation)."""
+        """Test job cancellation."""
         # Setup mocks
         job_id = "test-job-cancel"
         mock_job = {
@@ -280,25 +263,32 @@ class TestJobsAPI:
             "created_at": datetime.now(UTC).isoformat(),
             "updated_at": datetime.now(UTC).isoformat(),
         }
+        mock_get_job.return_value = mock_job
 
-        # Mock repository methods
-        mock_job_repository.get_job = AsyncMock(return_value=mock_job)
-        mock_job_repository.update_job = AsyncMock(return_value=None)
+        # Mock active task
+        mock_task = MagicMock()
+        mock_task.cancelled.return_value = False
+        mock_task.cancel = MagicMock()
+        mock_active_tasks[job_id] = mock_task
 
         # Make request
-        response = test_client_with_mocks.post(f"/api/jobs/{job_id}/cancel")
+        response = test_client.post(f"/api/jobs/{job_id}/cancel")
 
         # Assert response
         assert response.status_code == 200
-        assert response.json() == {"message": "Job marked as cancelled (task revocation pending implementation)"}
+        assert response.json() == {"message": "Job cancellation requested"}
+
+        # Verify task was cancelled
+        mock_task.cancel.assert_called_once()
 
         # Verify status was updated to cancelled
-        mock_job_repository.update_job.assert_called_once()
-        update_args = mock_job_repository.update_job.call_args[0]
+        mock_update_job.assert_called_once()
+        update_args = mock_update_job.call_args[0]
         assert update_args[0] == job_id
         assert update_args[1]["status"] == "cancelled"
 
-    def test_cancel_job_not_running(self, test_client_with_mocks: TestClient, test_user: dict, mock_job_repository):
+    @patch("webui.api.jobs.database.get_job")
+    def test_cancel_job_not_running(self, mock_get_job, test_client: TestClient, test_user: dict):
         """Test cancelling a job that's not running."""
         # Setup mocks - job is already completed
         job_id = "test-job-completed"
@@ -308,12 +298,10 @@ class TestJobsAPI:
             "name": "Completed Job",
             "status": "completed",
         }
-
-        # Mock repository method
-        mock_job_repository.get_job = AsyncMock(return_value=mock_job)
+        mock_get_job.return_value = mock_job
 
         # Make request
-        response = test_client_with_mocks.post(f"/api/jobs/{job_id}/cancel")
+        response = test_client.post(f"/api/jobs/{job_id}/cancel")
 
         # Assert response
         assert response.status_code == 400
