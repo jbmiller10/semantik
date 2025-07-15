@@ -25,11 +25,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
-from shared.database.base import FileRepository, JobRepository
-from shared.database.factory import create_file_repository, create_job_repository
-
-from packages.webui.auth import get_current_user
-from packages.webui.rate_limiter import limiter
+from shared import database
+from webui.auth import get_current_user
+from webui.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -127,16 +125,10 @@ def start_cleanup_thread() -> None:
 start_cleanup_thread()
 
 
-async def validate_file_access(
-    job_id: str,
-    doc_id: str,
-    current_user: dict[str, Any],
-    job_repo: JobRepository,
-    file_repo: FileRepository,
-) -> dict[str, Any]:
+def validate_file_access(job_id: str, doc_id: str, current_user: dict[str, Any]) -> dict[str, Any]:
     """Validate that the user has access to the requested document"""
     # Get job to verify it exists and user has access
-    job = await job_repo.get_job(job_id)
+    job = database.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -145,7 +137,7 @@ async def validate_file_access(
         raise HTTPException(status_code=403, detail="Access denied")
 
     # Get file record from database
-    files = await file_repo.get_job_files(job_id)
+    files = database.get_job_files(job_id)
     file_record: dict[str, Any] | None = None
 
     for file in files:
@@ -189,8 +181,6 @@ async def get_document(
     job_id: str,
     doc_id: str,
     current_user: dict[str, Any] = Depends(get_current_user),
-    job_repo: JobRepository = Depends(create_job_repository),
-    file_repo: FileRepository = Depends(create_file_repository),
     range: str | None = Header(None),
 ) -> Response:
     """
@@ -208,7 +198,7 @@ async def get_document(
     Returns a `FileResponse` or `StreamingResponse` for the document.
     """
     # Validate access and get file info
-    file_record = await validate_file_access(job_id, doc_id, current_user, job_repo, file_repo)
+    file_record = validate_file_access(job_id, doc_id, current_user)
     file_path = Path(file_record["path"])
 
     # Check if file extension is supported
@@ -405,12 +395,7 @@ async def get_document(
 @router.get("/{job_id}/{doc_id}/info")
 @limiter.limit("30/minute")
 async def get_document_info(
-    request: Request,  # noqa: ARG001
-    job_id: str,
-    doc_id: str,
-    current_user: dict[str, Any] = Depends(get_current_user),
-    job_repo: JobRepository = Depends(create_job_repository),
-    file_repo: FileRepository = Depends(create_file_repository),
+    request: Request, job_id: str, doc_id: str, current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
 ) -> dict[str, Any]:
     """
     Get document metadata without downloading the file.
@@ -425,7 +410,7 @@ async def get_document_info(
     Returns a JSON object with document metadata.
     """
     # Validate access and get file info
-    file_record = await validate_file_access(job_id, doc_id, current_user, job_repo, file_repo)
+    file_record = validate_file_access(job_id, doc_id, current_user)
     file_path = Path(file_record["path"])
 
     return {
