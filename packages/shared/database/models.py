@@ -6,6 +6,10 @@ This module defines the database schema using SQLAlchemy's declarative mapping.
 These models are used by Alembic for migrations and can be used for ORM operations.
 
 Note on Timestamps:
+All DateTime fields use timezone=True to ensure consistent timezone-aware datetime
+handling across the application. This allows proper storage and retrieval of
+timezones with datetime values, preventing timezone-related bugs.
+
 We use DateTime columns for new tables but maintain String columns for existing
 user-related tables for backward compatibility. A future migration could convert
 these to proper DateTime columns.
@@ -27,6 +31,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -96,8 +101,8 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False, nullable=False)
-    created_at = Column(DateTime(timezone=True), nullable=False)
-    updated_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now())
     last_login = Column(DateTime(timezone=True))
 
     # Relationships
@@ -123,8 +128,8 @@ class Collection(Base):
     chunk_size = Column(Integer, nullable=False, default=1000)
     chunk_overlap = Column(Integer, nullable=False, default=200)
     is_public = Column(Boolean, nullable=False, default=False, index=True)
-    created_at = Column(DateTime, nullable=False)
-    updated_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     meta = Column(JSON)
 
     # New fields from second migration
@@ -164,8 +169,8 @@ class Document(Base):
     status = Column(Enum(DocumentStatus), nullable=False, default=DocumentStatus.PENDING, index=True)  # type: ignore[var-annotated]
     error_message = Column(Text)
     chunk_count = Column(Integer, nullable=False, default=0)
-    created_at = Column(DateTime, nullable=False)
-    updated_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     meta = Column(JSON)
 
     # Relationships
@@ -186,9 +191,9 @@ class ApiKey(Base):
     name = Column(String, nullable=False)
     key_hash = Column(String, unique=True, nullable=False, index=True)
     permissions = Column(JSON)  # Store collection access rights
-    last_used_at = Column(DateTime)
-    expires_at = Column(DateTime)
-    created_at = Column(DateTime, nullable=False)
+    last_used_at = Column(DateTime(timezone=True))
+    expires_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     is_active = Column(Boolean, nullable=False, default=True, index=True)
 
     # Relationships
@@ -208,7 +213,7 @@ class CollectionPermission(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     api_key_id = Column(String, ForeignKey("api_keys.id", ondelete="CASCADE"), index=True)
     permission = Column(Enum(PermissionType), nullable=False)  # type: ignore[var-annotated]
-    created_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
 
     # Relationships
     collection = relationship("Collection", back_populates="permissions")
@@ -247,7 +252,7 @@ class RefreshToken(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     token_hash = Column(String, unique=True, nullable=False, index=True)
     expires_at = Column(DateTime(timezone=True), nullable=False)
-    created_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     is_revoked = Column(Boolean, default=False)
 
     # Relationships
@@ -266,8 +271,8 @@ class CollectionSource(Base):
     document_count = Column(Integer, nullable=False, default=0)
     size_bytes = Column(Integer, nullable=False, default=0)
     last_indexed_at = Column(DateTime(timezone=True))
-    created_at = Column(DateTime(timezone=True), nullable=False)
-    updated_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     meta = Column(JSON)
 
     # Relationships
@@ -292,7 +297,7 @@ class Operation(Base):
     task_id = Column(String)  # Celery task ID
     config = Column(JSON, nullable=False)
     error_message = Column(Text)
-    created_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), index=True)
     started_at = Column(DateTime(timezone=True))
     completed_at = Column(DateTime(timezone=True))
     meta = Column(JSON)
@@ -317,7 +322,7 @@ class CollectionAuditLog(Base):
     details = Column(JSON)
     ip_address = Column(String)
     user_agent = Column(String)
-    created_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), index=True)
 
     # Relationships
     collection = relationship("Collection", back_populates="audit_logs")
@@ -336,8 +341,8 @@ class CollectionResourceLimits(Base):
     max_storage_gb = Column(Float, default=50.0)
     max_operations_per_hour = Column(Integer, default=10)
     max_sources = Column(Integer, default=10)
-    created_at = Column(DateTime(timezone=True), nullable=False)
-    updated_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
 
     # Relationships
     collection = relationship("Collection", back_populates="resource_limits")
@@ -352,7 +357,7 @@ class OperationMetrics(Base):
     operation_id = Column(Integer, ForeignKey("operations.id", ondelete="CASCADE"), nullable=False, index=True)
     metric_name = Column(String, nullable=False)
     metric_value = Column(Float, nullable=False)
-    recorded_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    recorded_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), index=True)
 
     # Relationships
     operation = relationship("Operation", back_populates="metrics")
