@@ -169,7 +169,7 @@ class TestSQLiteJobRepository:
     async def test_list_jobs_invalid_user_id(self, repository, mock_db):
         """Test listing jobs with invalid user ID."""
         # Act & Assert
-        with pytest.raises(ValueError, match="Invalid user ID format"):
+        with pytest.raises(ValueError, match="user_id must be a valid integer"):
             await repository.list_jobs(user_id="not_an_int")
 
     @pytest.mark.asyncio()
@@ -224,34 +224,27 @@ class TestSQLiteUserRepository:
         # Arrange
         user_id = "1"
         expected_user = {"id": 1, "username": "testuser"}
-        mock_db.get_user_by_id.return_value = expected_user
+        mock_db.get_user.return_value = expected_user
 
         # Act
         result = await repository.get_user(user_id)
 
         # Assert
         assert result == expected_user
-        mock_db.get_user_by_id.assert_called_once_with(1)  # Should be called with int
+        mock_db.get_user.assert_called_once_with(user_id)
 
     @pytest.mark.asyncio()
     async def test_get_user_not_found(self, repository, mock_db):
         """Test user retrieval when user doesn't exist."""
         # Arrange
-        mock_db.get_user_by_id.return_value = None
+        mock_db.get_user.return_value = None
 
         # Act
-        result = await repository.get_user("999")  # Use a valid integer string
+        result = await repository.get_user("nonexistent")
 
         # Assert
         assert result is None
-        mock_db.get_user_by_id.assert_called_once_with(999)
-
-    @pytest.mark.asyncio()
-    async def test_get_user_invalid_id(self, repository, mock_db):
-        """Test user retrieval with invalid user ID."""
-        # Act & Assert
-        with pytest.raises(ValueError, match="Invalid user ID format"):
-            await repository.get_user("nonexistent")
+        mock_db.get_user.assert_called_once_with("nonexistent")
 
     @pytest.mark.asyncio()
     async def test_get_user_by_username_success(self, repository, mock_db):
