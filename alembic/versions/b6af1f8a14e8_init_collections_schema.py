@@ -36,8 +36,8 @@ def upgrade() -> None:
         sa.Column("chunk_size", sa.Integer(), nullable=False, server_default="1000"),
         sa.Column("chunk_overlap", sa.Integer(), nullable=False, server_default="200"),
         sa.Column("is_public", sa.Boolean(), nullable=False, server_default="0"),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("meta", sa.JSON(), nullable=True),
         sa.ForeignKeyConstraint(
             ["owner_id"],
@@ -69,8 +69,8 @@ def upgrade() -> None:
         ),
         sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column("chunk_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("meta", sa.JSON(), nullable=True),
         sa.ForeignKeyConstraint(["collection_id"], ["collections.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -88,9 +88,9 @@ def upgrade() -> None:
         sa.Column("name", sa.String(), nullable=False),
         sa.Column("key_hash", sa.String(), nullable=False),
         sa.Column("permissions", sa.JSON(), nullable=True),
-        sa.Column("last_used_at", sa.DateTime(), nullable=True),
-        sa.Column("expires_at", sa.DateTime(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default="1"),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -107,7 +107,7 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Integer(), nullable=True),
         sa.Column("api_key_id", sa.String(), nullable=True),
         sa.Column("permission", sa.Enum("read", "write", "admin", name="permission_type"), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.CheckConstraint(
             "(user_id IS NOT NULL AND api_key_id IS NULL) OR (user_id IS NULL AND api_key_id IS NOT NULL)",
             name="check_user_or_api_key",
@@ -142,7 +142,7 @@ def upgrade() -> None:
 
     # Add new columns to users table
     op.add_column("users", sa.Column("is_superuser", sa.Boolean(), nullable=False, server_default="0"))
-    op.add_column("users", sa.Column("updated_at", sa.DateTime(), nullable=True))
+    op.add_column("users", sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True))
 
     # Drop old tables
     # Note: We're dropping these tables which will lose all existing job and file data
