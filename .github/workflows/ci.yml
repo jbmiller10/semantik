@@ -48,10 +48,6 @@ jobs:
         image: qdrant/qdrant:latest
         ports:
           - 6333:6333
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
 
     steps:
     - uses: actions/checkout@v4
@@ -78,17 +74,6 @@ jobs:
           sleep 2
         done
     
-    - name: Wait for Redis to be ready
-      run: |
-        for i in {1..30}; do
-          if nc -zv localhost 6379 2>/dev/null; then
-            echo "Redis is ready!"
-            break
-          fi
-          echo "Waiting for Redis... ($i/30)"
-          sleep 2
-        done
-    
     - name: Run tests with pytest (excluding E2E)
       run: |
         poetry run pytest -m "not e2e" --cov=vecpipe --cov=webui --cov=shared --cov-report=xml
@@ -98,7 +83,6 @@ jobs:
         JWT_SECRET_KEY: test-secret-key
         USE_MOCK_EMBEDDINGS: "true"
         PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:512"
-        REDIS_URL: redis://localhost:6379/0
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
