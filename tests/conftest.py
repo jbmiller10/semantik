@@ -68,6 +68,7 @@ def test_client_with_mocks(
         create_job_repository,
         create_user_repository,
     )
+
     from packages.webui.auth import get_current_user
     from packages.webui.main import app
 

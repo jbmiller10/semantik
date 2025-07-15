@@ -156,9 +156,7 @@ async def readiness_probe() -> JSONResponse:
     embedding_task = asyncio.create_task(_check_embedding_health())
 
     # Wait for all checks to complete
-    results = await asyncio.gather(
-        redis_task, database_task, qdrant_task, embedding_task, return_exceptions=True
-    )
+    results = await asyncio.gather(redis_task, database_task, qdrant_task, embedding_task, return_exceptions=True)
     redis_result: dict[str, Any] | BaseException = results[0]
     database_result: dict[str, Any] | BaseException = results[1]
     qdrant_result: dict[str, Any] | BaseException = results[2]
