@@ -84,7 +84,7 @@ async def _check_database_health() -> dict[str, Any]:
     """Check database connection health with timeout."""
     try:
         # Use asyncio to add timeout to database operation
-        def _db_check():
+        def _db_check() -> bool:
             with get_db_connection() as conn:
                 conn.execute("SELECT 1")
                 return True
@@ -101,7 +101,7 @@ async def _check_qdrant_health() -> dict[str, Any]:
     """Check Qdrant connection health with timeout."""
     try:
 
-        def _qdrant_check():
+        def _qdrant_check() -> int:
             client = qdrant_manager.get_client()
             collections = client.get_collections()
             return len(collections.collections)
@@ -156,9 +156,13 @@ async def readiness_probe() -> JSONResponse:
     embedding_task = asyncio.create_task(_check_embedding_health())
 
     # Wait for all checks to complete
-    redis_result, database_result, qdrant_result, embedding_result = await asyncio.gather(
+    results = await asyncio.gather(
         redis_task, database_task, qdrant_task, embedding_task, return_exceptions=True
     )
+    redis_result: dict[str, Any] | BaseException = results[0]
+    database_result: dict[str, Any] | BaseException = results[1]
+    qdrant_result: dict[str, Any] | BaseException = results[2]
+    embedding_result: dict[str, Any] | BaseException = results[3]
 
     # Handle any exceptions from gather
     services = {}
@@ -170,7 +174,7 @@ async def readiness_probe() -> JSONResponse:
         ("qdrant", qdrant_result),
         ("embedding", embedding_result),
     ]:
-        if isinstance(result, Exception):
+        if isinstance(result, BaseException):
             services[name] = {"status": "unhealthy", "message": f"Health check failed: {str(result)}"}
             all_healthy = False
         else:
