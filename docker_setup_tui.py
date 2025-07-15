@@ -1236,9 +1236,14 @@ class DockerSetupTUI:
 
     def _get_compose_files(self) -> list[str]:
         """Get the appropriate docker-compose file arguments based on GPU configuration"""
-        # Always use the main docker-compose.yml
-        # PyTorch will automatically detect GPU availability
-        return ["-f", "docker-compose.yml"]
+        files = ["-f", "docker-compose.yml"]
+
+        # Add CUDA override if GPU mode is selected
+        # This ensures proper CUDA libraries and environment variables for bitsandbytes
+        if self.config.get("USE_GPU") == "true":
+            files.extend(["-f", "docker-compose.cuda.yml"])
+
+        return files
 
     def _check_existing_config(self) -> bool:
         """Check if an existing configuration exists"""
