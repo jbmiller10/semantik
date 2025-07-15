@@ -59,6 +59,7 @@ services:
       - USE_MOCK_EMBEDDINGS=${USE_MOCK_EMBEDDINGS:-false}
       - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
       - DEFAULT_QUANTIZATION=${DEFAULT_QUANTIZATION:-float16}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_THIS_TO_A_STRONG_SECRET_KEY}
       # GPU-specific settings
       - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
       # Service configuration
@@ -189,12 +190,6 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - SETPCAP
-      - SETGID
-      - SETUID
     deploy:
       resources:
         limits:
@@ -217,7 +212,7 @@ services:
       dockerfile: Dockerfile.cuda
       target: runtime
     container_name: semantik-worker
-    command: ["sh", "-c", "celery -A webui.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-1}"]
+    command: ["worker"]
     environment:
       # Python path
       - PYTHONPATH=/app/packages
@@ -286,7 +281,7 @@ services:
       dockerfile: Dockerfile
       target: runtime
     container_name: semantik-flower
-    command: ["sh", "-c", "celery -A webui.celery_app flower --broker=redis://redis:6379/0 --basic_auth=${FLOWER_BASIC_AUTH:-admin:admin}"]
+    command: ["flower"]
     ports:
       - "5555:5555"
     environment:

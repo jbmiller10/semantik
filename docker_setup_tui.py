@@ -1154,11 +1154,25 @@ class DockerSetupTUI:
 
         # Execute based on choice
         if "Build and start" in action:
+            if self.config.get("USE_GPU") == "true":
+                console.print("[bold yellow]GPU Build Notice:[/bold yellow]")
+                console.print("• First-time GPU builds download NVIDIA CUDA base images (~3-5GB)")
+                console.print("• This can take 10-30 minutes depending on your internet speed")
+                console.print("• Subsequent builds will be much faster due to Docker layer caching")
+                console.print()
+
             self._run_docker_command(["docker", "compose"] + compose_files + ["build"], "Building images")
             self._run_docker_command(["docker", "compose"] + compose_files + ["up", "-d"], "Starting services")
         elif "Start services" in action:
             self._run_docker_command(["docker", "compose"] + compose_files + ["up", "-d"], "Starting services")
         else:
+            if self.config.get("USE_GPU") == "true":
+                console.print("[bold yellow]GPU Build Notice:[/bold yellow]")
+                console.print("• First-time GPU builds download NVIDIA CUDA base images (~3-5GB)")
+                console.print("• This can take 10-30 minutes depending on your internet speed")
+                console.print("• Subsequent builds will be much faster due to Docker layer caching")
+                console.print()
+
             self._run_docker_command(["docker", "compose"] + compose_files + ["build"], "Building images")
             return
 
@@ -1184,22 +1198,41 @@ class DockerSetupTUI:
 
     def _run_docker_command(self, cmd: list[str], description: str) -> bool:
         """Run a Docker command with progress display"""
-        with Progress(
-            SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
-        ) as progress:
-            task = progress.add_task(description, total=None)
+        # For build commands, show real-time output
+        if "build" in cmd or "--build" in cmd:
+            console.print(f"\n[bold cyan]{description}[/bold cyan]")
+            console.print("[dim]This may take several minutes, especially for GPU images...[/dim]\n")
 
             try:
-                result = subprocess.run(cmd, capture_output=True, text=True)
+                # Run without capturing output to show progress in real-time
+                result = subprocess.run(cmd)
 
                 if result.returncode == 0:
-                    progress.update(task, completed=True)
+                    console.print(f"\n[green]✓ {description} completed successfully[/green]")
                     return True
-                console.print(f"\n[red]Error: {result.stderr}[/red]")
+                console.print(f"\n[red]✗ {description} failed with exit code {result.returncode}[/red]")
                 return False
             except Exception as e:
                 console.print(f"\n[red]Error running command: {e}[/red]")
                 return False
+        else:
+            # For non-build commands, use the spinner
+            with Progress(
+                SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
+            ) as progress:
+                task = progress.add_task(description, total=None)
+
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+
+                    if result.returncode == 0:
+                        progress.update(task, completed=True)
+                        return True
+                    console.print(f"\n[red]Error: {result.stderr}[/red]")
+                    return False
+                except Exception as e:
+                    console.print(f"\n[red]Error running command: {e}[/red]")
+                    return False
 
     def _get_compose_files(self) -> list[str]:
         """Get the appropriate docker-compose file arguments based on GPU configuration"""
@@ -1320,6 +1353,12 @@ class DockerSetupTUI:
             elif "Restart all" in action:
                 self._run_docker_command(["docker", "compose"] + compose_files + ["restart"], "Restarting services")
             elif "Rebuild" in action:
+                if self.config.get("USE_GPU") == "true":
+                    console.print("\n[bold yellow]GPU Rebuild Notice:[/bold yellow]")
+                    console.print("• Rebuilding will re-download any updated base images")
+                    console.print("• This may take several minutes")
+                    console.print()
+
                 self._run_docker_command(["docker", "compose"] + compose_files + ["build"], "Building images")
                 self._run_docker_command(["docker", "compose"] + compose_files + ["up", "-d"], "Starting services")
             elif "View logs" in action and "specific" not in action:
