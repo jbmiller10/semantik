@@ -37,7 +37,7 @@ help:
 	@echo "  dev            Start development environment"
 
 install:
-	poetry install --no-dev
+	poetry install --only main
 
 dev-install:
 	poetry install
