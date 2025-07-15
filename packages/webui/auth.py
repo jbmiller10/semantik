@@ -158,8 +158,11 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials | None = De
             "id": 0,
             "username": "dev_user",
             "email": "dev@example.com",
+            "full_name": "Development User",
             "is_active": True,
             "is_superuser": True,
+            "created_at": datetime.now(UTC).isoformat(),
+            "last_login": datetime.now(UTC).isoformat(),
         }
     
     if not credentials:
@@ -220,7 +223,11 @@ async def get_current_user_websocket(token: str | None) -> dict[str, Any]:
                 "id": 0,
                 "username": "dev_user",
                 "email": "dev@example.com",
+                "full_name": "Development User",
                 "is_active": True,
+                "is_superuser": True,
+                "created_at": datetime.now(UTC).isoformat(),
+                "last_login": datetime.now(UTC).isoformat(),
             }
         raise ValueError("Missing authentication token")
 
