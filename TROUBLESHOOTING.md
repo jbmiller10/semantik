@@ -128,6 +128,86 @@ If you encounter GPU out of memory errors:
    ```bash
    nvidia-smi
    ```
+4. Set memory limits in configuration:
+   ```bash
+   export MODEL_MAX_MEMORY_GB=8  # Limit GPU memory usage
+   ```
+
+### JWT Secret Key Missing in Production
+
+If you see "JWT_SECRET_KEY not set in production environment":
+
+1. Generate a secure key:
+   ```bash
+   openssl rand -hex 32
+   ```
+2. Set it in your `.env` file:
+   ```bash
+   JWT_SECRET_KEY=your-generated-key
+   ```
+3. Never use the default key in production
+
+### Frontend Testing Commands Not Working
+
+If `make frontend-test` fails:
+
+The frontend testing infrastructure is not currently configured. To run frontend tests:
+1. Tests need to be implemented in the React application
+2. Testing libraries (Jest, React Testing Library) need to be installed
+
+### Job Cancellation Not Working
+
+If job cancellation fails:
+
+This is a known limitation - Celery task IDs are not currently persisted. Jobs can be monitored but not cancelled once started.
+
+### Model Loading Timeouts
+
+If models timeout during first load:
+
+1. Use the preload endpoint before searching:
+   ```bash
+   curl -X POST http://localhost:8080/api/preload_model \
+     -H "Content-Type: application/json" \
+     -d '{"model_name": "Qwen/Qwen3-Embedding-0.6B"}'
+   ```
+2. Increase timeout settings if needed
+3. Models are cached after first download
+
+### WebSocket Connection Failed
+
+If real-time updates aren't working:
+
+1. Check browser console for errors
+2. Ensure your reverse proxy supports WebSocket:
+   ```nginx
+   # nginx.conf
+   location /ws/ {
+       proxy_pass http://localhost:8080;
+       proxy_http_version 1.1;
+       proxy_set_header Upgrade $http_upgrade;
+       proxy_set_header Connection "upgrade";
+   }
+   ```
+3. Check firewall rules for WebSocket connections
+
+### Document Preview Not Working
+
+If documents fail to preview:
+
+1. Check file permissions on the document
+2. Ensure the document path is accessible to the container
+3. For PPTX files, temporary image extraction may take time
+4. Check logs for extraction errors
+
+### Rate Limiting Errors
+
+If you encounter 429 Too Many Requests:
+
+1. Default rate limit is 60 requests per minute
+2. Implement client-side rate limiting
+3. Use batch endpoints when available
+4. Configure `RATE_LIMIT_PER_MINUTE` if needed
 
 For additional help, please open an issue on our GitHub repository with:
 - Your system specifications (OS, GPU model, CUDA version)

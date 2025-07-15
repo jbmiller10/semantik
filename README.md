@@ -184,6 +184,8 @@ That's it!  Semantik is now running with:
 **Additional Docker Options:**
 - **Production**: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
 - **CUDA-enabled GPU**: `docker compose -f docker-compose.yml -f docker-compose.cuda.yml up -d`
+
+> **Note**: The system automatically detects GPU availability. PyTorch will use CPU if no GPU is found.
 </details>
 
 ### Option 3: Development Setup (Shell Scripts)
