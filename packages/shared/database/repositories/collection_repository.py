@@ -2,7 +2,7 @@
 
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import uuid4
 
 from shared.database.exceptions import (
@@ -13,13 +13,10 @@ from shared.database.exceptions import (
     ValidationError,
 )
 from shared.database.models import Collection, CollectionStatus, Document
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
-if TYPE_CHECKING:
-    from sqlalchemy.sql import CompoundSelect, Select
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +60,17 @@ class CollectionRepository:
 
         Raises:
             EntityAlreadyExistsError: If collection name already exists
+            ValidationError: If chunk configuration is invalid
             DatabaseOperationError: For database errors
         """
         try:
+            # Validate chunk configuration
+            if chunk_size <= 0:
+                raise ValidationError("Chunk size must be positive", "chunk_size")
+            if chunk_overlap < 0:
+                raise ValidationError("Chunk overlap cannot be negative", "chunk_overlap")
+            if chunk_overlap >= chunk_size:
+                raise ValidationError("Chunk overlap must be less than chunk size", "chunk_overlap")
             # Check if collection name already exists
             existing = await self.session.execute(select(Collection).where(Collection.name == name))
             if existing.scalar_one_or_none():
@@ -185,17 +190,11 @@ class CollectionRepository:
             Tuple of (collections list, total count)
         """
         try:
-            # Build query for collections
-            user_collections = select(Collection).where(Collection.owner_id == user_id)
-
-            # Type annotation to help mypy
-            query: Select[tuple[Collection]] | CompoundSelect[tuple[Collection]]
-
+            # Build query for collections with OR conditions (more efficient than union)
             if include_public:
-                public_collections = select(Collection).where(Collection.is_public.is_(True))
-                query = user_collections.union(public_collections)
+                query = select(Collection).where(or_(Collection.owner_id == user_id, Collection.is_public.is_(True)))
             else:
-                query = user_collections
+                query = select(Collection).where(Collection.owner_id == user_id)
 
             # Get total count
             count_query = select(func.count()).select_from(query.subquery())
@@ -271,8 +270,17 @@ class CollectionRepository:
 
         Raises:
             EntityNotFoundError: If collection not found
+            ValidationError: If any count is negative
         """
         try:
+            # Validate non-negative counts
+            if document_count is not None and document_count < 0:
+                raise ValidationError("Document count cannot be negative", "document_count")
+            if vector_count is not None and vector_count < 0:
+                raise ValidationError("Vector count cannot be negative", "vector_count")
+            if total_size_bytes is not None and total_size_bytes < 0:
+                raise ValidationError("Total size cannot be negative", "total_size_bytes")
+
             collection = await self.get_by_uuid(collection_uuid)
             if not collection:
                 raise EntityNotFoundError("collection", collection_uuid)

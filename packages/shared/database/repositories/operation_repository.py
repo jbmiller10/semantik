@@ -373,13 +373,8 @@ class OperationRepository:
             ValidationError: If operation cannot be cancelled
         """
         try:
-            # Get operation with permission check
+            # Get operation with permission check (handles all authorization)
             operation = await self.get_by_uuid_with_permission_check(operation_uuid, user_id)
-
-            # Only the user who created it or collection owner can cancel
-            await self.session.refresh(operation, ["collection"])
-            if operation.user_id != user_id and operation.collection.owner_id != user_id:
-                raise AccessDeniedError(str(user_id), "operation", operation_uuid)
 
             # Can only cancel pending or processing operations
             if operation.status not in (OperationStatus.PENDING, OperationStatus.PROCESSING):
