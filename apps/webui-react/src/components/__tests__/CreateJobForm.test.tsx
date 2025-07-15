@@ -288,8 +288,8 @@ describe('CreateJobForm', () => {
     await user.click(advancedButton)
     
     expect(screen.getByLabelText('Embedding Model')).toBeInTheDocument()
-    expect(screen.getByLabelText('Chunk Size')).toBeInTheDocument()
-    expect(screen.getByLabelText('Chunk Overlap')).toBeInTheDocument()
+    expect(screen.getByLabelText('Vector Dimension')).toBeInTheDocument()
+    expect(screen.getByLabelText('Quantization')).toBeInTheDocument()
     expect(screen.getByLabelText('Batch Size')).toBeInTheDocument()
   })
 

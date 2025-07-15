@@ -221,4 +221,19 @@ export const handlers = [
       },
     })
   }),
+
+  // Settings endpoints
+  http.get('/api/settings/stats', () => {
+    return HttpResponse.json({
+      job_count: 10,
+      file_count: 100,
+      database_size_mb: 50,
+      parquet_files_count: 10,
+      parquet_size_mb: 25,
+    })
+  }),
+
+  http.post('/api/settings/reset', () => {
+    return HttpResponse.json({ message: 'Database reset successfully' })
+  }),
 ]

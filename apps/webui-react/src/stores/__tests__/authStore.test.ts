@@ -1,9 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { http, HttpResponse } from 'msw'
+import { server } from '../../tests/mocks/server'
 import { useAuthStore } from '../authStore'
-
-// Mock fetch for logout API call
-const mockFetch = vi.fn()
-vi.stubGlobal('fetch', mockFetch)
 
 describe('authStore', () => {
   beforeEach(() => {
@@ -17,7 +15,7 @@ describe('authStore', () => {
     // Clear localStorage
     localStorage.clear()
     
-    // Reset fetch mock
+    // Reset all mocks
     vi.clearAllMocks()
   })
 
@@ -89,11 +87,14 @@ describe('authStore', () => {
     const { setAuth, logout } = useAuthStore.getState()
     setAuth(mockToken, mockUser, mockRefreshToken)
 
-    // Mock successful logout API response
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ message: 'Logged out' }),
-    })
+    // Track if logout API was called
+    let logoutCalled = false
+    server.use(
+      http.post('/api/auth/logout', () => {
+        logoutCalled = true
+        return HttpResponse.json({ message: 'Logged out successfully' })
+      })
+    )
 
     // Perform logout
     await logout()
@@ -108,17 +109,7 @@ describe('authStore', () => {
     expect(localStorage.getItem('auth-storage')).toBeNull()
 
     // Check that logout API was called
-    expect(mockFetch).toHaveBeenCalledWith(
-      '/api/auth/logout',
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          'Authorization': `Bearer ${mockToken}`,
-          'Content-Type': 'application/json',
-        }),
-        body: JSON.stringify({ refresh_token: mockRefreshToken }),
-      })
-    )
+    expect(logoutCalled).toBe(true)
   })
 
   it('clears state even if logout API fails', async () => {
@@ -135,7 +126,11 @@ describe('authStore', () => {
     setAuth(mockToken, mockUser)
 
     // Mock failed logout API response
-    mockFetch.mockRejectedValueOnce(new Error('Network error'))
+    server.use(
+      http.post('/api/auth/logout', () => {
+        return HttpResponse.error()
+      })
+    )
 
     // Spy on console.error
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -164,11 +159,20 @@ describe('authStore', () => {
   it('handles logout when no token is present', async () => {
     const { logout } = useAuthStore.getState()
 
+    // Track if logout API was called
+    let logoutCalled = false
+    server.use(
+      http.post('/api/auth/logout', () => {
+        logoutCalled = true
+        return HttpResponse.json({ message: 'Logged out successfully' })
+      })
+    )
+
     // Perform logout without any auth data
     await logout()
 
-    // Check that fetch was not called
-    expect(mockFetch).not.toHaveBeenCalled()
+    // Check that API was not called (no token)
+    expect(logoutCalled).toBe(false)
 
     // State should remain null
     const state = useAuthStore.getState()

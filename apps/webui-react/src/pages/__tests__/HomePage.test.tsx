@@ -89,7 +89,8 @@ describe('HomePage', () => {
 
     const { container } = render(<HomePage />)
     
-    expect(container.firstChild).toBeEmptyDOMElement()
+    // HomePage renders a React Fragment, so when empty, container.firstChild is null
+    expect(container.firstChild).toBeNull()
     expect(screen.queryByTestId('create-job-form')).not.toBeInTheDocument()
     expect(screen.queryByTestId('job-list')).not.toBeInTheDocument()
     expect(screen.queryByTestId('search-interface')).not.toBeInTheDocument()

@@ -57,15 +57,6 @@ describe('Layout', () => {
       activeTab: 'create',
       setActiveTab: mockSetActiveTab,
     })
-    
-    // Mock import.meta.env
-    vi.stubGlobal('import', {
-      meta: {
-        env: {
-          DEV: false,
-        },
-      },
-    })
   })
 
   afterEach(() => {
@@ -178,33 +169,27 @@ describe('Layout', () => {
   })
 
   it('shows verification link in development mode', () => {
-    vi.stubGlobal('import', {
-      meta: {
-        env: {
-          DEV: true,
-        },
-      },
-    })
+    // Mock import.meta.env.DEV to be true
+    vi.stubEnv('DEV', true)
     
     render(<Layout />)
     
     const verificationLink = screen.getByRole('link', { name: 'Verification' })
     expect(verificationLink).toBeInTheDocument()
     expect(verificationLink).toHaveAttribute('href', '/verification')
+    
+    vi.unstubAllEnvs()
   })
 
   it('hides verification link in production mode', () => {
-    vi.stubGlobal('import', {
-      meta: {
-        env: {
-          DEV: false,
-        },
-      },
-    })
+    // Mock import.meta.env.DEV to be false
+    vi.stubEnv('DEV', false)
     
     render(<Layout />)
     
     expect(screen.queryByRole('link', { name: 'Verification' })).not.toBeInTheDocument()
+    
+    vi.unstubAllEnvs()
   })
 
   it('handles all tab clicks correctly', async () => {

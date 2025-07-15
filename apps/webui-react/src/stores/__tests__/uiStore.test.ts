@@ -4,23 +4,23 @@ import { useUIStore } from '../uiStore'
 
 describe('uiStore', () => {
   beforeEach(() => {
-    // Clear all timers
-    vi.clearAllTimers()
-    vi.useFakeTimers()
+    // Reset the store to initial state first
+    useUIStore.setState({
+      toasts: [],
+      activeTab: 'create',
+      showJobMetricsModal: null,
+      showDocumentViewer: null,
+      showCollectionDetailsModal: null,
+    })
     
-    // Reset the store by getting its initial state
-    const store = useUIStore.getState()
-    // Clear all toasts properly
-    store.toasts.forEach(toast => store.removeToast(toast.id))
-    // Reset other state
-    store.setActiveTab('create')
-    store.setShowJobMetricsModal(null)
-    store.setShowDocumentViewer(null)
-    store.setShowCollectionDetailsModal(null)
+    // Then setup fake timers
+    vi.clearAllTimers()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
   })
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.clearAllMocks()
   })
 
   describe('toasts', () => {
@@ -45,30 +45,45 @@ describe('uiStore', () => {
     it('removes a toast by id', () => {
       const { result } = renderHook(() => useUIStore())
       
-      let firstToastId: string
-      
-      // Add two toasts
+      // Add two toasts with no auto-removal
       act(() => {
+        // Use a fixed timestamp for consistent IDs
+        const now = Date.now()
+        vi.setSystemTime(now)
+        
         result.current.addToast({
           message: 'Toast 1',
           type: 'info',
+          duration: 0,  // No auto-removal
         })
+        
+        // Advance time slightly for different ID
+        vi.setSystemTime(now + 1)
+        
         result.current.addToast({
           message: 'Toast 2',
           type: 'error',
+          duration: 0,  // No auto-removal
         })
       })
 
+      // Verify toasts were added
       expect(result.current.toasts).toHaveLength(2)
-      firstToastId = result.current.toasts[0].id
+      const firstToastId = result.current.toasts[0].id
+      const secondToastId = result.current.toasts[1].id
+      
+      expect(result.current.toasts[0].message).toBe('Toast 1')
+      expect(result.current.toasts[1].message).toBe('Toast 2')
 
       // Remove the first toast
       act(() => {
         result.current.removeToast(firstToastId)
       })
 
+      // Verify only one toast remains
       expect(result.current.toasts).toHaveLength(1)
       expect(result.current.toasts[0].message).toBe('Toast 2')
+      expect(result.current.toasts[0].id).toBe(secondToastId)
     })
 
     it('auto-removes toast after default duration', () => {
@@ -143,16 +158,24 @@ describe('uiStore', () => {
       const { result } = renderHook(() => useUIStore())
       
       act(() => {
+        // Use fixed timestamps for consistent IDs
+        const now = Date.now()
+        vi.setSystemTime(now)
+        
         result.current.addToast({
           message: 'Toast 1',
           type: 'info',
           duration: 2000,
         })
+        
+        vi.setSystemTime(now + 1)
         result.current.addToast({
           message: 'Toast 2',
           type: 'success',
           duration: 4000,
         })
+        
+        vi.setSystemTime(now + 2)
         result.current.addToast({
           message: 'Toast 3',
           type: 'error',
@@ -161,11 +184,13 @@ describe('uiStore', () => {
       })
 
       expect(result.current.toasts).toHaveLength(3)
+      expect(result.current.toasts.map(t => t.message)).toEqual(['Toast 1', 'Toast 2', 'Toast 3'])
 
       // After 2 seconds, first toast should be gone
       act(() => {
         vi.advanceTimersByTime(2000)
       })
+      
       expect(result.current.toasts).toHaveLength(2)
       expect(result.current.toasts.map(t => t.message)).toEqual(['Toast 2', 'Toast 3'])
 
@@ -173,6 +198,7 @@ describe('uiStore', () => {
       act(() => {
         vi.advanceTimersByTime(2000)
       })
+      
       expect(result.current.toasts).toHaveLength(1)
       expect(result.current.toasts[0].message).toBe('Toast 3')
     })
