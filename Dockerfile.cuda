@@ -12,7 +12,7 @@ WORKDIR /build
 # Copy package files for better caching
 COPY apps/webui-react/package*.json ./apps/webui-react/
 WORKDIR /build/apps/webui-react
-RUN npm ci
+RUN npm install
 
 # Copy frontend source
 COPY apps/webui-react/ ./
@@ -102,6 +102,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # C compiler for bitsandbytes JIT compilation
     gcc \
     g++ \
+    # Required for healthchecks
+    wget \
+    curl \
     # Clean up
     && rm -rf /var/lib/apt/lists/*
 
@@ -119,13 +122,18 @@ COPY --from=python-builder /usr/local/bin /usr/local/bin
 # Copy application code
 COPY packages/ ./packages/
 
+# Copy alembic configuration and migrations
+COPY alembic.ini ./
+COPY alembic/ ./alembic/
+
 # Copy built frontend to webui static directory
 COPY --from=frontend-builder /build/packages/webui/static ./packages/webui/static/
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && \
     mkdir -p /app/data /app/logs && \
-    chown -R appuser:appuser /app
+    chown -R appuser:appuser /app && \
+    chown -R appuser:appuser /app/alembic /app/alembic.ini
 
 # Create necessary directories with proper permissions
 RUN mkdir -p \
