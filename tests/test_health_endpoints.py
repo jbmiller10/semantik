@@ -122,8 +122,10 @@ class TestWebuiHealthEndpoints:
 
         # Mock Redis connection
         mock_redis = Mock()
+
         async def async_ping():
             return True
+
         mock_redis.ping = async_ping
 
         with (
@@ -146,8 +148,10 @@ class TestWebuiHealthEndpoints:
 
         # Mock Redis connection - make it healthy so we can test embedding failure
         mock_redis = Mock()
+
         async def async_ping():
             return True
+
         mock_redis.ping = async_ping
 
         with (
