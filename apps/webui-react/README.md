@@ -125,17 +125,37 @@ This generates optimized static files in the `dist/` directory, which are then c
 
 ## Testing
 
-Run the test suite with:
+Currently, the frontend has integration tests but lacks unit/component testing infrastructure.
+
+### Available Tests
 
 ```bash
-# Open test files in browser
+# Integration tests (HTML-based)
 open tests/*.html
 
-# Run API tests
+# API tests
 python tests/api_test_suite.py
 ```
 
-See the [tests README](tests/README.md) for comprehensive testing documentation.
+See the [tests README](tests/README.md) for integration testing documentation.
+
+### Future Testing Setup
+
+To add proper React component testing:
+
+1. Install testing dependencies:
+   ```bash
+   npm install --save-dev vitest @testing-library/react @testing-library/jest-dom jsdom
+   ```
+
+2. Configure Vitest in `vite.config.ts`
+3. Add test scripts to `package.json`:
+   ```json
+   "scripts": {
+     "test": "vitest",
+     "test:coverage": "vitest --coverage"
+   }
+   ```
 
 ## Contributing
 
