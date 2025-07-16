@@ -463,3 +463,94 @@ The implementation follows the execution plan closely while maintaining backward
   - After investigation, the repositories manage their own database sessions internally
   - The status updates are atomic at the repository level
   - Staging cleanup is intentionally performed outside the main error handler to avoid blocking
+
+---
+
+## TASK-014: Implement Resource Cleanup Task
+
+### 2025-07-16 - Starting TASK-014 Implementation
+- **Task**: Implement Resource Cleanup Task
+- **Context**: Create a Celery task for cleaning up orphaned Qdrant collections after a successful re-index
+- **Requirements**:
+  1. The task `cleanup_qdrant_collections(collection_names: List[str])` will be called with a delay
+  2. It will safely delete the specified Qdrant collections
+  3. It must include checks to prevent accidental deletion of active collections
+- **Analysis**:
+  - Found existing `cleanup_old_collections` task from TASK-012 that handles basic deletion
+  - Need to create new `cleanup_qdrant_collections` task with enhanced safety checks
+  - Must verify collections are not actively being used before deletion
+  - Should use QdrantManager for consistency with other operations
+
+### 2025-07-16 - Completed TASK-014 Implementation
+- **Changes Made**:
+  1. **Created Enhanced Cleanup Task** (packages/webui/tasks.py, lines 336-471):
+     - Added `cleanup_qdrant_collections` task with comprehensive safety checks
+     - Configured with same retry settings as cleanup_old_collections plus exponential backoff
+     - Returns detailed statistics including safety check results for each collection
+  2. **Implemented 5 Safety Checks**:
+     - **System Collection Check**: Skip collections starting with "_" (reserved for system use)
+     - **Active Collection Check**: Query database to find all active collections and skip them
+     - **Existence Check**: Verify collection exists in Qdrant before attempting deletion
+     - **Staging Age Check**: For staging collections, verify they're older than 1 hour
+     - **Audit Trail**: Record deletion details before removing each collection
+  3. **Created Helper Functions**:
+     - `_get_active_collections()`: Async function to retrieve all active Qdrant collection names from database
+     - Checks vector_store_name, qdrant_collections list, and qdrant_staging fields
+     - Returns a set of all collection names that should not be deleted
+     - `_audit_collection_deletion()`: Creates audit log entries for each deleted collection
+     - Records collection name, vector count, and deletion timestamp
+  4. **Fixed QdrantManager Initialization**:
+     - Discovered existing bug in cleanup_old_collections (tries to init QdrantManager without required client)
+     - Properly import connection manager and get client before creating QdrantManager instance
+     - Pattern: `qdrant_client = connection_manager.get_client()` then `QdrantManager(qdrant_client)`
+  5. **Enhanced Error Handling**:
+     - Each collection deletion is wrapped in try-except for individual error handling
+     - Failed deletions don't stop processing of other collections
+     - All errors are collected and returned in the response
+  6. **Comprehensive Testing**:
+     - Created test_cleanup_tasks.py with 15+ test cases
+     - Tests cover all safety checks, error scenarios, and edge cases
+     - Includes async tests for helper functions
+     - Mock-based testing for isolation from external services
+- **Key Differences from cleanup_old_collections**:
+  - Enhanced safety checks prevent accidental deletion of active collections
+  - Database query to determine active collections dynamically
+  - Detailed safety check results in response for debugging
+  - Staging collection age verification (1 hour minimum)
+  - Audit logging for compliance and tracking
+  - Better error isolation and reporting
+- **Benefits**:
+  - Safer cleanup operations with multiple verification steps
+  - Complete audit trail for all deletions
+  - Better visibility into why collections were skipped
+  - Protection against accidental deletion of production data
+  - Suitable for automated cleanup in production environments
+
+### 2025-07-16 - Code Quality Improvements
+- **Issues Addressed Based on Review**:
+  1. **Import Pattern Clarification**: Added comment explaining the import from webui.utils.qdrant_manager is correct (not shared.managers.connection)
+  2. **Private Method Usage**: Added comment explaining why _is_staging_collection_old() is used (method exists and provides needed functionality)
+  3. **Configurable Staging Age**: Added staging_age_hours parameter (default: 1 hour) to make threshold configurable
+  4. **Efficient Async Operations**: Replaced multiple asyncio.run() calls with batched audit logging
+- **Performance Improvements**:
+  - Created `_audit_collection_deletions_batch()` function for efficient batch audit logging
+  - Single async operation for all audit logs instead of individual calls per deletion
+  - Reduces overhead and improves performance for bulk cleanup operations
+- **Code Quality**:
+  - All tests updated to reflect new batched audit pattern
+  - Clear documentation of design decisions in code comments
+  - Maintained backward compatibility while improving efficiency
+
+### 2025-07-16 - Test Fixes and Import Bug Resolution
+- **Fixed Critical Import Bug**: 
+  - QdrantOperationTimer was being imported from non-existent `shared.managers.timer`
+  - Corrected import to use `shared.metrics.collection_metrics.QdrantOperationTimer`
+  - Fixed both cleanup_old_collections and cleanup_qdrant_collections functions
+- **Fixed QdrantManager Initialization Bug**:
+  - cleanup_old_collections was incorrectly calling `QdrantManager()` without required client parameter
+  - Updated to use proper pattern: get client from connection manager, then create QdrantManager instance
+- **Comprehensive Test Fixes**:
+  - Rewrote all test patches to target actual module paths instead of non-existent module-level imports
+  - Fixed async test mocking for database operations
+  - Updated all QdrantManager tests to use proper connection manager pattern
+  - All tests now use correct import paths and mock configurations
