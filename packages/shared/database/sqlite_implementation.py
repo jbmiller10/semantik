@@ -277,3 +277,136 @@ def revoke_refresh_token(_token: str) -> None:
     # Note: In the current implementation, tokens are revoked on logout
     # This is handled by the auth API endpoint
     # Keeping this function for backward compatibility
+
+
+# =============================================================================
+# DEPRECATED FUNCTIONS - Phase 1 Compatibility
+# =============================================================================
+# These functions are stubs for backward compatibility after the Phase 1 migration
+# dropped the jobs and files tables. They will be removed in a future phase.
+# =============================================================================
+
+
+def create_job(job_data: dict[str, Any]) -> str:  # noqa: ARG001
+    """Create a new job (DEPRECATED - tables dropped in Phase 1)."""
+    logger.warning("create_job is deprecated. Jobs table has been dropped. Use Operations API instead.")
+    # Return a fake job ID to prevent crashes
+    return "deprecated-job-1"
+
+
+def update_job(job_id: str, updates: dict[str, Any]) -> None:  # noqa: ARG001
+    """Update a job (DEPRECATED - tables dropped in Phase 1)."""
+    logger.warning(f"update_job is deprecated. Jobs table has been dropped. Job ID: {job_id}")
+    # No-op since table doesn't exist
+
+
+def get_job(job_id: str) -> dict[str, Any] | None:
+    """Get a job by ID (DEPRECATED - tables dropped in Phase 1)."""
+    logger.warning(f"get_job is deprecated. Jobs table has been dropped. Job ID: {job_id}")
+    # Return None to indicate not found
+    return None
+
+
+def list_jobs(user_id: int | None = None) -> list[dict[str, Any]]:  # noqa: ARG001
+    """List jobs (DEPRECATED - tables dropped in Phase 1)."""
+    logger.warning("list_jobs is deprecated. Jobs table has been dropped.")
+    # Return empty list
+    return []
+
+
+def delete_job(job_id: str) -> None:
+    """Delete a job (DEPRECATED - tables dropped in Phase 1)."""
+    logger.warning(f"delete_job is deprecated. Jobs table has been dropped. Job ID: {job_id}")
+    # No-op since table doesn't exist
+
+
+def add_files_to_job(job_id: str, files: list[dict[str, Any]]) -> None:  # noqa: ARG001
+    """Add files to a job (DEPRECATED - tables dropped in Phase 1)."""
+    logger.warning(f"add_files_to_job is deprecated. Files table has been dropped. Job ID: {job_id}")
+    # No-op since table doesn't exist
+
+
+def update_file_status(
+    job_id: str,  # noqa: ARG001
+    file_path: str,
+    status: str,  # noqa: ARG001
+    error: str | None = None,  # noqa: ARG001
+    chunks_created: int = 0,  # noqa: ARG001
+    vectors_created: int = 0,  # noqa: ARG001
+) -> None:
+    """Update file status (DEPRECATED - tables dropped in Phase 1)."""
+    logger.warning(f"update_file_status is deprecated. Files table has been dropped. File: {file_path}")
+    # No-op since table doesn't exist
+
+
+def get_job_files(job_id: str, status: str | None = None) -> list[dict[str, Any]]:  # noqa: ARG001
+    """Get job files (DEPRECATED - tables dropped in Phase 1)."""
+    logger.warning(f"get_job_files is deprecated. Files table has been dropped. Job ID: {job_id}")
+    # Return empty list
+    return []
+
+
+def get_job_total_vectors(job_id: str) -> int:
+    """Get total vectors for a job (DEPRECATED - tables dropped in Phase 1)."""
+    logger.warning(f"get_job_total_vectors is deprecated. Files table has been dropped. Job ID: {job_id}")
+    # Return 0
+    return 0
+
+
+def get_duplicate_files_in_collection(collection_name: str, content_hashes: list[str]) -> set[str]:  # noqa: ARG001
+    """Check duplicate files (DEPRECATED - tables dropped in Phase 1)."""
+    logger.warning(f"get_duplicate_files_in_collection is deprecated. Files table has been dropped. Collection: {collection_name}")
+    # Return empty set (no duplicates)
+    return set()
+
+
+def get_collection_metadata(collection_name: str) -> dict[str, Any] | None:
+    """Get collection metadata (DEPRECATED - tables dropped in Phase 1)."""
+    logger.warning(f"get_collection_metadata is deprecated. Use new Collections API. Collection: {collection_name}")
+    # Return None to indicate not found
+    return None
+
+
+def list_collections(user_id: int | None = None) -> list[dict[str, Any]]:  # noqa: ARG001
+    """List collections (DEPRECATED - tables dropped in Phase 1)."""
+    logger.warning("list_collections is deprecated. Use new Collections API.")
+    # Return empty list
+    return []
+
+
+def get_collection_details(collection_name: str, user_id: int) -> dict[str, Any] | None:  # noqa: ARG001
+    """Get collection details (DEPRECATED - tables dropped in Phase 1)."""
+    logger.warning(f"get_collection_details is deprecated. Use new Collections API. Collection: {collection_name}")
+    # Return None to indicate not found
+    return None
+
+
+def get_collection_files(collection_name: str, user_id: int, page: int = 1, limit: int = 50) -> dict[str, Any]:  # noqa: ARG001
+    """Get collection files (DEPRECATED - tables dropped in Phase 1)."""
+    logger.warning(f"get_collection_files is deprecated. Use new Collections API. Collection: {collection_name}")
+    # Return empty paginated response
+    return {
+        "files": [],
+        "total": 0,
+        "page": page,
+        "limit": limit,
+        "pages": 0,
+    }
+
+
+def rename_collection(old_name: str, new_name: str, user_id: int) -> bool:  # noqa: ARG001
+    """Rename collection (DEPRECATED - tables dropped in Phase 1)."""
+    logger.warning(f"rename_collection is deprecated. Use new Collections API. Collection: {old_name} -> {new_name}")
+    # Return False to indicate failure
+    return False
+
+
+def delete_collection(collection_name: str, user_id: int) -> dict[str, Any]:  # noqa: ARG001
+    """Delete collection (DEPRECATED - tables dropped in Phase 1)."""
+    logger.warning(f"delete_collection is deprecated. Use new Collections API. Collection: {collection_name}")
+    # Return empty deletion info
+    return {
+        "deleted_jobs": 0,
+        "deleted_files": 0,
+        "collection_name": collection_name,
+    }
