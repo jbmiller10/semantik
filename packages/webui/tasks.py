@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import psutil
-import redis.asyncio as redis  # type: ignore[import-untyped]
+import redis.asyncio as redis
 from qdrant_client.models import PointStruct
 from shared.config import settings
 from shared.database.factory import create_collection_repository, create_file_repository, create_job_repository
