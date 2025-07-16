@@ -355,7 +355,9 @@ def get_job_total_vectors(job_id: str) -> int:
 
 def get_duplicate_files_in_collection(collection_name: str, content_hashes: list[str]) -> set[str]:  # noqa: ARG001
     """Check duplicate files (DEPRECATED - tables dropped in Phase 1)."""
-    logger.warning(f"get_duplicate_files_in_collection is deprecated. Files table has been dropped. Collection: {collection_name}")
+    logger.warning(
+        f"get_duplicate_files_in_collection is deprecated. Files table has been dropped. Collection: {collection_name}"
+    )
     # Return empty set (no duplicates)
     return set()
 
@@ -381,9 +383,13 @@ def get_collection_details(collection_name: str, user_id: int) -> dict[str, Any]
     return None
 
 
-def get_collection_files(collection_name: str, user_id: int, page: int = 1, limit: int = 50) -> dict[str, Any]:  # noqa: ARG001
+def get_collection_files(
+    collection_name: str, user_id: int, page: int = 1, limit: int = 50
+) -> dict[str, Any]:
     """Get collection files (DEPRECATED - tables dropped in Phase 1)."""
-    logger.warning(f"get_collection_files is deprecated. Use new Collections API. Collection: {collection_name}")
+    logger.warning(
+        f"get_collection_files is deprecated. Use new Collections API. Collection: {collection_name}, User: {user_id}"
+    )
     # Return empty paginated response
     return {
         "files": [],
