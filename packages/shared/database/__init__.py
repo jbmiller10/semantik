@@ -13,14 +13,7 @@ Import Organization:
 - Utilities: Database initialization, password hashing, and metadata management
 """
 
-from .base import (
-    AuthRepository,
-    BaseRepository,
-    CollectionRepository,
-    FileRepository,
-    JobRepository,
-    UserRepository,
-)
+from .base import AuthRepository, BaseRepository, CollectionRepository, FileRepository, JobRepository, UserRepository
 from .collection_metadata import ensure_metadata_collection, store_collection_metadata
 from .collection_metadata import get_collection_metadata as get_collection_metadata_qdrant
 from .exceptions import (
@@ -49,31 +42,15 @@ from .factory import (
 # TODO: Migrate tests and code to use repository pattern instead
 from .sqlite_implementation import (
     DB_PATH,
-    add_files_to_job,
-    create_job,
     create_user,
-    delete_collection,
-    delete_job,
-    get_collection_details,
-    get_collection_files,
-    get_collection_metadata,
     get_database_stats,
-    get_duplicate_files_in_collection,
-    get_job,
-    get_job_files,
-    get_job_total_vectors,
     get_user,
     get_user_by_id,
     init_db,
-    list_collections,
-    list_jobs,
     pwd_context,
-    rename_collection,
     reset_database,
     revoke_refresh_token,
     save_refresh_token,
-    update_file_status,
-    update_job,
     update_user_last_login,
     verify_refresh_token,
 )
@@ -146,27 +123,12 @@ __all__ = [
     "get_connection_pool",
     "get_db_connection",
     # Legacy function exports (for backward compatibility)
-    # TODO: Remove these once all code is migrated to repository pattern
-    "create_job",
-    "get_job",
-    "update_job",
-    "delete_job",
-    "list_jobs",
-    "add_files_to_job",
-    "update_file_status",
-    "get_job_files",
-    "get_job_total_vectors",
-    "get_duplicate_files_in_collection",
+    # NOTE: Job/file/collection functions have been removed as part of collections refactor
+    # Only user-related functions remain
     "create_user",
     "get_user",
     "get_user_by_id",
     "update_user_last_login",
-    "get_collection_metadata",
-    "list_collections",
-    "get_collection_details",
-    "get_collection_files",
-    "rename_collection",
-    "delete_collection",
     "save_refresh_token",
     "verify_refresh_token",
     "revoke_refresh_token",
