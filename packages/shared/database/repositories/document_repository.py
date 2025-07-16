@@ -1,17 +1,14 @@
 """Repository implementation for Document model."""
 
 import logging
+import re
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from shared.database.exceptions import (
-    DatabaseOperationError,
-    EntityNotFoundError,
-    ValidationError,
-)
+from shared.database.exceptions import DatabaseOperationError, EntityNotFoundError, ValidationError
 from shared.database.models import Collection, Document, DocumentStatus
-from sqlalchemy import and_, desc, func, select, update
+from sqlalchemy import and_, delete, desc, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -72,6 +69,9 @@ class DocumentRepository:
                 raise ValidationError("File size cannot be negative", "file_size")
             if not content_hash:
                 raise ValidationError("Content hash is required", "content_hash")
+            # Validate SHA-256 hash format (64 hex characters)
+            if not re.match(r"^[a-f0-9]{64}$", content_hash.lower()):
+                raise ValidationError("Invalid SHA-256 hash format", "content_hash")
 
             # Check if collection exists
             collection_result = await self.session.execute(select(Collection).where(Collection.id == collection_id))
@@ -165,9 +165,7 @@ class DocumentRepository:
             )
             return result.scalar_one_or_none()
         except Exception as e:
-            logger.error(
-                f"Failed to get document by content_hash {content_hash} in collection {collection_id}: {e}"
-            )
+            logger.error(f"Failed to get document by content_hash {content_hash} in collection {collection_id}: {e}")
             raise DatabaseOperationError("get", "document", str(e)) from e
 
     async def list_by_collection(
@@ -387,16 +385,17 @@ class DocumentRepository:
             duplicates = await self.list_duplicates(collection_id)
             deleted_count = 0
 
-            for content_hash, count, docs in duplicates:
+            for content_hash, _, docs in duplicates:
                 # Sort by created_at
                 sorted_docs = sorted(docs, key=lambda d: d.created_at, reverse=not keep_oldest)
 
-                # Keep the first one, delete the rest
-                for doc in sorted_docs[1:]:
-                    await self.session.delete(doc)
-                    deleted_count += 1
+                # Keep the first one, delete the rest using bulk operation
+                if len(sorted_docs) > 1:
+                    delete_ids = [doc.id for doc in sorted_docs[1:]]
+                    result = await self.session.execute(delete(Document).where(Document.id.in_(delete_ids)))
+                    deleted_count += result.rowcount
 
-                logger.info(f"Deleted {count - 1} duplicate documents with content_hash {content_hash}")
+                    logger.info(f"Deleted {len(delete_ids)} duplicate documents with content_hash {content_hash}")
 
             await self.session.flush()
 

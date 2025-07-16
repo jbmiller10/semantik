@@ -1,17 +1,10 @@
 """Unit tests for DocumentRepository."""
 
-import pytest
-from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, create_autospec
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
-from sqlalchemy.exc import IntegrityError
-
-from shared.database.exceptions import (
-    DatabaseOperationError,
-    EntityNotFoundError,
-    ValidationError,
-)
+import pytest
+from shared.database.exceptions import DatabaseOperationError, EntityNotFoundError, ValidationError
 from shared.database.models import Collection, Document, DocumentStatus
 from shared.database.repositories.document_repository import DocumentRepository
 
@@ -19,28 +12,22 @@ from shared.database.repositories.document_repository import DocumentRepository
 class TestDocumentRepository:
     """Test cases for DocumentRepository."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_session(self):
         """Create a mock async session."""
         return AsyncMock()
 
-    @pytest.fixture
+    @pytest.fixture()
     def repository(self, mock_session):
         """Create a DocumentRepository instance with mocked session."""
         return DocumentRepository(mock_session)
 
-    @pytest.fixture
+    @pytest.fixture()
     def sample_collection(self):
         """Create a sample collection for testing."""
-        collection = Collection(
-            id=str(uuid4()),
-            name="test-collection",
-            owner_id=1,
-            is_public=False
-        )
-        return collection
+        return Collection(id=str(uuid4()), name="test-collection", owner_id=1, is_public=False)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_create_document_validation_errors(self, repository):
         """Test validation errors during document creation."""
         # Test missing file path
@@ -79,17 +66,41 @@ class TestDocumentRepository:
             )
         assert "Content hash is required" in str(exc_info.value)
 
-    @pytest.mark.asyncio
+        # Test invalid SHA-256 hash format
+        with pytest.raises(ValidationError) as exc_info:
+            await repository.create(
+                collection_id=str(uuid4()),
+                source_id="default",
+                file_path="/test/file.txt",
+                file_name="file.txt",
+                file_size=1024,
+                content_hash="invalid_hash",
+            )
+        assert "Invalid SHA-256 hash format" in str(exc_info.value)
+
+        # Test hash too short
+        with pytest.raises(ValidationError) as exc_info:
+            await repository.create(
+                collection_id=str(uuid4()),
+                source_id="default",
+                file_path="/test/file.txt",
+                file_name="file.txt",
+                file_size=1024,
+                content_hash="abc123",
+            )
+        assert "Invalid SHA-256 hash format" in str(exc_info.value)
+
+    @pytest.mark.asyncio()
     async def test_create_document_deduplication_logic(self, repository, mock_session, sample_collection):
         """Test that deduplication logic is called correctly."""
         # Setup
         collection_id = str(uuid4())
-        content_hash = "test_hash"
-        
+        content_hash = "a" * 64  # Valid SHA-256 hash format
+
         # Mock collection exists
         collection_result = AsyncMock()
         collection_result.scalar_one_or_none.return_value = sample_collection
-        
+
         # Mock existing document found
         existing_doc = Document(
             id=str(uuid4()),
@@ -99,15 +110,15 @@ class TestDocumentRepository:
             file_name="existing.txt",
             file_size=100,
             content_hash=content_hash,
-            status=DocumentStatus.COMPLETED
+            status=DocumentStatus.COMPLETED,
         )
-        
+
         # Configure mock session
         mock_session.execute.side_effect = [
             collection_result,  # Collection check
-            AsyncMock(scalar_one_or_none=AsyncMock(return_value=existing_doc))  # Existing doc check
+            AsyncMock(scalar_one_or_none=AsyncMock(return_value=existing_doc)),  # Existing doc check
         ]
-        
+
         # Act
         result = await repository.create(
             collection_id=collection_id,
@@ -117,25 +128,25 @@ class TestDocumentRepository:
             file_size=200,
             content_hash=content_hash,
         )
-        
+
         # Assert - should return existing document without creating new one
         assert result == existing_doc
         mock_session.add.assert_not_called()
         mock_session.flush.assert_not_called()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_by_id_calls_correct_query(self, repository, mock_session):
         """Test that get_by_id executes the correct query."""
         # Setup
         doc_id = str(uuid4())
-        
+
         # Act
         await repository.get_by_id(doc_id)
-        
+
         # Assert
         mock_session.execute.assert_called_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_update_status_validation(self, repository, mock_session):
         """Test update_status with document not found."""
         # Setup
@@ -143,16 +154,13 @@ class TestDocumentRepository:
         mock_result = AsyncMock()
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
-        
+
         # Act & Assert
         with pytest.raises(EntityNotFoundError) as exc_info:
-            await repository.update_status(
-                document_id=doc_id,
-                status=DocumentStatus.COMPLETED
-            )
+            await repository.update_status(document_id=doc_id, status=DocumentStatus.COMPLETED)
         assert "document" in str(exc_info.value)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_bulk_update_status_executes_update(self, repository, mock_session):
         """Test that bulk_update_status executes update query."""
         # Setup
@@ -160,20 +168,18 @@ class TestDocumentRepository:
         mock_result = AsyncMock()
         mock_result.rowcount = 3
         mock_session.execute.return_value = mock_result
-        
+
         # Act
         count = await repository.bulk_update_status(
-            document_ids=doc_ids,
-            status=DocumentStatus.FAILED,
-            error_message="Test error"
+            document_ids=doc_ids, status=DocumentStatus.FAILED, error_message="Test error"
         )
-        
+
         # Assert
         assert count == 3
         mock_session.execute.assert_called_once()
         mock_session.flush.assert_called_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_delete_document_not_found(self, repository, mock_session):
         """Test deletion when document doesn't exist."""
         # Setup
@@ -181,45 +187,45 @@ class TestDocumentRepository:
         mock_result = AsyncMock()
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
-        
+
         # Act & Assert
         with pytest.raises(EntityNotFoundError) as exc_info:
             await repository.delete(doc_id)
         assert "document" in str(exc_info.value)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_stats_structure(self, repository, mock_session):
         """Test that get_stats_by_collection returns correct structure."""
         # Setup
         collection_id = str(uuid4())
-        
+
         # Mock the status counts query
         status_counts = [
             (DocumentStatus.PENDING, 5),
             (DocumentStatus.COMPLETED, 10),
             (DocumentStatus.FAILED, 2),
         ]
-        
+
         # Create an async iterator for status counts
         async def async_iter():
             for item in status_counts:
                 yield item
-        
+
         mock_result = AsyncMock()
         mock_result.__aiter__.return_value = async_iter()
-        
+
         # Configure scalar responses for aggregates
         mock_session.scalar.side_effect = [
             1048576,  # total_size
-            150,      # total_chunks  
-            3,        # duplicate_groups
+            150,  # total_chunks
+            3,  # duplicate_groups
         ]
-        
+
         mock_session.execute.return_value = mock_result
-        
+
         # Act
         stats = await repository.get_stats_by_collection(collection_id)
-        
+
         # Assert structure
         assert "total_documents" in stats
         assert "by_status" in stats
@@ -227,12 +233,12 @@ class TestDocumentRepository:
         assert "total_chunks" in stats
         assert "duplicate_groups" in stats
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_database_operation_error_handling(self, repository, mock_session):
         """Test handling of unexpected database errors."""
         # Setup
         mock_session.execute.side_effect = Exception("Database connection lost")
-        
+
         # Act & Assert
         with pytest.raises(DatabaseOperationError) as exc_info:
             await repository.get_by_id(str(uuid4()))

@@ -14,8 +14,9 @@ Import Organization:
 """
 
 from .base import AuthRepository, BaseRepository, CollectionRepository, FileRepository, JobRepository, UserRepository
-from .collection_metadata import ensure_metadata_collection, store_collection_metadata
+from .collection_metadata import ensure_metadata_collection
 from .collection_metadata import get_collection_metadata as get_collection_metadata_qdrant
+from .collection_metadata import store_collection_metadata
 from .exceptions import (
     AccessDeniedError,
     ConcurrencyError,
