@@ -239,3 +239,7 @@ Always run `make check` before committing to ensure code quality.
 - CORS configured for frontend development
 - API key authentication for programmatic access
 - Superuser required for admin operations
+
+##TOOLS/MCP
+- context7 for looking up documentation
+- puppeteer for viewing webui in browser
