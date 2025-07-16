@@ -5,7 +5,13 @@ allowing for easy switching between different implementations.
 """
 
 from .base import AuthRepository, CollectionRepository, FileRepository, JobRepository, UserRepository
-from .sqlite_repository import SQLiteAuthRepository, SQLiteUserRepository
+from .sqlite_repository import (
+    SQLiteAuthRepository,
+    SQLiteCollectionRepository,
+    SQLiteFileRepository,
+    SQLiteJobRepository,
+    SQLiteUserRepository,
+)
 
 
 def create_job_repository() -> JobRepository:
@@ -15,10 +21,11 @@ def create_job_repository() -> JobRepository:
         JobRepository instance
 
     Note:
+        This returns the SQLite implementation for backward compatibility.
         Jobs have been replaced by operations in the new schema.
-        This function is deprecated and will be removed.
+        This function will be removed in a future phase.
     """
-    raise NotImplementedError("JobRepository is deprecated. Use OperationRepository instead.")
+    return SQLiteJobRepository()
 
 
 def create_user_repository() -> UserRepository:
@@ -37,10 +44,11 @@ def create_file_repository() -> FileRepository:
         FileRepository instance
 
     Note:
+        This returns the SQLite implementation for backward compatibility.
         Files have been replaced by documents in the new schema.
-        This function is deprecated and will be removed.
+        This function will be removed in a future phase.
     """
-    raise NotImplementedError("FileRepository is deprecated. Use DocumentRepository instead.")
+    return SQLiteFileRepository()
 
 
 def create_collection_repository() -> CollectionRepository:
@@ -50,12 +58,11 @@ def create_collection_repository() -> CollectionRepository:
         CollectionRepository instance
 
     Note:
-        The new CollectionRepository uses SQLAlchemy.
-        The old SQLite implementation has been removed.
+        This returns the SQLite implementation for backward compatibility.
+        The new CollectionRepository uses SQLAlchemy and should be used for new code.
+        This function will be removed in a future phase.
     """
-    raise NotImplementedError(
-        "SQLite CollectionRepository is deprecated. Use packages.shared.database.repositories.CollectionRepository instead."
-    )
+    return SQLiteCollectionRepository()
 
 
 def create_auth_repository() -> AuthRepository:
@@ -74,10 +81,13 @@ def create_all_repositories() -> dict[str, object]:
         Dictionary mapping repository names to instances
 
     Note:
-        Some repositories are deprecated and will raise NotImplementedError.
+        Job, File, and Collection repositories are using the old SQLite implementation
+        for backward compatibility. They will be replaced in a future phase.
     """
     return {
+        "job": create_job_repository(),
         "user": create_user_repository(),
+        "file": create_file_repository(),
+        "collection": create_collection_repository(),
         "auth": create_auth_repository(),
-        # Job, File, and Collection repositories are deprecated
     }
