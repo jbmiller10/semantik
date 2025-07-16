@@ -16,12 +16,16 @@ Import Organization:
 from .base import AuthRepository, BaseRepository, CollectionRepository, FileRepository, JobRepository, UserRepository
 from .collection_metadata import ensure_metadata_collection, store_collection_metadata
 from .collection_metadata import get_collection_metadata as get_collection_metadata_qdrant
+
+# Async database session management
+from .database import get_db
 from .exceptions import (
     AccessDeniedError,
     ConcurrencyError,
     DatabaseOperationError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
+    InvalidStateError,
     InvalidUserIdError,
     RepositoryError,
     TransactionError,
@@ -99,6 +103,7 @@ __all__ = [
     "DatabaseOperationError",
     "EntityAlreadyExistsError",
     "EntityNotFoundError",
+    "InvalidStateError",
     "InvalidUserIdError",
     "RepositoryError",
     "TransactionError",
@@ -119,6 +124,8 @@ __all__ = [
     "pwd_context",
     # Utility functions
     "parse_user_id",
+    # Async database session management
+    "get_db",
     # Connection pooling (optional, for workers)
     "get_connection_pool",
     "get_db_connection",

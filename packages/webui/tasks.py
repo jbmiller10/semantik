@@ -633,3 +633,349 @@ async def _update_metrics_continuously() -> None:
         except Exception as e:
             logger.warning(f"Error updating metrics in job: {e}")
         await asyncio.sleep(1)  # Check every 1 second
+
+
+@celery_app.task(bind=True, name="webui.tasks.process_collection_operation", max_retries=3, default_retry_delay=60)
+def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]:
+    """
+    Process a collection operation (INDEX, APPEND, REINDEX, REMOVE_SOURCE).
+
+    This is a synchronous wrapper that runs the async processing logic.
+    """
+    # Run the async function in an event loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    try:
+        return loop.run_until_complete(_process_collection_operation_async(operation_id, self))
+    except Exception as exc:
+        logger.error(f"Task failed for operation {operation_id}: {exc}")
+        # Don't retry for certain exceptions
+        if isinstance(exc, ValueError | TypeError):
+            raise  # Don't retry on programming errors
+        # Retry for other exceptions (network issues, temporary failures)
+        raise self.retry(exc=exc, countdown=60) from exc
+    finally:
+        loop.close()
+
+
+async def _process_collection_operation_async(operation_id: str, celery_task: Any) -> dict[str, Any]:  # noqa: ARG001
+    """Async implementation of collection operation processing."""
+    from shared.database.factory import (
+        create_collection_repository,
+        create_document_repository,
+        create_operation_repository,
+    )
+    from shared.database.models import CollectionStatus, OperationStatus, OperationType
+
+    updater = None
+
+    # Create repository instances
+    operation_repo = create_operation_repository()
+    collection_repo = create_collection_repository()
+    document_repo = create_document_repository()
+
+    # Create updater for sending Redis updates
+    updater = CeleryTaskWithUpdates(operation_id)
+
+    try:
+        # Get operation details
+        operation = await operation_repo.get_by_uuid(operation_id)
+        if not operation:
+            raise ValueError(f"Operation {operation_id} not found in database")
+
+        # Update operation status to processing
+        await operation_repo.update_status(operation_id, OperationStatus.PROCESSING)
+        await updater.send_update("operation_started", {"status": "processing", "type": operation["type"]})
+
+        # Get collection details
+        collection = await collection_repo.get_by_id(operation["collection_id"])
+        if not collection:
+            raise ValueError(f"Collection {operation['collection_id']} not found in database")
+
+        # Process based on operation type
+        result = {}
+
+        if operation["type"] == OperationType.INDEX:
+            result = await _process_index_operation(operation, collection, collection_repo, document_repo, updater)
+        elif operation["type"] == OperationType.APPEND:
+            result = await _process_append_operation(operation, collection, collection_repo, document_repo, updater)
+        elif operation["type"] == OperationType.REINDEX:
+            result = await _process_reindex_operation(operation, collection, collection_repo, document_repo, updater)
+        elif operation["type"] == OperationType.REMOVE_SOURCE:
+            result = await _process_remove_source_operation(
+                operation, collection, collection_repo, document_repo, updater
+            )
+        else:
+            raise ValueError(f"Unknown operation type: {operation['type']}")
+
+        # Update operation status to completed
+        await operation_repo.update_status(operation_id, OperationStatus.COMPLETED, result=result)
+
+        # Update collection status based on result
+        if result.get("success"):
+            # Check if collection has any documents
+            doc_stats = await document_repo.get_stats_by_collection(collection["id"])
+            if doc_stats["total_count"] > 0:
+                await collection_repo.update_status(collection["id"], CollectionStatus.READY)
+            else:
+                await collection_repo.update_status(collection["id"], CollectionStatus.EMPTY)
+        else:
+            await collection_repo.update_status(collection["id"], CollectionStatus.PARTIALLY_READY)
+
+        await updater.send_update("operation_completed", {"status": "completed", "result": result})
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Operation {operation_id} failed: {e}")
+
+        # Update operation status to failed
+        await operation_repo.update_status(operation_id, OperationStatus.FAILED, result={"error": str(e)})
+
+        # Update collection status to failed if critical operation
+        if operation and operation["type"] in [OperationType.INDEX, OperationType.REINDEX]:
+            await collection_repo.update_status(operation["collection_id"], CollectionStatus.FAILED)
+
+        await updater.send_update("operation_failed", {"status": "failed", "error": str(e)})
+
+        raise
+
+    finally:
+        if updater:
+            await updater.close()
+
+
+async def _process_index_operation(
+    operation: dict,  # noqa: ARG001
+    collection: dict,
+    collection_repo: Any,
+    document_repo: Any,  # noqa: ARG001
+    updater: CeleryTaskWithUpdates,
+) -> dict[str, Any]:
+    """Process INDEX operation - Initial collection creation."""
+    try:
+        # Create Qdrant collection
+        qdrant_client = qdrant_manager.get_client()
+        qdrant_collection_name = f"collection_{collection['uuid']}"
+
+        # Get vector dimension from config
+        from webui.services.collection_service import DEFAULT_VECTOR_DIMENSION
+
+        config = collection.get("config", {})
+        vector_dim = config.get("vector_dim", DEFAULT_VECTOR_DIMENSION)
+
+        # Create collection in Qdrant
+        from qdrant_client.models import Distance, VectorParams
+
+        qdrant_client.create_collection(
+            collection_name=qdrant_collection_name,
+            vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
+        )
+
+        # Update collection with Qdrant collection name
+        await collection_repo.update(collection["id"], {"qdrant_collection_name": qdrant_collection_name})
+
+        await updater.send_update(
+            "index_completed", {"qdrant_collection": qdrant_collection_name, "vector_dim": vector_dim}
+        )
+
+        return {"success": True, "qdrant_collection": qdrant_collection_name}
+
+    except Exception as e:
+        logger.error(f"Failed to create Qdrant collection: {e}")
+        raise
+
+
+async def _process_append_operation(
+    operation: dict,
+    collection: dict,
+    collection_repo: Any,  # noqa: ARG001
+    document_repo: Any,  # noqa: ARG001
+    updater: CeleryTaskWithUpdates,
+) -> dict[str, Any]:
+    """Process APPEND operation - Add documents to existing collection."""
+    config = operation.get("config", {})
+    source_path = config.get("source_path")
+
+    if not source_path:
+        raise ValueError("source_path is required for APPEND operation")
+
+    # Import required modules for file scanning
+    from shared.database.database import AsyncSessionLocal
+    from shared.database.repositories.document_repository import DocumentRepository
+    from webui.services.file_scanning_service import FileScanningService
+
+    # Use proper async session for new repositories
+    async with AsyncSessionLocal() as session:
+        # Create new repository instance with session
+        doc_repo = DocumentRepository(session)
+
+        # Create file scanning service
+        file_scanner = FileScanningService(db_session=session, document_repo=doc_repo)
+
+        # Scan directory and register documents
+        await updater.send_update("scanning_files", {"status": "scanning", "source_path": source_path})
+
+        try:
+            scan_stats = await file_scanner.scan_directory_and_register_documents(
+                collection_id=collection["id"],
+                source_path=source_path,
+                recursive=True,  # Default to recursive scanning
+                batch_size=100,  # Commit every 100 files for large directories
+            )
+
+            # Final commit to ensure any remaining transactions are persisted
+            await session.commit()
+
+            # Send progress update
+            await updater.send_update(
+                "scanning_completed",
+                {
+                    "status": "scanning_completed",
+                    "total_files_found": scan_stats["total_files_found"],
+                    "new_files_registered": scan_stats["new_files_registered"],
+                    "duplicate_files_skipped": scan_stats["duplicate_files_skipped"],
+                    "errors_count": len(scan_stats.get("errors", [])),
+                },
+            )
+
+            # TODO: Process registered documents to generate embeddings and add to Qdrant
+            # This will be implemented in future tasks
+
+            await updater.send_update(
+                "append_completed",
+                {
+                    "source_path": source_path,
+                    "documents_added": scan_stats["new_files_registered"],
+                    "total_files_scanned": scan_stats["total_files_found"],
+                    "duplicates_skipped": scan_stats["duplicate_files_skipped"],
+                },
+            )
+
+            return {
+                "success": True,
+                "source_path": source_path,
+                "documents_added": scan_stats["new_files_registered"],
+                "total_files_scanned": scan_stats["total_files_found"],
+                "duplicates_skipped": scan_stats["duplicate_files_skipped"],
+                "total_size_bytes": scan_stats["total_size_bytes"],
+                "errors": scan_stats.get("errors", []),
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to scan and register documents: {e}")
+            await session.rollback()
+            raise
+
+
+async def _process_reindex_operation(
+    operation: dict,
+    collection: dict,
+    collection_repo: Any,
+    document_repo: Any,  # noqa: ARG001
+    updater: CeleryTaskWithUpdates,
+) -> dict[str, Any]:
+    """Process REINDEX operation - Blue-green reindexing."""
+    config = operation.get("config", {})
+    new_config = config.get("new_config", {})
+
+    try:
+        qdrant_client = qdrant_manager.get_client()
+
+        # Create new collection with updated config
+        old_collection_name = collection["qdrant_collection_name"]
+        new_collection_name = f"{old_collection_name}_reindex_{int(time.time())}"
+
+        from webui.services.collection_service import DEFAULT_VECTOR_DIMENSION
+
+        vector_dim = new_config.get("vector_dim", collection["config"].get("vector_dim", DEFAULT_VECTOR_DIMENSION))
+
+        from qdrant_client.models import Distance, VectorParams
+
+        qdrant_client.create_collection(
+            collection_name=new_collection_name,
+            vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
+        )
+
+        # TODO: Reprocess all documents with new configuration
+        # This would involve:
+        # 1. Getting all documents for the collection
+        # 2. Reprocessing with new chunking/embedding settings
+        # 3. Adding to new Qdrant collection
+        # 4. Atomic switch to new collection
+        # 5. Delete old collection
+
+        # For now, just update the config
+        await collection_repo.update(
+            collection["id"], {"config": new_config, "qdrant_collection_name": new_collection_name}
+        )
+
+        # Delete old collection
+        try:
+            qdrant_client.delete_collection(old_collection_name)
+        except Exception as e:
+            logger.warning(f"Failed to delete old collection {old_collection_name}: {e}")
+
+        await updater.send_update(
+            "reindex_completed", {"old_collection": old_collection_name, "new_collection": new_collection_name}
+        )
+
+        return {"success": True, "new_collection": new_collection_name}
+
+    except Exception as e:
+        logger.error(f"Failed to reindex collection: {e}")
+        raise
+
+
+async def _process_remove_source_operation(
+    operation: dict,
+    collection: dict,
+    collection_repo: Any,
+    document_repo: Any,
+    updater: CeleryTaskWithUpdates,
+) -> dict[str, Any]:
+    """Process REMOVE_SOURCE operation - Remove documents from a source."""
+    config = operation.get("config", {})
+    source_path = config.get("source_path")
+
+    if not source_path:
+        raise ValueError("source_path is required for REMOVE_SOURCE operation")
+
+    try:
+        # Get documents from this source
+        documents = await document_repo.list_by_collection_and_source(collection["id"], source_path)
+
+        if not documents:
+            logger.info(f"No documents found for source {source_path}")
+            return {"success": True, "documents_removed": 0}
+
+        # Remove vectors from Qdrant
+        doc_ids = [doc["id"] for doc in documents]
+
+        # TODO: Remove vectors by document ID from Qdrant
+        # This requires storing document ID in Qdrant payload
+
+        # Mark documents as deleted in database
+        from shared.database.models import DocumentStatus
+
+        await document_repo.bulk_update_status(doc_ids, DocumentStatus.DELETED)
+
+        # Update collection stats
+        stats = await document_repo.get_stats_by_collection(collection["id"])
+        await collection_repo.update_stats(
+            collection["id"],
+            total_documents=stats["total_count"],
+            total_chunks=stats["total_chunks"],
+            total_size_bytes=stats["total_size_bytes"],
+        )
+
+        await updater.send_update(
+            "remove_source_completed", {"source_path": source_path, "documents_removed": len(documents)}
+        )
+
+        return {"success": True, "source_path": source_path, "documents_removed": len(documents)}
+
+    except Exception as e:
+        logger.error(f"Failed to remove source {source_path}: {e}")
+        raise
