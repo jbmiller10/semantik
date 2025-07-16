@@ -31,10 +31,11 @@ class TestCleanupOldCollections:
 
         # Mock collections exist
         mock_collections = MagicMock()
-        mock_collections.collections = [
-            MagicMock(name="col_old_1"),
-            MagicMock(name="col_old_2"),
-        ]
+        mock_col_1 = MagicMock()
+        mock_col_1.name = "col_old_1"
+        mock_col_2 = MagicMock()
+        mock_col_2.name = "col_old_2"
+        mock_collections.collections = [mock_col_1, mock_col_2]
         mock_qdrant_client.get_collections.return_value = mock_collections
 
         # Run cleanup
