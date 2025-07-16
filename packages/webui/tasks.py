@@ -886,16 +886,11 @@ def _handle_task_failure(
         logger.error(f"Task {task_id} failed but operation_id not found in args/kwargs")
         return
 
-    # Run async failure handler in a new event loop
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
+    # Run async failure handler using asyncio.run() for safer event loop handling
     try:
-        loop.run_until_complete(_handle_task_failure_async(operation_id, exc, task_id))
+        asyncio.run(_handle_task_failure_async(operation_id, exc, task_id))
     except Exception as e:
         logger.error(f"Failed to handle task failure for operation {operation_id}: {e}")
-    finally:
-        loop.close()
 
 
 async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id: str) -> None:
@@ -907,6 +902,12 @@ async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id:
     from shared.database.models import CollectionStatus, OperationStatus, OperationType
     from shared.metrics.collection_metrics import collection_operations_total
 
+    # Initialize variables
+    operation = None
+    collection = None
+    collection_id = None
+
+    # Create repositories
     operation_repo = create_operation_repository()
     collection_repo = create_collection_repository()
 
@@ -917,15 +918,20 @@ async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id:
             logger.error(f"Operation {operation_id} not found during failure handling")
             return
 
+        # Sanitize error message to prevent PII leakage
+        sanitized_error = _sanitize_error_message(str(exc))
+
         # Construct error message with exception details
-        error_message = f"{type(exc).__name__}: {str(exc)}"
+        error_message = f"{type(exc).__name__}: {sanitized_error}"
         if hasattr(exc, "__traceback__"):
             # Include first line of traceback for debugging
             import traceback
 
             tb_lines = traceback.format_tb(exc.__traceback__)
             if tb_lines:
-                error_message += f"\n{tb_lines[-1].strip()}"
+                # Sanitize traceback to remove potential file paths with usernames
+                sanitized_tb = _sanitize_error_message(tb_lines[-1].strip())
+                error_message += f"\n{sanitized_tb}"
 
         # Update operation status to failed with detailed error
         await operation_repo.update_status(
@@ -949,19 +955,17 @@ async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id:
             if operation_type == OperationType.INDEX:
                 # Initial index failed - collection is in error state
                 await collection_repo.update_status(
-                    collection["uuid"], CollectionStatus.ERROR, status_message=f"Initial indexing failed: {str(exc)}"
+                    collection["uuid"],
+                    CollectionStatus.ERROR,
+                    status_message=f"Initial indexing failed: {sanitized_error}",
                 )
             elif operation_type == OperationType.REINDEX:
                 # Reindex failed - collection is degraded but still usable
                 await collection_repo.update_status(
                     collection["uuid"],
                     CollectionStatus.DEGRADED,
-                    status_message=f"Re-indexing failed: {str(exc)}. Original collection still available.",
+                    status_message=f"Re-indexing failed: {sanitized_error}. Original collection still available.",
                 )
-
-                # Clean up staging resources immediately
-                await _cleanup_staging_resources(collection_id, operation)
-
             elif operation_type == OperationType.APPEND:
                 # Append failed - collection remains ready but log the failure
                 if collection.get("status") != CollectionStatus.ERROR:
@@ -969,18 +973,15 @@ async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id:
                     await collection_repo.update_status(
                         collection["uuid"],
                         CollectionStatus.PARTIALLY_READY,
-                        status_message=f"Append operation failed: {str(exc)}",
+                        status_message=f"Append operation failed: {sanitized_error}",
                     )
             elif operation_type == OperationType.REMOVE_SOURCE:
                 # Remove source failed - collection might be partially ready
                 await collection_repo.update_status(
                     collection["uuid"],
                     CollectionStatus.PARTIALLY_READY,
-                    status_message=f"Remove source operation failed: {str(exc)}",
+                    status_message=f"Remove source operation failed: {sanitized_error}",
                 )
-
-        # Update failure metrics
-        collection_operations_total.labels(operation_type=operation_type.value.lower(), status="failed").inc()
 
         # Create audit log entry for failure
         await _audit_log_operation(
@@ -990,19 +991,31 @@ async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id:
             action=f"{operation_type.value.lower()}_failed",
             details={
                 "operation_uuid": operation_id,
-                "error": str(exc),
+                "error": sanitized_error,
                 "error_type": type(exc).__name__,
                 "task_id": task_id,
             },
         )
 
-        logger.info(
-            f"Handled failure for operation {operation_id} (type: {operation_type}), "
-            f"updated collection {collection_id} status appropriately"
-        )
-
     except Exception as e:
         logger.error(f"Error in failure handler for operation {operation_id}: {e}", exc_info=True)
+
+    # Perform cleanup outside main error handler (as it may take time and involves external services)
+    try:
+        if operation and operation["type"] == OperationType.REINDEX and collection and collection_id:
+            # Clean up staging resources
+            await _cleanup_staging_resources(collection_id, operation)
+
+        # Update failure metrics
+        if operation:
+            collection_operations_total.labels(operation_type=operation["type"].value.lower(), status="failed").inc()
+
+        logger.info(
+            f"Handled failure for operation {operation_id} (type: {operation.get('type') if operation else 'unknown'}), "
+            f"updated collection {collection_id if collection_id else 'unknown'} status appropriately"
+        )
+    except Exception as e:
+        logger.error(f"Error in post-cleanup for operation {operation_id}: {e}")
 
 
 async def _cleanup_staging_resources(collection_id: str, operation: dict) -> None:  # noqa: ARG001
@@ -1359,6 +1372,28 @@ async def _update_collection_metrics(collection_id: str, documents: int, vectors
         logger.warning(f"Failed to update collection metrics: {e}")
 
 
+def _sanitize_error_message(error_msg: str) -> str:
+    """Sanitize error messages to remove PII.
+
+    This function removes or redacts potentially sensitive information:
+    - User home directories in paths are replaced with ~
+    - Email addresses are redacted
+    - File paths that may contain usernames are sanitized
+    """
+    import re
+
+    # Replace user home paths
+    sanitized = re.sub(r"/home/[^/]+", "/home/~", error_msg)
+    sanitized = re.sub(r"/Users/[^/]+", "/Users/~", sanitized)
+    sanitized = re.sub(r"C:\\Users\\[^\\]+", "C:\\Users\\~", sanitized)
+
+    # Redact email addresses
+    sanitized = re.sub(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", "[email]", sanitized)
+
+    # Remove potential usernames from common paths
+    return re.sub(r"(/tmp/|/var/folders/)[^/]+/[^/]+", r"\1[redacted]", sanitized)
+
+
 def _sanitize_audit_details(details: dict[str, Any] | None) -> dict[str, Any] | None:
     """Sanitize audit log details to ensure no PII is logged.
 
@@ -1370,8 +1405,6 @@ def _sanitize_audit_details(details: dict[str, Any] | None) -> dict[str, Any] | 
     if not details:
         return details
 
-    import re
-
     sanitized: dict[str, Any] = {}
 
     for key, value in details.items():
@@ -1379,24 +1412,24 @@ def _sanitize_audit_details(details: dict[str, Any] | None) -> dict[str, Any] | 
         if any(sensitive in key.lower() for sensitive in ["password", "secret", "token", "key"]):
             continue
 
-        # Sanitize paths by replacing home directories
-        if isinstance(value, str) and ("/" in value or "\\" in value):
-            # Replace user home paths with ~
-            path_str = str(value)
-            # Match common home directory patterns
-            path_str = re.sub(r"/home/[^/]+/", "/home/USER/", path_str)
-            path_str = re.sub(r"/Users/[^/]+/", "/Users/USER/", path_str)
-            path_str = re.sub(r"C:\\Users\\[^\\]+\\", "C:\\Users\\USER\\", path_str)
-            sanitized[key] = path_str
+        if isinstance(value, str):
+            # Use the common sanitization function
+            sanitized[key] = _sanitize_error_message(value)
         # Recursively sanitize nested dictionaries
         elif isinstance(value, dict):
             sanitized_value = _sanitize_audit_details(value)
             if sanitized_value is not None:
                 sanitized[key] = sanitized_value
-        # Redact email addresses
-        elif isinstance(value, str) and "@" in value:
-            # Simple email pattern - redact the local part
-            sanitized[key] = re.sub(r"([^@\s]+)@", "REDACTED@", value)
+        # Sanitize list items
+        elif isinstance(value, list):
+            sanitized[key] = [
+                (
+                    _sanitize_error_message(item)
+                    if isinstance(item, str)
+                    else _sanitize_audit_details(item) if isinstance(item, dict) else item
+                )
+                for item in value
+            ]
         else:
             sanitized[key] = value
 

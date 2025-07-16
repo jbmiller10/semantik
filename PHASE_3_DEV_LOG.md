@@ -446,3 +446,20 @@ The implementation follows the execution plan closely while maintaining backward
   - No orphaned staging resources on reindex failures
   - Better debugging with detailed error information
   - Consistent failure handling across all operation types
+
+### 2025-07-16 - Improvements Based on Code Review
+- **Issues Addressed**:
+  1. **Event Loop Safety**: Changed from creating new event loop to using `asyncio.run()` for safer handling
+  2. **Error Message Sanitization**: Added comprehensive PII sanitization for error messages:
+     - Removes user home paths (/home/username, /Users/username, C:\Users\username)
+     - Redacts email addresses
+     - Sanitizes temporary paths that may contain usernames
+  3. **Code Quality**: Fixed all linting and type checking issues
+- **Enhanced Security**:
+  - Created `_sanitize_error_message()` function for consistent error message sanitization
+  - Applied sanitization to all error messages in status updates and audit logs
+  - Ensured tracebacks are also sanitized before logging
+- **Note on Transaction Boundaries**:
+  - After investigation, the repositories manage their own database sessions internally
+  - The status updates are atomic at the repository level
+  - Staging cleanup is intentionally performed outside the main error handler to avoid blocking
