@@ -13,7 +13,6 @@ from shared.database.exceptions import (
 )
 from shared.database.models import Collection, Operation, OperationStatus, OperationType
 from shared.database.repositories.operation_repository import OperationRepository
-from sqlalchemy import update
 
 
 class TestOperationRepository:
@@ -215,17 +214,13 @@ class TestOperationRepository:
         mock_session.execute.return_value = mock_result
 
         # Act
-        result = await repository.get_by_uuid_with_permission_check(
-            sample_operation.uuid, sample_operation.user_id
-        )
+        result = await repository.get_by_uuid_with_permission_check(sample_operation.uuid, sample_operation.user_id)
 
         # Assert
         assert result == sample_operation
 
     @pytest.mark.asyncio()
-    async def test_get_by_uuid_with_permission_check_collection_owner(
-        self, repository, mock_session, sample_operation
-    ):
+    async def test_get_by_uuid_with_permission_check_collection_owner(self, repository, mock_session, sample_operation):
         """Test getting operation with permission check as collection owner."""
         # Setup - different user but owns the collection
         sample_operation.user_id = 999
@@ -379,9 +374,7 @@ class TestOperationRepository:
         mock_session.execute.side_effect = [collection_result, operations_result]
 
         # Act
-        result_operations, total = await repository.list_for_collection(
-            sample_collection.id, user_id=1
-        )
+        result_operations, total = await repository.list_for_collection(sample_collection.id, user_id=1)
 
         # Assert
         assert len(result_operations) == 3

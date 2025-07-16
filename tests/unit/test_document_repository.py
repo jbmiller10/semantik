@@ -110,7 +110,7 @@ class TestDocumentRepository:
 
         # Mock get_by_content_hash to return existing document
         repository.get_by_content_hash = AsyncMock(return_value=existing_doc)
-        
+
         # Configure mock session for collection check
         mock_session.execute.return_value = collection_result
 
@@ -146,7 +146,7 @@ class TestDocumentRepository:
         """Test update_status with document not found."""
         # Setup
         doc_id = str(uuid4())
-        
+
         # Mock get_by_id to return None
         repository.get_by_id = AsyncMock(return_value=None)
 
@@ -178,7 +178,7 @@ class TestDocumentRepository:
         """Test deletion when document doesn't exist."""
         # Setup
         doc_id = str(uuid4())
-        
+
         # Mock get_by_id to return None
         repository.get_by_id = AsyncMock(return_value=None)
 

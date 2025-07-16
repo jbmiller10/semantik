@@ -70,7 +70,7 @@ class TestMigrations:
             "operations",
             "collection_audit_log",
             "collection_resource_limits",
-            "operation_metrics"
+            "operation_metrics",
         }
         assert expected_tables.issubset(tables), f"Missing tables: {expected_tables - tables}"
 
@@ -129,8 +129,20 @@ class TestMigrations:
             """INSERT INTO collections (id, name, description, owner_id, vector_store_name, 
                embedding_model, chunk_size, chunk_overlap, is_public, created_at, updated_at, status) 
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            ("coll1", "Test Collection", "Description", user_id, "vec_store_1", 
-             "model1", 1000, 200, 0, "2023-01-01T00:00:00", "2023-01-01T00:00:00", "ready"),
+            (
+                "coll1",
+                "Test Collection",
+                "Description",
+                user_id,
+                "vec_store_1",
+                "model1",
+                1000,
+                200,
+                0,
+                "2023-01-01T00:00:00",
+                "2023-01-01T00:00:00",
+                "ready",
+            ),
         )
         conn.commit()
 
@@ -180,12 +192,10 @@ class TestMigrations:
 
         # Verify indexes exist on collections
         collections_indexes = {idx["name"] for idx in inspector.get_indexes("collections")}
-        expected_indexes = {
-            "ix_collections_name",
-            "ix_collections_owner_id",
-            "ix_collections_is_public"
-        }
-        assert expected_indexes.issubset(collections_indexes), f"Missing indexes: {expected_indexes - collections_indexes}"
+        expected_indexes = {"ix_collections_name", "ix_collections_owner_id", "ix_collections_is_public"}
+        assert expected_indexes.issubset(
+            collections_indexes
+        ), f"Missing indexes: {expected_indexes - collections_indexes}"
 
         # Verify indexes exist on documents
         documents_indexes = {idx["name"] for idx in inspector.get_indexes("documents")}
@@ -193,8 +203,10 @@ class TestMigrations:
             "ix_documents_collection_id",
             "ix_documents_content_hash",
             "ix_documents_status",
-            "ix_documents_collection_content_hash"
+            "ix_documents_collection_content_hash",
         }
-        assert expected_doc_indexes.issubset(documents_indexes), f"Missing indexes: {expected_doc_indexes - documents_indexes}"
+        assert expected_doc_indexes.issubset(
+            documents_indexes
+        ), f"Missing indexes: {expected_doc_indexes - documents_indexes}"
 
         engine.dispose()

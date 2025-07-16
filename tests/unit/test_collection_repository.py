@@ -12,9 +12,8 @@ from shared.database.exceptions import (
     EntityNotFoundError,
     ValidationError,
 )
-from shared.database.models import Collection, CollectionStatus, Document
+from shared.database.models import Collection, CollectionStatus
 from shared.database.repositories.collection_repository import CollectionRepository
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 
@@ -244,10 +243,7 @@ class TestCollectionRepository:
         """Test listing collections for a user."""
         # Setup
         user_id = 1
-        collections = [
-            Collection(id=str(uuid4()), name=f"collection-{i}", owner_id=user_id)
-            for i in range(3)
-        ]
+        collections = [Collection(id=str(uuid4()), name=f"collection-{i}", owner_id=user_id) for i in range(3)]
 
         # Mock count query
         mock_session.scalar.return_value = 3
@@ -280,9 +276,7 @@ class TestCollectionRepository:
         mock_session.execute.return_value = mock_result
 
         # Act
-        result_collections, total = await repository.list_for_user(
-            user_id, offset=5, limit=1
-        )
+        result_collections, total = await repository.list_for_user(user_id, offset=5, limit=1)
 
         # Assert
         assert len(result_collections) == 1
@@ -298,9 +292,7 @@ class TestCollectionRepository:
 
         # Act
         result = await repository.update_status(
-            sample_collection.id,
-            CollectionStatus.PROCESSING,
-            "Starting processing"
+            sample_collection.id, CollectionStatus.PROCESSING, "Starting processing"
         )
 
         # Assert
@@ -330,10 +322,7 @@ class TestCollectionRepository:
 
         # Act
         result = await repository.update_stats(
-            sample_collection.id,
-            document_count=100,
-            vector_count=5000,
-            total_size_bytes=1048576
+            sample_collection.id, document_count=100, vector_count=5000, total_size_bytes=1048576
         )
 
         # Assert
@@ -367,19 +356,15 @@ class TestCollectionRepository:
         # First call checks for existing name
         mock_result1 = MagicMock()
         mock_result1.scalar_one_or_none.return_value = None
-        
+
         # Second call gets the collection to rename
         mock_result2 = MagicMock()
         mock_result2.scalar_one_or_none.return_value = sample_collection
-        
+
         mock_session.execute.side_effect = [mock_result1, mock_result2]
 
         # Act
-        result = await repository.rename(
-            sample_collection.id,
-            "new-name",
-            sample_collection.owner_id
-        )
+        result = await repository.rename(sample_collection.id, "new-name", sample_collection.owner_id)
 
         # Assert
         assert result.name == "new-name"
@@ -417,11 +402,11 @@ class TestCollectionRepository:
         # First call - no existing collection with new name
         mock_result1 = MagicMock()
         mock_result1.scalar_one_or_none.return_value = None
-        
+
         # Second call - get collection (different owner)
         mock_result2 = MagicMock()
         mock_result2.scalar_one_or_none.return_value = sample_collection
-        
+
         mock_session.execute.side_effect = [mock_result1, mock_result2]
 
         # Act & Assert
