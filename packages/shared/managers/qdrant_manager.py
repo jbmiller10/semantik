@@ -154,9 +154,7 @@ class QdrantManager:
                     vector_count = collection_info.vectors_count if collection_info else 0
 
                     if dry_run:
-                        logger.info(
-                            f"[DRY RUN] Would delete collection {collection_name} with {vector_count} vectors"
-                        )
+                        logger.info(f"[DRY RUN] Would delete collection {collection_name} with {vector_count} vectors")
                     else:
                         logger.info(f"Deleting orphaned collection {collection_name} with {vector_count} vectors")
                         self.client.delete_collection(collection_name)

@@ -4,6 +4,7 @@ Unit tests for packages/shared/managers/qdrant_manager.py
 Tests the QdrantManager service for managing Qdrant collections with
 blue-green deployment support.
 """
+
 # mypy: ignore-errors
 
 from datetime import UTC, datetime, timedelta
@@ -93,15 +94,20 @@ class TestQdrantManager:
         """Test basic orphaned collection cleanup"""
         # Mock existing collections
         mock_collections = MagicMock()
-        
+
         # Create mock collection objects with name attribute
         collection_mocks = []
-        for name in ["collection_active1", "collection_active2", "collection_orphaned1", 
-                     "staging_old_collection_20240101_000000", "_collection_metadata"]:
+        for name in [
+            "collection_active1",
+            "collection_active2",
+            "collection_orphaned1",
+            "staging_old_collection_20240101_000000",
+            "_collection_metadata",
+        ]:
             col_mock = Mock()
             col_mock.name = name
             collection_mocks.append(col_mock)
-        
+
         mock_collections.collections = collection_mocks
         mock_qdrant_client.get_collections.return_value = mock_collections
 
@@ -130,13 +136,13 @@ class TestQdrantManager:
         """Test cleanup in dry run mode doesn't delete anything"""
         # Mock existing collections
         mock_collections = MagicMock()
-        
+
         # Create mock collection objects with name attribute
         col1 = Mock()
         col1.name = "collection_active"
         col2 = Mock()
         col2.name = "collection_orphaned"
-        
+
         mock_collections.collections = [col1, col2]
         mock_qdrant_client.get_collections.return_value = mock_collections
 
@@ -148,7 +154,9 @@ class TestQdrantManager:
         # Patch time.sleep to speed up test
         with patch("shared.managers.qdrant_manager.time.sleep"):
             # Run cleanup in dry run mode
-            deleted = qdrant_manager.cleanup_orphaned_collections(active_collections=["collection_active"], dry_run=True)
+            deleted = qdrant_manager.cleanup_orphaned_collections(
+                active_collections=["collection_active"], dry_run=True
+            )
 
         # Should report what would be deleted
         assert len(deleted) == 1
@@ -165,13 +173,13 @@ class TestQdrantManager:
         old_time = (now - timedelta(hours=48)).strftime("%Y%m%d_%H%M%S")
 
         mock_collections = MagicMock()
-        
+
         # Create mock collection objects with name attribute
         col1 = Mock()
         col1.name = f"staging_collection_test_{recent_time}"
         col2 = Mock()
         col2.name = f"staging_collection_test_{old_time}"
-        
+
         mock_collections.collections = [col1, col2]
         mock_qdrant_client.get_collections.return_value = mock_collections
 
@@ -193,14 +201,14 @@ class TestQdrantManager:
     def test_cleanup_orphaned_collections_error_handling(self, qdrant_manager, mock_qdrant_client):
         """Test cleanup continues after individual delete failures"""
         mock_collections = MagicMock()
-        
+
         # Create mock collection objects with name attribute
         collection_mocks = []
         for name in ["collection_orphaned1", "collection_orphaned2", "collection_orphaned3"]:
             col_mock = Mock()
             col_mock.name = name
             collection_mocks.append(col_mock)
-        
+
         mock_collections.collections = collection_mocks
         mock_qdrant_client.get_collections.return_value = mock_collections
 
@@ -230,7 +238,7 @@ class TestQdrantManager:
     def test_list_collections(self, qdrant_manager, mock_qdrant_client):
         """Test listing all collections"""
         mock_collections = MagicMock()
-        
+
         # Create mock collection objects with name attribute
         col1 = Mock()
         col1.name = "collection1"
@@ -238,7 +246,7 @@ class TestQdrantManager:
         col2.name = "collection2"
         col3 = Mock()
         col3.name = "collection3"
-        
+
         mock_collections.collections = [col1, col2, col3]
         mock_qdrant_client.get_collections.return_value = mock_collections
 
@@ -361,13 +369,13 @@ class TestQdrantManager:
         mock_config = Mock()
         mock_params = Mock()
         mock_vectors = Mock(size=768, distance=Distance.COSINE)
-        
+
         # Set up the nested structure
         mock_params.vectors = mock_vectors
         mock_config.params = mock_params
         mock_config.optimizer_config = {"indexing_threshold": 20000}
         mock_info.config = mock_config
-        
+
         mock_qdrant_client.get_collection.return_value = mock_info
 
         # Test rename operation
@@ -384,13 +392,13 @@ class TestQdrantManager:
     def test_sleep_calls_in_cleanup(self, qdrant_manager, mock_qdrant_client):
         """Test that cleanup includes delays between deletions"""
         mock_collections = MagicMock()
-        
+
         # Create mock collection objects with name attribute
         col1 = Mock()
         col1.name = "orphaned1"
         col2 = Mock()
         col2.name = "orphaned2"
-        
+
         mock_collections.collections = [col1, col2]
         mock_qdrant_client.get_collections.return_value = mock_collections
 
