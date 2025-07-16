@@ -13,14 +13,7 @@ Import Organization:
 - Utilities: Database initialization, password hashing, and metadata management
 """
 
-from .base import (
-    AuthRepository,
-    BaseRepository,
-    CollectionRepository,
-    FileRepository,
-    JobRepository,
-    UserRepository,
-)
+from .base import AuthRepository, BaseRepository, CollectionRepository, FileRepository, JobRepository, UserRepository
 from .collection_metadata import ensure_metadata_collection, store_collection_metadata
 from .collection_metadata import get_collection_metadata as get_collection_metadata_qdrant
 from .exceptions import (

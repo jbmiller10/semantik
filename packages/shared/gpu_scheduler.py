@@ -12,9 +12,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
-import redis
+import redis  # type: ignore[import-untyped]
 import torch
-from redis.lock import Lock
+from redis.lock import Lock  # type: ignore[import-untyped]
 
 logger = logging.getLogger(__name__)
 

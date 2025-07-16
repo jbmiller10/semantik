@@ -7,7 +7,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-import redis.asyncio as redis
+import redis.asyncio as redis  # type: ignore[import-untyped]
 from fastapi import WebSocket
 from shared.config import settings
 
