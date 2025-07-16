@@ -277,4 +277,3 @@ def revoke_refresh_token(_token: str) -> None:
     # Note: In the current implementation, tokens are revoked on logout
     # This is handled by the auth API endpoint
     # Keeping this function for backward compatibility
-    pass
