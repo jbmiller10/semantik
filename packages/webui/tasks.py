@@ -1713,29 +1713,29 @@ async def _process_remove_source_operation(
         from shared.database.database import AsyncSessionLocal
 
         async with AsyncSessionLocal() as session, session.begin():
-                # Create repository instances with the transaction session
-                from shared.database.repositories.collection_repository import CollectionRepository
-                from shared.database.repositories.document_repository import DocumentRepository
+            # Create repository instances with the transaction session
+            from shared.database.repositories.collection_repository import CollectionRepository
+            from shared.database.repositories.document_repository import DocumentRepository
 
-                doc_repo_tx = DocumentRepository(session)
-                collection_repo_tx = CollectionRepository(session)
+            doc_repo_tx = DocumentRepository(session)
+            collection_repo_tx = CollectionRepository(session)
 
-                # Mark documents as deleted in database
-                await doc_repo_tx.bulk_update_status(doc_ids, DocumentStatus.DELETED)
+            # Mark documents as deleted in database
+            await doc_repo_tx.bulk_update_status(doc_ids, DocumentStatus.DELETED)
 
-                # Record document removal metrics
-                for _ in range(len(documents)):
-                    record_document_processed("remove_source", "deleted")
+            # Record document removal metrics
+            for _ in range(len(documents)):
+                record_document_processed("remove_source", "deleted")
 
-                # Update collection stats
-                stats = await doc_repo_tx.get_stats_by_collection(collection["id"])
-                await collection_repo_tx.update_stats(
-                    collection["id"],
-                    total_documents=stats["total_count"],
-                    total_chunks=stats["total_chunks"],
-                    total_size_bytes=stats["total_size_bytes"],
-                )
-                # Transaction will commit automatically if no exception occurs
+            # Update collection stats
+            stats = await doc_repo_tx.get_stats_by_collection(collection["id"])
+            await collection_repo_tx.update_stats(
+                collection["id"],
+                total_documents=stats["total_count"],
+                total_chunks=stats["total_chunks"],
+                total_size_bytes=stats["total_size_bytes"],
+            )
+            # Transaction will commit automatically if no exception occurs
 
         # Update collection metrics
         await _update_collection_metrics(
