@@ -29,7 +29,7 @@ class TestCleanupOldCollections:
     def test_cleanup_old_collections_empty_list(self):
         """Test cleanup with empty collection list."""
         from webui.tasks import cleanup_old_collections
-        
+
         result = cleanup_old_collections([], "collection-123")
 
         assert result["collections_deleted"] == 0
@@ -41,7 +41,7 @@ class TestCleanupOldCollections:
     def test_cleanup_old_collections_success(self, mock_qdrant_manager_class, mock_qdrant_client):
         """Test successful cleanup of collections."""
         from webui.tasks import cleanup_old_collections
-        
+
         # Setup mocks
         mock_qdrant_manager = MagicMock()
         mock_qdrant_manager.client = mock_qdrant_client
@@ -72,7 +72,7 @@ class TestCleanupOldCollections:
     def test_cleanup_old_collections_not_found(self, mock_qdrant_manager_class, mock_qdrant_client):
         """Test cleanup when collection doesn't exist."""
         from webui.tasks import cleanup_old_collections
-        
+
         # Setup mocks
         mock_qdrant_manager = MagicMock()
         mock_qdrant_manager.client = mock_qdrant_client
@@ -95,7 +95,7 @@ class TestCleanupOldCollections:
     def test_cleanup_old_collections_partial_failure(self, mock_qdrant_manager_class, mock_qdrant_client):
         """Test cleanup with partial failures."""
         from webui.tasks import cleanup_old_collections
-        
+
         # Setup mocks
         mock_qdrant_manager = MagicMock()
         mock_qdrant_manager.client = mock_qdrant_client
@@ -160,7 +160,7 @@ class TestCleanupQdrantCollections:
     def test_cleanup_qdrant_collections_empty_list(self):
         """Test cleanup with empty collection list."""
         from webui.tasks import cleanup_qdrant_collections
-        
+
         result = cleanup_qdrant_collections([])
 
         assert result["collections_deleted"] == 0
@@ -169,7 +169,7 @@ class TestCleanupQdrantCollections:
         assert result["errors"] == []
         assert "timestamp" in result
 
-    @patch("webui.tasks._audit_collection_deletion")
+    @patch("webui.tasks._audit_collection_deletions_batch")
     @patch("webui.tasks._get_active_collections")
     @patch("webui.tasks.connection_manager")
     @patch("webui.tasks.QdrantManager")
@@ -190,7 +190,7 @@ class TestCleanupQdrantCollections:
 
         # Run cleanup with system collection
         from webui.tasks import cleanup_qdrant_collections
-        
+
         result = cleanup_qdrant_collections(["_system_collection"])
 
         # Verify results
@@ -202,7 +202,7 @@ class TestCleanupQdrantCollections:
         mock_qdrant_manager.collection_exists.assert_not_called()
         mock_qdrant_client.delete_collection.assert_not_called()
 
-    @patch("webui.tasks._audit_collection_deletion")
+    @patch("webui.tasks._audit_collection_deletions_batch")
     @patch("webui.tasks._get_active_collections")
     @patch("webui.tasks.connection_manager")
     @patch("webui.tasks.QdrantManager")
@@ -223,14 +223,14 @@ class TestCleanupQdrantCollections:
 
         # Run cleanup
         from webui.tasks import cleanup_qdrant_collections
-        
+
         result = cleanup_qdrant_collections(["col_active", "col_inactive"])
 
         # Verify active collection skipped
         assert result["collections_skipped"] >= 1
         assert result["safety_checks"]["col_active"] == "active_collection"
 
-    @patch("webui.tasks._audit_collection_deletion")
+    @patch("webui.tasks._audit_collection_deletions_batch")
     @patch("webui.tasks._get_active_collections")
     @patch("webui.tasks.connection_manager")
     @patch("webui.tasks.QdrantManager")
@@ -255,15 +255,15 @@ class TestCleanupQdrantCollections:
 
         # Run cleanup
         from webui.tasks import cleanup_qdrant_collections
-        
-        result = cleanup_qdrant_collections(["staging_col_123_20240115_120000"])
+
+        result = cleanup_qdrant_collections(["staging_col_123_20240115_120000"], staging_age_hours=1)
 
         # Verify results
         assert result["collections_deleted"] == 0
         assert result["collections_skipped"] == 1
         assert result["safety_checks"]["staging_col_123_20240115_120000"] == "staging_too_recent"
 
-    @patch("webui.tasks._audit_collection_deletion")
+    @patch("webui.tasks._audit_collection_deletions_batch")
     @patch("webui.tasks._get_active_collections")
     @patch("webui.tasks.connection_manager")
     @patch("webui.tasks.QdrantManager")
@@ -272,7 +272,7 @@ class TestCleanupQdrantCollections:
         mock_qdrant_manager_class,
         mock_conn_manager,
         mock_get_active,
-        mock_audit,
+        mock_audit_batch,
         mock_qdrant_manager,
         mock_qdrant_client,
     ):
@@ -291,7 +291,7 @@ class TestCleanupQdrantCollections:
 
         # Run cleanup
         from webui.tasks import cleanup_qdrant_collections
-        
+
         result = cleanup_qdrant_collections(["staging_col_old_20240101_120000"])
 
         # Verify results
@@ -303,8 +303,8 @@ class TestCleanupQdrantCollections:
         # Verify deletion was called
         mock_qdrant_client.delete_collection.assert_called_once_with("staging_col_old_20240101_120000")
 
-        # Verify audit was called
-        mock_audit.assert_called_once_with("staging_col_old_20240101_120000", 1000)
+        # Verify batch audit was called with correct data
+        mock_audit_batch.assert_called_once_with([("staging_col_old_20240101_120000", 1000)])
 
     @patch("webui.tasks._get_active_collections")
     @patch("webui.tasks.connection_manager")
@@ -325,7 +325,7 @@ class TestCleanupQdrantCollections:
 
         # Run cleanup
         from webui.tasks import cleanup_qdrant_collections
-        
+
         result = cleanup_qdrant_collections(["col_error"])
 
         # Verify results

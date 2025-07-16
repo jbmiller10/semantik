@@ -340,7 +340,7 @@ def cleanup_old_collections(old_collection_names: list[str], collection_id: str)
     retry_backoff=True,
     retry_backoff_max=600,
 )
-def cleanup_qdrant_collections(collection_names: list[str]) -> dict[str, Any]:
+def cleanup_qdrant_collections(collection_names: list[str], staging_age_hours: int = 1) -> dict[str, Any]:
     """Clean up orphaned Qdrant collections with enhanced safety checks.
 
     This task provides a safer alternative to cleanup_old_collections by:
@@ -351,6 +351,7 @@ def cleanup_qdrant_collections(collection_names: list[str]) -> dict[str, Any]:
 
     Args:
         collection_names: List of Qdrant collection names to delete
+        staging_age_hours: Minimum age in hours for staging collections (default: 1)
 
     Returns:
         Dictionary with cleanup statistics and safety check results
@@ -375,16 +376,21 @@ def cleanup_qdrant_collections(collection_names: list[str]) -> dict[str, Any]:
     from shared.database.repositories.collection_repository import CollectionRepository
     from shared.managers.qdrant_manager import QdrantManager
     from shared.managers.timer import QdrantOperationTimer
+
+    # Note: The connection manager is correctly imported from webui.utils, not shared.managers
     from webui.utils.qdrant_manager import qdrant_manager as connection_manager
 
     try:
-        # Run async safety checks
+        # Get all active collections in a single async operation
         active_collections = asyncio.run(_get_active_collections())
         stats["safety_checks"]["active_collections_found"] = len(active_collections)
 
         # Get Qdrant client from connection manager
         qdrant_client = connection_manager.get_client()
         qdrant_manager = QdrantManager(qdrant_client)
+
+        # Track successful deletions for batched audit logging
+        deletions_for_audit: list[tuple[str, int]] = []
 
         for collection_name in collection_names:
             try:
@@ -416,8 +422,10 @@ def cleanup_qdrant_collections(collection_names: list[str]) -> dict[str, Any]:
 
                 # Safety check 5: Check if it's a staging collection (additional safety for staging)
                 if collection_name.startswith("staging_"):
-                    # Verify staging collection is old enough (default 1 hour)
-                    if not qdrant_manager._is_staging_collection_old(collection_name, hours=1):
+                    # Verify staging collection is old enough using configurable threshold
+                    # Note: Using private method _is_staging_collection_old() as it exists in QdrantManager
+                    # and provides the exact functionality we need for safe staging cleanup
+                    if not qdrant_manager._is_staging_collection_old(collection_name, hours=staging_age_hours):
                         logger.warning(f"Skipping recent staging collection: {collection_name}")
                         stats["collections_skipped"] += 1
                         stats["safety_checks"][collection_name] = "staging_too_recent"
@@ -432,8 +440,8 @@ def cleanup_qdrant_collections(collection_names: list[str]) -> dict[str, Any]:
                 stats["collections_deleted"] += 1
                 stats["safety_checks"][collection_name] = "deleted"
 
-                # Record audit trail
-                asyncio.run(_audit_collection_deletion(collection_name, vector_count))
+                # Track for batched audit logging
+                deletions_for_audit.append((collection_name, vector_count))
 
                 # Small delay to avoid overwhelming Qdrant
                 time.sleep(0.1)
@@ -444,6 +452,10 @@ def cleanup_qdrant_collections(collection_names: list[str]) -> dict[str, Any]:
                 stats["collections_failed"] += 1
                 stats["errors"].append(error_msg)
                 stats["safety_checks"][collection_name] = f"error: {str(e)}"
+
+        # Batch audit logging for all successful deletions
+        if deletions_for_audit:
+            asyncio.run(_audit_collection_deletions_batch(deletions_for_audit))
 
         # Log final statistics
         logger.info(
@@ -476,7 +488,7 @@ async def _get_active_collections() -> set[str]:
     """Get all active Qdrant collection names from the database."""
     from shared.database.database import AsyncSessionLocal
     from shared.database.repositories.collection_repository import CollectionRepository
-    
+
     async with AsyncSessionLocal() as session:
         collection_repo = CollectionRepository(session)
 
@@ -524,6 +536,38 @@ async def _audit_collection_deletion(collection_name: str, vector_count: int) ->
             await session.commit()
     except Exception as e:
         logger.error(f"Failed to create audit log for collection deletion: {e}")
+
+
+async def _audit_collection_deletions_batch(deletions: list[tuple[str, int]]) -> None:
+    """Create audit log entries for multiple collection deletions in a single transaction."""
+    if not deletions:
+        return
+
+    try:
+        from shared.database.database import AsyncSessionLocal
+        from shared.database.models import CollectionAuditLog
+
+        async with AsyncSessionLocal() as session:
+            deleted_at = datetime.now(UTC).isoformat()
+
+            for collection_name, vector_count in deletions:
+                audit_log = CollectionAuditLog(
+                    collection_id=None,  # No specific collection ID for cleanup
+                    operation_id=None,
+                    user_id=None,  # System operation
+                    action="qdrant_collection_deleted",
+                    details={
+                        "collection_name": collection_name,
+                        "vector_count": vector_count,
+                        "deleted_at": deleted_at,
+                    },
+                )
+                session.add(audit_log)
+
+            await session.commit()
+            logger.info(f"Created {len(deletions)} audit log entries for collection deletions")
+    except Exception as e:
+        logger.error(f"Failed to create batch audit logs for collection deletions: {e}")
 
 
 @celery_app.task(bind=True, name="webui.tasks.process_embedding_job_task", max_retries=3, default_retry_delay=60)
