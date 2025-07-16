@@ -1,6 +1,7 @@
 """Unit tests for FileScanningService."""
 
 import tempfile
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -22,15 +23,22 @@ class TestFileScanningService:
     def mock_document_repo(self):
         """Create a mock DocumentRepository."""
         mock = AsyncMock()
+        
         # Default behavior - create returns a new document
-        mock.create.return_value = Document(
-            id=str(uuid4()),
-            collection_id=str(uuid4()),
-            file_path="/test/file.txt",
-            file_name="file.txt",
-            file_size=1024,
-            content_hash="a" * 64,
-        )
+        def default_create(*args, **kwargs):
+            doc = Document(
+                id=str(uuid4()),
+                collection_id=kwargs.get('collection_id', str(uuid4())),
+                file_path=kwargs.get('file_path', '/test/file.txt'),
+                file_name=kwargs.get('file_name', 'file.txt'),
+                file_size=kwargs.get('file_size', 1024),
+                content_hash=kwargs.get('content_hash', 'a' * 64),
+            )
+            # Set created_at timestamp to current time
+            doc.created_at = datetime.now(UTC)
+            return doc
+        
+        mock.create.side_effect = default_create
         return mock
 
     @pytest.fixture()
@@ -55,10 +63,11 @@ class TestFileScanningService:
     @pytest.mark.asyncio()
     async def test_scan_directory_not_a_directory(self, service):
         """Test scanning a file instead of directory raises ValueError."""
-        with tempfile.NamedTemporaryFile() as tmp_file, pytest.raises(ValueError, match="Source path is not a directory"):
-            await service.scan_directory_and_register_documents(
-                collection_id=str(uuid4()), source_path=tmp_file.name
-            )
+        with (
+            tempfile.NamedTemporaryFile() as tmp_file,
+            pytest.raises(ValueError, match="Source path is not a directory"),
+        ):
+            await service.scan_directory_and_register_documents(collection_id=str(uuid4()), source_path=tmp_file.name)
 
     @pytest.mark.asyncio()
     async def test_scan_empty_directory(self, service):
@@ -78,6 +87,21 @@ class TestFileScanningService:
     async def test_scan_directory_with_supported_files(self, service, mock_document_repo):
         """Test scanning directory with supported file types."""
         collection_id = str(uuid4())
+        
+        # Setup mock to return documents with created_at timestamps
+        def create_mock_document(*args, **kwargs):
+            doc = Document(
+                id=str(uuid4()),
+                collection_id=collection_id,
+                file_path=kwargs.get('file_path', '/test/file'),
+                file_name=kwargs.get('file_name', 'file'),
+                file_size=kwargs.get('file_size', 100),
+                content_hash=kwargs.get('content_hash', 'a' * 64),
+            )
+            doc.created_at = datetime.now(UTC)
+            return doc
+            
+        mock_document_repo.create.side_effect = create_mock_document
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -109,40 +133,54 @@ class TestFileScanningService:
         """Test that duplicate files are properly detected."""
         collection_id = str(uuid4())
 
-        # Configure mock to simulate first file is new, second is duplicate
-        mock_document_repo.create.side_effect = [
-            Document(
-                id="doc1",
-                collection_id=collection_id,
-                file_path="/test1.txt",
-                file_name="test1.txt",
-                file_size=100,
-                content_hash="a" * 64,
-            ),
-            Document(
-                id="doc1",
-                collection_id=collection_id,
-                file_path="/test1.txt",
-                file_name="test2.txt",
-                file_size=100,
-                content_hash="a" * 64,
-            ),  # Same doc returned
-        ]
+        # Create documents with different created_at times
+        existing_doc = Document(
+            id="doc1",
+            collection_id=collection_id,
+            file_path="/test1.txt",
+            file_name="test1.txt",
+            file_size=100,
+            content_hash="a" * 64,
+        )
+        # Simulate existing document created 1 hour ago
+        existing_doc.created_at = datetime.now(UTC) - timedelta(hours=1)
+
+        # Configure mock to return existing doc for first file, 
+        # and create a new doc dynamically for second file
+        def create_side_effect(*args, **kwargs):
+            if kwargs.get('file_name') == 'test1.txt':
+                return existing_doc
+            else:
+                # Create new document with current timestamp
+                new_doc = Document(
+                    id="doc2",
+                    collection_id=collection_id,
+                    file_path="/test2.txt",
+                    file_name="test2.txt",
+                    file_size=100,
+                    content_hash="b" * 64,
+                )
+                # This will be created after scan starts
+                new_doc.created_at = datetime.now(UTC)
+                return new_doc
+
+        mock_document_repo.create.side_effect = create_side_effect
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
 
-            # Create two files with same content (will have same hash)
-            self.create_test_file(temp_path, "test1.txt", "Same content")
-            self.create_test_file(temp_path, "test2.txt", "Same content")
+            # Create two files
+            self.create_test_file(temp_path, "test1.txt", "Content 1")
+            self.create_test_file(temp_path, "test2.txt", "Content 2")
 
             stats = await service.scan_directory_and_register_documents(
                 collection_id=collection_id, source_path=temp_dir
             )
 
-            # Both files should be found, but one is duplicate
+            # Both files should be found
             assert stats["total_files_found"] == 2
-            assert stats["new_files_registered"] == 2  # Both counted as new (dedup happens in repo)
+            assert stats["new_files_registered"] == 1  # Only second file is new
+            assert stats["duplicate_files_skipped"] == 1  # First file is duplicate
             assert mock_document_repo.create.call_count == 2
 
     @pytest.mark.asyncio()
@@ -235,7 +273,10 @@ class TestFileScanningService:
     @pytest.mark.asyncio()
     async def test_scan_file_unsupported_type(self, service):
         """Test scanning unsupported file type raises ValueError."""
-        with tempfile.NamedTemporaryFile(suffix=".jpg") as tmp_file, pytest.raises(ValueError, match="Unsupported file type"):
+        with (
+            tempfile.NamedTemporaryFile(suffix=".jpg") as tmp_file,
+            pytest.raises(ValueError, match="Unsupported file type"),
+        ):
             await service.scan_file(collection_id=str(uuid4()), file_path=tmp_file.name)
 
     @pytest.mark.asyncio()
@@ -299,3 +340,82 @@ class TestFileScanningService:
 
             finally:
                 Path(tmp_file.name).unlink()
+
+    @pytest.mark.asyncio()
+    async def test_batch_processing(self, service, mock_document_repo, mock_session):
+        """Test batch processing with commit after batch_size files."""
+        collection_id = str(uuid4())
+        
+        # Setup mock to return documents with created_at
+        def create_mock_document(*args, **kwargs):
+            doc = Document(
+                id=str(uuid4()),
+                collection_id=collection_id,
+                file_path=kwargs.get('file_path', '/test/file'),
+                file_name=kwargs.get('file_name', 'file'),
+                file_size=kwargs.get('file_size', 100),
+                content_hash=kwargs.get('content_hash', 'a' * 64),
+            )
+            doc.created_at = datetime.now(UTC)
+            return doc
+            
+        mock_document_repo.create.side_effect = create_mock_document
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            # Create 5 files
+            for i in range(5):
+                self.create_test_file(temp_path, f"test{i}.txt", f"Content {i}")
+
+            # Set batch size to 2
+            stats = await service.scan_directory_and_register_documents(
+                collection_id=collection_id, source_path=temp_dir, batch_size=2
+            )
+
+            assert stats["total_files_found"] == 5
+            # Session commit should be called 3 times (2 + 2 + 1)
+            assert mock_session.commit.call_count == 3
+
+    @pytest.mark.asyncio()
+    async def test_progress_callback(self, service, mock_document_repo):
+        """Test progress callback functionality."""
+        collection_id = str(uuid4())
+        progress_calls = []
+        
+        # Setup mock to return documents with created_at
+        def create_mock_document(*args, **kwargs):
+            doc = Document(
+                id=str(uuid4()),
+                collection_id=collection_id,
+                file_path=kwargs.get('file_path', '/test/file'),
+                file_name=kwargs.get('file_name', 'file'),
+                file_size=kwargs.get('file_size', 100),
+                content_hash=kwargs.get('content_hash', 'a' * 64),
+            )
+            doc.created_at = datetime.now(UTC)
+            return doc
+            
+        mock_document_repo.create.side_effect = create_mock_document
+
+        async def progress_callback(processed: int, total: int) -> None:
+            progress_calls.append((processed, total))
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            # Create 3 files
+            for i in range(3):
+                self.create_test_file(temp_path, f"test{i}.txt", f"Content {i}")
+
+            stats = await service.scan_directory_and_register_documents(
+                collection_id=collection_id, source_path=temp_dir, progress_callback=progress_callback
+            )
+
+            assert stats["total_files_found"] == 3
+            # Progress callback should be called 3 times
+            assert len(progress_calls) == 3
+            # In non-recursive mode, total is updated incrementally
+            assert progress_calls[0][0] == 1  # First file processed
+            assert progress_calls[1][0] == 2  # Second file processed  
+            assert progress_calls[2][0] == 3  # Third file processed

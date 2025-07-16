@@ -3,6 +3,9 @@
 import hashlib
 import logging
 import mimetypes
+import os
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +43,8 @@ class FileScanningService:
         source_path: str,
         source_id: int | None = None,
         recursive: bool = True,
+        batch_size: int = 100,
+        progress_callback: Callable[[int, int], Awaitable[None]] | None = None,
     ) -> dict[str, Any]:
         """Scan a directory and register all supported documents with deduplication.
 
@@ -52,6 +57,8 @@ class FileScanningService:
             source_path: Path to directory to scan
             source_id: Optional source ID to associate with documents
             recursive: Whether to scan subdirectories recursively
+            batch_size: Number of files to process before committing (default 100)
+            progress_callback: Optional async callback for progress updates (files_processed, total_files)
 
         Returns:
             Dictionary with scan statistics:
@@ -79,42 +86,115 @@ class FileScanningService:
             "total_size_bytes": 0,
         }
 
-        # Scan for files
-        pattern = "**/*" if recursive else "*"
+        # Track scan start time for duplicate detection
+        scan_start_time = datetime.now(UTC)
+
+        # Track batch processing
+        batch_count = 0
+        files_processed = 0
+
+        # Use os.walk for memory-efficient directory traversal
         try:
-            for file_path in path.glob(pattern):
-                if not file_path.is_file():
-                    continue
+            if recursive:
+                # Recursive walk through all subdirectories
+                for root, _, files in os.walk(source_path):
+                    for filename in files:
+                        file_path = Path(root) / filename
 
-                # Check if file extension is supported
-                if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
-                    continue
+                        # Check if file extension is supported
+                        if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                            continue
 
-                stats["total_files_found"] += 1
+                        stats["total_files_found"] += 1
 
-                # Process individual file
-                try:
-                    result = await self._register_file(
-                        collection_id=collection_id,
-                        file_path=file_path,
-                        source_id=source_id,
-                    )
+                        # Process individual file
+                        try:
+                            result = await self._register_file(
+                                collection_id=collection_id,
+                                file_path=file_path,
+                                source_id=source_id,
+                                scan_start_time=scan_start_time,
+                            )
 
-                    if result["is_new"]:
-                        stats["new_files_registered"] += 1
-                    else:
-                        stats["duplicate_files_skipped"] += 1
+                            if result["is_new"]:
+                                stats["new_files_registered"] += 1
+                            else:
+                                stats["duplicate_files_skipped"] += 1
 
-                    stats["total_size_bytes"] += result["file_size"]
+                            stats["total_size_bytes"] += result["file_size"]
+                            batch_count += 1
+                            files_processed += 1
 
-                except Exception as e:
-                    logger.error(f"Failed to register file {file_path}: {e}")
-                    stats["errors"].append(
-                        {
-                            "file": str(file_path),
-                            "error": str(e),
-                        }
-                    )
+                            # Commit batch if needed
+                            if batch_count >= batch_size:
+                                await self.db_session.commit()
+                                batch_count = 0
+
+                            # Call progress callback if provided
+                            if progress_callback:
+                                await progress_callback(files_processed, stats["total_files_found"])
+
+                        except Exception as e:
+                            logger.error(f"Failed to register file {file_path}: {e}")
+                            stats["errors"].append(
+                                {
+                                    "file": str(file_path),
+                                    "error": str(e),
+                                }
+                            )
+            else:
+                # Non-recursive - only scan immediate directory
+                for filename in os.listdir(source_path):
+                    file_path = Path(source_path) / filename
+
+                    if not file_path.is_file():
+                        continue
+
+                    # Check if file extension is supported
+                    if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                        continue
+
+                    stats["total_files_found"] += 1
+
+                    # Process individual file
+                    try:
+                        result = await self._register_file(
+                            collection_id=collection_id,
+                            file_path=file_path,
+                            source_id=source_id,
+                            scan_start_time=scan_start_time,
+                        )
+
+                        if result["is_new"]:
+                            stats["new_files_registered"] += 1
+                        else:
+                            stats["duplicate_files_skipped"] += 1
+
+                        stats["total_size_bytes"] += result["file_size"]
+                        batch_count += 1
+                        files_processed += 1
+
+                        # Commit batch if needed
+                        if batch_count >= batch_size:
+                            await self.db_session.commit()
+                            batch_count = 0
+
+                        # Call progress callback if provided
+                        if progress_callback:
+                            await progress_callback(files_processed, stats["total_files_found"])
+
+                    except Exception as e:
+                        logger.error(f"Failed to register file {file_path}: {e}")
+                        stats["errors"].append(
+                            {
+                                "file": str(file_path),
+                                "error": str(e),
+                            }
+                        )
+
+            # Commit any remaining files in the batch
+            if batch_count > 0:
+                await self.db_session.commit()
 
         except Exception as e:
             logger.error(f"Error scanning directory {source_path}: {e}")
@@ -134,6 +214,7 @@ class FileScanningService:
         collection_id: str,
         file_path: Path,
         source_id: int | None = None,
+        scan_start_time: datetime | None = None,
     ) -> dict[str, Any]:
         """Register a single file in the collection.
 
@@ -141,6 +222,7 @@ class FileScanningService:
             collection_id: UUID of the collection
             file_path: Path to the file
             source_id: Optional source ID
+            scan_start_time: Start time of scan for duplicate detection
 
         Returns:
             Dictionary with:
@@ -180,8 +262,18 @@ class FileScanningService:
         )
 
         # Check if this was a new document or existing one
-        # The repository logs when it returns an existing document
-        is_new = True  # We'll trust the repository's deduplication logic
+        # If scan_start_time is provided, compare with document creation time
+        # Documents created before scan start are considered duplicates
+        is_new = True
+        if scan_start_time and hasattr(document, "created_at"):
+            is_new = document.created_at >= scan_start_time
+
+        # Log duplicate detection
+        if not is_new:
+            logger.debug(
+                f"Duplicate file detected: {file_path} "
+                f"(existing document created at {document.created_at})"
+            )
 
         return {
             "is_new": is_new,
@@ -276,6 +368,7 @@ class FileScanningService:
             collection_id=collection_id,
             file_path=path,
             source_id=source_id,
+            scan_start_time=datetime.now(UTC),
         )
 
         return {
