@@ -64,6 +64,9 @@ from .sqlite_repository import (
 from .transaction import RepositoryTransaction, async_sqlite_transaction, sqlite_transaction
 from .utils import parse_user_id
 
+# Async database session management
+from .database import get_db
+
 # Connection pooling for workers
 try:
     from .connection_pool import get_connection_pool, get_db_connection
@@ -119,6 +122,8 @@ __all__ = [
     "pwd_context",
     # Utility functions
     "parse_user_id",
+    # Async database session management
+    "get_db",
     # Connection pooling (optional, for workers)
     "get_connection_pool",
     "get_db_connection",
