@@ -375,7 +375,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
             # Tokenize
             if self.tokenizer is None:
                 raise RuntimeError("Tokenizer not initialized")
-            batch_dict = self.tokenizer(  # type: ignore[operator]
+            batch_dict = self.tokenizer(
                 batch_texts, padding=True, truncation=True, max_length=self.max_sequence_length, return_tensors="pt"
             ).to(self.device)
 
@@ -385,9 +385,9 @@ class DenseEmbeddingService(BaseEmbeddingService):
             with torch.no_grad():
                 if self.dtype == torch.float16:
                     with torch.cuda.amp.autocast(dtype=torch.float16):
-                        outputs = self.model(**batch_dict)  # type: ignore[operator]
+                        outputs = self.model(**batch_dict)
                 else:
-                    outputs = self.model(**batch_dict)  # type: ignore[operator]
+                    outputs = self.model(**batch_dict)
 
                 embeddings = last_token_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
 
