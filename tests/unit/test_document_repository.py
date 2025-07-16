@@ -34,7 +34,6 @@ class TestDocumentRepository:
         with pytest.raises(ValidationError) as exc_info:
             await repository.create(
                 collection_id=str(uuid4()),
-                source_id="default",
                 file_path="",
                 file_name="file.txt",
                 file_size=1024,
@@ -46,7 +45,6 @@ class TestDocumentRepository:
         with pytest.raises(ValidationError) as exc_info:
             await repository.create(
                 collection_id=str(uuid4()),
-                source_id="default",
                 file_path="/test/file.txt",
                 file_name="file.txt",
                 file_size=-1,
@@ -58,7 +56,6 @@ class TestDocumentRepository:
         with pytest.raises(ValidationError) as exc_info:
             await repository.create(
                 collection_id=str(uuid4()),
-                source_id="default",
                 file_path="/test/file.txt",
                 file_name="file.txt",
                 file_size=1024,
@@ -70,7 +67,6 @@ class TestDocumentRepository:
         with pytest.raises(ValidationError) as exc_info:
             await repository.create(
                 collection_id=str(uuid4()),
-                source_id="default",
                 file_path="/test/file.txt",
                 file_name="file.txt",
                 file_size=1024,
@@ -82,7 +78,6 @@ class TestDocumentRepository:
         with pytest.raises(ValidationError) as exc_info:
             await repository.create(
                 collection_id=str(uuid4()),
-                source_id="default",
                 file_path="/test/file.txt",
                 file_name="file.txt",
                 file_size=1024,
@@ -105,7 +100,7 @@ class TestDocumentRepository:
         existing_doc = Document(
             id=str(uuid4()),
             collection_id=collection_id,
-            source_id="default",
+            source_id=None,
             file_path="/existing.txt",
             file_name="existing.txt",
             file_size=100,
@@ -113,16 +108,15 @@ class TestDocumentRepository:
             status=DocumentStatus.COMPLETED,
         )
 
-        # Configure mock session
-        mock_session.execute.side_effect = [
-            collection_result,  # Collection check
-            AsyncMock(scalar_one_or_none=AsyncMock(return_value=existing_doc)),  # Existing doc check
-        ]
+        # Mock get_by_content_hash to return existing document
+        repository.get_by_content_hash = AsyncMock(return_value=existing_doc)
+        
+        # Configure mock session for collection check
+        mock_session.execute.return_value = collection_result
 
         # Act
         result = await repository.create(
             collection_id=collection_id,
-            source_id="default",
             file_path="/test.txt",
             file_name="test.txt",
             file_size=200,
@@ -131,6 +125,7 @@ class TestDocumentRepository:
 
         # Assert - should return existing document without creating new one
         assert result == existing_doc
+        repository.get_by_content_hash.assert_called_once_with(collection_id, content_hash)
         mock_session.add.assert_not_called()
         mock_session.flush.assert_not_called()
 
@@ -151,9 +146,9 @@ class TestDocumentRepository:
         """Test update_status with document not found."""
         # Setup
         doc_id = str(uuid4())
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
+        
+        # Mock get_by_id to return None
+        repository.get_by_id = AsyncMock(return_value=None)
 
         # Act & Assert
         with pytest.raises(EntityNotFoundError) as exc_info:
@@ -177,16 +172,15 @@ class TestDocumentRepository:
         # Assert
         assert count == 3
         mock_session.execute.assert_called_once()
-        mock_session.flush.assert_called_once()
 
     @pytest.mark.asyncio()
     async def test_delete_document_not_found(self, repository, mock_session):
         """Test deletion when document doesn't exist."""
         # Setup
         doc_id = str(uuid4())
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
+        
+        # Mock get_by_id to return None
+        repository.get_by_id = AsyncMock(return_value=None)
 
         # Act & Assert
         with pytest.raises(EntityNotFoundError) as exc_info:
@@ -206,13 +200,9 @@ class TestDocumentRepository:
             (DocumentStatus.FAILED, 2),
         ]
 
-        # Create an async iterator for status counts
-        async def async_iter():
-            for item in status_counts:
-                yield item
-
+        # Create a mock result that returns status counts when iterated
         mock_result = AsyncMock()
-        mock_result.__aiter__.return_value = async_iter()
+        mock_result.__iter__.return_value = iter(status_counts)
 
         # Configure scalar responses for aggregates
         mock_session.scalar.side_effect = [
