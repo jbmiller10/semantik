@@ -340,3 +340,169 @@ Successfully resolved all code quality issues:
 - Created comprehensive test suite with 100% method coverage
 - All code quality checks passing (black, ruff, mypy)
 - Ready for integration with CollectionService and other components
+
+---
+
+## TASK-008: Implement File Scanning Service
+
+### 2025-07-16 - Initial Analysis
+- Reviewed the COLLECTIONS_REFACTOR_EXECUTION_PLAN.md for task requirements
+- Examined DocumentRepository implementation with create() method that handles deduplication
+- Found existing supported file extensions in webui/api/jobs.py and webui/api/documents.py
+- Analyzed the append operation in tasks.py with TODOs for document scanning
+- Dependency on TASK-004 (DocumentRepository) confirmed working
+
+### 2025-07-16 - Implementation Approach
+The File Scanning Service provides:
+1. Directory scanning with recursive support
+2. File type filtering based on supported extensions
+3. SHA-256 content hash calculation for deduplication
+4. Integration with DocumentRepository for persistence
+5. Detailed statistics on scan results
+
+### 2025-07-16 - Service Implementation
+Created `packages/webui/services/file_scanning_service.py` with:
+
+1. **FileScanningService class**:
+   - Dependency injection of AsyncSession and DocumentRepository
+   - Support for both recursive and non-recursive scanning
+
+2. **scan_directory_and_register_documents method**:
+   - Validates source path exists and is a directory
+   - Filters files by supported extensions
+   - Calculates SHA-256 hash for each file
+   - Registers documents using DocumentRepository (with deduplication)
+   - Returns comprehensive statistics:
+     - total_files_found
+     - new_files_registered
+     - duplicate_files_skipped
+     - errors with details
+     - total_size_bytes
+
+3. **Helper methods**:
+   - `_register_file`: Register single file with size validation
+   - `_calculate_file_hash`: SHA-256 hash calculation with chunked reading
+   - `_get_mime_type`: MIME type detection with fallbacks
+   - `scan_file`: Convenience method for single file registration
+
+### 2025-07-16 - Key Design Decisions
+
+1. **Supported Extensions**: Aligned with existing codebase (.pdf, .docx, .doc, .txt, .text, .pptx, .eml, .md, .html)
+2. **File Size Limit**: 500MB max per file (matching existing limits)
+3. **Hash Chunk Size**: 8KB for efficient memory usage during hash calculation
+4. **Error Handling**: Continue scanning on individual file errors, collect all errors
+5. **Deduplication**: Leveraged DocumentRepository's existing deduplication logic
+
+### 2025-07-16 - Factory Function
+Updated `packages/webui/services/factory.py`:
+- Added `create_file_scanning_service` function
+- Follows established pattern for dependency injection
+- Simplifies integration in tasks and endpoints
+
+### 2025-07-16 - Integration with Append Operation
+Modified `packages/webui/tasks.py`:
+- Updated `_process_append_operation` to use FileScanningService
+- Creates async session using AsyncSessionLocal
+- Scans directory and commits transaction
+- Sends detailed progress updates via Redis
+- Returns comprehensive statistics
+- Proper error handling with rollback
+
+### 2025-07-16 - Comprehensive Testing
+Created `tests/unit/test_file_scanning_service.py` with:
+
+1. **Test Coverage**:
+   - Directory validation (non-existent, not a directory)
+   - Empty directory handling
+   - Supported file type filtering
+   - Duplicate detection simulation
+   - Recursive vs non-recursive scanning
+   - Error handling and recovery
+   - Single file scanning
+   - File size validation
+   - Hash calculation consistency
+   - MIME type detection
+
+2. **Test Patterns**:
+   - Mock AsyncSession and DocumentRepository
+   - Temporary file/directory creation
+   - Path mocking for edge cases
+   - Comprehensive assertions
+
+### 2025-07-16 - Code Quality Fixes
+Resolved all linting and type checking issues:
+
+1. **Black**: Applied automatic formatting
+2. **Ruff**:
+   - Changed `open()` to `Path.open()`
+   - Updated `IOError` to `OSError`
+   - Fixed pytest.raises with match parameter
+   - Removed unused variables
+   - Fixed Yoda condition
+   - Combined nested with statements
+
+3. **MyPy**:
+   - Added explicit type annotation for stats dictionary
+   - Resolved all type inference issues
+
+### 2025-07-16 - Task Completion Summary
+Successfully implemented File Scanning Service that:
+- Scans directories for supported document types
+- Calculates content hashes for deduplication
+- Integrates with DocumentRepository for persistence
+- Provides detailed scan statistics
+- Handles errors gracefully
+- Integrated with append operation in Celery tasks
+- Comprehensive test coverage
+- All code quality checks passing
+
+### 2025-07-16 - Future Work
+The append operation still needs:
+- Document content extraction
+- Embedding generation
+- Vector storage in Qdrant
+These will be implemented in future tasks as part of the document processing pipeline.
+
+### 2025-07-16 - Performance and Usability Improvements
+Based on code review feedback, implemented significant enhancements:
+
+1. **Batch Processing with Configurable Batch Size**:
+   - Added `batch_size` parameter (default 100) to commit documents in chunks
+   - Prevents memory issues and transaction size problems for large directories
+   - Commits are performed after every batch_size files
+
+2. **Progress Callback Support**:
+   - Added optional `progress_callback` parameter for real-time progress updates
+   - Callback receives (files_processed, total_files) for UI integration
+   - Enables progress bars and status updates during long scans
+
+3. **Improved Duplicate Detection**:
+   - Tracks scan start time to properly identify duplicates
+   - Documents created before scan start are marked as duplicates
+   - Uses `created_at` timestamp comparison for accurate detection
+
+4. **Memory-Efficient Directory Traversal**:
+   - Switched from `path.glob()` to `os.walk()` for better memory efficiency
+   - Prevents loading all file paths into memory at once
+   - Handles directories with millions of files without memory issues
+
+5. **Enhanced Testing**:
+   - Added tests for batch processing functionality
+   - Added tests for progress callback mechanism
+   - Updated duplicate detection test to use timestamp comparison
+
+### 2025-07-16 - Additional Considerations Documented
+- **Hash Collisions**: While SHA-256 collisions are astronomically unlikely, the system treats files with identical hashes as duplicates
+- **Security**: Path traversal attacks prevented by Path objects, file size limits prevent DoS, no code execution risks
+- **Performance**: Batch commits and streaming iteration ensure good performance even with very large directories
+
+### 2025-07-16 - Final Implementation Status
+Successfully implemented all requested improvements from code review:
+
+1. **Batch Processing**: Documents are now committed in configurable batches (default 100) to prevent memory issues
+2. **Progress Callback**: Optional async callback provides real-time progress updates for UI integration
+3. **Improved Duplicate Detection**: Uses document creation timestamps to accurately identify duplicates
+4. **Memory-Efficient Traversal**: Switched from glob() to os.walk() for better memory usage with large directories
+5. **Comprehensive Testing**: All unit tests passing, including new tests for batch processing and progress callbacks
+
+Code quality checks all passing (black, ruff, mypy). The service is now production-ready for handling large-scale document scanning operations with proper resource management and progress reporting.
