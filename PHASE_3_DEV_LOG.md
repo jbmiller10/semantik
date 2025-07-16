@@ -288,3 +288,17 @@ The implementation follows the execution plan closely while maintaining backward
   - Audit logging already captures final statistics (documents_processed, vectors_created)
   - Validation step (already implemented) will verify the reindexed data
   - Atomic switch (already implemented) will complete the blue-green deployment
+
+### 2025-07-16 - Improvements Based on Review Feedback
+- **Made batch_size configurable**:
+  - Batch size can now be specified in new_config or existing config
+  - Defaults to EMBEDDING_BATCH_SIZE (100) if not specified
+  - Allows for collection-specific or operation-specific tuning
+- **Made ThreadPoolExecutor worker count configurable**:
+  - Worker count can now be specified in new_config or existing config
+  - Defaults to 4 workers if not specified
+  - Enables better resource utilization based on system capabilities
+- **Benefits**:
+  - More flexible configuration for different collection sizes
+  - Better resource management for varying system capabilities
+  - Easier performance tuning without code changes

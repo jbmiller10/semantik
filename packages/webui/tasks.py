@@ -1403,7 +1403,8 @@ async def _process_reindex_operation(
         vector_count = 0
 
         # Process documents in batches
-        batch_size = EMBEDDING_BATCH_SIZE
+        # Get batch_size from config, defaulting to EMBEDDING_BATCH_SIZE
+        batch_size = new_config.get("batch_size", collection.get("config", {}).get("batch_size", EMBEDDING_BATCH_SIZE))
 
         # Get the new configuration values
         chunk_size = new_config.get("chunk_size", collection.get("config", {}).get("chunk_size", 600))
@@ -1415,8 +1416,11 @@ async def _process_reindex_operation(
         instruction = new_config.get("instruction", collection.get("config", {}).get("instruction"))
         vector_dim = new_config.get("vector_dim", collection.get("config", {}).get("vector_dim"))
 
+        # Get worker count from config, defaulting to 4
+        worker_count = new_config.get("worker_count", collection.get("config", {}).get("worker_count", 4))
+
         # Create thread pool for parallel processing
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
             for i in range(0, total_documents, batch_size):
                 batch = documents[i : i + batch_size]
 
