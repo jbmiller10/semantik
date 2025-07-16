@@ -4,6 +4,8 @@ Prometheus metrics for collection operations.
 Provides comprehensive monitoring for collection management and operations.
 """
 
+from typing import Any
+
 from prometheus_client import Counter, Gauge, Histogram
 
 # Import the existing registry to ensure all metrics are registered in one place

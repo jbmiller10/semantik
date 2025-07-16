@@ -7,10 +7,10 @@ Manages resource allocation, limits, and quotas for collection operations.
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import psutil
-from shared.database.models import CollectionResourceLimits
 
 logger = logging.getLogger(__name__)
 
@@ -106,20 +106,20 @@ class ResourceManager:
         """Estimate resources needed for processing a source path."""
         try:
             # Get total size of files
-            import os
 
             total_size_bytes = 0
             file_count = 0
 
-            if os.path.isfile(source_path):
-                total_size_bytes = os.path.getsize(source_path)
+            path = Path(source_path)
+            if path.is_file():
+                total_size_bytes = path.stat().st_size
                 file_count = 1
-            elif os.path.isdir(source_path):
-                for root, dirs, files in os.walk(source_path):
-                    for file in files:
-                        file_path = os.path.join(root, file)
+            elif path.is_dir():
+                # Use rglob to recursively find all files
+                for file_path in path.rglob("*"):
+                    if file_path.is_file():
                         try:
-                            total_size_bytes += os.path.getsize(file_path)
+                            total_size_bytes += file_path.stat().st_size
                             file_count += 1
                         except OSError:
                             pass
@@ -253,13 +253,15 @@ class ResourceManager:
             available_memory_mb = (memory.available / 1024 / 1024) - total_reserved_memory
             available_storage_gb = (disk.free / 1024 / 1024 / 1024) - total_reserved_storage
 
-            return estimate.memory_mb <= available_memory_mb * 0.8 and estimate.storage_gb <= available_storage_gb * 0.8
+            return bool(
+                estimate.memory_mb <= available_memory_mb * 0.8 and estimate.storage_gb <= available_storage_gb * 0.8
+            )
 
         except Exception as e:
             logger.error(f"Failed to check system resources: {e}")
             return False
 
-    def _is_gpu_model(self, model_name: str) -> bool:
+    def _is_gpu_model(self, model_name: str) -> bool:  # noqa: ARG002
         """Check if model typically uses GPU."""
         # Most embedding models benefit from GPU
         return True
