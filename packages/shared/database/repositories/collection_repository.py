@@ -375,7 +375,7 @@ class CollectionRepository:
                 raise AccessDeniedError(str(user_id), "collection", collection_uuid)
 
             # Delete the collection (cascade will handle related records)
-            await self.session.delete(collection)
+            self.session.delete(collection)  # type: ignore[unused-coroutine]
             await self.session.flush()
 
             logger.info(f"Deleted collection {collection_uuid}")

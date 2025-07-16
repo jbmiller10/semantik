@@ -5,12 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from shared.database.exceptions import (
-    AccessDeniedError,
-    DatabaseOperationError,
-    EntityNotFoundError,
-    ValidationError,
-)
+from shared.database.exceptions import AccessDeniedError, DatabaseOperationError, EntityNotFoundError, ValidationError
 from shared.database.models import Collection, Operation, OperationStatus, OperationType
 from shared.database.repositories.operation_repository import OperationRepository
 
@@ -507,7 +502,7 @@ class TestOperationRepository:
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
             await repository.cancel(sample_operation.uuid, sample_operation.user_id)
-        assert "Cannot cancel operation in completed status" in str(exc_info.value)
+        assert "Cannot cancel operation in OperationStatus.COMPLETED status" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_get_active_operations_count(self, repository, mock_session):

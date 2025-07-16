@@ -268,7 +268,7 @@ def verify_refresh_token(token: str) -> int | None:
     conn.close()
 
     if row:
-        return row["user_id"]
+        return int(row["user_id"])
     return None
 
 
