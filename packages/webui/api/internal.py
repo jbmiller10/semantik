@@ -8,9 +8,8 @@ from shared.config import settings
 from shared.database.base import JobRepository
 from shared.database.factory import create_job_repository
 from shared.database.models import CollectionStatus
+from shared.database.database import AsyncSessionLocal
 from shared.database.repositories.collection_repository import CollectionRepository
-from sqlalchemy.ext.asyncio import AsyncSession
-from webui.database import get_async_session
 
 router = APIRouter(prefix="/api/internal", tags=["internal"])
 
@@ -53,7 +52,7 @@ class CompleteReindexResponse(BaseModel):
     "/complete-reindex", response_model=CompleteReindexResponse, dependencies=[Depends(verify_internal_api_key)]
 )
 async def complete_reindex(
-    request: CompleteReindexRequest, session: AsyncSession = Depends(get_async_session)
+    request: CompleteReindexRequest,
 ) -> CompleteReindexResponse:
     """
     Atomically complete a reindex operation by switching from staging to active.
@@ -79,7 +78,7 @@ async def complete_reindex(
 
     try:
         # Begin atomic transaction
-        async with session.begin():
+        async with AsyncSessionLocal() as session, session.begin():
             # Initialize repositories
             collection_repo = CollectionRepository(session)
 
