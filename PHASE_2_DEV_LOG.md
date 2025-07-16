@@ -76,3 +76,95 @@ Successfully implemented `get_collection_for_user` security dependency:
 - Built foundation for async database infrastructure (created get_db function)
 - Added comprehensive unit tests with full coverage
 - All code quality checks passing (black, ruff, mypy, pytest)
+
+---
+
+## TASK-006: Implement Collection Service
+
+### 2025-07-16 - Initial Analysis and Planning
+- Reviewed COLLECTIONS_REFACTOR_EXECUTION_PLAN.md for architecture requirements
+- Examined existing repository implementations (Collection, Operation, Document)
+- Analyzed existing Celery task structure in webui/tasks.py
+- Identified need for service layer to orchestrate between repositories and task queue
+- No existing services directory - will create it
+
+### 2025-07-16 - Implementation Approach
+The Collection Service acts as the orchestration layer between:
+- API endpoints (controllers)
+- Repository layer (data access)
+- Celery tasks (async processing)
+- Qdrant manager (vector storage)
+
+Key responsibilities:
+1. Validate business rules and state transitions
+2. Create Operation records for audit trail
+3. Dispatch Celery tasks for async processing
+4. Coordinate between multiple repositories
+
+### 2025-07-16 - Service Implementation
+Created `packages/webui/services/collection_service.py` with:
+
+1. **CollectionService class** with dependency injection of repositories
+2. **create_collection method**:
+   - Validates collection name
+   - Creates collection in database
+   - Creates INDEX operation
+   - Dispatches Celery task
+   
+3. **add_source method**:
+   - Validates collection state (must be READY or PARTIALLY_READY)
+   - Checks for active operations
+   - Creates APPEND operation
+   - Updates collection status to INDEXING
+   
+4. **reindex_collection method**:
+   - Validates collection not currently indexing or failed
+   - Implements blue-green reindexing strategy
+   - Merges config updates with existing config
+   - Creates REINDEX operation
+   
+5. **delete_collection method**:
+   - Requires owner permission
+   - Checks for active operations
+   - Deletes from Qdrant if exists
+   - Cascades deletion in database
+   
+6. **remove_source method**:
+   - Validates collection state
+   - Creates REMOVE_SOURCE operation
+   - Updates collection status to PROCESSING
+
+### 2025-07-16 - Celery Task Implementation
+Extended `packages/webui/tasks.py` with:
+
+1. **process_collection_operation task**:
+   - Main entry point for all collection operations
+   - Routes to specific operation handlers
+   - Updates operation and collection status
+   - Handles errors with proper status updates
+
+2. **Operation-specific handlers**:
+   - `_process_index_operation`: Creates Qdrant collection
+   - `_process_append_operation`: Adds documents (TODO: full implementation)
+   - `_process_reindex_operation`: Blue-green reindex with new config
+   - `_process_remove_source_operation`: Removes documents from source
+
+3. **Redis Stream Updates**:
+   - Uses CeleryTaskWithUpdates for real-time progress
+   - Sends operation lifecycle events
+   - Compatible with existing WebSocket infrastructure
+
+### 2025-07-16 - Key Design Decisions
+
+1. **State Validation**: Enforced strict state transitions to prevent race conditions
+2. **Operation Records**: Every action creates an Operation for audit trail
+3. **Blue-Green Reindexing**: Always use blue-green for zero downtime
+4. **Error Handling**: Proper status updates on failure, with collection state management
+5. **Resource Limits**: Foundation for quota enforcement (passed through config)
+
+### 2025-07-16 - TODOs and Future Work
+- Complete APPEND operation implementation (document scanning, deduplication)
+- Complete REINDEX operation (full document reprocessing)
+- Implement document-to-vector ID mapping for proper deletion
+- Add resource limit enforcement
+- Add comprehensive integration tests
