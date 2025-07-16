@@ -98,3 +98,43 @@ The implementation follows the execution plan closely while maintaining backward
 - Phase 5: Frontend Implementation with UX Enhancements (2 weeks)
 - Phase 6: Testing & Documentation (1 week)
 - Phase 7: Operational Validation (1 week)
+
+---
+
+## TASK-009: Refactor Celery Task Structure
+
+### 2025-07-16 - Starting TASK-009 Implementation
+- **Task**: Refactor Celery task structure to create a unified, robust task entry point
+- **Requirements**:
+  1. Add `acks_late=True` for message reliability
+  2. Define proper `soft_time_limit` and `time_limit`
+  3. Update operations record with `celery_task_id` as first action in task
+  4. Implement try...finally block for guaranteed status updates
+- **Analysis**:
+  - Current task has basic configuration but missing reliability features
+  - Task ID is being set by CollectionService after task submission
+  - Found broken `operation_repo.update()` call that needs fixing
+  - Need to move task_id update inside the task as first action
+
+### 2025-07-16 - Completed TASK-009 Implementation
+- **Changes Made**:
+  1. **Enhanced Celery Task Decorator** (packages/webui/tasks.py):
+     - Added `acks_late=True` for message reliability
+     - Set `soft_time_limit=3600` (1 hour) and `time_limit=7200` (2 hours)
+     - Kept existing retry configuration (max_retries=3, default_retry_delay=60)
+  2. **Moved Task ID Update Inside Task**:
+     - Task ID is now set as the FIRST action using `self.request.id`
+     - Fixed broken `operation_repo.update()` by using `set_task_id()` method
+     - Ensures task tracking even if later steps fail
+  3. **Enhanced Error Handling**:
+     - Wrapped exception handler updates in try-except to ensure robustness
+     - Added finally block logic to guarantee final status updates
+     - Added fallback to set FAILED status if task terminates unexpectedly
+  4. **Updated CollectionService**:
+     - Removed redundant `set_task_id()` calls in 4 locations
+     - Added comments explaining task ID is now set inside the task
+- **Benefits**:
+  - Improved message reliability with late acknowledgment
+  - Better handling of long-running operations with proper timeouts
+  - Guaranteed task ID tracking for monitoring and cancellation
+  - More robust error handling with guaranteed status updates

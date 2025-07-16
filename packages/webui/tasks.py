@@ -25,7 +25,6 @@ from shared.metrics.collection_metrics import (
     collection_cpu_seconds_total,
     collection_memory_usage_bytes,
     collections_total,
-    record_operation_retry,
     update_collection_stats,
 )
 from shared.text_processing.chunking import TokenChunker
@@ -644,12 +643,25 @@ async def _update_metrics_continuously() -> None:
         await asyncio.sleep(1)  # Check every 1 second
 
 
-@celery_app.task(bind=True, name="webui.tasks.process_collection_operation", max_retries=3, default_retry_delay=60)
+@celery_app.task(
+    bind=True,
+    name="webui.tasks.process_collection_operation",
+    max_retries=3,
+    default_retry_delay=60,
+    acks_late=True,  # Ensure message reliability
+    soft_time_limit=3600,  # 1 hour soft limit
+    time_limit=7200,  # 2 hour hard limit
+)
 def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]:
     """
     Process a collection operation (INDEX, APPEND, REINDEX, REMOVE_SOURCE).
 
     This is a synchronous wrapper that runs the async processing logic.
+    Implements reliable task processing with:
+    - Late acknowledgment for message reliability
+    - Proper time limits for long-running operations
+    - Immediate task ID recording
+    - Guaranteed status updates via try...finally
     """
     # Run the async function in an event loop
     loop = asyncio.new_event_loop()
@@ -680,31 +692,32 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
     updater = None
     start_time = time.time()
     operation = None
-    
+
     # Track initial resources
     process = psutil.Process()
     initial_cpu_time = process.cpu_times().user + process.cpu_times().system
+
+    # Store task ID immediately as FIRST action
+    task_id = celery_task.request.id if hasattr(celery_task, "request") else str(uuid.uuid4())
 
     # Create repository instances
     operation_repo = create_operation_repository()
     collection_repo = create_collection_repository()
     document_repo = create_document_repository()
 
-    # Create updater for sending Redis updates
-    updater = CeleryTaskWithUpdates(operation_id)
-    
-    # Store task ID immediately
-    task_id = celery_task.request.id if hasattr(celery_task, "request") else str(uuid.uuid4())
-
     try:
+        # Update operation with task ID as FIRST action inside try block
+        await operation_repo.set_task_id(operation_id, task_id)
+        logger.info(f"Set task_id {task_id} for operation {operation_id}")
+
+        # Create updater for sending Redis updates after task ID is set
+        updater = CeleryTaskWithUpdates(operation_id)
+
         # Get operation details
         operation = await operation_repo.get_by_uuid(operation_id)
         if not operation:
             raise ValueError(f"Operation {operation_id} not found in database")
 
-        # Update operation with task ID
-        await operation_repo.update(operation_id, {"task_id": task_id})
-        
         # Log operation start
         logger.info(
             "Starting collection operation",
@@ -728,24 +741,26 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
         # Process based on operation type with timing
         result = {}
         operation_type = str(operation["type"]).lower()
-        
+
         with OperationTimer(operation_type):
             # Track memory usage
             memory_before = process.memory_info().rss
-            
+
             if operation["type"] == OperationType.INDEX:
                 result = await _process_index_operation(operation, collection, collection_repo, document_repo, updater)
             elif operation["type"] == OperationType.APPEND:
                 result = await _process_append_operation(operation, collection, collection_repo, document_repo, updater)
             elif operation["type"] == OperationType.REINDEX:
-                result = await _process_reindex_operation(operation, collection, collection_repo, document_repo, updater)
+                result = await _process_reindex_operation(
+                    operation, collection, collection_repo, document_repo, updater
+                )
             elif operation["type"] == OperationType.REMOVE_SOURCE:
                 result = await _process_remove_source_operation(
                     operation, collection, collection_repo, document_repo, updater
                 )
             else:
                 raise ValueError(f"Unknown operation type: {operation['type']}")
-            
+
             # Track peak memory usage
             memory_peak = process.memory_info().rss
             collection_memory_usage_bytes.labels(operation_type=operation_type).set(memory_peak - memory_before)
@@ -753,7 +768,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
         # Record operation metrics in database
         duration = time.time() - start_time
         cpu_time = (process.cpu_times().user + process.cpu_times().system) - initial_cpu_time
-        
+
         await _record_operation_metrics(
             operation_repo,
             operation_id,
@@ -765,7 +780,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                 "success": result.get("success", False),
             },
         )
-        
+
         # Update CPU time counter
         collection_cpu_seconds_total.labels(operation_type=operation_type).inc(cpu_time)
 
@@ -774,7 +789,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
 
         # Update collection status based on result
         old_status = collection.get("status", CollectionStatus.PENDING)
-        
+
         if result.get("success"):
             # Check if collection has any documents
             doc_stats = await document_repo.get_stats_by_collection(collection["id"])
@@ -784,15 +799,18 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
             else:
                 new_status = CollectionStatus.EMPTY
                 await collection_repo.update_status(collection["id"], new_status)
-            
+
             # Update collection statistics
             await _update_collection_metrics(
-                collection["id"], doc_stats["total_count"], collection.get("vector_count", 0), doc_stats["total_size_bytes"]
+                collection["id"],
+                doc_stats["total_count"],
+                collection.get("vector_count", 0),
+                doc_stats["total_size_bytes"],
             )
         else:
             new_status = CollectionStatus.PARTIALLY_READY
             await collection_repo.update_status(collection["id"], new_status)
-        
+
         # Update collection status metrics
         if old_status != new_status:
             collections_total.labels(status=old_status.value).dec()
@@ -814,34 +832,58 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
 
     except Exception as e:
         logger.error(f"Operation {operation_id} failed: {e}", exc_info=True)
-        
-        # Record failure metrics
-        if operation:
-            await _record_operation_metrics(
-                operation_repo,
-                operation_id,
-                {
-                    "duration_seconds": time.time() - start_time,
-                    "error_type": type(e).__name__,
-                    "error_message": str(e),
-                    "success": False,
-                },
-            )
 
-        # Update operation status to failed
-        await operation_repo.update_status(operation_id, OperationStatus.FAILED, result={"error": str(e)})
+        # Ensure status update even if some components failed to initialize
+        try:
+            # Record failure metrics
+            if operation:
+                await _record_operation_metrics(
+                    operation_repo,
+                    operation_id,
+                    {
+                        "duration_seconds": time.time() - start_time,
+                        "error_type": type(e).__name__,
+                        "error_message": str(e),
+                        "success": False,
+                    },
+                )
 
-        # Update collection status to failed if critical operation
-        if operation and operation["type"] in [OperationType.INDEX, OperationType.REINDEX]:
-            await collection_repo.update_status(operation["collection_id"], CollectionStatus.FAILED)
+            # Update operation status to failed - this is critical
+            await operation_repo.update_status(operation_id, OperationStatus.FAILED, result={"error": str(e)})
 
-        await updater.send_update("operation_failed", {"status": "failed", "error": str(e)})
+            # Update collection status to failed if critical operation
+            if operation and operation["type"] in [OperationType.INDEX, OperationType.REINDEX]:
+                await collection_repo.update_status(operation["collection_id"], CollectionStatus.FAILED)
+
+            # Send update if updater exists
+            if updater:
+                await updater.send_update("operation_failed", {"status": "failed", "error": str(e)})
+        except Exception as update_error:
+            # Log but don't raise - we want the original exception to propagate
+            logger.error(f"Failed to update operation status during error handling: {update_error}")
 
         raise
 
     finally:
+        # Guaranteed cleanup - ensure operation status is finalized
+        try:
+            # If we haven't set a final status, ensure it's set
+            if operation:
+                current_status = await operation_repo.get_by_uuid(operation_id)
+                if current_status and current_status.get("status") == OperationStatus.PROCESSING:
+                    # Operation is still processing - must have failed unexpectedly
+                    await operation_repo.update_status(
+                        operation_id, OperationStatus.FAILED, result={"error": "Task terminated unexpectedly"}
+                    )
+        except Exception as final_error:
+            logger.error(f"Failed to finalize operation status: {final_error}")
+
+        # Close updater if it exists
         if updater:
-            await updater.close()
+            try:
+                await updater.close()
+            except Exception as close_error:
+                logger.error(f"Failed to close updater: {close_error}")
 
 
 async def _record_operation_metrics(operation_repo: Any, operation_id: str, metrics: dict[str, Any]) -> None:
@@ -852,10 +894,10 @@ async def _record_operation_metrics(operation_repo: Any, operation_id: str, metr
         if operation:
             from shared.database.database import AsyncSessionLocal
             from shared.database.models import OperationMetrics
-            
+
             async with AsyncSessionLocal() as session:
                 for metric_name, metric_value in metrics.items():
-                    if isinstance(metric_value, (int, float)):
+                    if isinstance(metric_value, int | float):
                         metric = OperationMetrics(
                             operation_id=operation["id"],
                             metric_name=metric_name,
@@ -876,7 +918,6 @@ async def _update_collection_metrics(collection_id: str, documents: int, vectors
 
 
 async def _audit_log_operation(
-    collection_repo: Any,
     collection_id: str,
     operation_id: int,
     user_id: int | None,
@@ -887,7 +928,7 @@ async def _audit_log_operation(
     try:
         from shared.database.database import AsyncSessionLocal
         from shared.database.models import CollectionAuditLog
-        
+
         async with AsyncSessionLocal() as session:
             audit_log = CollectionAuditLog(
                 collection_id=collection_id,
@@ -910,11 +951,8 @@ async def _process_index_operation(
     updater: CeleryTaskWithUpdates,
 ) -> dict[str, Any]:
     """Process INDEX operation - Initial collection creation with monitoring."""
-    from shared.metrics.collection_metrics import (
-        QdrantOperationTimer,
-        record_qdrant_operation,
-    )
-    
+    from shared.metrics.collection_metrics import record_qdrant_operation
+
     try:
         # Create Qdrant collection
         qdrant_client = qdrant_manager.get_client()
@@ -940,7 +978,6 @@ async def _process_index_operation(
 
         # Audit log the collection creation
         await _audit_log_operation(
-            collection_repo,
             collection["id"],
             operation["id"],
             operation.get("user_id"),
@@ -970,10 +1007,9 @@ async def _process_append_operation(
     """Process APPEND operation - Add documents to existing collection with monitoring."""
     from shared.metrics.collection_metrics import (
         document_processing_duration,
-        documents_processed_total,
         record_document_processed,
     )
-    
+
     config = operation.get("config", {})
     source_path = config.get("source_path")
 
@@ -999,7 +1035,7 @@ async def _process_append_operation(
         try:
             # Time document scanning
             scan_start = time.time()
-            
+
             scan_stats = await file_scanner.scan_directory_and_register_documents(
                 collection_id=collection["id"],
                 source_path=source_path,
@@ -1036,7 +1072,6 @@ async def _process_append_operation(
 
             # Audit log the append operation
             await _audit_log_operation(
-                collection_repo,
                 collection["id"],
                 operation["id"],
                 operation.get("user_id"),
@@ -1088,32 +1123,31 @@ async def _process_reindex_operation(
     """Process REINDEX operation - Blue-green reindexing with validation checkpoints."""
     from shared.database.models import DocumentStatus
     from shared.metrics.collection_metrics import (
-        QdrantOperationTimer,
         record_reindex_checkpoint,
         reindex_switch_duration,
         reindex_validation_duration,
     )
-    
+
     config = operation.get("config", {})
     new_config = config.get("new_config", {})
     staging_collection_name = None
     checkpoints = []
-    
+
     try:
         # Checkpoint 1: Pre-flight checks
         checkpoint_time = time.time()
         record_reindex_checkpoint(collection["id"], "preflight_start")
         checkpoints.append(("preflight_start", checkpoint_time))
-        
+
         # Verify collection health
         if collection.get("status") == "error":
             raise ValueError("Cannot reindex collection in error state")
-        
+
         # Check if collection has documents
         doc_stats = await document_repo.get_stats_by_collection(collection["id"])
         if doc_stats["total_count"] == 0:
             raise ValueError("Cannot reindex empty collection")
-        
+
         await updater.send_update(
             "reindex_preflight",
             {
@@ -1122,69 +1156,74 @@ async def _process_reindex_operation(
                 "current_vector_count": collection.get("vector_count", 0),
             },
         )
-        
+
         record_reindex_checkpoint(collection["id"], "preflight_complete")
         checkpoints.append(("preflight_complete", time.time()))
-        
+
         # Checkpoint 2: Create staging collection
         qdrant_client = qdrant_manager.get_client()
         old_collection_name = collection["qdrant_collection_name"]
         staging_collection_name = f"{old_collection_name}_staging_{int(time.time())}"
-        
+
         record_reindex_checkpoint(collection["id"], "staging_creation_start")
-        
-        from webui.services.collection_service import DEFAULT_VECTOR_DIMENSION
+
         from qdrant_client.models import Distance, VectorParams
-        
+        from webui.services.collection_service import DEFAULT_VECTOR_DIMENSION
+
         vector_dim = new_config.get("vector_dim", collection["config"].get("vector_dim", DEFAULT_VECTOR_DIMENSION))
-        
+
         with QdrantOperationTimer("create_staging_collection"):
             qdrant_client.create_collection(
                 collection_name=staging_collection_name,
                 vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
             )
-        
+
         # Update collection with staging info
         await collection_repo.update(
             collection["id"],
-            {"qdrant_staging": {"collection_name": staging_collection_name, "created_at": datetime.now(UTC).isoformat()}},
+            {
+                "qdrant_staging": {
+                    "collection_name": staging_collection_name,
+                    "created_at": datetime.now(UTC).isoformat(),
+                }
+            },
         )
-        
+
         record_reindex_checkpoint(collection["id"], "staging_creation_complete")
         checkpoints.append(("staging_creation_complete", time.time()))
-        
+
         await updater.send_update(
             "staging_created",
             {"staging_collection": staging_collection_name, "vector_dim": vector_dim},
         )
-        
+
         # Checkpoint 3: Reprocess documents
         record_reindex_checkpoint(collection["id"], "reprocessing_start")
-        
+
         # Get all active documents
         documents = await document_repo.list_by_collection(
             collection["id"],
             status_filter=DocumentStatus.COMPLETED,
             limit=None,  # Get all documents
         )
-        
+
         total_documents = len(documents)
         processed_count = 0
         failed_count = 0
         vector_count = 0
-        
+
         # Process documents in batches
         batch_size = 100
         for i in range(0, total_documents, batch_size):
             batch = documents[i : i + batch_size]
-            
+
             # TODO: Actually reprocess documents with new configuration
             # For now, simulate processing
             await asyncio.sleep(0.1)  # Simulate processing time
-            
+
             processed_count += len(batch)
             vector_count += len(batch) * 10  # Simulate vector creation
-            
+
             # Send progress update
             progress = (processed_count / total_documents) * 100
             await updater.send_update(
@@ -1196,14 +1235,14 @@ async def _process_reindex_operation(
                     "progress_percent": progress,
                 },
             )
-        
+
         record_reindex_checkpoint(collection["id"], "reprocessing_complete")
         checkpoints.append(("reprocessing_complete", time.time()))
-        
+
         # Checkpoint 4: Validation
         validation_start = time.time()
         record_reindex_checkpoint(collection["id"], "validation_start")
-        
+
         # Validate the new collection
         validation_result = await _validate_reindex(
             qdrant_client,
@@ -1211,16 +1250,16 @@ async def _process_reindex_operation(
             staging_collection_name,
             sample_size=min(100, total_documents // 10),
         )
-        
+
         validation_duration = time.time() - validation_start
         reindex_validation_duration.observe(validation_duration)
-        
+
         if not validation_result["passed"]:
             raise ValueError(f"Reindex validation failed: {validation_result['issues']}")
-        
+
         record_reindex_checkpoint(collection["id"], "validation_complete")
         checkpoints.append(("validation_complete", time.time()))
-        
+
         await updater.send_update(
             "validation_complete",
             {
@@ -1229,11 +1268,11 @@ async def _process_reindex_operation(
                 "sample_size": validation_result["sample_size"],
             },
         )
-        
+
         # Checkpoint 5: Atomic switch
         switch_start = time.time()
         record_reindex_checkpoint(collection["id"], "atomic_switch_start")
-        
+
         # Update collection to point to new Qdrant collection
         await collection_repo.update(
             collection["id"],
@@ -1244,28 +1283,27 @@ async def _process_reindex_operation(
                 "vector_count": vector_count,
             },
         )
-        
+
         switch_duration = time.time() - switch_start
         reindex_switch_duration.observe(switch_duration)
-        
+
         record_reindex_checkpoint(collection["id"], "atomic_switch_complete")
         checkpoints.append(("atomic_switch_complete", time.time()))
-        
+
         # Checkpoint 6: Cleanup old collection
         record_reindex_checkpoint(collection["id"], "cleanup_start")
-        
+
         try:
             with QdrantOperationTimer("delete_old_collection"):
                 qdrant_client.delete_collection(old_collection_name)
         except Exception as e:
             logger.warning(f"Failed to delete old collection {old_collection_name}: {e}")
-        
+
         record_reindex_checkpoint(collection["id"], "cleanup_complete")
         checkpoints.append(("cleanup_complete", time.time()))
-        
+
         # Audit log the reindex
         await _audit_log_operation(
-            collection_repo,
             collection["id"],
             operation["id"],
             operation.get("user_id"),
@@ -1280,7 +1318,7 @@ async def _process_reindex_operation(
                 "checkpoints": checkpoints,
             },
         )
-        
+
         await updater.send_update(
             "reindex_completed",
             {
@@ -1291,7 +1329,7 @@ async def _process_reindex_operation(
                 "duration": time.time() - checkpoints[0][1],
             },
         )
-        
+
         return {
             "success": True,
             "old_collection": old_collection_name,
@@ -1300,10 +1338,10 @@ async def _process_reindex_operation(
             "vectors_created": vector_count,
             "checkpoints": checkpoints,
         }
-        
-    except Exception as e:
+
+    except Exception:
         logger.error(f"Failed to reindex collection at checkpoint: {checkpoints[-1][0] if checkpoints else 'unknown'}")
-        
+
         # Cleanup staging collection if it was created
         if staging_collection_name:
             try:
@@ -1311,10 +1349,10 @@ async def _process_reindex_operation(
                 logger.info(f"Cleaned up staging collection {staging_collection_name}")
             except Exception as cleanup_error:
                 logger.error(f"Failed to cleanup staging collection: {cleanup_error}")
-            
+
             # Clear staging info in database
             await collection_repo.update(collection["id"], {"qdrant_staging": None})
-        
+
         raise
 
 
@@ -1329,25 +1367,25 @@ async def _validate_reindex(
         # Get collection info
         old_info = qdrant_client.get_collection(old_collection)
         new_info = qdrant_client.get_collection(new_collection)
-        
+
         issues = []
-        
+
         # Check if new collection has vectors
         if new_info.points_count == 0:
             issues.append("New collection has no vectors")
-        
+
         # Check if vector count is reasonable (allow 10% variance for chunking changes)
         if old_info.points_count > 0:
             ratio = new_info.points_count / old_info.points_count
             if ratio < 0.9 or ratio > 1.1:
                 issues.append(f"Vector count mismatch: {old_info.points_count} -> {new_info.points_count}")
-        
+
         # TODO: Sample and compare search results
         # This would involve:
         # 1. Getting random vectors from old collection
         # 2. Searching in both collections
         # 3. Comparing result quality
-        
+
         return {
             "passed": len(issues) == 0,
             "issues": issues,
@@ -1355,7 +1393,7 @@ async def _validate_reindex(
             "old_count": old_info.points_count,
             "new_count": new_info.points_count,
         }
-        
+
     except Exception as e:
         logger.error(f"Validation error: {e}")
         return {
@@ -1375,11 +1413,9 @@ async def _process_remove_source_operation(
     """Process REMOVE_SOURCE operation - Remove documents from a source with monitoring."""
     from shared.database.models import DocumentStatus
     from shared.metrics.collection_metrics import (
-        QdrantOperationTimer,
-        documents_processed_total,
         record_document_processed,
     )
-    
+
     config = operation.get("config", {})
     source_path = config.get("source_path")
 
@@ -1393,7 +1429,6 @@ async def _process_remove_source_operation(
         if not documents:
             logger.info(f"No documents found for source {source_path}")
             await _audit_log_operation(
-                collection_repo,
                 collection["id"],
                 operation["id"],
                 operation.get("user_id"),
@@ -1403,18 +1438,19 @@ async def _process_remove_source_operation(
             return {"success": True, "documents_removed": 0, "source_path": source_path}
 
         # Remove vectors from Qdrant
-        qdrant_client = qdrant_manager.get_client()
-        qdrant_collection_name = collection["qdrant_collection_name"]
-        
+        # TODO: Uncomment when implementing actual vector deletion
+        # qdrant_client = qdrant_manager.get_client()
+        # qdrant_collection_name = collection["qdrant_collection_name"]
+
         # Get document IDs to remove
         doc_ids = [doc["id"] for doc in documents]
         removed_count = 0
-        
+
         # Remove vectors in batches
         batch_size = 100
         for i in range(0, len(doc_ids), batch_size):
             batch_ids = doc_ids[i : i + batch_size]
-            
+
             try:
                 # Search for points with these document IDs
                 # TODO: This requires proper implementation when document IDs are stored in Qdrant payload
@@ -1422,7 +1458,7 @@ async def _process_remove_source_operation(
                     # For now, simulate deletion
                     await asyncio.sleep(0.01)
                     removed_count += len(batch_ids)
-                
+
                 # Send progress update
                 progress = ((i + len(batch_ids)) / len(doc_ids)) * 100
                 await updater.send_update(
@@ -1438,7 +1474,7 @@ async def _process_remove_source_operation(
 
         # Mark documents as deleted in database
         await document_repo.bulk_update_status(doc_ids, DocumentStatus.DELETED)
-        
+
         # Record document removal metrics
         for _ in range(len(documents)):
             record_document_processed("remove_source", "deleted")
@@ -1451,7 +1487,7 @@ async def _process_remove_source_operation(
             total_chunks=stats["total_chunks"],
             total_size_bytes=stats["total_size_bytes"],
         )
-        
+
         # Update collection metrics
         await _update_collection_metrics(
             collection["id"],
@@ -1462,7 +1498,6 @@ async def _process_remove_source_operation(
 
         # Audit log the removal
         await _audit_log_operation(
-            collection_repo,
             collection["id"],
             operation["id"],
             operation.get("user_id"),
