@@ -137,7 +137,14 @@ class CeleryTaskWithUpdates:
             self._redis_client = None
 
     async def __aenter__(self) -> "CeleryTaskWithUpdates":
-        """Async context manager entry."""
+        """Async context manager entry - ensures Redis connection is available."""
+        # Verify Redis connection is available
+        try:
+            redis_client = await self._get_redis()
+            await redis_client.ping()
+        except Exception as e:
+            logger.error(f"Failed to connect to Redis: {e}")
+            raise
         return self
 
     async def __aexit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:
