@@ -357,3 +357,12 @@ The implementation follows the execution plan closely while maintaining backward
   - ✅ Internal API endpoint performs atomic switch
   - ✅ Old collections are cleaned up after a delay
   - ✅ Switch is atomic and safe with proper rollback
+
+### 2025-07-16 - Fixed Circular Import Issue
+- **Issue**: Tests were failing due to circular import error
+- **Root Cause**: Imported non-existent module `webui.database` with `get_async_session`
+- **Fix**: 
+  - Replaced with correct imports from `shared.database.database`
+  - Used `AsyncSessionLocal` directly, following pattern in tasks.py
+  - No need for dependency injection since this is an internal API
+- **Result**: All tests now pass (414 passed, 2 skipped, 1 deselected)
