@@ -1,8 +1,5 @@
 """Test suite for Qdrant collection cleanup tasks."""
 
-import asyncio
-import json
-from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,16 +21,12 @@ class TestCleanupOldCollections:
 
     @patch("shared.metrics.collection_metrics.QdrantOperationTimer")
     @patch("webui.utils.qdrant_manager.qdrant_manager")
-    @patch("shared.managers.qdrant_manager.QdrantManager")
-    def test_cleanup_old_collections_success(self, mock_qdrant_manager_class, mock_conn_manager, mock_timer):
+    def test_cleanup_old_collections_success(self, mock_conn_manager, mock_timer):
         """Test successful cleanup of collections."""
         from webui.tasks import cleanup_old_collections
 
         # Setup mocks
-        mock_qdrant_manager = MagicMock()
         mock_qdrant_client = MagicMock()
-        mock_qdrant_manager.client = mock_qdrant_client
-        mock_qdrant_manager_class.return_value = mock_qdrant_manager
         mock_conn_manager.get_client.return_value = mock_qdrant_client
 
         # Mock collections exist

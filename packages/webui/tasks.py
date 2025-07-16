@@ -276,14 +276,12 @@ def cleanup_old_collections(old_collection_names: list[str], collection_id: str)
     logger.info(f"Starting cleanup of {len(old_collection_names)} old collections for collection {collection_id}")
 
     # Import Qdrant client
-    from shared.managers.qdrant_manager import QdrantManager
     from shared.metrics.collection_metrics import QdrantOperationTimer
     from webui.utils.qdrant_manager import qdrant_manager as connection_manager
 
     try:
         # Get Qdrant client from connection manager
         qdrant_client = connection_manager.get_client()
-        qdrant_manager = QdrantManager(qdrant_client)
 
         for collection_name in old_collection_names:
             try:
