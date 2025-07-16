@@ -1733,8 +1733,8 @@ async def _process_reindex_operation(
         import httpx
 
         # Use configurable host for containerized environments
-        host = settings.get("WEBUI_INTERNAL_HOST", "localhost")
-        port = settings.get("WEBUI_PORT", 8080)
+        host = settings.WEBUI_INTERNAL_HOST
+        port = settings.WEBUI_PORT
         internal_api_url = f"http://{host}:{port}/api/internal/complete-reindex"
         request_data = {
             "collection_id": collection["id"],
