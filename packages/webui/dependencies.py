@@ -8,14 +8,9 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database import get_db
-from packages.shared.database.exceptions import (
-    AccessDeniedError,
-    EntityNotFoundError,
-)
+from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from packages.shared.database.models import Collection
-from packages.shared.database.repositories.collection_repository import (
-    CollectionRepository,
-)
+from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.webui.auth import get_current_user
 
 

@@ -8,10 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from packages.shared.database.exceptions import (
-    AccessDeniedError,
-    EntityNotFoundError,
-)
+from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from packages.shared.database.models import Collection
 from packages.webui.dependencies import get_collection_for_user
 

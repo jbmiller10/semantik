@@ -789,7 +789,7 @@ async def _process_index_operation(
 
 async def _process_append_operation(
     operation: dict,
-    collection: dict,  # noqa: ARG001
+    collection: dict,
     collection_repo: Any,  # noqa: ARG001
     document_repo: Any,  # noqa: ARG001
     updater: CeleryTaskWithUpdates,
@@ -801,16 +801,69 @@ async def _process_append_operation(
     if not source_path:
         raise ValueError("source_path is required for APPEND operation")
 
-    # TODO: Implement document processing logic
-    # This would involve:
-    # 1. Scanning the source path for documents
-    # 2. Creating document records with deduplication
-    # 3. Processing documents to generate embeddings
-    # 4. Adding vectors to Qdrant
+    # Import required modules for file scanning
+    from shared.database.database import AsyncSessionLocal
+    from shared.database.repositories.document_repository import DocumentRepository
+    from webui.services.file_scanning_service import FileScanningService
 
-    await updater.send_update("append_completed", {"source_path": source_path, "documents_added": 0})  # Placeholder
+    # Use proper async session for new repositories
+    async with AsyncSessionLocal() as session:
+        # Create new repository instance with session
+        doc_repo = DocumentRepository(session)
 
-    return {"success": True, "source_path": source_path, "documents_added": 0}
+        # Create file scanning service
+        file_scanner = FileScanningService(db_session=session, document_repo=doc_repo)
+
+        # Scan directory and register documents
+        await updater.send_update("scanning_files", {"status": "scanning", "source_path": source_path})
+
+        try:
+            scan_stats = await file_scanner.scan_directory_and_register_documents(
+                collection_id=collection["id"], source_path=source_path, recursive=True  # Default to recursive scanning
+            )
+
+            # Commit the transaction
+            await session.commit()
+
+            # Send progress update
+            await updater.send_update(
+                "scanning_completed",
+                {
+                    "status": "scanning_completed",
+                    "total_files_found": scan_stats["total_files_found"],
+                    "new_files_registered": scan_stats["new_files_registered"],
+                    "duplicate_files_skipped": scan_stats["duplicate_files_skipped"],
+                    "errors_count": len(scan_stats.get("errors", [])),
+                },
+            )
+
+            # TODO: Process registered documents to generate embeddings and add to Qdrant
+            # This will be implemented in future tasks
+
+            await updater.send_update(
+                "append_completed",
+                {
+                    "source_path": source_path,
+                    "documents_added": scan_stats["new_files_registered"],
+                    "total_files_scanned": scan_stats["total_files_found"],
+                    "duplicates_skipped": scan_stats["duplicate_files_skipped"],
+                },
+            )
+
+            return {
+                "success": True,
+                "source_path": source_path,
+                "documents_added": scan_stats["new_files_registered"],
+                "total_files_scanned": scan_stats["total_files_found"],
+                "duplicates_skipped": scan_stats["duplicate_files_skipped"],
+                "total_size_bytes": scan_stats["total_size_bytes"],
+                "errors": scan_stats.get("errors", []),
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to scan and register documents: {e}")
+            await session.rollback()
+            raise
 
 
 async def _process_reindex_operation(
