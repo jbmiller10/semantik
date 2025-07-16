@@ -51,6 +51,7 @@ from shared.config import settings
 from shared.database.factory import create_collection_repository, create_file_repository, create_job_repository
 from shared.embedding import embedding_service
 from shared.gpu_scheduler import gpu_task
+from shared.managers.qdrant_manager import QdrantManager
 from shared.metrics.collection_metrics import (
     OperationTimer,
     QdrantOperationTimer,
@@ -1097,7 +1098,9 @@ async def _process_index_operation(
     try:
         # Create Qdrant collection
         qdrant_client = qdrant_manager.get_client()
-        qdrant_collection_name = f"collection_{collection['uuid']}"
+
+        # Use the vector_store_name from the collection if it exists, otherwise generate one
+        vector_store_name = collection.get("vector_store_name") or f"collection_{collection['uuid']}"
 
         # Get vector dimension from config
         from webui.services.collection_service import DEFAULT_VECTOR_DIMENSION
@@ -1110,12 +1113,12 @@ async def _process_index_operation(
 
         with QdrantOperationTimer("create_collection"):
             qdrant_client.create_collection(
-                collection_name=qdrant_collection_name,
+                collection_name=vector_store_name,
                 vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
             )
 
         # Update collection with Qdrant collection name
-        await collection_repo.update(collection["id"], {"qdrant_collection_name": qdrant_collection_name})
+        await collection_repo.update(collection["id"], {"vector_store_name": vector_store_name})
 
         # Audit log the collection creation
         await _audit_log_operation(
@@ -1123,14 +1126,12 @@ async def _process_index_operation(
             operation["id"],
             operation.get("user_id"),
             "collection_indexed",
-            {"qdrant_collection": qdrant_collection_name, "vector_dim": vector_dim},
+            {"qdrant_collection": vector_store_name, "vector_dim": vector_dim},
         )
 
-        await updater.send_update(
-            "index_completed", {"qdrant_collection": qdrant_collection_name, "vector_dim": vector_dim}
-        )
+        await updater.send_update("index_completed", {"qdrant_collection": vector_store_name, "vector_dim": vector_dim})
 
-        return {"success": True, "qdrant_collection": qdrant_collection_name, "vector_dim": vector_dim}
+        return {"success": True, "qdrant_collection": vector_store_name, "vector_dim": vector_dim}
 
     except Exception as e:
         logger.error(f"Failed to create Qdrant collection: {e}")
@@ -1251,6 +1252,64 @@ async def _process_append_operation(
             raise
 
 
+async def reindex_handler(
+    collection: dict,
+    new_config: dict[str, Any],
+    qdrant_manager_instance: QdrantManager,
+) -> dict[str, Any]:
+    """Create staging collection for blue-green reindexing.
+
+    This handler is responsible for creating the staging (green) collection
+    that will be used during the reindexing process. It's the first critical
+    step of the zero-downtime reindexing strategy.
+
+    Args:
+        collection: Collection dictionary with current configuration
+        new_config: New configuration for the reindexed collection
+        qdrant_manager_instance: QdrantManager instance for collection operations
+
+    Returns:
+        Dict containing staging collection info
+
+    Raises:
+        ValueError: If collection configuration is invalid
+        Exception: If staging collection creation fails
+    """
+    from webui.services.collection_service import DEFAULT_VECTOR_DIMENSION
+
+    # Get base collection name
+    base_collection_name = collection.get("vector_store_name")
+    if not base_collection_name:
+        raise ValueError("Collection missing vector_store_name field")
+
+    # Determine vector dimension for new collection
+    vector_dim = new_config.get("vector_dim", collection.get("config", {}).get("vector_dim", DEFAULT_VECTOR_DIMENSION))
+
+    # Create staging collection using QdrantManager
+    logger.info(f"Creating staging collection for {base_collection_name} with vector_dim={vector_dim}")
+
+    try:
+        staging_collection_name = qdrant_manager_instance.create_staging_collection(
+            base_name=base_collection_name, vector_size=vector_dim
+        )
+
+        # Prepare staging info to store in database
+        staging_info = {
+            "collection_name": staging_collection_name,
+            "created_at": datetime.now(UTC).isoformat(),
+            "vector_dim": vector_dim,
+            "base_collection": base_collection_name,
+        }
+
+        logger.info(f"Successfully created staging collection: {staging_collection_name}")
+
+        return staging_info
+
+    except Exception as e:
+        logger.error(f"Failed to create staging collection for {base_collection_name}: {e}")
+        raise
+
+
 async def _process_reindex_operation(
     operation: dict,
     collection: dict,
@@ -1270,6 +1329,10 @@ async def _process_reindex_operation(
     new_config = config.get("new_config", {})
     staging_collection_name = None
     checkpoints = []
+
+    # Initialize QdrantManager with the client
+    qdrant_client = qdrant_manager.get_client()
+    qdrant_manager_instance = QdrantManager(qdrant_client)
 
     try:
         # Checkpoint 1: Pre-flight checks
@@ -1298,33 +1361,22 @@ async def _process_reindex_operation(
         record_reindex_checkpoint(collection["id"], "preflight_complete")
         checkpoints.append(("preflight_complete", time.time()))
 
-        # Checkpoint 2: Create staging collection
-        qdrant_client = qdrant_manager.get_client()
-        old_collection_name = collection["qdrant_collection_name"]
-        staging_collection_name = f"{old_collection_name}_staging_{int(time.time())}"
-
+        # Checkpoint 2: Create staging collection using reindex_handler
         record_reindex_checkpoint(collection["id"], "staging_creation_start")
 
-        from qdrant_client.models import Distance, VectorParams
-        from webui.services.collection_service import DEFAULT_VECTOR_DIMENSION
+        # Get the current collection name before creating staging
+        old_collection_name = collection.get("vector_store_name")
+        if not old_collection_name:
+            raise ValueError("Collection missing vector_store_name field")
 
-        vector_dim = new_config.get("vector_dim", collection["config"].get("vector_dim", DEFAULT_VECTOR_DIMENSION))
-
-        with QdrantOperationTimer("create_staging_collection"):
-            qdrant_client.create_collection(
-                collection_name=staging_collection_name,
-                vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
-            )
+        # Call the reindex_handler to create staging collection
+        staging_info = await reindex_handler(collection, new_config, qdrant_manager_instance)
+        staging_collection_name = staging_info["collection_name"]
 
         # Update collection with staging info
         await collection_repo.update(
             collection["id"],
-            {
-                "qdrant_staging": {
-                    "collection_name": staging_collection_name,
-                    "created_at": datetime.now(UTC).isoformat(),
-                }
-            },
+            {"qdrant_staging": staging_info},
         )
 
         record_reindex_checkpoint(collection["id"], "staging_creation_complete")
@@ -1332,7 +1384,7 @@ async def _process_reindex_operation(
 
         await updater.send_update(
             "staging_created",
-            {"staging_collection": staging_collection_name, "vector_dim": vector_dim},
+            {"staging_collection": staging_collection_name, "vector_dim": staging_info["vector_dim"]},
         )
 
         # Checkpoint 3: Reprocess documents
@@ -1423,7 +1475,7 @@ async def _process_reindex_operation(
             collection["id"],
             {
                 "config": new_config,
-                "qdrant_collection_name": staging_collection_name,
+                "vector_store_name": staging_collection_name,
                 "qdrant_staging": None,  # Clear staging info
                 "vector_count": vector_count,
             },
@@ -1677,7 +1729,7 @@ async def _process_remove_source_operation(
         # Remove vectors from Qdrant
         # TODO: Uncomment when implementing actual vector deletion
         # qdrant_client = qdrant_manager.get_client()
-        # qdrant_collection_name = collection["qdrant_collection_name"]
+        # vector_store_name = collection["vector_store_name"]
 
         # Get document IDs to remove
         doc_ids = [doc["id"] for doc in documents]
