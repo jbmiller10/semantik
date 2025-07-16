@@ -302,3 +302,58 @@ The implementation follows the execution plan closely while maintaining backward
   - More flexible configuration for different collection sizes
   - Better resource management for varying system capabilities
   - Easier performance tuning without code changes
+
+---
+
+## TASK-012: Implement Atomic Switch & Cleanup
+
+### 2025-07-16 - Starting TASK-012 Implementation
+- **Task**: Implement the final steps of the re-indexing process: the atomic switch and scheduling the cleanup of old resources
+- **Requirements**:
+  1. Create internal API endpoint `POST /api/internal/complete-reindex`
+  2. Perform atomic database transaction to switch collections
+  3. Schedule cleanup task to run after a delay
+- **Analysis**:
+  - Current implementation has atomic switch directly in the task
+  - Need to move to API endpoint for proper atomic transaction handling
+  - Need to replace immediate deletion with scheduled cleanup task
+
+### 2025-07-16 - Completed TASK-012 Implementation
+- **Changes Made**:
+  1. **Added Generic Update Method to CollectionRepository**:
+     - Created `update()` method in CollectionRepository that accepts a dictionary of fields
+     - Supports atomic updates of multiple fields in a single transaction
+     - Includes validation for all updateable fields
+     - Maintains compatibility with existing specific update methods
+  2. **Created Internal API Endpoint**:
+     - Added `POST /api/internal/complete-reindex` endpoint in internal.py
+     - Uses existing internal API authentication via X-Internal-API-Key header
+     - Performs atomic transaction to switch from staging to active collections
+     - Returns list of old collection names for cleanup
+  3. **Created Cleanup Task**:
+     - Added `cleanup_old_collections` Celery task
+     - Accepts list of collection names and collection ID
+     - Safely checks for collection existence before deletion
+     - Includes comprehensive error handling and metrics
+     - Reports cleanup statistics including success/failure counts
+  4. **Modified Reindex Operation**:
+     - Replaced direct database update with API call using httpx
+     - Replaced immediate deletion with scheduled cleanup task
+     - Added CLEANUP_DELAY_SECONDS constant (5 minutes)
+     - Updated audit logging to include cleanup task ID
+     - Updated return values to include old_collections list
+- **Code Quality**:
+  - All black formatting checks pass
+  - All ruff linting checks pass
+  - No mypy errors in modified files
+  - Fixed import issues and exception handling
+- **Benefits**:
+  - True atomic switch with proper transaction boundaries
+  - Zero-downtime switch with delayed cleanup
+  - Better separation of concerns between task and API
+  - Improved error handling and rollback capabilities
+  - Cleanup task can be monitored and retried if needed
+- **Acceptance Criteria Met**:
+  - ✅ Internal API endpoint performs atomic switch
+  - ✅ Old collections are cleaned up after a delay
+  - ✅ Switch is atomic and safe with proper rollback

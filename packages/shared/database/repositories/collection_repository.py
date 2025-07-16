@@ -386,6 +386,82 @@ class CollectionRepository:
             logger.error(f"Failed to delete collection: {e}")
             raise DatabaseOperationError("delete", "collection", str(e)) from e
 
+    async def update(self, collection_uuid: str, updates: dict[str, Any]) -> Collection:
+        """Update a collection with multiple fields atomically.
+
+        Args:
+            collection_uuid: UUID of the collection
+            updates: Dictionary of field names and values to update
+
+        Returns:
+            Updated Collection instance
+
+        Raises:
+            EntityNotFoundError: If collection not found
+            ValidationError: If updates contain invalid fields
+            DatabaseOperationError: For database errors
+        """
+        try:
+            # Get the collection
+            collection = await self.get_by_uuid(collection_uuid)
+            if not collection:
+                raise EntityNotFoundError("collection", collection_uuid)
+
+            # List of allowed fields to update
+            allowed_fields = {
+                "name",
+                "description",
+                "embedding_model",
+                "chunk_size",
+                "chunk_overlap",
+                "is_public",
+                "status",
+                "status_message",
+                "document_count",
+                "vector_count",
+                "total_size_bytes",
+                "qdrant_collections",
+                "qdrant_staging",
+                "config",
+                "vector_store_name",
+                "meta",
+            }
+
+            # Validate fields
+            invalid_fields = set(updates.keys()) - allowed_fields
+            if invalid_fields:
+                raise ValidationError(f"Invalid fields: {invalid_fields}", "updates")
+
+            # Apply updates
+            for field, value in updates.items():
+                # Perform field-specific validation
+                if field == "chunk_size" and value is not None and value <= 0:
+                    raise ValidationError("Chunk size must be positive", field)
+                if field == "chunk_overlap" and value is not None:
+                    if value < 0:
+                        raise ValidationError("Chunk overlap cannot be negative", field)
+                    chunk_size = updates.get("chunk_size", collection.chunk_size)
+                    if value >= chunk_size:
+                        raise ValidationError("Chunk overlap must be less than chunk size", field)
+                if field in ["document_count", "vector_count", "total_size_bytes"] and value is not None and value < 0:
+                    raise ValidationError(f"{field.replace('_', ' ').capitalize()} cannot be negative", field)
+
+                setattr(collection, field, value)
+
+            # Always update the timestamp
+            collection.updated_at = datetime.now(UTC)
+
+            await self.session.flush()
+
+            logger.info(f"Updated collection {collection_uuid} with fields: {list(updates.keys())}")
+            return collection
+
+        except (EntityNotFoundError, ValidationError):
+            raise
+        except Exception as e:
+            logger.error(f"Failed to update collection: {e}")
+            raise DatabaseOperationError("update", "collection", str(e)) from e
+
     async def get_document_count(self, collection_uuid: str) -> int:
         """Get document count for a collection.
 
