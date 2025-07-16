@@ -387,3 +387,79 @@ The implementation follows the execution plan closely while maintaining backward
      - Scales cleanup delay from 5-30 minutes based on vector count
      - Formula: 5 minutes base + 1 minute per 10,000 vectors
 - **Code Quality**: All tests pass, formatting and linting clean
+
+---
+
+## TASK-013: Implement Operation Failure Handlers
+
+### 2025-07-16 - Starting TASK-013 Implementation
+- **Task**: Implement robust error handling that updates collection and operation status based on the type of failure
+- **Requirements**:
+  1. In the Celery task's `on_failure` handler, update the `operations` table to `failed` with the error message
+  2. Update the parent `collections` table to an appropriate state (`degraded` for failed re-index, `error` for failed initial index)
+  3. Ensure staging resources are cleaned up immediately on a failed re-index
+- **Analysis**:
+  - Current implementation has try-except blocks that update operation status
+  - No explicit `on_failure` handler implemented
+  - Need to add appropriate collection status updates based on operation type
+  - Need to add staging cleanup on reindex failure
+
+### 2025-07-16 - Completed TASK-013 Implementation
+- **Changes Made**:
+  1. **Implemented Comprehensive on_failure Handler**:
+     - Added `on_failure` parameter to `process_collection_operation` task decorator
+     - Created `_handle_task_failure` and `_handle_task_failure_async` functions
+     - Handler extracts operation_id from task args/kwargs and runs async failure logic
+     - Includes detailed error messages with traceback information
+  2. **Enhanced Failure Recording**:
+     - Operation status updated to FAILED with detailed error information
+     - Error result includes error_type, error_message, task_id, and failed_at timestamp
+     - Proper traceback inclusion for debugging
+  3. **Collection Status Updates by Operation Type**:
+     - **INDEX failure**: Collection status → ERROR (collection unusable)
+     - **REINDEX failure**: Collection status → DEGRADED (original collection still works)
+     - **APPEND failure**: Collection status → PARTIALLY_READY (unless already ERROR)
+     - **REMOVE_SOURCE failure**: Collection status → PARTIALLY_READY
+     - All status updates include descriptive status messages
+  4. **Staging Resource Cleanup**:
+     - Created `_cleanup_staging_resources` function
+     - Automatically called on REINDEX failures
+     - Parses staging info from database (handles JSON parsing)
+     - Deletes staging collections from Qdrant
+     - Clears staging info from database
+     - Handles errors gracefully with logging
+  5. **Audit Logging and Metrics**:
+     - Creates audit log entries for all failures
+     - Updates Prometheus metrics (collection_operations_total with failed status)
+     - Sanitizes audit details to prevent PII leakage
+  6. **Consistency Updates**:
+     - Updated exception handling in `_process_collection_operation_async` to match on_failure behavior
+     - Both paths now use same logic for status updates and cleanup
+- **Code Quality**:
+  - All black formatting applied
+  - All ruff linting issues fixed (added noqa for unused Celery handler params)
+  - All mypy type checking passes
+  - All existing unit tests pass (170 passed)
+- **Benefits**:
+  - Guaranteed status updates even on catastrophic failures
+  - Clear communication of failure types to users
+  - No orphaned staging resources on reindex failures
+  - Better debugging with detailed error information
+  - Consistent failure handling across all operation types
+
+### 2025-07-16 - Improvements Based on Code Review
+- **Issues Addressed**:
+  1. **Event Loop Safety**: Changed from creating new event loop to using `asyncio.run()` for safer handling
+  2. **Error Message Sanitization**: Added comprehensive PII sanitization for error messages:
+     - Removes user home paths (/home/username, /Users/username, C:\Users\username)
+     - Redacts email addresses
+     - Sanitizes temporary paths that may contain usernames
+  3. **Code Quality**: Fixed all linting and type checking issues
+- **Enhanced Security**:
+  - Created `_sanitize_error_message()` function for consistent error message sanitization
+  - Applied sanitization to all error messages in status updates and audit logs
+  - Ensured tracebacks are also sanitized before logging
+- **Note on Transaction Boundaries**:
+  - After investigation, the repositories manage their own database sessions internally
+  - The status updates are atomic at the repository level
+  - Staging cleanup is intentionally performed outside the main error handler to avoid blocking
