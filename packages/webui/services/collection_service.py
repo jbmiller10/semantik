@@ -15,6 +15,10 @@ from webui.utils.qdrant_manager import qdrant_manager
 
 logger = logging.getLogger(__name__)
 
+# Configuration constants
+DEFAULT_VECTOR_DIMENSION = 768
+QDRANT_COLLECTION_PREFIX = "collection_"
+
 
 class CollectionService:
     """Service for managing collection operations."""
@@ -60,39 +64,43 @@ class CollectionService:
         if not name or not name.strip():
             raise ValueError("Collection name is required")
 
-        # Create collection in database
-        try:
-            collection = await self.collection_repo.create(
+        # Use transaction for atomic operations
+        async with self.db_session.begin():
+            # Create collection in database
+            try:
+                collection = await self.collection_repo.create(
+                    user_id=user_id,
+                    name=name,
+                    description=description,
+                    config=config or {},
+                    resource_limits=resource_limits,
+                )
+            except Exception as e:
+                logger.error(f"Failed to create collection: {e}")
+                raise
+
+            # Create operation record
+            operation = await self.operation_repo.create(
+                collection_id=collection["id"],
                 user_id=user_id,
-                name=name,
-                description=description,
-                config=config or {},
-                resource_limits=resource_limits,
+                type=OperationType.INDEX,
+                config={
+                    "sources": [],  # Initial creation has no sources
+                    "collection_config": config or {},
+                },
             )
-        except Exception as e:
-            logger.error(f"Failed to create collection: {e}")
-            raise
 
-        # Create operation record
-        operation = await self.operation_repo.create(
-            collection_id=collection["id"],
-            user_id=user_id,
-            type=OperationType.INDEX,
-            config={
-                "sources": [],  # Initial creation has no sources
-                "collection_config": config or {},
-            },
-        )
+            # Dispatch Celery task
+            task_result = celery_app.send_task(
+                "webui.tasks.process_collection_operation",
+                args=[operation["uuid"]],
+                task_id=str(uuid.uuid4()),
+            )
 
-        # Dispatch Celery task
-        task_result = celery_app.send_task(
-            "webui.tasks.process_collection_operation",
-            args=[operation["uuid"]],
-            task_id=str(uuid.uuid4()),
-        )
+            # Update operation with task ID
+            await self.operation_repo.set_task_id(operation["uuid"], task_result.id)
 
-        # Update operation with task ID
-        await self.operation_repo.set_task_id(operation["uuid"], task_result.id)
+            # Transaction commits here automatically
 
         return dict(collection), dict(operation)
 
@@ -139,29 +147,33 @@ class CollectionService:
                 "Please wait for the current operation to complete."
             )
 
-        # Create operation record
-        operation = await self.operation_repo.create(
-            collection_id=collection["id"],
-            user_id=user_id,
-            type=OperationType.APPEND,
-            config={
-                "source_path": source_path,
-                "source_config": source_config or {},
-            },
-        )
+        # Use transaction for atomic operations
+        async with self.db_session.begin():
+            # Create operation record
+            operation = await self.operation_repo.create(
+                collection_id=collection["id"],
+                user_id=user_id,
+                type=OperationType.APPEND,
+                config={
+                    "source_path": source_path,
+                    "source_config": source_config or {},
+                },
+            )
 
-        # Update collection status to indexing
-        await self.collection_repo.update_status(collection["id"], CollectionStatus.INDEXING)
+            # Update collection status to indexing
+            await self.collection_repo.update_status(collection["id"], CollectionStatus.INDEXING)
 
-        # Dispatch Celery task
-        task_result = celery_app.send_task(
-            "webui.tasks.process_collection_operation",
-            args=[operation["uuid"]],
-            task_id=str(uuid.uuid4()),
-        )
+            # Dispatch Celery task
+            task_result = celery_app.send_task(
+                "webui.tasks.process_collection_operation",
+                args=[operation["uuid"]],
+                task_id=str(uuid.uuid4()),
+            )
 
-        # Update operation with task ID
-        await self.operation_repo.set_task_id(operation["uuid"], task_result.id)
+            # Update operation with task ID
+            await self.operation_repo.set_task_id(operation["uuid"], task_result.id)
+
+            # Transaction commits here automatically
 
         return dict(operation)
 
@@ -215,30 +227,34 @@ class CollectionService:
         if config_updates:
             new_config.update(config_updates)
 
-        # Create operation record
-        operation = await self.operation_repo.create(
-            collection_id=collection["id"],
-            user_id=user_id,
-            type=OperationType.REINDEX,
-            config={
-                "previous_config": collection["config"],
-                "new_config": new_config,
-                "blue_green": True,  # Always use blue-green for zero downtime
-            },
-        )
+        # Use transaction for atomic operations
+        async with self.db_session.begin():
+            # Create operation record
+            operation = await self.operation_repo.create(
+                collection_id=collection["id"],
+                user_id=user_id,
+                type=OperationType.REINDEX,
+                config={
+                    "previous_config": collection["config"],
+                    "new_config": new_config,
+                    "blue_green": True,  # Always use blue-green for zero downtime
+                },
+            )
 
-        # Update collection status to indexing
-        await self.collection_repo.update_status(collection["id"], CollectionStatus.INDEXING)
+            # Update collection status to indexing
+            await self.collection_repo.update_status(collection["id"], CollectionStatus.INDEXING)
 
-        # Dispatch Celery task
-        task_result = celery_app.send_task(
-            "webui.tasks.process_collection_operation",
-            args=[operation["uuid"]],
-            task_id=str(uuid.uuid4()),
-        )
+            # Dispatch Celery task
+            task_result = celery_app.send_task(
+                "webui.tasks.process_collection_operation",
+                args=[operation["uuid"]],
+                task_id=str(uuid.uuid4()),
+            )
 
-        # Update operation with task ID
-        await self.operation_repo.set_task_id(operation["uuid"], task_result.id)
+            # Update operation with task ID
+            await self.operation_repo.set_task_id(operation["uuid"], task_result.id)
+
+            # Transaction commits here automatically
 
         return dict(operation)
 
@@ -327,27 +343,31 @@ class CollectionService:
                 "Please wait for the current operation to complete."
             )
 
-        # Create operation record
-        operation = await self.operation_repo.create(
-            collection_id=collection["id"],
-            user_id=user_id,
-            type=OperationType.REMOVE_SOURCE,
-            config={
-                "source_path": source_path,
-            },
-        )
+        # Use transaction for atomic operations
+        async with self.db_session.begin():
+            # Create operation record
+            operation = await self.operation_repo.create(
+                collection_id=collection["id"],
+                user_id=user_id,
+                type=OperationType.REMOVE_SOURCE,
+                config={
+                    "source_path": source_path,
+                },
+            )
 
-        # Update collection status
-        await self.collection_repo.update_status(collection["id"], CollectionStatus.PROCESSING)
+            # Update collection status
+            await self.collection_repo.update_status(collection["id"], CollectionStatus.PROCESSING)
 
-        # Dispatch Celery task
-        task_result = celery_app.send_task(
-            "webui.tasks.process_collection_operation",
-            args=[operation["uuid"]],
-            task_id=str(uuid.uuid4()),
-        )
+            # Dispatch Celery task
+            task_result = celery_app.send_task(
+                "webui.tasks.process_collection_operation",
+                args=[operation["uuid"]],
+                task_id=str(uuid.uuid4()),
+            )
 
-        # Update operation with task ID
-        await self.operation_repo.set_task_id(operation["uuid"], task_result.id)
+            # Update operation with task ID
+            await self.operation_repo.set_task_id(operation["uuid"], task_result.id)
+
+            # Transaction commits here automatically
 
         return dict(operation)

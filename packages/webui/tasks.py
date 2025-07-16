@@ -682,7 +682,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
         # Get operation details
         operation = await operation_repo.get_by_uuid(operation_id)
         if not operation:
-            raise ValueError(f"Operation {operation_id} not found")
+            raise ValueError(f"Operation {operation_id} not found in database")
 
         # Update operation status to processing
         await operation_repo.update_status(operation_id, OperationStatus.PROCESSING)
@@ -691,23 +691,17 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
         # Get collection details
         collection = await collection_repo.get_by_id(operation["collection_id"])
         if not collection:
-            raise ValueError(f"Collection {operation['collection_id']} not found")
+            raise ValueError(f"Collection {operation['collection_id']} not found in database")
 
         # Process based on operation type
         result = {}
 
         if operation["type"] == OperationType.INDEX:
-            result = await _process_index_operation(
-                operation, collection, collection_repo, document_repo, updater
-            )
+            result = await _process_index_operation(operation, collection, collection_repo, document_repo, updater)
         elif operation["type"] == OperationType.APPEND:
-            result = await _process_append_operation(
-                operation, collection, collection_repo, document_repo, updater
-            )
+            result = await _process_append_operation(operation, collection, collection_repo, document_repo, updater)
         elif operation["type"] == OperationType.REINDEX:
-            result = await _process_reindex_operation(
-                operation, collection, collection_repo, document_repo, updater
-            )
+            result = await _process_reindex_operation(operation, collection, collection_repo, document_repo, updater)
         elif operation["type"] == OperationType.REMOVE_SOURCE:
             result = await _process_remove_source_operation(
                 operation, collection, collection_repo, document_repo, updater
@@ -716,11 +710,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
             raise ValueError(f"Unknown operation type: {operation['type']}")
 
         # Update operation status to completed
-        await operation_repo.update_status(
-            operation_id,
-            OperationStatus.COMPLETED,
-            result=result
-        )
+        await operation_repo.update_status(operation_id, OperationStatus.COMPLETED, result=result)
 
         # Update collection status based on result
         if result.get("success"):
@@ -741,11 +731,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
         logger.error(f"Operation {operation_id} failed: {e}")
 
         # Update operation status to failed
-        await operation_repo.update_status(
-            operation_id,
-            OperationStatus.FAILED,
-            result={"error": str(e)}
-        )
+        await operation_repo.update_status(operation_id, OperationStatus.FAILED, result={"error": str(e)})
 
         # Update collection status to failed if critical operation
         if operation and operation["type"] in [OperationType.INDEX, OperationType.REINDEX]:
@@ -774,8 +760,10 @@ async def _process_index_operation(
         qdrant_collection_name = f"collection_{collection['uuid']}"
 
         # Get vector dimension from config
+        from webui.services.collection_service import DEFAULT_VECTOR_DIMENSION
+
         config = collection.get("config", {})
-        vector_dim = config.get("vector_dim", 768)  # Default to 768
+        vector_dim = config.get("vector_dim", DEFAULT_VECTOR_DIMENSION)
 
         # Create collection in Qdrant
         from qdrant_client.models import Distance, VectorParams
@@ -786,14 +774,10 @@ async def _process_index_operation(
         )
 
         # Update collection with Qdrant collection name
-        await collection_repo.update(
-            collection["id"],
-            {"qdrant_collection_name": qdrant_collection_name}
-        )
+        await collection_repo.update(collection["id"], {"qdrant_collection_name": qdrant_collection_name})
 
         await updater.send_update(
-            "index_completed",
-            {"qdrant_collection": qdrant_collection_name, "vector_dim": vector_dim}
+            "index_completed", {"qdrant_collection": qdrant_collection_name, "vector_dim": vector_dim}
         )
 
         return {"success": True, "qdrant_collection": qdrant_collection_name}
@@ -824,10 +808,7 @@ async def _process_append_operation(
     # 3. Processing documents to generate embeddings
     # 4. Adding vectors to Qdrant
 
-    await updater.send_update(
-        "append_completed",
-        {"source_path": source_path, "documents_added": 0}  # Placeholder
-    )
+    await updater.send_update("append_completed", {"source_path": source_path, "documents_added": 0})  # Placeholder
 
     return {"success": True, "source_path": source_path, "documents_added": 0}
 
@@ -850,7 +831,9 @@ async def _process_reindex_operation(
         old_collection_name = collection["qdrant_collection_name"]
         new_collection_name = f"{old_collection_name}_reindex_{int(time.time())}"
 
-        vector_dim = new_config.get("vector_dim", collection["config"].get("vector_dim", 768))
+        from webui.services.collection_service import DEFAULT_VECTOR_DIMENSION
+
+        vector_dim = new_config.get("vector_dim", collection["config"].get("vector_dim", DEFAULT_VECTOR_DIMENSION))
 
         from qdrant_client.models import Distance, VectorParams
 
@@ -869,11 +852,7 @@ async def _process_reindex_operation(
 
         # For now, just update the config
         await collection_repo.update(
-            collection["id"],
-            {
-                "config": new_config,
-                "qdrant_collection_name": new_collection_name
-            }
+            collection["id"], {"config": new_config, "qdrant_collection_name": new_collection_name}
         )
 
         # Delete old collection
@@ -883,8 +862,7 @@ async def _process_reindex_operation(
             logger.warning(f"Failed to delete old collection {old_collection_name}: {e}")
 
         await updater.send_update(
-            "reindex_completed",
-            {"old_collection": old_collection_name, "new_collection": new_collection_name}
+            "reindex_completed", {"old_collection": old_collection_name, "new_collection": new_collection_name}
         )
 
         return {"success": True, "new_collection": new_collection_name}
@@ -910,9 +888,7 @@ async def _process_remove_source_operation(
 
     try:
         # Get documents from this source
-        documents = await document_repo.list_by_collection_and_source(
-            collection["id"], source_path
-        )
+        documents = await document_repo.list_by_collection_and_source(collection["id"], source_path)
 
         if not documents:
             logger.info(f"No documents found for source {source_path}")
@@ -927,9 +903,7 @@ async def _process_remove_source_operation(
         # Mark documents as deleted in database
         from shared.database.models import DocumentStatus
 
-        await document_repo.bulk_update_status(
-            doc_ids, DocumentStatus.DELETED
-        )
+        await document_repo.bulk_update_status(doc_ids, DocumentStatus.DELETED)
 
         # Update collection stats
         stats = await document_repo.get_stats_by_collection(collection["id"])
@@ -937,12 +911,11 @@ async def _process_remove_source_operation(
             collection["id"],
             total_documents=stats["total_count"],
             total_chunks=stats["total_chunks"],
-            total_size_bytes=stats["total_size_bytes"]
+            total_size_bytes=stats["total_size_bytes"],
         )
 
         await updater.send_update(
-            "remove_source_completed",
-            {"source_path": source_path, "documents_removed": len(documents)}
+            "remove_source_completed", {"source_path": source_path, "documents_removed": len(documents)}
         )
 
         return {"success": True, "source_path": source_path, "documents_removed": len(documents)}
