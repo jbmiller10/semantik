@@ -1,4 +1,5 @@
 """Unit tests for FileScanningService."""
+
 # mypy: ignore-errors
 
 import tempfile
