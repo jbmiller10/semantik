@@ -372,8 +372,6 @@ def cleanup_qdrant_collections(collection_names: list[str], staging_age_hours: i
     logger.info(f"Starting enhanced cleanup of {len(collection_names)} collections")
 
     # Import required modules
-    from shared.database.database import AsyncSessionLocal
-    from shared.database.repositories.collection_repository import CollectionRepository
     from shared.managers.qdrant_manager import QdrantManager
     from shared.managers.timer import QdrantOperationTimer
 
@@ -421,15 +419,16 @@ def cleanup_qdrant_collections(collection_names: list[str], staging_age_hours: i
                 vector_count = collection_info.vectors_count if collection_info else 0
 
                 # Safety check 5: Check if it's a staging collection (additional safety for staging)
-                if collection_name.startswith("staging_"):
-                    # Verify staging collection is old enough using configurable threshold
-                    # Note: Using private method _is_staging_collection_old() as it exists in QdrantManager
-                    # and provides the exact functionality we need for safe staging cleanup
-                    if not qdrant_manager._is_staging_collection_old(collection_name, hours=staging_age_hours):
-                        logger.warning(f"Skipping recent staging collection: {collection_name}")
-                        stats["collections_skipped"] += 1
-                        stats["safety_checks"][collection_name] = "staging_too_recent"
-                        continue
+                # Verify staging collection is old enough using configurable threshold
+                # Note: Using private method _is_staging_collection_old() as it exists in QdrantManager
+                # and provides the exact functionality we need for safe staging cleanup
+                if collection_name.startswith("staging_") and not qdrant_manager._is_staging_collection_old(
+                    collection_name, hours=staging_age_hours
+                ):
+                    logger.warning(f"Skipping recent staging collection: {collection_name}")
+                    stats["collections_skipped"] += 1
+                    stats["safety_checks"][collection_name] = "staging_too_recent"
+                    continue
 
                 # All safety checks passed - proceed with deletion
                 logger.info(f"Deleting collection {collection_name} with {vector_count} vectors")
