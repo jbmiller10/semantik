@@ -12,7 +12,6 @@ from . import sqlite_implementation as db_impl
 from .base import AuthRepository, UserRepository
 from .exceptions import (
     DatabaseOperationError,
-    EntityAlreadyExistsError,
     InvalidUserIdError,
 )
 from .utils import parse_user_id
@@ -35,7 +34,7 @@ class SQLiteUserRepository(UserRepository):
         """Create a new user.
 
         Args:
-            user_data: Dictionary containing user fields (username, email, password_hash, full_name)
+            user_data: Dictionary containing user fields (username, email, hashed_password, full_name)
 
         Returns:
             The created user object including the generated ID
@@ -48,15 +47,14 @@ class SQLiteUserRepository(UserRepository):
             # Extract fields with defaults
             username = user_data["username"]
             email = user_data.get("email", "")
-            password_hash = user_data["password_hash"]
+            hashed_password = user_data["hashed_password"]
             full_name = user_data.get("full_name")
 
             # The create_user function returns the full user object
-            return self.db.create_user(username, email, password_hash, full_name)
-        except ValueError as e:
-            if "already exists" in str(e):
-                raise EntityAlreadyExistsError("user", user_data["username"]) from e
-            raise DatabaseOperationError("create", "user", str(e)) from e
+            return self.db.create_user(username, email, hashed_password, full_name)
+        except ValueError:
+            # Re-raise ValueError to maintain backward compatibility with auth API
+            raise
         except Exception as e:
             logger.error(f"Failed to create user: {e}")
             raise DatabaseOperationError("create", "user", str(e)) from e
@@ -160,7 +158,7 @@ class SQLiteUserRepository(UserRepository):
                 return None
 
             # Verify password using pwd_context
-            if self.db.pwd_context.verify(password, user["password_hash"]):
+            if self.db.pwd_context.verify(password, user["hashed_password"]):
                 return user
             return None
         except Exception as e:
@@ -359,4 +357,3 @@ class SQLiteAuthRepository(AuthRepository):
 
         # SQLite backend doesn't have this method
         raise NotImplementedError("Deleting all user tokens is not supported in SQLite backend")
-
