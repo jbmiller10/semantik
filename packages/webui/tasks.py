@@ -90,7 +90,10 @@ REDIS_STREAM_TTL = 86400  # 24 hours
 
 # Cleanup configuration
 DEFAULT_DAYS_TO_KEEP = 7  # Days to keep old results
-CLEANUP_DELAY_SECONDS = 300  # 5 minutes delay before cleaning up old collections
+CLEANUP_DELAY_SECONDS = 300  # 5 minutes default delay before cleaning up old collections
+CLEANUP_DELAY_MIN_SECONDS = 300  # 5 minutes minimum
+CLEANUP_DELAY_MAX_SECONDS = 1800  # 30 minutes maximum
+CLEANUP_DELAY_PER_10K_VECTORS = 60  # Additional 1 minute per 10k vectors
 
 # Background task executor
 executor = ThreadPoolExecutor(max_workers=8)
@@ -162,6 +165,34 @@ def extract_and_serialize_thread_safe(filepath: str) -> list[tuple[str, dict[str
     return result
 
 
+def calculate_cleanup_delay(vector_count: int) -> int:
+    """Calculate cleanup delay based on collection size.
+
+    Uses a formula that scales with the number of vectors:
+    - Base delay: 5 minutes
+    - Additional 1 minute per 10,000 vectors
+    - Maximum delay: 30 minutes
+
+    Args:
+        vector_count: Number of vectors in the collection
+
+    Returns:
+        Delay in seconds
+    """
+    additional_delay = (vector_count // 10000) * CLEANUP_DELAY_PER_10K_VECTORS
+    total_delay = CLEANUP_DELAY_MIN_SECONDS + additional_delay
+
+    # Cap at maximum delay
+    cleanup_delay = min(total_delay, CLEANUP_DELAY_MAX_SECONDS)
+
+    logger.info(
+        f"Calculated cleanup delay: {cleanup_delay}s for {vector_count} vectors "
+        f"(base: {CLEANUP_DELAY_MIN_SECONDS}s, additional: {additional_delay}s)"
+    )
+
+    return cleanup_delay
+
+
 @celery_app.task(bind=True)
 def test_task(self: Any) -> dict[str, str]:  # noqa: ARG001
     """Test task to verify Celery is working."""
@@ -211,7 +242,13 @@ def cleanup_old_results(days_to_keep: int = DEFAULT_DAYS_TO_KEEP) -> dict[str, A
         return stats
 
 
-@celery_app.task(name="webui.tasks.cleanup_old_collections", max_retries=3, default_retry_delay=60)
+@celery_app.task(
+    name="webui.tasks.cleanup_old_collections",
+    max_retries=3,
+    default_retry_delay=60,
+    retry_backoff=True,
+    retry_backoff_max=600,  # 10 minutes max delay for Qdrant operations
+)
 def cleanup_old_collections(old_collection_names: list[str], collection_id: str) -> dict[str, Any]:
     """Clean up old Qdrant collections after a successful reindex.
 
@@ -277,12 +314,10 @@ def cleanup_old_collections(old_collection_names: list[str], collection_id: str)
         )
 
         # Record metrics if available
-        try:
-            from shared.metrics.collection_metrics import collection_cleanup_total
+        from shared.metrics.collection_metrics import record_metric_safe
 
-            collection_cleanup_total.labels(status="success" if stats["collections_failed"] == 0 else "partial").inc()
-        except ImportError:
-            pass
+        status = "success" if stats["collections_failed"] == 0 else "partial"
+        record_metric_safe("collection_cleanup_total", {"status": status})
 
         return stats
 
@@ -291,12 +326,9 @@ def cleanup_old_collections(old_collection_names: list[str], collection_id: str)
         stats["errors"].append(str(e))
 
         # Record failure metric
-        try:
-            from shared.metrics.collection_metrics import collection_cleanup_total
+        from shared.metrics.collection_metrics import record_metric_safe
 
-            collection_cleanup_total.labels(status="failed").inc()
-        except ImportError:
-            pass
+        record_metric_safe("collection_cleanup_total", {"status": "failed"})
 
         return stats
 
@@ -1700,7 +1732,10 @@ async def _process_reindex_operation(
         # Call internal API to perform atomic switch
         import httpx
 
-        internal_api_url = f"http://localhost:{settings.get('WEBUI_PORT', 8080)}/api/internal/complete-reindex"
+        # Use configurable host for containerized environments
+        host = settings.get("WEBUI_INTERNAL_HOST", "localhost")
+        port = settings.get("WEBUI_PORT", 8080)
+        internal_api_url = f"http://{host}:{port}/api/internal/complete-reindex"
         request_data = {
             "collection_id": collection["id"],
             "operation_id": operation["id"],
@@ -1737,15 +1772,18 @@ async def _process_reindex_operation(
         # Checkpoint 6: Schedule cleanup of old collections
         record_reindex_checkpoint(collection["id"], "cleanup_scheduled")
 
+        # Calculate delay based on collection size
+        cleanup_delay = calculate_cleanup_delay(vector_count)
+
         # Schedule cleanup task to run after a delay
         cleanup_task = cleanup_old_collections.apply_async(
             args=[old_collection_names, collection["id"]],
-            countdown=CLEANUP_DELAY_SECONDS,
+            countdown=cleanup_delay,
         )
 
         logger.info(
             f"Scheduled cleanup of {len(old_collection_names)} old collections "
-            f"to run in {CLEANUP_DELAY_SECONDS} seconds. Task ID: {cleanup_task.id}"
+            f"to run in {cleanup_delay} seconds. Task ID: {cleanup_task.id}"
         )
 
         record_reindex_checkpoint(collection["id"], "cleanup_scheduled_complete")

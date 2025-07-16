@@ -1,14 +1,15 @@
 """Internal API endpoints for system services"""
 
+import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from shared.config import settings
 from shared.database.base import JobRepository
+from shared.database.database import AsyncSessionLocal
 from shared.database.factory import create_job_repository
 from shared.database.models import CollectionStatus
-from shared.database.database import AsyncSessionLocal
 from shared.database.repositories.collection_repository import CollectionRepository
 
 router = APIRouter(prefix="/api/internal", tags=["internal"])
@@ -38,6 +39,32 @@ class CompleteReindexRequest(BaseModel):
     staging_collection_name: str
     new_config: dict[str, Any] | None = None
     vector_count: int
+
+    @field_validator("collection_id", "operation_id")
+    @classmethod
+    def validate_uuid_format(cls, v: str) -> str:
+        """Validate that IDs are valid UUIDs."""
+        try:
+            uuid.UUID(v)
+        except ValueError as e:
+            raise ValueError(f"Invalid UUID format: {v}") from e
+        return v
+
+    @field_validator("vector_count")
+    @classmethod
+    def validate_vector_count(cls, v: int) -> int:
+        """Validate that vector count is non-negative."""
+        if v < 0:
+            raise ValueError("vector_count must be non-negative")
+        return v
+
+    @field_validator("staging_collection_name")
+    @classmethod
+    def validate_staging_collection_name(cls, v: str) -> str:
+        """Validate that staging collection name is not empty."""
+        if not v or not v.strip():
+            raise ValueError("staging_collection_name cannot be empty")
+        return v
 
 
 class CompleteReindexResponse(BaseModel):

@@ -284,3 +284,40 @@ class QdrantOperationTimer:
             duration = time.time() - self.start_time
             status = "success" if exc_type is None else "failed"
             record_qdrant_operation(self.operation, status, duration)
+
+
+def record_metric_safe(metric_name: str, labels: dict[str, str], value: float = 1.0, method: str = "inc") -> None:
+    """Safely record a metric, handling import errors gracefully.
+
+    This helper function reduces duplication of try/except ImportError patterns
+    by centralizing the error handling logic. If the metric doesn't exist or
+    can't be imported, the function silently continues without raising an error.
+
+    Args:
+        metric_name: Name of the metric to record (e.g., "collection_cleanup_total")
+        labels: Dictionary of label key-value pairs for the metric
+        value: Value to record (default: 1.0)
+        method: Method to call on the metric ("inc", "set", "observe")
+
+    Example:
+        record_metric_safe("collection_cleanup_total", {"status": "success"})
+    """
+    try:
+        # Get the metric from globals
+        metric = globals().get(metric_name)
+        if metric is None:
+            return
+
+        # Apply labels
+        labeled_metric = metric.labels(**labels)
+
+        # Call the appropriate method
+        if method == "inc":
+            labeled_metric.inc(value)
+        elif method == "set":
+            labeled_metric.set(value)
+        elif method == "observe":
+            labeled_metric.observe(value)
+    except (ImportError, AttributeError, KeyError):
+        # Silently continue if metric is not available
+        pass
