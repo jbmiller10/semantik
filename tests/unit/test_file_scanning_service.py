@@ -1,4 +1,5 @@
 """Unit tests for FileScanningService."""
+# mypy: ignore-errors
 
 import tempfile
 from datetime import UTC, datetime, timedelta
@@ -23,21 +24,21 @@ class TestFileScanningService:
     def mock_document_repo(self):
         """Create a mock DocumentRepository."""
         mock = AsyncMock()
-        
+
         # Default behavior - create returns a new document
-        def default_create(*args, **kwargs):
+        def default_create(**kwargs):
             doc = Document(
                 id=str(uuid4()),
-                collection_id=kwargs.get('collection_id', str(uuid4())),
-                file_path=kwargs.get('file_path', '/test/file.txt'),
-                file_name=kwargs.get('file_name', 'file.txt'),
-                file_size=kwargs.get('file_size', 1024),
-                content_hash=kwargs.get('content_hash', 'a' * 64),
+                collection_id=kwargs.get("collection_id", str(uuid4())),
+                file_path=kwargs.get("file_path", "/test/file.txt"),
+                file_name=kwargs.get("file_name", "file.txt"),
+                file_size=kwargs.get("file_size", 1024),
+                content_hash=kwargs.get("content_hash", "a" * 64),
             )
             # Set created_at timestamp to current time
             doc.created_at = datetime.now(UTC)
             return doc
-        
+
         mock.create.side_effect = default_create
         return mock
 
@@ -87,20 +88,20 @@ class TestFileScanningService:
     async def test_scan_directory_with_supported_files(self, service, mock_document_repo):
         """Test scanning directory with supported file types."""
         collection_id = str(uuid4())
-        
+
         # Setup mock to return documents with created_at timestamps
-        def create_mock_document(*args, **kwargs):
+        def create_mock_document(**kwargs):
             doc = Document(
                 id=str(uuid4()),
                 collection_id=collection_id,
-                file_path=kwargs.get('file_path', '/test/file'),
-                file_name=kwargs.get('file_name', 'file'),
-                file_size=kwargs.get('file_size', 100),
-                content_hash=kwargs.get('content_hash', 'a' * 64),
+                file_path=kwargs.get("file_path", "/test/file"),
+                file_name=kwargs.get("file_name", "file"),
+                file_size=kwargs.get("file_size", 100),
+                content_hash=kwargs.get("content_hash", "a" * 64),
             )
             doc.created_at = datetime.now(UTC)
             return doc
-            
+
         mock_document_repo.create.side_effect = create_mock_document
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -145,24 +146,23 @@ class TestFileScanningService:
         # Simulate existing document created 1 hour ago
         existing_doc.created_at = datetime.now(UTC) - timedelta(hours=1)
 
-        # Configure mock to return existing doc for first file, 
+        # Configure mock to return existing doc for first file,
         # and create a new doc dynamically for second file
-        def create_side_effect(*args, **kwargs):
-            if kwargs.get('file_name') == 'test1.txt':
+        def create_side_effect(**kwargs):
+            if kwargs.get("file_name") == "test1.txt":
                 return existing_doc
-            else:
-                # Create new document with current timestamp
-                new_doc = Document(
-                    id="doc2",
-                    collection_id=collection_id,
-                    file_path="/test2.txt",
-                    file_name="test2.txt",
-                    file_size=100,
-                    content_hash="b" * 64,
-                )
-                # This will be created after scan starts
-                new_doc.created_at = datetime.now(UTC)
-                return new_doc
+            # Create new document with current timestamp
+            new_doc = Document(
+                id="doc2",
+                collection_id=collection_id,
+                file_path="/test2.txt",
+                file_name="test2.txt",
+                file_size=100,
+                content_hash="b" * 64,
+            )
+            # This will be created after scan starts
+            new_doc.created_at = datetime.now(UTC)
+            return new_doc
 
         mock_document_repo.create.side_effect = create_side_effect
 
@@ -345,20 +345,20 @@ class TestFileScanningService:
     async def test_batch_processing(self, service, mock_document_repo, mock_session):
         """Test batch processing with commit after batch_size files."""
         collection_id = str(uuid4())
-        
+
         # Setup mock to return documents with created_at
-        def create_mock_document(*args, **kwargs):
+        def create_mock_document(**kwargs):
             doc = Document(
                 id=str(uuid4()),
                 collection_id=collection_id,
-                file_path=kwargs.get('file_path', '/test/file'),
-                file_name=kwargs.get('file_name', 'file'),
-                file_size=kwargs.get('file_size', 100),
-                content_hash=kwargs.get('content_hash', 'a' * 64),
+                file_path=kwargs.get("file_path", "/test/file"),
+                file_name=kwargs.get("file_name", "file"),
+                file_size=kwargs.get("file_size", 100),
+                content_hash=kwargs.get("content_hash", "a" * 64),
             )
             doc.created_at = datetime.now(UTC)
             return doc
-            
+
         mock_document_repo.create.side_effect = create_mock_document
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -382,20 +382,20 @@ class TestFileScanningService:
         """Test progress callback functionality."""
         collection_id = str(uuid4())
         progress_calls = []
-        
+
         # Setup mock to return documents with created_at
-        def create_mock_document(*args, **kwargs):
+        def create_mock_document(**kwargs):
             doc = Document(
                 id=str(uuid4()),
                 collection_id=collection_id,
-                file_path=kwargs.get('file_path', '/test/file'),
-                file_name=kwargs.get('file_name', 'file'),
-                file_size=kwargs.get('file_size', 100),
-                content_hash=kwargs.get('content_hash', 'a' * 64),
+                file_path=kwargs.get("file_path", "/test/file"),
+                file_name=kwargs.get("file_name", "file"),
+                file_size=kwargs.get("file_size", 100),
+                content_hash=kwargs.get("content_hash", "a" * 64),
             )
             doc.created_at = datetime.now(UTC)
             return doc
-            
+
         mock_document_repo.create.side_effect = create_mock_document
 
         async def progress_callback(processed: int, total: int) -> None:
@@ -417,5 +417,5 @@ class TestFileScanningService:
             assert len(progress_calls) == 3
             # In non-recursive mode, total is updated incrementally
             assert progress_calls[0][0] == 1  # First file processed
-            assert progress_calls[1][0] == 2  # Second file processed  
+            assert progress_calls[1][0] == 2  # Second file processed
             assert progress_calls[2][0] == 3  # Third file processed
