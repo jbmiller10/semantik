@@ -540,3 +540,17 @@ The implementation follows the execution plan closely while maintaining backward
   - All tests updated to reflect new batched audit pattern
   - Clear documentation of design decisions in code comments
   - Maintained backward compatibility while improving efficiency
+
+### 2025-07-16 - Test Fixes and Import Bug Resolution
+- **Fixed Critical Import Bug**: 
+  - QdrantOperationTimer was being imported from non-existent `shared.managers.timer`
+  - Corrected import to use `shared.metrics.collection_metrics.QdrantOperationTimer`
+  - Fixed both cleanup_old_collections and cleanup_qdrant_collections functions
+- **Fixed QdrantManager Initialization Bug**:
+  - cleanup_old_collections was incorrectly calling `QdrantManager()` without required client parameter
+  - Updated to use proper pattern: get client from connection manager, then create QdrantManager instance
+- **Comprehensive Test Fixes**:
+  - Rewrote all test patches to target actual module paths instead of non-existent module-level imports
+  - Fixed async test mocking for database operations
+  - Updated all QdrantManager tests to use proper connection manager pattern
+  - All tests now use correct import paths and mock configurations

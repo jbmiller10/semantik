@@ -277,11 +277,13 @@ def cleanup_old_collections(old_collection_names: list[str], collection_id: str)
 
     # Import Qdrant client
     from shared.managers.qdrant_manager import QdrantManager
-    from shared.managers.timer import QdrantOperationTimer
+    from shared.metrics.collection_metrics import QdrantOperationTimer
+    from webui.utils.qdrant_manager import qdrant_manager as connection_manager
 
     try:
-        qdrant_manager = QdrantManager()
-        qdrant_client = qdrant_manager.client
+        # Get Qdrant client from connection manager
+        qdrant_client = connection_manager.get_client()
+        qdrant_manager = QdrantManager(qdrant_client)
 
         for collection_name in old_collection_names:
             try:
@@ -373,7 +375,7 @@ def cleanup_qdrant_collections(collection_names: list[str], staging_age_hours: i
 
     # Import required modules
     from shared.managers.qdrant_manager import QdrantManager
-    from shared.managers.timer import QdrantOperationTimer
+    from shared.metrics.collection_metrics import QdrantOperationTimer
 
     # Note: The connection manager is correctly imported from webui.utils, not shared.managers
     from webui.utils.qdrant_manager import qdrant_manager as connection_manager
