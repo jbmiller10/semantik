@@ -366,3 +366,24 @@ The implementation follows the execution plan closely while maintaining backward
   - Used `AsyncSessionLocal` directly, following pattern in tasks.py
   - No need for dependency injection since this is an internal API
 - **Result**: All tests now pass (414 passed, 2 skipped, 1 deselected)
+
+### 2025-07-16 - Implemented Code Review Improvements
+- **Based on thorough code review feedback, implemented the following improvements**:
+  1. **Exponential Backoff for Cleanup Task**:
+     - Added `retry_backoff=True` and `retry_backoff_max=600` to cleanup task decorator
+     - Better handles transient Qdrant operation failures
+  2. **Containerization Support**:
+     - Fixed localhost hardcoding by using `WEBUI_INTERNAL_HOST` setting
+     - Allows proper operation in Docker/Kubernetes environments
+  3. **Request Validation**:
+     - Added UUID format validation for collection_id and operation_id
+     - Added non-negative validation for vector_count
+     - Added non-empty validation for staging_collection_name
+  4. **Metrics Recording Pattern**:
+     - Created `record_metric_safe()` helper function to reduce code duplication
+     - Centralizes try/except ImportError pattern
+  5. **Dynamic Cleanup Delay**:
+     - Implemented `calculate_cleanup_delay()` function
+     - Scales cleanup delay from 5-30 minutes based on vector count
+     - Formula: 5 minutes base + 1 minute per 10,000 vectors
+- **Code Quality**: All tests pass, formatting and linting clean
