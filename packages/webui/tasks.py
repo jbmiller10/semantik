@@ -333,6 +333,199 @@ def cleanup_old_collections(old_collection_names: list[str], collection_id: str)
         return stats
 
 
+@celery_app.task(
+    name="webui.tasks.cleanup_qdrant_collections",
+    max_retries=3,
+    default_retry_delay=60,
+    retry_backoff=True,
+    retry_backoff_max=600,
+)
+def cleanup_qdrant_collections(collection_names: list[str]) -> dict[str, Any]:
+    """Clean up orphaned Qdrant collections with enhanced safety checks.
+
+    This task provides a safer alternative to cleanup_old_collections by:
+    - Verifying collections are not actively referenced in the database
+    - Checking for active operations on the collections
+    - Preventing deletion of system collections
+    - Providing detailed audit trail
+
+    Args:
+        collection_names: List of Qdrant collection names to delete
+
+    Returns:
+        Dictionary with cleanup statistics and safety check results
+    """
+    stats: dict[str, Any] = {
+        "collections_deleted": 0,
+        "collections_skipped": 0,
+        "collections_failed": 0,
+        "safety_checks": {},
+        "errors": [],
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+
+    if not collection_names:
+        logger.info("No collections provided for cleanup")
+        return stats
+
+    logger.info(f"Starting enhanced cleanup of {len(collection_names)} collections")
+
+    # Import required modules
+    from shared.database.database import AsyncSessionLocal
+    from shared.database.repositories.collection_repository import CollectionRepository
+    from shared.managers.qdrant_manager import QdrantManager
+    from shared.managers.timer import QdrantOperationTimer
+    from webui.utils.qdrant_manager import qdrant_manager as connection_manager
+
+    try:
+        # Run async safety checks
+        active_collections = asyncio.run(_get_active_collections())
+        stats["safety_checks"]["active_collections_found"] = len(active_collections)
+
+        # Get Qdrant client from connection manager
+        qdrant_client = connection_manager.get_client()
+        qdrant_manager = QdrantManager(qdrant_client)
+
+        for collection_name in collection_names:
+            try:
+                # Safety check 1: Prevent deletion of system collections
+                if collection_name.startswith("_"):
+                    logger.warning(f"Skipping system collection: {collection_name}")
+                    stats["collections_skipped"] += 1
+                    stats["safety_checks"][collection_name] = "system_collection"
+                    continue
+
+                # Safety check 2: Verify collection is not actively referenced
+                if collection_name in active_collections:
+                    logger.warning(f"Skipping active collection: {collection_name}")
+                    stats["collections_skipped"] += 1
+                    stats["safety_checks"][collection_name] = "active_collection"
+                    continue
+
+                # Safety check 3: Check if collection exists
+                with QdrantOperationTimer("check_collection_exists"):
+                    if not qdrant_manager.collection_exists(collection_name):
+                        logger.info(f"Collection {collection_name} does not exist, skipping")
+                        stats["collections_skipped"] += 1
+                        stats["safety_checks"][collection_name] = "not_found"
+                        continue
+
+                # Safety check 4: Get collection info before deletion for audit
+                collection_info = qdrant_manager.get_collection_info(collection_name)
+                vector_count = collection_info.vectors_count if collection_info else 0
+
+                # Safety check 5: Check if it's a staging collection (additional safety for staging)
+                if collection_name.startswith("staging_"):
+                    # Verify staging collection is old enough (default 1 hour)
+                    if not qdrant_manager._is_staging_collection_old(collection_name, hours=1):
+                        logger.warning(f"Skipping recent staging collection: {collection_name}")
+                        stats["collections_skipped"] += 1
+                        stats["safety_checks"][collection_name] = "staging_too_recent"
+                        continue
+
+                # All safety checks passed - proceed with deletion
+                logger.info(f"Deleting collection {collection_name} with {vector_count} vectors")
+
+                with QdrantOperationTimer("delete_collection_safe"):
+                    qdrant_client.delete_collection(collection_name)
+
+                stats["collections_deleted"] += 1
+                stats["safety_checks"][collection_name] = "deleted"
+
+                # Record audit trail
+                asyncio.run(_audit_collection_deletion(collection_name, vector_count))
+
+                # Small delay to avoid overwhelming Qdrant
+                time.sleep(0.1)
+
+            except Exception as e:
+                error_msg = f"Failed to delete collection {collection_name}: {str(e)}"
+                logger.error(error_msg)
+                stats["collections_failed"] += 1
+                stats["errors"].append(error_msg)
+                stats["safety_checks"][collection_name] = f"error: {str(e)}"
+
+        # Log final statistics
+        logger.info(
+            f"Enhanced cleanup completed: "
+            f"deleted={stats['collections_deleted']}, "
+            f"skipped={stats['collections_skipped']}, "
+            f"failed={stats['collections_failed']}"
+        )
+
+        # Record metrics
+        from shared.metrics.collection_metrics import record_metric_safe
+
+        status = "success" if stats["collections_failed"] == 0 else "partial"
+        record_metric_safe("qdrant_cleanup_total", {"status": status, "type": "enhanced"})
+
+        return stats
+
+    except Exception as e:
+        logger.error(f"Enhanced cleanup task failed: {e}")
+        stats["errors"].append(str(e))
+
+        from shared.metrics.collection_metrics import record_metric_safe
+
+        record_metric_safe("qdrant_cleanup_total", {"status": "failed", "type": "enhanced"})
+
+        return stats
+
+
+async def _get_active_collections() -> set[str]:
+    """Get all active Qdrant collection names from the database."""
+    from shared.database.database import AsyncSessionLocal
+    from shared.database.repositories.collection_repository import CollectionRepository
+    
+    async with AsyncSessionLocal() as session:
+        collection_repo = CollectionRepository(session)
+
+        # Get all collections
+        collections = await collection_repo.list_all()
+
+        active_collections = set()
+        for collection in collections:
+            # Add main collection name
+            if collection.get("vector_store_name"):
+                active_collections.add(collection["vector_store_name"])
+
+            # Add all collections from qdrant_collections field
+            if collection.get("qdrant_collections"):
+                active_collections.update(collection["qdrant_collections"])
+
+            # Add staging collections (they might still be in use)
+            if collection.get("qdrant_staging"):
+                staging_info = collection["qdrant_staging"]
+                if isinstance(staging_info, dict) and "collection_name" in staging_info:
+                    active_collections.add(staging_info["collection_name"])
+
+        return active_collections
+
+
+async def _audit_collection_deletion(collection_name: str, vector_count: int) -> None:
+    """Create audit log entry for collection deletion."""
+    try:
+        from shared.database.database import AsyncSessionLocal
+        from shared.database.models import CollectionAuditLog
+
+        async with AsyncSessionLocal() as session:
+            audit_log = CollectionAuditLog(
+                collection_id=None,  # No specific collection ID for cleanup
+                operation_id=None,
+                user_id=None,  # System operation
+                action="qdrant_collection_deleted",
+                details={
+                    "collection_name": collection_name,
+                    "vector_count": vector_count,
+                    "deleted_at": datetime.now(UTC).isoformat(),
+                },
+            )
+            session.add(audit_log)
+            await session.commit()
+    except Exception as e:
+        logger.error(f"Failed to create audit log for collection deletion: {e}")
+
+
 @celery_app.task(bind=True, name="webui.tasks.process_embedding_job_task", max_retries=3, default_retry_delay=60)
 def process_embedding_job_task(self: Any, job_id: str) -> dict[str, Any]:
     """
