@@ -383,9 +383,7 @@ def get_collection_details(collection_name: str, user_id: int) -> dict[str, Any]
     return None
 
 
-def get_collection_files(
-    collection_name: str, user_id: int, page: int = 1, limit: int = 50
-) -> dict[str, Any]:
+def get_collection_files(collection_name: str, user_id: int, page: int = 1, limit: int = 50) -> dict[str, Any]:
     """Get collection files (DEPRECATED - tables dropped in Phase 1)."""
     logger.warning(
         f"get_collection_files is deprecated. Use new Collections API. Collection: {collection_name}, User: {user_id}"
