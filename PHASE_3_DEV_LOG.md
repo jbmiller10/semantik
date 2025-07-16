@@ -224,3 +224,81 @@ The implementation follows the execution plan closely while maintaining backward
   - ✅ Staging collections are created in Qdrant using QdrantManager
   - ✅ Their names are persisted to the database in `collections.qdrant_staging` field
 - **Conclusion**: TASK-010 was already fully implemented and meets all requirements
+
+---
+
+## TASK-011: Implement Re-indexing to Staging
+
+### 2025-07-16 - Starting TASK-011 Implementation
+- **Task**: Implement the core processing loop for re-indexing into the staging collections
+- **Requirements**:
+  1. The `reindex_handler` will fetch all documents for the collection
+  2. Process each document using the *new* configuration (if provided) and ingest vectors into staging collections
+  3. Progress must be continuously updated in the `operations` table
+- **Analysis**:
+  - Found TODO comment at line 1410 in `_process_reindex_operation`
+  - Existing code already fetches all documents with COMPLETED status
+  - Need to implement actual document processing with text extraction, chunking, embedding generation
+  - Need to upload vectors to staging collection created by TASK-010
+
+### 2025-07-16 - Completed TASK-011 Implementation
+- **Changes Made**:
+  1. **Document Reprocessing Logic** (packages/webui/tasks.py, lines 1405-1564):
+     - Replaced TODO placeholder with full document processing implementation
+     - Extracts configuration values from new_config with fallbacks to existing config
+     - Uses ThreadPoolExecutor for parallel processing with 4 workers
+  2. **Text Extraction and Chunking**:
+     - Reuses existing `extract_and_serialize_thread_safe` function for text extraction
+     - Creates TokenChunker with new chunk_size and chunk_overlap configuration
+     - Preserves metadata including page numbers
+     - Handles empty documents gracefully
+  3. **Embedding Generation**:
+     - Uses embedding_service with GPU scheduling for performance
+     - Applies new model_name, quantization, and instruction settings
+     - Handles vector dimension adjustment (truncation or padding with renormalization)
+     - Generates unique task IDs for GPU scheduling
+  4. **Vector Upload to Staging**:
+     - Creates PointStruct objects with proper payload structure
+     - Uploads vectors to staging collection using qdrant_client.upsert
+     - Uses QdrantOperationTimer for performance monitoring
+     - Includes collection_id in payload for future reference
+  5. **Progress Tracking**:
+     - Sends real-time progress updates via Redis updater
+     - Tracks processed_count, failed_count, and vector_count
+     - Reports progress percentage and vectors created
+     - Handles errors gracefully and continues processing
+  6. **Memory Management**:
+     - Explicitly deletes large objects after processing
+     - Calls gc.collect() after each document
+     - Processes documents in configurable batches
+- **Implementation Features**:
+  - Fully implements document fetching from database
+  - Processes documents with new configuration parameters
+  - Uploads all vectors to staging collection
+  - Continuous progress updates via WebSocket/Redis
+  - Comprehensive error handling with document-level recovery
+  - Memory-efficient processing with garbage collection
+- **Acceptance Criteria Met**:
+  - ✅ All documents are fetched from the collection
+  - ✅ Documents are re-processed using new configuration
+  - ✅ Vectors are ingested into staging collections
+  - ✅ Progress is continuously updated (via Redis updates)
+- **Integration Points**:
+  - Works seamlessly with existing TASK-010 staging collection creation
+  - Audit logging already captures final statistics (documents_processed, vectors_created)
+  - Validation step (already implemented) will verify the reindexed data
+  - Atomic switch (already implemented) will complete the blue-green deployment
+
+### 2025-07-16 - Improvements Based on Review Feedback
+- **Made batch_size configurable**:
+  - Batch size can now be specified in new_config or existing config
+  - Defaults to EMBEDDING_BATCH_SIZE (100) if not specified
+  - Allows for collection-specific or operation-specific tuning
+- **Made ThreadPoolExecutor worker count configurable**:
+  - Worker count can now be specified in new_config or existing config
+  - Defaults to 4 workers if not specified
+  - Enables better resource utilization based on system capabilities
+- **Benefits**:
+  - More flexible configuration for different collection sizes
+  - Better resource management for varying system capabilities
+  - Easier performance tuning without code changes

@@ -1403,28 +1403,164 @@ async def _process_reindex_operation(
         vector_count = 0
 
         # Process documents in batches
-        batch_size = 100
-        for i in range(0, total_documents, batch_size):
-            batch = documents[i : i + batch_size]
+        # Get batch_size from config, defaulting to EMBEDDING_BATCH_SIZE
+        batch_size = new_config.get("batch_size", collection.get("config", {}).get("batch_size", EMBEDDING_BATCH_SIZE))
 
-            # TODO: Actually reprocess documents with new configuration
-            # For now, simulate processing
-            await asyncio.sleep(0.1)  # Simulate processing time
+        # Get the new configuration values
+        chunk_size = new_config.get("chunk_size", collection.get("config", {}).get("chunk_size", 600))
+        chunk_overlap = new_config.get("chunk_overlap", collection.get("config", {}).get("chunk_overlap", 200))
+        model_name = new_config.get(
+            "model_name", collection.get("config", {}).get("model_name", "Qwen/Qwen3-Embedding-0.6B")
+        )
+        quantization = new_config.get("quantization", collection.get("config", {}).get("quantization", "float32"))
+        instruction = new_config.get("instruction", collection.get("config", {}).get("instruction"))
+        vector_dim = new_config.get("vector_dim", collection.get("config", {}).get("vector_dim"))
 
-            processed_count += len(batch)
-            vector_count += len(batch) * 10  # Simulate vector creation
+        # Get worker count from config, defaulting to 4
+        worker_count = new_config.get("worker_count", collection.get("config", {}).get("worker_count", 4))
 
-            # Send progress update
-            progress = (processed_count / total_documents) * 100
-            await updater.send_update(
-                "reprocessing_progress",
-                {
-                    "processed": processed_count,
-                    "total": total_documents,
-                    "failed": failed_count,
-                    "progress_percent": progress,
-                },
-            )
+        # Create thread pool for parallel processing
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            for i in range(0, total_documents, batch_size):
+                batch = documents[i : i + batch_size]
+
+                for doc in batch:
+                    try:
+                        # Extract text from document
+                        loop = asyncio.get_event_loop()
+                        file_path = doc.get("file_path", doc.get("path"))
+
+                        logger.info(f"Reprocessing document: {file_path}")
+
+                        # Extract text blocks with metadata
+                        text_blocks = await asyncio.wait_for(
+                            loop.run_in_executor(executor, extract_and_serialize_thread_safe, file_path),
+                            timeout=300,  # 5 minute timeout
+                        )
+
+                        # Create chunker with new configuration
+                        chunker = TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+
+                        # Generate document ID
+                        doc_id = hashlib.md5(file_path.encode()).hexdigest()[:16]
+
+                        # Process each text block
+                        all_chunks = []
+                        for text, metadata in text_blocks:
+                            if not text.strip():
+                                continue
+
+                            # Create chunks
+                            chunks = await loop.run_in_executor(
+                                executor,
+                                chunker.chunk_text,
+                                text,
+                                doc_id,
+                                metadata,
+                            )
+                            all_chunks.extend(chunks)
+
+                        if not all_chunks:
+                            logger.warning(f"No chunks created for document: {file_path}")
+                            continue
+
+                        # Generate embeddings for chunks
+                        texts = [chunk["text"] for chunk in all_chunks]
+
+                        # Generate embeddings with GPU scheduling
+                        task_id = f"reindex-{operation['id']}-{doc_id}"
+
+                        def generate_embeddings_with_gpu(task_id: str = task_id, texts: list[str] = texts) -> Any:
+                            with gpu_task(task_id) as gpu_id:
+                                if gpu_id is None:
+                                    logger.warning(f"No GPU available for task {task_id}, proceeding with CPU")
+                                else:
+                                    logger.info(f"Task {task_id} using GPU {gpu_id}")
+
+                                return embedding_service.generate_embeddings(
+                                    texts,
+                                    model_name,
+                                    quantization,
+                                    batch_size,
+                                    False,  # show_progress
+                                    instruction,
+                                )
+
+                        embeddings_array = await loop.run_in_executor(executor, generate_embeddings_with_gpu)
+
+                        if embeddings_array is None:
+                            raise Exception("Failed to generate embeddings")
+
+                        embeddings = embeddings_array.tolist()
+
+                        # Handle dimension override if specified
+                        if vector_dim and len(embeddings) > 0:
+                            model_dim = len(embeddings[0])
+                            if vector_dim != model_dim:
+                                logger.info(f"Adjusting embeddings from {model_dim} to {vector_dim} dimensions")
+                                adjusted_embeddings = []
+                                for emb in embeddings:
+                                    if vector_dim < model_dim:
+                                        # Truncate
+                                        adjusted = emb[:vector_dim]
+                                    else:
+                                        # Pad with zeros
+                                        adjusted = emb + [0.0] * (vector_dim - model_dim)
+
+                                    # Renormalize
+                                    norm = sum(x**2 for x in adjusted) ** 0.5
+                                    if norm > 0:
+                                        adjusted = [x / norm for x in adjusted]
+                                    adjusted_embeddings.append(adjusted)
+                                embeddings = adjusted_embeddings
+
+                        # Upload vectors to staging collection
+                        points = []
+                        for i, chunk in enumerate(all_chunks):
+                            point = PointStruct(
+                                id=str(uuid.uuid4()),
+                                vector=embeddings[i],
+                                payload={
+                                    "collection_id": collection["id"],
+                                    "doc_id": doc_id,
+                                    "chunk_id": chunk["chunk_id"],
+                                    "path": file_path,
+                                    "content": chunk["text"],
+                                    "metadata": chunk.get("metadata", {}),
+                                },
+                            )
+                            points.append(point)
+
+                        # Upload to staging collection
+                        with QdrantOperationTimer("upsert_staging_vectors"):
+                            qdrant_client.upsert(collection_name=staging_collection_name, points=points, wait=True)
+
+                        vector_count += len(points)
+                        processed_count += 1
+
+                        logger.info(f"Successfully reprocessed document {file_path}: {len(points)} vectors created")
+
+                        # Free memory
+                        del text_blocks, all_chunks, texts, embeddings_array, embeddings, points
+                        gc.collect()
+
+                    except Exception as e:
+                        logger.error(f"Failed to reprocess document {doc.get('file_path', 'unknown')}: {e}")
+                        failed_count += 1
+                        # Continue processing other documents
+
+                # Send progress update
+                progress = (processed_count / total_documents) * 100 if total_documents > 0 else 0
+                await updater.send_update(
+                    "reprocessing_progress",
+                    {
+                        "processed": processed_count,
+                        "total": total_documents,
+                        "failed": failed_count,
+                        "progress_percent": progress,
+                        "vectors_created": vector_count,
+                    },
+                )
 
         record_reindex_checkpoint(collection["id"], "reprocessing_complete")
         checkpoints.append(("reprocessing_complete", time.time()))
