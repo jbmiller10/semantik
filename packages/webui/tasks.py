@@ -819,8 +819,8 @@ async def _process_append_operation(
 
         try:
             scan_stats = await file_scanner.scan_directory_and_register_documents(
-                collection_id=collection["id"], 
-                source_path=source_path, 
+                collection_id=collection["id"],
+                source_path=source_path,
                 recursive=True,  # Default to recursive scanning
                 batch_size=100,  # Commit every 100 files for large directories
             )

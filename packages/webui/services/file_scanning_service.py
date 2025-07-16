@@ -271,8 +271,7 @@ class FileScanningService:
         # Log duplicate detection
         if not is_new:
             logger.debug(
-                f"Duplicate file detected: {file_path} "
-                f"(existing document created at {document.created_at})"
+                f"Duplicate file detected: {file_path} (existing document created at {document.created_at})"
             )
 
         return {
