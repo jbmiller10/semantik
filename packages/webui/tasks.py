@@ -90,6 +90,10 @@ REDIS_STREAM_TTL = 86400  # 24 hours
 
 # Cleanup configuration
 DEFAULT_DAYS_TO_KEEP = 7  # Days to keep old results
+CLEANUP_DELAY_SECONDS = 300  # 5 minutes default delay before cleaning up old collections
+CLEANUP_DELAY_MIN_SECONDS = 300  # 5 minutes minimum
+CLEANUP_DELAY_MAX_SECONDS = 1800  # 30 minutes maximum
+CLEANUP_DELAY_PER_10K_VECTORS = 60  # Additional 1 minute per 10k vectors
 
 # Background task executor
 executor = ThreadPoolExecutor(max_workers=8)
@@ -161,6 +165,34 @@ def extract_and_serialize_thread_safe(filepath: str) -> list[tuple[str, dict[str
     return result
 
 
+def calculate_cleanup_delay(vector_count: int) -> int:
+    """Calculate cleanup delay based on collection size.
+
+    Uses a formula that scales with the number of vectors:
+    - Base delay: 5 minutes
+    - Additional 1 minute per 10,000 vectors
+    - Maximum delay: 30 minutes
+
+    Args:
+        vector_count: Number of vectors in the collection
+
+    Returns:
+        Delay in seconds
+    """
+    additional_delay = (vector_count // 10000) * CLEANUP_DELAY_PER_10K_VECTORS
+    total_delay = CLEANUP_DELAY_MIN_SECONDS + additional_delay
+
+    # Cap at maximum delay
+    cleanup_delay = min(total_delay, CLEANUP_DELAY_MAX_SECONDS)
+
+    logger.info(
+        f"Calculated cleanup delay: {cleanup_delay}s for {vector_count} vectors "
+        f"(base: {CLEANUP_DELAY_MIN_SECONDS}s, additional: {additional_delay}s)"
+    )
+
+    return cleanup_delay
+
+
 @celery_app.task(bind=True)
 def test_task(self: Any) -> dict[str, str]:  # noqa: ARG001
     """Test task to verify Celery is working."""
@@ -207,6 +239,97 @@ def cleanup_old_results(days_to_keep: int = DEFAULT_DAYS_TO_KEEP) -> dict[str, A
     except Exception as e:
         logger.error(f"Cleanup task failed: {e}")
         stats["errors"].append(str(e))
+        return stats
+
+
+@celery_app.task(
+    name="webui.tasks.cleanup_old_collections",
+    max_retries=3,
+    default_retry_delay=60,
+    retry_backoff=True,
+    retry_backoff_max=600,  # 10 minutes max delay for Qdrant operations
+)
+def cleanup_old_collections(old_collection_names: list[str], collection_id: str) -> dict[str, Any]:
+    """Clean up old Qdrant collections after a successful reindex.
+
+    This task is scheduled with a delay after a reindex operation completes
+    to allow time for any in-flight requests to complete.
+
+    Args:
+        old_collection_names: List of old Qdrant collection names to delete
+        collection_id: ID of the collection (for logging/tracking)
+
+    Returns:
+        Dictionary with cleanup statistics
+    """
+    stats: dict[str, Any] = {
+        "collections_deleted": 0,
+        "collections_failed": 0,
+        "errors": [],
+        "collection_id": collection_id,
+    }
+
+    if not old_collection_names:
+        logger.info(f"No old collections to clean up for collection {collection_id}")
+        return stats
+
+    logger.info(f"Starting cleanup of {len(old_collection_names)} old collections for collection {collection_id}")
+
+    # Import Qdrant client
+    from shared.managers.qdrant_manager import QdrantManager
+    from shared.managers.timer import QdrantOperationTimer
+
+    try:
+        qdrant_manager = QdrantManager()
+        qdrant_client = qdrant_manager.client
+
+        for collection_name in old_collection_names:
+            try:
+                # Check if collection exists before attempting deletion
+                with QdrantOperationTimer("check_collection_exists"):
+                    collections = qdrant_client.get_collections()
+                    exists = any(col.name == collection_name for col in collections.collections)
+
+                if not exists:
+                    logger.warning(f"Collection {collection_name} does not exist, skipping")
+                    continue
+
+                # Delete the collection
+                with QdrantOperationTimer("delete_old_collection"):
+                    qdrant_client.delete_collection(collection_name)
+
+                stats["collections_deleted"] += 1
+                logger.info(f"Successfully deleted old collection: {collection_name}")
+
+            except Exception as e:
+                error_msg = f"Failed to delete collection {collection_name}: {str(e)}"
+                logger.error(error_msg)
+                stats["collections_failed"] += 1
+                stats["errors"].append(error_msg)
+
+        # Log final statistics
+        logger.info(
+            f"Cleanup completed for collection {collection_id}: "
+            f"deleted={stats['collections_deleted']}, failed={stats['collections_failed']}"
+        )
+
+        # Record metrics if available
+        from shared.metrics.collection_metrics import record_metric_safe
+
+        status = "success" if stats["collections_failed"] == 0 else "partial"
+        record_metric_safe("collection_cleanup_total", {"status": status})
+
+        return stats
+
+    except Exception as e:
+        logger.error(f"Cleanup task failed for collection {collection_id}: {e}")
+        stats["errors"].append(str(e))
+
+        # Record failure metric
+        from shared.metrics.collection_metrics import record_metric_safe
+
+        record_metric_safe("collection_cleanup_total", {"status": "failed"})
+
         return stats
 
 
@@ -1602,20 +1725,43 @@ async def _process_reindex_operation(
             },
         )
 
-        # Checkpoint 5: Atomic switch
+        # Checkpoint 5: Atomic switch via internal API
         switch_start = time.time()
         record_reindex_checkpoint(collection["id"], "atomic_switch_start")
 
-        # Update collection to point to new Qdrant collection
-        await collection_repo.update(
-            collection["id"],
-            {
-                "config": new_config,
-                "vector_store_name": staging_collection_name,
-                "qdrant_staging": None,  # Clear staging info
-                "vector_count": vector_count,
-            },
-        )
+        # Call internal API to perform atomic switch
+        import httpx
+
+        # Use configurable host for containerized environments
+        host = settings.WEBUI_INTERNAL_HOST
+        port = settings.WEBUI_PORT
+        internal_api_url = f"http://{host}:{port}/api/internal/complete-reindex"
+        request_data = {
+            "collection_id": collection["id"],
+            "operation_id": operation["id"],
+            "staging_collection_name": staging_collection_name,
+            "new_config": new_config,
+            "vector_count": vector_count,
+        }
+
+        headers = {
+            "X-Internal-API-Key": settings.INTERNAL_API_KEY,
+            "Content-Type": "application/json",
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                internal_api_url,
+                json=request_data,
+                headers=headers,
+                timeout=30.0,
+            )
+
+            if response.status_code != 200:
+                raise ValueError(f"Failed to complete reindex via API: {response.status_code} - {response.text}")
+
+            api_result = response.json()
+            old_collection_names = api_result["old_collection_names"]
 
         switch_duration = time.time() - switch_start
         reindex_switch_duration.observe(switch_duration)
@@ -1623,17 +1769,25 @@ async def _process_reindex_operation(
         record_reindex_checkpoint(collection["id"], "atomic_switch_complete")
         checkpoints.append(("atomic_switch_complete", time.time()))
 
-        # Checkpoint 6: Cleanup old collection
-        record_reindex_checkpoint(collection["id"], "cleanup_start")
+        # Checkpoint 6: Schedule cleanup of old collections
+        record_reindex_checkpoint(collection["id"], "cleanup_scheduled")
 
-        try:
-            with QdrantOperationTimer("delete_old_collection"):
-                qdrant_client.delete_collection(old_collection_name)
-        except Exception as e:
-            logger.warning(f"Failed to delete old collection {old_collection_name}: {e}")
+        # Calculate delay based on collection size
+        cleanup_delay = calculate_cleanup_delay(vector_count)
 
-        record_reindex_checkpoint(collection["id"], "cleanup_complete")
-        checkpoints.append(("cleanup_complete", time.time()))
+        # Schedule cleanup task to run after a delay
+        cleanup_task = cleanup_old_collections.apply_async(
+            args=[old_collection_names, collection["id"]],
+            countdown=cleanup_delay,
+        )
+
+        logger.info(
+            f"Scheduled cleanup of {len(old_collection_names)} old collections "
+            f"to run in {cleanup_delay} seconds. Task ID: {cleanup_task.id}"
+        )
+
+        record_reindex_checkpoint(collection["id"], "cleanup_scheduled_complete")
+        checkpoints.append(("cleanup_scheduled_complete", time.time()))
 
         # Audit log the reindex
         await _audit_log_operation(
@@ -1642,34 +1796,38 @@ async def _process_reindex_operation(
             operation.get("user_id"),
             "collection_reindexed",
             {
-                "old_collection": old_collection_name,
+                "old_collections": old_collection_names,
                 "new_collection": staging_collection_name,
                 "old_config": collection["config"],
                 "new_config": new_config,
                 "documents_processed": processed_count,
                 "vectors_created": vector_count,
                 "checkpoints": checkpoints,
+                "cleanup_task_id": cleanup_task.id,
             },
         )
 
         await updater.send_update(
             "reindex_completed",
             {
-                "old_collection": old_collection_name,
+                "old_collections": old_collection_names,
                 "new_collection": staging_collection_name,
                 "documents_processed": processed_count,
                 "vectors_created": vector_count,
                 "duration": time.time() - checkpoints[0][1],
+                "cleanup_scheduled": True,
+                "cleanup_task_id": cleanup_task.id,
             },
         )
 
         return {
             "success": True,
-            "old_collection": old_collection_name,
+            "old_collections": old_collection_names,
             "new_collection": staging_collection_name,
             "documents_processed": processed_count,
             "vectors_created": vector_count,
             "checkpoints": checkpoints,
+            "cleanup_task_id": cleanup_task.id,
         }
 
     except Exception:
@@ -1720,7 +1878,6 @@ async def _validate_reindex(
                 import random
 
                 # Unused imports removed - were for filtering
-
                 # Scroll through some points from old collection to get sample IDs
                 scroll_result = qdrant_client.scroll(
                     collection_name=old_collection,
