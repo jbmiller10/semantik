@@ -91,14 +91,14 @@ class CollectionService:
             )
 
             # Dispatch Celery task
-            task_result = celery_app.send_task(
+            celery_app.send_task(
                 "webui.tasks.process_collection_operation",
                 args=[operation["uuid"]],
                 task_id=str(uuid.uuid4()),
             )
 
-            # Update operation with task ID
-            await self.operation_repo.set_task_id(operation["uuid"], task_result.id)
+            # Task ID is now set inside the Celery task as first action for reliability
+            # No need to set it here anymore
 
             # Transaction commits here automatically
 
@@ -164,14 +164,14 @@ class CollectionService:
             await self.collection_repo.update_status(collection["id"], CollectionStatus.INDEXING)
 
             # Dispatch Celery task
-            task_result = celery_app.send_task(
+            celery_app.send_task(
                 "webui.tasks.process_collection_operation",
                 args=[operation["uuid"]],
                 task_id=str(uuid.uuid4()),
             )
 
-            # Update operation with task ID
-            await self.operation_repo.set_task_id(operation["uuid"], task_result.id)
+            # Task ID is now set inside the Celery task as first action for reliability
+            # No need to set it here anymore
 
             # Transaction commits here automatically
 
@@ -245,14 +245,14 @@ class CollectionService:
             await self.collection_repo.update_status(collection["id"], CollectionStatus.INDEXING)
 
             # Dispatch Celery task
-            task_result = celery_app.send_task(
+            celery_app.send_task(
                 "webui.tasks.process_collection_operation",
                 args=[operation["uuid"]],
                 task_id=str(uuid.uuid4()),
             )
 
-            # Update operation with task ID
-            await self.operation_repo.set_task_id(operation["uuid"], task_result.id)
+            # Task ID is now set inside the Celery task as first action for reliability
+            # No need to set it here anymore
 
             # Transaction commits here automatically
 
@@ -359,14 +359,14 @@ class CollectionService:
             await self.collection_repo.update_status(collection["id"], CollectionStatus.PROCESSING)
 
             # Dispatch Celery task
-            task_result = celery_app.send_task(
+            celery_app.send_task(
                 "webui.tasks.process_collection_operation",
                 args=[operation["uuid"]],
                 task_id=str(uuid.uuid4()),
             )
 
-            # Update operation with task ID
-            await self.operation_repo.set_task_id(operation["uuid"], task_result.id)
+            # Task ID is now set inside the Celery task as first action for reliability
+            # No need to set it here anymore
 
             # Transaction commits here automatically
 

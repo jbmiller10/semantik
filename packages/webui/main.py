@@ -42,7 +42,7 @@ from .api import (  # noqa: E402
     settings,
 )
 from .api.files import scan_websocket  # noqa: E402
-from .api.jobs import websocket_endpoint  # noqa: E402
+from .api.jobs import operation_websocket_endpoint, websocket_endpoint  # noqa: E402
 from .rate_limiter import limiter  # noqa: E402
 from .websocket_manager import ws_manager  # noqa: E402
 
@@ -204,6 +204,10 @@ def create_app() -> FastAPI:
     @app.websocket("/ws/scan/{scan_id}")
     async def scan_ws(websocket: WebSocket, scan_id: str) -> None:
         await scan_websocket(websocket, scan_id)
+
+    @app.websocket("/ws/operations/{operation_id}")
+    async def operation_ws(websocket: WebSocket, operation_id: str) -> None:
+        await operation_websocket_endpoint(websocket, operation_id)
 
     # Add health check endpoint
     @app.get("/health")
