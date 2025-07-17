@@ -18,12 +18,12 @@ interface UIState {
   setActiveTab: (tab: 'create' | 'jobs' | 'search' | 'collections') => void;
   setShowJobMetricsModal: (jobId: string | null) => void;
   setShowDocumentViewer: (viewer: { jobId: string; docId: string; chunkId?: string } | null) => void;
-  setShowCollectionDetailsModal: (collectionName: string | null) => void;
+  setShowCollectionDetailsModal: (collectionId: string | null) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
   toasts: [],
-  activeTab: 'create',
+  activeTab: 'collections',
   showJobMetricsModal: null,
   showDocumentViewer: null,
   showCollectionDetailsModal: null,
@@ -47,5 +47,5 @@ export const useUIStore = create<UIState>((set) => ({
   setActiveTab: (tab) => set({ activeTab: tab }),
   setShowJobMetricsModal: (jobId) => set({ showJobMetricsModal: jobId }),
   setShowDocumentViewer: (viewer) => set({ showDocumentViewer: viewer }),
-  setShowCollectionDetailsModal: (collectionName) => set({ showCollectionDetailsModal: collectionName }),
+  setShowCollectionDetailsModal: (collectionId) => set({ showCollectionDetailsModal: collectionId }),
 }));
