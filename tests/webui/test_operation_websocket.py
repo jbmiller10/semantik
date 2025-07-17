@@ -175,7 +175,7 @@ class TestOperationWebSocket:
         message = {
             "timestamp": "2024-01-01T00:00:00",
             "type": "progress",
-            "data": {"progress": 75, "message": "Almost done..."}
+            "data": {"progress": 75, "message": "Almost done..."},
         }
 
         await ws_manager._broadcast_to_operation(operation_id, message)
