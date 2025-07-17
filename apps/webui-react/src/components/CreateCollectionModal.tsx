@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useCollectionStore } from '../stores/collectionStore';
 import { useUIStore } from '../stores/uiStore';
+import { useNavigate } from 'react-router-dom';
 import type { CreateCollectionRequest } from '../types/collection';
 
 interface CreateCollectionModalProps {
@@ -13,8 +14,9 @@ const DEFAULT_CHUNK_SIZE = 512;
 const DEFAULT_CHUNK_OVERLAP = 50;
 
 function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProps) {
-  const { createCollection } = useCollectionStore();
+  const { createCollection, addSource } = useCollectionStore();
   const { addToast } = useUIStore();
+  const navigate = useNavigate();
   
   const [formData, setFormData] = useState<CreateCollectionRequest>({
     name: '',
@@ -25,8 +27,10 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     is_public: false,
   });
   
+  const [sourcePath, setSourcePath] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
 
   // Handle escape key
   useEffect(() => {
@@ -53,6 +57,10 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
       newErrors.description = 'Description must be 500 characters or less';
     }
     
+    if (sourcePath && !sourcePath.trim()) {
+      newErrors.sourcePath = 'Source path cannot be empty if provided';
+    }
+    
     if (formData.chunk_size! < 100 || formData.chunk_size! > 2000) {
       newErrors.chunk_size = 'Chunk size must be between 100 and 2000';
     }
@@ -75,7 +83,39 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     setIsSubmitting(true);
     
     try {
-      await createCollection(formData);
+      // Step 1: Create the collection
+      const collection = await createCollection(formData);
+      
+      // Step 2: Add initial source if provided
+      if (sourcePath.trim()) {
+        try {
+          await addSource(collection.id, sourcePath.trim(), {
+            chunk_size: formData.chunk_size,
+            chunk_overlap: formData.chunk_overlap,
+          });
+          
+          // Navigate to collection detail page to show operation progress
+          navigate(`/collections/${collection.id}`);
+          addToast({
+            message: 'Collection created and indexing started',
+            type: 'success'
+          });
+        } catch (sourceError) {
+          // Collection was created but source addition failed
+          addToast({
+            message: 'Collection created but failed to add source: ' + 
+                     (sourceError instanceof Error ? sourceError.message : 'Unknown error'),
+            type: 'warning'
+          });
+        }
+      } else {
+        // No source provided, just show success
+        addToast({
+          message: 'Collection created successfully',
+          type: 'success'
+        });
+      }
+      
       onSuccess();
     } catch (error) {
       addToast({
@@ -92,6 +132,14 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     // Clear error when field is modified
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
+    }
+  };
+
+  const handleSourcePathChange = (value: string) => {
+    setSourcePath(value);
+    // Clear error when field is modified
+    if (errors.sourcePath) {
+      setErrors(prev => ({ ...prev, sourcePath: '' }));
     }
   };
 
@@ -152,6 +200,31 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
               )}
             </div>
 
+            {/* Source Path */}
+            <div>
+              <label htmlFor="sourcePath" className="block text-sm font-medium text-gray-700">
+                Initial Source Directory (Optional)
+              </label>
+              <input
+                type="text"
+                id="sourcePath"
+                value={sourcePath}
+                onChange={(e) => handleSourcePathChange(e.target.value)}
+                className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
+                  errors.sourcePath
+                    ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                    : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                }`}
+                placeholder="/path/to/documents"
+              />
+              {errors.sourcePath && (
+                <p className="mt-1 text-sm text-red-600">{errors.sourcePath}</p>
+              )}
+              <p className="mt-1 text-sm text-gray-500">
+                Specify a directory to start indexing immediately after collection creation
+              </p>
+            </div>
+
             {/* Embedding Model */}
             <div>
               <label htmlFor="embedding_model" className="block text-sm font-medium text-gray-700">
@@ -172,75 +245,95 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
               </p>
             </div>
 
-            {/* Advanced Settings */}
+            {/* Advanced Settings Accordion */}
             <div className="border-t pt-4">
-              <h4 className="text-sm font-medium text-gray-700 mb-3">Advanced Settings</h4>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
+                className="flex items-center justify-between w-full text-left focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-md p-2 -m-2"
+              >
+                <h4 className="text-sm font-medium text-gray-700">Advanced Settings</h4>
+                <svg
+                  className={`h-5 w-5 text-gray-400 transform transition-transform ${
+                    showAdvancedSettings ? 'rotate-180' : ''
+                  }`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
               
-              <div className="grid grid-cols-2 gap-4">
-                {/* Chunk Size */}
-                <div>
-                  <label htmlFor="chunk_size" className="block text-sm font-medium text-gray-700">
-                    Chunk Size
-                  </label>
-                  <input
-                    type="number"
-                    id="chunk_size"
-                    value={formData.chunk_size}
-                    onChange={(e) => handleChange('chunk_size', parseInt(e.target.value) || DEFAULT_CHUNK_SIZE)}
-                    min={100}
-                    max={2000}
-                    className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
-                      errors.chunk_size
-                        ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
-                        : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
-                    }`}
-                  />
-                  {errors.chunk_size && (
-                    <p className="mt-1 text-sm text-red-600">{errors.chunk_size}</p>
-                  )}
-                </div>
+              {showAdvancedSettings && (
+                <div className="mt-4 space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Chunk Size */}
+                    <div>
+                      <label htmlFor="chunk_size" className="block text-sm font-medium text-gray-700">
+                        Chunk Size
+                      </label>
+                      <input
+                        type="number"
+                        id="chunk_size"
+                        value={formData.chunk_size}
+                        onChange={(e) => handleChange('chunk_size', parseInt(e.target.value) || DEFAULT_CHUNK_SIZE)}
+                        min={100}
+                        max={2000}
+                        className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
+                          errors.chunk_size
+                            ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                            : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                        }`}
+                      />
+                      {errors.chunk_size && (
+                        <p className="mt-1 text-sm text-red-600">{errors.chunk_size}</p>
+                      )}
+                    </div>
 
-                {/* Chunk Overlap */}
-                <div>
-                  <label htmlFor="chunk_overlap" className="block text-sm font-medium text-gray-700">
-                    Chunk Overlap
-                  </label>
-                  <input
-                    type="number"
-                    id="chunk_overlap"
-                    value={formData.chunk_overlap}
-                    onChange={(e) => handleChange('chunk_overlap', parseInt(e.target.value) || DEFAULT_CHUNK_OVERLAP)}
-                    min={0}
-                    max={formData.chunk_size! - 1}
-                    className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
-                      errors.chunk_overlap
-                        ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
-                        : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
-                    }`}
-                  />
-                  {errors.chunk_overlap && (
-                    <p className="mt-1 text-sm text-red-600">{errors.chunk_overlap}</p>
-                  )}
-                </div>
-              </div>
-              
-              <p className="mt-2 text-sm text-gray-500">
-                Smaller chunks provide more precise results but may lose context
-              </p>
-            </div>
+                    {/* Chunk Overlap */}
+                    <div>
+                      <label htmlFor="chunk_overlap" className="block text-sm font-medium text-gray-700">
+                        Chunk Overlap
+                      </label>
+                      <input
+                        type="number"
+                        id="chunk_overlap"
+                        value={formData.chunk_overlap}
+                        onChange={(e) => handleChange('chunk_overlap', parseInt(e.target.value) || DEFAULT_CHUNK_OVERLAP)}
+                        min={0}
+                        max={formData.chunk_size! - 1}
+                        className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
+                          errors.chunk_overlap
+                            ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                            : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                        }`}
+                      />
+                      {errors.chunk_overlap && (
+                        <p className="mt-1 text-sm text-red-600">{errors.chunk_overlap}</p>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <p className="text-sm text-gray-500">
+                    Smaller chunks provide more precise results but may lose context
+                  </p>
 
-            {/* Public Collection */}
-            <div className="flex items-center">
-              <input
-                id="is_public"
-                type="checkbox"
-                checked={formData.is_public}
-                onChange={(e) => handleChange('is_public', e.target.checked)}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <label htmlFor="is_public" className="ml-2 block text-sm text-gray-900">
-                Make this collection public
-              </label>
+                  {/* Public Collection */}
+                  <div className="flex items-center">
+                    <input
+                      id="is_public"
+                      type="checkbox"
+                      checked={formData.is_public}
+                      onChange={(e) => handleChange('is_public', e.target.checked)}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="is_public" className="ml-2 block text-sm text-gray-900">
+                      Make this collection public
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
