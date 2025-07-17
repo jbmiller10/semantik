@@ -35,7 +35,7 @@ describe('searchStore', () => {
       result.current.setError(null)
       result.current.updateSearchParams({
         query: '',
-        collection: '',
+        selectedCollections: [],
         topK: 10,
         scoreThreshold: 0.0,
         searchType: 'vector',
@@ -74,6 +74,10 @@ describe('searchStore', () => {
       act(() => {
         result.current.setResults([mockSearchResult1])
         result.current.setError('Some error')
+        result.current.setPartialFailure(true)
+        result.current.setFailedCollections([
+          { collection_id: '1', collection_name: 'Test', error_message: 'Failed' }
+        ])
         result.current.setRerankingMetrics({
           rerankingUsed: true,
           rerankerModel: 'model-123',
@@ -83,6 +87,8 @@ describe('searchStore', () => {
 
       expect(result.current.results).toHaveLength(1)
       expect(result.current.error).toBe('Some error')
+      expect(result.current.partialFailure).toBe(true)
+      expect(result.current.failedCollections).toHaveLength(1)
       expect(result.current.rerankingMetrics).not.toBeNull()
 
       act(() => {
@@ -91,6 +97,8 @@ describe('searchStore', () => {
 
       expect(result.current.results).toEqual([])
       expect(result.current.error).toBeNull()
+      expect(result.current.partialFailure).toBe(false)
+      expect(result.current.failedCollections).toEqual([])
       expect(result.current.rerankingMetrics).toBeNull()
     })
   })
@@ -135,7 +143,7 @@ describe('searchStore', () => {
       
       expect(result.current.searchParams).toEqual({
         query: '',
-        collection: '',
+        selectedCollections: [],
         topK: 10,
         scoreThreshold: 0.0,
         searchType: 'vector',
@@ -151,12 +159,12 @@ describe('searchStore', () => {
       act(() => {
         result.current.updateSearchParams({
           query: 'test query',
-          collection: 'my-collection',
+          selectedCollections: ['my-collection'],
         })
       })
 
       expect(result.current.searchParams.query).toBe('test query')
-      expect(result.current.searchParams.collection).toBe('my-collection')
+      expect(result.current.searchParams.selectedCollections).toEqual(['my-collection'])
       // Other params should remain unchanged
       expect(result.current.searchParams.topK).toBe(10)
       expect(result.current.searchParams.searchType).toBe('vector')
@@ -211,7 +219,7 @@ describe('searchStore', () => {
       // Update different params
       act(() => {
         result.current.updateSearchParams({
-          collection: 'new-collection',
+          selectedCollections: ['new-collection'],
           searchType: 'hybrid',
         })
       })
@@ -221,7 +229,7 @@ describe('searchStore', () => {
       expect(result.current.searchParams.topK).toBe(20)
       expect(result.current.searchParams.scoreThreshold).toBe(0.5)
       // New params should be updated
-      expect(result.current.searchParams.collection).toBe('new-collection')
+      expect(result.current.searchParams.selectedCollections).toEqual(['new-collection'])
       expect(result.current.searchParams.searchType).toBe('hybrid')
     })
   })
@@ -309,7 +317,7 @@ describe('searchStore', () => {
       act(() => {
         result.current.updateSearchParams({
           query: 'machine learning',
-          collection: 'docs',
+          selectedCollections: ['docs'],
           topK: 5,
           useReranker: true,
           rerankModel: 'model-123',

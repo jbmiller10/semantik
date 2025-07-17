@@ -616,6 +616,126 @@ The investigation revealed that the collections loading issue was primarily due 
 
 ---
 
+## TASK-022: Update Search UI & Logic
+
+### 2025-07-17: Multi-Collection Search Implementation
+
+#### Overview
+Successfully implemented multi-collection search functionality in the frontend, updating the search interface to support selecting multiple collections and displaying grouped results with partial failure handling.
+
+#### Completed Components
+
+1. **Search Store Updates (`apps/webui-react/src/stores/searchStore.ts`)**
+   - Changed `collection: string` to `selectedCollections: string[]` in SearchParams
+   - Added fields for partial failure handling:
+     - `failedCollections: FailedCollection[]`
+     - `partialFailure: boolean`
+   - Updated SearchResult interface to include collection information
+   - Modified clearResults to reset partial failure state
+   - Updated tests to use selectedCollections array
+
+2. **CollectionMultiSelect Component (`apps/webui-react/src/components/CollectionMultiSelect.tsx`)**
+   - Created a new multi-select dropdown component with:
+     - Checkbox selection for multiple collections
+     - Search/filter functionality
+     - Select All / Clear All buttons
+     - Visual indicators for selected collections
+     - Collection metadata display (documents, vectors, model)
+     - Only shows ready collections with indexed vectors
+     - Keyboard navigation and accessibility support
+
+3. **SearchInterface Updates (`apps/webui-react/src/components/SearchInterface.tsx`)**
+   - Replaced single collection dropdown with CollectionMultiSelect
+   - Migrated to v2 search API endpoint
+   - Updated search request to use proper v2 structure:
+     - `collection_ids` array instead of single collection
+     - Nested `hybrid_config` and `rerank_config` objects
+   - Added result mapping to match search store's SearchResult type
+   - Implemented partial failure handling with toast notifications
+   - Auto-refresh collections when any are processing
+
+4. **SearchResults Component (`apps/webui-react/src/components/SearchResults.tsx`)**
+   - Complete rewrite to support collection-based grouping:
+     - Results grouped first by collection, then by document
+     - Collection headers with result counts
+     - Expandable/collapsible collection sections
+     - Visual hierarchy with nested document results
+   - Added partial failure warnings display:
+     - Yellow alert box for failed collections
+     - Shows collection name and error message for each failure
+     - Positioned prominently above results
+   - Maintained existing features:
+     - Document-level grouping within collections
+     - Chunk expansion/collapse
+     - Score display and reranking indicators
+     - Document viewer integration
+
+5. **V2 API Types Updates (`apps/webui-react/src/services/api/v2/types.ts`)**
+   - Updated SearchResponse to match backend v2 structure:
+     - Added timing metrics (embedding, search, reranking, total)
+     - Collections searched metadata
+     - Partial failure and failed collections fields
+     - API version field
+   - Enhanced SearchResult with collection fields:
+     - collection_id, collection_name
+     - original_score, reranked_score
+     - embedding_model used
+     - file_name, file_path
+
+#### Key Design Decisions
+
+1. **Progressive Enhancement**: Multi-select defaults to showing all ready collections
+2. **Visual Feedback**: Clear indicators for selected collections and failures
+3. **Performance**: Collections auto-expand by default for better UX
+4. **Error Handling**: Partial failures don't block successful results
+5. **Accessibility**: Full keyboard navigation support in multi-select
+
+#### Technical Implementation Details
+
+- Used lucide-react for consistent iconography
+- Leveraged React hooks for dropdown positioning and click-outside handling
+- Implemented proper TypeScript types for all v2 API responses
+- Maintained backward compatibility with existing document viewer integration
+- Used Zustand store pattern consistently with other collection features
+
+#### Testing & Validation
+
+- ✅ TypeScript compilation passes without errors
+- ✅ Frontend build succeeds
+- ✅ All search store tests updated and passing
+- ✅ Python linting (ruff) passes
+- ✅ Python type checking (mypy) passes
+- ✅ Component follows existing UI patterns and styling
+
+#### Integration Notes
+
+The search functionality now properly integrates with the v2 collection-centric architecture:
+- Uses collection IDs consistently throughout
+- Displays collection names in results for clarity
+- Handles cross-collection search with different embedding models
+- Properly displays reranking information when models differ
+
+#### Next Steps for Full System
+
+While this task is complete, the following would enhance the search experience:
+1. Add collection filtering in results view
+2. Implement result sorting options (by score, collection, date)
+3. Add export functionality for search results
+4. Enhance mobile responsiveness of multi-select component
+5. Add search history/saved searches feature
+
+#### Acceptance Criteria Status
+
+✅ **Multi-select component** - Replaced single dropdown with checkbox-based multi-select
+✅ **Grouped results** - Results grouped by collection with clear visual hierarchy
+✅ **Warnings handling** - Partial failures displayed prominently with detailed error messages
+✅ **Origin clarity** - Each result shows its source collection name
+✅ **Multi-source support** - Fully aligned with new multi-source collection model
+
+The implementation successfully transforms the search interface from single-collection to multi-collection paradigm, providing users with powerful cross-collection search capabilities while maintaining excellent UX through clear visual organization and comprehensive error handling.
+
+---
+
 ### 2025-07-17: Completed v2 API Migration in CollectionDetailsModal
 
 #### Overview
