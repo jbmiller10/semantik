@@ -2,7 +2,7 @@ import { useUIStore } from '../stores/uiStore';
 import CreateJobForm from '../components/CreateJobForm';
 import JobList from '../components/JobList';
 import SearchInterface from '../components/SearchInterface';
-import CollectionList from '../components/CollectionList';
+import CollectionsDashboard from '../components/CollectionsDashboard';
 
 function HomePage() {
   const activeTab = useUIStore((state) => state.activeTab);
@@ -12,7 +12,7 @@ function HomePage() {
       {activeTab === 'create' && <CreateJobForm />}
       {activeTab === 'jobs' && <JobList />}
       {activeTab === 'search' && <SearchInterface />}
-      {activeTab === 'collections' && <CollectionList />}
+      {activeTab === 'collections' && <CollectionsDashboard />}
     </>
   );
 }

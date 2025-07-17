@@ -16,8 +16,8 @@ vi.mock('@/components/JobList', () => ({
 vi.mock('@/components/SearchInterface', () => ({
   default: () => <div data-testid="search-interface">Search Interface</div>,
 }))
-vi.mock('@/components/CollectionList', () => ({
-  default: () => <div data-testid="collection-list">Collection List</div>,
+vi.mock('@/components/CollectionsDashboard', () => ({
+  default: () => <div data-testid="collections-dashboard">Collections Dashboard</div>,
 }))
 
 describe('HomePage', () => {
@@ -36,7 +36,7 @@ describe('HomePage', () => {
     expect(screen.getByTestId('create-job-form')).toBeInTheDocument()
     expect(screen.queryByTestId('job-list')).not.toBeInTheDocument()
     expect(screen.queryByTestId('search-interface')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('collection-list')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('collections-dashboard')).not.toBeInTheDocument()
   })
 
   it('renders JobList when activeTab is jobs', () => {
@@ -50,7 +50,7 @@ describe('HomePage', () => {
     expect(screen.getByTestId('job-list')).toBeInTheDocument()
     expect(screen.queryByTestId('create-job-form')).not.toBeInTheDocument()
     expect(screen.queryByTestId('search-interface')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('collection-list')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('collections-dashboard')).not.toBeInTheDocument()
   })
 
   it('renders SearchInterface when activeTab is search', () => {
@@ -64,10 +64,10 @@ describe('HomePage', () => {
     expect(screen.getByTestId('search-interface')).toBeInTheDocument()
     expect(screen.queryByTestId('create-job-form')).not.toBeInTheDocument()
     expect(screen.queryByTestId('job-list')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('collection-list')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('collections-dashboard')).not.toBeInTheDocument()
   })
 
-  it('renders CollectionList when activeTab is collections', () => {
+  it('renders CollectionsDashboard when activeTab is collections', () => {
     ;(useUIStore as any).mockImplementation((selector: any) => {
       const state = { activeTab: 'collections' }
       return selector ? selector(state) : state
@@ -75,7 +75,7 @@ describe('HomePage', () => {
 
     render(<HomePage />)
     
-    expect(screen.getByTestId('collection-list')).toBeInTheDocument()
+    expect(screen.getByTestId('collections-dashboard')).toBeInTheDocument()
     expect(screen.queryByTestId('create-job-form')).not.toBeInTheDocument()
     expect(screen.queryByTestId('job-list')).not.toBeInTheDocument()
     expect(screen.queryByTestId('search-interface')).not.toBeInTheDocument()
@@ -94,7 +94,7 @@ describe('HomePage', () => {
     expect(screen.queryByTestId('create-job-form')).not.toBeInTheDocument()
     expect(screen.queryByTestId('job-list')).not.toBeInTheDocument()
     expect(screen.queryByTestId('search-interface')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('collection-list')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('collections-dashboard')).not.toBeInTheDocument()
   })
 
   it('uses the correct store selector', () => {
