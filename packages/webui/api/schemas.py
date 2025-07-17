@@ -106,6 +106,25 @@ class CollectionResponse(CollectionBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @classmethod
+    def from_collection(cls, collection: Any) -> "CollectionResponse":
+        """Create response from ORM Collection object."""
+        return cls(
+            id=collection.id,
+            name=collection.name,
+            description=collection.description,
+            owner_id=collection.owner_id,
+            vector_store_name=collection.vector_store_name,
+            embedding_model=collection.embedding_model,
+            chunk_size=collection.chunk_size,
+            chunk_overlap=collection.chunk_overlap,
+            is_public=collection.is_public,
+            metadata=collection.meta,
+            created_at=collection.created_at,
+            updated_at=collection.updated_at,
+            document_count=collection.document_count,
+        )
+
 
 class CollectionListResponse(BaseModel):
     """Response for listing collections."""
@@ -356,4 +375,33 @@ class ErrorResponse(BaseModel):
 
     model_config = ConfigDict(
         json_schema_extra={"example": {"detail": "Collection not found", "code": "COLLECTION_NOT_FOUND"}}
+    )
+
+
+# Operation schemas
+class OperationResponse(BaseModel):
+    """Operation response schema."""
+
+    id: str
+    collection_id: str
+    type: str
+    status: str
+    config: dict[str, Any]
+    error_message: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": "550e8400-e29b-41d4-a716-446655440000",
+                "collection_id": "123e4567-e89b-12d3-a456-426614174000",
+                "type": "index",
+                "status": "processing",
+                "config": {"source_path": "/data/documents"},
+                "created_at": "2025-07-15T10:00:00Z",
+            }
+        },
     )

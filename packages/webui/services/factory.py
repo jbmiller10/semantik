@@ -1,9 +1,12 @@
 """Factory functions for creating service instances with dependencies."""
 
+from fastapi import Depends
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from packages.shared.database import get_db
 
 from .collection_service import CollectionService
 from .file_scanning_service import FileScanningService
@@ -144,3 +147,12 @@ def create_resource_manager(db: AsyncSession) -> ResourceManager:
         collection_repo=collection_repo,
         operation_repo=operation_repo,
     )
+
+
+# FastAPI dependency functions
+
+async def get_collection_service(
+    db: AsyncSession = Depends(get_db)
+) -> CollectionService:
+    """FastAPI dependency for CollectionService injection."""
+    return create_collection_service(db)
