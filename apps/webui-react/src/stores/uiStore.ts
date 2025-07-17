@@ -9,13 +9,13 @@ export interface Toast {
 
 interface UIState {
   toasts: Toast[];
-  activeTab: 'create' | 'jobs' | 'search' | 'collections';
+  activeTab: 'create' | 'jobs' | 'search' | 'collections' | 'operations';
   showJobMetricsModal: string | null;
   showDocumentViewer: { jobId: string; docId: string; chunkId?: string } | null;
   showCollectionDetailsModal: string | null;
   addToast: (toast: Omit<Toast, 'id'>) => void;
   removeToast: (id: string) => void;
-  setActiveTab: (tab: 'create' | 'jobs' | 'search' | 'collections') => void;
+  setActiveTab: (tab: 'create' | 'jobs' | 'search' | 'collections' | 'operations') => void;
   setShowJobMetricsModal: (jobId: string | null) => void;
   setShowDocumentViewer: (viewer: { jobId: string; docId: string; chunkId?: string } | null) => void;
   setShowCollectionDetailsModal: (collectionId: string | null) => void;
