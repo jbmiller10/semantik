@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .collection_service import CollectionService
 from .file_scanning_service import FileScanningService
+from .resource_manager import ResourceManager
 
 
 def create_collection_service(db: AsyncSession) -> CollectionService:
@@ -98,4 +99,48 @@ def create_file_scanning_service(db: AsyncSession) -> FileScanningService:
     return FileScanningService(
         db_session=db,
         document_repo=document_repo,
+    )
+
+
+def create_resource_manager(db: AsyncSession) -> ResourceManager:
+    """Create a ResourceManager instance with required dependencies.
+
+    This factory function creates a resource manager for monitoring and managing
+    resource allocation for collection operations.
+
+    Args:
+        db: AsyncSession instance from FastAPI's dependency injection
+
+    Returns:
+        Configured ResourceManager instance
+
+    Example:
+        ```python
+        from fastapi import Depends
+        from sqlalchemy.ext.asyncio import AsyncSession
+        from shared.database import get_db
+        from webui.services.factory import create_resource_manager
+
+        async def get_resource_manager(
+            db: AsyncSession = Depends(get_db)
+        ) -> ResourceManager:
+            return create_resource_manager(db)
+
+        # In your endpoint or service
+        async def check_resources(
+            user_id: int,
+            resource_manager: ResourceManager = Depends(get_resource_manager),
+        ):
+            can_create = await resource_manager.can_create_collection(user_id)
+            return {"can_create": can_create}
+        ```
+    """
+    # Create repository instances
+    collection_repo = CollectionRepository(db)
+    operation_repo = OperationRepository(db)
+
+    # Create and return resource manager
+    return ResourceManager(
+        collection_repo=collection_repo,
+        operation_repo=operation_repo,
     )
