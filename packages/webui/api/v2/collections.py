@@ -8,7 +8,7 @@ the new collection-centric architecture.
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database import get_db
@@ -34,6 +34,7 @@ from packages.webui.api.schemas import (
 )
 from packages.webui.auth import get_current_user
 from packages.webui.dependencies import get_collection_for_user
+from packages.webui.rate_limiter import limiter
 from packages.webui.services.collection_service import CollectionService
 from packages.webui.services.factory import get_collection_service
 
@@ -49,10 +50,13 @@ router = APIRouter(prefix="/api/v2/collections", tags=["collections-v2"])
     responses={
         409: {"model": ErrorResponse, "description": "Collection name already exists"},
         400: {"model": ErrorResponse, "description": "Invalid request data"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
 )
+@limiter.limit("5/hour")
 async def create_collection(
-    request: CollectionCreate,
+    request: Request,  # noqa: ARG001
+    create_request: CollectionCreate,
     current_user: dict[str, Any] = Depends(get_current_user),
     service: CollectionService = Depends(get_collection_service),
 ) -> CollectionResponse:
@@ -65,14 +69,14 @@ async def create_collection(
     try:
         collection, operation = await service.create_collection(
             user_id=int(current_user["id"]),
-            name=request.name,
-            description=request.description,
+            name=create_request.name,
+            description=create_request.description,
             config={
-                "embedding_model": request.embedding_model,
-                "chunk_size": request.chunk_size,
-                "chunk_overlap": request.chunk_overlap,
-                "is_public": request.is_public,
-                "metadata": request.metadata,
+                "embedding_model": create_request.embedding_model,
+                "chunk_size": create_request.chunk_size,
+                "chunk_overlap": create_request.chunk_overlap,
+                "is_public": create_request.is_public,
+                "metadata": create_request.metadata,
             },
         )
 
@@ -96,7 +100,7 @@ async def create_collection(
     except EntityAlreadyExistsError as e:
         raise HTTPException(
             status_code=409,
-            detail=f"Collection with name '{request.name}' already exists",
+            detail=f"Collection with name '{create_request.name}' already exists",
         ) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -139,10 +143,7 @@ async def list_collections(
         )
 
         # Convert ORM objects to response models
-        collection_responses = [
-            CollectionResponse.from_collection(col)
-            for col in collections
-        ]
+        collection_responses = [CollectionResponse.from_collection(col) for col in collections]
 
         return CollectionListResponse(
             collections=collection_responses,
@@ -241,9 +242,12 @@ async def update_collection(
         404: {"model": ErrorResponse, "description": "Collection not found"},
         403: {"model": ErrorResponse, "description": "Access denied"},
         409: {"model": ErrorResponse, "description": "Cannot delete - operation in progress"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
 )
+@limiter.limit("5/hour")
 async def delete_collection(
+    request: Request,  # noqa: ARG001
     collection_uuid: str,
     current_user: dict[str, Any] = Depends(get_current_user),
     service: CollectionService = Depends(get_collection_service),
@@ -294,9 +298,12 @@ async def delete_collection(
         404: {"model": ErrorResponse, "description": "Collection not found"},
         403: {"model": ErrorResponse, "description": "Access denied"},
         409: {"model": ErrorResponse, "description": "Invalid collection state"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
 )
+@limiter.limit("10/hour")
 async def add_source(
+    request: Request,  # noqa: ARG001
     collection_uuid: str,
     source_path: str,
     source_config: dict[str, Any] | None = None,
@@ -360,9 +367,12 @@ async def add_source(
         404: {"model": ErrorResponse, "description": "Collection not found"},
         403: {"model": ErrorResponse, "description": "Access denied"},
         409: {"model": ErrorResponse, "description": "Invalid collection state"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
 )
+@limiter.limit("10/hour")
 async def remove_source(
+    request: Request,  # noqa: ARG001
     collection_uuid: str,
     source_path: str,
     current_user: dict[str, Any] = Depends(get_current_user),
@@ -424,9 +434,12 @@ async def remove_source(
         404: {"model": ErrorResponse, "description": "Collection not found"},
         403: {"model": ErrorResponse, "description": "Access denied"},
         409: {"model": ErrorResponse, "description": "Invalid collection state"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
 )
+@limiter.limit("1/5minutes")
 async def reindex_collection(
+    request: Request,  # noqa: ARG001
     collection_uuid: str,
     config_updates: dict[str, Any] | None = None,
     current_user: dict[str, Any] = Depends(get_current_user),

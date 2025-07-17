@@ -64,3 +64,14 @@ Successfully implemented TASK-015 with comprehensive collection API routes. The 
 - Operation management endpoints
 - Proper authorization using get_collection_for_user dependency
 - Clean separation from legacy job-centric API
+
+### Post-Implementation Enhancement
+#### 2025-07-17 - Added Rate Limiting
+Following user feedback, added rate limiting to expensive endpoints using slowapi:
+- Create collection: 5 requests per hour
+- Delete collection: 5 requests per hour  
+- Add source: 10 requests per hour
+- Remove source: 10 requests per hour
+- Reindex collection: 1 request per 5 minutes
+
+This prevents abuse and protects server resources from excessive operations.
