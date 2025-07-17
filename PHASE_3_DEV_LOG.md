@@ -624,3 +624,70 @@ The implementation follows the execution plan closely while maintaining backward
   - Real-time operation progress for all collection operations
   - Maintains backward compatibility during transition period
   - Clean separation of concerns between legacy and new systems
+
+---
+
+## TASK-3C: Deprecate & Phase Out Job-Centric API Endpoints
+
+### 2025-07-17 - Started TASK-3C Implementation
+- **Context**: Phase 3 review identified that old job-centric API endpoints still exist and need formal deprecation
+- **Goal**: Mark superseded endpoints as deprecated and prepare for eventual removal
+
+### 2025-07-17 - Completed Endpoint Analysis
+- **Job Endpoints Found**:
+  1. Main CRUD operations at `/api/jobs`:
+     - `POST /api/jobs` - Create new embedding job
+     - `GET /api/jobs` - List all jobs for user
+     - `GET /api/jobs/{job_id}` - Get specific job details
+     - `DELETE /api/jobs/{job_id}` - Delete job and collection
+  2. Collection-aware job endpoints (not deprecated):
+     - `POST /api/jobs/add-to-collection` - Add to existing collection
+     - `GET /api/jobs/collection-metadata/{name}` - Get collection metadata
+     - `POST /api/jobs/check-duplicates` - Check duplicate files
+     - `GET /api/jobs/collections-status` - Check Qdrant collections
+     - `GET /api/jobs/{job_id}/collection-exists` - Check if collection exists
+  3. Other endpoints (not deprecated):
+     - `GET /api/jobs/new-id` - Generate job ID for WebSocket
+     - `POST /api/jobs/{job_id}/cancel` - Cancel running job
+- **Collection Endpoints (replacements)**:
+  - `GET /api/collections` - List all collections with stats
+  - `GET /api/collections/{name}` - Get collection details
+  - `PUT /api/collections/{name}` - Rename collection
+  - `DELETE /api/collections/{name}` - Delete entire collection
+  - `GET /api/collections/{name}/files` - List files in collection
+
+### 2025-07-17 - Implemented Deprecation Markers
+- **Changes Made** (packages/webui/api/jobs.py):
+  1. Added `deprecated=True` to FastAPI router decorators for:
+     - `POST /api/jobs`
+     - `GET /api/jobs`
+     - `GET /api/jobs/{job_id}`
+     - `DELETE /api/jobs/{job_id}`
+  2. Added `logger.warning()` calls to deprecated endpoints:
+     - Each warning specifies which endpoint is deprecated
+     - Points to the collection-based replacement
+     - States removal timeline (v2.0)
+  3. Enhanced docstrings with deprecation notices:
+     - Added **DEPRECATED** section to each affected endpoint
+     - Provided migration guide for each endpoint
+     - Explained collection-centric alternatives
+- **Endpoints NOT Deprecated**:
+  - Collection-aware operations (add-to-collection, metadata, etc.)
+  - Utility endpoints (new-id, cancel)
+  - Internal API endpoints
+  - WebSocket handlers (handled separately)
+- **Documentation Updates**:
+  - Clear migration paths in docstrings
+  - Explains collection-centric model benefits
+  - Shows equivalent functionality in new endpoints
+
+### 2025-07-17 - Created Follow-up Removal Tickets
+- **Created** DEPRECATED_ENDPOINTS_REMOVAL_TICKETS.md:
+  - TICKET-001: Remove deprecated job CRUD endpoints
+  - TICKET-002: Remove job-centric WebSocket handler
+  - TICKET-003: Clean up job-centric utility functions
+  - Notes about pre-release flexibility
+- **Removal Strategy**:
+  - Monitor deprecated endpoint usage via logs
+  - Ensure feature parity before removal
+  - Clean removal post-v2.0 release

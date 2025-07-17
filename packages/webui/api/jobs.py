@@ -80,7 +80,7 @@ async def get_new_job_id(current_user: dict[str, Any] = Depends(get_current_user
     return {"job_id": str(uuid.uuid4())}
 
 
-@router.post("", response_model=JobStatus)
+@router.post("", response_model=JobStatus, deprecated=True)
 async def create_job(
     request: CreateJobRequest,
     current_user: dict[str, Any] = Depends(get_current_user),
@@ -88,7 +88,22 @@ async def create_job(
     file_repo: FileRepository = Depends(create_file_repository),
     collection_repo: CollectionRepository = Depends(create_collection_repository),  # noqa: ARG001
 ) -> JobStatus:
-    """Create a new embedding job"""
+    """Create a new embedding job
+
+    **DEPRECATED**: This endpoint is deprecated and will be removed in v2.0.
+    Use collection-based operations instead:
+    - For new collections: Collections are created automatically when processing files
+    - For adding to existing collections: Use POST /api/jobs/add-to-collection
+
+    Migration guide:
+    1. Instead of creating individual jobs, work with collections as logical units
+    2. Collections group related documents and can span multiple indexing operations
+    3. Use /api/collections endpoints for management and /api/search for querying
+    """
+    logger.warning(
+        "POST /api/jobs is deprecated. Use collection-based operations instead. "
+        "This endpoint will be removed in v2.0."
+    )
     # Accept job_id from request if provided, otherwise generate new one
     job_id = request.job_id if request.job_id else str(uuid.uuid4())
 
@@ -397,12 +412,24 @@ async def add_to_collection(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@router.get("", response_model=list[JobStatus])
+@router.get("", response_model=list[JobStatus], deprecated=True)
 async def list_jobs(
     current_user: dict[str, Any] = Depends(get_current_user),
     job_repo: JobRepository = Depends(create_job_repository),
 ) -> list[JobStatus]:
-    """List all jobs for the current user"""
+    """List all jobs for the current user
+
+    **DEPRECATED**: This endpoint is deprecated and will be removed in v2.0.
+    Use GET /api/collections instead for a collection-centric view.
+
+    Migration guide:
+    1. GET /api/collections provides aggregated view of all collections
+    2. Each collection shows total files, vectors, and associated jobs
+    3. Use GET /api/collections/{name} for detailed job information per collection
+    """
+    logger.warning(
+        "GET /api/jobs is deprecated. Use GET /api/collections instead. This endpoint will be removed in v2.0."
+    )
     jobs = await job_repo.list_jobs(user_id=str(current_user["id"]))
 
     result = []
@@ -544,13 +571,26 @@ async def cancel_job(
     return {"message": "Job marked as cancelled (task revocation pending implementation)"}
 
 
-@router.delete("/{job_id}")
+@router.delete("/{job_id}", deprecated=True)
 async def delete_job(
     job_id: str,
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     job_repo: JobRepository = Depends(create_job_repository),
 ) -> dict[str, str]:
-    """Delete a job and its associated collection"""
+    """Delete a job and its associated collection
+
+    **DEPRECATED**: This endpoint is deprecated and will be removed in v2.0.
+    Use DELETE /api/collections/{collection_name} instead.
+
+    Migration guide:
+    1. DELETE /api/collections/{name} removes entire collection and all associated jobs
+    2. This provides cleaner semantics for managing document sets
+    3. Deletion is atomic at the collection level
+    """
+    logger.warning(
+        f"DELETE /api/jobs/{job_id} is deprecated. Use DELETE /api/collections/{{collection_name}} instead. "
+        "This endpoint will be removed in v2.0."
+    )
     # Check if job exists
     job = await job_repo.get_job(job_id)
     if not job:
@@ -577,13 +617,26 @@ async def delete_job(
     return {"message": "Job deleted successfully"}
 
 
-@router.get("/{job_id}", response_model=JobStatus)
+@router.get("/{job_id}", response_model=JobStatus, deprecated=True)
 async def get_job(
     job_id: str,
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     job_repo: JobRepository = Depends(create_job_repository),
 ) -> JobStatus:
-    """Get job details"""
+    """Get job details
+
+    **DEPRECATED**: This endpoint is deprecated and will be removed in v2.0.
+    Use GET /api/collections/{collection_name} instead.
+
+    Migration guide:
+    1. Jobs are now grouped under collections
+    2. GET /api/collections/{name} shows all jobs for a collection
+    3. Collection details include configuration, stats, and job history
+    """
+    logger.warning(
+        f"GET /api/jobs/{job_id} is deprecated. Use GET /api/collections/{{collection_name}} instead. "
+        "This endpoint will be removed in v2.0."
+    )
     job = await job_repo.get_job(job_id)
 
     if not job:
