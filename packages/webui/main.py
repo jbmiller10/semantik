@@ -43,6 +43,9 @@ from .api import (  # noqa: E402
 )
 from .api.files import scan_websocket  # noqa: E402
 from .api.jobs import operation_websocket_endpoint, websocket_endpoint  # noqa: E402
+from .api.v2 import collections as v2_collections  # noqa: E402
+from .api.v2 import operations as v2_operations  # noqa: E402
+from .api.v2 import search as v2_search  # noqa: E402
 from .rate_limiter import limiter  # noqa: E402
 from .websocket_manager import ws_manager  # noqa: E402
 
@@ -194,6 +197,12 @@ def create_app() -> FastAPI:
     app.include_router(documents.router)
     app.include_router(health.router)
     app.include_router(internal.router)
+
+    # Include v2 API routers
+    app.include_router(v2_collections.router)
+    app.include_router(v2_operations.router)
+    app.include_router(v2_search.router)
+
     app.include_router(root.router)  # No prefix for static + root
 
     # Mount WebSocket endpoints at the app level
