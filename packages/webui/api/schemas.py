@@ -8,7 +8,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+import re
 
 
 # Enums
@@ -72,13 +73,25 @@ class UserResponse(UserBase):
 class CollectionBase(BaseModel):
     """Base collection schema."""
 
-    name: str = Field(..., min_length=1, max_length=255)
+    name: str = Field(
+        ..., 
+        min_length=1, 
+        max_length=255,
+        pattern=r"^[^/\\*?<>|:\"]+$",
+        description="Collection name (cannot contain / \\ * ? < > | : \")"
+    )
     description: str | None = None
     embedding_model: str = Field(default="Qwen/Qwen3-Embedding-0.6B")
     chunk_size: int = Field(default=1000, ge=100, le=10000)
     chunk_overlap: int = Field(default=200, ge=0, le=1000)
     is_public: bool = False
     metadata: dict[str, Any] | None = None
+
+    @field_validator("name", mode="after")
+    @classmethod
+    def normalize_name(cls, v: str) -> str:
+        """Normalize collection name by stripping whitespace."""
+        return v.strip()
 
 
 class CollectionCreate(CollectionBase):
@@ -88,10 +101,24 @@ class CollectionCreate(CollectionBase):
 class CollectionUpdate(BaseModel):
     """Schema for updating a collection."""
 
-    name: str | None = Field(None, min_length=1, max_length=255)
+    name: str | None = Field(
+        None, 
+        min_length=1, 
+        max_length=255,
+        pattern=r"^[^/\\*?<>|:\"]+$",
+        description="Collection name (cannot contain / \\ * ? < > | : \")"
+    )
     description: str | None = None
     is_public: bool | None = None
     metadata: dict[str, Any] | None = None
+
+    @field_validator("name", mode="after")
+    @classmethod
+    def normalize_name(cls, v: str | None) -> str | None:
+        """Normalize collection name by stripping whitespace."""
+        if v is None:
+            return v
+        return v.strip()
 
 
 class CollectionResponse(CollectionBase):

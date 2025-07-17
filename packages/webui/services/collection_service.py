@@ -69,11 +69,14 @@ class CollectionService:
             # Create collection in database
             try:
                 collection = await self.collection_repo.create(
-                    user_id=user_id,
+                    owner_id=user_id,
                     name=name,
                     description=description,
-                    config=config or {},
-                    resource_limits=resource_limits,
+                    embedding_model=config.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B") if config else "Qwen/Qwen3-Embedding-0.6B",
+                    chunk_size=config.get("chunk_size", 1000) if config else 1000,
+                    chunk_overlap=config.get("chunk_overlap", 200) if config else 200,
+                    is_public=config.get("is_public", False) if config else False,
+                    meta=config.get("metadata") if config else None,
                 )
             except Exception as e:
                 logger.error(f"Failed to create collection: {e}")
@@ -81,7 +84,7 @@ class CollectionService:
 
             # Create operation record
             operation = await self.operation_repo.create(
-                collection_id=collection["id"],
+                collection_id=collection.id,
                 user_id=user_id,
                 type=OperationType.INDEX,
                 config={
@@ -102,7 +105,44 @@ class CollectionService:
 
             # Transaction commits here automatically
 
-        return dict(collection), dict(operation)
+        # Convert ORM objects to dictionaries
+        collection_dict = {
+            "id": collection.id,
+            "name": collection.name,
+            "description": collection.description,
+            "owner_id": collection.owner_id,
+            "vector_store_name": collection.vector_store_name,
+            "embedding_model": collection.embedding_model,
+            "chunk_size": collection.chunk_size,
+            "chunk_overlap": collection.chunk_overlap,
+            "is_public": collection.is_public,
+            "metadata": collection.meta,
+            "created_at": collection.created_at,
+            "updated_at": collection.updated_at,
+            "document_count": 0,  # New collection has no documents
+            "status": collection.status.value if hasattr(collection.status, 'value') else collection.status,
+            "config": {
+                "embedding_model": collection.embedding_model,
+                "chunk_size": collection.chunk_size,
+                "chunk_overlap": collection.chunk_overlap,
+                "is_public": collection.is_public,
+                "metadata": collection.meta,
+            }
+        }
+        
+        operation_dict = {
+            "uuid": operation.uuid,
+            "collection_id": operation.collection_id,
+            "type": operation.type.value,
+            "status": operation.status.value,
+            "config": operation.config,
+            "created_at": operation.created_at,
+            "started_at": operation.started_at,
+            "completed_at": operation.completed_at,
+            "error_message": operation.error_message,
+        }
+
+        return collection_dict, operation_dict
 
     async def add_source(
         self,
@@ -133,14 +173,14 @@ class CollectionService:
         )
 
         # Validate collection state
-        if collection["status"] not in [CollectionStatus.READY, CollectionStatus.PARTIALLY_READY]:
+        if collection.status not in [CollectionStatus.READY, CollectionStatus.DEGRADED]:
             raise InvalidStateError(
-                f"Cannot add source to collection in {collection['status']} state. "
-                f"Collection must be in {CollectionStatus.READY} or {CollectionStatus.PARTIALLY_READY} state."
+                f"Cannot add source to collection in {collection.status} state. "
+                f"Collection must be in {CollectionStatus.READY} or {CollectionStatus.DEGRADED} state."
             )
 
         # Check if there's already an active operation
-        active_ops = await self.operation_repo.get_active_operations_count(collection["id"])
+        active_ops = await self.operation_repo.get_active_operations_count(collection.id)
         if active_ops > 0:
             raise InvalidStateError(
                 "Cannot add source while another operation is in progress. "
@@ -151,7 +191,7 @@ class CollectionService:
         async with self.db_session.begin():
             # Create operation record
             operation = await self.operation_repo.create(
-                collection_id=collection["id"],
+                collection_id=collection.id,
                 user_id=user_id,
                 type=OperationType.APPEND,
                 config={
@@ -160,8 +200,8 @@ class CollectionService:
                 },
             )
 
-            # Update collection status to indexing
-            await self.collection_repo.update_status(collection["id"], CollectionStatus.INDEXING)
+            # Update collection status to processing
+            await self.collection_repo.update_status(collection.id, CollectionStatus.PROCESSING)
 
             # Dispatch Celery task
             celery_app.send_task(
@@ -175,7 +215,18 @@ class CollectionService:
 
             # Transaction commits here automatically
 
-        return dict(operation)
+        # Convert ORM object to dictionary
+        return {
+            "uuid": operation.uuid,
+            "collection_id": operation.collection_id,
+            "type": operation.type.value,
+            "status": operation.status.value,
+            "config": operation.config,
+            "created_at": operation.created_at,
+            "started_at": operation.started_at,
+            "completed_at": operation.completed_at,
+            "error_message": operation.error_message,
+        }
 
     async def reindex_collection(
         self, collection_id: str, user_id: int, config_updates: dict[str, Any] | None = None
@@ -203,19 +254,19 @@ class CollectionService:
         )
 
         # Validate collection state
-        if collection["status"] == CollectionStatus.INDEXING:
+        if collection.status == CollectionStatus.PROCESSING:
             raise InvalidStateError(
-                "Cannot reindex collection that is currently indexing. "
+                "Cannot reindex collection that is currently processing. "
                 "Please wait for the current operation to complete."
             )
 
-        if collection["status"] == CollectionStatus.FAILED:
+        if collection.status == CollectionStatus.ERROR:
             raise InvalidStateError(
                 "Cannot reindex failed collection. Please delete and recreate the collection instead."
             )
 
         # Check if there's already an active operation
-        active_ops = await self.operation_repo.get_active_operations_count(collection["id"])
+        active_ops = await self.operation_repo.get_active_operations_count(collection.id)
         if active_ops > 0:
             raise InvalidStateError(
                 "Cannot reindex while another operation is in progress. "
@@ -223,7 +274,13 @@ class CollectionService:
             )
 
         # Merge config updates with existing config
-        new_config = collection["config"].copy()
+        new_config = {
+            "embedding_model": collection.embedding_model,
+            "chunk_size": collection.chunk_size,
+            "chunk_overlap": collection.chunk_overlap,
+            "is_public": collection.is_public,
+            "metadata": collection.meta,
+        }
         if config_updates:
             new_config.update(config_updates)
 
@@ -231,18 +288,24 @@ class CollectionService:
         async with self.db_session.begin():
             # Create operation record
             operation = await self.operation_repo.create(
-                collection_id=collection["id"],
+                collection_id=collection.id,
                 user_id=user_id,
                 type=OperationType.REINDEX,
                 config={
-                    "previous_config": collection["config"],
+                    "previous_config": {
+                        "embedding_model": collection.embedding_model,
+                        "chunk_size": collection.chunk_size,
+                        "chunk_overlap": collection.chunk_overlap,
+                        "is_public": collection.is_public,
+                        "metadata": collection.meta,
+                    },
                     "new_config": new_config,
                     "blue_green": True,  # Always use blue-green for zero downtime
                 },
             )
 
-            # Update collection status to indexing
-            await self.collection_repo.update_status(collection["id"], CollectionStatus.INDEXING)
+            # Update collection status to processing
+            await self.collection_repo.update_status(collection.id, CollectionStatus.PROCESSING)
 
             # Dispatch Celery task
             celery_app.send_task(
@@ -256,7 +319,18 @@ class CollectionService:
 
             # Transaction commits here automatically
 
-        return dict(operation)
+        # Convert ORM object to dictionary
+        return {
+            "uuid": operation.uuid,
+            "collection_id": operation.collection_id,
+            "type": operation.type.value,
+            "status": operation.status.value,
+            "config": operation.config,
+            "created_at": operation.created_at,
+            "started_at": operation.started_at,
+            "completed_at": operation.completed_at,
+            "error_message": operation.error_message,
+        }
 
     async def delete_collection(self, collection_id: str, user_id: int) -> None:
         """Delete a collection and all associated data.
@@ -276,7 +350,7 @@ class CollectionService:
         )
 
         # Check if there's an active operation
-        active_ops = await self.operation_repo.get_active_operations_count(collection["id"])
+        active_ops = await self.operation_repo.get_active_operations_count(collection.id)
         if active_ops > 0:
             raise InvalidStateError(
                 "Cannot delete collection while operations are in progress. "
@@ -285,21 +359,21 @@ class CollectionService:
 
         try:
             # Delete from Qdrant if collection exists
-            if collection["qdrant_collection_name"]:
+            if collection.vector_store_name:
                 try:
                     qdrant_client = qdrant_manager.get_client()
                     # Check if collection exists in Qdrant
                     collections = qdrant_client.get_collections().collections
                     collection_names = [c.name for c in collections]
-                    if collection["qdrant_collection_name"] in collection_names:
-                        qdrant_client.delete_collection(collection["qdrant_collection_name"])
-                        logger.info(f"Deleted Qdrant collection: {collection['qdrant_collection_name']}")
+                    if collection.vector_store_name in collection_names:
+                        qdrant_client.delete_collection(collection.vector_store_name)
+                        logger.info(f"Deleted Qdrant collection: {collection.vector_store_name}")
                 except Exception as e:
                     logger.error(f"Failed to delete Qdrant collection: {e}")
                     # Continue with database deletion even if Qdrant deletion fails
 
             # Delete from database (cascade will handle operations, documents, etc.)
-            await self.collection_repo.delete(collection["id"])
+            await self.collection_repo.delete(collection.id, user_id)
 
             logger.info(f"Deleted collection {collection_id} and all associated data")
 
@@ -329,14 +403,14 @@ class CollectionService:
         )
 
         # Validate collection state
-        if collection["status"] not in [CollectionStatus.READY, CollectionStatus.PARTIALLY_READY]:
+        if collection.status not in [CollectionStatus.READY, CollectionStatus.DEGRADED]:
             raise InvalidStateError(
-                f"Cannot remove source from collection in {collection['status']} state. "
-                f"Collection must be in {CollectionStatus.READY} or {CollectionStatus.PARTIALLY_READY} state."
+                f"Cannot remove source from collection in {collection.status} state. "
+                f"Collection must be in {CollectionStatus.READY} or {CollectionStatus.DEGRADED} state."
             )
 
         # Check if there's already an active operation
-        active_ops = await self.operation_repo.get_active_operations_count(collection["id"])
+        active_ops = await self.operation_repo.get_active_operations_count(collection.id)
         if active_ops > 0:
             raise InvalidStateError(
                 "Cannot remove source while another operation is in progress. "
@@ -347,7 +421,7 @@ class CollectionService:
         async with self.db_session.begin():
             # Create operation record
             operation = await self.operation_repo.create(
-                collection_id=collection["id"],
+                collection_id=collection.id,
                 user_id=user_id,
                 type=OperationType.REMOVE_SOURCE,
                 config={
@@ -356,7 +430,7 @@ class CollectionService:
             )
 
             # Update collection status
-            await self.collection_repo.update_status(collection["id"], CollectionStatus.PROCESSING)
+            await self.collection_repo.update_status(collection.id, CollectionStatus.PROCESSING)
 
             # Dispatch Celery task
             celery_app.send_task(
@@ -370,4 +444,15 @@ class CollectionService:
 
             # Transaction commits here automatically
 
-        return dict(operation)
+        # Convert ORM object to dictionary
+        return {
+            "uuid": operation.uuid,
+            "collection_id": operation.collection_id,
+            "type": operation.type.value,
+            "status": operation.status.value,
+            "config": operation.config,
+            "created_at": operation.created_at,
+            "started_at": operation.started_at,
+            "completed_at": operation.completed_at,
+            "error_message": operation.error_message,
+        }

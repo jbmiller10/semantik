@@ -114,6 +114,14 @@ async def complete_reindex(
             if not collection:
                 raise HTTPException(status_code=404, detail=f"Collection {request.collection_id} not found")
 
+            # Validate that collection is in the correct state for completing reindex
+            if collection.status != CollectionStatus.PROCESSING:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Cannot complete reindex: collection is in {collection.status} state, "
+                    f"expected {CollectionStatus.PROCESSING}"
+                )
+
             # Save old collection names for cleanup
             old_collection_names = collection.qdrant_collections or []
 
