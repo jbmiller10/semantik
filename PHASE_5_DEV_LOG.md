@@ -319,3 +319,349 @@ Key findings:
 - Shows clear warnings about the operation
 
 The implementation is complete and ready for integration once the backend v2 APIs are fully connected in subsequent refactor tasks.
+
+---
+
+## TASK-021: Implement Create/Add/Re-index Modals
+
+### 2025-07-17: Implementation and Investigation
+
+#### Overview
+Implemented the three modal components for collection operations: CreateCollectionModal (enhanced), AddDataToCollectionModal (updated), and ReindexCollectionModal (enhanced). Also created reusable WebSocket-based operation progress tracking components.
+
+#### Completed Components
+
+1. **Enhanced CreateCollectionModal**
+   - Added optional "Initial Source Directory" field for immediate indexing after creation
+   - Implemented "Advanced Settings" accordion for better UX:
+     - Collapsed by default to simplify the interface
+     - Contains chunk size, chunk overlap, and public collection settings
+     - Smooth expand/collapse animation
+   - Two-step process when source is provided:
+     1. Create collection via v2 API
+     2. Add source via addSource API if provided
+   - Navigation to collection details page after creation with source
+   - Improved form validation with specific error messages
+
+2. **Updated AddDataToCollectionModal**
+   - Migrated from v1 to v2 API endpoints
+   - Updated to accept Collection object instead of separate props
+   - Uses collectionStore.addSource() method
+   - Displays collection settings clearly (model, chunk size, overlap, status)
+   - Navigates to collection detail page after adding source
+   - Removed unused description field
+   - Updated error handling and toast messages
+
+3. **Enhanced ReindexCollectionModal**
+   - Added visual diff showing current vs new settings:
+     - Red strikethrough for old values
+     - Green highlighting for new values
+     - Arrow indicators for changes
+   - Displays impact summary:
+     - Number of vectors/documents to be re-processed
+     - Estimated processing time
+     - Special warning for embedding model changes
+   - Improved warning section with specific counts
+   - Navigate to collection page after initiating reindex
+   - Better type safety with Collection object instead of separate props
+
+4. **Created OperationProgress Component**
+   - Reusable component for displaying operation status and progress
+   - Features:
+     - Real-time progress bar with shimmer animation
+     - Status badges with appropriate colors
+     - Operation type labels (Initial Indexing, Adding Data, etc.)
+     - ETA display for processing operations
+     - Error message display for failed operations
+     - Source path and timing information
+     - Live indicator when WebSocket is connected
+
+5. **Created useOperationProgress Hook**
+   - WebSocket integration for real-time operation updates
+   - Features:
+     - Automatic connection to `/ws/operations/{operationId}` endpoint
+     - Updates collection store with progress messages
+     - Toast notifications for status changes (configurable)
+     - Callbacks for completion and error events
+     - Handles all operation status types
+     - Prevents duplicate completion notifications
+
+6. **Created CollectionOperations Component**
+   - Displays all operations for a collection
+   - Features:
+     - Separates active and recent operations
+     - Auto-fetches operations on mount
+     - Sorts by creation date (newest first)
+     - Different styling for operation status
+     - Shows limited number of operations with count indicator
+     - Empty state with helpful message
+
+#### Key Design Decisions
+
+1. **WebSocket Architecture**: Created a generic hook that can be reused across different features
+2. **Progressive Enhancement**: Modals work without WebSocket but provide better UX with it
+3. **Visual Feedback**: Clear diff visualization for configuration changes
+4. **User Safety**: Typed confirmation for destructive operations like reindex
+5. **Navigation Flow**: Direct users to collection details to see operation progress
+
+#### Integration Issues Discovered
+
+##### Collections Not Loading Issue
+
+During testing, discovered that collections are failing to load with "Failed to load collections" error:
+
+1. **API Version Mismatch**:
+   - Frontend is calling both `/api/collections` (v1) and `/api/v2/collections`
+   - Backend logs show: `list_collections is deprecated. Use new Collections API.`
+   - The CollectionsDashboard is trying to use v2 API but falling back to v1
+
+2. **Backend Errors**:
+   ```
+   AttributeError: module 'bcrypt' has no attribute '__about__'
+   ```
+   - There's a bcrypt version compatibility issue in the backend
+   - This is causing authentication or password hashing failures
+
+3. **Health Check Failures**:
+   - Multiple `503 Service Unavailable` responses from `/api/health/readyz`
+   - This suggests the backend services aren't fully initialized
+
+#### Root Cause Analysis
+
+The issue is NOT a missing implementation for a future task. According to the refactor plan:
+- TASK-018 (Collection Store) ✅ Completed
+- TASK-019 (Collection Dashboard) ✅ Completed
+- TASK-020 (Collection Card & Details) ✅ Completed
+- TASK-021 (Modals) ✅ Completed
+
+The collections dashboard should be working. The issue appears to be:
+1. Backend compatibility problem with bcrypt library
+2. Possible incomplete migration from v1 to v2 APIs
+3. Frontend making duplicate API calls to both v1 and v2 endpoints
+
+#### Next Steps for Investigation
+
+1. Check if CollectionsDashboard is using the correct API endpoint
+2. Investigate the bcrypt compatibility issue in the backend
+3. Ensure v2 collections API is properly returning data
+4. Check if there's a database migration needed for v2 collections
+5. Verify the frontend is consistently using v2 APIs
+
+#### Component Testing Status
+
+✅ **Code Quality**:
+- TypeScript compilation passes
+- Fixed ESLint errors in new components
+- Components follow existing patterns
+
+⚠️ **Runtime Testing**:
+- Cannot fully test due to collections not loading
+- WebSocket endpoints not verified
+- Modal interactions need end-to-end testing
+
+#### Summary
+
+All three modals have been successfully implemented with enhanced UX features. Additionally, created reusable components for operation progress tracking that will improve the user experience across the application. However, discovered a critical issue with collections not loading that needs to be resolved before full testing can be completed.
+
+---
+
+### Investigation: Collections Loading Issue
+
+#### 2025-07-17: Root Cause Analysis and Fix Implementation
+
+##### Issue Summary
+
+During end-to-end testing, discovered that collections were failing to load in the UI with "Failed to load collections" error. Initial investigation revealed multiple interconnected issues:
+
+1. **Mixed API Usage**: Frontend components were using both v1 (`/api/collections`) and v2 (`/api/v2/collections`) endpoints
+2. **Backend Compatibility**: BCrypt version incompatibility error in the backend
+3. **Service Health**: Multiple 503 errors from health check endpoints
+
+##### Key Findings
+
+1. **CollectionDetailsModal Using V1 API**:
+   - The modal was still using `collectionsApi.getDetails()` (v1) instead of v2 endpoints
+   - Files endpoint was using v1 API
+   - Jobs were not mapped to the new Operations concept
+
+2. **Data Structure Mismatch**:
+   - V1 API returned a different structure with nested `configuration` and `stats` objects
+   - V2 API uses flattened structure with direct properties on Collection object
+   - This mismatch caused TypeScript errors and runtime failures
+
+3. **Backend Logs Analysis**:
+   ```
+   AttributeError: module 'bcrypt' has no attribute '__about__'
+   list_collections is deprecated. Use new Collections API.
+   ```
+   - BCrypt library version issue affecting authentication
+   - Deprecated v1 endpoints still being called
+
+##### Fix Implementation
+
+###### 1. Updated CollectionDetailsModal to V2 API
+
+**Changes Made**:
+- Imported `collectionsV2Api` instead of old `collectionsApi`
+- Updated data fetching to use:
+  - `collectionsV2Api.get()` for collection details
+  - `collectionsV2Api.listOperations()` for operations (formerly jobs)
+  - `collectionsV2Api.listDocuments()` for documents (formerly files)
+- Removed old `CollectionDetails` interface
+- Updated all data references from nested structure to flat structure
+
+**Data Mapping**:
+- `details.configuration.model_name` → `collection.embedding_model`
+- `details.configuration.chunk_size` → `collection.chunk_size`
+- `details.stats.total_files` → `collection.document_count`
+- `details.stats.total_vectors` → `collection.vector_count`
+- `details.jobs` → `operationsData.items`
+- `filesData.files` → `documentsData.items`
+
+**UI Updates**:
+- Changed "Jobs" to "Operations History"
+- Changed "Files" to "Documents"
+- Updated field labels (e.g., "tokens" to "characters")
+- Added source path aggregation from documents
+
+###### 2. Modal Props Updates
+
+**AddDataToCollectionModal**:
+- Changed from accepting separate props to accepting full Collection object
+- Now uses collection properties directly
+
+**ReindexCollectionModal**:
+- Updated to accept Collection object instead of separate ID/name
+- Simplified configuration change tracking
+
+###### 3. Type Safety Improvements
+
+- Added proper imports for v2 types
+- Fixed TypeScript errors by using correct data structures
+- Removed unused imports and variables
+
+##### Current Status
+
+**Completed**:
+- ✅ CollectionDetailsModal fully migrated to v2 API
+- ✅ All modals updated to use v2 data structures
+- ✅ Type safety improved across components
+- ✅ UI labels updated to match new terminology
+
+**Remaining Issues**:
+- ⚠️ Some references to old `details` object still need cleanup (see specific list below)
+- ⚠️ BCrypt compatibility issue in backend needs resolution
+- ⚠️ Need to ensure consistent v2 API usage across entire frontend
+
+##### Specific `details` References to Fix
+
+In `CollectionDetailsModal.tsx`, the following lines still reference the old `details` object:
+
+1. **Line 183**: `if (value !== undefined && details) {` - should check `collection` instead
+2. **Lines 203-206**: Header section still shows old stats structure
+   ```typescript
+   {details && (
+     <p className="text-sm text-gray-500 mt-1">
+       {details.stats.job_count} jobs • {details.stats.total_files} files • {details.stats.total_vectors} vectors
+     </p>
+   )}
+   ```
+3. **Lines 224, 231, 238**: Button disabled states checking `!details` instead of `!collection`
+4. **Lines 695-742**: Modal instantiation sections still creating Collection objects from old structure:
+   - AddDataModal (lines 695-710)
+   - RenameModal (lines 712-717) 
+   - DeleteModal (lines 720-727)
+   - ReindexModal (lines 729-744)
+
+These sections are trying to construct Collection objects from the old nested structure (`details.configuration.model_name`, `details.stats.total_files`, etc.) when they should just pass the `collection` object directly since the modals have already been updated to accept the new structure.
+
+##### Next Steps
+
+1. **Complete cleanup of remaining `details` references**:
+   - Replace all `details` checks with `collection` checks
+   - Update header stats to use collection properties directly
+   - Simplify modal props to pass collection object directly
+   - Remove the manual object construction in modal instantiations
+
+2. **Test with backend team to resolve BCrypt issue**
+   - The error suggests a version mismatch with the bcrypt library
+   - May need to update Python dependencies
+
+3. **Verify all components use v2 API exclusively**:
+   - Check for any remaining imports of old `collectionsApi`
+   - Ensure no components are calling `/api/collections` endpoints
+
+4. **End-to-end testing of collection operations**:
+   - Create collection with initial source
+   - Add additional sources
+   - Perform re-indexing
+   - Verify WebSocket updates
+
+5. **Performance testing with real data**
+
+##### Technical Debt Identified
+
+1. **API Version Coexistence**: Having both v1 and v2 APIs active causes confusion
+2. **Incremental Migration**: Components being migrated one-by-one leads to mixed states
+3. **Documentation**: Need clear migration guide for remaining v1 dependencies
+
+##### Lessons Learned
+
+1. **API Migration Strategy**: Should have created a comprehensive list of all v1 API usages before starting migration
+2. **Type System**: TypeScript caught many issues early - proper typing is crucial
+3. **Testing**: Need better integration tests to catch API version mismatches
+4. **Backend Compatibility**: Library version management needs attention
+
+The investigation revealed that the collections loading issue was primarily due to incomplete migration from v1 to v2 APIs. The fix implementation addresses the major components, but full resolution requires completing the migration across all frontend components and resolving backend compatibility issues.
+
+---
+
+### 2025-07-17: Completed v2 API Migration in CollectionDetailsModal
+
+#### Overview
+
+Successfully completed the cleanup of all remaining `details` references in CollectionDetailsModal.tsx, fully migrating the component to use the v2 API structure.
+
+#### Changes Made
+
+1. **Fixed Line 183**: Changed `if (value !== undefined && details)` to check `collection` instead
+2. **Fixed Header Stats (Lines 203-206)**: Updated to use collection properties and operationsData directly:
+   - Changed from `details.stats.job_count` to `operationsData?.total || 0`
+   - Changed from `details.stats.total_files` to `collection.document_count`
+   - Changed from `details.stats.total_vectors` to `collection.vector_count`
+3. **Fixed Button States (Lines 224, 231, 238)**: Changed all `disabled={!details}` to `disabled={!collection}`
+4. **Fixed Modal Props (Lines 695-742)**:
+   - AddDataModal: Now passes `collection` object directly instead of constructing from old structure
+   - RenameModal: Uses `collection.name` instead of `details.name`
+   - DeleteModal: Adapts collection data to expected stats format
+   - ReindexModal: Passes `collection` object directly with proper configChanges
+
+#### Additional Fixes
+
+- Removed unused imports (`Operation` type, `React`)
+- Fixed TypeScript compilation errors
+- Updated handleRenameSuccess to not expect newName parameter (using v2 API with UUIDs)
+
+#### Verification
+
+- ✅ Frontend build succeeds with no TypeScript errors
+- ✅ Python linting (ruff) passes with no errors
+- ✅ Python type checking (mypy) passes with no errors
+
+#### Current Status
+
+The CollectionDetailsModal is now fully migrated to v2 API. The component properly:
+- Fetches collection details using v2 endpoints
+- Displays operations instead of jobs
+- Shows documents instead of files
+- Passes proper v2 data structures to all sub-modals
+
+#### Remaining Work
+
+While this specific component is complete, the broader migration includes:
+1. **Update DeleteCollectionModal** to accept v2 Collection object instead of old stats structure
+2. **Resolve BCrypt compatibility issue** in the backend (separate backend task)
+3. **Complete v1 to v2 API migration** across any remaining components
+4. **End-to-end testing** of the full collection workflow with real WebSocket integration
+
+The immediate frontend v2 API migration for CollectionDetailsModal is complete and ready for integration.

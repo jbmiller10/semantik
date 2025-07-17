@@ -1,28 +1,35 @@
 import { useState } from 'react';
 import { useUIStore } from '../stores/uiStore';
 import { useCollectionStore } from '../stores/collectionStore';
-import type { ReindexRequest } from '../types/collection';
+import { useNavigate } from 'react-router-dom';
+import type { Collection, ReindexRequest } from '../types/collection';
 
 interface ReindexCollectionModalProps {
-  collectionId: string;
-  collectionName: string;
+  collection: Collection;
   configChanges: {
+    embedding_model?: string;
     chunk_size?: number;
     chunk_overlap?: number;
-    instruction?: string;
   };
   onClose: () => void;
   onSuccess: () => void;
 }
 
-function ReindexCollectionModal({ collectionId, collectionName, configChanges, onClose, onSuccess }: ReindexCollectionModalProps) {
+function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess }: ReindexCollectionModalProps) {
   const { addToast } = useUIStore();
   const { reindexCollection } = useCollectionStore();
+  const navigate = useNavigate();
   const [confirmText, setConfirmText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const expectedConfirmText = `reindex ${collectionName}`;
+  const expectedConfirmText = `reindex ${collection.name}`;
   const isConfirmValid = confirmText === expectedConfirmText;
+  
+  // Calculate what's changing
+  const hasModelChange = configChanges.embedding_model !== undefined && configChanges.embedding_model !== collection.embedding_model;
+  const hasChunkSizeChange = configChanges.chunk_size !== undefined && configChanges.chunk_size !== collection.chunk_size;
+  const hasChunkOverlapChange = configChanges.chunk_overlap !== undefined && configChanges.chunk_overlap !== collection.chunk_overlap;
+  const totalChanges = [hasModelChange, hasChunkSizeChange, hasChunkOverlapChange].filter(Boolean).length;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,6 +39,9 @@ function ReindexCollectionModal({ collectionId, collectionName, configChanges, o
     try {
       // Prepare the reindex request
       const request: ReindexRequest = {};
+      if (configChanges.embedding_model !== undefined) {
+        request.embedding_model = configChanges.embedding_model;
+      }
       if (configChanges.chunk_size !== undefined) {
         request.chunk_size = configChanges.chunk_size;
       }
@@ -39,15 +49,15 @@ function ReindexCollectionModal({ collectionId, collectionName, configChanges, o
         request.chunk_overlap = configChanges.chunk_overlap;
       }
       
-      // TODO: Add instruction field to ReindexRequest type once backend supports it
-      // Currently the instruction field is tracked in UI but not sent to backend
-      
       // Call the store method to start re-indexing
-      await reindexCollection(collectionId, request);
+      await reindexCollection(collection.id, request);
+      
+      // Navigate to collection detail page to show operation progress
+      navigate(`/collections/${collection.id}`);
       
       addToast({
         type: 'success',
-        message: `Re-indexing started for collection "${collectionName}". This may take some time.`,
+        message: `Re-indexing started for collection "${collection.name}". You can track progress on the collection page.`,
       });
       
       onSuccess();
@@ -104,7 +114,7 @@ function ReindexCollectionModal({ collectionId, collectionName, configChanges, o
             onKeyDown={handleKeyDown}
           >
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Re-index Collection
+              Re-index Collection: {collection.name}
             </h2>
 
             <div className="mb-6">
@@ -122,9 +132,12 @@ function ReindexCollectionModal({ collectionId, collectionName, configChanges, o
                     <div className="mt-2 text-sm text-red-700">
                       <p>Re-indexing will:</p>
                       <ul className="list-disc list-inside mt-1">
-                        <li>Delete all existing vectors for this collection</li>
-                        <li>Re-process all documents with the new configuration</li>
+                        <li>Delete all existing vectors ({collection.vector_count} vectors)</li>
+                        <li>Re-process all documents ({collection.document_count} documents) with new settings</li>
                         <li>Make the collection unavailable during processing</li>
+                        {hasModelChange && (
+                          <li className="font-semibold">Change the embedding model (requires complete re-embedding)</li>
+                        )}
                       </ul>
                     </div>
                   </div>
@@ -132,25 +145,58 @@ function ReindexCollectionModal({ collectionId, collectionName, configChanges, o
               </div>
 
               <div className="mt-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-2">Configuration Changes:</h4>
-                <ul className="text-sm text-gray-600 space-y-1">
-                  {configChanges.chunk_size !== undefined && (
-                    <li>• Chunk size: {configChanges.chunk_size} tokens</li>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Configuration Changes ({totalChanges} change{totalChanges !== 1 ? 's' : ''}):</h4>
+                <div className="space-y-2 bg-gray-50 rounded-lg p-3">
+                  {hasModelChange && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Embedding Model:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-red-600 line-through">{collection.embedding_model}</span>
+                        <span className="text-gray-400">→</span>
+                        <span className="text-green-600 font-medium">{configChanges.embedding_model}</span>
+                      </div>
+                    </div>
                   )}
-                  {configChanges.chunk_overlap !== undefined && (
-                    <li>• Chunk overlap: {configChanges.chunk_overlap} tokens</li>
+                  {hasChunkSizeChange && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Chunk Size:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-red-600 line-through">{collection.chunk_size}</span>
+                        <span className="text-gray-400">→</span>
+                        <span className="text-green-600 font-medium">{configChanges.chunk_size}</span>
+                      </div>
+                    </div>
                   )}
-                  {configChanges.instruction !== undefined && (
-                    <li>• Embedding instruction: {configChanges.instruction || '(removed)'}</li>
+                  {hasChunkOverlapChange && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Chunk Overlap:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-red-600 line-through">{collection.chunk_overlap}</span>
+                        <span className="text-gray-400">→</span>
+                        <span className="text-green-600 font-medium">{configChanges.chunk_overlap}</span>
+                      </div>
+                    </div>
                   )}
-                </ul>
+                </div>
+                
+                {/* Impact summary */}
+                <div className="mt-3 text-sm text-gray-600">
+                  <p className="font-medium">Estimated impact:</p>
+                  <ul className="mt-1 list-disc list-inside text-xs">
+                    <li>Processing time: ~{Math.ceil(collection.document_count / 100)} minutes (estimate)</li>
+                    <li>Collection will be read-only during re-indexing</li>
+                    {hasModelChange && (
+                      <li>Model change may significantly affect search results</li>
+                    )}
+                  </ul>
+                </div>
               </div>
             </div>
 
             <form onSubmit={handleSubmit}>
               <div className="mb-4">
                 <label htmlFor="confirm-reindex" className="block text-sm font-medium text-gray-700 mb-2">
-                  To confirm, type <span className="font-mono bg-gray-100 px-1 py-0.5 rounded">reindex {collectionName}</span>
+                  To confirm, type <span className="font-mono bg-gray-100 px-1 py-0.5 rounded">reindex {collection.name}</span>
                 </label>
                 <input
                   id="confirm-reindex"
