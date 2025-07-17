@@ -554,3 +554,73 @@ The implementation follows the execution plan closely while maintaining backward
   - Fixed async test mocking for database operations
   - Updated all QdrantManager tests to use proper connection manager pattern
   - All tests now use correct import paths and mock configurations
+
+---
+
+## TASK-3B: Implement Operation-Based WebSocket Endpoint
+
+### 2025-07-16 - Starting TASK-3B Implementation
+- **Task**: Implement operation-based WebSocket endpoint as addendum to Phase 3
+- **Context**: Phase 3 review found that WebSocket implementation is still job-centric (/ws/{job_id}). Need to create new endpoint for operations.
+- **Requirements**:
+  1. Create new WebSocket endpoint: `GET /ws/operations/{operation_id}`
+  2. Implement JWT authentication via query parameter (?token=...)
+  3. Verify user has permission to access the operation's collection
+  4. Subscribe to Redis channel `operation-progress:{operation_id}`
+  5. Send immediate operation status on connection
+  6. Auto-close connection when operation completes
+- **Analysis**:
+  - Current WebSocket system uses job-centric streams: `job:updates:{job_id}`
+  - Operation model has uuid field for external reference and collection_id for relationships
+  - Authentication system already has `get_current_user_websocket` for query param auth
+  - Operation repository has permission checking via `get_by_uuid_with_permission_check`
+  - Need to create parallel system using `operation-progress:{operation_id}` streams
+
+### 2025-07-16 - Completed TASK-3B Implementation
+- **Changes Made**:
+  1. **Created Operation WebSocket Handler** (packages/webui/api/jobs.py):
+     - Added `operation_websocket_endpoint` function for operation-based WebSocket connections
+     - Uses JWT authentication via query parameter (?token=...)
+     - Verifies user permission via `get_by_uuid_with_permission_check`
+     - Connects to WebSocket manager with operation-specific methods
+  2. **Enhanced WebSocket Manager** (packages/webui/websocket_manager.py):
+     - Added `connect_operation`, `disconnect_operation` methods for operation handling
+     - Added `send_operation_update` for publishing to `operation-progress:{operation_id}` streams
+     - Added `_consume_operation_updates` for subscribing to operation streams
+     - Added `_close_operation_connections` for auto-closing completed operations
+     - Added `cleanup_operation_stream` for Redis stream cleanup
+     - Sends immediate operation status on connection with current state
+  3. **Created Operation Update Publisher** (packages/webui/tasks.py):
+     - Added `CeleryTaskWithOperationUpdates` class for operation-based Redis streams
+     - Updated all operation processing functions to use operation-specific updater
+     - Maintains parallel system alongside existing job-based updates
+  4. **Added WebSocket Endpoint** (packages/webui/main.py):
+     - Mounted `/ws/operations/{operation_id}` endpoint in FastAPI app
+     - Imported operation_websocket_endpoint handler
+  5. **Fixed Makefile** (Makefile):
+     - Updated all development commands (format, lint, type-check, test) to use poetry
+     - Ensures consistent dependency management across development tools
+- **Key Features Implemented**:
+  - ✅ New WebSocket endpoint: `GET /ws/operations/{operation_id}`
+  - ✅ JWT authentication via query parameter (?token=...)
+  - ✅ Permission verification for operation's collection access
+  - ✅ Redis subscription to `operation-progress:{operation_id}` channels
+  - ✅ Immediate operation status sent on connection
+  - ✅ Auto-close connection when operation completes (completed/failed/cancelled)
+  - ✅ Parallel system coexisting with job-based WebSockets
+- **Architecture**:
+  - Operation updates: `CeleryTaskWithOperationUpdates` → `operation-progress:{operation_id}` → `/ws/operations/{operation_id}`
+  - Job updates: `CeleryTaskWithUpdates` → `job:updates:{job_id}` → `/ws/{job_id}` (unchanged)
+  - Both systems use identical Redis Streams patterns for consistency
+  - Gradual migration path from job-centric to operation-centric architecture
+- **Code Quality**:
+  - All black formatting applied
+  - All ruff linting issues fixed
+  - All mypy type checking passes
+  - Fixed import sorting and type annotations
+- **Benefits**:
+  - Collection-centric WebSocket subscriptions for better UX alignment
+  - Proper permission checking based on collection ownership
+  - Real-time operation progress for all collection operations
+  - Maintains backward compatibility during transition period
+  - Clean separation of concerns between legacy and new systems
