@@ -42,7 +42,6 @@ class CollectionService:
         name: str,
         description: str | None = None,
         config: dict[str, Any] | None = None,
-        resource_limits: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Create a new collection and dispatch indexing operation.
 
@@ -51,7 +50,6 @@ class CollectionService:
             name: Name of the collection
             description: Optional description
             config: Optional configuration (embedding model, chunk settings, etc.)
-            resource_limits: Optional resource limits
 
         Returns:
             Tuple of (collection, operation) dictionaries
