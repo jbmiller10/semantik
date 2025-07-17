@@ -119,7 +119,7 @@ async def complete_reindex(
                 raise HTTPException(
                     status_code=409,
                     detail=f"Cannot complete reindex: collection is in {collection.status} state, "
-                    f"expected {CollectionStatus.PROCESSING}"
+                    f"expected {CollectionStatus.PROCESSING}",
                 )
 
             # Save old collection names for cleanup

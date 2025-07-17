@@ -72,7 +72,11 @@ class CollectionService:
                     owner_id=user_id,
                     name=name,
                     description=description,
-                    embedding_model=config.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B") if config else "Qwen/Qwen3-Embedding-0.6B",
+                    embedding_model=(
+                        config.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
+                        if config
+                        else "Qwen/Qwen3-Embedding-0.6B"
+                    ),
                     chunk_size=config.get("chunk_size", 1000) if config else 1000,
                     chunk_overlap=config.get("chunk_overlap", 200) if config else 200,
                     is_public=config.get("is_public", False) if config else False,
@@ -120,16 +124,16 @@ class CollectionService:
             "created_at": collection.created_at,
             "updated_at": collection.updated_at,
             "document_count": 0,  # New collection has no documents
-            "status": collection.status.value if hasattr(collection.status, 'value') else collection.status,
+            "status": collection.status.value if hasattr(collection.status, "value") else collection.status,
             "config": {
                 "embedding_model": collection.embedding_model,
                 "chunk_size": collection.chunk_size,
                 "chunk_overlap": collection.chunk_overlap,
                 "is_public": collection.is_public,
                 "metadata": collection.meta,
-            }
+            },
         }
-        
+
         operation_dict = {
             "uuid": operation.uuid,
             "collection_id": operation.collection_id,

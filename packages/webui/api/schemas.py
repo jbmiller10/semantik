@@ -9,7 +9,6 @@ from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-import re
 
 
 # Enums
@@ -74,11 +73,11 @@ class CollectionBase(BaseModel):
     """Base collection schema."""
 
     name: str = Field(
-        ..., 
-        min_length=1, 
+        ...,
+        min_length=1,
         max_length=255,
         pattern=r"^[^/\\*?<>|:\"]+$",
-        description="Collection name (cannot contain / \\ * ? < > | : \")"
+        description='Collection name (cannot contain / \\ * ? < > | : ")',
     )
     description: str | None = None
     embedding_model: str = Field(default="Qwen/Qwen3-Embedding-0.6B")
@@ -102,11 +101,11 @@ class CollectionUpdate(BaseModel):
     """Schema for updating a collection."""
 
     name: str | None = Field(
-        None, 
-        min_length=1, 
+        None,
+        min_length=1,
         max_length=255,
         pattern=r"^[^/\\*?<>|:\"]+$",
-        description="Collection name (cannot contain / \\ * ? < > | : \")"
+        description='Collection name (cannot contain / \\ * ? < > | : ")',
     )
     description: str | None = None
     is_public: bool | None = None
