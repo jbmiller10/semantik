@@ -74,7 +74,7 @@ async def search_single_collection(
     collection_search_params = {
         **search_params,
         "query": query,
-        "k": k * 3,  # Get more candidates for re-ranking
+        "k": k * settings.SEARCH_CANDIDATE_MULTIPLIER,  # Get more candidates for re-ranking
         "collection": collection.vector_store_name,
         "model_name": collection.embedding_model,
         "include_content": True,
@@ -102,12 +102,53 @@ async def search_single_collection(
             result = response.json()
             return (collection, result.get("results", []), None)
 
+        except httpx.HTTPStatusError as e:
+            # Handle specific HTTP status codes even on retry
+            if e.response.status_code == 404:
+                return (collection, None, f"Collection '{collection.name}' not found in vector store (after retry)")
+            if e.response.status_code >= 500:
+                return (
+                    collection,
+                    None,
+                    f"Search service unavailable for collection '{collection.name}' after retry (status: {e.response.status_code})",
+                )
+            return (
+                collection,
+                None,
+                f"Search failed for collection '{collection.name}' after retry (status: {e.response.status_code})",
+            )
         except Exception as e:
             return (collection, None, f"Search failed after retry: {str(e)}")
 
+    except httpx.HTTPStatusError as e:
+        # Handle specific HTTP status codes
+        if e.response.status_code == 404:
+            return (collection, None, f"Collection '{collection.name}' not found in vector store")
+        if e.response.status_code == 403:
+            return (collection, None, f"Access denied to collection '{collection.name}'")
+        if e.response.status_code == 429:
+            return (collection, None, f"Rate limit exceeded for collection '{collection.name}'")
+        if e.response.status_code >= 500:
+            return (
+                collection,
+                None,
+                f"Search service unavailable for collection '{collection.name}' (status: {e.response.status_code})",
+            )
+        return (
+            collection,
+            None,
+            f"Search failed for collection '{collection.name}' (status: {e.response.status_code})",
+        )
+
+    except httpx.ConnectError:
+        return (collection, None, f"Cannot connect to search service for collection '{collection.name}'")
+
+    except httpx.RequestError as e:
+        return (collection, None, f"Network error searching collection '{collection.name}': {str(e)}")
+
     except Exception as e:
-        logger.error(f"Search failed for collection {collection.name}: {e}")
-        return (collection, None, str(e))
+        logger.error(f"Unexpected error searching collection {collection.name}: {e}")
+        return (collection, None, f"Unexpected error searching collection '{collection.name}': {str(e)}")
 
 
 async def rerank_merged_results(

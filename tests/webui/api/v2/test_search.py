@@ -9,7 +9,6 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
-from starlette.testclient import TestClient
 
 from packages.shared.database.models import Collection, CollectionStatus
 from packages.webui.api.v2.schemas import (
@@ -111,9 +110,10 @@ class TestValidateCollectionAccess:
         mock_repo = AsyncMock()
         mock_repo.get_by_uuid_with_permission_check.side_effect = Exception("Access denied")
 
-        with patch("packages.webui.api.v2.search.CollectionRepository", return_value=mock_repo), pytest.raises(
-            HTTPException
-        ) as exc_info:
+        with (
+            patch("packages.webui.api.v2.search.CollectionRepository", return_value=mock_repo),
+            pytest.raises(HTTPException) as exc_info,
+        ):
             await validate_collection_access(["invalid-uuid"], 1, mock_db)
 
         assert exc_info.value.status_code == 403
@@ -127,7 +127,7 @@ class TestSearchSingleCollection:
         """Test successful search in a single collection."""
         collection = mock_collections[0]
 
-        async def mock_post(*args, **kwargs):
+        async def mock_post(*args, **kwargs):  # noqa: ARG001
             mock_response = AsyncMock()
             mock_response.json = lambda: mock_search_results
             mock_response.raise_for_status = AsyncMock()
@@ -214,7 +214,7 @@ class TestRerankMergedResults:
 
         rerank_response = {"results": [(1, 0.95), (0, 0.85), (2, 0.75)]}  # Reordered with new scores
 
-        async def mock_post(*args, **kwargs):
+        async def mock_post(*args, **kwargs):  # noqa: ARG001
             mock_response = AsyncMock()
             mock_response.json = lambda: rerank_response
             mock_response.raise_for_status = AsyncMock()

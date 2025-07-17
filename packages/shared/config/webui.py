@@ -29,6 +29,9 @@ class WebuiConfig(BaseConfig):
     # External service URLs
     SEARCH_API_URL: str = "http://localhost:8000"
 
+    # Search Configuration
+    SEARCH_CANDIDATE_MULTIPLIER: int = 3  # How many candidates to retrieve for re-ranking (k * multiplier)
+
     # Redis Configuration (for Celery and WebSocket pub/sub)
     REDIS_URL: str = "redis://localhost:6379/0"
 
