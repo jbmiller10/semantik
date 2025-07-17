@@ -65,19 +65,46 @@ export interface SearchRequest {
 export interface SearchResult {
   id: string;
   collection_id: string;
+  collection_name: string;
   document_id: string;
+  chunk_id: string;
   chunk_index: number;
   score: number;
+  original_score: number;
+  reranked_score?: number;
   text: string;
+  file_name: string;
+  file_path: string;
+  embedding_model: string;
   metadata?: Record<string, any>;
   highlights?: string[];
 }
 
 export interface SearchResponse {
-  results: SearchResult[];
-  total: number;
   query: string;
-  took_ms: number;
+  results: SearchResult[];
+  total_results: number;
+  collections_searched: Array<{
+    id: string;
+    name: string;
+    embedding_model: string;
+  }>;
+  search_type: string;
+  reranking_used: boolean;
+  reranker_model?: string;
+  // Timing metrics
+  embedding_time_ms?: number;
+  search_time_ms: number;
+  reranking_time_ms?: number;
+  total_time_ms: number;
+  // Failure information
+  partial_failure: boolean;
+  failed_collections?: Array<{
+    collection_id: string;
+    collection_name: string;
+    error_message: string;
+  }>;
+  api_version: string;
 }
 
 export interface ErrorResponse {

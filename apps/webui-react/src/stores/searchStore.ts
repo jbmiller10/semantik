@@ -10,11 +10,13 @@ export interface SearchResult {
   chunk_index: number;
   total_chunks: number;
   job_id?: string;
+  collection_id?: string;
+  collection_name?: string;
 }
 
 export interface SearchParams {
   query: string;
-  collection: string;
+  selectedCollections: string[];
   topK: number;
   scoreThreshold: number;
   searchType: 'vector' | 'hybrid';
@@ -26,12 +28,20 @@ export interface SearchParams {
   keywordMode?: 'any' | 'all';
 }
 
+interface FailedCollection {
+  collection_id: string;
+  collection_name: string;
+  error_message: string;
+}
+
 interface SearchState {
   results: SearchResult[];
   loading: boolean;
   error: string | null;
   searchParams: SearchParams;
   collections: string[];
+  failedCollections: FailedCollection[];
+  partialFailure: boolean;
   rerankingMetrics: {
     rerankingUsed: boolean;
     rerankerModel?: string;
@@ -42,6 +52,8 @@ interface SearchState {
   setError: (error: string | null) => void;
   updateSearchParams: (params: Partial<SearchParams>) => void;
   setCollections: (collections: string[]) => void;
+  setFailedCollections: (failedCollections: FailedCollection[]) => void;
+  setPartialFailure: (partialFailure: boolean) => void;
   clearResults: () => void;
   setRerankingMetrics: (metrics: SearchState['rerankingMetrics']) => void;
 }
@@ -52,7 +64,7 @@ export const useSearchStore = create<SearchState>((set) => ({
   error: null,
   searchParams: {
     query: '',
-    collection: '',
+    selectedCollections: [],
     topK: 10,
     scoreThreshold: 0.0,
     searchType: 'vector',
@@ -61,6 +73,8 @@ export const useSearchStore = create<SearchState>((set) => ({
     keywordMode: 'any',
   },
   collections: [],
+  failedCollections: [],
+  partialFailure: false,
   rerankingMetrics: null,
   setResults: (results) => set({ results }),
   setLoading: (loading) => set({ loading }),
@@ -70,6 +84,8 @@ export const useSearchStore = create<SearchState>((set) => ({
       searchParams: { ...state.searchParams, ...params },
     })),
   setCollections: (collections) => set({ collections }),
-  clearResults: () => set({ results: [], error: null, rerankingMetrics: null }),
+  setFailedCollections: (failedCollections) => set({ failedCollections }),
+  setPartialFailure: (partialFailure) => set({ partialFailure }),
+  clearResults: () => set({ results: [], error: null, rerankingMetrics: null, failedCollections: [], partialFailure: false }),
   setRerankingMetrics: (metrics) => set({ rerankingMetrics: metrics }),
 }));
