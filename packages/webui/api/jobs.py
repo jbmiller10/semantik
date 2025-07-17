@@ -686,6 +686,48 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str) -> None:
         await ws_manager.disconnect(websocket, job_id, user_id)
 
 
+# Operation-based WebSocket handler for collection operations
+async def operation_websocket_endpoint(websocket: WebSocket, operation_id: str) -> None:
+    """WebSocket for real-time operation updates with Redis pub/sub.
+
+    Authentication is handled via JWT token passed as query parameter.
+    The token should be passed as ?token=<jwt_token> in the WebSocket URL.
+    """
+    from shared.database.factory import create_operation_repository
+
+    operation_repo = create_operation_repository()
+
+    # Extract token from query parameters
+    token = websocket.query_params.get("token")
+
+    try:
+        # Authenticate the user
+        user = await get_current_user_websocket(token)
+        user_id = user["id"]
+
+        # Verify the user has access to this operation
+        await operation_repo.get_by_uuid_with_permission_check(operation_id, user_id)
+
+    except ValueError as e:
+        # Authentication failed
+        await websocket.close(code=1008, reason=str(e))
+        return
+    except Exception as e:
+        logger.error(f"Operation WebSocket authentication error: {e}")
+        await websocket.close(code=1011, reason="Internal server error")
+        return
+
+    # Authentication successful, connect the WebSocket
+    await ws_manager.connect_operation(websocket, operation_id, str(user_id))
+
+    try:
+        while True:
+            # Keep connection alive
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        await ws_manager.disconnect_operation(websocket, operation_id, str(user_id))
+
+
 # TODO: Remove this function when Redis pub/sub is implemented
 # This polling approach is being replaced with a more efficient pub/sub pattern
 # async def poll_celery_task_state(job_id: str) -> None:

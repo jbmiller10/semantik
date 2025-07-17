@@ -157,6 +157,64 @@ class CeleryTaskWithUpdates:
         await self.close()
 
 
+class CeleryTaskWithOperationUpdates:
+    """Helper class to send operation updates to Redis Stream from Celery tasks.
+    Similar to CeleryTaskWithUpdates but uses operation-progress:{operation_id} stream format.
+    Implements context manager protocol for automatic resource cleanup.
+    """
+
+    def __init__(self, operation_id: str):
+        """Initialize with operation ID."""
+        self.operation_id = operation_id
+        self.redis_url = settings.REDIS_URL
+        self.stream_key = f"operation-progress:{operation_id}"
+        self._redis_client: redis.Redis | None = None
+
+    async def _get_redis(self) -> redis.Redis:
+        """Get or create Redis client."""
+        if self._redis_client is None:
+            self._redis_client = await redis.from_url(self.redis_url, decode_responses=True)
+        assert self._redis_client is not None
+        return self._redis_client
+
+    async def send_update(self, update_type: str, data: dict) -> None:
+        """Send update to Redis Stream."""
+        try:
+            redis_client = await self._get_redis()
+            message = {"timestamp": datetime.now(UTC).isoformat(), "type": update_type, "data": data}
+
+            # Add to stream with automatic ID
+            await redis_client.xadd(self.stream_key, {"message": json.dumps(message)}, maxlen=REDIS_STREAM_MAX_LEN)
+
+            # Set TTL on first message
+            await redis_client.expire(self.stream_key, REDIS_STREAM_TTL)
+
+            logger.debug(f"Sent update to Redis stream {self.stream_key}: type={update_type}")
+        except Exception as e:
+            logger.error(f"Failed to send update to Redis stream: {e}")
+
+    async def close(self) -> None:
+        """Close Redis connection."""
+        if self._redis_client:
+            await self._redis_client.close()
+            self._redis_client = None
+
+    async def __aenter__(self) -> "CeleryTaskWithOperationUpdates":
+        """Async context manager entry - ensures Redis connection is available."""
+        # Verify Redis connection is available
+        try:
+            redis_client = await self._get_redis()
+            await redis_client.ping()
+        except Exception as e:
+            logger.error(f"Failed to connect to Redis: {e}")
+            raise
+        return self
+
+    async def __aexit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:
+        """Async context manager exit - ensures cleanup even on exceptions."""
+        await self.close()
+
+
 def extract_and_serialize_thread_safe(filepath: str) -> list[tuple[str, dict[str, Any]]]:
     """Thread-safe version of extract_and_serialize that preserves metadata"""
     from shared.text_processing.extraction import extract_and_serialize
@@ -1131,10 +1189,7 @@ def _handle_task_failure(
 
 async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id: str) -> None:
     """Async implementation of failure handling."""
-    from shared.database.factory import (
-        create_collection_repository,
-        create_operation_repository,
-    )
+    from shared.database.factory import create_collection_repository, create_operation_repository
     from shared.database.models import CollectionStatus, OperationStatus, OperationType
     from shared.metrics.collection_metrics import collection_operations_total
 
@@ -1388,7 +1443,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
         logger.info(f"Set task_id {task_id} for operation {operation_id}")
 
         # Use context manager for automatic cleanup of Redis connection
-        async with CeleryTaskWithUpdates(operation_id) as updater:
+        async with CeleryTaskWithOperationUpdates(operation_id) as updater:
             # Get operation details
             operation = await operation_repo.get_by_uuid(operation_id)
             if not operation:
@@ -1709,7 +1764,7 @@ async def _process_index_operation(
     collection: dict,
     collection_repo: Any,
     document_repo: Any,  # noqa: ARG001
-    updater: CeleryTaskWithUpdates,
+    updater: CeleryTaskWithOperationUpdates,
 ) -> dict[str, Any]:
     """Process INDEX operation - Initial collection creation with monitoring."""
     from shared.metrics.collection_metrics import record_qdrant_operation
@@ -1763,7 +1818,7 @@ async def _process_append_operation(
     collection: dict,
     collection_repo: Any,  # noqa: ARG001
     document_repo: Any,  # noqa: ARG001
-    updater: CeleryTaskWithUpdates,
+    updater: CeleryTaskWithOperationUpdates,
 ) -> dict[str, Any]:
     """Process APPEND operation - Add documents to existing collection with monitoring."""
     from shared.metrics.collection_metrics import document_processing_duration, record_document_processed
@@ -1934,7 +1989,7 @@ async def _process_reindex_operation(
     collection: dict,
     collection_repo: Any,
     document_repo: Any,
-    updater: CeleryTaskWithUpdates,
+    updater: CeleryTaskWithOperationUpdates,
 ) -> dict[str, Any]:
     """Process REINDEX operation - Blue-green reindexing with validation checkpoints."""
     from shared.database.models import DocumentStatus
@@ -2488,7 +2543,7 @@ async def _process_remove_source_operation(
     collection: dict,
     collection_repo: Any,  # noqa: ARG001
     document_repo: Any,
-    updater: CeleryTaskWithUpdates,
+    updater: CeleryTaskWithOperationUpdates,
 ) -> dict[str, Any]:
     """Process REMOVE_SOURCE operation - Remove documents from a source with monitoring."""
     from shared.database.models import DocumentStatus
