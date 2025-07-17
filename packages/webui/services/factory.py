@@ -151,8 +151,7 @@ def create_resource_manager(db: AsyncSession) -> ResourceManager:
 
 # FastAPI dependency functions
 
-async def get_collection_service(
-    db: AsyncSession = Depends(get_db)
-) -> CollectionService:
+
+async def get_collection_service(db: AsyncSession = Depends(get_db)) -> CollectionService:
     """FastAPI dependency for CollectionService injection."""
     return create_collection_service(db)
