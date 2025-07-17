@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useCollectionStore } from '../stores/collectionStore';
 import { useUIStore } from '../stores/uiStore';
 import CollectionCard from './CollectionCard';
@@ -8,6 +8,7 @@ function CollectionsDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const isRefreshingRef = useRef(false);
   
   const {
     collections,
@@ -28,35 +29,48 @@ function CollectionsDashboard() {
 
   // Auto-refresh every 30 seconds if there are active operations
   useEffect(() => {
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
+      // Prevent concurrent fetches
+      if (isRefreshingRef.current) return;
+      
       const hasActiveOperations = getCollectionsArray().some(
         c => c.status === 'processing' || c.activeOperation
       );
+      
       if (hasActiveOperations) {
-        fetchCollections();
+        isRefreshingRef.current = true;
+        try {
+          await fetchCollections();
+        } finally {
+          isRefreshingRef.current = false;
+        }
       }
     }, 30000);
 
     return () => clearInterval(interval);
   }, [fetchCollections, getCollectionsArray]);
 
-  // Filter and search collections
-  const filteredCollections = getCollectionsArray().filter(collection => {
-    // Search filter
-    const matchesSearch = !searchQuery || 
-      collection.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      collection.description?.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    // Status filter
-    const matchesStatus = filterStatus === 'all' || collection.status === filterStatus;
-    
-    return matchesSearch && matchesStatus;
-  });
+  // Filter and search collections with memoization
+  const filteredCollections = useMemo(() => {
+    return getCollectionsArray().filter(collection => {
+      // Search filter
+      const matchesSearch = !searchQuery || 
+        collection.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        collection.description?.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      // Status filter
+      const matchesStatus = filterStatus === 'all' || collection.status === filterStatus;
+      
+      return matchesSearch && matchesStatus;
+    });
+  }, [getCollectionsArray, searchQuery, filterStatus]);
 
-  // Sort collections by updated_at (most recent first)
-  const sortedCollections = [...filteredCollections].sort((a, b) => 
-    new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-  );
+  // Sort collections by updated_at (most recent first) with memoization
+  const sortedCollections = useMemo(() => {
+    return [...filteredCollections].sort((a, b) => 
+      new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+    );
+  }, [filteredCollections]);
 
   const handleCreateSuccess = () => {
     setShowCreateModal(false);
@@ -114,33 +128,41 @@ function CollectionsDashboard() {
         {/* Search and Filters */}
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
+            <label htmlFor="collection-search" className="sr-only">Search collections</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
               <input
                 type="text"
+                id="collection-search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 placeholder="Search collections..."
+                aria-label="Search collections by name or description"
               />
             </div>
           </div>
           
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="block w-full sm:w-auto pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
-          >
-            <option value="all">All Status</option>
-            <option value="ready">Ready</option>
-            <option value="processing">Processing</option>
-            <option value="error">Error</option>
-            <option value="degraded">Degraded</option>
-          </select>
+          <div>
+            <label htmlFor="status-filter" className="sr-only">Filter by status</label>
+            <select
+              id="status-filter"
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="block w-full sm:w-auto pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+              aria-label="Filter collections by status"
+            >
+              <option value="all">All Status</option>
+              <option value="ready">Ready</option>
+              <option value="processing">Processing</option>
+              <option value="error">Error</option>
+              <option value="degraded">Degraded</option>
+            </select>
+          </div>
         </div>
 
         {/* Results count */}

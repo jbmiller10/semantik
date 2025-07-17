@@ -84,7 +84,7 @@ function CollectionCard({ collection }: CollectionCardProps) {
     <div className={`relative rounded-lg border-2 shadow-sm hover:shadow-lg transition-all ${cardBorderColor} ${cardBackground} overflow-hidden`}>
       {/* Processing indicator bar */}
       {isProcessing && (
-        <div className="absolute top-0 left-0 right-0 h-1 bg-blue-200">
+        <div className="absolute top-0 left-0 right-0 h-1 bg-blue-200" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={collection.activeOperation?.progress || 50} aria-label="Operation progress">
           <div className="h-full bg-blue-600 animate-pulse" style={{ width: `${collection.activeOperation?.progress || 50}%` }} />
         </div>
       )}
@@ -105,8 +105,8 @@ function CollectionCard({ collection }: CollectionCardProps) {
             </p>
           </div>
           <div className="ml-2 flex-shrink-0">
-            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(collection.status)}`}>
-              {getStatusIcon(collection.status)}
+            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(collection.status)}`} role="status" aria-label={`Collection status: ${collection.status}`}>
+              <span aria-hidden="true">{getStatusIcon(collection.status)}</span>
               {collection.status}
             </span>
           </div>
