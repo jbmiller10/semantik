@@ -3,6 +3,7 @@ import CreateJobForm from '../components/CreateJobForm';
 import JobList from '../components/JobList';
 import SearchInterface from '../components/SearchInterface';
 import CollectionsDashboard from '../components/CollectionsDashboard';
+import ActiveOperationsTab from '../components/ActiveOperationsTab';
 import ErrorBoundary from '../components/ErrorBoundary';
 
 function HomePage() {
@@ -16,6 +17,11 @@ function HomePage() {
       {activeTab === 'collections' && (
         <ErrorBoundary>
           <CollectionsDashboard />
+        </ErrorBoundary>
+      )}
+      {activeTab === 'operations' && (
+        <ErrorBoundary>
+          <ActiveOperationsTab />
         </ErrorBoundary>
       )}
     </>
