@@ -746,9 +746,8 @@ async def operation_websocket_endpoint(websocket: WebSocket, operation_id: str) 
     Authentication is handled via JWT token passed as query parameter.
     The token should be passed as ?token=<jwt_token> in the WebSocket URL.
     """
-    from shared.database.factory import create_operation_repository
-
-    operation_repo = create_operation_repository()
+    from shared.database.database import AsyncSessionLocal
+    from shared.database.repositories.operation_repository import OperationRepository
 
     # Extract token from query parameters
     token = websocket.query_params.get("token")
@@ -759,7 +758,9 @@ async def operation_websocket_endpoint(websocket: WebSocket, operation_id: str) 
         user_id = user["id"]
 
         # Verify the user has access to this operation
-        await operation_repo.get_by_uuid_with_permission_check(operation_id, user_id)
+        async with AsyncSessionLocal() as db:
+            operation_repo = OperationRepository(db)
+            await operation_repo.get_by_uuid_with_permission_check(operation_id, user_id)
 
     except ValueError as e:
         # Authentication failed

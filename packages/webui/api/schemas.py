@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # Enums
@@ -72,13 +72,25 @@ class UserResponse(UserBase):
 class CollectionBase(BaseModel):
     """Base collection schema."""
 
-    name: str = Field(..., min_length=1, max_length=255)
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        pattern=r"^[^/\\*?<>|:\"]+$",
+        description='Collection name (cannot contain / \\ * ? < > | : ")',
+    )
     description: str | None = None
     embedding_model: str = Field(default="Qwen/Qwen3-Embedding-0.6B")
     chunk_size: int = Field(default=1000, ge=100, le=10000)
     chunk_overlap: int = Field(default=200, ge=0, le=1000)
     is_public: bool = False
     metadata: dict[str, Any] | None = None
+
+    @field_validator("name", mode="after")
+    @classmethod
+    def normalize_name(cls, v: str) -> str:
+        """Normalize collection name by stripping whitespace."""
+        return v.strip()
 
 
 class CollectionCreate(CollectionBase):
@@ -88,10 +100,24 @@ class CollectionCreate(CollectionBase):
 class CollectionUpdate(BaseModel):
     """Schema for updating a collection."""
 
-    name: str | None = Field(None, min_length=1, max_length=255)
+    name: str | None = Field(
+        None,
+        min_length=1,
+        max_length=255,
+        pattern=r"^[^/\\*?<>|:\"]+$",
+        description='Collection name (cannot contain / \\ * ? < > | : ")',
+    )
     description: str | None = None
     is_public: bool | None = None
     metadata: dict[str, Any] | None = None
+
+    @field_validator("name", mode="after")
+    @classmethod
+    def normalize_name(cls, v: str | None) -> str | None:
+        """Normalize collection name by stripping whitespace."""
+        if v is None:
+            return v
+        return v.strip()
 
 
 class CollectionResponse(CollectionBase):
@@ -105,6 +131,25 @@ class CollectionResponse(CollectionBase):
     document_count: int | None = 0
 
     model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_collection(cls, collection: Any) -> "CollectionResponse":
+        """Create response from ORM Collection object."""
+        return cls(
+            id=collection.id,
+            name=collection.name,
+            description=collection.description,
+            owner_id=collection.owner_id,
+            vector_store_name=collection.vector_store_name,
+            embedding_model=collection.embedding_model,
+            chunk_size=collection.chunk_size,
+            chunk_overlap=collection.chunk_overlap,
+            is_public=collection.is_public,
+            metadata=collection.meta,
+            created_at=collection.created_at,
+            updated_at=collection.updated_at,
+            document_count=collection.document_count,
+        )
 
 
 class CollectionListResponse(BaseModel):
@@ -356,4 +401,33 @@ class ErrorResponse(BaseModel):
 
     model_config = ConfigDict(
         json_schema_extra={"example": {"detail": "Collection not found", "code": "COLLECTION_NOT_FOUND"}}
+    )
+
+
+# Operation schemas
+class OperationResponse(BaseModel):
+    """Operation response schema."""
+
+    id: str
+    collection_id: str
+    type: str
+    status: str
+    config: dict[str, Any]
+    error_message: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": "550e8400-e29b-41d4-a716-446655440000",
+                "collection_id": "123e4567-e89b-12d3-a456-426614174000",
+                "type": "index",
+                "status": "processing",
+                "config": {"source_path": "/data/documents"},
+                "created_at": "2025-07-15T10:00:00Z",
+            }
+        },
     )
