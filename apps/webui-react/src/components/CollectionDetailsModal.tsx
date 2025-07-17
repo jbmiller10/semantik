@@ -51,6 +51,10 @@ function CollectionDetailsModal() {
     instruction?: string;
   }>({});
   const [showReindexModal, setShowReindexModal] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<{
+    chunk_size?: string;
+    chunk_overlap?: string;
+  }>({});
 
   const { data: details, isLoading, error } = useQuery({
     queryKey: ['collection-details', showCollectionDetailsModal],
@@ -125,12 +129,54 @@ function CollectionDetailsModal() {
   const handleReindexSuccess = () => {
     setShowReindexModal(false);
     setConfigChanges({});
+    setValidationErrors({});
     queryClient.invalidateQueries({ queryKey: ['collection-details', showCollectionDetailsModal] });
     queryClient.invalidateQueries({ queryKey: ['collections'] });
     addToast({ 
       type: 'success', 
       message: 'Re-indexing started successfully. Check the Jobs tab to monitor progress.' 
     });
+  };
+
+  const validateChunkSize = (value: number): string | undefined => {
+    if (value < 100) return 'Chunk size must be at least 100 tokens';
+    if (value > 4000) return 'Chunk size cannot exceed 4000 tokens';
+    return undefined;
+  };
+
+  const validateChunkOverlap = (value: number, chunkSize: number): string | undefined => {
+    if (value < 0) return 'Chunk overlap cannot be negative';
+    if (value > 200) return 'Chunk overlap cannot exceed 200 tokens';
+    if (value >= chunkSize) return 'Chunk overlap must be less than chunk size';
+    return undefined;
+  };
+
+  const handleChunkSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value) || undefined;
+    setConfigChanges(prev => ({ ...prev, chunk_size: value }));
+    
+    if (value !== undefined) {
+      const error = validateChunkSize(value);
+      setValidationErrors(prev => ({ ...prev, chunk_size: error }));
+      
+      // Re-validate chunk overlap if it exists
+      const currentOverlap = configChanges.chunk_overlap ?? details?.configuration.chunk_overlap;
+      if (currentOverlap !== undefined) {
+        const overlapError = validateChunkOverlap(currentOverlap, value);
+        setValidationErrors(prev => ({ ...prev, chunk_overlap: overlapError }));
+      }
+    }
+  };
+
+  const handleChunkOverlapChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value) || undefined;
+    setConfigChanges(prev => ({ ...prev, chunk_overlap: value }));
+    
+    if (value !== undefined && details) {
+      const chunkSize = configChanges.chunk_size ?? details.configuration.chunk_size;
+      const error = validateChunkOverlap(value, chunkSize);
+      setValidationErrors(prev => ({ ...prev, chunk_overlap: error }));
+    }
   };
 
   if (!showCollectionDetailsModal) return null;
@@ -480,62 +526,84 @@ function CollectionDetailsModal() {
                 <div className="space-y-4">
                   {/* Model (Read-only) */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="embedding-model" className="block text-sm font-medium text-gray-700">
                       Embedding Model
                     </label>
                     <input
+                      id="embedding-model"
                       type="text"
                       value={details.configuration.model_name}
                       disabled
                       className="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm text-gray-500 sm:text-sm px-3 py-2"
+                      aria-label="Embedding model (read-only)"
+                      aria-describedby="model-help"
                     />
-                    <p className="mt-1 text-xs text-gray-500">Cannot be changed after collection creation</p>
+                    <p id="model-help" className="mt-1 text-xs text-gray-500">Cannot be changed after collection creation</p>
                   </div>
 
                   {/* Chunk Size */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="chunk-size" className="block text-sm font-medium text-gray-700">
                       Chunk Size (tokens)
                     </label>
                     <input
+                      id="chunk-size"
                       type="number"
                       value={configChanges.chunk_size ?? details.configuration.chunk_size}
-                      onChange={(e) => setConfigChanges({
-                        ...configChanges,
-                        chunk_size: parseInt(e.target.value) || undefined
-                      })}
+                      onChange={handleChunkSizeChange}
                       min="100"
                       max="4000"
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                      className={`mt-1 block w-full rounded-md shadow-sm focus:ring-blue-500 sm:text-sm ${
+                        validationErrors.chunk_size
+                          ? 'border-red-300 focus:border-red-500'
+                          : 'border-gray-300 focus:border-blue-500'
+                      }`}
+                      aria-label="Chunk size in tokens"
+                      aria-describedby="chunk-size-help chunk-size-error"
+                      aria-invalid={!!validationErrors.chunk_size}
                     />
-                    <p className="mt-1 text-xs text-gray-500">Recommended: 200-800 tokens</p>
+                    {validationErrors.chunk_size ? (
+                      <p id="chunk-size-error" className="mt-1 text-xs text-red-600">{validationErrors.chunk_size}</p>
+                    ) : (
+                      <p id="chunk-size-help" className="mt-1 text-xs text-gray-500">Recommended: 200-800 tokens</p>
+                    )}
                   </div>
 
                   {/* Chunk Overlap */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="chunk-overlap" className="block text-sm font-medium text-gray-700">
                       Chunk Overlap (tokens)
                     </label>
                     <input
+                      id="chunk-overlap"
                       type="number"
                       value={configChanges.chunk_overlap ?? details.configuration.chunk_overlap}
-                      onChange={(e) => setConfigChanges({
-                        ...configChanges,
-                        chunk_overlap: parseInt(e.target.value) || undefined
-                      })}
+                      onChange={handleChunkOverlapChange}
                       min="0"
                       max="200"
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                      className={`mt-1 block w-full rounded-md shadow-sm focus:ring-blue-500 sm:text-sm ${
+                        validationErrors.chunk_overlap
+                          ? 'border-red-300 focus:border-red-500'
+                          : 'border-gray-300 focus:border-blue-500'
+                      }`}
+                      aria-label="Chunk overlap in tokens"
+                      aria-describedby="chunk-overlap-help chunk-overlap-error"
+                      aria-invalid={!!validationErrors.chunk_overlap}
                     />
-                    <p className="mt-1 text-xs text-gray-500">Recommended: 10-20% of chunk size</p>
+                    {validationErrors.chunk_overlap ? (
+                      <p id="chunk-overlap-error" className="mt-1 text-xs text-red-600">{validationErrors.chunk_overlap}</p>
+                    ) : (
+                      <p id="chunk-overlap-help" className="mt-1 text-xs text-gray-500">Recommended: 10-20% of chunk size</p>
+                    )}
                   </div>
 
                   {/* Instruction */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="embedding-instruction" className="block text-sm font-medium text-gray-700">
                       Embedding Instruction (Optional)
                     </label>
                     <textarea
+                      id="embedding-instruction"
                       value={configChanges.instruction ?? details.configuration.instruction ?? ''}
                       onChange={(e) => setConfigChanges({
                         ...configChanges,
@@ -544,8 +612,10 @@ function CollectionDetailsModal() {
                       rows={3}
                       className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                       placeholder="e.g., Represent this document for retrieval:"
+                      aria-label="Custom embedding instruction"
+                      aria-describedby="instruction-help"
                     />
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p id="instruction-help" className="mt-1 text-xs text-gray-500">
                       Custom instruction prepended to documents during embedding
                     </p>
                   </div>
@@ -555,10 +625,10 @@ function CollectionDetailsModal() {
               {/* Re-index Section */}
               <div className="border-t pt-6">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Re-index Collection</h3>
-                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 mb-4">
+                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 mb-4" role="alert">
                   <div className="flex">
                     <div className="flex-shrink-0">
-                      <svg className="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                      <svg className="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
                         <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                       </svg>
                     </div>
@@ -580,18 +650,29 @@ function CollectionDetailsModal() {
 
                 <button
                   onClick={() => setShowReindexModal(true)}
-                  disabled={Object.keys(configChanges).length === 0}
+                  disabled={
+                    Object.keys(configChanges).length === 0 || 
+                    Object.values(validationErrors).some(error => error !== undefined)
+                  }
                   className={`px-4 py-2 rounded-md font-medium ${
-                    Object.keys(configChanges).length > 0
+                    Object.keys(configChanges).length > 0 && 
+                    !Object.values(validationErrors).some(error => error !== undefined)
                       ? 'bg-yellow-600 text-white hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500'
                       : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   }`}
+                  aria-label="Re-index collection with new configuration"
                 >
                   Re-index Collection
                 </button>
                 {Object.keys(configChanges).length === 0 && (
                   <p className="mt-2 text-sm text-gray-500">
                     Make changes to configuration above to enable re-indexing
+                  </p>
+                )}
+                {Object.keys(configChanges).length > 0 && 
+                 Object.values(validationErrors).some(error => error !== undefined) && (
+                  <p className="mt-2 text-sm text-red-600">
+                    Fix validation errors before re-indexing
                   </p>
                 )}
               </div>
@@ -629,6 +710,7 @@ function CollectionDetailsModal() {
 
       {showReindexModal && details && (
         <ReindexCollectionModal
+          collectionId={showCollectionDetailsModal}
           collectionName={details.name}
           configChanges={configChanges}
           onClose={() => setShowReindexModal(false)}
