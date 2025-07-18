@@ -701,6 +701,7 @@ function CollectionDetailsModal() {
 
       {showRenameModal && collection && (
         <RenameCollectionModal
+          collectionId={showCollectionDetailsModal}
           currentName={collection.name}
           onClose={() => setShowRenameModal(false)}
           onSuccess={handleRenameSuccess}
@@ -709,6 +710,7 @@ function CollectionDetailsModal() {
 
       {showDeleteModal && collection && (
         <DeleteCollectionModal
+          collectionId={showCollectionDetailsModal}
           collectionName={collection.name}
           stats={{
             total_files: collection.document_count,

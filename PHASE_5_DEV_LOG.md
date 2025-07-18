@@ -946,3 +946,70 @@ Completed removal of all UI components and state management related to the job s
 #### Summary
 
 Phase 5A is successfully completed. All job-related UI components have been removed from the frontend, and the application now focuses entirely on the collection-centric paradigm. The codebase is cleaner, tests are passing, and the UI is ready for the new collection-based workflow.
+
+---
+
+## Phase 5B: V2 API Consistency Verification
+
+### 2025-07-18: V2 API Migration Completion
+
+#### Overview
+Completed verification and migration of remaining v1 API usage in the frontend. Found and fixed two components that were still using the old collectionsApi, ensuring complete consistency with the v2 API structure.
+
+#### Issues Found and Fixed
+
+1. **RenameCollectionModal.tsx**
+   - Was importing and using `collectionsApi` from v1
+   - Updated to use `collectionsV2Api` from v2
+   - Added `collectionId` prop (UUID) since v2 API requires it
+   - Changed API call from `collectionsApi.rename(name, newName)` to `collectionsV2Api.update(collectionId, { name: newName })`
+   - Updated parent component (CollectionDetailsModal) to pass the collection ID
+
+2. **DeleteCollectionModal.tsx**
+   - Was importing and using `collectionsApi` from v1
+   - Updated to use `collectionsV2Api` from v2
+   - Added `collectionId` prop (UUID) since v2 API requires it
+   - Changed API call from `collectionsApi.delete(name)` to `collectionsV2Api.delete(collectionId)`
+   - Simplified success handling since v2 API returns void (no error details)
+   - Updated parent component (CollectionDetailsModal) to pass the collection ID
+
+3. **Removed old collectionsApi**
+   - Deleted the entire `collectionsApi` object from `services/api.ts`
+   - No other components were using it
+
+4. **Fixed SettingsPage test failures**
+   - Updated test to expect `collection_count` instead of `job_count`
+   - Changed expected text from "Total Jobs" to "Total Collections"
+   - Updated SettingsPage component to use `collection_count` field
+   - Fixed TypeScript interface to match new API structure
+
+#### Test Results
+
+- ✅ All frontend tests passing (152 passed, 1 skipped)
+- ✅ TypeScript compilation successful with no errors
+- ✅ Backend tests running without issues
+- ✅ No remaining imports of v1 collectionsApi found
+
+#### Verification Commands Used
+
+```bash
+# Search for v1 API imports
+grep -r "collectionsApi'" apps/webui-react/src/ --include="*.tsx" --include="*.ts"
+
+# Search for hardcoded v1 endpoints
+grep -r "/api/collections" apps/webui-react/src/ --include="*.tsx" --include="*.ts"
+
+# Search for old data structure references
+grep -r "\.configuration\.\|\.stats\." apps/webui-react/src/ --include="*.tsx" --include="*.ts"
+```
+
+#### Summary
+
+Phase 5B addendum is complete. All frontend components now exclusively use the v2 API:
+- ✅ No remaining v1 API imports
+- ✅ All components use UUID-based v2 endpoints
+- ✅ Data structures match v2 format (flat, not nested)
+- ✅ All tests updated and passing
+- ✅ Old collectionsApi removed from codebase
+
+The frontend is now fully consistent with the v2 collection-centric API architecture.
