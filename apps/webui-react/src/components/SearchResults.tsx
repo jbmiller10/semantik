@@ -42,6 +42,7 @@ function SearchResults() {
   }
 
   // Group results first by collection, then by document
+  // Note: Results without a collection_id are grouped under 'unknown' for consistency
   const groupedByCollection = results.reduce((acc, result) => {
     const collectionId = result.collection_id || 'unknown';
     const collectionName = result.collection_name || 'Unknown Collection';
@@ -76,8 +77,10 @@ function SearchResults() {
     totalResults: number;
   }>);
 
-  const handleViewDocument = (collectionId: string, docId: string, chunkId?: string) => {
-    setShowDocumentViewer({ collectionId, docId, chunkId });
+  const handleViewDocument = (collectionId: string | undefined, docId: string, chunkId?: string) => {
+    // Ensure we always have a valid collection ID, defaulting to 'unknown' if missing
+    const safeCollectionId = collectionId || 'unknown';
+    setShowDocumentViewer({ collectionId: safeCollectionId, docId, chunkId });
   };
 
   const toggleDocExpansion = (docId: string) => {
@@ -238,7 +241,7 @@ function SearchResults() {
                                   className={`px-6 py-4 hover:bg-gray-100 cursor-pointer transition-colors ${
                                     index > 0 ? 'border-t border-gray-200' : ''
                                   }`}
-                                  onClick={() => handleViewDocument(chunk.collection_id || collectionId, docId, chunk.chunk_id)}
+                                  onClick={() => handleViewDocument(chunk.collection_id, docId, chunk.chunk_id)}
                                 >
                                   <p className="text-sm text-gray-700 line-clamp-3">{chunk.content}</p>
                                   <div className="mt-2 flex items-center justify-between">
@@ -250,7 +253,7 @@ function SearchResults() {
                                       className="text-blue-600 hover:text-blue-800 text-sm"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleViewDocument(chunk.collection_id || collectionId, docId, chunk.chunk_id);
+                                        handleViewDocument(chunk.collection_id, docId, chunk.chunk_id);
                                       }}
                                     >
                                       View Document →

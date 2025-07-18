@@ -1070,4 +1070,12 @@ Phase 5C addendum successfully completed the navigation and routing cleanup:
 - ✅ Type definitions and tests aligned with collection model
 - ✅ Codebase ready for collection-centric navigation
 
+#### Additional Improvements (Post-Review)
+
+Based on review feedback, clarified the fallback handling for missing collection IDs:
+- Centralized the 'unknown' fallback logic in the `handleViewDocument` function
+- Made the fallback behavior more explicit and easier to understand
+- Added comments to explain the grouping behavior for results without collection_id
+- Tests confirmed to be correctly aligned with component behavior
+
 The frontend is now fully consistent with the v2 collection-centric API architecture.
