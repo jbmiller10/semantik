@@ -5,6 +5,7 @@ import { http, HttpResponse } from 'msw'
 import { server } from '../../tests/mocks/server'
 import { render as renderWithProviders } from '../../tests/utils/test-utils'
 import SettingsPage from '../SettingsPage'
+import { useJobsStore } from '../../stores/jobsStore'
 
 const mockNavigate = vi.fn()
 vi.mock('react-router-dom', async () => {
@@ -19,7 +20,7 @@ vi.mock('react-router-dom', async () => {
 global.alert = vi.fn()
 
 const mockStats = {
-  collection_count: 15,
+  job_count: 15,
   file_count: 250,
   database_size_mb: 128,
   parquet_files_count: 30,
@@ -31,6 +32,10 @@ describe('SettingsPage', () => {
     vi.clearAllMocks()
     mockNavigate.mockClear()
     
+    // Reset jobs store
+    useJobsStore.setState({
+      jobs: [],
+    })
     
     // Default handler for stats
     server.use(
@@ -69,7 +74,7 @@ describe('SettingsPage', () => {
     })
     
     // Check that stats are displayed
-    expect(screen.getByText('Total Collections')).toBeInTheDocument()
+    expect(screen.getByText('Total Jobs')).toBeInTheDocument()
     expect(screen.getByText('15')).toBeInTheDocument()
     
     expect(screen.getByText('Total Files')).toBeInTheDocument()
@@ -110,7 +115,7 @@ describe('SettingsPage', () => {
     server.use(
       http.get('/api/settings/stats', () => {
         return HttpResponse.json({
-          collection_count: 1500,
+          job_count: 1500,
           file_count: 25000,
           database_size_mb: 1024,
           parquet_files_count: 3000,
@@ -133,7 +138,7 @@ describe('SettingsPage', () => {
     
     expect(screen.getByText('Danger Zone')).toBeInTheDocument()
     expect(screen.getAllByText('Reset Database')).toHaveLength(2) // h4 and button
-    expect(screen.getByText(/This will delete all collections, files, and associated data/)).toBeInTheDocument()
+    expect(screen.getByText(/This will delete all jobs, files, and associated data/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /reset database/i })).toBeInTheDocument()
   })
 
@@ -213,6 +218,14 @@ describe('SettingsPage', () => {
       })
     )
     
+    // Set some initial jobs
+    useJobsStore.setState({
+      jobs: [
+        { id: '1', name: 'Test Job', status: 'completed' } as any,
+        { id: '2', name: 'Another Job', status: 'running' } as any,
+      ],
+    })
+    
     renderWithProviders(<SettingsPage />)
     
     // Open dialog and confirm
@@ -229,6 +242,9 @@ describe('SettingsPage', () => {
     
     // Check navigation
     expect(mockNavigate).toHaveBeenCalledWith('/')
+    
+    // Check jobs were cleared
+    expect(useJobsStore.getState().jobs).toHaveLength(0)
     
     // Dialog should be closed
     expect(screen.queryByText('Confirm Database Reset')).not.toBeInTheDocument()
@@ -278,7 +294,7 @@ describe('SettingsPage', () => {
     
     // Check that all cards are rendered with their values
     const cards = [
-      { label: 'Total Collections', value: '15' },
+      { label: 'Total Jobs', value: '15' },
       { label: 'Total Files', value: '250' },
       { label: 'Database Size', value: '128 MB' },
       { label: 'Parquet Files', value: '30' },

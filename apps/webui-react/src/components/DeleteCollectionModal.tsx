@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { collectionsV2Api } from '../services/api/v2/collections';
+import { collectionsApi } from '../services/api';
 import { useUIStore } from '../stores/uiStore';
 
 interface CollectionStats {
@@ -11,7 +11,6 @@ interface CollectionStats {
 }
 
 interface DeleteCollectionModalProps {
-  collectionId: string;
   collectionName: string;
   stats: CollectionStats;
   onClose: () => void;
@@ -19,7 +18,6 @@ interface DeleteCollectionModalProps {
 }
 
 function DeleteCollectionModal({
-  collectionId,
   collectionName,
   stats,
   onClose,
@@ -31,13 +29,19 @@ function DeleteCollectionModal({
 
   const mutation = useMutation({
     mutationFn: async () => {
-      return collectionsV2Api.delete(collectionId);
+      return collectionsApi.delete(collectionName);
     },
-    onSuccess: () => {
-      addToast({
-        type: 'success',
-        message: `Collection "${collectionName}" deleted successfully`,
-      });
+    onSuccess: (response) => {
+      const errors = response.data.errors;
+      
+      if (errors.qdrant_failures?.length > 0 || errors.artifact_failures?.length > 0) {
+        addToast({
+          type: 'warning',
+          message: `Collection deleted with some cleanup errors. Check logs for details.`,
+          duration: 10000,
+        });
+      }
+      
       onSuccess();
     },
     onError: (error: any) => {
