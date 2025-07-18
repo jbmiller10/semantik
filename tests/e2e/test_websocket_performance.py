@@ -1,4 +1,5 @@
 """Performance and message validation tests for WebSocket integration."""
+
 # mypy: ignore-errors
 
 import json

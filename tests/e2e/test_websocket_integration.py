@@ -1,4 +1,5 @@
 """End-to-end tests for WebSocket integration with collection operations."""
+
 # mypy: ignore-errors
 
 import contextlib

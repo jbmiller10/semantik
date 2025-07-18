@@ -1,4 +1,5 @@
 """End-to-end tests for WebSocket integration during reindex operations."""
+
 # mypy: ignore-errors
 
 import json
