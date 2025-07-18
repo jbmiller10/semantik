@@ -15,7 +15,7 @@ import torch.nn.functional as F  # noqa: N812
 from sentence_transformers import SentenceTransformer
 from shared.config.vecpipe import VecpipeConfig
 from torch import Tensor
-from transformers import AutoModel, AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import AutoModel, AutoTokenizer
 
 from .base import BaseEmbeddingService
 
@@ -72,12 +72,12 @@ class EmbeddingServiceProtocol(Protocol):
         ...
 
     @property
-    def current_model(self) -> Union[PreTrainedModel, "SentenceTransformer", None]:
+    def current_model(self) -> Union[AutoModel, "SentenceTransformer", None]:
         """Get current model for compatibility."""
         ...
 
     @property
-    def current_tokenizer(self) -> PreTrainedTokenizerBase | None:
+    def current_tokenizer(self) -> AutoTokenizer | None:
         """Get current tokenizer for compatibility."""
         ...
 
@@ -150,8 +150,8 @@ class DenseEmbeddingService(BaseEmbeddingService):
     """Dense embedding service supporting both sentence-transformers and custom models like Qwen."""
 
     def __init__(self, config: VecpipeConfig | None = None, mock_mode: bool | None = None) -> None:
-        self.model: PreTrainedModel | "SentenceTransformer" | None = None
-        self.tokenizer: PreTrainedTokenizerBase | None = None
+        self.model: AutoModel | "SentenceTransformer" | None = None
+        self.tokenizer: AutoTokenizer | None = None
         self.model_name: str | None = None
         self.device: str = "cuda" if torch.cuda.is_available() else "cpu"
         self.is_qwen_model: bool = False
@@ -260,7 +260,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
                 self.dimension = getattr(self.model.config, "hidden_size", None)
             elif self.model is not None and hasattr(self.model, "get_sentence_embedding_dimension"):
                 # For sentence-transformers
-                self.dimension = self.model.get_sentence_embedding_dimension()  # type: ignore[operator]
+                self.dimension = self.model.get_sentence_embedding_dimension()
             else:
                 # Fallback: generate test embedding to determine dimension
                 test_embedding = await self._embed_single_internal("test")
@@ -375,7 +375,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
             # Tokenize
             if self.tokenizer is None:
                 raise RuntimeError("Tokenizer not initialized")
-            batch_dict = self.tokenizer(
+            batch_dict = self.tokenizer(  # type: ignore[operator]
                 batch_texts, padding=True, truncation=True, max_length=self.max_sequence_length, return_tensors="pt"
             ).to(self.device)
 
@@ -385,9 +385,9 @@ class DenseEmbeddingService(BaseEmbeddingService):
             with torch.no_grad():
                 if self.dtype == torch.float16:
                     with torch.cuda.amp.autocast(dtype=torch.float16):
-                        outputs = self.model(**batch_dict)
+                        outputs = self.model(**batch_dict)  # type: ignore[operator]
                 else:
-                    outputs = self.model(**batch_dict)
+                    outputs = self.model(**batch_dict)  # type: ignore[operator]
 
                 embeddings = last_token_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
 
@@ -771,12 +771,12 @@ class EmbeddingService:
             return None
 
     @property
-    def current_model(self) -> Union[PreTrainedModel, "SentenceTransformer", None]:
+    def current_model(self) -> Union[AutoModel, "SentenceTransformer", None]:
         """Get current model for compatibility."""
         return self._service.model
 
     @property
-    def current_tokenizer(self) -> PreTrainedTokenizerBase | None:
+    def current_tokenizer(self) -> AutoTokenizer | None:
         """Get current tokenizer for compatibility."""
         return self._service.tokenizer
 
@@ -996,12 +996,12 @@ class _LazyEmbeddingService:
         return self._get_instance().unload_model()
 
     @property
-    def current_model(self) -> Union[PreTrainedModel, "SentenceTransformer", None]:
+    def current_model(self) -> Union[AutoModel, "SentenceTransformer", None]:
         """Get current model for compatibility."""
         return self._get_instance().current_model
 
     @property
-    def current_tokenizer(self) -> PreTrainedTokenizerBase | None:
+    def current_tokenizer(self) -> AutoTokenizer | None:
         """Get current tokenizer for compatibility."""
         return self._get_instance().current_tokenizer
 

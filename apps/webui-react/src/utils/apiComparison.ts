@@ -108,7 +108,7 @@ export class APIMonitor {
   }
 }
 
-// Expected API endpoints from v2 implementation
+// Expected API endpoints from vanilla implementation
 export const EXPECTED_ENDPOINTS = {
   auth: [
     'GET /api/auth/me',
@@ -117,14 +117,14 @@ export const EXPECTED_ENDPOINTS = {
     'POST /api/auth/register',
     'POST /api/auth/refresh',
   ],
-  collections: [
-    'GET /api/v2/collections',
-    'POST /api/v2/collections',
-    'GET /api/v2/collections/{id}',
-    'PUT /api/v2/collections/{id}',
-    'DELETE /api/v2/collections/{id}',
-    'POST /api/v2/collections/{id}/add',
-    'POST /api/v2/collections/{id}/reindex',
+  jobs: [
+    'GET /api/jobs',
+    'POST /api/jobs',
+    'DELETE /api/jobs/{id}',
+    'GET /api/jobs/new-id',
+    'POST /api/jobs/{id}/cancel',
+    'GET /api/jobs/collections-status',
+    'POST /api/jobs/scan/{scanId}',
   ],
   search: [
     'POST /api/search',
@@ -132,8 +132,8 @@ export const EXPECTED_ENDPOINTS = {
     'GET /api/search/collections',
   ],
   documents: [
-    'GET /api/documents/{collectionId}/{docId}/info',
-    'GET /api/documents/{collectionId}/{docId}',
+    'GET /api/documents/{jobId}/{docId}/info',
+    'GET /api/documents/{jobId}/{docId}',
   ],
   models: [
     'GET /api/models',
@@ -141,8 +141,9 @@ export const EXPECTED_ENDPOINTS = {
   metrics: [
     'GET /api/metrics',
   ],
-  operations: [
-    'GET /api/operations',
+  websockets: [
+    'WS /ws/{jobId}',
+    'WS /ws/scan/{scanId}',
   ],
 };
 
