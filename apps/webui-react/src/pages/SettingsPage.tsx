@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { settingsApi } from '../services/api';
 
 interface DatabaseStats {
-  job_count: number;
+  collection_count: number;
   file_count: number;
   database_size_mb: number;
   parquet_files_count: number;
@@ -107,7 +107,7 @@ function SettingsPage() {
                   <div className="text-sm text-gray-600">Total Collections</div>
                 </div>
                 <div className="text-2xl font-semibold mt-1">
-                  {formatNumber(stats.job_count)}
+                  {formatNumber(stats.collection_count)}
                 </div>
               </div>
               
