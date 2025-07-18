@@ -1,722 +1,744 @@
 # Phase 5 Additional Tasks
 
-**Created:** 2025-07-17  
-**Priority:** HIGH - Must complete before merge  
-**Estimated Time:** 4-5 hours (updated with detailed task specifications)
+**Created:** 2025-07-18  
+**Priority:** CRITICAL - Must complete before merge  
+**Estimated Time:** 2-4 hours  
+**Context:** Phase 5 implemented a collection-centric UI refactor, but testing revealed critical issues preventing functionality
 
-## Overview
+## Background
 
-These tasks must be completed to finish Phase 5 of the collections refactor. The primary focus is removing all remnants of the job-centric architecture and ensuring the frontend is fully collection-centric.
+Phase 5 of the collections refactor aimed to transform Semantik's UI from a job-centric to collection-centric paradigm. The implementation is complete and well-architected, but during review we discovered a critical API contract mismatch between the frontend and backend that prevents the application from functioning.
 
-## Task Summary
+The frontend was developed expecting one response structure while the backend returns a different structure. This is blocking all functionality as collections cannot load, preventing users from accessing any features.
 
-| Task | Priority | Estimated Time | Description |
-|------|----------|----------------|-------------|
-| TASK-024 | Critical | 1.5 hours | Remove job-centric components and references |
-| TASK-025 | High | 45 minutes | Verify V2 API consistency throughout app |
-| TASK-026 | Medium | 45 minutes | Clean up navigation and routing |
-| TASK-027 | Medium | 1 hour | Update test suite after removals |
-| TASK-028 | High | 1 hour | Final verification and sign-off |
-| **Total** | | **4.5 hours** | |
+---
 
-## Task List
+## Task 5E: Fix Frontend-Backend API Contract Mismatch
 
-### TASK-024: Remove Job-Centric Components
-**Priority:** Critical  
-**Assignee:** Frontend Developer  
-**Estimated Time:** 1.5 hours
+**Priority:** 🚨 CRITICAL  
+**Estimated Time:** 1-2 hours  
+**Blocker:** Yes - blocks all functionality  
+**Assignee:** Frontend or Backend Developer
 
-**Background:**
-The old job-centric architecture used individual "jobs" as the primary unit of work, where users would create jobs to index documents. In the new collection-centric architecture, these have been replaced by "operations" which are actions performed on collections. All job-related components must be removed to avoid confusion and ensure the UI is fully collection-focused.
+### Problem Context
 
-**Files to Delete (verify existence first):**
-- [ ] `/apps/webui-react/src/components/CreateJobForm.tsx`
-- [ ] `/apps/webui-react/src/components/CreateJobForm.test.tsx`
-- [ ] `/apps/webui-react/src/components/JobCard.tsx`
-- [ ] `/apps/webui-react/src/components/JobCard.test.tsx`
-- [ ] `/apps/webui-react/src/components/JobList.tsx`
-- [ ] `/apps/webui-react/src/components/JobList.test.tsx`
-- [ ] `/apps/webui-react/src/components/JobMetricsModal.tsx`
-- [ ] `/apps/webui-react/src/stores/jobsStore.ts`
-- [ ] `/apps/webui-react/src/stores/__tests__/jobsStore.test.ts`
-- [ ] `/apps/webui-react/src/hooks/useJobProgress.ts`
+During the v1 to v2 API migration, the frontend and backend teams appear to have implemented different response structures for paginated endpoints. This is a common issue when teams work in parallel without clearly defined API contracts.
 
-**Detailed Code Updates Required:**
+**Current Situation:**
+- User logs in successfully
+- Navigate to Collections dashboard (the default landing page)
+- Dashboard attempts to fetch collections via GET `/api/v2/collections`
+- API returns 200 OK with data, but in unexpected format
+- Frontend tries to access `response.data.items` which doesn't exist
+- Results in "Failed to load collections" error
+- Application is completely unusable
 
-1. **HomePage.tsx** - Complete removal of job tab functionality
-   ```typescript
-   // Remove these imports:
-   import CreateJobForm from './CreateJobForm';
-   import JobList from './JobList';
-   import { useJobsStore } from '../stores/jobsStore';
-   
-   // Remove job tab from activeTab conditional rendering
-   // Replace with collections-focused content
-   // Remove any job-related state variables
-   ```
+### Technical Details
 
-2. **SettingsPage.tsx** - Remove job-related settings
-   ```typescript
-   // Remove this import:
-   import { useJobsStore } from '../stores/jobsStore';
-   
-   // Remove settings for:
-   // - Job auto-refresh intervals
-   // - Job history cleanup
-   // - Job notification preferences
-   ```
-
-3. **Layout.tsx** - Remove job metrics modal
-   ```typescript
-   // Remove this import:
-   import JobMetricsModal from './JobMetricsModal';
-   
-   // Remove JobMetricsModal from JSX rendering
-   // Remove any keyboard shortcuts (Ctrl+J for jobs)
-   // Remove job-related toast notifications
-   ```
-
-4. **services/api.ts** - Remove job API endpoints
-   ```typescript
-   // Remove the entire jobsApi object including:
-   // - listJobs(), getJob(), createJob()
-   // - cancelJob(), retryJob(), deleteJob()
-   // - getJobMetrics(), getJobFiles()
-   
-   // Update the main export to remove jobsApi
-   // Check for any other files importing jobsApi
-   ```
-
-5. **uiStore.ts** - Clean up job-related state
-   ```typescript
-   // Remove from interface UIState:
-   showJobMetricsModal: string | null;
-   setShowJobMetricsModal: (jobId: string | null) => void;
-   
-   // Update activeTab type (confirmed 'jobs' is NOT present):
-   activeTab: 'create' | 'search' | 'collections' | 'operations';
-   
-   // Remove from store implementation:
-   showJobMetricsModal: null,
-   setShowJobMetricsModal: (jobId) => set({ showJobMetricsModal: jobId }),
-   ```
-
-6. **Mock Handlers** - Remove job-related API mocks
-   ```typescript
-   // Check these locations:
-   // - /apps/webui-react/src/__mocks__/handlers.ts
-   // - /apps/webui-react/src/setupTests.ts
-   // - Any component-specific mock files
-   
-   // Remove handlers for /api/jobs/* endpoints
-   ```
-
-7. **CSS and Styling Cleanup**
-   ```css
-   /* Remove from index.css or component CSS modules: */
-   .job-card-running { /* animation styles */ }
-   .job-status-indicator { /* status styling */ }
-   .job-progress-bar { /* progress animations */ }
-   
-   /* Check for job-specific Tailwind utility combinations */
-   ```
-
-**Search Commands to Find All References:**
-```bash
-# Search for job-related imports
-grep -r "import.*Job" apps/webui-react/src/ --include="*.tsx" --include="*.ts"
-
-# Search for job-related text (case sensitive)
-grep -r "\bjob\b\|Job" apps/webui-react/src/ --include="*.tsx" --include="*.ts" | grep -v "Operation\|operation"
-
-# Search for specific store/hook usage
-grep -r "useJobsStore\|useJobProgress\|jobsApi" apps/webui-react/src/
-
-# Search for job-related CSS classes
-grep -r "job-" apps/webui-react/src/ --include="*.css" --include="*.scss"
+**Backend Response Structure (Current):**
+```json
+{
+  "collections": [          // ❌ Backend uses "collections" array
+    {
+      "id": "uuid-here",
+      "name": "My Collection",
+      // ... other fields
+    }
+  ],
+  "total": 0,
+  "page": 1,
+  "per_page": 50           // ❌ Backend uses "per_page"
+}
 ```
 
-**Replacement Patterns:**
-- "Create Job" → "Create Collection"
-- "Job Status" → "Operation Status"  
-- "Job History" → "Operation History"
-- "Active Jobs" → "Active Operations"
+**Frontend Expected Structure:**
+```json
+{
+  "items": [               // ✓ Frontend expects "items" array
+    {
+      "id": "uuid-here",
+      "name": "My Collection",
+      // ... other fields
+    }
+  ],
+  "total": 0,
+  "page": 1,
+  "limit": 50             // ✓ Frontend expects "limit"
+}
+```
 
-### TASK-025: Verify V2 API Consistency
-**Priority:** High  
-**Assignee:** Frontend Developer  
-**Estimated Time:** 45 minutes
+### Investigation Starting Points
 
-**Background:**
-During the migration from job-centric to collection-centric architecture, API endpoints were versioned. All frontend components should now use v2 APIs exclusively. Any remaining v1 API usage will cause data inconsistencies and errors.
+1. **Backend Response Definition:**
+   - File: `packages/webui/api/schemas.py`
+   - Look for: `CollectionListResponse` class
+   - Current definition uses `collections: list[CollectionResponse]`
 
-**Critical Areas to Verify:**
+2. **Frontend Type Definition:**
+   - File: `apps/webui-react/src/types/collection.ts`
+   - Look for: `CollectionListResponse` interface
+   - Current definition expects `items: Collection[]`
 
-1. **API Import Consistency**
-   ```bash
-   # Search for v1 API imports that should be removed:
-   grep -r "collectionsApi\'" apps/webui-react/src/ --include="*.tsx" --include="*.ts"
-   
-   # All imports should be:
-   import { collectionsV2Api } from '../services/api/v2/collections';
-   # NOT:
-   import { collectionsApi } from '../services/api';
-   ```
+3. **Frontend Store Implementation:**
+   - File: `apps/webui-react/src/stores/collectionStore.ts`
+   - Line 72: `const collections = new Map(response.data.items.map(c => [c.id, c]));`
+   - This line fails because `response.data.items` is undefined
 
-2. **Endpoint URL Verification**
-   ```bash
-   # Search for hardcoded v1 endpoints:
-   grep -r "/api/collections" apps/webui-react/src/ --include="*.tsx" --include="*.ts"
-   
-   # Should be v2 endpoints:
-   /api/v2/collections
-   /api/v2/collections/{id}
-   /api/v2/collections/{id}/operations
-   /api/v2/collections/{id}/documents
-   ```
+### Solution Options
 
-3. **Data Structure Mapping**
-   Ensure components expect v2 data structures:
+#### Option 1: Update Frontend to Match Backend (Recommended)
+
+**Why Recommended:** 
+- Backend is already deployed and working
+- Less risk of breaking other services that might depend on the API
+- Frontend changes are isolated to the UI layer
+
+**Step-by-Step Implementation:**
+
+1. **Update TypeScript Interfaces:**
    ```typescript
-   // V1 structure (OLD - should not exist):
-   interface OldCollectionDetails {
-     configuration: {
-       model_name: string;
-       chunk_size: number;
-     };
-     stats: {
-       total_files: number;
-       total_vectors: number;
-     };
+   // File: apps/webui-react/src/types/collection.ts
+   
+   // Change from:
+   export interface CollectionListResponse {
+     items: Collection[];
+     total: number;
+     page: number;
+     limit: number;
    }
    
-   // V2 structure (NEW - should be used):
-   interface Collection {
-     embedding_model: string;
-     chunk_size: number;
-     document_count: number;
-     vector_count: number;
+   // To:
+   export interface CollectionListResponse {
+     collections: Collection[];  // Changed from 'items'
+     total: number;
+     page: number;
+     per_page: number;          // Changed from 'limit'
    }
    ```
 
-**Specific Files to Review:**
-
-1. **CollectionDetailsModal.tsx** ✅ (Already migrated)
-   - Uses `collectionsV2Api.get()`
-   - Uses `collectionsV2Api.listOperations()`
-   - Uses `collectionsV2Api.listDocuments()`
-
-2. **AddDataToCollectionModal.tsx**
-   - Verify uses `collectionsV2Api.addSource()`
-   - Check prop structure matches v2 Collection type
-
-3. **SearchInterface.tsx**
-   - Verify uses `searchV2Api.search()`
-   - Check request/response format matches v2
-
-4. **Any remaining collection list components**
-   - Should use `collectionsV2Api.list()`
-
-**Search Commands:**
-```bash
-# Find all API-related imports
-grep -r "from.*api" apps/webui-react/src/ --include="*.tsx" --include="*.ts"
-
-# Find fetch/axios calls with hardcoded URLs
-grep -r "fetch\|axios.*collections" apps/webui-react/src/ --include="*.tsx" --include="*.ts"
-
-# Find old data structure references
-grep -r "\.configuration\.\|\.stats\." apps/webui-react/src/ --include="*.tsx" --include="*.ts"
-```
-
-**Actions Checklist:**
-- [ ] Search for any remaining imports of v1 `collectionsApi`
-- [ ] Ensure all components use `collectionsV2Api`
-- [ ] Verify no hardcoded `/api/collections` endpoints
-- [ ] Check all data structure access uses v2 format
-- [ ] Update any test mocks to use v2 endpoints
-- [ ] Verify error handling works with v2 response format
-
-### TASK-026: Navigation and Routing Cleanup
-**Priority:** Medium  
-**Assignee:** Frontend Developer  
-**Estimated Time:** 45 minutes
-
-**Background:**
-The navigation system should reflect the new collection-centric architecture. Users should see "Collections" as the primary tab and "Active Operations" for monitoring, with no references to the old job-based workflow.
-
-**Current Navigation Structure (from uiStore.ts):**
-```typescript
-activeTab: 'create' | 'jobs' | 'search' | 'collections' | 'operations';
-```
-
-**Target Navigation Structure:**
-```typescript
-activeTab: 'collections' | 'search' | 'operations';
-```
-
-**Detailed Actions:**
-
-1. **Main Navigation Tabs** ✅ (Already verified)
-   - Collections (primary) ✅
-   - Search ✅
-   - Active Operations ✅
-   - Remove any remaining "Jobs" tab references
-   - Remove any "Create Job" tab references
-
-2. **Default Tab Behavior** ✅ (Already verified)
+2. **Update Collection Store:**
    ```typescript
-   // In uiStore.ts, ensure default is:
-   activeTab: 'collections', // ✅ Already correct
-   ```
-
-3. **Router Configuration**
-   Check for React Router routes in:
-   ```typescript
-   // Look for job-related routes to remove:
-   <Route path="/jobs" />
-   <Route path="/jobs/:jobId" />
-   <Route path="/create-job" />
+   // File: apps/webui-react/src/stores/collectionStore.ts
    
-   // Ensure collection routes exist:
-   <Route path="/collections" />
-   <Route path="/collections/:collectionId" />
-   ```
-
-4. **Breadcrumb System**
-   Update any breadcrumb navigation to use collection terminology:
-   ```typescript
-   // OLD breadcrumbs:
-   Home > Jobs > Job Details
-   Home > Create Job
+   // Line 72, change from:
+   const collections = new Map(response.data.items.map(c => [c.id, c]));
    
-   // NEW breadcrumbs:
-   Home > Collections > Collection Details
-   Home > Collections > Settings
+   // To:
+   const collections = new Map(response.data.collections.map(c => [c.id, c]));
    ```
 
-5. **URL Structure Verification**
-   Ensure URLs follow collection-centric patterns:
-   ```
-   ✅ /collections
-   ✅ /collections/{uuid}
-   ✅ /search
-   ✅ /operations
+3. **Check Other Paginated Endpoints:**
+   - Search for all uses of `items` and `limit` in the codebase
+   - Other endpoints that might need updates:
+     - `listOperations` response
+     - `listDocuments` response
+     - Any other paginated API calls
+
+4. **Update Response Type Imports:**
+   - Ensure all files importing `CollectionListResponse` are updated
+   - Run TypeScript compiler to catch any missed updates
+
+#### Option 2: Update Backend to Match Frontend
+
+**When to Choose This:**
+- If other services already depend on the frontend's expected structure
+- If changing the backend is simpler for your team
+
+**Implementation Steps:**
+1. Update `packages/webui/api/schemas.py`
+2. Change `collections` field to `items`
+3. Change `per_page` field to `limit`
+4. Update all endpoints returning paginated responses
+5. Test all API consumers
+
+### Testing Steps
+
+1. **Immediate Verification:**
+   ```bash
+   # Start the application
+   make dev
    
-   ❌ /jobs (remove)
-   ❌ /jobs/{id} (remove)
-   ❌ /create-job (remove)
-   ```
-
-6. **Navigation Keyboard Shortcuts**
-   Update keyboard shortcuts to reflect new structure:
-   ```typescript
-   // Update shortcuts in Layout.tsx or App.tsx:
-   // Ctrl+1 → Collections
-   // Ctrl+2 → Search
-   // Ctrl+3 → Active Operations
+   # In browser console after login:
+   fetch('/api/v2/collections', {
+     headers: { 'Authorization': `Bearer ${token}` }
+   }).then(r => r.json()).then(console.log)
    
-   // Remove old shortcuts:
-   // Ctrl+J → Jobs (remove)
-   // Ctrl+N → New Job (remove)
+   # Verify the response structure
    ```
 
-7. **Page Titles and Meta**
-   Update document titles and meta information:
-   ```typescript
-   // Update useEffect hooks that set document.title
-   // "Semantik - Jobs" → "Semantik - Collections"
-   // "Semantik - Create Job" → "Semantik - Collections"
-   ```
-
-**Files to Check:**
-- `/apps/webui-react/src/App.tsx` (router configuration)
-- `/apps/webui-react/src/components/Layout.tsx` (navigation bar)
-- `/apps/webui-react/src/components/HomePage.tsx` (tab rendering)
-- `/apps/webui-react/src/stores/uiStore.ts` (tab definitions)
-- Any routing utility files
-
-**Search Commands:**
-```bash
-# Find route definitions
-grep -r "Route.*path" apps/webui-react/src/ --include="*.tsx" --include="*.ts"
-
-# Find navigation components
-grep -r "nav\|Nav" apps/webui-react/src/ --include="*.tsx" --include="*.ts"
-
-# Find keyboard shortcut handlers
-grep -r "keydown\|KeyboardEvent" apps/webui-react/src/ --include="*.tsx" --include="*.ts"
-
-# Find document.title updates
-grep -r "document\.title" apps/webui-react/src/ --include="*.tsx" --include="*.ts"
-```
-
-**Verification Checklist:**
-- [ ] No job-related navigation tabs visible
-- [ ] Collections is the default active tab
-- [ ] All routes use collection-centric paths
-- [ ] Breadcrumbs show collection hierarchy
-- [ ] Keyboard shortcuts updated
-- [ ] Page titles reflect collection focus
-- [ ] URL changes don't break browser back/forward
-
-### TASK-027: Test Suite Updates
-**Priority:** Medium  
-**Assignee:** Frontend Developer  
-**Estimated Time:** 1 hour
-
-**Background:**
-After removing job-centric components, the test suite needs to be updated to ensure no broken tests remain and all collection-centric functionality is properly tested.
-
-**Pre-Cleanup Test Baseline:**
-Current test status (before job component removal):
-- Tests pass: ~210
-- Tests skipped: ~1
-- Major test files:
-  - `collectionStore.test.ts` ✅
-  - `localStorageMigration.test.ts` ✅
-  - Component tests for new collection features ✅
-
-**Actions Required:**
-
-1. **Remove Job-Related Test Files**
-   ```bash
-   # These test files should be deleted:
-   rm apps/webui-react/src/components/__tests__/CreateJobForm.test.tsx
-   rm apps/webui-react/src/components/__tests__/JobCard.test.tsx
-   rm apps/webui-react/src/components/__tests__/JobList.test.tsx
-   rm apps/webui-react/src/components/__tests__/JobMetricsModal.test.tsx
-   rm apps/webui-react/src/stores/__tests__/jobsStore.test.ts
-   rm apps/webui-react/src/hooks/__tests__/useJobProgress.test.ts
-   ```
-
-2. **Update Test Mocks and Fixtures**
-   ```typescript
-   // In setupTests.ts or test utilities:
-   // Remove job-related API mocks:
-   // - /api/jobs/* endpoints
-   // - Job status enums
-   // - Job progress event handlers
-   
-   // Update MSW handlers to remove:
-   rest.get('/api/jobs', ...),
-   rest.post('/api/jobs', ...),
-   rest.delete('/api/jobs/:id', ...)
-   ```
-
-3. **Update Integration Tests**
-   ```typescript
-   // Search for tests that might reference jobs:
-   grep -r "job\|Job" apps/webui-react/src/**/*.test.{ts,tsx}
-   
-   // Update to use collection/operation terminology:
-   // "create job" → "create collection"
-   // "job status" → "operation status"
-   // "job progress" → "operation progress"
-   ```
-
-4. **Component Test Updates**
-   ```typescript
-   // HomePage.test.tsx - Remove job tab tests:
-   // - Remove tests for job creation flow
-   // - Remove tests for job list display
-   // - Update to focus on collection dashboard
-   
-   // Layout.test.tsx - Remove job modal tests:
-   // - Remove JobMetricsModal rendering tests
-   // - Remove job-related keyboard shortcut tests
-   ```
-
-5. **Store Test Updates**
-   ```typescript
-   // Any remaining tests that import jobsStore:
-   // - Update to use collectionStore instead
-   // - Change job-related actions to operation-related actions
-   // - Update mock data structures
-   ```
-
-6. **E2E Test Considerations**
-   ```typescript
-   // If E2E tests exist, update them to:
-   // - Start with collection creation instead of job creation
-   // - Test collection management workflows
-   // - Test operation monitoring instead of job monitoring
-   ```
-
-**Test Commands to Run:**
-
-1. **Initial Test Run** (expect failures)
-   ```bash
-   cd apps/webui-react
-   npm test -- --verbose
-   ```
-
-2. **Watch Mode for Fixing Tests**
-   ```bash
-   npm test -- --watch
-   ```
-
-3. **Coverage Report**
-   ```bash
-   npm test -- --coverage --watchAll=false
-   ```
-
-4. **Type Checking**
-   ```bash
-   npm run type-check
-   ```
-
-**Expected Test Results After Cleanup:**
-- Reduced test count (due to removed job tests)
-- All remaining tests should pass
-- Coverage should remain high for collection features
-- No TypeScript errors in test files
-
-**Search Commands for Test Issues:**
-```bash
-# Find all test files
-find apps/webui-react/src -name "*.test.ts" -o -name "*.test.tsx"
-
-# Find job references in tests
-grep -r "job\|Job" apps/webui-react/src/**/*.test.{ts,tsx} --include="*.test.*"
-
-# Find import errors after component deletion
-npm test 2>&1 | grep "Cannot resolve module\|Cannot find module"
-
-# Find API mock issues
-grep -r "api.*job\|job.*api" apps/webui-react/src --include="*.test.*"
-```
-
-**Success Criteria:**
-- [ ] All tests pass without errors
-- [ ] No job-related test files remain
-- [ ] Test coverage remains above 80% for collection features
-- [ ] No broken imports in test files
-- [ ] Mock handlers updated to v2 API structure
-- [ ] Performance tests (if any) updated to collection workflows
-
-### TASK-028: Final Verification & Sign-off
-**Priority:** High  
-**Assignee:** Tech Lead  
-**Estimated Time:** 1 hour
-
-**Background:**
-This is the final gate before merging Phase 5. All previous tasks must be completed and verified. This comprehensive check ensures the collection-centric UI is ready for production.
-
-**Pre-Verification Requirements:**
-- [ ] TASK-024 completed (job components removed)
-- [ ] TASK-025 completed (v2 API consistency verified)
-- [ ] TASK-026 completed (navigation cleaned up)
-- [ ] TASK-027 completed (tests updated and passing)
-
-**Comprehensive Verification Checklist:**
-
-### 1. Build & Code Quality ✅
-```bash
-cd apps/webui-react
-
-# Build verification
-npm run build
-# Expected: Successful build with no errors
-
-# Type checking
-npm run type-check
-# Expected: No TypeScript errors
-
-# Linting
-npm run lint
-# Expected: No ESLint errors or warnings
-
-# Test suite
-npm test -- --watchAll=false
-# Expected: All tests passing
-```
-
-### 2. Browser Runtime Verification 🔍
-```bash
-# Start development server
-npm run dev
-# Navigate to http://localhost:8080
-```
-
-**Browser Checklist:**
-- [ ] Login page loads without console errors
-- [ ] After login, Collections tab is the default active tab
-- [ ] Collections dashboard displays properly
-- [ ] Search tab functional with multi-collection selection
-- [ ] Active Operations tab displays without errors
-- [ ] No browser console errors or warnings
-- [ ] No network request failures (except expected 401s before login)
-
-### 3. Collection-Centric Feature Verification 🎯
-
-**Core Workflows to Test:**
-1. **Collection Creation**
-   - [ ] Create Collection modal opens and functions
-   - [ ] Form validation works
-   - [ ] Advanced settings toggle works
-   - [ ] Collection appears in dashboard after creation
-
-2. **Collection Management**
-   - [ ] Click "Manage" on collection card opens details modal
-   - [ ] All 4 tabs work: Overview, Operations, Documents, Settings
-   - [ ] Settings tab allows configuration changes
-   - [ ] Re-index button becomes enabled after changes
-
-3. **Search Functionality**
-   - [ ] Multi-collection selector works
-   - [ ] Search executes and returns results
-   - [ ] Results grouped by collection
-   - [ ] Partial failure handling displays properly
-
-4. **Operations Monitoring**
-   - [ ] Active Operations tab shows global operations
-   - [ ] Real-time updates work (if backend available)
-   - [ ] Navigation to collection details works
-
-### 4. Terminology Audit 📝
-
-**Search for Job References:**
-```bash
-# Search in all frontend files for job-related terminology
-cd apps/webui-react/src
-grep -r -i "job" . --include="*.tsx" --include="*.ts" --exclude-dir=node_modules
-
-# Expected results:
-# - No user-visible "job" text
-# - No component names containing "job"
-# - No API endpoints containing "job"
-# - Acceptable: comments referring to "background operations" or "async jobs"
-```
-
-**User-Visible Text Verification:**
-- [ ] No buttons labeled "Create Job" 
-- [ ] No tabs labeled "Jobs"
-- [ ] No headings containing "Job"
-- [ ] No error messages mentioning "jobs"
-- [ ] Status indicators use "Operation" not "Job"
-
-### 5. Data Flow Verification 🔄
-
-**API Usage Check:**
-```bash
-# Verify all API calls use v2 endpoints
-grep -r "/api/collections" apps/webui-react/src --include="*.tsx" --include="*.ts"
-# Expected: Only v2 endpoints (/api/v2/collections)
-
-# Check for v1 API imports
-grep -r "collectionsApi" apps/webui-react/src --include="*.tsx" --include="*.ts"
-# Expected: No v1 imports, only collectionsV2Api
-```
-
-### 6. Performance & UX Verification ⚡
-
-**Performance Checks:**
-- [ ] Dashboard loads within 2 seconds
-- [ ] Search results appear within 1 second
-- [ ] Navigation between tabs is instant
-- [ ] No memory leaks in React DevTools
-
-**UX Quality:**
-- [ ] Loading states display during API calls
-- [ ] Error states show helpful messages
-- [ ] Success feedback via toast notifications
-- [ ] Responsive design works on mobile viewport
-- [ ] Accessibility: keyboard navigation works
-
-### 7. Backend Integration Status 🔌
-
-**Current Limitations (to document):**
-- [ ] Note any backend v2 API endpoints not yet implemented
-- [ ] Document any WebSocket functionality requiring backend
-- [ ] List any features that need backend completion
-
-### 8. Documentation & Communication 📖
-
-**Update Documentation:**
-- [ ] Update README if necessary
-- [ ] Note any breaking changes for users
-- [ ] Document new collection workflows
-
-**Team Communication:**
-- [ ] Confirm backend team readiness for v2 API completion
-- [ ] Schedule user training if workflow changed significantly
-- [ ] Plan deployment coordination
-
-### 9. Rollback Plan 🔄
-
-**Emergency Procedures:**
-- [ ] Git commit hash recorded for easy revert
-- [ ] Backup branch created
-- [ ] Rollback steps documented
-- [ ] Team contacts for emergency rollback
-
-### 10. Final Sign-off ✍️
-
-**Approval Checklist:**
-- [ ] Tech Lead approval
-- [ ] Senior Frontend Developer review
-- [ ] UX review (if applicable)
-- [ ] Product Owner acceptance
-- [ ] Deployment team notified
-
-**Deployment Readiness:**
-- [ ] Feature flags configured (if used)
-- [ ] Monitoring alerts updated
-- [ ] User communication prepared
-
-## Testing Plan
-
-After completing these tasks:
-
-1. **Unit Tests**
-   ```bash
-   cd apps/webui-react
-   npm test
-   ```
-
-2. **Type Checking**
-   ```bash
-   npm run type-check
-   ```
-
-3. **Linting**
-   ```bash
-   npm run lint
-   ```
-
-4. **Build Verification**
-   ```bash
-   npm run build
-   ```
-
-5. **Manual Testing**
+2. **Component Testing:**
+   - Login to the application
+   - Collections should load without error
    - Create a new collection
-   - Add data to collection
-   - Search across collections
-   - View active operations
-   - Modify collection settings
-   - Trigger re-index
+   - Verify it appears in the list
+   - Check pagination if many collections exist
 
-## Definition of Done
+3. **TypeScript Validation:**
+   ```bash
+   cd apps/webui-react
+   npm run type-check
+   # Should pass without errors
+   ```
 
-- [ ] All job-centric code removed
-- [ ] All tests passing
-- [ ] No build errors or warnings
-- [ ] Manual testing completed
+### Acceptance Criteria
+- [ ] Collections dashboard loads without "Failed to load collections" error
+- [ ] API response structure matches frontend expectations
+- [ ] TypeScript compilation succeeds
+- [ ] All paginated endpoints use consistent field names
+- [ ] Create, update, delete operations work correctly
+
+### Related Files
+- `apps/webui-react/src/stores/collectionStore.ts` - Main store affected
+- `apps/webui-react/src/types/collection.ts` - Type definitions
+- `apps/webui-react/src/services/api/v2/types.ts` - API type definitions
+- `packages/webui/api/schemas.py` - Backend response schemas
+- `packages/webui/api/v2/collections.py` - Backend endpoint implementation
+
+---
+
+## Task 5F: WebSocket Integration Testing
+
+**Priority:** HIGH  
+**Estimated Time:** 1-2 hours  
+**Blocker:** No - but required for full functionality  
+**Assignee:** QA Engineer or Frontend Developer  
+**Prerequisites:** Task 5E must be completed first
+
+### Context
+
+The Phase 5 implementation includes sophisticated WebSocket integration for real-time operation progress updates. This is a key differentiator for Semantik, providing users with live feedback as their documents are processed. However, we couldn't test this during the review due to the API mismatch preventing collection creation.
+
+### Background on Implementation
+
+The frontend has several components ready for WebSocket integration:
+
+1. **useOperationProgress Hook** (`apps/webui-react/src/hooks/useOperationProgress.ts`):
+   - Connects to `/ws/operations/{operationId}` endpoint
+   - Updates collection store with progress messages
+   - Handles connection lifecycle and reconnection
+   - Provides callbacks for completion and error events
+
+2. **OperationProgress Component** (`apps/webui-react/src/components/OperationProgress.tsx`):
+   - Displays real-time progress bars with shimmer animation
+   - Shows ETA calculations
+   - Indicates live connection status
+   - Handles different operation types (index, append, reindex, remove_source)
+
+3. **Collection Store WebSocket Handlers**:
+   - `updateOperationProgress` method updates operation state
+   - `updateCollectionStatus` method updates collection status
+   - Maintains `activeOperations` Set for efficient queries
+
+### Test Environment Setup
+
+1. **Ensure WebSocket Server is Running:**
+   ```bash
+   # Check if WebSocket endpoint is accessible
+   curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
+     http://localhost:8080/ws/operations/test
+   ```
+
+2. **Prepare Test Data:**
+   - Have a directory with sample documents ready (e.g., `/data/test-docs`)
+   - Ensure it contains various file types (PDF, TXT, MD)
+   - Ideal size: 10-50 files for reasonable processing time
+
+### Detailed Test Scenarios
+
+#### Scenario 1: Create Collection with Initial Source
+
+**Purpose:** Verify the complete flow from collection creation through indexing completion
+
+**Steps:**
+1. Click "Create Collection" button
+2. Fill in:
+   - Name: "Test Real-time Updates"
+   - Description: "Testing WebSocket integration"
+   - Initial Source Directory: `/data/test-docs`
+   - Leave other settings as default
+3. Click "Create"
+4. **Expected Behaviors:**
+   - Modal closes and navigates to collection details page
+   - Collection card shows "Processing" status with blue border
+   - Progress bar appears showing indexing progress
+   - Live indicator (pulsing dot) shows WebSocket is connected
+   - Progress updates in real-time (e.g., "Processing document 5 of 20")
+   - ETA updates as processing continues
+   - Upon completion, status changes to "Ready" with green indicator
+   - Document and vector counts update to final values
+
+**What to Check in Browser DevTools:**
+```javascript
+// Network tab > WS
+// Should see WebSocket connection to /ws/operations/{id}
+// Messages should flow like:
+// → {"type": "progress", "progress": 25, "message": "Processing document 5 of 20"}
+// → {"type": "progress", "progress": 50, "message": "Processing document 10 of 20"}
+// → {"type": "completed", "message": "Indexing completed successfully"}
+```
+
+#### Scenario 2: Add Source to Existing Collection
+
+**Purpose:** Test incremental updates to an existing collection
+
+**Steps:**
+1. Open an existing collection's details panel
+2. Click "Add Data" button
+3. Enter a new source path with additional documents
+4. Submit the form
+5. **Expected Behaviors:**
+   - New operation appears in the Operations History tab
+   - Active Operations tab (in main navigation) shows the operation
+   - Collection status changes to "Processing"
+   - Existing documents remain searchable (collection stays "Ready" if blue-green is working)
+   - Progress bar shows append operation progress
+   - Document count increments as files are processed
+
+#### Scenario 3: Reindex Collection
+
+**Purpose:** Test the complex blue-green reindexing process
+
+**Steps:**
+1. Open collection settings tab
+2. Change configuration (e.g., chunk_size from 1000 to 512)
+3. Click "Re-index Collection"
+4. Type confirmation text: "reindex [collection name]"
+5. Confirm
+6. **Expected Behaviors:**
+   - Warning about temporary double storage usage
+   - Collection shows "Reindexing" status
+   - Progress shows "Creating staging environment..."
+   - Then "Reindexing documents..."
+   - Search continues to work during reindexing
+   - Upon completion, seamless switch to new index
+   - Old index cleaned up (verify in logs)
+
+#### Scenario 4: Concurrent Operations
+
+**Purpose:** Verify system handles multiple simultaneous operations
+
+**Steps:**
+1. Create 3 collections quickly in succession
+2. Start operations on each:
+   - Collection 1: Add new source
+   - Collection 2: Reindex
+   - Collection 3: Remove source
+3. **Expected Behaviors:**
+   - Active Operations tab shows all 3 operations
+   - Each progress bar updates independently
+   - No WebSocket message crosstalk
+   - System remains responsive
+   - Can still search while operations run
+
+### Error Condition Testing
+
+1. **WebSocket Disconnection:**
+   - Start a long operation
+   - Kill the WebSocket server mid-operation
+   - **Expected:** Graceful degradation, status polling fallback
+
+2. **Operation Failure:**
+   - Try to index an invalid/inaccessible path
+   - **Expected:** Error state shown, clear error message
+
+3. **Network Interruption:**
+   - Start operation
+   - Disconnect network briefly
+   - **Expected:** Reconnection attempt, operation continues
+
+### Performance Metrics to Monitor
+
+- WebSocket message frequency (should not overwhelm)
+- UI responsiveness during updates
+- Memory usage with multiple operations
+- CPU usage on progress updates
+
+### Acceptance Criteria
+- [ ] All WebSocket connections establish successfully
+- [ ] Progress updates appear within 1 second of server sending
+- [ ] No duplicate progress notifications
+- [ ] Status transitions are smooth and accurate
+- [ ] Multiple concurrent operations work independently
+- [ ] Error states are handled gracefully
+- [ ] WebSocket reconnection works after disconnection
+- [ ] No memory leaks during long operations
+
+---
+
+## Task 5G: Error State Testing
+
+**Priority:** MEDIUM  
+**Estimated Time:** 30 minutes  
+**Blocker:** No  
+**Assignee:** QA Engineer or Frontend Developer
+
+### Context
+
+Robust error handling is crucial for a good user experience. The Phase 5 implementation includes error boundaries, toast notifications, and retry mechanisms. This task ensures all error paths provide helpful feedback to users.
+
+### Error Handling Architecture
+
+The application has multiple layers of error handling:
+
+1. **API Error Handler** (`handleApiError` function):
+   - Extracts error messages from various response formats
+   - Provides fallback messages
+   - Logs errors for debugging
+
+2. **Toast Notifications** (via `useUIStore`):
+   - Success, error, warning, info variants
+   - Auto-dismiss with configurable duration
+   - Click to dismiss functionality
+
+3. **Component-Level Error States**:
+   - Loading states with spinners
+   - Error states with retry buttons
+   - Empty states with helpful messages
+
+4. **Error Boundaries**:
+   - Catch React component errors
+   - Prevent full app crashes
+   - Provide recovery options
+
+### Detailed Test Cases
+
+#### 1. Network Error Handling
+
+**Setup:**
+```bash
+# Use browser DevTools to simulate network conditions
+# Chrome: DevTools > Network > Offline
+```
+
+**Test Cases:**
+
+a) **Collection Loading Failure:**
+- Go offline
+- Navigate to Collections dashboard
+- **Expected:** "Failed to load collections" with Retry button
+- Click Retry while still offline
+- **Expected:** Error persists, toast shows "Network error"
+- Go online and click Retry
+- **Expected:** Collections load successfully
+
+b) **Operation Submission Failure:**
+- Start creating a collection
+- Go offline before submitting
+- Click Create
+- **Expected:** Toast notification: "Network error: Unable to create collection"
+- Modal remains open with form data intact
+- Go online and retry
+- **Expected:** Collection creates successfully
+
+#### 2. API Validation Errors
+
+**Test Cases:**
+
+a) **Duplicate Collection Name:**
+```javascript
+// Try to create two collections with same name
+// Backend should reject duplicate
+```
+- Create collection named "Test Collection"
+- Try to create another with same name
+- **Expected:** Toast: "Collection with this name already exists"
+- Form remains open with error highlighted
+
+b) **Invalid Path:**
+- Try to add source with path: `/nonexistent/path`
+- **Expected:** Clear error: "Path does not exist or is not accessible"
+
+c) **Exceeding Limits:**
+- If backend has limits (e.g., max collections per user)
+- Try to exceed the limit
+- **Expected:** Specific error: "Collection limit reached (10 max)"
+
+#### 3. Permission Errors
+
+**Test Cases:**
+
+a) **Unauthorized Access:**
+- Use DevTools to delete auth token from localStorage
+- Try any operation
+- **Expected:** Redirect to login page
+- No infinite redirect loops
+
+b) **Accessing Another User's Collection:**
+- If you have a collection UUID from another user
+- Try to access it directly via URL
+- **Expected:** "Collection not found" or "Access denied"
+- Redirect to collections list
+
+#### 4. WebSocket Error Handling
+
+**Test Cases:**
+
+a) **WebSocket Connection Failure:**
+```javascript
+// Block WebSocket connections in browser
+// Chrome: DevTools > Network > WS > Block
+```
+- Start an operation
+- **Expected:** Falls back to polling
+- Progress still updates (less real-time)
+- Warning toast: "Real-time updates unavailable"
+
+b) **WebSocket Message Parsing Error:**
+- If malformed message received
+- **Expected:** Error logged to console
+- UI continues to function
+- No crashes or infinite loops
+
+#### 5. Component Error Boundaries
+
+**Test Cases:**
+
+a) **Render Error in Collection Card:**
+```javascript
+// Temporarily modify code to throw error in render
+// Or use React DevTools to trigger error
+```
+- **Expected:** Error boundary catches it
+- Other collection cards still render
+- Error message: "Something went wrong displaying this collection"
+- "Reload" button to retry
+
+### Error Message Guidelines
+
+Verify all errors follow these patterns:
+
+1. **User-Friendly Language:**
+   - ❌ "ECONNREFUSED 127.0.0.1:8080"
+   - ✅ "Unable to connect to server. Please check your connection."
+
+2. **Actionable:**
+   - ❌ "Error occurred"
+   - ✅ "Failed to create collection. Please try again or contact support."
+
+3. **Specific When Possible:**
+   - ❌ "Invalid input"
+   - ✅ "Collection name must be between 3-50 characters"
+
+### Console Error Monitoring
+
+Check browser console for:
+- No unhandled promise rejections
+- No React key warnings in lists
+- No infinite re-render loops
+- Proper error logging with stack traces
+
+### Acceptance Criteria
+- [ ] All network errors show user-friendly messages
+- [ ] Retry functionality works for recoverable errors
+- [ ] Form validation errors are clearly displayed
+- [ ] No errors cause full page crashes
+- [ ] WebSocket errors fall back gracefully
+- [ ] Error boundaries catch and display component errors
+- [ ] Console shows no unhandled errors
+- [ ] Toast notifications appear for async errors
+- [ ] Loading states prevent duplicate submissions
+
+---
+
+## Task 5H: Cross-Browser Testing
+
+**Priority:** LOW  
+**Estimated Time:** 30 minutes  
+**Blocker:** No  
+**Assignee:** QA Engineer
+
+### Context
+
+While Semantik primarily targets modern browsers, ensuring compatibility across major browsers prevents user frustration and support requests. The application uses modern JavaScript features and CSS that may have varying support.
+
+### Browser Requirements
+
+**Minimum Supported Versions:**
+- Chrome 90+ (Released April 2021)
+- Firefox 88+ (Released April 2021)
+- Safari 14+ (Released September 2020)
+- Edge 90+ (Released April 2021)
+
+### Features to Test by Browser
+
+#### 1. Chrome (Latest - v119+)
+**Baseline Testing - Should Work Perfectly**
+- [ ] All features functional
+- [ ] WebSocket connections stable
+- [ ] No console errors
+- [ ] Performance metrics normal
+
+#### 2. Firefox (Latest - v119+)
+**Known Considerations:**
+- Different CSS rendering engine
+- Stricter CORS policies
+- Different WebSocket implementation
+
+**Specific Tests:**
+- [ ] Grid layouts render correctly
+- [ ] Animations smooth (progress bars, spinners)
+- [ ] WebSocket connections establish
+- [ ] File upload dialogs work
+- [ ] Local storage migration functions
+
+#### 3. Safari (If Available)
+**Known Considerations:**
+- Webkit-specific CSS prefixes
+- Different date parsing
+- Stricter security policies
+
+**Specific Tests:**
+- [ ] Modal backdrops render correctly
+- [ ] Touch events on iPad (if testing Safari on iPad)
+- [ ] WebSocket compatibility
+- [ ] Local storage size limits
+- [ ] CSS Grid support
+
+#### 4. Edge (Latest - Chromium Based)
+**Should be nearly identical to Chrome**
+- [ ] Verify no Microsoft-specific issues
+- [ ] Test with Windows-specific paths
+- [ ] Verify fonts render correctly
+
+### Responsive Design Testing
+
+Test at these viewport sizes across browsers:
+
+1. **Mobile (375x812)** - iPhone X/12/13
+   - [ ] Navigation menu accessible
+   - [ ] Modals fit screen
+   - [ ] Forms usable with touch
+   - [ ] No horizontal scroll
+
+2. **Tablet (768x1024)** - iPad
+   - [ ] Grid adjusts to 2 columns
+   - [ ] Modals centered properly
+   - [ ] Touch targets adequate size
+
+3. **Desktop (1920x1080)** - Standard monitor
+   - [ ] Full features visible
+   - [ ] Grid shows 3 columns
+   - [ ] No wasted space
+
+### JavaScript Feature Compatibility
+
+Verify these modern features work:
+
+1. **ES6+ Features Used:**
+   - Optional chaining (`?.`)
+   - Nullish coalescing (`??`)
+   - Array/Object spread (`...`)
+   - Async/await
+   - Map/Set objects
+
+2. **CSS Features Used:**
+   - CSS Grid
+   - CSS Custom Properties
+   - Flexbox
+   - CSS Animations
+   - Backdrop filters
+
+### Performance Testing
+
+Quick performance check per browser:
+1. Open DevTools Performance tab
+2. Record while:
+   - Loading collections list
+   - Opening modals
+   - Typing in search
+3. Check for:
+   - No major jank (>50ms frames)
+   - Reasonable memory usage
+   - No memory leaks
+
+### Accessibility Testing
+
+While testing browsers, verify:
+- [ ] Keyboard navigation works
+- [ ] Focus indicators visible
+- [ ] Screen reader announces properly (if available)
+- [ ] Color contrast sufficient
+
+### Common Issues and Fixes
+
+1. **CSS Prefixes Missing:**
+   - Autoprefixer should handle this
+   - Check build process includes it
+
+2. **Polyfills Needed:**
+   - Check if any features need polyfills
+   - Vite should handle most automatically
+
+3. **Console Errors:**
+   - Note any browser-specific errors
+   - Usually indicates missing polyfill
+
+### Acceptance Criteria
+- [ ] Application loads in all tested browsers
+- [ ] Core functionality works (CRUD operations)
+- [ ] No JavaScript errors in console
+- [ ] Responsive design intact across browsers
+- [ ] WebSocket or fallback works in each browser
+- [ ] Performance acceptable (no major lag)
+- [ ] Forms and inputs function correctly
+- [ ] CSS renders correctly (no major layout breaks)
+
+---
+
+## Implementation Order and Timeline
+
+### Day 1 (Critical Path)
+1. **Morning: Task 5E** (2 hours)
+   - Fix API mismatch
+   - Test basic functionality
+   - Ensure collections load
+
+2. **Afternoon: Task 5F** (2 hours)
+   - Test WebSocket integration
+   - Verify real-time updates
+   - Document any issues
+
+### Day 2 (Quality Assurance)
+3. **Morning: Task 5G** (30 minutes)
+   - Test error scenarios
+   - Verify error handling
+
+4. **Morning: Task 5H** (30 minutes)
+   - Cross-browser testing
+   - Document any compatibility issues
+
+### Success Metrics
+
+**Quantitative:**
+- 0 console errors in normal operation
+- <2s load time for collections dashboard
+- 100% of CRUD operations functional
+- WebSocket connects within 1s
+
+**Qualitative:**
+- Smooth user experience
+- Clear error messages
+- Responsive UI feedback
+- Consistent cross-browser experience
+
+## Final Notes
+
+### For the Implementer
+
+1. **Start with Task 5E** - Nothing else will work until this is fixed
+2. **Test in development first** - Use `make dev` environment
+3. **Keep the API consistent** - Whatever solution chosen, apply everywhere
+4. **Document your choice** - Add comments explaining the API structure
+5. **Communicate with team** - If backend changes needed, coordinate
+
+### Definition of Done
+
+- [ ] All acceptance criteria met for each task
+- [ ] No regressions in existing functionality
+- [ ] Tests updated to match new structure
+- [ ] Documentation updated if API changed
 - [ ] Code reviewed by another developer
-- [ ] Documentation updated if needed
+- [ ] Manual testing completed
+- [ ] Ready for merge to feature branch
 
-## Notes
-
-- These tasks are blocking the Phase 5 merge
-- Coordinate with backend team regarding BCrypt issue if it affects frontend
-- Consider creating a migration guide for users familiar with job-based workflow
-- After completion, update PHASE_5_DEV_LOG.md with final status
-
-## Risk Mitigation
-
-- Create a backup branch before starting cleanup
-- Test thoroughly after each major deletion
-- Have another developer review the changes
-- Keep the removed code in git history for reference
+Remember: The goal is a working, collection-centric UI that provides an excellent user experience with real-time feedback and robust error handling.

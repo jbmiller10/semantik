@@ -72,7 +72,7 @@ function CollectionDetailsModal() {
 
   // Aggregate source directories from documents
   const sourceDirs = documentsData ? Array.from(
-    documentsData.items.reduce((acc, doc) => {
+    documentsData.documents.reduce((acc, doc) => {
       if (!acc.has(doc.source_path)) {
         acc.set(doc.source_path, { path: doc.source_path, document_count: 0 });
       }
@@ -201,7 +201,7 @@ function CollectionDetailsModal() {
               </h2>
               {collection && (
                 <p className="text-sm text-gray-500 mt-1">
-                  {operationsData?.total || 0} operations • {collection.document_count} documents • {collection.vector_count} vectors
+                  {operationsData?.length || 0} operations • {collection.document_count} documents • {collection.vector_count} vectors
                 </p>
               )}
             </div>
@@ -328,7 +328,7 @@ function CollectionDetailsModal() {
                   <div className="bg-gray-50 p-4 rounded">
                     <dt className="text-sm font-medium text-gray-500">Operations</dt>
                     <dd className="mt-1 text-2xl font-semibold text-gray-900">
-                      {operationsData?.total || 0}
+                      {operationsData?.length || 0}
                     </dd>
                   </div>
                 </div>
@@ -416,7 +416,7 @@ function CollectionDetailsModal() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {operationsData.items.map((operation) => (
+                    {operationsData.map((operation) => (
                       <tr key={operation.id}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                           {operation.id.slice(0, 8)}...
@@ -473,7 +473,7 @@ function CollectionDetailsModal() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {documentsData.items.map((doc: DocumentResponse) => (
+                    {documentsData.documents.map((doc: DocumentResponse) => (
                       <tr key={doc.id}>
                         <td className="px-6 py-4 text-sm text-gray-900">
                           <div className="truncate max-w-md" title={doc.file_path}>
@@ -498,10 +498,10 @@ function CollectionDetailsModal() {
               </div>
 
               {/* Pagination */}
-              {documentsData.total > documentsData.limit && (
+              {documentsData.total > documentsData.per_page && (
                 <div className="mt-4 flex items-center justify-between">
                   <div className="text-sm text-gray-700">
-                    Showing page {documentsData.page} of {Math.ceil(documentsData.total / documentsData.limit)}
+                    Showing page {documentsData.page} of {Math.ceil(documentsData.total / documentsData.per_page)}
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -513,7 +513,7 @@ function CollectionDetailsModal() {
                     </button>
                     <button
                       onClick={() => setFilesPage(filesPage + 1)}
-                      disabled={filesPage * documentsData.limit >= documentsData.total}
+                      disabled={filesPage * documentsData.per_page >= documentsData.total}
                       className="px-3 py-1 border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Next
@@ -716,7 +716,7 @@ function CollectionDetailsModal() {
             total_files: collection.document_count,
             total_vectors: collection.vector_count,
             total_size: collection.total_size_bytes || 0,
-            job_count: operationsData?.total || 0,
+            job_count: operationsData?.length || 0,
           }}
           onClose={() => setShowDeleteModal(false)}
           onSuccess={handleDeleteSuccess}

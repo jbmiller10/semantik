@@ -8,7 +8,6 @@ import type {
   RemoveSourceRequest,
   ReindexRequest,
   CollectionListResponse,
-  OperationListResponse,
   PaginationParams,
   DocumentListResponse,
   SearchRequest,
@@ -48,7 +47,7 @@ export const collectionsV2Api = {
   
   // Collection queries
   listOperations: (uuid: string, params?: PaginationParams) => 
-    api.get<OperationListResponse>(`/api/v2/collections/${uuid}/operations`, { params }),
+    api.get<Operation[]>(`/api/v2/collections/${uuid}/operations`, { params }),
     
   listDocuments: (uuid: string, params?: PaginationParams) => 
     api.get<DocumentListResponse>(`/api/v2/collections/${uuid}/documents`, { params }),
@@ -66,7 +65,7 @@ export const operationsV2Api = {
     api.delete<void>(`/api/v2/operations/${uuid}`),
     
   list: (params?: PaginationParams & { collection_id?: string; status?: string }) => 
-    api.get<OperationListResponse>('/api/v2/operations', { params }),
+    api.get<Operation[]>('/api/v2/operations', { params }),
 };
 
 /**

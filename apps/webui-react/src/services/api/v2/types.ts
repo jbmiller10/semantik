@@ -38,10 +38,10 @@ export interface DocumentResponse {
 }
 
 export interface DocumentListResponse {
-  items: DocumentResponse[];
+  documents: DocumentResponse[];
   total: number;
   page: number;
-  limit: number;
+  per_page: number;
 }
 
 export interface SearchRequest {

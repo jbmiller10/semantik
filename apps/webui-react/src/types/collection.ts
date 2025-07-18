@@ -98,17 +98,17 @@ export interface ReindexRequest {
 
 // Response types
 export interface CollectionListResponse {
-  items: Collection[];
+  collections: Collection[];
   total: number;
   page: number;
-  limit: number;
+  per_page: number;
 }
 
 export interface OperationListResponse {
-  items: Operation[];
+  operations: Operation[];
   total: number;
   page: number;
-  limit: number;
+  per_page: number;
 }
 
 export interface PaginationParams {

@@ -69,7 +69,7 @@ export const useCollectionStore = create<CollectionStore>()(
         set({ isLoading: true, error: null });
         try {
           const response = await collectionsV2Api.list();
-          const collections = new Map(response.data.items.map(c => [c.id, c]));
+          const collections = new Map(response.data.collections.map(c => [c.id, c]));
           set({ collections, isLoading: false });
         } catch (error) {
           const errorMessage = handleApiError(error);
@@ -327,7 +327,7 @@ export const useCollectionStore = create<CollectionStore>()(
       fetchOperations: async (collectionId: string) => {
         try {
           const response = await collectionsV2Api.listOperations(collectionId);
-          const operations = response.data.items;
+          const operations = response.data;
           
           set(state => {
             const newOperations = new Map(state.operations).set(collectionId, operations);

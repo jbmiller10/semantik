@@ -18,7 +18,7 @@ function ActiveOperationsTab() {
         status: 'processing,pending',
         limit: 100 
       });
-      return response.data.items;
+      return response.data;
     },
     refetchInterval: 5000, // Auto-refresh every 5 seconds
   });

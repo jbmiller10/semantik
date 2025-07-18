@@ -1132,3 +1132,81 @@ Task 5D successfully completed. The test suite has been cleaned of job-related r
 3. The localStorage migration tests appropriately test cleanup of old job data
 
 The test suite now accurately reflects the collection-centric architecture and is ready for continued development.
+
+---
+
+## Task 5E: Fix Frontend-Backend API Contract Mismatch
+
+### 2025-07-18: Critical API Contract Fix
+
+#### Overview
+Fixed a critical API contract mismatch between the frontend and backend that was preventing the application from functioning. The frontend expected one response structure while the backend returned a different structure for paginated endpoints.
+
+#### Problem Description
+
+The issue was discovered during Phase 5 review when testing revealed that collections could not load, preventing all functionality. Investigation showed:
+
+**Backend Response Structure:**
+```json
+{
+  "collections": [...],  // Backend uses "collections" array
+  "total": 0,
+  "page": 1,
+  "per_page": 50        // Backend uses "per_page"
+}
+```
+
+**Frontend Expected Structure:**
+```json
+{
+  "items": [...],       // Frontend expects "items" array
+  "total": 0,
+  "page": 1,
+  "limit": 50          // Frontend expects "limit"
+}
+```
+
+#### Changes Made
+
+1. **Updated TypeScript Interfaces** (`apps/webui-react/src/types/collection.ts`)
+   - Changed `CollectionListResponse.items` to `CollectionListResponse.collections`
+   - Changed `CollectionListResponse.limit` to `CollectionListResponse.per_page`
+   - Changed `OperationListResponse.items` to `OperationListResponse.operations`
+   - Changed `OperationListResponse.limit` to `OperationListResponse.per_page`
+
+2. **Updated Collection Store** (`apps/webui-react/src/stores/collectionStore.ts`)
+   - Changed `response.data.items` to `response.data.collections` for collection fetching
+   - Changed `response.data.items` to `response.data.operations` for operations fetching
+
+3. **Updated Document Types** (`apps/webui-react/src/services/api/v2/types.ts`)
+   - Changed `DocumentListResponse.items` to `DocumentListResponse.documents`
+   - Changed `DocumentListResponse.limit` to `DocumentListResponse.per_page`
+
+4. **Updated Component References**
+   - **CollectionDetailsModal.tsx**: 
+     - Changed `documentsData.items` to `documentsData.documents`
+     - Changed `operationsData.items` to `operationsData.operations`
+     - Changed `documentsData.limit` to `documentsData.per_page` for pagination
+   - **ActiveOperationsTab.tsx**: Changed `response.data.items` to `response.data` (operations endpoint returns array)
+
+5. **Special Case: Operations Endpoints**
+   - Discovered that operations endpoints return a plain array, not a paginated response
+   - Updated API client types to expect `Operation[]` instead of `OperationListResponse`
+   - Updated components to handle arrays directly
+
+#### Testing & Verification
+
+- ✅ TypeScript compilation passes without errors
+- ✅ Frontend build succeeds
+- ✅ API responses now match frontend expectations
+- ✅ Collections dashboard can load data correctly
+- ✅ All code quality checks pass (ruff, mypy, black)
+
+#### Summary
+
+Task 5E successfully resolved the critical API contract mismatch. The fix was implemented by updating the frontend to match the backend's response structure rather than changing the backend, as this approach:
+- Minimized risk to other services that might depend on the API
+- Kept changes isolated to the UI layer
+- Aligned with the backend's established patterns
+
+The application is now functional and ready for full integration testing.
