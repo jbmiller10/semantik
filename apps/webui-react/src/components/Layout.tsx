@@ -3,7 +3,6 @@ import { useAuthStore } from '../stores/authStore';
 import { useUIStore } from '../stores/uiStore';
 import Toast from './Toast';
 import DocumentViewerModal from './DocumentViewerModal';
-import JobMetricsModal from './JobMetricsModal';
 import CollectionDetailsModal from './CollectionDetailsModal';
 
 function Layout() {
@@ -94,26 +93,6 @@ function Layout() {
               >
                 Search
               </button>
-              <button
-                onClick={() => setActiveTab('create')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'create'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Create Job
-              </button>
-              <button
-                onClick={() => setActiveTab('jobs')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'jobs'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Jobs
-              </button>
             </nav>
           </div>
         )}
@@ -129,9 +108,6 @@ function Layout() {
       
       {/* Document Viewer Modal */}
       <DocumentViewerModal />
-      
-      {/* Job Metrics Modal */}
-      <JobMetricsModal />
       
       {/* Collection Details Modal */}
       <CollectionDetailsModal />

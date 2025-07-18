@@ -14,6 +14,8 @@ const mockResults = [
     chunk_id: 'chunk1',
     doc_id: 'doc1',
     job_id: 'job1',
+    collection_id: 'collection1',
+    collection_name: 'Test Collection',
     file_path: '/path/to/document1.txt',
     file_name: 'document1.txt',
     content: 'This is the first chunk of document 1',
@@ -25,6 +27,8 @@ const mockResults = [
     chunk_id: 'chunk2',
     doc_id: 'doc1',
     job_id: 'job1',
+    collection_id: 'collection1',
+    collection_name: 'Test Collection',
     file_path: '/path/to/document1.txt',
     file_name: 'document1.txt',
     content: 'This is the second chunk of document 1',
@@ -36,6 +40,8 @@ const mockResults = [
     chunk_id: 'chunk3',
     doc_id: 'doc2',
     job_id: 'job1',
+    collection_id: 'collection1',
+    collection_name: 'Test Collection',
     file_path: '/path/to/document2.txt',
     file_name: 'document2.txt',
     content: 'This is a chunk from document 2',
@@ -95,6 +101,8 @@ describe('SearchResults', () => {
       loading: false,
       error: null,
       rerankingMetrics: null,
+      failedCollections: [],
+      partialFailure: false,
     })
 
     const { container } = render(<SearchResults />)
@@ -102,19 +110,25 @@ describe('SearchResults', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('renders search results grouped by document', () => {
+  it('renders search results grouped by collection and document', () => {
     ;(useSearchStore as any).mockReturnValue({
       results: mockResults,
       loading: false,
       error: null,
       rerankingMetrics: null,
+      failedCollections: [],
+      partialFailure: false,
     })
 
     render(<SearchResults />)
     
     // Check header
     expect(screen.getByText('Search Results')).toBeInTheDocument()
-    expect(screen.getByText('Found 3 results in 2 documents')).toBeInTheDocument()
+    expect(screen.getByText('Found 3 results across 1 collections')).toBeInTheDocument()
+    
+    // Check collection header
+    expect(screen.getByText('Test Collection')).toBeInTheDocument()
+    expect(screen.getByText('3 results in 2 documents')).toBeInTheDocument()
     
     // Check document headers
     expect(screen.getByText('document1.txt')).toBeInTheDocument()
@@ -142,6 +156,8 @@ describe('SearchResults', () => {
         rerankingUsed: true,
         rerankingTimeMs: 125.5,
       },
+      failedCollections: [],
+      partialFailure: false,
     })
 
     render(<SearchResults />)
@@ -158,6 +174,8 @@ describe('SearchResults', () => {
       loading: false,
       error: null,
       rerankingMetrics: null,
+      failedCollections: [],
+      partialFailure: false,
     })
 
     render(<SearchResults />)
@@ -192,6 +210,8 @@ describe('SearchResults', () => {
       loading: false,
       error: null,
       rerankingMetrics: null,
+      failedCollections: [],
+      partialFailure: false,
     })
 
     render(<SearchResults />)
@@ -219,6 +239,8 @@ describe('SearchResults', () => {
       loading: false,
       error: null,
       rerankingMetrics: null,
+      failedCollections: [],
+      partialFailure: false,
     })
 
     render(<SearchResults />)
@@ -253,6 +275,8 @@ describe('SearchResults', () => {
       loading: false,
       error: null,
       rerankingMetrics: null,
+      failedCollections: [],
+      partialFailure: false,
     })
 
     render(<SearchResults />)
@@ -280,6 +304,8 @@ describe('SearchResults', () => {
       loading: false,
       error: null,
       rerankingMetrics: null,
+      failedCollections: [],
+      partialFailure: false,
     })
 
     render(<SearchResults />)
@@ -310,6 +336,8 @@ describe('SearchResults', () => {
       loading: false,
       error: null,
       rerankingMetrics: null,
+      failedCollections: [],
+      partialFailure: false,
     })
 
     // Force render by mocking a non-empty results array that groups to empty
