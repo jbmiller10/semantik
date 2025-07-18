@@ -6,24 +6,6 @@ While we will do our best to avoid any breaking changes, we do not gurantee back
 
 🚨🚨🚨
 
----
-
-### 🚧 **ACTIVE REFACTORING IN PROGRESS** 🚧
-
-**Branch: `feature/collections-refactor`**
-
-This branch contains a major refactoring of the collections system to establish proper separation between internal Semantik entities and user-facing collections. The refactoring will:
-
-- Establish clear domain separation between internal collections and user collections
-- Implement proper database schema design with foreign key relationships
-- Add comprehensive data validation and error handling
-- Improve the overall architecture for long-term maintainability
-
-**Status:** Development in progress  
-**Tracking:** See COLLECTIONS_REFACTOR_MASTER_TASK_LIST.md for detailed task breakdown
-
----
-
 # Semantik 🔎 - Easy, Private, and Powerful Document Search
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
