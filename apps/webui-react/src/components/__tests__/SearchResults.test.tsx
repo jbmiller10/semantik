@@ -260,7 +260,7 @@ describe('SearchResults', () => {
   it('handles missing collection ID in results', async () => {
     const user = userEvent.setup()
     
-    const resultsWithoutJobId = [
+    const resultsWithoutCollectionId = [
       {
         ...mockResults[0],
         collection_id: undefined,
@@ -268,7 +268,7 @@ describe('SearchResults', () => {
     ]
     
     ;(useSearchStore as any).mockReturnValue({
-      results: resultsWithoutJobId,
+      results: resultsWithoutCollectionId,
       loading: false,
       error: null,
       rerankingMetrics: null,
