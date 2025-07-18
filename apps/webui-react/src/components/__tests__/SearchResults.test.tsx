@@ -13,7 +13,6 @@ const mockResults = [
   {
     chunk_id: 'chunk1',
     doc_id: 'doc1',
-    job_id: 'job1',
     collection_id: 'collection1',
     collection_name: 'Test Collection',
     file_path: '/path/to/document1.txt',
@@ -26,7 +25,6 @@ const mockResults = [
   {
     chunk_id: 'chunk2',
     doc_id: 'doc1',
-    job_id: 'job1',
     collection_id: 'collection1',
     collection_name: 'Test Collection',
     file_path: '/path/to/document1.txt',
@@ -39,7 +37,6 @@ const mockResults = [
   {
     chunk_id: 'chunk3',
     doc_id: 'doc2',
-    job_id: 'job1',
     collection_id: 'collection1',
     collection_name: 'Test Collection',
     file_path: '/path/to/document2.txt',
@@ -225,7 +222,7 @@ describe('SearchResults', () => {
     await user.click(viewButtons[0])
     
     expect(mockSetShowDocumentViewer).toHaveBeenCalledWith({
-      jobId: 'job1',
+      collectionId: 'collection1',
       docId: 'doc1',
       chunkId: 'chunk1',
     })
@@ -254,19 +251,19 @@ describe('SearchResults', () => {
     await user.click(chunkContent.closest('.hover\\:bg-gray-100')!)
     
     expect(mockSetShowDocumentViewer).toHaveBeenCalledWith({
-      jobId: 'job1',
+      collectionId: 'collection1',
       docId: 'doc1',
       chunkId: 'chunk1',
     })
   })
 
-  it('handles missing job ID in results', async () => {
+  it('handles missing collection ID in results', async () => {
     const user = userEvent.setup()
     
     const resultsWithoutJobId = [
       {
         ...mockResults[0],
-        job_id: undefined,
+        collection_id: undefined,
       },
     ]
     
@@ -285,12 +282,12 @@ describe('SearchResults', () => {
     const doc = screen.getByText('document1.txt').closest('.cursor-pointer')
     await user.click(doc!)
     
-    // Click view document - should use 'current' as jobId
+    // Click view document - should use 'unknown' as collectionId
     const viewButton = screen.getByText('View Document →')
     await user.click(viewButton)
     
     expect(mockSetShowDocumentViewer).toHaveBeenCalledWith({
-      jobId: 'current',
+      collectionId: 'unknown',
       docId: 'doc1',
       chunkId: 'chunk1',
     })

@@ -76,8 +76,8 @@ function SearchResults() {
     totalResults: number;
   }>);
 
-  const handleViewDocument = (jobId: string, docId: string, chunkId?: string) => {
-    setShowDocumentViewer({ jobId, docId, chunkId });
+  const handleViewDocument = (collectionId: string, docId: string, chunkId?: string) => {
+    setShowDocumentViewer({ collectionId, docId, chunkId });
   };
 
   const toggleDocExpansion = (docId: string) => {
@@ -238,7 +238,7 @@ function SearchResults() {
                                   className={`px-6 py-4 hover:bg-gray-100 cursor-pointer transition-colors ${
                                     index > 0 ? 'border-t border-gray-200' : ''
                                   }`}
-                                  onClick={() => handleViewDocument(chunk.job_id || 'current', docId, chunk.chunk_id)}
+                                  onClick={() => handleViewDocument(chunk.collection_id || collectionId, docId, chunk.chunk_id)}
                                 >
                                   <p className="text-sm text-gray-700 line-clamp-3">{chunk.content}</p>
                                   <div className="mt-2 flex items-center justify-between">
@@ -250,7 +250,7 @@ function SearchResults() {
                                       className="text-blue-600 hover:text-blue-800 text-sm"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleViewDocument(chunk.job_id || 'current', docId, chunk.chunk_id);
+                                        handleViewDocument(chunk.collection_id || collectionId, docId, chunk.chunk_id);
                                       }}
                                     >
                                       View Document →

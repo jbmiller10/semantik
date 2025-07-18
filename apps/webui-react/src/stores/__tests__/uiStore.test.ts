@@ -236,7 +236,7 @@ describe('uiStore', () => {
       expect(result.current.showDocumentViewer).toBeNull()
 
       const viewerData = {
-        jobId: 'job-123',
+        collectionId: 'collection-123',
         docId: 'doc-456',
         chunkId: 'chunk-789',
       }
@@ -256,7 +256,7 @@ describe('uiStore', () => {
       const { result } = renderHook(() => useUIStore())
       
       const viewerData = {
-        jobId: 'job-123',
+        collectionId: 'collection-123',
         docId: 'doc-456',
       }
 

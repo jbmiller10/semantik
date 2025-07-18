@@ -9,7 +9,6 @@ export interface SearchResult {
   file_name: string;
   chunk_index: number;
   total_chunks: number;
-  job_id?: string;
   collection_id?: string;
   collection_name?: string;
 }
