@@ -9,19 +9,22 @@ export interface Toast {
 
 interface UIState {
   toasts: Toast[];
-  activeTab: 'search' | 'collections' | 'operations';
-  showDocumentViewer: { collectionId: string; docId: string; chunkId?: string } | null;
+  activeTab: 'create' | 'jobs' | 'search' | 'collections';
+  showJobMetricsModal: string | null;
+  showDocumentViewer: { jobId: string; docId: string; chunkId?: string } | null;
   showCollectionDetailsModal: string | null;
   addToast: (toast: Omit<Toast, 'id'>) => void;
   removeToast: (id: string) => void;
-  setActiveTab: (tab: 'search' | 'collections' | 'operations') => void;
-  setShowDocumentViewer: (viewer: { collectionId: string; docId: string; chunkId?: string } | null) => void;
-  setShowCollectionDetailsModal: (collectionId: string | null) => void;
+  setActiveTab: (tab: 'create' | 'jobs' | 'search' | 'collections') => void;
+  setShowJobMetricsModal: (jobId: string | null) => void;
+  setShowDocumentViewer: (viewer: { jobId: string; docId: string; chunkId?: string } | null) => void;
+  setShowCollectionDetailsModal: (collectionName: string | null) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
   toasts: [],
-  activeTab: 'collections',
+  activeTab: 'create',
+  showJobMetricsModal: null,
   showDocumentViewer: null,
   showCollectionDetailsModal: null,
   addToast: (toast) => {
@@ -42,6 +45,7 @@ export const useUIStore = create<UIState>((set) => ({
       toasts: state.toasts.filter((t) => t.id !== id),
     })),
   setActiveTab: (tab) => set({ activeTab: tab }),
+  setShowJobMetricsModal: (jobId) => set({ showJobMetricsModal: jobId }),
   setShowDocumentViewer: (viewer) => set({ showDocumentViewer: viewer }),
-  setShowCollectionDetailsModal: (collectionId) => set({ showCollectionDetailsModal: collectionId }),
+  setShowCollectionDetailsModal: (collectionName) => set({ showCollectionDetailsModal: collectionName }),
 }));
