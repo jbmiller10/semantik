@@ -99,13 +99,3 @@ class ConcurrencyError(RepositoryError):
         self.entity_type = entity_type
         self.entity_id = entity_id
         super().__init__(f"{entity_type} '{entity_id}' was modified by another process")
-
-
-class InvalidStateError(RepositoryError):
-    """Raised when an operation is attempted on an entity in an invalid state."""
-
-    def __init__(self, message: str, current_state: str | None = None, allowed_states: list[str] | None = None) -> None:
-        """Initialize with state information."""
-        self.current_state = current_state
-        self.allowed_states = allowed_states
-        super().__init__(message)
