@@ -1012,4 +1012,70 @@ Phase 5B addendum is complete. All frontend components now exclusively use the v
 - ✅ All tests updated and passing
 - ✅ Old collectionsApi removed from codebase
 
+---
+
+## Phase 5C: Navigation and Routing Cleanup Addendum
+
+### 2025-07-18: Complete Job Reference Removal
+
+#### Overview
+Completed comprehensive cleanup of all remaining job-related references in the frontend codebase as part of the collection-centric architecture refactor.
+
+#### Changes Made
+
+1. **API Comparison Utility** (`utils/apiComparison.ts`)
+   - Removed all job-related endpoints from `EXPECTED_ENDPOINTS`
+   - Added collection v2 endpoints
+   - Updated document endpoints to use `collectionId` instead of `jobId`
+   - Removed websocket job endpoints
+
+2. **Feature Checklist** (`utils/featureChecklist.ts`)
+   - Replaced "Job Creation" category with "Collection Management" 
+   - Replaced "Job Management" category with "Operation Management"
+   - Updated tab navigation description to reflect new structure
+   - Aligned feature descriptions with collection-centric workflow
+
+3. **Document Viewer Components**
+   - `DocumentViewer.tsx`: Changed all `jobId` references to `collectionId`
+   - `DocumentViewerModal.tsx`: Updated to destructure and pass `collectionId`
+   - Updated all API URLs from `/api/documents/${jobId}/` to `/api/documents/${collectionId}/`
+
+4. **Search Components** 
+   - `SearchResults.tsx`: Updated `handleViewDocument` to use `collectionId`
+   - `SearchInterface.tsx`: Removed `job_id: undefined` line
+   - Fixed chunk viewing to use collection ID from results
+
+5. **Store Updates**
+   - `uiStore.ts`: Changed `showDocumentViewer` to use `collectionId` field
+   - `searchStore.ts`: Removed `job_id` field from `SearchResult` interface
+
+6. **Test File Updates**
+   - Updated all test files to remove `job_id` references
+   - Changed mock data to use `collectionId` 
+   - Fixed test assertions to match new data structure
+
+#### Verification Results
+
+- ✅ All frontend tests passing (152 passed, 1 skipped)
+- ✅ TypeScript compilation successful with no errors
+- ✅ Code formatting and linting clean
+- ✅ No remaining references to job-related concepts in navigation
+
+#### Summary
+
+Phase 5C addendum successfully completed the navigation and routing cleanup:
+- ✅ All job references removed from utilities and components
+- ✅ Document viewer fully migrated to collection-based approach
+- ✅ Search functionality updated to use collection IDs
+- ✅ Type definitions and tests aligned with collection model
+- ✅ Codebase ready for collection-centric navigation
+
+#### Additional Improvements (Post-Review)
+
+Based on review feedback, clarified the fallback handling for missing collection IDs:
+- Centralized the 'unknown' fallback logic in the `handleViewDocument` function
+- Made the fallback behavior more explicit and easier to understand
+- Added comments to explain the grouping behavior for results without collection_id
+- Tests confirmed to be correctly aligned with component behavior
+
 The frontend is now fully consistent with the v2 collection-centric API architecture.

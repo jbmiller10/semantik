@@ -104,7 +104,6 @@ function SearchInterface() {
         file_name: result.file_name,
         chunk_index: result.chunk_index,
         total_chunks: result.metadata?.total_chunks || 1,
-        job_id: undefined,  // v2 doesn't use job_id
         collection_id: result.collection_id,
         collection_name: result.collection_name,
       }));

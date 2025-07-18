@@ -12,7 +12,8 @@ describe('searchStore', () => {
     file_name: 'file1.txt',
     chunk_index: 0,
     total_chunks: 5,
-    job_id: 'job1',
+    collection_id: 'collection1',
+    collection_name: 'Test Collection',
   }
 
   const mockSearchResult2: SearchResult = {
