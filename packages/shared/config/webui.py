@@ -24,13 +24,9 @@ class WebuiConfig(BaseConfig):
 
     # Service URLs (for internal API calls)
     WEBUI_URL: str = "http://localhost:8080"
-    WEBUI_INTERNAL_HOST: str = "localhost"  # Can be overridden for containerized deployments
 
     # External service URLs
     SEARCH_API_URL: str = "http://localhost:8000"
-
-    # Search Configuration
-    SEARCH_CANDIDATE_MULTIPLIER: int = 3  # How many candidates to retrieve for re-ranking (k * multiplier)
 
     # Redis Configuration (for Celery and WebSocket pub/sub)
     REDIS_URL: str = "redis://localhost:6379/0"

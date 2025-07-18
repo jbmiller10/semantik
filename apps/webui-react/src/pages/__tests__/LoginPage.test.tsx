@@ -40,7 +40,8 @@ describe('LoginPage', () => {
     // Reset UI store and clear any existing toasts
     useUIStore.setState({
       toasts: [],
-      activeTab: 'collections',
+      activeTab: 'create',
+      showJobMetricsModal: null,
       showDocumentViewer: null,
       showCollectionDetailsModal: null,
     })
