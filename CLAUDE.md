@@ -46,10 +46,10 @@ make frontend-test                # Run React tests
 cd apps/webui-react && npm test   # Alternative
 
 # Specific test types
-pytest tests/unit                 # Unit tests only
-pytest tests/integration          # Integration tests
-pytest tests/e2e                  # E2E tests (requires services running)
-pytest -m "not e2e"              # All tests except E2E
+poetry run pytest tests/unit                 # Unit tests only
+poetry run pytest tests/integration          # Integration tests
+poetry run pytest tests/e2e                  # E2E tests (requires services running)
+poetry run pytest -m "not e2e"              # All tests except E2E
 ```
 
 ### Building & Installation
@@ -239,3 +239,7 @@ Always run `make check` before committing to ensure code quality.
 - CORS configured for frontend development
 - API key authentication for programmatic access
 - Superuser required for admin operations
+
+##TOOLS/MCP
+- context7 for looking up documentation
+- puppeteer for viewing webui in browser

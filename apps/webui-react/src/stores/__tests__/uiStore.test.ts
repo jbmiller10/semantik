@@ -7,8 +7,7 @@ describe('uiStore', () => {
     // Reset the store to initial state first
     useUIStore.setState({
       toasts: [],
-      activeTab: 'create',
-      showJobMetricsModal: null,
+      activeTab: 'collections',
       showDocumentViewer: null,
       showCollectionDetailsModal: null,
     })
@@ -205,19 +204,14 @@ describe('uiStore', () => {
   })
 
   describe('activeTab', () => {
-    it('has default activeTab as create', () => {
+    it('has default activeTab as collections', () => {
       const { result } = renderHook(() => useUIStore())
-      expect(result.current.activeTab).toBe('create')
+      expect(result.current.activeTab).toBe('collections')
     })
 
     it('sets activeTab correctly', () => {
       const { result } = renderHook(() => useUIStore())
       
-      act(() => {
-        result.current.setActiveTab('jobs')
-      })
-      expect(result.current.activeTab).toBe('jobs')
-
       act(() => {
         result.current.setActiveTab('search')
       })
@@ -227,33 +221,22 @@ describe('uiStore', () => {
         result.current.setActiveTab('collections')
       })
       expect(result.current.activeTab).toBe('collections')
+
+      act(() => {
+        result.current.setActiveTab('operations')
+      })
+      expect(result.current.activeTab).toBe('operations')
     })
   })
 
   describe('modals', () => {
-    it('sets and clears showJobMetricsModal', () => {
-      const { result } = renderHook(() => useUIStore())
-      
-      expect(result.current.showJobMetricsModal).toBeNull()
-
-      act(() => {
-        result.current.setShowJobMetricsModal('job-123')
-      })
-      expect(result.current.showJobMetricsModal).toBe('job-123')
-
-      act(() => {
-        result.current.setShowJobMetricsModal(null)
-      })
-      expect(result.current.showJobMetricsModal).toBeNull()
-    })
-
     it('sets and clears showDocumentViewer', () => {
       const { result } = renderHook(() => useUIStore())
       
       expect(result.current.showDocumentViewer).toBeNull()
 
       const viewerData = {
-        jobId: 'job-123',
+        collectionId: 'collection-123',
         docId: 'doc-456',
         chunkId: 'chunk-789',
       }
@@ -273,7 +256,7 @@ describe('uiStore', () => {
       const { result } = renderHook(() => useUIStore())
       
       const viewerData = {
-        jobId: 'job-123',
+        collectionId: 'collection-123',
         docId: 'doc-456',
       }
 
@@ -307,17 +290,17 @@ describe('uiStore', () => {
       const { result: hook2 } = renderHook(() => useUIStore())
       
       // Both hooks should see the same initial state
-      expect(hook1.current.activeTab).toBe('create')
-      expect(hook2.current.activeTab).toBe('create')
+      expect(hook1.current.activeTab).toBe('collections')
+      expect(hook2.current.activeTab).toBe('collections')
       
       // Change state in hook1
       act(() => {
-        hook1.current.setActiveTab('jobs')
+        hook1.current.setActiveTab('search')
       })
       
       // Both hooks should see the updated state (zustand uses global state)
-      expect(hook1.current.activeTab).toBe('jobs')
-      expect(hook2.current.activeTab).toBe('jobs')
+      expect(hook1.current.activeTab).toBe('search')
+      expect(hook2.current.activeTab).toBe('search')
     })
   })
 })
