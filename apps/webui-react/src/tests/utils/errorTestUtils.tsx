@@ -207,8 +207,8 @@ export class MockWebSocket {
   onerror: ((event: Event) => void) | null = null
   
   private messageQueue: MessageEvent[] = []
-  private closeCode?: number
-  private closeReason?: string
+  private _closeCode?: number
+  private _closeReason?: string
 
   constructor(url: string) {
     this.url = url
@@ -254,8 +254,8 @@ export class MockWebSocket {
 
   close(code: number = 1000, reason: string = '') {
     this.readyState = MockWebSocket.CLOSING
-    this.closeCode = code
-    this.closeReason = reason
+    this._closeCode = code
+    this._closeReason = reason
     
     setTimeout(() => {
       this.readyState = MockWebSocket.CLOSED
