@@ -1079,3 +1079,56 @@ Based on review feedback, clarified the fallback handling for missing collection
 - Tests confirmed to be correctly aligned with component behavior
 
 The frontend is now fully consistent with the v2 collection-centric API architecture.
+
+---
+
+## Task 5D: Test Suite Updates
+
+### 2025-07-18: Test Suite Cleanup for Job Component Removal
+
+#### Overview
+Completed test suite updates following the removal of job-centric components, ensuring all tests pass and the test suite accurately reflects the collection-centric architecture.
+
+#### Key Findings
+
+1. **No job-specific test files existed**
+   - The files mentioned in the ticket (CreateJobForm.test.tsx, JobCard.test.tsx, etc.) had already been removed
+   - This indicates Phase 5A was thoroughly completed
+
+2. **Job references found and cleaned**
+   - localStorage migration tests: References to job-related keys were already being cleaned up (appropriate)
+   - MSW mock responses: Removed `job_count` fields from collection and stats responses
+   - Test variable naming: Renamed `resultsWithoutJobId` to `resultsWithoutCollectionId`
+   - Mock collection names: Changed `job_1` to `test-collection` for clarity
+
+#### Changes Made
+
+1. **MSW Handler Updates** (`src/tests/mocks/handlers.ts`)
+   - Removed `job_count: 2` from `/api/collections` mock response
+   - Removed `job_count: 10` from `/api/settings/stats` mock response
+   - These fields were remnants from the job-centric architecture
+
+2. **SearchResults Test** (`src/components/__tests__/SearchResults.test.tsx`)
+   - Renamed variable from `resultsWithoutJobId` to `resultsWithoutCollectionId`
+   - Better reflects the actual test case (testing missing collection_id)
+
+3. **SearchInterface Test** (`src/components/__tests__/SearchInterface.test.tsx`) 
+   - Replaced mock collection name `job_1` with `test-collection`
+   - More descriptive and doesn't reference the old job concept
+
+#### Test Results
+
+- ✅ Initial baseline: 152 tests passed, 1 skipped
+- ✅ After cleanup: 152 tests passed, 1 skipped (same as baseline)
+- ✅ The intentional error in ErrorBoundary test remains (expected behavior)
+- ✅ No new test failures introduced
+- ✅ All TypeScript compilation passes
+
+#### Summary
+
+Task 5D successfully completed. The test suite has been cleaned of job-related references while maintaining full test coverage. The changes were minimal because:
+1. Phase 5A had already removed the major job-related test files
+2. The remaining references were mostly in mock data and variable names
+3. The localStorage migration tests appropriately test cleanup of old job data
+
+The test suite now accurately reflects the collection-centric architecture and is ready for continued development.

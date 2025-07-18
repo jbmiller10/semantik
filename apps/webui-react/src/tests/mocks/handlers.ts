@@ -52,7 +52,6 @@ export const handlers = [
         model_name: 'Qwen/Qwen3-Embedding-0.6B',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        job_count: 2,
       }
     ])
   }),
@@ -131,7 +130,6 @@ export const handlers = [
   // Settings endpoints
   http.get('/api/settings/stats', () => {
     return HttpResponse.json({
-      job_count: 10,
       file_count: 100,
       database_size_mb: 50,
       parquet_files_count: 10,
