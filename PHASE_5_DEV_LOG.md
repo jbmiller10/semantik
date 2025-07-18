@@ -878,3 +878,71 @@ The Active Operations Tab integrates with:
 #### Summary
 
 TASK-023 is successfully completed. The Active Operations Tab provides users with essential system-wide visibility into what Semantik is currently processing. The implementation is ready for full integration once the backend v2 operations API is available. The component follows all established patterns and integrates seamlessly with the existing collection-centric architecture.
+
+---
+
+## Phase 5A: Delete Job-Related UI Components
+
+### 2025-07-18: Job UI Components Removal
+
+#### Overview
+Completed removal of all UI components and state management related to the job system in the webui-react frontend as part of the transition to a collection-centric architecture.
+
+#### Completed Tasks
+
+1. **Searched for all job-related references** across the frontend codebase
+   - Found components: CreateJobForm, JobCard, JobList, JobMetricsModal
+   - Found hooks: useJobProgress
+   - Found stores: jobsStore
+   - Found job-related state in uiStore
+
+2. **Deleted job-related component files and tests**
+   - Removed `CreateJobForm.tsx` and its test
+   - Removed `JobCard.tsx` and its test
+   - Removed `JobList.tsx` and its test
+   - Removed `JobMetricsModal.tsx`
+   - Removed `useJobProgress.ts` hook
+   - Removed `jobsStore.ts` and its test
+
+3. **Updated HomePage.tsx**
+   - Removed imports for CreateJobForm and JobList components
+   - Removed 'create' and 'jobs' tab rendering logic
+   - Component now only renders SearchInterface, CollectionsDashboard, and ActiveOperationsTab
+
+4. **Updated SettingsPage.tsx**
+   - Changed all references from "jobs" to "collections" in the database reset section
+   - Updated statistics display to use collection_count instead of job_count
+   - Fixed TypeScript types to match the new API response structure
+
+5. **Updated Layout.tsx**
+   - Removed JobMetricsModal import and component
+   - Removed "Create Job" and "Jobs" navigation tabs
+   - Cleaned up tab rendering to only show "Search" tab
+
+6. **Updated services/api.ts**
+   - Removed the entire jobsApi object and all job-related API endpoints
+   - Kept collection-related endpoints including the addData method for adding to collections
+
+7. **Updated uiStore.ts**
+   - Removed showJobMetricsModal state property
+   - Removed setShowJobMetricsModal action
+   - Updated activeTab type to only include: 'search' | 'collections' | 'operations'
+   - Changed default activeTab from 'create' to 'collections'
+
+8. **Removed job-related API mocks**
+   - Cleaned up handlers.ts to remove all job-related mock endpoints
+   - Removed collections-status endpoint that was job-specific
+
+9. **Cleaned up CSS styling**
+   - Removed job-card animations and related CSS classes from index.css
+
+10. **Fixed all test failures**
+    - Updated SearchInterface tests to properly mock collectionStore
+    - Fixed HomePage tests to remove references to deleted components
+    - Updated Layout tests to remove job-related tab tests
+    - Fixed uiStore tests to remove showJobMetricsModal tests
+    - All tests now pass (140 passed, 1 skipped)
+
+#### Summary
+
+Phase 5A is successfully completed. All job-related UI components have been removed from the frontend, and the application now focuses entirely on the collection-centric paradigm. The codebase is cleaner, tests are passing, and the UI is ready for the new collection-based workflow.
