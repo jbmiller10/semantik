@@ -7,22 +7,6 @@ body {
   @apply bg-gray-100;
 }
 
-/* Job card animations */
-@keyframes breathing {
-  0%, 100% {
-    transform: scale(1);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  }
-  50% {
-    transform: scale(1.01);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  }
-}
-
-.job-card-running {
-  animation: breathing 3s ease-in-out infinite;
-}
-
 /* Progress bar shimmer effect */
 @keyframes shimmer {
   0% {

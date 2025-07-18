@@ -1,39 +1,18 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUIStore } from '../stores/uiStore';
-import { collectionsApi } from '../services/api';
+import { collectionsV2Api } from '../services/api/v2/collections';
+import { useCollectionStore } from '../stores/collectionStore';
 import AddDataToCollectionModal from './AddDataToCollectionModal';
 import RenameCollectionModal from './RenameCollectionModal';
 import DeleteCollectionModal from './DeleteCollectionModal';
+import ReindexCollectionModal from './ReindexCollectionModal';
+import type { DocumentResponse } from '../services/api/v2/types';
 
-interface CollectionDetails {
-  name: string;
-  stats: {
-    total_files: number;
-    total_vectors: number;
-    total_size: number;
-    job_count: number;
-  };
-  configuration: {
-    model_name: string;
-    chunk_size: number;
-    chunk_overlap: number;
-    quantization: string;
-    vector_dim: number | null;
-    instruction: string | null;
-  };
-  source_directories: string[];
-  jobs: Array<{
-    id: string;
-    status: string;
-    created_at: string;
-    updated_at: string;
-    directory_path: string;
-    total_files: number;
-    processed_files: number;
-    failed_files: number;
-    mode: string;
-  }>;
+// Type for aggregated source directories from documents
+interface SourceInfo {
+  path: string;
+  document_count: number;
 }
 
 function CollectionDetailsModal() {
@@ -42,28 +21,65 @@ function CollectionDetailsModal() {
   const [showAddDataModal, setShowAddDataModal] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'jobs' | 'files'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'jobs' | 'files' | 'settings'>('overview');
   const [filesPage, setFilesPage] = useState(1);
+  const [configChanges, setConfigChanges] = useState<{
+    chunk_size?: number;
+    chunk_overlap?: number;
+    instruction?: string;
+  }>({});
+  const [showReindexModal, setShowReindexModal] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<{
+    chunk_size?: string;
+    chunk_overlap?: string;
+  }>({});
 
-  const { data: details, isLoading, error } = useQuery({
-    queryKey: ['collection-details', showCollectionDetailsModal],
+  // Fetch collection details using v2 API
+  const { data: collection, isLoading, error } = useQuery({
+    queryKey: ['collection-v2', showCollectionDetailsModal],
     queryFn: async () => {
       if (!showCollectionDetailsModal) return null;
-      const response = await collectionsApi.getDetails(showCollectionDetailsModal);
-      return response.data as CollectionDetails;
+      const response = await collectionsV2Api.get(showCollectionDetailsModal);
+      return response.data;
     },
     enabled: !!showCollectionDetailsModal,
   });
 
-  const { data: filesData } = useQuery({
-    queryKey: ['collection-files', showCollectionDetailsModal, filesPage],
+  // Fetch operations (jobs) for the collection
+  const { data: operationsData } = useQuery({
+    queryKey: ['collection-operations', showCollectionDetailsModal],
+    queryFn: async () => {
+      if (!showCollectionDetailsModal) return null;
+      const response = await collectionsV2Api.listOperations(showCollectionDetailsModal, { limit: 50 });
+      return response.data;
+    },
+    enabled: !!showCollectionDetailsModal && activeTab === 'jobs',
+  });
+
+  // Fetch documents (files) for the collection
+  const { data: documentsData } = useQuery({
+    queryKey: ['collection-documents', showCollectionDetailsModal, filesPage],
     queryFn: async () => {
       if (!showCollectionDetailsModal || activeTab !== 'files') return null;
-      const response = await collectionsApi.getFiles(showCollectionDetailsModal, filesPage);
+      const response = await collectionsV2Api.listDocuments(showCollectionDetailsModal, { 
+        page: filesPage,
+        limit: 50 
+      });
       return response.data;
     },
     enabled: !!showCollectionDetailsModal && activeTab === 'files',
   });
+
+  // Aggregate source directories from documents
+  const sourceDirs = documentsData ? Array.from(
+    documentsData.documents.reduce((acc, doc) => {
+      if (!acc.has(doc.source_path)) {
+        acc.set(doc.source_path, { path: doc.source_path, document_count: 0 });
+      }
+      acc.get(doc.source_path)!.document_count++;
+      return acc;
+    }, new Map<string, SourceInfo>())
+  ).map(([_, info]) => info) : [];
 
   const handleClose = () => {
     setShowCollectionDetailsModal(null);
@@ -92,27 +108,82 @@ function CollectionDetailsModal() {
 
   const handleAddDataSuccess = () => {
     setShowAddDataModal(false);
-    queryClient.invalidateQueries({ queryKey: ['collection-details', showCollectionDetailsModal] });
-    queryClient.invalidateQueries({ queryKey: ['collections'] });
+    queryClient.invalidateQueries({ queryKey: ['collection-v2', showCollectionDetailsModal] });
+    queryClient.invalidateQueries({ queryKey: ['collection-operations', showCollectionDetailsModal] });
+    queryClient.invalidateQueries({ queryKey: ['collection-documents', showCollectionDetailsModal] });
     addToast({
       type: 'success',
-      message: 'Job created successfully. Check the Jobs tab to monitor progress.',
+      message: 'Source added successfully. Check the Operations tab to monitor progress.',
     });
   };
 
-  const handleRenameSuccess = (newName: string) => {
+  const handleRenameSuccess = () => {
     setShowRenameModal(false);
-    setShowCollectionDetailsModal(newName);
-    queryClient.invalidateQueries({ queryKey: ['collections'] });
-    queryClient.invalidateQueries({ queryKey: ['collection-details'] });
+    // Note: with v2 API, we use UUIDs not names, so we keep the same ID
+    queryClient.invalidateQueries({ queryKey: ['collection-v2'] });
     addToast({ type: 'success', message: 'Collection renamed successfully' });
   };
 
   const handleDeleteSuccess = () => {
     setShowDeleteModal(false);
     handleClose();
-    queryClient.invalidateQueries({ queryKey: ['collections'] });
+    // Refresh the collections list in the store
+    const { fetchCollections } = useCollectionStore.getState();
+    fetchCollections();
     addToast({ type: 'success', message: 'Collection deleted successfully' });
+  };
+
+  const handleReindexSuccess = () => {
+    setShowReindexModal(false);
+    setConfigChanges({});
+    setValidationErrors({});
+    queryClient.invalidateQueries({ queryKey: ['collection-v2', showCollectionDetailsModal] });
+    queryClient.invalidateQueries({ queryKey: ['collection-operations', showCollectionDetailsModal] });
+    addToast({ 
+      type: 'success', 
+      message: 'Re-indexing started successfully. Check the Operations tab to monitor progress.' 
+    });
+  };
+
+  const validateChunkSize = (value: number): string | undefined => {
+    if (value < 100) return 'Chunk size must be at least 100 tokens';
+    if (value > 4000) return 'Chunk size cannot exceed 4000 tokens';
+    return undefined;
+  };
+
+  const validateChunkOverlap = (value: number, chunkSize: number): string | undefined => {
+    if (value < 0) return 'Chunk overlap cannot be negative';
+    if (value > 200) return 'Chunk overlap cannot exceed 200 tokens';
+    if (value >= chunkSize) return 'Chunk overlap must be less than chunk size';
+    return undefined;
+  };
+
+  const handleChunkSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value) || undefined;
+    setConfigChanges(prev => ({ ...prev, chunk_size: value }));
+    
+    if (value !== undefined) {
+      const error = validateChunkSize(value);
+      setValidationErrors(prev => ({ ...prev, chunk_size: error }));
+      
+      // Re-validate chunk overlap if it exists
+      const currentOverlap = configChanges.chunk_overlap ?? collection?.chunk_overlap;
+      if (currentOverlap !== undefined) {
+        const overlapError = validateChunkOverlap(currentOverlap, value);
+        setValidationErrors(prev => ({ ...prev, chunk_overlap: overlapError }));
+      }
+    }
+  };
+
+  const handleChunkOverlapChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value) || undefined;
+    setConfigChanges(prev => ({ ...prev, chunk_overlap: value }));
+    
+    if (value !== undefined && collection) {
+      const chunkSize = configChanges.chunk_size ?? collection.chunk_size;
+      const error = validateChunkOverlap(value, chunkSize);
+      setValidationErrors(prev => ({ ...prev, chunk_overlap: error }));
+    }
   };
 
   if (!showCollectionDetailsModal) return null;
@@ -126,11 +197,11 @@ function CollectionDetailsModal() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold text-gray-900">
-                {details?.name || showCollectionDetailsModal}
+                {collection?.name || 'Loading...'}
               </h2>
-              {details && (
+              {collection && (
                 <p className="text-sm text-gray-500 mt-1">
-                  {details.stats.job_count} jobs • {details.stats.total_files} files • {details.stats.total_vectors} vectors
+                  {operationsData?.length || 0} operations • {collection.document_count} documents • {collection.vector_count} vectors
                 </p>
               )}
             </div>
@@ -149,21 +220,21 @@ function CollectionDetailsModal() {
             <button
               onClick={() => setShowAddDataModal(true)}
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-              disabled={!details}
+              disabled={!collection}
             >
               Add Data
             </button>
             <button
               onClick={() => setShowRenameModal(true)}
               className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
-              disabled={!details}
+              disabled={!collection}
             >
               Rename
             </button>
             <button
               onClick={() => setShowDeleteModal(true)}
               className="px-4 py-2 border border-red-300 text-red-600 rounded hover:bg-red-50"
-              disabled={!details}
+              disabled={!collection}
             >
               Delete
             </button>
@@ -203,6 +274,16 @@ function CollectionDetailsModal() {
             >
               Files
             </button>
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'settings'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Settings
+            </button>
           </nav>
         </div>
 
@@ -220,34 +301,34 @@ function CollectionDetailsModal() {
             </div>
           )}
 
-          {details && activeTab === 'overview' && (
+          {collection && activeTab === 'overview' && (
             <div className="space-y-6">
               {/* Stats */}
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Statistics</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="bg-gray-50 p-4 rounded">
-                    <dt className="text-sm font-medium text-gray-500">Total Files</dt>
+                    <dt className="text-sm font-medium text-gray-500">Documents</dt>
                     <dd className="mt-1 text-2xl font-semibold text-gray-900">
-                      {details.stats.total_files.toLocaleString()}
+                      {collection.document_count.toLocaleString()}
                     </dd>
                   </div>
                   <div className="bg-gray-50 p-4 rounded">
-                    <dt className="text-sm font-medium text-gray-500">Total Vectors</dt>
+                    <dt className="text-sm font-medium text-gray-500">Vectors</dt>
                     <dd className="mt-1 text-2xl font-semibold text-gray-900">
-                      {details.stats.total_vectors.toLocaleString()}
+                      {collection.vector_count.toLocaleString()}
                     </dd>
                   </div>
                   <div className="bg-gray-50 p-4 rounded">
                     <dt className="text-sm font-medium text-gray-500">Total Size</dt>
                     <dd className="mt-1 text-2xl font-semibold text-gray-900">
-                      {formatBytes(details.stats.total_size)}
+                      {formatBytes(collection.total_size_bytes || 0)}
                     </dd>
                   </div>
                   <div className="bg-gray-50 p-4 rounded">
-                    <dt className="text-sm font-medium text-gray-500">Jobs</dt>
+                    <dt className="text-sm font-medium text-gray-500">Operations</dt>
                     <dd className="mt-1 text-2xl font-semibold text-gray-900">
-                      {details.stats.job_count}
+                      {operationsData?.length || 0}
                     </dd>
                   </div>
                 </div>
@@ -258,101 +339,107 @@ function CollectionDetailsModal() {
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Configuration</h3>
                 <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">Model</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{details.configuration.model_name}</dd>
+                    <dt className="text-sm font-medium text-gray-500">Embedding Model</dt>
+                    <dd className="mt-1 text-sm text-gray-900 font-mono text-xs">{collection.embedding_model}</dd>
                   </div>
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">Vector Dimensions</dt>
-                    <dd className="mt-1 text-sm text-gray-900">
-                      {details.configuration.vector_dim || 'Auto'}
+                    <dt className="text-sm font-medium text-gray-500">Status</dt>
+                    <dd className="mt-1 text-sm text-gray-900 capitalize">
+                      {collection.status}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-sm font-medium text-gray-500">Chunk Size</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{details.configuration.chunk_size} tokens</dd>
+                    <dd className="mt-1 text-sm text-gray-900">{collection.chunk_size} characters</dd>
                   </div>
                   <div>
                     <dt className="text-sm font-medium text-gray-500">Chunk Overlap</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{details.configuration.chunk_overlap} tokens</dd>
+                    <dd className="mt-1 text-sm text-gray-900">{collection.chunk_overlap} characters</dd>
                   </div>
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">Quantization</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{details.configuration.quantization}</dd>
+                    <dt className="text-sm font-medium text-gray-500">Public</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{collection.is_public ? 'Yes' : 'No'}</dd>
                   </div>
-                  {details.configuration.instruction && (
-                    <div className="md:col-span-2">
-                      <dt className="text-sm font-medium text-gray-500">Instruction</dt>
-                      <dd className="mt-1 text-sm text-gray-900">{details.configuration.instruction}</dd>
-                    </div>
-                  )}
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Created</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{formatDate(collection.created_at)}</dd>
+                  </div>
                 </dl>
               </div>
 
               {/* Source Directories */}
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Source Directories</h3>
-                <ul className="space-y-2">
-                  {details.source_directories.map((dir, index) => (
-                    <li key={index} className="flex items-center text-sm text-gray-900">
-                      <svg className="h-4 w-4 text-gray-400 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                      </svg>
-                      {dir}
-                    </li>
-                  ))}
-                </ul>
+                {sourceDirs.length > 0 ? (
+                  <ul className="space-y-2">
+                    {sourceDirs.map((source, index) => (
+                      <li key={index} className="flex items-center justify-between text-sm text-gray-900">
+                        <div className="flex items-center">
+                          <svg className="h-4 w-4 text-gray-400 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                          </svg>
+                          {source.path}
+                        </div>
+                        <span className="text-gray-500">{source.document_count} documents</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-gray-500">No source directories added yet</p>
+                )}
               </div>
             </div>
           )}
 
-          {details && activeTab === 'jobs' && (
+          {collection && activeTab === 'jobs' && operationsData && (
             <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Jobs</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Operations History</h3>
               <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
                 <table className="min-w-full divide-y divide-gray-300">
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Job ID
+                        Operation ID
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Type
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Status
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Mode
+                        Started
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Files
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Created
+                        Completed
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {details.jobs.map((job) => (
-                      <tr key={job.id}>
+                    {operationsData.map((operation) => (
+                      <tr key={operation.id}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {job.id.slice(0, 8)}...
+                          {operation.id.slice(0, 8)}...
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 capitalize">
+                          {operation.type.replace('_', ' ')}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            job.status === 'completed' ? 'bg-green-100 text-green-800' :
-                            job.status === 'failed' ? 'bg-red-100 text-red-800' :
-                            job.status === 'running' ? 'bg-blue-100 text-blue-800' :
+                            operation.status === 'completed' ? 'bg-green-100 text-green-800' :
+                            operation.status === 'failed' ? 'bg-red-100 text-red-800' :
+                            operation.status === 'processing' ? 'bg-blue-100 text-blue-800' :
+                            operation.status === 'cancelled' ? 'bg-yellow-100 text-yellow-800' :
                             'bg-gray-100 text-gray-800'
                           }`}>
-                            {job.status}
+                            {operation.status}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {job.mode}
+                          {operation.started_at ? formatDate(operation.started_at) : '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {job.processed_files}/{job.total_files}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {formatDate(job.created_at)}
+                          {operation.completed_at ? formatDate(operation.completed_at) : '-'}
                         </td>
                       </tr>
                     ))}
@@ -362,10 +449,10 @@ function CollectionDetailsModal() {
             </div>
           )}
 
-          {details && activeTab === 'files' && filesData && (
+          {collection && activeTab === 'files' && documentsData && (
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-4">
-                Files ({filesData.total.toLocaleString()})
+                Documents ({documentsData.total.toLocaleString()})
               </h3>
               <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
                 <table className="min-w-full divide-y divide-gray-300">
@@ -375,38 +462,34 @@ function CollectionDetailsModal() {
                         File Path
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Size
+                        Source
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Vectors
+                        Chunks
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
+                        Created
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {filesData.files.map((file: any) => (
-                      <tr key={file.id}>
+                    {documentsData.documents.map((doc: DocumentResponse) => (
+                      <tr key={doc.id}>
                         <td className="px-6 py-4 text-sm text-gray-900">
-                          <div className="truncate max-w-md" title={file.path}>
-                            {file.path}
+                          <div className="truncate max-w-md" title={doc.file_path}>
+                            {doc.file_path}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-500">
+                          <div className="truncate max-w-xs" title={doc.source_path}>
+                            {doc.source_path}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {formatBytes(file.size)}
+                          {doc.chunk_count}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {file.vectors_created}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            file.status === 'completed' ? 'bg-green-100 text-green-800' :
-                            file.status === 'failed' ? 'bg-red-100 text-red-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            {file.status}
-                          </span>
+                          {formatDate(doc.created_at)}
                         </td>
                       </tr>
                     ))}
@@ -415,10 +498,10 @@ function CollectionDetailsModal() {
               </div>
 
               {/* Pagination */}
-              {filesData.pages > 1 && (
+              {documentsData.total > documentsData.per_page && (
                 <div className="mt-4 flex items-center justify-between">
                   <div className="text-sm text-gray-700">
-                    Showing page {filesData.page} of {filesData.pages}
+                    Showing page {documentsData.page} of {Math.ceil(documentsData.total / documentsData.per_page)}
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -430,7 +513,7 @@ function CollectionDetailsModal() {
                     </button>
                     <button
                       onClick={() => setFilesPage(filesPage + 1)}
-                      disabled={filesPage === filesData.pages}
+                      disabled={filesPage * documentsData.per_page >= documentsData.total}
                       className="px-3 py-1 border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Next
@@ -440,33 +523,215 @@ function CollectionDetailsModal() {
               )}
             </div>
           )}
+
+          {collection && activeTab === 'settings' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Collection Configuration</h3>
+                <p className="text-sm text-gray-600 mb-6">
+                  Adjust collection settings. Changes will require re-indexing to take effect.
+                </p>
+                
+                <div className="space-y-4">
+                  {/* Model (Read-only) */}
+                  <div>
+                    <label htmlFor="embedding-model" className="block text-sm font-medium text-gray-700">
+                      Embedding Model
+                    </label>
+                    <input
+                      id="embedding-model"
+                      type="text"
+                      value={collection.embedding_model}
+                      disabled
+                      className="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm text-gray-500 sm:text-sm px-3 py-2"
+                      aria-label="Embedding model (read-only)"
+                      aria-describedby="model-help"
+                    />
+                    <p id="model-help" className="mt-1 text-xs text-gray-500">Cannot be changed after collection creation</p>
+                  </div>
+
+                  {/* Chunk Size */}
+                  <div>
+                    <label htmlFor="chunk-size" className="block text-sm font-medium text-gray-700">
+                      Chunk Size (characters)
+                    </label>
+                    <input
+                      id="chunk-size"
+                      type="number"
+                      value={configChanges.chunk_size ?? collection.chunk_size}
+                      onChange={handleChunkSizeChange}
+                      min="100"
+                      max="4000"
+                      className={`mt-1 block w-full rounded-md shadow-sm focus:ring-blue-500 sm:text-sm ${
+                        validationErrors.chunk_size
+                          ? 'border-red-300 focus:border-red-500'
+                          : 'border-gray-300 focus:border-blue-500'
+                      }`}
+                      aria-label="Chunk size in tokens"
+                      aria-describedby="chunk-size-help chunk-size-error"
+                      aria-invalid={!!validationErrors.chunk_size}
+                    />
+                    {validationErrors.chunk_size ? (
+                      <p id="chunk-size-error" className="mt-1 text-xs text-red-600">{validationErrors.chunk_size}</p>
+                    ) : (
+                      <p id="chunk-size-help" className="mt-1 text-xs text-gray-500">Recommended: 200-800 characters</p>
+                    )}
+                  </div>
+
+                  {/* Chunk Overlap */}
+                  <div>
+                    <label htmlFor="chunk-overlap" className="block text-sm font-medium text-gray-700">
+                      Chunk Overlap (characters)
+                    </label>
+                    <input
+                      id="chunk-overlap"
+                      type="number"
+                      value={configChanges.chunk_overlap ?? collection.chunk_overlap}
+                      onChange={handleChunkOverlapChange}
+                      min="0"
+                      max="200"
+                      className={`mt-1 block w-full rounded-md shadow-sm focus:ring-blue-500 sm:text-sm ${
+                        validationErrors.chunk_overlap
+                          ? 'border-red-300 focus:border-red-500'
+                          : 'border-gray-300 focus:border-blue-500'
+                      }`}
+                      aria-label="Chunk overlap in tokens"
+                      aria-describedby="chunk-overlap-help chunk-overlap-error"
+                      aria-invalid={!!validationErrors.chunk_overlap}
+                    />
+                    {validationErrors.chunk_overlap ? (
+                      <p id="chunk-overlap-error" className="mt-1 text-xs text-red-600">{validationErrors.chunk_overlap}</p>
+                    ) : (
+                      <p id="chunk-overlap-help" className="mt-1 text-xs text-gray-500">Recommended: 10-20% of chunk size</p>
+                    )}
+                  </div>
+
+                  {/* Instruction */}
+                  <div>
+                    <label htmlFor="embedding-instruction" className="block text-sm font-medium text-gray-700">
+                      Embedding Instruction (Optional)
+                    </label>
+                    <textarea
+                      id="embedding-instruction"
+                      value={configChanges.instruction ?? ''}
+                      onChange={(e) => setConfigChanges({
+                        ...configChanges,
+                        instruction: e.target.value || undefined
+                      })}
+                      rows={3}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                      placeholder="e.g., Represent this document for retrieval:"
+                      aria-label="Custom embedding instruction"
+                      aria-describedby="instruction-help"
+                    />
+                    <p id="instruction-help" className="mt-1 text-xs text-gray-500">
+                      Custom instruction prepended to documents during embedding
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Re-index Section */}
+              <div className="border-t pt-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Re-index Collection</h3>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 mb-4" role="alert">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-yellow-800">
+                        Re-indexing will process all documents again
+                      </h3>
+                      <div className="mt-2 text-sm text-yellow-700">
+                        <p>This operation will:</p>
+                        <ul className="list-disc list-inside mt-1">
+                          <li>Delete all existing vectors</li>
+                          <li>Re-process all documents with new settings</li>
+                          <li>Take time depending on collection size</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowReindexModal(true)}
+                  disabled={
+                    Object.keys(configChanges).length === 0 || 
+                    Object.values(validationErrors).some(error => error !== undefined)
+                  }
+                  className={`px-4 py-2 rounded-md font-medium ${
+                    Object.keys(configChanges).length > 0 && 
+                    !Object.values(validationErrors).some(error => error !== undefined)
+                      ? 'bg-yellow-600 text-white hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                  aria-label="Re-index collection with new configuration"
+                >
+                  Re-index Collection
+                </button>
+                {Object.keys(configChanges).length === 0 && (
+                  <p className="mt-2 text-sm text-gray-500">
+                    Make changes to configuration above to enable re-indexing
+                  </p>
+                )}
+                {Object.keys(configChanges).length > 0 && 
+                 Object.values(validationErrors).some(error => error !== undefined) && (
+                  <p className="mt-2 text-sm text-red-600">
+                    Fix validation errors before re-indexing
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Sub-modals */}
-      {showAddDataModal && details && (
+      {showAddDataModal && collection && (
         <AddDataToCollectionModal
-          collectionName={details.name}
-          configuration={details.configuration}
+          collection={collection}
           onClose={() => setShowAddDataModal(false)}
           onSuccess={handleAddDataSuccess}
         />
       )}
 
-      {showRenameModal && details && (
+      {showRenameModal && collection && (
         <RenameCollectionModal
-          currentName={details.name}
+          collectionId={showCollectionDetailsModal}
+          currentName={collection.name}
           onClose={() => setShowRenameModal(false)}
           onSuccess={handleRenameSuccess}
         />
       )}
 
-      {showDeleteModal && details && (
+      {showDeleteModal && collection && (
         <DeleteCollectionModal
-          collectionName={details.name}
-          stats={details.stats}
+          collectionId={showCollectionDetailsModal}
+          collectionName={collection.name}
+          stats={{
+            total_files: collection.document_count,
+            total_vectors: collection.vector_count,
+            total_size: collection.total_size_bytes || 0,
+            job_count: operationsData?.length || 0,
+          }}
           onClose={() => setShowDeleteModal(false)}
           onSuccess={handleDeleteSuccess}
+        />
+      )}
+
+      {showReindexModal && collection && (
+        <ReindexCollectionModal
+          collection={collection}
+          configChanges={{
+            embedding_model: collection.embedding_model,
+            ...configChanges
+          }}
+          onClose={() => setShowReindexModal(false)}
+          onSuccess={handleReindexSuccess}
         />
       )}
     </>
