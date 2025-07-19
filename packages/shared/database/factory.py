@@ -4,6 +4,9 @@ This module provides factory functions to create repository instances,
 allowing for easy switching between different implementations.
 """
 
+from collections.abc import Callable, Coroutine
+from typing import Any
+
 from .base import AuthRepository, CollectionRepository, FileRepository, JobRepository, UserRepository
 from .sqlite_repository import (
     SQLiteAuthRepository,
@@ -21,8 +24,9 @@ def create_job_repository() -> JobRepository:
         JobRepository instance
 
     Note:
-        In the future, this can check configuration to decide whether to
-        return SQLiteJobRepository or PostgreSQLJobRepository.
+        This returns the SQLite implementation for backward compatibility.
+        Jobs have been replaced by operations in the new schema.
+        This function will be removed in a future phase.
     """
     return SQLiteJobRepository()
 
@@ -41,6 +45,11 @@ def create_file_repository() -> FileRepository:
 
     Returns:
         FileRepository instance
+
+    Note:
+        This returns the SQLite implementation for backward compatibility.
+        Files have been replaced by documents in the new schema.
+        This function will be removed in a future phase.
     """
     return SQLiteFileRepository()
 
@@ -50,6 +59,11 @@ def create_collection_repository() -> CollectionRepository:
 
     Returns:
         CollectionRepository instance
+
+    Note:
+        This returns the SQLite implementation for backward compatibility.
+        The new CollectionRepository uses SQLAlchemy and should be used for new code.
+        This function will be removed in a future phase.
     """
     return SQLiteCollectionRepository()
 
@@ -63,54 +77,112 @@ def create_auth_repository() -> AuthRepository:
     return SQLiteAuthRepository()
 
 
-def create_all_repositories() -> (
-    dict[str, JobRepository | UserRepository | FileRepository | CollectionRepository | AuthRepository]
-):
-    """Create all repository instances at once.
-
-    This function provides a centralized way to create all repositories,
-    ensuring consistency and making it easier to manage dependencies.
+def create_all_repositories() -> dict[str, object]:
+    """Create all repository instances.
 
     Returns:
-        Dictionary containing all repository instances with keys:
-        - 'job': JobRepository instance
-        - 'user': UserRepository instance
-        - 'file': FileRepository instance
-        - 'collection': CollectionRepository instance
-        - 'auth': AuthRepository instance
+        Dictionary mapping repository names to instances
 
-    Example:
-        repos = create_all_repositories()
-        job_repo = repos['job']
-        user_repo = repos['user']
+    Note:
+        Job, File, and Collection repositories are using the old SQLite implementation
+        for backward compatibility. They will be replaced in a future phase.
     """
     return {
-        "job": SQLiteJobRepository(),
-        "user": SQLiteUserRepository(),
-        "file": SQLiteFileRepository(),
-        "collection": SQLiteCollectionRepository(),
-        "auth": SQLiteAuthRepository(),
+        "job": create_job_repository(),
+        "user": create_user_repository(),
+        "file": create_file_repository(),
+        "collection": create_collection_repository(),
+        "auth": create_auth_repository(),
     }
 
 
-# Future implementation with configuration support:
-# def create_all_repositories(config: Config | None = None) -> dict[str, Any]:
-#     """Create all repositories based on configuration."""
-#     config = config or get_default_config()
-#
-#     if config.DATABASE_TYPE == "postgresql":
-#         return {
-#             'job': PostgreSQLJobRepository(config.DATABASE_URL),
-#             'user': PostgreSQLUserRepository(config.DATABASE_URL),
-#             'file': PostgreSQLFileRepository(config.DATABASE_URL),
-#             'collection': PostgreSQLCollectionRepository(config.DATABASE_URL),
-#             'auth': PostgreSQLAuthRepository(config.DATABASE_URL),
-#         }
-#     else:
-#         return {
-#             'job': SQLiteJobRepository(),
-#             'user': SQLiteUserRepository(),
-#             'file': SQLiteFileRepository(),
-#             'collection': SQLiteCollectionRepository(),
-#             'auth': SQLiteAuthRepository(),
-#         }
+def create_operation_repository() -> Any:
+    """Create an operation repository instance.
+
+    Note: This is a compatibility shim for the new async repositories.
+    The actual implementation will create a session and repository on first use.
+    """
+
+    from .database import AsyncSessionLocal
+    from .repositories.operation_repository import OperationRepository
+
+    class AsyncOperationRepositoryWrapper:
+        """Async wrapper that manages its own database session."""
+
+        def __init__(self) -> None:
+            self._session: Any | None = None  # AsyncSession
+            self._repo: Any | None = None  # OperationRepository
+
+        async def _ensure_initialized(self) -> None:
+            """Ensure repository is initialized with a session."""
+            if self._repo is None:
+                self._session = AsyncSessionLocal()
+                self._repo = OperationRepository(self._session)
+
+        async def __aenter__(self) -> "AsyncOperationRepositoryWrapper":
+            await self._ensure_initialized()
+            return self
+
+        async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+            if self._session:
+                await self._session.close()
+
+        def __getattr__(self, name: str) -> Callable[..., Coroutine[Any, Any, Any]]:
+            """Proxy all attribute access to the repository."""
+
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                await self._ensure_initialized()
+                result = await getattr(self._repo, name)(*args, **kwargs)
+                if self._session:
+                    await self._session.commit()  # Auto-commit for compatibility
+                return result
+
+            return async_wrapper
+
+    return AsyncOperationRepositoryWrapper()
+
+
+def create_document_repository() -> Any:
+    """Create a document repository instance.
+
+    Note: This is a compatibility shim for the new async repositories.
+    The actual implementation will create a session and repository on first use.
+    """
+
+    from .database import AsyncSessionLocal
+    from .repositories.document_repository import DocumentRepository
+
+    class AsyncDocumentRepositoryWrapper:
+        """Async wrapper that manages its own database session."""
+
+        def __init__(self) -> None:
+            self._session: Any | None = None  # AsyncSession
+            self._repo: Any | None = None  # DocumentRepository
+
+        async def _ensure_initialized(self) -> None:
+            """Ensure repository is initialized with a session."""
+            if self._repo is None:
+                self._session = AsyncSessionLocal()
+                self._repo = DocumentRepository(self._session)
+
+        async def __aenter__(self) -> "AsyncDocumentRepositoryWrapper":
+            await self._ensure_initialized()
+            return self
+
+        async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+            if self._session:
+                await self._session.close()
+
+        def __getattr__(self, name: str) -> Callable[..., Coroutine[Any, Any, Any]]:
+            """Proxy all attribute access to the repository."""
+
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                await self._ensure_initialized()
+                result = await getattr(self._repo, name)(*args, **kwargs)
+                if self._session:
+                    await self._session.commit()  # Auto-commit for compatibility
+                return result
+
+            return async_wrapper
+
+    return AsyncDocumentRepositoryWrapper()
