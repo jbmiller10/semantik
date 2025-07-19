@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useCollectionStore } from '../stores/collectionStore';
 import CollectionCard from './CollectionCard';
 import CreateCollectionModal from './CreateCollectionModal';
@@ -16,7 +16,10 @@ function CollectionsDashboard() {
     fetchCollections,
     getCollectionsArray,
   } = useCollectionStore();
-  
+
+  // Get all collections directly (not memoized to ensure updates)
+  const allCollections = getCollectionsArray();
+
 
   // Fetch collections on mount
   useEffect(() => {
@@ -47,34 +50,31 @@ function CollectionsDashboard() {
 
     return () => clearInterval(interval);
   }, [fetchCollections, getCollectionsArray]);
+  
+  // Filter collections
+  const filteredCollections = allCollections.filter(collection => {
+    // Search filter
+    const matchesSearch = !searchQuery || 
+      collection.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      collection.description?.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    // Status filter
+    const matchesStatus = filterStatus === 'all' || collection.status === filterStatus;
+    
+    return matchesSearch && matchesStatus;
+  });
 
-  // Filter and search collections with memoization
-  const filteredCollections = useMemo(() => {
-    return getCollectionsArray().filter(collection => {
-      // Search filter
-      const matchesSearch = !searchQuery || 
-        collection.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        collection.description?.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      // Status filter
-      const matchesStatus = filterStatus === 'all' || collection.status === filterStatus;
-      
-      return matchesSearch && matchesStatus;
-    });
-  }, [getCollectionsArray, searchQuery, filterStatus]);
-
-  // Sort collections by updated_at (most recent first) with memoization
-  const sortedCollections = useMemo(() => {
-    return [...filteredCollections].sort((a, b) => 
-      new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-    );
-  }, [filteredCollections]);
+  // Sort collections by updated_at (most recent first)
+  const sortedCollections = [...filteredCollections].sort((a, b) => 
+    new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+  );
 
   const handleCreateSuccess = () => {
     setShowCreateModal(false);
     // Toast is shown by the modal itself
     fetchCollections();
   };
+
 
   if (error && collections.size === 0) {
     return (

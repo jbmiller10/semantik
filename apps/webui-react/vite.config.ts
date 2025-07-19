@@ -8,8 +8,7 @@ export default defineConfig({
   build: {
     outDir: '../../packages/webui/static',
     assetsDir: 'assets',
-    sourcemap: false,
-    minify: 'esbuild',
+    sourcemap: true,
     emptyOutDir: true,
     rollupOptions: {
       output: {
