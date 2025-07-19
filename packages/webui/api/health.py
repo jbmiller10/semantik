@@ -127,13 +127,50 @@ async def _check_search_api_health() -> dict[str, Any]:
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{search_api_url}/health", timeout=HEALTH_CHECK_TIMEOUT)
-            if response.status_code == 200:
+            data = response.json()
+
+            # Check if all components are healthy
+            if response.status_code == 200 and data.get("status") == "healthy":
                 return {"status": "healthy", "message": "Search API connection successful"}
+            if response.status_code == 200 and data.get("status") == "degraded":
+                # Extract component statuses for better diagnostics
+                components = data.get("components", {})
+                unhealthy_components = [
+                    f"{name}: {info.get('error', info.get('message', 'unknown'))}"
+                    for name, info in components.items()
+                    if info.get("status") != "healthy"
+                ]
+                return {
+                    "status": "degraded",
+                    "message": "Search API is degraded",
+                    "unhealthy_components": unhealthy_components,
+                }
             return {"status": "unhealthy", "message": f"Search API returned status {response.status_code}"}
     except httpx.TimeoutException:
         return {"status": "unhealthy", "message": "Search API connection timeout"}
     except Exception as e:
         return {"status": "unhealthy", "message": f"Search API connection failed: {str(e)}"}
+
+
+async def _check_embedding_service_health() -> dict[str, Any]:
+    """Check WebUI's embedding service health."""
+    try:
+        from shared.embedding import get_embedding_service
+
+        # Use the async version
+        service = await get_embedding_service()
+
+        if service and hasattr(service, "is_initialized") and service.is_initialized:
+            model_info = service.get_model_info() if hasattr(service, "get_model_info") else {}
+            return {
+                "status": "healthy",
+                "message": "Embedding service initialized",
+                "model": model_info.get("model_name", "unknown"),
+                "mock_mode": getattr(service, "mock_mode", False),
+            }
+        return {"status": "unhealthy", "message": "Embedding service not initialized"}
+    except Exception as e:
+        return {"status": "unhealthy", "message": f"Embedding service check failed: {str(e)}"}
 
 
 @router.get("/readyz")
@@ -146,6 +183,7 @@ async def readiness_probe() -> JSONResponse:
     - Database (SQLite connection pool)
     - Qdrant (vector database)
     - Search API (for search functionality)
+    - Embedding Service (for local embedding operations)
 
     Returns:
         JSONResponse: Detailed readiness status for each dependency
@@ -157,13 +195,17 @@ async def readiness_probe() -> JSONResponse:
     database_task = asyncio.create_task(_check_database_health())
     qdrant_task = asyncio.create_task(_check_qdrant_health())
     search_api_task = asyncio.create_task(_check_search_api_health())
+    embedding_task = asyncio.create_task(_check_embedding_service_health())
 
     # Wait for all checks to complete
-    results = await asyncio.gather(redis_task, database_task, qdrant_task, search_api_task, return_exceptions=True)
+    results = await asyncio.gather(
+        redis_task, database_task, qdrant_task, search_api_task, embedding_task, return_exceptions=True
+    )
     redis_result: dict[str, Any] | BaseException = results[0]
     database_result: dict[str, Any] | BaseException = results[1]
     qdrant_result: dict[str, Any] | BaseException = results[2]
     search_api_result: dict[str, Any] | BaseException = results[3]
+    embedding_result: dict[str, Any] | BaseException = results[4]
 
     # Handle any exceptions from gather
     services = {}
@@ -174,13 +216,19 @@ async def readiness_probe() -> JSONResponse:
         ("database", database_result),
         ("qdrant", qdrant_result),
         ("search_api", search_api_result),
+        ("embedding", embedding_result),
     ]:
         if isinstance(result, BaseException):
             services[name] = {"status": "unhealthy", "message": f"Health check failed: {str(result)}"}
             all_healthy = False
         else:
             services[name] = result
-            if result["status"] != "healthy":
+            # Allow degraded status for search_api
+            # Allow embedding service to be unhealthy since WebUI doesn't use it directly
+            if name == "embedding":
+                # Don't mark the whole service as unhealthy if embedding is not initialized
+                pass
+            elif result["status"] not in ["healthy", "degraded"]:
                 all_healthy = False
 
     response = {"ready": all_healthy, "check": "readiness", "services": services}

@@ -95,11 +95,11 @@ class TestWebuiHealthEndpoints:
             return True
 
         mock_redis.ping = async_ping
-        
+
         # Mock Search API response
         class MockResponse:
             status_code = 200
-            
+
         async def mock_get(*args, **kwargs):
             return MockResponse()
 
@@ -129,11 +129,11 @@ class TestWebuiHealthEndpoints:
             return True
 
         mock_redis.ping = async_ping
-        
+
         # Mock Search API to return unhealthy
         class MockResponse:
             status_code = 503
-            
+
         async def mock_get(*args, **kwargs):
             return MockResponse()
 
