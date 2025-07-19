@@ -76,7 +76,6 @@ class CollectionService:
                         else "Qwen/Qwen3-Embedding-0.6B"
                     ),
                     quantization=config.get("quantization", "float16") if config else "float16",
-
                     chunk_size=config.get("chunk_size", 1000) if config else 1000,
                     chunk_overlap=config.get("chunk_overlap", 200) if config else 200,
                     is_public=config.get("is_public", False) if config else False,
@@ -118,7 +117,6 @@ class CollectionService:
             "vector_store_name": collection.vector_store_name,
             "embedding_model": collection.embedding_model,
             "quantization": collection.quantization,
-
             "chunk_size": collection.chunk_size,
             "chunk_overlap": collection.chunk_overlap,
             "is_public": collection.is_public,
@@ -126,11 +124,11 @@ class CollectionService:
             "created_at": collection.created_at,
             "updated_at": collection.updated_at,
             "document_count": 0,  # New collection has no documents
+            "vector_count": 0,  # New collection has no vectors
             "status": collection.status.value if hasattr(collection.status, "value") else collection.status,
             "config": {
                 "embedding_model": collection.embedding_model,
                 "quantization": collection.quantization,
-
                 "chunk_size": collection.chunk_size,
                 "chunk_overlap": collection.chunk_overlap,
                 "is_public": collection.is_public,
@@ -285,7 +283,6 @@ class CollectionService:
         new_config = {
             "embedding_model": collection.embedding_model,
             "quantization": collection.quantization,
-
             "chunk_size": collection.chunk_size,
             "chunk_overlap": collection.chunk_overlap,
             "is_public": collection.is_public,
@@ -305,7 +302,6 @@ class CollectionService:
                     "previous_config": {
                         "embedding_model": collection.embedding_model,
                         "quantization": collection.quantization,
-
                         "chunk_size": collection.chunk_size,
                         "chunk_overlap": collection.chunk_overlap,
                         "is_public": collection.is_public,

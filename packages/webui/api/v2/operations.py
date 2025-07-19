@@ -163,7 +163,6 @@ async def cancel_operation(
 )
 async def list_operations(
     status: str | None = Query(None, description="Filter by operation status (comma-separated for multiple)"),
-
     operation_type: str | None = Query(None, description="Filter by operation type"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(50, ge=1, le=100, description="Items per page"),
@@ -194,7 +193,6 @@ async def list_operations(
                         detail=f"Invalid status: {s}. Valid values are: {[st.value for st in OperationStatus]}",
                     ) from None
 
-
         type_enum = None
         if operation_type:
             try:
@@ -208,7 +206,6 @@ async def list_operations(
         operations, total = await repo.list_for_user(
             user_id=int(current_user["id"]),
             status_list=status_list,
-
             operation_type=type_enum,
             offset=offset,
             limit=per_page,
