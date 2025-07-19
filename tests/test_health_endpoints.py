@@ -34,16 +34,16 @@ class TestWebuiHealthEndpoints:
 
     def test_search_api_health_healthy(self, test_client):
         """Test search API health when service is healthy"""
-        
+
         class MockResponse:
             status_code = 200
-            
+
             def json(self):
                 return {"status": "healthy"}
-        
-        async def mock_get(*args, **kwargs):
+
+        async def mock_get(*_args, **_kwargs):
             return MockResponse()
-        
+
         with patch("httpx.AsyncClient.get", side_effect=mock_get):
             response = test_client.get("/api/health/search-api")
             assert response.status_code == 200
@@ -54,14 +54,14 @@ class TestWebuiHealthEndpoints:
 
     def test_search_api_health_unhealthy(self, test_client):
         """Test search API health when service is unhealthy"""
-        
+
         class MockResponse:
             status_code = 503
             text = "Service unavailable"
-        
-        async def mock_get(*args, **kwargs):
+
+        async def mock_get(*_args, **_kwargs):
             return MockResponse()
-        
+
         with patch("httpx.AsyncClient.get", side_effect=mock_get):
             response = test_client.get("/api/health/search-api")
             assert response.status_code == 200
@@ -72,10 +72,10 @@ class TestWebuiHealthEndpoints:
 
     def test_search_api_health_connection_error(self, test_client):
         """Test search API health when connection fails"""
-        
-        async def mock_get(*args, **kwargs):
+
+        async def mock_get(*_args, **_kwargs):
             raise Exception("Connection failed")
-        
+
         with patch("httpx.AsyncClient.get", side_effect=mock_get):
             response = test_client.get("/api/health/search-api")
             assert response.status_code == 200
@@ -103,6 +103,13 @@ class TestWebuiHealthEndpoints:
         async def mock_get(*args, **kwargs):
             return MockResponse()
 
+        # Mock Search API response
+        class MockResponse:
+            status_code = 200
+
+        async def mock_get(*_args, **_kwargs):
+            return MockResponse()
+
         with (
             patch("packages.webui.api.health.ws_manager.redis", mock_redis),
             patch("httpx.AsyncClient.get", side_effect=mock_get),
@@ -128,6 +135,13 @@ class TestWebuiHealthEndpoints:
             status_code = 503
             
         async def mock_get(*args, **kwargs):
+            return MockResponse()
+
+        # Mock Search API to return unhealthy
+        class MockResponse:
+            status_code = 503
+
+        async def mock_get(*_args, **_kwargs):
             return MockResponse()
 
         with (
