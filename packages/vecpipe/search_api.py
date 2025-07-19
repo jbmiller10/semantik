@@ -12,7 +12,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import uvicorn
@@ -187,7 +187,7 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
 
         def get_model_info(self) -> dict[str, Any]:
             if hasattr(self._service, "get_model_info"):
-                return self._service.get_model_info()
+                return cast(dict[str, Any], self._service.get_model_info())
             return {
                 "model_name": self.current_model_name,
                 "dimension": 1024,  # Default dimension
