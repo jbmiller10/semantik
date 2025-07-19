@@ -4,7 +4,7 @@ This module provides factory functions to create repository instances,
 allowing for easy switching between different implementations.
 """
 
-from typing import Any
+from typing import Any, Callable, Coroutine, Optional
 
 from .base import AuthRepository, CollectionRepository, FileRepository, JobRepository, UserRepository
 from .sqlite_repository import (
@@ -108,31 +108,32 @@ def create_operation_repository() -> Any:
     class AsyncOperationRepositoryWrapper:
         """Async wrapper that manages its own database session."""
 
-        def __init__(self):
-            self._session = None
-            self._repo = None
+        def __init__(self) -> None:
+            self._session: Optional[Any] = None  # AsyncSession
+            self._repo: Optional[Any] = None  # OperationRepository
 
-        async def _ensure_initialized(self):
+        async def _ensure_initialized(self) -> None:
             """Ensure repository is initialized with a session."""
             if self._repo is None:
                 self._session = AsyncSessionLocal()
                 self._repo = OperationRepository(self._session)
 
-        async def __aenter__(self):
+        async def __aenter__(self) -> "AsyncOperationRepositoryWrapper":
             await self._ensure_initialized()
             return self
 
-        async def __aexit__(self, exc_type, exc_val, exc_tb):
+        async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
             if self._session:
                 await self._session.close()
 
-        def __getattr__(self, name):
+        def __getattr__(self, name: str) -> Callable[..., Coroutine[Any, Any, Any]]:
             """Proxy all attribute access to the repository."""
 
-            async def async_wrapper(*args, **kwargs):
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 await self._ensure_initialized()
                 result = await getattr(self._repo, name)(*args, **kwargs)
-                await self._session.commit()  # Auto-commit for compatibility
+                if self._session:
+                    await self._session.commit()  # Auto-commit for compatibility
                 return result
 
             return async_wrapper
@@ -153,31 +154,32 @@ def create_document_repository() -> Any:
     class AsyncDocumentRepositoryWrapper:
         """Async wrapper that manages its own database session."""
 
-        def __init__(self):
-            self._session = None
-            self._repo = None
+        def __init__(self) -> None:
+            self._session: Optional[Any] = None  # AsyncSession
+            self._repo: Optional[Any] = None  # DocumentRepository
 
-        async def _ensure_initialized(self):
+        async def _ensure_initialized(self) -> None:
             """Ensure repository is initialized with a session."""
             if self._repo is None:
                 self._session = AsyncSessionLocal()
                 self._repo = DocumentRepository(self._session)
 
-        async def __aenter__(self):
+        async def __aenter__(self) -> "AsyncDocumentRepositoryWrapper":
             await self._ensure_initialized()
             return self
 
-        async def __aexit__(self, exc_type, exc_val, exc_tb):
+        async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
             if self._session:
                 await self._session.close()
 
-        def __getattr__(self, name):
+        def __getattr__(self, name: str) -> Callable[..., Coroutine[Any, Any, Any]]:
             """Proxy all attribute access to the repository."""
 
-            async def async_wrapper(*args, **kwargs):
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 await self._ensure_initialized()
                 result = await getattr(self._repo, name)(*args, **kwargs)
-                await self._session.commit()  # Auto-commit for compatibility
+                if self._session:
+                    await self._session.commit()  # Auto-commit for compatibility
                 return result
 
             return async_wrapper
