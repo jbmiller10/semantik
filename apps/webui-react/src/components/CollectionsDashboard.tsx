@@ -1,6 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useCollectionStore } from '../stores/collectionStore';
-import { useUIStore } from '../stores/uiStore';
 import CollectionCard from './CollectionCard';
 import CreateCollectionModal from './CreateCollectionModal';
 
@@ -18,7 +17,6 @@ function CollectionsDashboard() {
     getCollectionsArray,
   } = useCollectionStore();
   
-  const { addToast } = useUIStore();
 
   // Fetch collections on mount
   useEffect(() => {
@@ -74,10 +72,7 @@ function CollectionsDashboard() {
 
   const handleCreateSuccess = () => {
     setShowCreateModal(false);
-    addToast({
-      message: 'Collection created successfully',
-      type: 'success'
-    });
+    // Toast is shown by the modal itself
     fetchCollections();
   };
 

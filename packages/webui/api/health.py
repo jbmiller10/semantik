@@ -7,7 +7,6 @@ from typing import Any
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from shared.database.connection_pool import get_db_connection
-from shared.embedding import get_embedding_service
 from webui.utils.qdrant_manager import qdrant_manager
 from webui.websocket_manager import ws_manager
 
@@ -25,30 +24,31 @@ async def health_check() -> dict[str, str]:
     return {"status": "healthy"}
 
 
-@router.get("/embedding")
-async def embedding_health() -> dict[str, Any]:
-    """Check embedding service health and status."""
+@router.get("/search-api")
+async def search_api_health() -> dict[str, Any]:
+    """Check Search API (vecpipe) health and status."""
+    import os
+
+    import httpx
+
+    search_api_url = os.getenv("SEARCH_API_URL", "http://vecpipe:8000")
+
     try:
-        service = await get_embedding_service()
-
-        if service.is_initialized:
-            try:
-                model_info = service.get_model_info()
-                return {"status": "healthy", "initialized": True, "model": model_info}
-            except Exception as e:
-                logger.error(f"Failed to get model info: {e}")
-                return {
-                    "status": "degraded",
-                    "initialized": True,
-                    "error": "Failed to retrieve model information",
-                    "details": str(e),
-                }
-        else:
-            return {"status": "unhealthy", "initialized": False, "message": "Embedding service not initialized"}
-
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{search_api_url}/health", timeout=HEALTH_CHECK_TIMEOUT)
+            if response.status_code == 200:
+                data = response.json()
+                return {"status": "healthy", "message": "Search API is ready", "api_response": data}
+            return {
+                "status": "unhealthy",
+                "message": f"Search API returned status {response.status_code}",
+                "details": response.text,
+            }
+    except httpx.TimeoutException:
+        return {"status": "unhealthy", "error": "Search API connection timeout"}
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        return {"status": "unhealthy", "error": "Failed to access embedding service", "details": str(e)}
+        logger.error(f"Search API health check failed: {e}")
+        return {"status": "unhealthy", "error": "Failed to access Search API", "details": str(e)}
 
 
 @router.get("/healthz")
@@ -116,21 +116,24 @@ async def _check_qdrant_health() -> dict[str, Any]:
         return {"status": "unhealthy", "message": f"Qdrant connection failed: {str(e)}"}
 
 
-async def _check_embedding_health() -> dict[str, Any]:
-    """Check embedding service health with timeout."""
+async def _check_search_api_health() -> dict[str, Any]:
+    """Check Search API (vecpipe) health with timeout."""
+    import os
+
+    import httpx
+
+    search_api_url = os.getenv("SEARCH_API_URL", "http://vecpipe:8000")
+
     try:
-        service = await asyncio.wait_for(get_embedding_service(), timeout=HEALTH_CHECK_TIMEOUT)
-
-        if not service.is_initialized:
-            return {"status": "unhealthy", "message": "Embedding service not initialized"}
-
-        # Quick embedding test with timeout
-        await asyncio.wait_for(service.embed_single("health check"), timeout=HEALTH_CHECK_TIMEOUT)
-        return {"status": "healthy", "message": "Embedding service ready"}
-    except TimeoutError:
-        return {"status": "unhealthy", "message": "Embedding service timeout"}
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{search_api_url}/health", timeout=HEALTH_CHECK_TIMEOUT)
+            if response.status_code == 200:
+                return {"status": "healthy", "message": "Search API connection successful"}
+            return {"status": "unhealthy", "message": f"Search API returned status {response.status_code}"}
+    except httpx.TimeoutException:
+        return {"status": "unhealthy", "message": "Search API connection timeout"}
     except Exception as e:
-        return {"status": "unhealthy", "message": f"Embedding service failed: {str(e)}"}
+        return {"status": "unhealthy", "message": f"Search API connection failed: {str(e)}"}
 
 
 @router.get("/readyz")
@@ -142,7 +145,7 @@ async def readiness_probe() -> JSONResponse:
     - Redis (for job queue and WebSocket management)
     - Database (SQLite connection pool)
     - Qdrant (vector database)
-    - Embedding service (for AI functionality)
+    - Search API (for search functionality)
 
     Returns:
         JSONResponse: Detailed readiness status for each dependency
@@ -153,14 +156,14 @@ async def readiness_probe() -> JSONResponse:
     redis_task = asyncio.create_task(_check_redis_health())
     database_task = asyncio.create_task(_check_database_health())
     qdrant_task = asyncio.create_task(_check_qdrant_health())
-    embedding_task = asyncio.create_task(_check_embedding_health())
+    search_api_task = asyncio.create_task(_check_search_api_health())
 
     # Wait for all checks to complete
-    results = await asyncio.gather(redis_task, database_task, qdrant_task, embedding_task, return_exceptions=True)
+    results = await asyncio.gather(redis_task, database_task, qdrant_task, search_api_task, return_exceptions=True)
     redis_result: dict[str, Any] | BaseException = results[0]
     database_result: dict[str, Any] | BaseException = results[1]
     qdrant_result: dict[str, Any] | BaseException = results[2]
-    embedding_result: dict[str, Any] | BaseException = results[3]
+    search_api_result: dict[str, Any] | BaseException = results[3]
 
     # Handle any exceptions from gather
     services = {}
@@ -170,7 +173,7 @@ async def readiness_probe() -> JSONResponse:
         ("redis", redis_result),
         ("database", database_result),
         ("qdrant", qdrant_result),
-        ("embedding", embedding_result),
+        ("search_api", search_api_result),
     ]:
         if isinstance(result, BaseException):
             services[name] = {"status": "unhealthy", "message": f"Health check failed: {str(result)}"}
