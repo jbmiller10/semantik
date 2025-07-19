@@ -1156,7 +1156,7 @@ async def _update_metrics_continuously() -> None:
 
 
 def _handle_task_failure(
-    args: tuple, kwargs: dict, exc: Exception, task_id: str, einfo: Any, retval: Any, request: Any  # noqa: ARG001
+    self: Any, exc: Exception, task_id: str, args: tuple, kwargs: dict, einfo: Any  # noqa: ARG001
 ) -> None:
     """Handle task failure by updating operation and collection status appropriately.
 
@@ -1198,115 +1198,127 @@ async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id:
     collection = None
     collection_id = None
 
-    # Create repositories
-    operation_repo = create_operation_repository()
-    collection_repo = create_collection_repository()
+    # Import repository classes
+    from shared.database.database import AsyncSessionLocal
+    from shared.database.repositories.collection_repository import CollectionRepository
+    from shared.database.repositories.operation_repository import OperationRepository
 
-    try:
-        # Get operation details
-        operation = await operation_repo.get_by_uuid(operation_id)
-        if not operation:
-            logger.error(f"Operation {operation_id} not found during failure handling")
-            return
+    # Use async session for all database operations
+    async with AsyncSessionLocal() as db:
+        # Create repositories with the session
+        operation_repo = OperationRepository(db)
+        collection_repo = CollectionRepository(db)
 
-        # Sanitize error message to prevent PII leakage
-        sanitized_error = _sanitize_error_message(str(exc))
+        try:
+            # Get operation details
+            operation_obj = await operation_repo.get_by_uuid(operation_id)
+            if not operation_obj:
+                logger.error(f"Operation {operation_id} not found during failure handling")
+                return
+        
+            # Convert ORM object to dictionary for compatibility
+            operation = {
+            "id": operation_obj.uuid,
+            "collection_id": operation_obj.collection_id,
+            "type": operation_obj.type,
+        }
 
-        # Construct error message with exception details
-        error_message = f"{type(exc).__name__}: {sanitized_error}"
-        if hasattr(exc, "__traceback__"):
-            # Include first line of traceback for debugging
-            import traceback
+            # Sanitize error message to prevent PII leakage
+            sanitized_error = _sanitize_error_message(str(exc))
 
-            tb_lines = traceback.format_tb(exc.__traceback__)
-            if tb_lines:
-                # Sanitize traceback to remove potential file paths with usernames
-                sanitized_tb = _sanitize_error_message(tb_lines[-1].strip())
-                error_message += f"\n{sanitized_tb}"
+            # Construct error message with exception details
+            error_message = f"{type(exc).__name__}: {sanitized_error}"
+            if hasattr(exc, "__traceback__"):
+                # Include first line of traceback for debugging
+                import traceback
 
-        # Update operation status to failed with detailed error
-        await operation_repo.update_status(
+                tb_lines = traceback.format_tb(exc.__traceback__)
+                if tb_lines:
+                    # Sanitize traceback to remove potential file paths with usernames
+                    sanitized_tb = _sanitize_error_message(tb_lines[-1].strip())
+                    error_message += f"\n{sanitized_tb}"
+
+            # Update operation status to failed with detailed error
+            await operation_repo.update_status(
             operation_id,
             OperationStatus.FAILED,
-            result={
-                "error": error_message,
-                "error_type": type(exc).__name__,
-                "task_id": task_id,
-                "failed_at": datetime.now(UTC).isoformat(),
-            },
-        )
+                error_message=error_message,
+            )
 
-        # Update collection status based on operation type
-        collection_id = operation["collection_id"]
-        operation_type = operation["type"]
+            # Update collection status based on operation type
+            collection_id = operation["collection_id"]
+            operation_type = operation["type"]
 
-        # Get collection to get its UUID
-        collection = await collection_repo.get_by_id(collection_id)
-        if collection:
-            if operation_type == OperationType.INDEX:
-                # Initial index failed - collection is in error state
-                await collection_repo.update_status(
-                    collection["uuid"],
-                    CollectionStatus.ERROR,
-                    status_message=f"Initial indexing failed: {sanitized_error}",
-                )
-            elif operation_type == OperationType.REINDEX:
-                # Reindex failed - collection is degraded but still usable
-                await collection_repo.update_status(
-                    collection["uuid"],
-                    CollectionStatus.DEGRADED,
-                    status_message=f"Re-indexing failed: {sanitized_error}. Original collection still available.",
-                )
-            elif operation_type == OperationType.APPEND:
-                # Append failed - collection remains ready but log the failure
-                if collection.get("status") != CollectionStatus.ERROR:
-                    # Don't override ERROR status if already set
+            # Get collection to get its UUID
+            collection_obj = await collection_repo.get_by_uuid(collection_id)
+            if collection_obj:
+                if operation_type == OperationType.INDEX:
+                    # Initial index failed - collection is in error state
                     await collection_repo.update_status(
-                        collection["uuid"],
-                        CollectionStatus.PARTIALLY_READY,
-                        status_message=f"Append operation failed: {sanitized_error}",
+                        collection_obj.id,
+                        CollectionStatus.ERROR,
+                        status_message=f"Initial indexing failed: {sanitized_error}",
                     )
-            elif operation_type == OperationType.REMOVE_SOURCE:
-                # Remove source failed - collection might be partially ready
-                await collection_repo.update_status(
-                    collection["uuid"],
-                    CollectionStatus.PARTIALLY_READY,
-                    status_message=f"Remove source operation failed: {sanitized_error}",
-                )
+                elif operation_type == OperationType.REINDEX:
+                    # Reindex failed - collection is degraded but still usable
+                    await collection_repo.update_status(
+                        collection_obj.id,
+                        CollectionStatus.DEGRADED,
+                        status_message=f"Re-indexing failed: {sanitized_error}. Original collection still available.",
+                    )
+                elif operation_type == OperationType.APPEND:
+                    # Append failed - collection remains ready but log the failure
+                    if collection_obj.status != CollectionStatus.ERROR:
+                        # Don't override ERROR status if already set
+                        await collection_repo.update_status(
+                            collection_obj.uuid,
+                            CollectionStatus.PARTIALLY_READY,
+                            status_message=f"Append operation failed: {sanitized_error}",
+                        )
+                elif operation_type == OperationType.REMOVE_SOURCE:
+                    # Remove source failed - collection might be partially ready
+                    await collection_repo.update_status(
+                        collection_obj.id,
+                        CollectionStatus.PARTIALLY_READY,
+                        status_message=f"Remove source operation failed: {sanitized_error}",
+                    )
 
-        # Create audit log entry for failure
-        await _audit_log_operation(
-            collection_id=collection_id,
-            operation_id=operation["id"],
-            user_id=operation.get("user_id"),
-            action=f"{operation_type.value.lower()}_failed",
-            details={
-                "operation_uuid": operation_id,
-                "error": sanitized_error,
-                "error_type": type(exc).__name__,
-                "task_id": task_id,
-            },
-        )
+            # Create audit log entry for failure
+            await _audit_log_operation(
+                collection_id=collection_id,
+                operation_id=operation["id"],
+                user_id=operation.get("user_id"),
+                action=f"{operation_type.value.lower()}_failed",
+                details={
+                    "operation_uuid": operation_id,
+                    "error": sanitized_error,
+                    "error_type": type(exc).__name__,
+                    "task_id": task_id,
+                },
+            )
 
-    except Exception as e:
-        logger.error(f"Error in failure handler for operation {operation_id}: {e}", exc_info=True)
+        except Exception as e:
+            logger.error(f"Error in failure handler for operation {operation_id}: {e}", exc_info=True)
 
-    # Perform cleanup outside main error handler (as it may take time and involves external services)
-    try:
-        if operation and operation["type"] == OperationType.REINDEX and collection and collection_id:
-            # Clean up staging resources
-            await _cleanup_staging_resources(collection_id, operation)
+        # Perform cleanup outside main error handler (as it may take time and involves external services)
+        try:
+            if operation and operation["type"] == OperationType.REINDEX and collection and collection_id:
+                # Clean up staging resources
+                await _cleanup_staging_resources(collection_id, operation)
 
-        # Update failure metrics
-        if operation:
-            collection_operations_total.labels(operation_type=operation["type"].value.lower(), status="failed").inc()
+            # Update failure metrics
+            if operation:
+                collection_operations_total.labels(operation_type=operation["type"].value.lower(), status="failed").inc()
 
-        logger.info(
-            f"Handled failure for operation {operation_id} (type: {operation.get('type') if operation else 'unknown'}), "
-            f"updated collection {collection_id if collection_id else 'unknown'} status appropriately"
-        )
-    except Exception as e:
-        logger.error(f"Error in post-cleanup for operation {operation_id}: {e}")
+            logger.info(
+                f"Handled failure for operation {operation_id} (type: {operation.get('type') if operation else 'unknown'}), "
+                f"updated collection {collection_id if collection_id else 'unknown'} status appropriately"
+            )
+        except Exception as e:
+            logger.error(f"Error in post-cleanup for operation {operation_id}: {e}")
+            
+        # Commit any pending changes
+        await db.commit()
 
 
 async def _cleanup_staging_resources(collection_id: str, operation: dict) -> None:  # noqa: ARG001
@@ -1381,9 +1393,7 @@ async def _cleanup_staging_resources(collection_id: str, operation: dict) -> Non
     acks_late=True,  # Ensure message reliability
     soft_time_limit=OPERATION_SOFT_TIME_LIMIT,
     time_limit=OPERATION_HARD_TIME_LIMIT,
-    on_failure=lambda args, kwargs, exc, task_id, einfo, retval, request: _handle_task_failure(
-        args, kwargs, exc, task_id, einfo, retval, request
-    ),
+    on_failure=_handle_task_failure,
 )
 def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]:
     """
@@ -1432,204 +1442,225 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
     # Store task ID immediately as FIRST action
     task_id = celery_task.request.id if hasattr(celery_task, "request") else str(uuid.uuid4())
 
-    # Create repository instances
-    operation_repo = create_operation_repository()
-    collection_repo = create_collection_repository()
-    document_repo = create_document_repository()
+    # Import repository classes
+    from shared.database.database import AsyncSessionLocal
+    from shared.database.repositories.collection_repository import CollectionRepository
+    from shared.database.repositories.document_repository import DocumentRepository
+    from shared.database.repositories.operation_repository import OperationRepository
 
-    try:
-        # Update operation with task ID as FIRST action inside try block
-        await operation_repo.set_task_id(operation_id, task_id)
-        logger.info(f"Set task_id {task_id} for operation {operation_id}")
+    # Use async session for all database operations
+    async with AsyncSessionLocal() as db:
+        # Create repository instances with the session
+        operation_repo = OperationRepository(db)
+        collection_repo = CollectionRepository(db)
+        document_repo = DocumentRepository(db)
 
-        # Use context manager for automatic cleanup of Redis connection
-        async with CeleryTaskWithOperationUpdates(operation_id) as updater:
-            # Get operation details
-            operation = await operation_repo.get_by_uuid(operation_id)
-            if not operation:
-                raise ValueError(f"Operation {operation_id} not found in database")
-
-        # Get operation details
-        operation = await operation_repo.get_by_uuid(operation_id)
-        if not operation:
-            raise ValueError(f"Operation {operation_id} not found in database")
-
-        # Log operation start
-        logger.info(
-            "Starting collection operation",
-            extra={
-                "operation_id": operation_id,
-                "operation_type": operation["type"],
-                "collection_id": operation["collection_id"],
-                "task_id": task_id,
-            },
-        )
-
-        # Update operation status to processing
-        await operation_repo.update_status(operation_id, OperationStatus.PROCESSING)
-        await updater.send_update("operation_started", {"status": "processing", "type": operation["type"]})
-
-        # Get collection details
-        collection = await collection_repo.get_by_id(operation["collection_id"])
-        if not collection:
-            raise ValueError(f"Collection {operation['collection_id']} not found in database")
-
-        # Process based on operation type with timing
-        result = {}
-        operation_type = str(operation["type"]).lower()
-
-        with OperationTimer(operation_type):
-            # Track memory usage
-            memory_before = process.memory_info().rss
-
-            if operation["type"] == OperationType.INDEX:
-                result = await _process_index_operation(operation, collection, collection_repo, document_repo, updater)
-            elif operation["type"] == OperationType.APPEND:
-                result = await _process_append_operation(operation, collection, collection_repo, document_repo, updater)
-            elif operation["type"] == OperationType.REINDEX:
-                result = await _process_reindex_operation(
-                    operation, collection, collection_repo, document_repo, updater
-                )
-            elif operation["type"] == OperationType.REMOVE_SOURCE:
-                result = await _process_remove_source_operation(
-                    operation, collection, collection_repo, document_repo, updater
-                )
-            else:
-                raise ValueError(f"Unknown operation type: {operation['type']}")
-
-            # Track peak memory usage
-            memory_peak = process.memory_info().rss
-            collection_memory_usage_bytes.labels(operation_type=operation_type).set(memory_peak - memory_before)
-
-            # Record operation metrics in database
-            duration = time.time() - start_time
-            cpu_time = (process.cpu_times().user + process.cpu_times().system) - initial_cpu_time
-
-            await _record_operation_metrics(
-                operation_repo,
-                operation_id,
-                {
-                    "duration_seconds": duration,
-                    "cpu_seconds": cpu_time,
-                    "memory_peak_bytes": memory_peak,
-                    "documents_processed": result.get("documents_added", result.get("documents_removed", 0)),
-                    "success": result.get("success", False),
-                },
-            )
-
-            # Update CPU time counter
-            collection_cpu_seconds_total.labels(operation_type=operation_type).inc(cpu_time)
-
-            # Update operation status to completed
-            await operation_repo.update_status(operation_id, OperationStatus.COMPLETED, result=result)
-
-            # Update collection status based on result
-            old_status = collection.get("status", CollectionStatus.PENDING)
-
-            if result.get("success"):
-                # Check if collection has any documents
-                doc_stats = await document_repo.get_stats_by_collection(collection["id"])
-                if doc_stats["total_count"] > 0:
-                    new_status = CollectionStatus.READY
-                    await collection_repo.update_status(collection["id"], new_status)
-                else:
-                    new_status = CollectionStatus.EMPTY
-                    await collection_repo.update_status(collection["id"], new_status)
-
-                # Update collection statistics
-                await _update_collection_metrics(
-                    collection["id"],
-                    doc_stats["total_count"],
-                    collection.get("vector_count", 0),
-                    doc_stats["total_size_bytes"],
-                )
-            else:
-                new_status = CollectionStatus.PARTIALLY_READY
-                await collection_repo.update_status(collection["id"], new_status)
-
-            # Update collection status metrics
-            if old_status != new_status:
-                collections_total.labels(status=old_status.value).dec()
-                collections_total.labels(status=new_status.value).inc()
-
-            await updater.send_update("operation_completed", {"status": "completed", "result": result})
-
-            logger.info(
-                "Collection operation completed",
-                extra={
-                    "operation_id": operation_id,
-                    "operation_type": operation["type"],
-                    "duration_seconds": duration,
-                    "success": result.get("success", False),
-                },
-            )
-
-            return result
-
-    except Exception as e:
-        logger.error(f"Operation {operation_id} failed: {e}", exc_info=True)
-
-        # Ensure status update even if some components failed to initialize
         try:
-            # Record failure metrics
-            if operation:
+            # Update operation with task ID as FIRST action inside try block
+            await operation_repo.set_task_id(operation_id, task_id)
+            logger.info(f"Set task_id {task_id} for operation {operation_id}")
+
+            # Use context manager for automatic cleanup of Redis connection
+            async with CeleryTaskWithOperationUpdates(operation_id) as updater:
+                # Get operation details
+                operation_obj = await operation_repo.get_by_uuid(operation_id)
+                if not operation_obj:
+                    raise ValueError(f"Operation {operation_id} not found in database")
+                
+                # Convert ORM object to dictionary for compatibility with helper functions
+                operation = {
+                    "id": operation_obj.uuid,
+                    "collection_id": operation_obj.collection_id,
+                    "type": operation_obj.type,
+                    "config": operation_obj.config,
+                    "user_id": getattr(operation_obj, "user_id", None),
+                }
+
+                # Log operation start
+                logger.info(
+                    "Starting collection operation",
+                    extra={
+                        "operation_id": operation_id,
+                        "operation_type": operation["type"].value,
+                        "collection_id": operation["collection_id"],
+                        "task_id": task_id,
+                    },
+                )
+
+                # Update operation status to processing
+                await operation_repo.update_status(operation_id, OperationStatus.PROCESSING)
+                await updater.send_update("operation_started", {"status": "processing", "type": operation["type"].value})
+
+                # Get collection details
+                collection_obj = await collection_repo.get_by_uuid(operation["collection_id"])
+                if not collection_obj:
+                    raise ValueError(f"Collection {operation['collection_id']} not found in database")
+                
+                # Convert ORM object to dictionary for compatibility with helper functions
+                collection = {
+                    "id": collection_obj.id,
+                    "uuid": collection_obj.id,  # In the model, id is the UUID
+                    "name": collection_obj.name,
+                    "vector_store_name": collection_obj.vector_store_name,
+                    "config": getattr(collection_obj, "config", {}),
+                }
+
+                # Process based on operation type with timing
+                result = {}
+                operation_type = operation["type"].value.lower()
+
+                with OperationTimer(operation_type):
+                    # Track memory usage
+                    memory_before = process.memory_info().rss
+
+                    if operation["type"] == OperationType.INDEX:
+                        result = await _process_index_operation(operation, collection, collection_repo, document_repo, updater)
+                    elif operation["type"] == OperationType.APPEND:
+                        result = await _process_append_operation(operation, collection, collection_repo, document_repo, updater)
+                    elif operation["type"] == OperationType.REINDEX:
+                        result = await _process_reindex_operation(
+                            operation, collection, collection_repo, document_repo, updater
+                        )
+                    elif operation["type"] == OperationType.REMOVE_SOURCE:
+                        result = await _process_remove_source_operation(
+                            operation, collection, collection_repo, document_repo, updater
+                        )
+                    else:
+                        raise ValueError(f"Unknown operation type: {operation['type']}")
+
+                    # Track peak memory usage
+                    memory_peak = process.memory_info().rss
+                    collection_memory_usage_bytes.labels(operation_type=operation_type).set(memory_peak - memory_before)
+
+                # Record operation metrics in database
+                duration = time.time() - start_time
+                cpu_time = (process.cpu_times().user + process.cpu_times().system) - initial_cpu_time
+
                 await _record_operation_metrics(
                     operation_repo,
                     operation_id,
                     {
-                        "duration_seconds": time.time() - start_time,
-                        "error_type": type(e).__name__,
-                        "error_message": str(e),
-                        "success": False,
+                        "duration_seconds": duration,
+                        "cpu_seconds": cpu_time,
+                        "memory_peak_bytes": memory_peak,
+                        "documents_processed": result.get("documents_added", result.get("documents_removed", 0)),
+                        "success": result.get("success", False),
                     },
                 )
 
-            # Update operation status to failed - this is critical
-            await operation_repo.update_status(operation_id, OperationStatus.FAILED, result={"error": str(e)})
+                # Update CPU time counter
+                collection_cpu_seconds_total.labels(operation_type=operation_type).inc(cpu_time)
 
-            # Update collection status based on operation type (consistent with on_failure handler)
-            if operation and collection:
-                collection_id = operation["collection_id"]
-                operation_type = operation["type"]
+                # Update operation status to completed
+                await operation_repo.update_status(operation_id, OperationStatus.COMPLETED)
 
-                if operation_type == OperationType.INDEX:
-                    # Initial index failed - collection is in error state
-                    await collection_repo.update_status(
-                        collection["uuid"], CollectionStatus.ERROR, status_message=f"Initial indexing failed: {str(e)}"
+                # Update collection status based on result
+                old_status = collection.get("status", CollectionStatus.PENDING)
+
+                if result.get("success"):
+                    # Check if collection has any documents
+                    doc_stats = await document_repo.get_stats_by_collection(collection["id"])
+                    # Collection is ready regardless of document count
+                    new_status = CollectionStatus.READY
+                    await collection_repo.update_status(collection["id"], new_status)
+
+                    # Update collection statistics
+                    await _update_collection_metrics(
+                        collection["id"],
+                        doc_stats["total_documents"],
+                        collection.get("vector_count", 0),
+                        doc_stats["total_size_bytes"],
                     )
-                elif operation_type == OperationType.REINDEX:
-                    # Reindex failed - collection is degraded but still usable
-                    await collection_repo.update_status(
-                        collection["uuid"],
-                        CollectionStatus.DEGRADED,
-                        status_message=f"Re-indexing failed: {str(e)}. Original collection still available.",
+                else:
+                    new_status = CollectionStatus.PARTIALLY_READY
+                    await collection_repo.update_status(collection["id"], new_status)
+
+                # Update collection status metrics
+                if old_status != new_status:
+                    collections_total.labels(status=old_status.value).dec()
+                    collections_total.labels(status=new_status.value).inc()
+
+                await updater.send_update("operation_completed", {"status": "completed", "result": result})
+
+                logger.info(
+                    "Collection operation completed",
+                    extra={
+                        "operation_id": operation_id,
+                        "operation_type": operation["type"].value,
+                        "duration_seconds": duration,
+                        "success": result.get("success", False),
+                    },
+                )
+
+                return result
+
+        except Exception as e:
+            logger.error(f"Operation {operation_id} failed: {e}", exc_info=True)
+
+            # Ensure status update even if some components failed to initialize
+            try:
+                # Record failure metrics
+                if operation:
+                    await _record_operation_metrics(
+                        operation_repo,
+                        operation_id,
+                        {
+                            "duration_seconds": time.time() - start_time,
+                            "error_type": type(e).__name__,
+                            "error_message": str(e),
+                            "success": False,
+                        },
                     )
-                    # Clean up staging resources immediately
-                    await _cleanup_staging_resources(collection_id, operation)
 
-            # Note: updater.send_update for failures should be handled inside the context manager
-            # The context manager will automatically close the Redis connection on exception
-        except Exception as update_error:
-            # Log but don't raise - we want the original exception to propagate
-            logger.error(f"Failed to update operation status during error handling: {update_error}")
+                # Update operation status to failed - this is critical
+                await operation_repo.update_status(operation_id, OperationStatus.FAILED, error_message=str(e))
 
-        raise
+                # Update collection status based on operation type (consistent with on_failure handler)
+                if operation and collection:
+                    collection_id = operation["collection_id"]
+                    operation_type = operation["type"]
 
-    finally:
-        # Guaranteed cleanup - ensure operation status is finalized
-        try:
-            # If we haven't set a final status, ensure it's set
-            if operation:
-                current_status = await operation_repo.get_by_uuid(operation_id)
-                if current_status and current_status.get("status") == OperationStatus.PROCESSING:
-                    # Operation is still processing - must have failed unexpectedly
-                    await operation_repo.update_status(
-                        operation_id, OperationStatus.FAILED, result={"error": "Task terminated unexpectedly"}
-                    )
-        except Exception as final_error:
-            logger.error(f"Failed to finalize operation status: {final_error}")
+                    if operation_type == OperationType.INDEX:
+                        # Initial index failed - collection is in error state
+                        await collection_repo.update_status(
+                            collection["uuid"], CollectionStatus.ERROR, status_message=f"Initial indexing failed: {str(e)}"
+                        )
+                    elif operation_type == OperationType.REINDEX:
+                        # Reindex failed - collection is degraded but still usable
+                        await collection_repo.update_status(
+                            collection["uuid"],
+                            CollectionStatus.DEGRADED,
+                            status_message=f"Re-indexing failed: {str(e)}. Original collection still available.",
+                        )
+                        # Clean up staging resources immediately
+                        await _cleanup_staging_resources(collection_id, operation)
 
-        # Note: Redis connection cleanup is handled automatically by the context manager
+                # Note: updater.send_update for failures should be handled inside the context manager
+                # The context manager will automatically close the Redis connection on exception
+            except Exception as update_error:
+                # Log but don't raise - we want the original exception to propagate
+                logger.error(f"Failed to update operation status during error handling: {update_error}")
+
+            raise
+
+        finally:
+            # Guaranteed cleanup - ensure operation status is finalized
+            try:
+                # If we haven't set a final status, ensure it's set
+                if operation:
+                    current_status = await operation_repo.get_by_uuid(operation_id)
+                    if current_status and current_status.status == OperationStatus.PROCESSING:
+                        # Operation is still processing - must have failed unexpectedly
+                        await operation_repo.update_status(
+                            operation_id, OperationStatus.FAILED, error_message="Task terminated unexpectedly"
+                        )
+            except Exception as final_error:
+                logger.error(f"Failed to finalize operation status: {final_error}")
+
+            # Note: Redis connection cleanup is handled automatically by the context manager
+            
+            # Commit any pending changes
+            await db.commit()
 
 
 async def _record_operation_metrics(operation_repo: Any, operation_id: str, metrics: dict[str, Any]) -> None:
@@ -1645,7 +1676,7 @@ async def _record_operation_metrics(operation_repo: Any, operation_id: str, metr
                 for metric_name, metric_value in metrics.items():
                     if isinstance(metric_value, int | float):
                         metric = OperationMetrics(
-                            operation_id=operation["id"],
+                            operation_id=operation.id,
                             metric_name=metric_name,
                             metric_value=float(metric_value),
                         )
@@ -2020,14 +2051,14 @@ async def _process_reindex_operation(
 
         # Check if collection has documents
         doc_stats = await document_repo.get_stats_by_collection(collection["id"])
-        if doc_stats["total_count"] == 0:
+        if doc_stats["total_documents"] == 0:
             raise ValueError("Cannot reindex empty collection")
 
         await updater.send_update(
             "reindex_preflight",
             {
                 "status": "preflight_complete",
-                "documents_to_process": doc_stats["total_count"],
+                "documents_to_process": doc_stats["total_documents"],
                 "current_vector_count": collection.get("vector_count", 0),
             },
         )
@@ -2627,7 +2658,7 @@ async def _process_remove_source_operation(
             stats = await doc_repo_tx.get_stats_by_collection(collection["id"])
             await collection_repo_tx.update_stats(
                 collection["id"],
-                total_documents=stats["total_count"],
+                total_documents=stats["total_documents"],
                 total_chunks=stats["total_chunks"],
                 total_size_bytes=stats["total_size_bytes"],
             )
@@ -2636,7 +2667,7 @@ async def _process_remove_source_operation(
         # Update collection metrics
         await _update_collection_metrics(
             collection["id"],
-            stats["total_count"],
+            stats["total_documents"],
             collection.get("vector_count", 0) - removed_count,
             stats["total_size_bytes"],
         )

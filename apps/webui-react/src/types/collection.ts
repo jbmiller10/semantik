@@ -26,6 +26,7 @@ export interface Collection {
   owner_id: number;
   vector_store_name: string;       // Qdrant collection name
   embedding_model: string;
+  quantization: string;          // float32, float16, or int8
   chunk_size: number;
   chunk_overlap: number;
   is_public: boolean;
@@ -64,6 +65,7 @@ export interface CreateCollectionRequest {
   name: string;
   description?: string;
   embedding_model?: string;
+  quantization?: string;         // float32, float16, or int8
   chunk_size?: number;
   chunk_overlap?: number;
   is_public?: boolean;
@@ -92,6 +94,7 @@ export interface RemoveSourceRequest {
 
 export interface ReindexRequest {
   embedding_model?: string;
+  quantization?: string;         // float32, float16, or int8
   chunk_size?: number;
   chunk_overlap?: number;
 }

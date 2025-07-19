@@ -32,7 +32,8 @@ describe('SearchInterface - Network Error Handling', () => {
       status: 'ready',
       document_count: 100,
       vector_count: 1000,
-      embedding_model: 'test-model'
+      embedding_model: 'test-model',
+      quantization: 'float16'
     },
     {
       uuid: 'coll-2', 

@@ -186,7 +186,8 @@ describe('UI Error States', () => {
         uuid: 'test-uuid',
         name: 'Test Collection',
         status: 'ready',
-        embedding_model: 'test-model'
+        embedding_model: 'test-model',
+        quantization: 'float16'
       }
       
       renderWithErrorHandlers(
@@ -262,7 +263,8 @@ describe('UI Error States', () => {
         uuid: 'test-uuid',
         name: 'Test Collection',
         status: 'ready',
-        embedding_model: 'test-model'
+        embedding_model: 'test-model',
+        quantization: 'float16'
       }
       
       renderWithErrorHandlers(

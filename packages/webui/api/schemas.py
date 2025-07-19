@@ -81,6 +81,11 @@ class CollectionBase(BaseModel):
     )
     description: str | None = None
     embedding_model: str = Field(default="Qwen/Qwen3-Embedding-0.6B")
+    quantization: str = Field(
+        default="float16",
+        pattern="^(float32|float16|int8)$",
+        description="Model quantization level (float32, float16, or int8)",
+    )
     chunk_size: int = Field(default=1000, ge=100, le=10000)
     chunk_overlap: int = Field(default=200, ge=0, le=1000)
     is_public: bool = False
@@ -120,6 +125,23 @@ class CollectionUpdate(BaseModel):
         return v.strip()
 
 
+class AddSourceRequest(BaseModel):
+    """Schema for adding a source to a collection."""
+
+    source_path: str = Field(..., description="Path to the source file or directory")
+    config: dict[str, Any] | None = Field(
+        None,
+        description="Optional configuration for the source",
+        json_schema_extra={
+            "example": {
+                "chunk_size": 1000,
+                "chunk_overlap": 200,
+                "metadata": {"department": "engineering"}
+            }
+        }
+    )
+
+
 class CollectionResponse(CollectionBase):
     """Collection response schema."""
 
@@ -142,6 +164,7 @@ class CollectionResponse(CollectionBase):
             owner_id=collection.owner_id,
             vector_store_name=collection.vector_store_name,
             embedding_model=collection.embedding_model,
+            quantization=collection.quantization,
             chunk_size=collection.chunk_size,
             chunk_overlap=collection.chunk_overlap,
             is_public=collection.is_public,

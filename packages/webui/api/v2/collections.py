@@ -24,6 +24,7 @@ from packages.shared.database.repositories.collection_repository import Collecti
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.webui.api.schemas import (
+    AddSourceRequest,
     CollectionCreate,
     CollectionListResponse,
     CollectionResponse,
@@ -73,6 +74,7 @@ async def create_collection(
             description=create_request.description,
             config={
                 "embedding_model": create_request.embedding_model,
+                "quantization": create_request.quantization,
                 "chunk_size": create_request.chunk_size,
                 "chunk_overlap": create_request.chunk_overlap,
                 "is_public": create_request.is_public,
@@ -88,6 +90,7 @@ async def create_collection(
             owner_id=collection["owner_id"],
             vector_store_name=collection["vector_store_name"],
             embedding_model=collection["embedding_model"],
+            quantization=collection["quantization"],
             chunk_size=collection["chunk_size"],
             chunk_overlap=collection["chunk_overlap"],
             is_public=collection["is_public"],
@@ -305,8 +308,7 @@ async def delete_collection(
 async def add_source(
     request: Request,  # noqa: ARG001
     collection_uuid: str,
-    source_path: str,
-    source_config: dict[str, Any] | None = None,
+    add_source_request: AddSourceRequest,
     current_user: dict[str, Any] = Depends(get_current_user),
     service: CollectionService = Depends(get_collection_service),
 ) -> OperationResponse:
@@ -319,8 +321,8 @@ async def add_source(
         operation = await service.add_source(
             collection_id=collection_uuid,
             user_id=int(current_user["id"]),
-            source_path=source_path,
-            source_config=source_config or {},
+            source_path=add_source_request.source_path,
+            source_config=add_source_request.config or {},
         )
 
         # Convert to response model

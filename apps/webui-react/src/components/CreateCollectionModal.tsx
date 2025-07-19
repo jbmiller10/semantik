@@ -12,6 +12,7 @@ interface CreateCollectionModalProps {
 const DEFAULT_EMBEDDING_MODEL = 'Qwen/Qwen3-Embedding-0.6B';
 const DEFAULT_CHUNK_SIZE = 512;
 const DEFAULT_CHUNK_OVERLAP = 50;
+const DEFAULT_QUANTIZATION = 'float16';
 
 function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProps) {
   const { createCollection, addSource } = useCollectionStore();
@@ -22,6 +23,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     name: '',
     description: '',
     embedding_model: DEFAULT_EMBEDDING_MODEL,
+    quantization: DEFAULT_QUANTIZATION,
     chunk_size: DEFAULT_CHUNK_SIZE,
     chunk_overlap: DEFAULT_CHUNK_OVERLAP,
     is_public: false,
@@ -242,6 +244,26 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
               </select>
               <p className="mt-1 text-sm text-gray-500">
                 Choose the AI model for converting documents to searchable vectors
+              </p>
+            </div>
+
+            {/* Quantization */}
+            <div>
+              <label htmlFor="quantization" className="block text-sm font-medium text-gray-700">
+                Model Quantization
+              </label>
+              <select
+                id="quantization"
+                value={formData.quantization}
+                onChange={(e) => handleChange('quantization', e.target.value)}
+                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+              >
+                <option value="float32">float32 (Highest Precision)</option>
+                <option value="float16">float16 (Balanced - Default)</option>
+                <option value="int8">int8 (Lowest Memory Usage)</option>
+              </select>
+              <p className="mt-1 text-sm text-gray-500">
+                Choose the precision level for the embedding model. Lower precision uses less memory but may affect accuracy
               </p>
             </div>
 
