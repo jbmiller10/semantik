@@ -112,7 +112,10 @@ class TestWebuiHealthEndpoints:
         with (
             patch("packages.webui.api.health.ws_manager.redis", mock_redis),
             patch("httpx.AsyncClient.get", side_effect=mock_get),
-            patch("packages.webui.api.health._check_embedding_service_health", side_effect=mock_check_embedding_service_health),
+            patch(
+                "packages.webui.api.health._check_embedding_service_health",
+                side_effect=mock_check_embedding_service_health,
+            ),
         ):
             response = test_client.get("/api/health/readyz")
             assert response.status_code == 200
@@ -147,7 +150,10 @@ class TestWebuiHealthEndpoints:
         with (
             patch("packages.webui.api.health.ws_manager.redis", mock_redis),
             patch("httpx.AsyncClient.get", side_effect=mock_get),
-            patch("packages.webui.api.health._check_embedding_service_health", side_effect=mock_check_embedding_service_health),
+            patch(
+                "packages.webui.api.health._check_embedding_service_health",
+                side_effect=mock_check_embedding_service_health,
+            ),
         ):
             response = test_client.get("/api/health/readyz")
             assert response.status_code == 503  # Should be 503 when not ready
