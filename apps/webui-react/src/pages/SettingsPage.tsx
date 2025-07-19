@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { settingsApi } from '../services/api';
+import { useCollectionStore } from '../stores/collectionStore';
 
 interface DatabaseStats {
   collection_count: number;
@@ -45,6 +46,9 @@ function SettingsPage() {
     try {
       setResetting(true);
       await settingsApi.resetDatabase();
+      
+      // Clear the collection store to remove cached data
+      useCollectionStore.getState().clearStore();
       
       // Show success message and redirect
       alert('Database reset successfully!');
