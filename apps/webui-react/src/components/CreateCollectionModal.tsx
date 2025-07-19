@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useCollectionStore } from '../stores/collectionStore';
 import { useUIStore } from '../stores/uiStore';
 import { useNavigate } from 'react-router-dom';
@@ -31,6 +31,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
   const { addToast } = useUIStore();
   const navigate = useNavigate();
   const { scanning, scanResult, error: scanError, startScan, reset: resetScan } = useDirectoryScan();
+  const formRef = useRef<HTMLFormElement>(null);
   
   const [formData, setFormData] = useState<CreateCollectionRequest>({
     name: '',
@@ -59,8 +60,31 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     return () => document.removeEventListener('keydown', handleEscape);
   }, [onClose, isSubmitting]);
 
+  // Ensure form doesn't submit natively
+  useEffect(() => {
+    const form = formRef.current;
+    if (!form) return;
+
+    const preventNativeSubmit = (e: Event) => {
+      console.log('Native form submit intercepted');
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    };
+
+    // Add listener for the native submit event
+    form.addEventListener('submit', preventNativeSubmit, true);
+
+    return () => {
+      form.removeEventListener('submit', preventNativeSubmit, true);
+    };
+  }, []);
+
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
+    
+    // Debug: Log current form data
+    console.log('Validating form with data:', formData);
     
     if (!formData.name.trim()) {
       newErrors.name = 'Collection name is required';
@@ -89,9 +113,20 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
+    // Always prevent default first to avoid page reload
     e.preventDefault();
+    e.stopPropagation();
     
-    if (!validateForm()) {
+    // Debug: Log that form submission was triggered
+    console.log('Form submission triggered, default prevented');
+    
+    try {
+      if (!validateForm()) {
+        console.log('Form validation failed');
+        return;
+      }
+    } catch (error) {
+      console.error('Validation error:', error);
       return;
     }
     
@@ -162,6 +197,8 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
+    // Debug: Log state changes
+    console.log(`Form field '${field}' updated to:`, value);
   };
 
   const handleSourcePathChange = (value: string) => {
@@ -197,7 +234,19 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
             </div>
           </div>
         )}
-        <form onSubmit={handleSubmit}>
+        <form 
+          ref={formRef}
+          onSubmit={handleSubmit}
+          action="#"
+          method="POST"
+          onKeyDown={(e) => {
+            // Prevent form submission on Enter key in input fields
+            if (e.key === 'Enter' && e.target instanceof HTMLInputElement && e.target.type !== 'submit') {
+              e.preventDefault();
+              console.log('Prevented Enter key submission in input field');
+            }
+          }}
+        >
           <div className="px-6 py-4 border-b border-gray-200">
             <h3 className="text-lg font-medium text-gray-900">Create New Collection</h3>
             <p className="mt-1 text-sm text-gray-500">

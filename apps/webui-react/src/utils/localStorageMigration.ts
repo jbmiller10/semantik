@@ -9,7 +9,7 @@ const CURRENT_VERSION = '2.0.0';
 // Keys that should be preserved across migrations
 const PRESERVED_KEYS: string[] = [
   // Add any keys that should survive migrations here
-  // For now, we'll clear everything except the version key
+  'auth-storage', // Preserve authentication data
 ];
 
 // Patterns for keys that should be cleared

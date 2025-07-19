@@ -69,7 +69,13 @@ export const useCollectionStore = create<CollectionStore>()(
         set({ isLoading: true, error: null });
         try {
           const response = await collectionsV2Api.list();
+          
+          if (!response.data || !response.data.collections) {
+            throw new Error('Invalid response structure');
+          }
+          
           const collections = new Map(response.data.collections.map(c => [c.id, c]));
+          
           set({ collections, isLoading: false });
         } catch (error) {
           const errorMessage = handleApiError(error);
