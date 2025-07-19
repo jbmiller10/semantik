@@ -25,6 +25,7 @@ from packages.shared.database.repositories.document_repository import DocumentRe
 from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.webui.api.schemas import (
     AddSourceRequest,
+
     CollectionCreate,
     CollectionListResponse,
     CollectionResponse,
@@ -75,6 +76,7 @@ async def create_collection(
             config={
                 "embedding_model": create_request.embedding_model,
                 "quantization": create_request.quantization,
+
                 "chunk_size": create_request.chunk_size,
                 "chunk_overlap": create_request.chunk_overlap,
                 "is_public": create_request.is_public,
@@ -91,6 +93,7 @@ async def create_collection(
             vector_store_name=collection["vector_store_name"],
             embedding_model=collection["embedding_model"],
             quantization=collection["quantization"],
+
             chunk_size=collection["chunk_size"],
             chunk_overlap=collection["chunk_overlap"],
             is_public=collection["is_public"],
@@ -100,6 +103,7 @@ async def create_collection(
             document_count=collection["document_count"],
             status=collection["status"],
             status_message=collection.get("status_message"),
+
         )
 
     except EntityAlreadyExistsError as e:
@@ -311,6 +315,7 @@ async def add_source(
     request: Request,  # noqa: ARG001
     collection_uuid: str,
     add_source_request: AddSourceRequest,
+
     current_user: dict[str, Any] = Depends(get_current_user),
     service: CollectionService = Depends(get_collection_service),
 ) -> OperationResponse:
@@ -325,6 +330,7 @@ async def add_source(
             user_id=int(current_user["id"]),
             source_path=add_source_request.source_path,
             source_config=add_source_request.config or {},
+
         )
 
         # Convert to response model

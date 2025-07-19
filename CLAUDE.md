@@ -60,7 +60,7 @@ poetry run pytest tests/integration          # Integration tests
 poetry run pytest tests/e2e                  # E2E tests (requires services running)
 poetry run pytest -m "not e2e"              # All tests except E2E
 poetry run pytest tests/unit/test_file.py::test_function  # Run specific test
-```
+
 
 ### Building & Installation
 
