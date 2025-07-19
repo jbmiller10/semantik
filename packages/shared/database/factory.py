@@ -101,7 +101,6 @@ def create_operation_repository() -> Any:
     Note: This is a compatibility shim for the new async repositories.
     The actual implementation will create a session and repository on first use.
     """
-    import asyncio
 
     from .database import AsyncSessionLocal
     from .repositories.operation_repository import OperationRepository
@@ -147,7 +146,6 @@ def create_document_repository() -> Any:
     Note: This is a compatibility shim for the new async repositories.
     The actual implementation will create a session and repository on first use.
     """
-    import asyncio
 
     from .database import AsyncSessionLocal
     from .repositories.document_repository import DocumentRepository

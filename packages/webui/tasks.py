@@ -1189,7 +1189,6 @@ def _handle_task_failure(
 
 async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id: str) -> None:
     """Async implementation of failure handling."""
-    from shared.database.factory import create_collection_repository, create_operation_repository
     from shared.database.models import CollectionStatus, OperationStatus, OperationType
     from shared.metrics.collection_metrics import collection_operations_total
 
@@ -1427,11 +1426,6 @@ def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]
 
 async def _process_collection_operation_async(operation_id: str, celery_task: Any) -> dict[str, Any]:
     """Async implementation of collection operation processing with enhanced monitoring."""
-    from shared.database.factory import (
-        create_collection_repository,
-        create_document_repository,
-        create_operation_repository,
-    )
     from shared.database.models import CollectionStatus, OperationStatus, OperationType
 
     start_time = time.time()
