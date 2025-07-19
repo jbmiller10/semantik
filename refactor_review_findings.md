@@ -127,6 +127,7 @@
 
 ### Single Collection Search
 **Check:** Perform a search on a single, ready collection. Are the results relevant?  
+
 **Finding:** [BLOCKED] - Cannot test because:
 - No collections visible in UI despite being created via API
 - The test collection has no documents indexed
@@ -156,10 +157,12 @@
 **Check:** Clicking on a search result should open the DocumentViewer and correctly highlight the relevant chunk.  
 **Finding:** [BLOCKED] - Cannot test without search results
 
+
 ## Section D: Backend & Architectural Verification
 
 ### Database Inspection
 **Check:** Directly inspect the SQLite database. Are records being created correctly in collections, operations, and documents?  
+
 **Finding:** [PARTIAL] 
 - Collections table: Collection created successfully with ID a280e610-d740-46c3-a4a9-6861ce5f1883, status READY
 - Operations table: INDEX operation recorded with status COMPLETED
