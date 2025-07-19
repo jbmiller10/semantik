@@ -4,7 +4,8 @@ This module provides factory functions to create repository instances,
 allowing for easy switching between different implementations.
 """
 
-from typing import Any, Callable, Coroutine, Optional
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 from .base import AuthRepository, CollectionRepository, FileRepository, JobRepository, UserRepository
 from .sqlite_repository import (
@@ -109,8 +110,8 @@ def create_operation_repository() -> Any:
         """Async wrapper that manages its own database session."""
 
         def __init__(self) -> None:
-            self._session: Optional[Any] = None  # AsyncSession
-            self._repo: Optional[Any] = None  # OperationRepository
+            self._session: Any | None = None  # AsyncSession
+            self._repo: Any | None = None  # OperationRepository
 
         async def _ensure_initialized(self) -> None:
             """Ensure repository is initialized with a session."""
@@ -155,8 +156,8 @@ def create_document_repository() -> Any:
         """Async wrapper that manages its own database session."""
 
         def __init__(self) -> None:
-            self._session: Optional[Any] = None  # AsyncSession
-            self._repo: Optional[Any] = None  # DocumentRepository
+            self._session: Any | None = None  # AsyncSession
+            self._repo: Any | None = None  # DocumentRepository
 
         async def _ensure_initialized(self) -> None:
             """Ensure repository is initialized with a session."""
