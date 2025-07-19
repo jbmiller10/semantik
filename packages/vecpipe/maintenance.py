@@ -124,51 +124,6 @@ class QdrantMaintenanceService:
             logger.error(f"Unexpected error while fetching job collections: {e}")
             return collections
 
-    def get_active_collections(self) -> list[str]:
-        """Get all active collection names from the database"""
-        collections = [settings.DEFAULT_COLLECTION]
-
-        try:
-            # Call the internal API endpoint to get all collection vector_store_names
-            headers = {}
-            if settings.INTERNAL_API_KEY:
-                headers["X-Internal-Api-Key"] = settings.INTERNAL_API_KEY
-
-            def make_request() -> list[str]:
-                response = httpx.get(
-                    f"{self.webui_base_url}/api/internal/collections/vector-store-names", headers=headers, timeout=30.0
-                )
-                response.raise_for_status()
-                result: list[str] = response.json()
-                return result
-
-            vector_store_names = self._retry_request(make_request)
-            collections.extend(vector_store_names)
-
-            # Also include legacy job collections for backward compatibility
-            def make_job_request() -> list[str]:
-                response = httpx.get(f"{self.webui_base_url}/api/internal/jobs/all-ids", headers=headers, timeout=30.0)
-                response.raise_for_status()
-                result: list[str] = response.json()
-                return result
-
-            job_ids = self._retry_request(make_job_request)
-            for job_id in job_ids:
-                collections.append(f"job_{job_id}")
-
-            # Remove duplicates
-            collections = list(set(collections))
-
-            logger.info(f"Found {len(collections)} active collections: {collections}")
-            return collections
-
-        except httpx.HTTPError as e:
-            logger.error(f"Failed to fetch active collections from API: {e}")
-            return collections
-        except Exception as e:
-            logger.error(f"Unexpected error while fetching active collections: {e}")
-            return collections
-
     def collection_exists(self, collection_name: str) -> bool:
         """Check if a collection exists in Qdrant"""
         try:
@@ -217,7 +172,7 @@ class QdrantMaintenanceService:
         logger.info(f"Found {len(removed_files)} removed files")
 
         # Get all collections to clean
-        collections = self.get_active_collections()
+        collections = self.get_job_collections()
 
         # Track statistics
         total_deleted = 0
@@ -269,40 +224,25 @@ class QdrantMaintenanceService:
 
         return summary
 
-    def cleanup_orphaned_collections(self, dry_run: bool = False, grace_period_minutes: int = 60) -> dict:
-        """Clean up Qdrant collections that don't have corresponding entries in the database
-
-        Args:
-            dry_run: If True, only log what would be deleted without actually deleting
-            grace_period_minutes: Don't delete collections created within this many minutes (default: 60)
-        """
-        # Note: grace_period_minutes parameter reserved for future implementation
-        _ = grace_period_minutes  # Acknowledge unused parameter
-
+    def cleanup_orphaned_collections(self, dry_run: bool = False) -> dict:
+        """Clean up Qdrant collections that don't have corresponding jobs in webui"""
         try:
-            # Get all valid collection names from the database
-            valid_collections = set(self.get_active_collections())
+            # Get all valid job IDs from webui
+            valid_collections = set(self.get_job_collections())
 
             # Get all collections from Qdrant
             all_collections = self.client.get_collections().collections
             qdrant_collections = {col.name for col in all_collections}
 
-            # Find orphaned collections (those in Qdrant but not in database)
+            # Find orphaned collections (those that start with "job_" but aren't in valid list)
             orphaned = []
             for col_name in qdrant_collections:
-                # Check if collection is not in the valid list and matches known patterns
-                if col_name not in valid_collections:
-                    # Only consider collections with known patterns as orphaned
-                    if col_name.startswith(("job_", "col_")) and col_name != settings.DEFAULT_COLLECTION:
-                        # Add to orphaned list
-                        orphaned.append(col_name)
-                        logger.info(f"Found orphaned collection: {col_name}")
-                    else:
-                        logger.debug(f"Skipping unknown collection pattern: {col_name}")
+                if col_name.startswith("job_") and col_name not in valid_collections:
+                    orphaned.append(col_name)
 
             deleted_collections = []
             if orphaned:
-                logger.info(f"Found {len(orphaned)} orphaned collections: {orphaned}")
+                logger.info(f"Found {len(orphaned)} orphaned collections")
                 for col_name in orphaned:
                     if dry_run:
                         logger.info(f"[DRY RUN] Would delete collection: {col_name}")
@@ -316,16 +256,10 @@ class QdrantMaintenanceService:
             else:
                 logger.info("No orphaned collections found")
 
-            # Log summary of valid vs orphaned collections
-            logger.info(f"Valid collections in database: {len(valid_collections)}")
-            logger.info(f"Total collections in Qdrant: {len(qdrant_collections)}")
-
             return {
                 "timestamp": datetime.now(UTC).isoformat(),
                 "orphaned_collections": orphaned,
                 "deleted_collections": deleted_collections,
-                "valid_collections_count": len(valid_collections),
-                "qdrant_collections_count": len(qdrant_collections),
                 "dry_run": dry_run,
             }
 

@@ -22,11 +22,11 @@ function DocumentViewerModal() {
 
   if (!showDocumentViewer) return null;
 
-  const { collectionId, docId } = showDocumentViewer;
+  const { jobId, docId } = showDocumentViewer;
 
   return (
     <DocumentViewer
-      collectionId={collectionId}
+      jobId={jobId}
       docId={docId}
       query={searchQuery}
       onClose={() => setShowDocumentViewer(null)}

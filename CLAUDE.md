@@ -11,8 +11,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Essential Commands
 
-**Note**: Docker is the main way to run the application. For local development commands, use `poetry run` to ensure the correct environment is used.
-
 ### Quick Start & Development
 
 ```bash
@@ -23,43 +21,35 @@ make wizard
 make dev                          # Runs backend + frontend dev servers
 ./scripts/dev.sh                  # Alternative: manual dev server startup
 
-# Docker operations (PRIMARY METHOD)
+# Docker operations
 make docker-up                    # Start all services
 make docker-down                  # Stop all services
 make docker-logs                  # View container logs
 make docker-ps                    # Show container status
 make docker-build-fresh           # Rebuild without cache
-make docker-restart               # Restart all services
-
-# Direct backend development (use with poetry)
-make run                          # Run webui with uvicorn directly
-poetry run python -m uvicorn packages.webui.main:app --reload  # Alternative
 ```
 
 ### Code Quality & Testing
 
 ```bash
 # Python code quality
-make format                       # Format with black & isort (alias: make fix)
+make format                       # Format with black & isort
 make lint                         # Lint with ruff
 make type-check                   # Type check with mypy
 make test                         # Run all tests
 make test-ci                      # Tests excluding E2E
-make test-e2e                     # Run only E2E tests (requires running services)
 make test-coverage                # Generate coverage report
-make check                        # Run all checks (lint, type-check, test)
-make clean                        # Clean up generated files (__pycache__, .coverage, etc.)
+make check                        # Run all checks (format, lint, type-check)
 
 # Frontend
 make frontend-test                # Run React tests
 cd apps/webui-react && npm test   # Alternative
 
 # Specific test types
-poetry run pytest tests/unit                 # Unit tests only
-poetry run pytest tests/integration          # Integration tests
-poetry run pytest tests/e2e                  # E2E tests (requires services running)
-poetry run pytest -m "not e2e"              # All tests except E2E
-poetry run pytest tests/unit/test_file.py::test_function  # Run specific test
+pytest tests/unit                 # Unit tests only
+pytest tests/integration          # Integration tests
+pytest tests/e2e                  # E2E tests (requires services running)
+pytest -m "not e2e"              # All tests except E2E
 ```
 
 ### Building & Installation
@@ -75,43 +65,9 @@ make frontend-install             # Install frontend dependencies
 make frontend-build               # Production build
 make frontend-dev                 # Development server
 
-# Build entire project
-make build                        # Build frontend for production
-
-# Database migrations (run with poetry)
-poetry run alembic upgrade head   # Apply migrations
-poetry run alembic revision --autogenerate -m "description"  # Create new migration
-```
-
-### Docker Container Management
-
-```bash
-# View logs for specific services
-make docker-logs-webui            # WebUI service logs
-make docker-logs-vecpipe          # Vector pipeline logs
-make docker-logs-qdrant           # Qdrant database logs
-
-# Shell access to containers
-make docker-shell-webui           # Bash shell in webui container
-make docker-shell-vecpipe         # Bash shell in vecpipe container
-```
-
-### Utility Scripts
-
-```bash
-# Document management
-./scripts/build_manifest.sh       # Find eligible documents and create file list
-
-# Model operations
-./scripts/download-models.sh      # Pre-download models
-poetry run python scripts/benchmark_qwen3.py  # Benchmark Qwen3 model performance
-
-# Maintenance scripts (run with poetry)
-poetry run python scripts/debug_memory_usage.py      # Debug memory usage
-poetry run python scripts/backfill_doc_ids.py        # Backfill document IDs
-poetry run python scripts/backup_before_migration.py # Backup before migrations
-poetry run python scripts/cleanup_temp_images.py     # Clean up temporary images
-./scripts/fix-permissions.sh      # Fix file permissions for Docker volumes
+# Database migrations
+alembic upgrade head              # Apply migrations
+alembic revision --autogenerate -m "description"  # Create new migration
 ```
 
 ## High-Level Architecture
@@ -208,12 +164,6 @@ DISABLE_AUTH=false  # Set true for development
 
 # Redis configuration
 REDIS_URL=redis://localhost:6379/0
-
-# Port configuration (defaults)
-WEBUI_PORT=8080    # WebUI API
-SEARCH_PORT=8000   # Search/VecPipe API
-QDRANT_PORT=6333   # Qdrant database
-REDIS_PORT=6379    # Redis queue
 ```
 
 ### Docker Compose Profiles
@@ -252,17 +202,17 @@ docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
 ### Database Operations
 
 ```bash
-# Apply migrations (run with poetry)
-poetry run alembic upgrade head
+# Apply migrations
+alembic upgrade head
 
 # Create new migration
-poetry run alembic revision --autogenerate -m "Add user preferences"
+alembic revision --autogenerate -m "Add user preferences"
 
 # Rollback migration
-poetry run alembic downgrade -1
+alembic downgrade -1
 
 # View migration history
-poetry run alembic history
+alembic history
 ```
 
 ### Testing Strategies
@@ -289,12 +239,3 @@ Always run `make check` before committing to ensure code quality.
 - CORS configured for frontend development
 - API key authentication for programmatic access
 - Superuser required for admin operations
-
-## Tools/MCP
-- context7 for looking up documentation
-- puppeteer for viewing webui in browser
-
-## Additional Notes
-- No Cursor rules (.cursorrules) or GitHub Copilot instructions (.github/copilot-instructions.md) are present in this repository
-- All local Python commands should be run with `poetry run` to ensure the correct environment
-- Docker is the recommended and primary method for running the application

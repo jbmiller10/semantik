@@ -1,11 +1,15 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchStore } from '../stores/searchStore';
 import { useUIStore } from '../stores/uiStore';
-import { useCollectionStore } from '../stores/collectionStore';
-import { searchV2Api } from '../services/api/v2/collections';
+import { searchApi, jobsApi } from '../services/api';
 import SearchResults from './SearchResults';
-import { CollectionMultiSelect } from './CollectionMultiSelect';
+
+interface CollectionStatus {
+  exists: boolean;
+  point_count: number;
+  status: string;
+}
 
 function SearchInterface() {
   const {
@@ -14,47 +18,69 @@ function SearchInterface() {
     setResults,
     setLoading,
     setError,
+    setCollections,
+    collections,
     setRerankingMetrics,
-    setFailedCollections,
-    setPartialFailure,
   } = useSearchStore();
   const addToast = useUIStore((state) => state.addToast);
-  const collectionStore = useCollectionStore();
-  const collectionsArray = Array.from(collectionStore.collections.values());
 
+  const [collectionStatuses, setCollectionStatuses] = useState<Record<string, CollectionStatus>>({});
   const statusUpdateIntervalRef = useRef<number | null>(null);
 
-  // Fetch collections using v2 API
-  const { refetch: refetchCollections } = useQuery({
-    queryKey: ['collections-v2'],
+  // Fetch collections (jobs)
+  const { data: jobsData } = useQuery({
+    queryKey: ['jobs'],
     queryFn: async () => {
-      // Use the collection store's fetchCollections method
-      await collectionStore.fetchCollections();
-      return collectionStore.getCollectionsArray();
+      const response = await jobsApi.list();
+      return response.data;
     },
   });
 
-  // Check if any collections are processing and set up auto-refresh
-  useEffect(() => {
-    const hasProcessing = collectionsArray.some(
-      (col) => col.status === 'processing' || col.status === 'pending'
-    );
-
-    if (hasProcessing && !statusUpdateIntervalRef.current) {
-      statusUpdateIntervalRef.current = window.setInterval(() => {
-        refetchCollections();
-      }, 5000);
-    } else if (!hasProcessing && statusUpdateIntervalRef.current) {
-      window.clearInterval(statusUpdateIntervalRef.current);
-      statusUpdateIntervalRef.current = null;
+  // Fetch collection statuses
+  const fetchCollectionStatuses = async () => {
+    try {
+      const response = await jobsApi.getCollectionsStatus();
+      setCollectionStatuses(response.data);
+      
+      // Check if any collections are processing
+      const hasProcessing = Object.values(response.data as Record<string, CollectionStatus>).some(
+        (status) => status.status === 'processing' || status.status === 'created'
+      );
+      
+      // Set up periodic updates if collections are processing
+      if (hasProcessing && !statusUpdateIntervalRef.current) {
+        statusUpdateIntervalRef.current = window.setInterval(fetchCollectionStatuses, 5000);
+      } else if (!hasProcessing && statusUpdateIntervalRef.current) {
+        window.clearInterval(statusUpdateIntervalRef.current);
+        statusUpdateIntervalRef.current = null;
+      }
+    } catch (error) {
+      console.error('Failed to fetch collection statuses:', error);
     }
+  };
 
+  // Initial fetch of collection statuses
+  useEffect(() => {
+    fetchCollectionStatuses();
+    
+    // Cleanup interval on unmount
     return () => {
       if (statusUpdateIntervalRef.current) {
         window.clearInterval(statusUpdateIntervalRef.current);
       }
     };
-  }, [collectionsArray, refetchCollections]);
+  }, []);
+
+  useEffect(() => {
+    if (jobsData) {
+      const collections = jobsData.map((job: any) => `job_${job.id}`);
+      setCollections(collections);
+      // Set first collection as default if none selected
+      if (!searchParams.collection && collections.length > 0) {
+        updateSearchParams({ collection: collections[0] });
+      }
+    }
+  }, [jobsData, searchParams.collection, setCollections, updateSearchParams]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,64 +90,32 @@ function SearchInterface() {
       return;
     }
 
-    if (searchParams.selectedCollections.length === 0) {
-      addToast({ type: 'error', message: 'Please select at least one collection' });
+    if (!searchParams.collection) {
+      addToast({ type: 'error', message: 'Please select a collection' });
       return;
     }
 
+    // No need to check if collection is ready since we only show ready collections
+
     setLoading(true);
     setError(null);
-    setFailedCollections([]);
-    setPartialFailure(false);
 
     try {
-      // Use v2 search API with multiple collections
-      const response = await searchV2Api.search({
+      const response = await searchApi.search({
         query: searchParams.query,
-        collection_ids: searchParams.selectedCollections,
+        collection: searchParams.collection,
         top_k: searchParams.topK,
         score_threshold: searchParams.scoreThreshold,
         search_type: searchParams.searchType,
-        hybrid_config: searchParams.searchType === 'hybrid' ? {
-          alpha: searchParams.hybridAlpha,
-          mode: searchParams.hybridMode,
-          keyword_mode: searchParams.keywordMode,
-        } : undefined,
-        rerank_config: searchParams.useReranker ? {
-          model: searchParams.rerankModel,
-          quantization: searchParams.rerankQuantization,
-          enabled: true,
-        } : undefined,
+        rerank_model: searchParams.rerankModel,
+        rerank_quantization: searchParams.rerankQuantization,
+        use_reranker: searchParams.useReranker,
+        hybrid_alpha: searchParams.hybridAlpha,
+        hybrid_mode: searchParams.hybridMode,
+        keyword_mode: searchParams.keywordMode,
       });
 
-      // Map results to match the search store's SearchResult type
-      const mappedResults = response.data.results.map((result) => ({
-        doc_id: result.document_id,
-        chunk_id: result.chunk_id,
-        score: result.score,
-        content: result.text,
-        file_path: result.file_path,
-        file_name: result.file_name,
-        chunk_index: result.chunk_index,
-        total_chunks: result.metadata?.total_chunks || 1,
-        collection_id: result.collection_id,
-        collection_name: result.collection_name,
-      }));
-
-      setResults(mappedResults);
-      
-      // Handle partial failures
-      if (response.data.partial_failure) {
-        setPartialFailure(true);
-        setFailedCollections(response.data.failed_collections || []);
-        
-        // Show warning toast for partial failures
-        const failedCount = response.data.failed_collections?.length || 0;
-        addToast({ 
-          type: 'warning', 
-          message: `Search completed with ${failedCount} collection(s) failing. Check the results for details.` 
-        });
-      }
+      setResults(response.data.results);
       
       // Store reranking metrics if present
       if (response.data.reranking_used !== undefined) {
@@ -192,23 +186,46 @@ function SearchInterface() {
             {/* Collection Selection */}
             <div>
               <label htmlFor="collection" className="block text-sm font-medium text-gray-700 mb-2">
-                Collections
+                Collection
                 <button
                   type="button"
-                  onClick={() => refetchCollections()}
+                  onClick={() => fetchCollectionStatuses()}
                   className="ml-2 text-blue-600 hover:text-blue-800 text-xs"
                 >
                   (refresh)
                 </button>
               </label>
-              <CollectionMultiSelect
-                collections={collectionsArray}
-                selectedCollections={searchParams.selectedCollections}
-                onChange={(selected) => updateSearchParams({ selectedCollections: selected })}
-                placeholder="Select collections to search..."
-              />
+              <select
+                id="collection"
+                value={searchParams.collection}
+                onChange={(e) => updateSearchParams({ collection: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select a collection</option>
+                {collections
+                  .filter((collection) => {
+                    const jobId = collection.replace('job_', '');
+                    const status = collectionStatuses[jobId];
+                    // Only show collections that are ready (completed with vectors)
+                    return status?.status === 'completed' && status?.point_count > 0;
+                  })
+                  .map((collection) => {
+                    const jobId = collection.replace('job_', '');
+                    const job = jobsData?.find((j: any) => j.id === jobId);
+                    const status = collectionStatuses[jobId];
+                    
+                    return (
+                      <option 
+                        key={collection} 
+                        value={collection}
+                      >
+                        {job?.name || collection} ({status.point_count.toLocaleString()} vectors)
+                      </option>
+                    );
+                  })}
+              </select>
               <p className="mt-1 text-xs text-gray-500">
-                Search across multiple collections simultaneously
+                Collections are created from your jobs
               </p>
             </div>
 
@@ -363,7 +380,7 @@ function SearchInterface() {
           <div className="pt-2">
             <button
               type="submit"
-              disabled={searchParams.selectedCollections.length === 0}
+              disabled={!searchParams.collection}
               className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Search
