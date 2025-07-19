@@ -2,7 +2,6 @@
 
 from unittest.mock import Mock, patch
 
-import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -95,24 +94,28 @@ class TestWebuiHealthEndpoints:
             return True
 
         mock_redis.ping = async_ping
-        
-        # Mock Search API response
-        class MockResponse:
-            status_code = 200
-            
-        async def mock_get(*args, **kwargs):
-            return MockResponse()
 
         # Mock Search API response
         class MockResponse:
             status_code = 200
+
+            def json(self):
+                return {"status": "healthy", "components": {}}
 
         async def mock_get(*_args, **_kwargs):
             return MockResponse()
 
+        # Mock embedding service health check
+        async def mock_check_embedding_service_health():
+            return {"status": "unhealthy", "message": "Embedding service not initialized"}
+
         with (
             patch("packages.webui.api.health.ws_manager.redis", mock_redis),
             patch("httpx.AsyncClient.get", side_effect=mock_get),
+            patch(
+                "packages.webui.api.health._check_embedding_service_health",
+                side_effect=mock_check_embedding_service_health,
+            ),
         ):
             response = test_client.get("/api/health/readyz")
             assert response.status_code == 200
@@ -129,24 +132,28 @@ class TestWebuiHealthEndpoints:
             return True
 
         mock_redis.ping = async_ping
-        
-        # Mock Search API to return unhealthy
-        class MockResponse:
-            status_code = 503
-            
-        async def mock_get(*args, **kwargs):
-            return MockResponse()
 
         # Mock Search API to return unhealthy
         class MockResponse:
             status_code = 503
+
+            def json(self):
+                return {"status": "unhealthy", "components": {}}
 
         async def mock_get(*_args, **_kwargs):
             return MockResponse()
 
+        # Mock embedding service health check
+        async def mock_check_embedding_service_health():
+            return {"status": "unhealthy", "message": "Embedding service not initialized"}
+
         with (
             patch("packages.webui.api.health.ws_manager.redis", mock_redis),
             patch("httpx.AsyncClient.get", side_effect=mock_get),
+            patch(
+                "packages.webui.api.health._check_embedding_service_health",
+                side_effect=mock_check_embedding_service_health,
+            ),
         ):
             response = test_client.get("/api/health/readyz")
             assert response.status_code == 503  # Should be 503 when not ready
