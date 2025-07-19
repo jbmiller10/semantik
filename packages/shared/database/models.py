@@ -125,6 +125,7 @@ class Collection(Base):
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     vector_store_name = Column(String, unique=True, nullable=False)  # Qdrant collection name
     embedding_model = Column(String, nullable=False)
+    quantization = Column(String, nullable=False, default="float16")  # float32, float16, int8
     chunk_size = Column(Integer, nullable=False, default=1000)
     chunk_overlap = Column(Integer, nullable=False, default=200)
     is_public = Column(Boolean, nullable=False, default=False, index=True)

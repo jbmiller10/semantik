@@ -38,6 +38,7 @@ class CollectionRepository:
         owner_id: int,
         description: str | None = None,
         embedding_model: str = "Qwen/Qwen3-Embedding-0.6B",
+        quantization: str = "float16",
         chunk_size: int = 1000,
         chunk_overlap: int = 200,
         is_public: bool = False,
@@ -50,6 +51,7 @@ class CollectionRepository:
             owner_id: ID of the user creating the collection
             description: Optional description
             embedding_model: Model to use for embeddings
+            quantization: Model quantization level (float32, float16, or int8)
             chunk_size: Size of text chunks
             chunk_overlap: Overlap between chunks
             is_public: Whether collection is publicly accessible
@@ -88,6 +90,7 @@ class CollectionRepository:
                 owner_id=owner_id,
                 description=description,
                 embedding_model=embedding_model,
+                quantization=quantization,
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
                 is_public=is_public,

@@ -307,6 +307,7 @@ class OperationRepository:
         self,
         user_id: int,
         status: OperationStatus | None = None,
+        status_list: list[OperationStatus] | None = None,
         operation_type: OperationType | None = None,
         offset: int = 0,
         limit: int = 50,
@@ -315,7 +316,8 @@ class OperationRepository:
 
         Args:
             user_id: ID of the user
-            status: Optional status filter
+            status: Optional single status filter (deprecated, use status_list)
+            status_list: Optional list of statuses to filter by
             operation_type: Optional type filter
             offset: Pagination offset
             limit: Maximum number of results
@@ -327,8 +329,13 @@ class OperationRepository:
             # Build query
             query = select(Operation).where(Operation.user_id == user_id)
 
-            if status is not None:
+            # Handle status filtering
+            if status_list is not None and len(status_list) > 0:
+                query = query.where(Operation.status.in_(status_list))
+            elif status is not None:
+                # Backwards compatibility
                 query = query.where(Operation.status == status)
+
             if operation_type is not None:
                 query = query.where(Operation.type == operation_type)
 

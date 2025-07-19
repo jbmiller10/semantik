@@ -12,7 +12,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import uvicorn
@@ -141,6 +141,19 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     # Create embedding service using the factory function
     base_service = await get_embedding_service(config=settings)
 
+    # Initialize the embedding service with the default model if not in mock mode
+    if not settings.USE_MOCK_EMBEDDINGS:
+        await base_service.initialize(
+            model_name=settings.DEFAULT_EMBEDDING_MODEL,
+            quantization=settings.DEFAULT_QUANTIZATION,
+            allow_quantization_fallback=True,
+        )
+        logger.info(f"Initialized embedding service with model: {settings.DEFAULT_EMBEDDING_MODEL}")
+    else:
+        # In mock mode, still need to initialize
+        await base_service.initialize(model_name="mock", mock_mode=True)
+        logger.info("Initialized embedding service in mock mode")
+
     # Create a wrapper that implements the expected protocol
     class LegacyEmbeddingServiceWrapper:
         def __init__(self, service: Any):
@@ -168,11 +181,23 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
         def device(self) -> str:
             return getattr(self._service, "device", "cpu")
 
+        @property
+        def is_initialized(self) -> bool:
+            return getattr(self._service, "is_initialized", False)
+
+        def get_model_info(self) -> dict[str, Any]:
+            if hasattr(self._service, "get_model_info"):
+                return cast(dict[str, Any], self._service.get_model_info())
+            return {
+                "model_name": self.current_model_name,
+                "dimension": 1024,  # Default dimension
+            }
+
         def __getattr__(self, name: str) -> Any:
             return getattr(self._service, name)
 
     embedding_service = LegacyEmbeddingServiceWrapper(base_service)
-    logger.info(f"Initialized embedding service (mock_mode={settings.USE_MOCK_EMBEDDINGS})")
+    logger.info(f"Created embedding service wrapper (mock_mode={settings.USE_MOCK_EMBEDDINGS})")
 
     # Initialize thread pool executor for async operations
     executor = ThreadPoolExecutor(max_workers=4)

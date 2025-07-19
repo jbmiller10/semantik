@@ -4,6 +4,9 @@ This module provides factory functions to create repository instances,
 allowing for easy switching between different implementations.
 """
 
+from collections.abc import Callable, Coroutine
+from typing import Any
+
 from .base import AuthRepository, CollectionRepository, FileRepository, JobRepository, UserRepository
 from .sqlite_repository import (
     SQLiteAuthRepository,
@@ -91,3 +94,95 @@ def create_all_repositories() -> dict[str, object]:
         "collection": create_collection_repository(),
         "auth": create_auth_repository(),
     }
+
+
+def create_operation_repository() -> Any:
+    """Create an operation repository instance.
+
+    Note: This is a compatibility shim for the new async repositories.
+    The actual implementation will create a session and repository on first use.
+    """
+
+    from .database import AsyncSessionLocal
+    from .repositories.operation_repository import OperationRepository
+
+    class AsyncOperationRepositoryWrapper:
+        """Async wrapper that manages its own database session."""
+
+        def __init__(self) -> None:
+            self._session: Any | None = None  # AsyncSession
+            self._repo: Any | None = None  # OperationRepository
+
+        async def _ensure_initialized(self) -> None:
+            """Ensure repository is initialized with a session."""
+            if self._repo is None:
+                self._session = AsyncSessionLocal()
+                self._repo = OperationRepository(self._session)
+
+        async def __aenter__(self) -> "AsyncOperationRepositoryWrapper":
+            await self._ensure_initialized()
+            return self
+
+        async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+            if self._session:
+                await self._session.close()
+
+        def __getattr__(self, name: str) -> Callable[..., Coroutine[Any, Any, Any]]:
+            """Proxy all attribute access to the repository."""
+
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                await self._ensure_initialized()
+                result = await getattr(self._repo, name)(*args, **kwargs)
+                if self._session:
+                    await self._session.commit()  # Auto-commit for compatibility
+                return result
+
+            return async_wrapper
+
+    return AsyncOperationRepositoryWrapper()
+
+
+def create_document_repository() -> Any:
+    """Create a document repository instance.
+
+    Note: This is a compatibility shim for the new async repositories.
+    The actual implementation will create a session and repository on first use.
+    """
+
+    from .database import AsyncSessionLocal
+    from .repositories.document_repository import DocumentRepository
+
+    class AsyncDocumentRepositoryWrapper:
+        """Async wrapper that manages its own database session."""
+
+        def __init__(self) -> None:
+            self._session: Any | None = None  # AsyncSession
+            self._repo: Any | None = None  # DocumentRepository
+
+        async def _ensure_initialized(self) -> None:
+            """Ensure repository is initialized with a session."""
+            if self._repo is None:
+                self._session = AsyncSessionLocal()
+                self._repo = DocumentRepository(self._session)
+
+        async def __aenter__(self) -> "AsyncDocumentRepositoryWrapper":
+            await self._ensure_initialized()
+            return self
+
+        async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+            if self._session:
+                await self._session.close()
+
+        def __getattr__(self, name: str) -> Callable[..., Coroutine[Any, Any, Any]]:
+            """Proxy all attribute access to the repository."""
+
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                await self._ensure_initialized()
+                result = await getattr(self._repo, name)(*args, **kwargs)
+                if self._session:
+                    await self._session.commit()  # Auto-commit for compatibility
+                return result
+
+            return async_wrapper
+
+    return AsyncDocumentRepositoryWrapper()
