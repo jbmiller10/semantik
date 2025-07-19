@@ -31,6 +31,28 @@ async def get_all_job_ids(job_repo: JobRepository = Depends(create_job_repositor
     return [job["id"] for job in jobs]
 
 
+@router.get("/collections/vector-store-names", dependencies=[Depends(verify_internal_api_key)])
+async def get_all_collection_vector_store_names() -> list[str]:
+    """
+    Get all Qdrant collection names (vector_store_names) from the database.
+    This endpoint is intended for internal services like maintenance/cleanup.
+
+    Returns:
+        List of vector_store_name values from all collections
+    """
+    async with AsyncSessionLocal() as session:
+        collection_repo = CollectionRepository(session)
+        collections = await collection_repo.list_all()
+
+        # Extract vector_store_names, filtering out None values
+        vector_store_names = []
+        for collection in collections:
+            if hasattr(collection, "vector_store_name") and collection.vector_store_name:
+                vector_store_names.append(collection.vector_store_name)
+
+        return vector_store_names
+
+
 class CompleteReindexRequest(BaseModel):
     """Request model for completing a reindex operation."""
 
