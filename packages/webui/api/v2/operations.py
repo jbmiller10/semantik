@@ -162,7 +162,8 @@ async def cancel_operation(
     },
 )
 async def list_operations(
-    status: str | None = Query(None, description="Filter by operation status"),
+    status: str | None = Query(None, description="Filter by operation status (comma-separated for multiple)"),
+
     operation_type: str | None = Query(None, description="Filter by operation type"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(50, ge=1, le=100, description="Items per page"),
@@ -179,15 +180,20 @@ async def list_operations(
         offset = (page - 1) * per_page
 
         # Convert string parameters to enums if provided
-        status_enum = None
+        status_list = None
         if status:
-            try:
-                status_enum = OperationStatus(status)
-            except ValueError:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid status: {status}. Valid values are: {[s.value for s in OperationStatus]}",
-                ) from None
+            status_list = []
+            # Split comma-separated statuses
+            for s in status.split(","):
+                s = s.strip()
+                try:
+                    status_list.append(OperationStatus(s))
+                except ValueError:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid status: {s}. Valid values are: {[st.value for st in OperationStatus]}",
+                    ) from None
+
 
         type_enum = None
         if operation_type:
@@ -201,7 +207,8 @@ async def list_operations(
 
         operations, total = await repo.list_for_user(
             user_id=int(current_user["id"]),
-            status=status_enum,
+            status_list=status_list,
+
             operation_type=type_enum,
             offset=offset,
             limit=per_page,

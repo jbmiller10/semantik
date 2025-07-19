@@ -13,7 +13,8 @@ const mockResults = [
   {
     chunk_id: 'chunk1',
     doc_id: 'doc1',
-    job_id: 'job1',
+    collection_id: 'collection1',
+    collection_name: 'Test Collection',
     file_path: '/path/to/document1.txt',
     file_name: 'document1.txt',
     content: 'This is the first chunk of document 1',
@@ -24,7 +25,8 @@ const mockResults = [
   {
     chunk_id: 'chunk2',
     doc_id: 'doc1',
-    job_id: 'job1',
+    collection_id: 'collection1',
+    collection_name: 'Test Collection',
     file_path: '/path/to/document1.txt',
     file_name: 'document1.txt',
     content: 'This is the second chunk of document 1',
@@ -35,7 +37,8 @@ const mockResults = [
   {
     chunk_id: 'chunk3',
     doc_id: 'doc2',
-    job_id: 'job1',
+    collection_id: 'collection1',
+    collection_name: 'Test Collection',
     file_path: '/path/to/document2.txt',
     file_name: 'document2.txt',
     content: 'This is a chunk from document 2',
@@ -95,6 +98,8 @@ describe('SearchResults', () => {
       loading: false,
       error: null,
       rerankingMetrics: null,
+      failedCollections: [],
+      partialFailure: false,
     })
 
     const { container } = render(<SearchResults />)
@@ -102,19 +107,25 @@ describe('SearchResults', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('renders search results grouped by document', () => {
+  it('renders search results grouped by collection and document', () => {
     ;(useSearchStore as any).mockReturnValue({
       results: mockResults,
       loading: false,
       error: null,
       rerankingMetrics: null,
+      failedCollections: [],
+      partialFailure: false,
     })
 
     render(<SearchResults />)
     
     // Check header
     expect(screen.getByText('Search Results')).toBeInTheDocument()
-    expect(screen.getByText('Found 3 results in 2 documents')).toBeInTheDocument()
+    expect(screen.getByText('Found 3 results across 1 collections')).toBeInTheDocument()
+    
+    // Check collection header
+    expect(screen.getByText('Test Collection')).toBeInTheDocument()
+    expect(screen.getByText('3 results in 2 documents')).toBeInTheDocument()
     
     // Check document headers
     expect(screen.getByText('document1.txt')).toBeInTheDocument()
@@ -142,6 +153,8 @@ describe('SearchResults', () => {
         rerankingUsed: true,
         rerankingTimeMs: 125.5,
       },
+      failedCollections: [],
+      partialFailure: false,
     })
 
     render(<SearchResults />)
@@ -158,6 +171,8 @@ describe('SearchResults', () => {
       loading: false,
       error: null,
       rerankingMetrics: null,
+      failedCollections: [],
+      partialFailure: false,
     })
 
     render(<SearchResults />)
@@ -192,6 +207,8 @@ describe('SearchResults', () => {
       loading: false,
       error: null,
       rerankingMetrics: null,
+      failedCollections: [],
+      partialFailure: false,
     })
 
     render(<SearchResults />)
@@ -205,7 +222,7 @@ describe('SearchResults', () => {
     await user.click(viewButtons[0])
     
     expect(mockSetShowDocumentViewer).toHaveBeenCalledWith({
-      jobId: 'job1',
+      collectionId: 'collection1',
       docId: 'doc1',
       chunkId: 'chunk1',
     })
@@ -219,6 +236,8 @@ describe('SearchResults', () => {
       loading: false,
       error: null,
       rerankingMetrics: null,
+      failedCollections: [],
+      partialFailure: false,
     })
 
     render(<SearchResults />)
@@ -232,27 +251,29 @@ describe('SearchResults', () => {
     await user.click(chunkContent.closest('.hover\\:bg-gray-100')!)
     
     expect(mockSetShowDocumentViewer).toHaveBeenCalledWith({
-      jobId: 'job1',
+      collectionId: 'collection1',
       docId: 'doc1',
       chunkId: 'chunk1',
     })
   })
 
-  it('handles missing job ID in results', async () => {
+  it('handles missing collection ID in results', async () => {
     const user = userEvent.setup()
     
-    const resultsWithoutJobId = [
+    const resultsWithoutCollectionId = [
       {
         ...mockResults[0],
-        job_id: undefined,
+        collection_id: undefined,
       },
     ]
     
     ;(useSearchStore as any).mockReturnValue({
-      results: resultsWithoutJobId,
+      results: resultsWithoutCollectionId,
       loading: false,
       error: null,
       rerankingMetrics: null,
+      failedCollections: [],
+      partialFailure: false,
     })
 
     render(<SearchResults />)
@@ -261,12 +282,12 @@ describe('SearchResults', () => {
     const doc = screen.getByText('document1.txt').closest('.cursor-pointer')
     await user.click(doc!)
     
-    // Click view document - should use 'current' as jobId
+    // Click view document - should use 'unknown' as collectionId
     const viewButton = screen.getByText('View Document →')
     await user.click(viewButton)
     
     expect(mockSetShowDocumentViewer).toHaveBeenCalledWith({
-      jobId: 'current',
+      collectionId: 'unknown',
       docId: 'doc1',
       chunkId: 'chunk1',
     })
@@ -280,6 +301,8 @@ describe('SearchResults', () => {
       loading: false,
       error: null,
       rerankingMetrics: null,
+      failedCollections: [],
+      partialFailure: false,
     })
 
     render(<SearchResults />)
@@ -310,6 +333,8 @@ describe('SearchResults', () => {
       loading: false,
       error: null,
       rerankingMetrics: null,
+      failedCollections: [],
+      partialFailure: false,
     })
 
     // Force render by mocking a non-empty results array that groups to empty

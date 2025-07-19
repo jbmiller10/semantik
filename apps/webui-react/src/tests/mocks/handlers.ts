@@ -42,74 +42,6 @@ export const handlers = [
     return HttpResponse.json({ message: 'Logged out successfully' })
   }),
 
-  // Jobs endpoints
-  http.get('/api/jobs', () => {
-    return HttpResponse.json([
-      {
-        id: '1',
-        name: 'Test Collection',
-        directory_path: '/test/path',
-        collection_name: 'test-collection',
-        status: 'completed',
-        progress: 100,
-        total_files: 10,
-        total_documents: 10,
-        processed_files: 10,
-        processed_documents: 10,
-        failed_files: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      {
-        id: '2',
-        name: 'Test Collection 2',
-        directory_path: '/test/path2',
-        collection_name: 'test-collection-2',
-        status: 'completed',
-        progress: 100,
-        total_files: 20,
-        total_documents: 20,
-        processed_files: 20,
-        processed_documents: 20,
-        failed_files: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-    ])
-  }),
-
-  http.post('/api/jobs', async ({ request }) => {
-    const body = await request.json() as any
-    
-    return HttpResponse.json({
-      id: '2',
-      name: body.name || 'New Job',
-      directory_path: body.directory_path,
-      collection_name: body.name,
-      status: 'pending',
-      progress: 0,
-      total_files: 0,
-      total_documents: 0,
-      processed_files: 0,
-      processed_documents: 0,
-      failed_files: 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-  }),
-
-  http.delete('/api/jobs/:jobId', ({ params }) => {
-    return HttpResponse.json({ 
-      message: `Job ${params.jobId} deleted successfully` 
-    })
-  }),
-
-  http.post('/api/jobs/:jobId/cancel', ({ params }) => {
-    return HttpResponse.json({ 
-      message: `Job ${params.jobId} cancellation requested` 
-    })
-  }),
-
   // Collections endpoints
   http.get('/api/collections', () => {
     return HttpResponse.json([
@@ -120,7 +52,6 @@ export const handlers = [
         model_name: 'Qwen/Qwen3-Embedding-0.6B',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        job_count: 2,
       }
     ])
   }),
@@ -195,27 +126,10 @@ export const handlers = [
       ]
     })
   }),
-  
-  // Collections status endpoint
-  http.get('/api/jobs/collections-status', () => {
-    return HttpResponse.json({
-      '1': {
-        exists: true,
-        point_count: 100,
-        status: 'completed',
-      },
-      '2': {
-        exists: true,
-        point_count: 200,
-        status: 'completed',
-      },
-    })
-  }),
 
   // Settings endpoints
   http.get('/api/settings/stats', () => {
     return HttpResponse.json({
-      job_count: 10,
       file_count: 100,
       database_size_mb: 50,
       parquet_files_count: 10,

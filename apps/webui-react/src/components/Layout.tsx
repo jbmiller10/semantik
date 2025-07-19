@@ -3,7 +3,6 @@ import { useAuthStore } from '../stores/authStore';
 import { useUIStore } from '../stores/uiStore';
 import Toast from './Toast';
 import DocumentViewerModal from './DocumentViewerModal';
-import JobMetricsModal from './JobMetricsModal';
 import CollectionDetailsModal from './CollectionDetailsModal';
 
 function Layout() {
@@ -65,24 +64,24 @@ function Layout() {
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex space-x-8">
               <button
-                onClick={() => setActiveTab('create')}
+                onClick={() => setActiveTab('collections')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'create'
+                  activeTab === 'collections'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Create Job
+                Collections
               </button>
               <button
-                onClick={() => setActiveTab('jobs')}
+                onClick={() => setActiveTab('operations')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'jobs'
+                  activeTab === 'operations'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Jobs
+                Active Operations
               </button>
               <button
                 onClick={() => setActiveTab('search')}
@@ -93,16 +92,6 @@ function Layout() {
                 }`}
               >
                 Search
-              </button>
-              <button
-                onClick={() => setActiveTab('collections')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'collections'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Collections
               </button>
             </nav>
           </div>
@@ -119,9 +108,6 @@ function Layout() {
       
       {/* Document Viewer Modal */}
       <DocumentViewerModal />
-      
-      {/* Job Metrics Modal */}
-      <JobMetricsModal />
       
       {/* Collection Details Modal */}
       <CollectionDetailsModal />
