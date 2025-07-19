@@ -62,6 +62,9 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
     
+    // Debug: Log current form data
+    console.log('Validating form with data:', formData);
+    
     if (!formData.name.trim()) {
       newErrors.name = 'Collection name is required';
     } else if (formData.name.length > 100) {
@@ -89,9 +92,15 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
+    // Always prevent default first to avoid page reload
     e.preventDefault();
     
-    if (!validateForm()) {
+    try {
+      if (!validateForm()) {
+        return;
+      }
+    } catch (error) {
+      console.error('Validation error:', error);
       return;
     }
     
@@ -162,6 +171,8 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
+    // Debug: Log state changes
+    console.log(`Form field '${field}' updated to:`, value);
   };
 
   const handleSourcePathChange = (value: string) => {
