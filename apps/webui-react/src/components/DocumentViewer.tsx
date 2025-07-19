@@ -24,7 +24,7 @@ interface DocumentInfo {
 }
 
 interface DocumentViewerProps {
-  collectionId: string;
+  jobId: string;
   docId: string;
   query?: string;
   onClose: () => void;
@@ -40,7 +40,7 @@ const LIBRARY_URLS = {
   emlformat: '/static/libs/eml-format.browser.min.js',
 };
 
-function DocumentViewer({ collectionId, docId, query, onClose }: DocumentViewerProps) {
+function DocumentViewer({ jobId, docId, query, onClose }: DocumentViewerProps) {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +80,7 @@ function DocumentViewer({ collectionId, docId, query, onClose }: DocumentViewerP
   useEffect(() => {
     const loadDocumentInfo = async () => {
       try {
-        const response = await api.get(`/api/documents/${collectionId}/${docId}/info`);
+        const response = await api.get(`/api/documents/${jobId}/${docId}/info`);
         setDocumentInfo(response.data);
       } catch (err: any) {
         setError(err.response?.data?.detail || 'Failed to load document info');
@@ -89,7 +89,7 @@ function DocumentViewer({ collectionId, docId, query, onClose }: DocumentViewerP
     };
 
     loadDocumentInfo();
-  }, [collectionId, docId]);
+  }, [jobId, docId]);
 
   // Load and render document
   useEffect(() => {
@@ -178,7 +178,7 @@ function DocumentViewer({ collectionId, docId, query, onClose }: DocumentViewerP
       window.pdfjsLib.GlobalWorkerOptions.workerSrc = LIBRARY_URLS.pdfjsWorker;
     }
 
-    const response = await api.get(`/api/documents/${collectionId}/${docId}`, {
+    const response = await api.get(`/api/documents/${jobId}/${docId}`, {
       responseType: 'arraybuffer',
     });
 
@@ -244,7 +244,7 @@ function DocumentViewer({ collectionId, docId, query, onClose }: DocumentViewerP
   const loadDOCX = async () => {
     await loadLibrary('mammoth');
     
-    const response = await api.get(`/api/documents/${collectionId}/${docId}`, {
+    const response = await api.get(`/api/documents/${jobId}/${docId}`, {
       responseType: 'arraybuffer',
     });
 
@@ -256,7 +256,7 @@ function DocumentViewer({ collectionId, docId, query, onClose }: DocumentViewerP
   };
 
   const loadPPTX = async () => {
-    const response = await api.get(`/api/documents/${collectionId}/${docId}`, {
+    const response = await api.get(`/api/documents/${jobId}/${docId}`, {
       headers: {
         'Accept': 'text/markdown',
       },
@@ -278,7 +278,7 @@ function DocumentViewer({ collectionId, docId, query, onClose }: DocumentViewerP
   };
 
   const loadTXT = async () => {
-    const response = await api.get(`/api/documents/${collectionId}/${docId}`, {
+    const response = await api.get(`/api/documents/${jobId}/${docId}`, {
       responseType: 'text',
     });
     
@@ -293,7 +293,7 @@ function DocumentViewer({ collectionId, docId, query, onClose }: DocumentViewerP
     await loadLibrary('marked');
     await loadLibrary('dompurify');
     
-    const response = await api.get(`/api/documents/${collectionId}/${docId}`, {
+    const response = await api.get(`/api/documents/${jobId}/${docId}`, {
       responseType: 'text',
     });
     
@@ -308,7 +308,7 @@ function DocumentViewer({ collectionId, docId, query, onClose }: DocumentViewerP
   const loadHTML = async () => {
     await loadLibrary('dompurify');
     
-    const response = await api.get(`/api/documents/${collectionId}/${docId}`, {
+    const response = await api.get(`/api/documents/${jobId}/${docId}`, {
       responseType: 'text',
     });
     
@@ -322,7 +322,7 @@ function DocumentViewer({ collectionId, docId, query, onClose }: DocumentViewerP
   const loadEML = async () => {
     await loadLibrary('emlformat');
     
-    const response = await api.get(`/api/documents/${collectionId}/${docId}`, {
+    const response = await api.get(`/api/documents/${jobId}/${docId}`, {
       responseType: 'text',
     });
     
@@ -369,7 +369,7 @@ function DocumentViewer({ collectionId, docId, query, onClose }: DocumentViewerP
 
   const handleDownload = () => {
     const link = document.createElement('a');
-    link.href = `/api/documents/${collectionId}/${docId}`;
+    link.href = `/api/documents/${jobId}/${docId}`;
     link.download = documentInfo?.filename || 'document';
     link.click();
   };
