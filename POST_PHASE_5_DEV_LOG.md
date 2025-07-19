@@ -321,3 +321,79 @@ POST /api/v2/collections
 - No bcrypt errors in logs (none were present)
 - Health check passes within 30 seconds of startup
 - Collection creation works without errors
+
+---
+
+## TICKET-006: Fix Active Operations Tab
+
+### Initial Investigation
+
+**Finding 1: Frontend Implementation**
+- The ActiveOperationsTab component was correctly implemented with proper error handling and empty state
+- It uses React Query to fetch operations with auto-refresh every 5 seconds
+- WebSocket integration for real-time updates was already in place via useOperationProgress hook
+
+**Finding 2: Backend API Issue**
+- The operations API endpoint `/api/v2/operations` was registered and accessible
+- The endpoint expected comma-separated status values (e.g., "processing,pending")
+- However, the backend was trying to parse the entire comma-separated string as a single enum value
+- This caused a 400 Bad Request error: "Invalid status: processing,pending"
+
+**Finding 3: Repository Method Signature**
+- The `list_for_user` method in OperationRepository only accepted a single status parameter
+- It needed to be updated to accept a list of statuses for filtering
+
+### Implementation
+
+**1. Updated Backend API to Parse Comma-Separated Statuses**
+Modified `packages/webui/api/v2/operations.py`:
+- Changed status parsing to split comma-separated values
+- Added support for multiple status filtering
+- Each status is individually validated against OperationStatus enum
+
+**2. Enhanced Repository Method**
+Modified `packages/shared/database/repositories/operation_repository.py`:
+- Added `status_list` parameter to support multiple status filtering
+- Kept backward compatibility with single status parameter
+- Used SQLAlchemy's `in_` operator for multiple status filtering
+
+**3. Fixed Frontend Error Display**
+Enhanced error handling in ActiveOperationsTab:
+- Added proper error message extraction
+- Improved retry button styling with underline
+- Maintained existing empty state and loading states
+
+### Testing Results
+
+**API Testing**
+```bash
+# Test with comma-separated statuses
+curl -H "Authorization: Bearer <token>" http://localhost:8080/api/v2/operations?status=processing,pending
+# Returns: [] (empty array when no active operations)
+
+# Single status also works
+curl -H "Authorization: Bearer <token>" http://localhost:8080/api/v2/operations?status=processing
+# Returns: []
+```
+
+**UI Testing**
+- Active Operations tab loads successfully without errors
+- Empty state displays correctly: "No active operations"
+- Refresh button works properly
+- Auto-refresh continues every 5 seconds
+- No console errors or failed network requests
+
+### Code Quality
+- All Python code formatted with black
+- No ruff linting errors
+- No mypy type checking errors
+- All existing tests continue to pass
+
+### Summary
+
+✅ All acceptance criteria met:
+- Operations load successfully (empty array when no active operations)
+- Shows current/recent operations with status (tested with empty state)
+- Retry mechanism works (clicking "Try again" refetches data)
+- Empty state displays when no operations
+- Real-time updates already implemented via WebSocket (useOperationProgress hook)
