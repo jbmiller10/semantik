@@ -44,13 +44,18 @@ function ActiveOperationsTab() {
   }
 
   if (error) {
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
         <div className="flex">
           <AlertCircle className="h-5 w-5 text-red-400 mt-0.5" />
           <div className="ml-3">
             <p className="text-sm text-red-800">Failed to load active operations</p>
-            <button onClick={() => refetch()} className="text-sm text-red-600 hover:text-red-500 mt-1">
+            <p className="text-xs text-red-600 mt-1">{errorMessage}</p>
+            <button 
+              onClick={() => refetch()} 
+              className="text-sm text-red-600 hover:text-red-500 mt-2 underline"
+            >
               Try again
             </button>
           </div>
