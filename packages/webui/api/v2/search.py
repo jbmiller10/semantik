@@ -77,6 +77,7 @@ async def search_single_collection(
         "k": k * settings.SEARCH_CANDIDATE_MULTIPLIER,  # Get more candidates for re-ranking
         "collection": collection.vector_store_name,
         "model_name": collection.embedding_model,
+        "quantization": collection.quantization,
         "include_content": True,
         "use_reranker": False,  # We'll do re-ranking after merging
     }

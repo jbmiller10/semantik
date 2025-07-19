@@ -17,6 +17,7 @@ const mockCollection: Collection = {
   owner_id: 1,
   vector_store_name: 'test_collection_vectors',
   embedding_model: 'Qwen/Qwen3-Embedding-0.6B',
+  quantization: 'float16',
   chunk_size: 512,
   chunk_overlap: 50,
   is_public: false,

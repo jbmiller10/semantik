@@ -28,6 +28,7 @@ describe('Collection Modals - API Validation Errors', () => {
     document_count: 100,
     vector_count: 1000,
     embedding_model: 'test-model',
+    quantization: 'float16',
     chunk_size: 512,
     chunk_overlap: 50
   }

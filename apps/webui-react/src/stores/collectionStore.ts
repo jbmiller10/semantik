@@ -106,6 +106,7 @@ export const useCollectionStore = create<CollectionStore>()(
             owner_id: 0, // Will be set by backend
             vector_store_name: '',
             embedding_model: data.embedding_model || 'Qwen/Qwen3-Embedding-0.6B',
+            quantization: data.quantization || 'float16',
             chunk_size: data.chunk_size || 1000,
             chunk_overlap: data.chunk_overlap || 200,
             is_public: data.is_public || false,

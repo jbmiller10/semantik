@@ -75,6 +75,7 @@ class CollectionService:
                         if config
                         else "Qwen/Qwen3-Embedding-0.6B"
                     ),
+                    quantization=config.get("quantization", "float16") if config else "float16",
                     chunk_size=config.get("chunk_size", 1000) if config else 1000,
                     chunk_overlap=config.get("chunk_overlap", 200) if config else 200,
                     is_public=config.get("is_public", False) if config else False,
@@ -88,7 +89,7 @@ class CollectionService:
             operation = await self.operation_repo.create(
                 collection_id=collection.id,
                 user_id=user_id,
-                type=OperationType.INDEX,
+                operation_type=OperationType.INDEX,
                 config={
                     "sources": [],  # Initial creation has no sources
                     "collection_config": config or {},
@@ -98,7 +99,7 @@ class CollectionService:
             # Dispatch Celery task
             celery_app.send_task(
                 "webui.tasks.process_collection_operation",
-                args=[operation["uuid"]],
+                args=[operation.uuid],
                 task_id=str(uuid.uuid4()),
             )
 
@@ -115,6 +116,7 @@ class CollectionService:
             "owner_id": collection.owner_id,
             "vector_store_name": collection.vector_store_name,
             "embedding_model": collection.embedding_model,
+            "quantization": collection.quantization,
             "chunk_size": collection.chunk_size,
             "chunk_overlap": collection.chunk_overlap,
             "is_public": collection.is_public,
@@ -125,6 +127,7 @@ class CollectionService:
             "status": collection.status.value if hasattr(collection.status, "value") else collection.status,
             "config": {
                 "embedding_model": collection.embedding_model,
+                "quantization": collection.quantization,
                 "chunk_size": collection.chunk_size,
                 "chunk_overlap": collection.chunk_overlap,
                 "is_public": collection.is_public,
@@ -195,7 +198,7 @@ class CollectionService:
             operation = await self.operation_repo.create(
                 collection_id=collection.id,
                 user_id=user_id,
-                type=OperationType.APPEND,
+                operation_type=OperationType.APPEND,
                 config={
                     "source_path": source_path,
                     "source_config": source_config or {},
@@ -208,7 +211,7 @@ class CollectionService:
             # Dispatch Celery task
             celery_app.send_task(
                 "webui.tasks.process_collection_operation",
-                args=[operation["uuid"]],
+                args=[operation.uuid],
                 task_id=str(uuid.uuid4()),
             )
 
@@ -278,6 +281,7 @@ class CollectionService:
         # Merge config updates with existing config
         new_config = {
             "embedding_model": collection.embedding_model,
+            "quantization": collection.quantization,
             "chunk_size": collection.chunk_size,
             "chunk_overlap": collection.chunk_overlap,
             "is_public": collection.is_public,
@@ -292,10 +296,11 @@ class CollectionService:
             operation = await self.operation_repo.create(
                 collection_id=collection.id,
                 user_id=user_id,
-                type=OperationType.REINDEX,
+                operation_type=OperationType.REINDEX,
                 config={
                     "previous_config": {
                         "embedding_model": collection.embedding_model,
+                        "quantization": collection.quantization,
                         "chunk_size": collection.chunk_size,
                         "chunk_overlap": collection.chunk_overlap,
                         "is_public": collection.is_public,
@@ -312,7 +317,7 @@ class CollectionService:
             # Dispatch Celery task
             celery_app.send_task(
                 "webui.tasks.process_collection_operation",
-                args=[operation["uuid"]],
+                args=[operation.uuid],
                 task_id=str(uuid.uuid4()),
             )
 
@@ -425,7 +430,7 @@ class CollectionService:
             operation = await self.operation_repo.create(
                 collection_id=collection.id,
                 user_id=user_id,
-                type=OperationType.REMOVE_SOURCE,
+                operation_type=OperationType.REMOVE_SOURCE,
                 config={
                     "source_path": source_path,
                 },
@@ -437,7 +442,7 @@ class CollectionService:
             # Dispatch Celery task
             celery_app.send_task(
                 "webui.tasks.process_collection_operation",
-                args=[operation["uuid"]],
+                args=[operation.uuid],
                 task_id=str(uuid.uuid4()),
             )
 
