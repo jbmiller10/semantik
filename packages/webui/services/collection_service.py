@@ -354,8 +354,17 @@ class CollectionService:
         """
         # Get collection with permission check
         collection = await self.collection_repo.get_by_uuid_with_permission_check(
-            collection_uuid=collection_id, user_id=user_id, require_owner=True  # Only owner can delete
+            collection_uuid=collection_id, user_id=user_id
         )
+
+        # Only owner can delete
+        if collection.owner_id != user_id:
+            raise AccessDeniedError(
+                entity_id=str(user_id),
+                entity_type="user",
+                resource_id=collection_id,
+                message="Only the collection owner can delete it"
+            )
 
         # Check if there's an active operation
         active_ops = await self.operation_repo.get_active_operations_count(collection.id)
