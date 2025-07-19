@@ -138,7 +138,6 @@ class AddSourceRequest(BaseModel):
     )
 
 
-
 class CollectionResponse(CollectionBase):
     """Collection response schema."""
 
@@ -148,6 +147,7 @@ class CollectionResponse(CollectionBase):
     created_at: datetime
     updated_at: datetime
     document_count: int | None = 0
+    vector_count: int | None = 0
     status: str  # Collection status: pending, ready, processing, error, degraded
     status_message: str | None = None
 
@@ -164,7 +164,6 @@ class CollectionResponse(CollectionBase):
             vector_store_name=collection.vector_store_name,
             embedding_model=collection.embedding_model,
             quantization=collection.quantization,
-
             chunk_size=collection.chunk_size,
             chunk_overlap=collection.chunk_overlap,
             is_public=collection.is_public,
@@ -172,9 +171,9 @@ class CollectionResponse(CollectionBase):
             created_at=collection.created_at,
             updated_at=collection.updated_at,
             document_count=collection.document_count,
+            vector_count=collection.vector_count,
             status=collection.status.value if hasattr(collection.status, "value") else collection.status,
             status_message=getattr(collection, "status_message", None),
-
         )
 
 

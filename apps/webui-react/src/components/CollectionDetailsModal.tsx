@@ -79,12 +79,19 @@ function CollectionDetailsModal() {
       acc.get(doc.source_path)!.document_count++;
       return acc;
     }, new Map<string, SourceInfo>())
-  ).map(([_, info]) => info) : [];
+  ).map(([, info]) => info) : [];
 
   const handleClose = () => {
     setShowCollectionDetailsModal(null);
     setActiveTab('overview');
     setFilesPage(1);
+  };
+
+  const formatNumber = (num: number | null | undefined) => {
+    if (num === null || num === undefined) {
+      return '0';
+    }
+    return num.toLocaleString();
   };
 
   const formatBytes = (bytes: number) => {
@@ -201,7 +208,7 @@ function CollectionDetailsModal() {
               </h2>
               {collection && (
                 <p className="text-sm text-gray-500 mt-1">
-                  {operationsData?.length || 0} operations • {collection.document_count} documents • {collection.vector_count} vectors
+                  {operationsData?.length || 0} operations • {formatNumber(collection.document_count)} documents • {formatNumber(collection.vector_count)} vectors
                 </p>
               )}
             </div>
@@ -310,13 +317,13 @@ function CollectionDetailsModal() {
                   <div className="bg-gray-50 p-4 rounded">
                     <dt className="text-sm font-medium text-gray-500">Documents</dt>
                     <dd className="mt-1 text-2xl font-semibold text-gray-900">
-                      {collection.document_count.toLocaleString()}
+                      {formatNumber(collection.document_count)}
                     </dd>
                   </div>
                   <div className="bg-gray-50 p-4 rounded">
                     <dt className="text-sm font-medium text-gray-500">Vectors</dt>
                     <dd className="mt-1 text-2xl font-semibold text-gray-900">
-                      {collection.vector_count.toLocaleString()}
+                      {formatNumber(collection.vector_count)}
                     </dd>
                   </div>
                   <div className="bg-gray-50 p-4 rounded">
@@ -713,8 +720,8 @@ function CollectionDetailsModal() {
           collectionId={showCollectionDetailsModal}
           collectionName={collection.name}
           stats={{
-            total_files: collection.document_count,
-            total_vectors: collection.vector_count,
+            total_files: collection.document_count || 0,
+            total_vectors: collection.vector_count || 0,
             total_size: collection.total_size_bytes || 0,
             job_count: operationsData?.length || 0,
           }}
