@@ -98,6 +98,8 @@ async def create_collection(
             created_at=collection["created_at"],
             updated_at=collection["updated_at"],
             document_count=collection["document_count"],
+            status=collection["status"],
+            status_message=collection.get("status_message"),
         )
 
     except EntityAlreadyExistsError as e:

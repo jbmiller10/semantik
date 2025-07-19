@@ -133,12 +133,8 @@ class AddSourceRequest(BaseModel):
         None,
         description="Optional configuration for the source",
         json_schema_extra={
-            "example": {
-                "chunk_size": 1000,
-                "chunk_overlap": 200,
-                "metadata": {"department": "engineering"}
-            }
-        }
+            "example": {"chunk_size": 1000, "chunk_overlap": 200, "metadata": {"department": "engineering"}}
+        },
     )
 
 
@@ -151,6 +147,8 @@ class CollectionResponse(CollectionBase):
     created_at: datetime
     updated_at: datetime
     document_count: int | None = 0
+    status: str  # Collection status: pending, ready, processing, error, degraded
+    status_message: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -172,6 +170,8 @@ class CollectionResponse(CollectionBase):
             created_at=collection.created_at,
             updated_at=collection.updated_at,
             document_count=collection.document_count,
+            status=collection.status.value if hasattr(collection.status, "value") else collection.status,
+            status_message=getattr(collection, "status_message", None),
         )
 
 
