@@ -96,12 +96,22 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
             chunk_overlap: formData.chunk_overlap,
           });
           
-          // Navigate to collection detail page to show operation progress
-          navigate(`/collections/${collection.id}`);
+          // Show success with source addition
           addToast({
-            message: 'Collection created and indexing started',
+            message: 'Collection created successfully! Navigating to collection...',
             type: 'success'
           });
+          
+          // Call onSuccess first, then navigate
+          onSuccess();
+          
+          // Delay navigation slightly to let user see the success feedback
+          setTimeout(() => {
+            navigate(`/collections/${collection.id}`);
+          }, 1000);
+          
+          // Exit early since we already called onSuccess
+          return;
         } catch (sourceError) {
           // Collection was created but source addition failed
           addToast({
@@ -109,22 +119,26 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                      (sourceError instanceof Error ? sourceError.message : 'Unknown error'),
             type: 'warning'
           });
+          
+          // Still call onSuccess since collection was created
+          onSuccess();
+          return;
         }
       } else {
-        // No source provided, just show success
+        // Show success for collection without source
         addToast({
-          message: 'Collection created successfully',
+          message: 'Collection created successfully!',
           type: 'success'
         });
+        
+        // Call parent's onSuccess to close modal and refresh list
+        onSuccess();
       }
-      
-      onSuccess();
     } catch (error) {
       addToast({
         message: error instanceof Error ? error.message : 'Failed to create collection',
         type: 'error'
       });
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -147,7 +161,19 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
 
   return (
     <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto relative">
+        {/* Loading overlay */}
+        {isSubmitting && (
+          <div className="absolute inset-0 bg-white bg-opacity-90 flex items-center justify-center z-10 rounded-lg">
+            <div className="text-center">
+              <svg className="animate-spin h-8 w-8 text-blue-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <p className="text-gray-700 font-medium">Creating collection...</p>
+            </div>
+          </div>
+        )}
         <form onSubmit={handleSubmit}>
           <div className="px-6 py-4 border-b border-gray-200">
             <h3 className="text-lg font-medium text-gray-900">Create New Collection</h3>
@@ -157,6 +183,28 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
           </div>
           
           <div className="px-6 py-4 space-y-4">
+            {/* Validation Summary */}
+            {Object.keys(errors).length > 0 && !isSubmitting && (
+              <div className="bg-red-50 border border-red-200 rounded-md p-4">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-red-800">
+                      Please fix the following errors:
+                    </h3>
+                    <ul className="mt-2 text-sm text-red-700 list-disc list-inside">
+                      {Object.entries(errors).map(([field, error]) => (
+                        <li key={field}>{error}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
             {/* Collection Name */}
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-gray-700">
@@ -167,10 +215,13 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                 id="name"
                 value={formData.name}
                 onChange={(e) => handleChange('name', e.target.value)}
+                disabled={isSubmitting}
                 className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
                   errors.name
                     ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
                     : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                } ${
+                  isSubmitting ? 'bg-gray-100 cursor-not-allowed' : ''
                 }`}
                 placeholder="My Documents"
                 autoFocus
@@ -189,11 +240,14 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                 id="description"
                 value={formData.description || ''}
                 onChange={(e) => handleChange('description', e.target.value)}
+                disabled={isSubmitting}
                 rows={3}
                 className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
                   errors.description
                     ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
                     : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                } ${
+                  isSubmitting ? 'bg-gray-100 cursor-not-allowed' : ''
                 }`}
                 placeholder="A collection of technical documentation..."
               />
@@ -212,10 +266,13 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                 id="sourcePath"
                 value={sourcePath}
                 onChange={(e) => handleSourcePathChange(e.target.value)}
+                disabled={isSubmitting}
                 className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
                   errors.sourcePath
                     ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
                     : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                } ${
+                  isSubmitting ? 'bg-gray-100 cursor-not-allowed' : ''
                 }`}
                 placeholder="/path/to/documents"
               />
@@ -300,12 +357,15 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                         id="chunk_size"
                         value={formData.chunk_size}
                         onChange={(e) => handleChange('chunk_size', parseInt(e.target.value) || DEFAULT_CHUNK_SIZE)}
+                        disabled={isSubmitting}
                         min={100}
                         max={2000}
                         className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
                           errors.chunk_size
                             ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
                             : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                        } ${
+                          isSubmitting ? 'bg-gray-100 cursor-not-allowed' : ''
                         }`}
                       />
                       {errors.chunk_size && (
@@ -323,12 +383,15 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                         id="chunk_overlap"
                         value={formData.chunk_overlap}
                         onChange={(e) => handleChange('chunk_overlap', parseInt(e.target.value) || DEFAULT_CHUNK_OVERLAP)}
+                        disabled={isSubmitting}
                         min={0}
                         max={formData.chunk_size! - 1}
                         className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
                           errors.chunk_overlap
                             ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
                             : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                        } ${
+                          isSubmitting ? 'bg-gray-100 cursor-not-allowed' : ''
                         }`}
                       />
                       {errors.chunk_overlap && (
@@ -348,7 +411,10 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                       type="checkbox"
                       checked={formData.is_public}
                       onChange={(e) => handleChange('is_public', e.target.checked)}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      disabled={isSubmitting}
+                      className={`h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded ${
+                        isSubmitting ? 'cursor-not-allowed' : ''
+                      }`}
                     />
                     <label htmlFor="is_public" className="ml-2 block text-sm text-gray-900">
                       Make this collection public
