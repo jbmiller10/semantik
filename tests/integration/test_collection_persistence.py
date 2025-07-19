@@ -132,8 +132,6 @@ async def test_collection_creation_rollback_on_db_failure(mock_qdrant_client):
         assert mock_qdrant_client.delete_collection.call_args[0][0] == collection.vector_store_name
 
 
-
-
 @pytest.mark.asyncio()
 async def test_collection_naming_convention():
     """Test that collection names follow the expected format."""
@@ -149,4 +147,3 @@ async def test_collection_naming_convention():
 
     # Verify it starts with col_
     assert vector_store_name.startswith("col_")
-
