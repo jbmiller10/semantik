@@ -29,7 +29,6 @@ logger = logging.getLogger(__name__)
 
 from .api import (  # noqa: E402
     auth,
-    collections,
     documents,
     files,
     health,
@@ -189,7 +188,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(jobs.router)
     app.include_router(files.router)
-    app.include_router(collections.router)
+    # app.include_router(collections.router)  # Removed v1 collections API - using v2 exclusively
     app.include_router(metrics.router)
     app.include_router(settings.router)
     app.include_router(models.router)

@@ -60,25 +60,8 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     return () => document.removeEventListener('keydown', handleEscape);
   }, [onClose, isSubmitting]);
 
-  // Ensure form doesn't submit natively
-  useEffect(() => {
-    const form = formRef.current;
-    if (!form) return;
-
-    const preventNativeSubmit = (e: Event) => {
-      console.log('Native form submit intercepted');
-      e.preventDefault();
-      e.stopPropagation();
-      return false;
-    };
-
-    // Add listener for the native submit event
-    form.addEventListener('submit', preventNativeSubmit, true);
-
-    return () => {
-      form.removeEventListener('submit', preventNativeSubmit, true);
-    };
-  }, []);
+  // Removed the useEffect that was preventing all form submissions
+  // The form onSubmit handler already prevents default behavior
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
