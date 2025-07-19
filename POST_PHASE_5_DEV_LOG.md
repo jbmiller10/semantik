@@ -231,3 +231,13 @@ Successfully implemented all required fixes for TICKET-003:
 - ✅ Added validation summary display for form errors
 - ✅ Disabled form fields during submission to prevent user interaction
 - ✅ All code quality checks pass
+
+### Test Suite Updates
+
+Fixed failing tests in `test_health_endpoints.py`:
+- Replaced embedding service health tests with Search API health tests for webui
+- Updated readiness probe tests to check Search API instead of embedding service
+- All tests now pass and correctly reflect the new architecture where:
+  - WebUI service checks Search API health (not embedding service)
+  - Embedding service remains in vecpipe service where it's actually used
+  - Clean separation of concerns between services
