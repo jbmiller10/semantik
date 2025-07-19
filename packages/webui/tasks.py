@@ -1809,7 +1809,11 @@ async def _process_index_operation(
         qdrant_client = qdrant_manager.get_client()
 
         # Use the vector_store_name from the collection if it exists, otherwise generate one
-        vector_store_name = collection.get("vector_store_name") or f"collection_{collection['uuid']}"
+        vector_store_name = collection.get("vector_store_name")
+        if not vector_store_name:
+            # Generate consistent name format: col_{uuid_with_underscores}
+            vector_store_name = f"col_{collection['uuid'].replace('-', '_')}"
+            logger.warning(f"Collection {collection['id']} missing vector_store_name, generated: {vector_store_name}")
 
         # Get vector dimension from config
         from webui.services.collection_service import DEFAULT_VECTOR_DIMENSION
@@ -1826,8 +1830,29 @@ async def _process_index_operation(
                 vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
             )
 
+        # Verify collection was created successfully
+        try:
+            collection_info = qdrant_client.get_collection(vector_store_name)
+            logger.info(
+                f"Verified Qdrant collection {vector_store_name} exists with {collection_info.vectors_count} vectors"
+            )
+        except Exception as e:
+            logger.error(f"Failed to verify collection {vector_store_name} after creation: {e}")
+            raise Exception(f"Collection {vector_store_name} was not properly created in Qdrant") from e
+
         # Update collection with Qdrant collection name
-        await collection_repo.update(collection["id"], {"vector_store_name": vector_store_name})
+        try:
+            await collection_repo.update(collection["id"], {"vector_store_name": vector_store_name})
+            logger.info(f"Updated collection {collection['id']} with vector_store_name: {vector_store_name}")
+        except Exception as e:
+            # If database update fails, try to clean up the Qdrant collection
+            logger.error(f"Failed to update collection in database: {e}")
+            try:
+                qdrant_client.delete_collection(vector_store_name)
+                logger.info(f"Cleaned up Qdrant collection {vector_store_name} after database update failure")
+            except Exception as cleanup_error:
+                logger.error(f"Failed to clean up Qdrant collection {vector_store_name}: {cleanup_error}")
+            raise Exception(f"Failed to update collection {collection['id']} in database") from e
 
         # Audit log the collection creation
         await _audit_log_operation(
