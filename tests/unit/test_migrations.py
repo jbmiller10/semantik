@@ -127,8 +127,8 @@ class TestMigrations:
         # Insert collection
         cursor.execute(
             """INSERT INTO collections (id, name, description, owner_id, vector_store_name,
-               embedding_model, chunk_size, chunk_overlap, is_public, created_at, updated_at, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               embedding_model, quantization, chunk_size, chunk_overlap, is_public, created_at, updated_at, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 "coll1",
                 "Test Collection",
@@ -136,6 +136,7 @@ class TestMigrations:
                 user_id,
                 "vec_store_1",
                 "model1",
+                "float16",
                 1000,
                 200,
                 0,

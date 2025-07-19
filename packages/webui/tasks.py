@@ -1215,13 +1215,13 @@ async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id:
             if not operation_obj:
                 logger.error(f"Operation {operation_id} not found during failure handling")
                 return
-        
+
             # Convert ORM object to dictionary for compatibility
             operation = {
-            "id": operation_obj.uuid,
-            "collection_id": operation_obj.collection_id,
-            "type": operation_obj.type,
-        }
+                "id": operation_obj.uuid,
+                "collection_id": operation_obj.collection_id,
+                "type": operation_obj.type,
+            }
 
             # Sanitize error message to prevent PII leakage
             sanitized_error = _sanitize_error_message(str(exc))
@@ -1240,8 +1240,8 @@ async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id:
 
             # Update operation status to failed with detailed error
             await operation_repo.update_status(
-            operation_id,
-            OperationStatus.FAILED,
+                operation_id,
+                OperationStatus.FAILED,
                 error_message=error_message,
             )
 
@@ -1308,7 +1308,9 @@ async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id:
 
             # Update failure metrics
             if operation:
-                collection_operations_total.labels(operation_type=operation["type"].value.lower(), status="failed").inc()
+                collection_operations_total.labels(
+                    operation_type=operation["type"].value.lower(), status="failed"
+                ).inc()
 
             logger.info(
                 f"Handled failure for operation {operation_id} (type: {operation.get('type') if operation else 'unknown'}), "
@@ -1316,7 +1318,7 @@ async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id:
             )
         except Exception as e:
             logger.error(f"Error in post-cleanup for operation {operation_id}: {e}")
-            
+
         # Commit any pending changes
         await db.commit()
 
@@ -1466,7 +1468,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                 operation_obj = await operation_repo.get_by_uuid(operation_id)
                 if not operation_obj:
                     raise ValueError(f"Operation {operation_id} not found in database")
-                
+
                 # Convert ORM object to dictionary for compatibility with helper functions
                 operation = {
                     "id": operation_obj.uuid,
@@ -1489,13 +1491,15 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
 
                 # Update operation status to processing
                 await operation_repo.update_status(operation_id, OperationStatus.PROCESSING)
-                await updater.send_update("operation_started", {"status": "processing", "type": operation["type"].value})
+                await updater.send_update(
+                    "operation_started", {"status": "processing", "type": operation["type"].value}
+                )
 
                 # Get collection details
                 collection_obj = await collection_repo.get_by_uuid(operation["collection_id"])
                 if not collection_obj:
                     raise ValueError(f"Collection {operation['collection_id']} not found in database")
-                
+
                 # Convert ORM object to dictionary for compatibility with helper functions
                 collection = {
                     "id": collection_obj.id,
@@ -1514,9 +1518,13 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     memory_before = process.memory_info().rss
 
                     if operation["type"] == OperationType.INDEX:
-                        result = await _process_index_operation(operation, collection, collection_repo, document_repo, updater)
+                        result = await _process_index_operation(
+                            operation, collection, collection_repo, document_repo, updater
+                        )
                     elif operation["type"] == OperationType.APPEND:
-                        result = await _process_append_operation(operation, collection, collection_repo, document_repo, updater)
+                        result = await _process_append_operation(
+                            operation, collection, collection_repo, document_repo, updater
+                        )
                     elif operation["type"] == OperationType.REINDEX:
                         result = await _process_reindex_operation(
                             operation, collection, collection_repo, document_repo, updater
@@ -1623,7 +1631,9 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     if operation_type == OperationType.INDEX:
                         # Initial index failed - collection is in error state
                         await collection_repo.update_status(
-                            collection["uuid"], CollectionStatus.ERROR, status_message=f"Initial indexing failed: {str(e)}"
+                            collection["uuid"],
+                            CollectionStatus.ERROR,
+                            status_message=f"Initial indexing failed: {str(e)}",
                         )
                     elif operation_type == OperationType.REINDEX:
                         # Reindex failed - collection is degraded but still usable
@@ -1658,7 +1668,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                 logger.error(f"Failed to finalize operation status: {final_error}")
 
             # Note: Redis connection cleanup is handled automatically by the context manager
-            
+
             # Commit any pending changes
             await db.commit()
 
