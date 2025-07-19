@@ -4,7 +4,7 @@ import logging
 import uuid
 from typing import Any
 
-from shared.database.exceptions import InvalidStateError
+from shared.database.exceptions import AccessDeniedError, InvalidStateError
 from shared.database.models import CollectionStatus, OperationType
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
@@ -363,7 +363,7 @@ class CollectionService:
                 entity_id=str(user_id),
                 entity_type="user",
                 resource_id=collection_id,
-                message="Only the collection owner can delete it"
+                message="Only the collection owner can delete it",
             )
 
         # Check if there's an active operation
