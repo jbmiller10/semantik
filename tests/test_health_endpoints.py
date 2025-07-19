@@ -2,6 +2,7 @@
 
 from unittest.mock import Mock, patch
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -94,6 +95,13 @@ class TestWebuiHealthEndpoints:
             return True
 
         mock_redis.ping = async_ping
+        
+        # Mock Search API response
+        class MockResponse:
+            status_code = 200
+            
+        async def mock_get(*args, **kwargs):
+            return MockResponse()
 
         # Mock Search API response
         class MockResponse:
@@ -121,6 +129,13 @@ class TestWebuiHealthEndpoints:
             return True
 
         mock_redis.ping = async_ping
+        
+        # Mock Search API to return unhealthy
+        class MockResponse:
+            status_code = 503
+            
+        async def mock_get(*args, **kwargs):
+            return MockResponse()
 
         # Mock Search API to return unhealthy
         class MockResponse:
