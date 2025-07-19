@@ -179,51 +179,23 @@ class SQLiteJobRepository(JobRepository):
 
 
 class SQLiteUserRepository(UserRepository):
-    """SQLite implementation of UserRepository.
-
-    This is a wrapper around the existing database functions,
-    providing an async interface that matches the repository pattern.
-    """
+    """SQLite implementation of UserRepository."""
 
     def __init__(self) -> None:
         """Initialize with the local database implementation."""
         self.db = db_impl
 
     async def create_user(self, user_data: dict[str, Any]) -> dict[str, Any]:
-        """Create a new user.
-
-        Args:
-            user_data: Dictionary containing user fields (username, email, hashed_password, full_name)
-
-        Returns:
-            The created user object including the generated ID
-
-        Raises:
-            EntityAlreadyExistsError: If username already exists
-            DatabaseOperationError: For database errors
-        """
+        """Create a new user."""
         try:
-            # Extract fields with defaults
-            username = user_data["username"]
-            email = user_data.get("email", "")
-            hashed_password = user_data["hashed_password"]
-            full_name = user_data.get("full_name")
-
-            # The create_user function returns the full user object
-            return self.db.create_user(username, email, hashed_password, full_name)
-        except ValueError:
-            # Re-raise ValueError to maintain backward compatibility with auth API
-            raise
+            result: dict[str, Any] = self.db.create_user(**user_data)
+            return result
         except Exception as e:
             logger.error(f"Failed to create user: {e}")
-            raise DatabaseOperationError("create", "user", str(e)) from e
+            raise
 
     async def get_user(self, user_id: str) -> dict[str, Any] | None:
-        """Get a user by ID."""
-        return await self.get_user_by_id(user_id)
-
-    async def get_user_by_id(self, user_id: str) -> dict[str, Any] | None:
-        """Get a user by ID.
+        """Get a user by numeric ID.
 
         Args:
             user_id: Numeric user ID as a string (e.g., "123")
@@ -258,7 +230,7 @@ class SQLiteUserRepository(UserRepository):
             logger.error(f"Failed to get user by username {username}: {e}")
             raise
 
-    async def update_user(self, user_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:  # noqa: ARG002
+    async def update_user(self, user_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
         """Update a user.
 
         TODO: Implement in sqlite_implementation.py by Q1 2025
@@ -275,247 +247,76 @@ class SQLiteUserRepository(UserRepository):
         Raises:
             NotImplementedError: When proper implementation is needed
         """
-        # For now, just return the existing user without modifications
-        return await self.get_user_by_id(user_id)
+        try:
+            # Note: Current database module doesn't have an update_user method
+            # This is a placeholder implementation
+            _ = updates  # Mark as intentionally unused until implementation is added
+            user: dict[str, Any] | None = self.db.get_user(user_id)
+            if not user:
+                logger.warning(f"User {user_id} not found for update")
+                return None
+            # For now, return the existing user without modifications
+            logger.warning("User update not yet implemented in database layer - returning unmodified user")
+            return user
+        except Exception as e:
+            logger.error(f"Failed to update user {user_id}: {e}")
+            raise
 
     async def delete_user(self, user_id: str) -> bool:
         """Delete a user.
+
+        TODO: Implement in sqlite_implementation.py by Q1 2025
+        Currently not implemented as user deletion has GDPR implications
+        and requires careful handling of related data (jobs, tokens, etc).
 
         Args:
             user_id: ID of the user to delete
 
         Returns:
-            True if user was deleted, False if not found
+            False (deletion not implemented)
 
         Raises:
-            InvalidUserIdError: If user_id is not numeric
-            NotImplementedError: Always (not supported in SQLite backend)
+            NotImplementedError: When proper implementation is needed
         """
-        # Validate user_id format
-        parse_user_id(user_id)
+        try:
+            # Note: Current database module doesn't have a delete_user method
+            # This is a placeholder implementation
+            user = self.db.get_user(user_id)
+            if user is None:
+                logger.warning(f"Attempted to delete non-existent user: {user_id}")
+                return False
+            # User deletion requires careful handling of related data
+            logger.warning("User deletion not yet implemented - requires GDPR compliance review")
+            return False  # Return False since we can't actually delete
+        except Exception as e:
+            logger.error(f"Failed to delete user {user_id}: {e}")
+            raise DatabaseOperationError("delete", "user", str(e)) from e
 
-        # SQLite backend doesn't support user deletion
-        raise NotImplementedError("User deletion is not supported in SQLite backend")
+    async def list_users(self, **filters: Any) -> list[dict[str, Any]]:
+        """List all users with optional filters.
 
-    async def verify_password(self, username: str, password: str) -> dict[str, Any] | None:
-        """Verify user password and return user data if valid.
+        Note: Current SQLite implementation doesn't support filters.
+        This is a placeholder for future functionality.
 
         Args:
-            username: The username to check
-            password: The plain text password to verify
+            **filters: Optional filters (not used in current implementation)
 
         Returns:
-            User dictionary if credentials are valid, None otherwise
+            List of user dictionaries
 
         Raises:
             DatabaseOperationError: For database errors
         """
         try:
-            # Get user by username
-            user = await self.get_user_by_username(username)
-            if not user:
-                return None
-
-            # Verify password using pwd_context
-            if self.db.pwd_context.verify(password, user["hashed_password"]):
-                return user
-            return None
+            # Note: Current database module doesn't have a list_users method
+            # This would need to be implemented in sqlite_implementation.py
+            # For now, return empty list as a placeholder
+            _ = filters  # Mark as intentionally unused
+            logger.warning("User listing not yet implemented in database layer")
+            return []
         except Exception as e:
-            logger.error(f"Failed to verify password for {username}: {e}")
-            raise DatabaseOperationError("verify", "password", str(e)) from e
-
-    async def list_users(
-        self,
-        **filters: Any,  # noqa: ARG002
-    ) -> list[dict[str, Any]]:
-        """List all users.
-
-        Note: SQLite implementation doesn't have a list_users method.
-        This is a stub that returns an empty list.
-
-        Args:
-            **filters: Filter parameters (all ignored in SQLite implementation)
-
-        Returns:
-            Empty list (not implemented in SQLite backend)
-        """
-        # SQLite backend doesn't support listing users
-        return []
-
-    async def update_last_login(self, user_id: str) -> None:
-        """Update the last login timestamp for a user.
-
-        Args:
-            user_id: ID of the user
-
-        Raises:
-            InvalidUserIdError: If user_id is not numeric
-            DatabaseOperationError: For database errors
-        """
-        try:
-            user_id_int = parse_user_id(user_id)
-
-            self.db.update_user_last_login(user_id_int)
-        except InvalidUserIdError:
-            # Re-raise InvalidUserIdError (which is also a ValueError)
-            raise
-        except Exception as e:
-            logger.error(f"Failed to update last login: {e}")
-            raise
-
-
-class SQLiteAuthRepository(AuthRepository):
-    """SQLite implementation of AuthRepository.
-
-    This handles authentication tokens and related operations.
-    Note: The SQLite backend uses refresh tokens instead of regular tokens.
-    """
-
-    def __init__(self) -> None:
-        """Initialize with the local database implementation."""
-        self.db = db_impl
-
-    async def save_refresh_token(self, user_id: str, token_hash: str, expires_at: Any) -> None:
-        """Save a refresh token for a user.
-
-        Args:
-            user_id: ID of the user
-            token_hash: Hashed token
-            expires_at: Expiration datetime
-
-        Raises:
-            InvalidUserIdError: If user_id is not numeric
-            DatabaseOperationError: For database errors
-        """
-        try:
-            user_id_int = parse_user_id(user_id)
-            self.db.save_refresh_token(user_id_int, token_hash, expires_at)
-        except InvalidUserIdError:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to save refresh token: {e}")
-            raise DatabaseOperationError("save", "refresh token", str(e)) from e
-
-    async def verify_refresh_token(self, token: str) -> str | None:
-        """Verify a refresh token and return user_id if valid.
-
-        Args:
-            token: The refresh token
-
-        Returns:
-            User ID as string or None if invalid
-
-        Raises:
-            DatabaseOperationError: For database errors
-        """
-        try:
-            user_id = self.db.verify_refresh_token(token)
-            return str(user_id) if user_id else None
-        except Exception as e:
-            logger.error(f"Failed to verify refresh token: {e}")
-            raise DatabaseOperationError("verify", "refresh token", str(e)) from e
-
-    async def revoke_refresh_token(self, token: str) -> None:
-        """Revoke a refresh token.
-
-        Args:
-            token: The token to revoke
-
-        Raises:
-            DatabaseOperationError: For database errors
-        """
-        try:
-            self.db.revoke_refresh_token(token)
-        except Exception as e:
-            logger.error(f"Failed to revoke refresh token: {e}")
-            raise DatabaseOperationError("revoke", "refresh token", str(e)) from e
-
-    async def update_user_last_login(self, user_id: str) -> None:
-        """Update user's last login timestamp.
-
-        Args:
-            user_id: ID of the user
-
-        Raises:
-            InvalidUserIdError: If user_id is not numeric
-            DatabaseOperationError: For database errors
-        """
-        try:
-            user_id_int = parse_user_id(user_id)
-            self.db.update_user_last_login(user_id_int)
-        except InvalidUserIdError:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to update last login: {e}")
-            raise DatabaseOperationError("update", "last login", str(e)) from e
-
-    async def create_token(self, user_id: str, token: str, expires_at: str) -> None:
-        """Store an authentication token.
-
-        Note: SQLite backend doesn't support this directly.
-        Tokens are managed differently in the SQLite implementation.
-
-        Args:
-            user_id: ID of the user
-            token: The token string
-            expires_at: ISO format expiration timestamp
-
-        Raises:
-            NotImplementedError: Always (not supported in SQLite backend)
-        """
-        raise NotImplementedError("Token storage is not supported in SQLite backend")
-
-    async def get_token_user_id(self, token: str) -> str | None:
-        """Get the user ID associated with a token.
-
-        Args:
-            token: The token string
-
-        Returns:
-            User ID as string or None if token not found/expired
-
-        Raises:
-            DatabaseOperationError: For database errors
-        """
-        try:
-            # Try to verify as refresh token
-            user_id: int | None = self.db.verify_refresh_token(token)
-            return str(user_id) if user_id else None
-        except Exception as e:
-            logger.error(f"Failed to get token user ID: {e}")
-            raise DatabaseOperationError("retrieve", "token", str(e)) from e
-
-    async def delete_token(self, token: str) -> None:
-        """Delete a token (logout).
-
-        Args:
-            token: The token to delete
-
-        Raises:
-            DatabaseOperationError: For database errors
-        """
-        try:
-            # Revoke refresh token
-            self.db.revoke_refresh_token(token)
-        except Exception as e:
-            logger.error(f"Failed to delete token: {e}")
-            raise DatabaseOperationError("delete", "token", str(e)) from e
-
-    async def delete_user_tokens(self, user_id: str) -> None:
-        """Delete all tokens for a user.
-
-        Args:
-            user_id: ID of the user
-
-        Raises:
-            InvalidUserIdError: If user_id is not numeric
-            NotImplementedError: Always (not supported in SQLite backend)
-        """
-        # Validate user_id format
-        parse_user_id(user_id)
-
-        # SQLite backend doesn't have this method
-        raise NotImplementedError("Deleting all user tokens is not supported in SQLite backend")
+            logger.error(f"Failed to list users: {e}")
+            raise DatabaseOperationError("list", "users", str(e)) from e
 
 
 class SQLiteFileRepository(FileRepository):
@@ -739,4 +540,71 @@ class SQLiteCollectionRepository(CollectionRepository):
             return result
         except Exception as e:
             logger.error(f"Failed to get metadata for collection {collection_name}: {e}")
+            raise
+
+
+class SQLiteAuthRepository(AuthRepository):
+    """SQLite implementation of AuthRepository."""
+
+    def __init__(self) -> None:
+        """Initialize with the local database implementation."""
+        self.db = db_impl
+
+    async def save_refresh_token(self, user_id: str, token_hash: str, expires_at: Any) -> None:
+        """Save a refresh token for a user.
+
+        Note: Converts string user_id to int for SQLite compatibility.
+        """
+        try:
+            # Import datetime to handle the type
+            from datetime import datetime
+
+            user_id_int = parse_user_id(user_id)
+
+            if isinstance(expires_at, str):
+                # Convert string to datetime if needed
+                expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+
+            self.db.save_refresh_token(user_id_int, token_hash, expires_at)
+        except InvalidUserIdError:
+            # Re-raise InvalidUserIdError (which is also a ValueError)
+            raise
+        except Exception as e:
+            logger.error(f"Failed to save refresh token: {e}")
+            raise
+
+    async def verify_refresh_token(self, token: str) -> str | None:
+        """Verify a refresh token and return user_id if valid.
+
+        Note: Returns string user_id for repository interface consistency.
+        """
+        try:
+            user_id_int: int | None = self.db.verify_refresh_token(token)
+            return str(user_id_int) if user_id_int is not None else None
+        except Exception as e:
+            logger.error(f"Failed to verify refresh token: {e}")
+            raise
+
+    async def revoke_refresh_token(self, token: str) -> None:
+        """Revoke a refresh token."""
+        try:
+            self.db.revoke_refresh_token(token)
+        except Exception as e:
+            logger.error(f"Failed to revoke refresh token: {e}")
+            raise
+
+    async def update_user_last_login(self, user_id: str) -> None:
+        """Update user's last login timestamp.
+
+        Note: Converts string user_id to int for SQLite compatibility.
+        """
+        try:
+            user_id_int = parse_user_id(user_id)
+
+            self.db.update_user_last_login(user_id_int)
+        except InvalidUserIdError:
+            # Re-raise InvalidUserIdError (which is also a ValueError)
+            raise
+        except Exception as e:
+            logger.error(f"Failed to update last login: {e}")
             raise

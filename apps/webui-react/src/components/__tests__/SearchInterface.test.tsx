@@ -4,12 +4,10 @@ import userEvent from '@testing-library/user-event'
 import SearchInterface from '../SearchInterface'
 import { useSearchStore } from '@/stores/searchStore'
 import { useUIStore } from '@/stores/uiStore'
-import { useCollectionStore } from '@/stores/collectionStore'
 
 // Mock the stores
 vi.mock('@/stores/searchStore')
 vi.mock('@/stores/uiStore')
-vi.mock('@/stores/collectionStore')
 
 // Mock SearchResults component
 vi.mock('../SearchResults', () => ({
@@ -28,13 +26,10 @@ describe('SearchInterface', () => {
   const defaultSearchParams = {
     query: '',
     collection: '',
-    selectedCollections: [],
     topK: 10,
     scoreThreshold: 0.5,
     searchType: 'vector' as const,
     useReranker: false,
-    rerankModel: 'BAAI/bge-reranker-v2-m3',
-    rerankQuantization: 'int8',
     hybridAlpha: 0.95,
     hybridMode: 'rerank' as const,
     keywordMode: 'any' as const,
@@ -52,34 +47,6 @@ describe('SearchInterface', () => {
       setCollections: mockSetCollections,
       collections: [],
       setRerankingMetrics: mockSetRerankingMetrics,
-      setFailedCollections: vi.fn(),
-      setPartialFailure: vi.fn(),
-    })
-    
-    ;(useCollectionStore as any).mockReturnValue({
-      collections: new Map([
-        ['test-collection', {
-          id: 'test-collection',
-          name: 'Test Collection',
-          status: 'active',
-          total_files: 100,
-          total_vectors: 500,
-          model_name: 'Qwen/Qwen3-Embedding-0.6B',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }]
-      ]),
-      fetchCollections: vi.fn().mockResolvedValue(undefined),
-      getCollectionsArray: vi.fn().mockReturnValue([{
-        id: 'test-collection',
-        name: 'Test Collection',
-        status: 'active',
-        total_files: 100,
-        total_vectors: 500,
-        model_name: 'Qwen/Qwen3-Embedding-0.6B',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }]),
     })
     
     ;(useUIStore as any).mockReturnValue({
@@ -94,7 +61,7 @@ describe('SearchInterface', () => {
     expect(screen.getByText('Search Documents')).toBeInTheDocument()
     expect(screen.getByLabelText('Search Query')).toBeInTheDocument()
     expect(screen.getByText('Number of Results')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /search/i })).toBeInTheDocument()
     
     // Check search tips
     expect(screen.getByText('Search Tips:')).toBeInTheDocument()
@@ -106,7 +73,7 @@ describe('SearchInterface', () => {
   it('validates empty search query', async () => {
     render(<SearchInterface />)
     
-    const searchButton = screen.getByRole('button', { name: 'Search' })
+    const searchButton = screen.getByRole('button', { name: /search/i })
     
     // Since the search button is disabled when no collection is selected,
     // the validation won't trigger. Let's just check the button is disabled
@@ -116,21 +83,19 @@ describe('SearchInterface', () => {
   it('validates collection selection', async () => {
     
     ;(useSearchStore as any).mockReturnValue({
-      searchParams: { ...defaultSearchParams, query: 'test query', selectedCollections: ['test-collection'] },
+      searchParams: { ...defaultSearchParams, query: 'test query', collection: 'job_1' },
       updateSearchParams: mockUpdateSearchParams,
       setResults: mockSetResults,
       setLoading: mockSetLoading,
       setError: mockSetError,
       setCollections: mockSetCollections,
-      collections: ['test-collection'],
+      collections: ['job_1'],
       setRerankingMetrics: mockSetRerankingMetrics,
-      setFailedCollections: vi.fn(),
-      setPartialFailure: vi.fn(),
     })
     
     render(<SearchInterface />)
     
-    const searchButton = screen.getByRole('button', { name: 'Search' })
+    const searchButton = screen.getByRole('button', { name: /search/i })
     expect(searchButton).not.toBeDisabled()
   })
 
@@ -157,8 +122,6 @@ describe('SearchInterface', () => {
       setCollections: mockSetCollections,
       collections: [],
       setRerankingMetrics: mockSetRerankingMetrics,
-      setFailedCollections: vi.fn(),
-      setPartialFailure: vi.fn(),
     })
     
     render(<SearchInterface />)
@@ -216,27 +179,25 @@ describe('SearchInterface', () => {
   it('has disabled search button when no collection selected', () => {
     render(<SearchInterface />)
     
-    const searchButton = screen.getByRole('button', { name: 'Search' })
+    const searchButton = screen.getByRole('button', { name: /search/i })
     expect(searchButton).toBeDisabled()
   })
 
   it('enables search button when collection is selected', () => {
     ;(useSearchStore as any).mockReturnValue({
-      searchParams: { ...defaultSearchParams, selectedCollections: ['test-collection'] },
+      searchParams: { ...defaultSearchParams, collection: 'job_1' },
       updateSearchParams: mockUpdateSearchParams,
       setResults: mockSetResults,
       setLoading: mockSetLoading,
       setError: mockSetError,
       setCollections: mockSetCollections,
-      collections: ['test-collection'],
+      collections: ['job_1'],
       setRerankingMetrics: mockSetRerankingMetrics,
-      setFailedCollections: vi.fn(),
-      setPartialFailure: vi.fn(),
     })
     
     render(<SearchInterface />)
     
-    const searchButton = screen.getByRole('button', { name: 'Search' })
+    const searchButton = screen.getByRole('button', { name: /search/i })
     expect(searchButton).not.toBeDisabled()
   })
 
