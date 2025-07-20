@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useCollectionStore } from '../stores/collectionStore';
 import { useUIStore } from '../stores/uiStore';
 import { useNavigate } from 'react-router-dom';
+import { getInputClassName } from '../utils/formStyles';
 import type { Collection } from '../types/collection';
 
 interface AddDataToCollectionModalProps {
@@ -77,7 +78,7 @@ function AddDataToCollectionModal({
                 value={sourcePath}
                 onChange={(e) => setSourcePath(e.target.value)}
                 placeholder="/path/to/documents"
-                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                className={getInputClassName(false, isSubmitting)}
                 required
                 autoFocus
               />
