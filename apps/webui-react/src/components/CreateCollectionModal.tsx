@@ -185,6 +185,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
   };
 
   const handleSourcePathChange = (value: string) => {
+    console.log('Source path changing to:', value);
     setSourcePath(value);
     // Clear error when field is modified
     if (errors.sourcePath) {
@@ -271,7 +272,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                 value={formData.name}
                 onChange={(e) => handleChange('name', e.target.value)}
                 disabled={isSubmitting}
-                className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
+                className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm px-3 py-2 border appearance-none ${
                   errors.name
                     ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
                     : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
@@ -297,7 +298,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                 onChange={(e) => handleChange('description', e.target.value)}
                 disabled={isSubmitting}
                 rows={3}
-                className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
+                className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm px-3 py-2 border appearance-none ${
                   errors.description
                     ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
                     : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
@@ -323,7 +324,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                   value={sourcePath}
                   onChange={(e) => handleSourcePathChange(e.target.value)}
                   disabled={isSubmitting || scanning}
-                  className={`flex-1 rounded-l-md sm:text-sm ${
+                  className={`flex-1 rounded-l-md sm:text-sm px-3 py-2 border appearance-none ${
                     errors.sourcePath || scanError
                       ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
                       : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
@@ -476,7 +477,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                         disabled={isSubmitting}
                         min={100}
                         max={2000}
-                        className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
+                        className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm px-3 py-2 border appearance-none ${
                           errors.chunk_size
                             ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
                             : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
@@ -502,7 +503,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                         disabled={isSubmitting}
                         min={0}
                         max={formData.chunk_size! - 1}
-                        className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
+                        className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm px-3 py-2 border appearance-none ${
                           errors.chunk_overlap
                             ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
                             : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
