@@ -3,6 +3,7 @@ import { useCollectionStore } from '../stores/collectionStore';
 import { useUIStore } from '../stores/uiStore';
 import { useNavigate } from 'react-router-dom';
 import { useDirectoryScan } from '../hooks/useDirectoryScan';
+import { getInputClassName, getInputClassNameWithBase } from '../utils/formStyles';
 import type { CreateCollectionRequest } from '../types/collection';
 
 interface CreateCollectionModalProps {
@@ -66,9 +67,6 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
     
-    // Debug: Log current form data
-    console.log('Validating form with data:', formData);
-    
     if (!formData.name.trim()) {
       newErrors.name = 'Collection name is required';
     } else if (formData.name.length > 100) {
@@ -100,12 +98,8 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     e.preventDefault();
     e.stopPropagation();
     
-    // Debug: Log that form submission was triggered
-    console.log('Form submission triggered, default prevented');
-    
     try {
       if (!validateForm()) {
-        console.log('Form validation failed');
         return;
       }
     } catch (error) {
@@ -180,8 +174,6 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
-    // Debug: Log state changes
-    console.log(`Form field '${field}' updated to:`, value);
   };
 
   const handleSourcePathChange = (value: string) => {
@@ -226,7 +218,6 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
             // Prevent form submission on Enter key in input fields
             if (e.key === 'Enter' && e.target instanceof HTMLInputElement && e.target.type !== 'submit') {
               e.preventDefault();
-              console.log('Prevented Enter key submission in input field');
             }
           }}
         >
@@ -271,13 +262,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                 value={formData.name}
                 onChange={(e) => handleChange('name', e.target.value)}
                 disabled={isSubmitting}
-                className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
-                  errors.name
-                    ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
-                    : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
-                } ${
-                  isSubmitting ? 'bg-gray-100 cursor-not-allowed' : ''
-                }`}
+                className={getInputClassName(!!errors.name, isSubmitting)}
                 placeholder="My Documents"
                 autoFocus
               />
@@ -297,13 +282,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                 onChange={(e) => handleChange('description', e.target.value)}
                 disabled={isSubmitting}
                 rows={3}
-                className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
-                  errors.description
-                    ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
-                    : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
-                } ${
-                  isSubmitting ? 'bg-gray-100 cursor-not-allowed' : ''
-                }`}
+                className={getInputClassName(!!errors.description, isSubmitting)}
                 placeholder="A collection of technical documentation..."
               />
               {errors.description && (
@@ -323,13 +302,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                   value={sourcePath}
                   onChange={(e) => handleSourcePathChange(e.target.value)}
                   disabled={isSubmitting || scanning}
-                  className={`flex-1 rounded-l-md sm:text-sm ${
-                    errors.sourcePath || scanError
-                      ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
-                      : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
-                  } ${
-                    isSubmitting || scanning ? 'bg-gray-100 cursor-not-allowed' : ''
-                  }`}
+                  className={getInputClassNameWithBase(!!errors.sourcePath || !!scanError, isSubmitting || scanning, 'flex-1 rounded-l-md shadow-sm sm:text-sm px-3 py-2 border appearance-none')}
                   placeholder="/path/to/documents"
                 />
                 <button
@@ -476,13 +449,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                         disabled={isSubmitting}
                         min={100}
                         max={2000}
-                        className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
-                          errors.chunk_size
-                            ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
-                            : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
-                        } ${
-                          isSubmitting ? 'bg-gray-100 cursor-not-allowed' : ''
-                        }`}
+                        className={getInputClassName(!!errors.chunk_size, isSubmitting)}
                       />
                       {errors.chunk_size && (
                         <p className="mt-1 text-sm text-red-600">{errors.chunk_size}</p>
@@ -502,13 +469,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                         disabled={isSubmitting}
                         min={0}
                         max={formData.chunk_size! - 1}
-                        className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
-                          errors.chunk_overlap
-                            ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
-                            : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
-                        } ${
-                          isSubmitting ? 'bg-gray-100 cursor-not-allowed' : ''
-                        }`}
+                        className={getInputClassName(!!errors.chunk_overlap, isSubmitting)}
                       />
                       {errors.chunk_overlap && (
                         <p className="mt-1 text-sm text-red-600">{errors.chunk_overlap}</p>
