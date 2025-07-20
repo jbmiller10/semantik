@@ -3,6 +3,7 @@ import { useCollectionStore } from '../stores/collectionStore';
 import { useUIStore } from '../stores/uiStore';
 import { useNavigate } from 'react-router-dom';
 import { useDirectoryScan } from '../hooks/useDirectoryScan';
+import { getInputClassName, getInputClassNameWithBase } from '../utils/formStyles';
 import type { CreateCollectionRequest } from '../types/collection';
 
 interface CreateCollectionModalProps {
@@ -25,16 +26,6 @@ function formatFileSize(bytes: number): string {
   
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${units[i]}`;
 }
-
-// Utility function for consistent input styling
-const getInputClassName = (hasError: boolean, isDisabled: boolean) =>
-  `mt-1 block w-full rounded-md shadow-sm sm:text-sm px-3 py-2 border appearance-none ${
-    hasError
-      ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
-      : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
-  } ${
-    isDisabled ? 'bg-gray-100 cursor-not-allowed' : ''
-  }`;
 
 function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProps) {
   const { createCollection, addSource } = useCollectionStore();
@@ -311,7 +302,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                   value={sourcePath}
                   onChange={(e) => handleSourcePathChange(e.target.value)}
                   disabled={isSubmitting || scanning}
-                  className={getInputClassName(!!errors.sourcePath || !!scanError, isSubmitting || scanning).replace('mt-1 block w-full rounded-md', 'flex-1 rounded-l-md')}
+                  className={getInputClassNameWithBase(!!errors.sourcePath || !!scanError, isSubmitting || scanning, 'flex-1 rounded-l-md shadow-sm sm:text-sm px-3 py-2 border appearance-none')}
                   placeholder="/path/to/documents"
                 />
                 <button

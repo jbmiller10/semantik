@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useCollectionStore } from '../stores/collectionStore';
 import { useUIStore } from '../stores/uiStore';
 import { useNavigate } from 'react-router-dom';
+import { getInputClassName } from '../utils/formStyles';
 import type { Collection } from '../types/collection';
 
 interface AddDataToCollectionModalProps {
@@ -9,16 +10,6 @@ interface AddDataToCollectionModalProps {
   onClose: () => void;
   onSuccess: () => void;
 }
-
-// Utility function for consistent input styling
-const getInputClassName = (hasError: boolean, isDisabled: boolean) =>
-  `mt-1 block w-full rounded-md shadow-sm sm:text-sm px-3 py-2 border appearance-none ${
-    hasError
-      ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
-      : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
-  } ${
-    isDisabled ? 'bg-gray-100 cursor-not-allowed' : ''
-  }`;
 
 function AddDataToCollectionModal({
   collection,
