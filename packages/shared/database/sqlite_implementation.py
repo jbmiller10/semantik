@@ -10,12 +10,15 @@ Job and file-related operations have been removed as part of the collections ref
 import hashlib
 import logging
 import sqlite3
+import time
+import functools
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TypeVar
 
 from passlib.context import CryptContext
 from shared.config import settings
+from shared.database.connection_utils import get_sqlite_connection
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -26,6 +29,41 @@ Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
 
 # Password hashing context for auth functions
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+T = TypeVar("T")
+
+
+def with_sqlite_retry(retries: int = 5, delay: float = 0.5, backoff: float = 2.0, max_delay: float = 10.0):
+    """Decorator to retry SQLite operations on database lock errors."""
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> T:
+            current_delay = delay
+            last_exception = None
+            
+            for attempt in range(retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except sqlite3.OperationalError as e:
+                    if "database is locked" not in str(e) or attempt == retries:
+                        raise
+                    
+                    last_exception = e
+                    logger.warning(
+                        f"Database locked in {func.__name__} on attempt {attempt + 1}/{retries + 1}, "
+                        f"retrying in {current_delay:.1f}s"
+                    )
+                    
+                    time.sleep(current_delay)
+                    current_delay = min(current_delay * backoff, max_delay)
+            
+            # This should never be reached
+            if last_exception:
+                raise last_exception
+            raise RuntimeError("Unexpected retry loop exit")
+        
+        return wrapper
+    return decorator
 
 
 # Database initialization and management
@@ -224,15 +262,17 @@ def create_user(username: str, email: str, hashed_password: str, full_name: str 
     }
 
 
+@with_sqlite_retry()
 def update_user_last_login(user_id: int) -> None:
     """Update user's last login timestamp."""
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-
-    now = datetime.now(UTC).isoformat()
-    c.execute("UPDATE users SET last_login = ? WHERE id = ?", (now, user_id))
-    conn.commit()
-    conn.close()
+    conn = get_sqlite_connection(DB_PATH)
+    try:
+        c = conn.cursor()
+        now = datetime.now(UTC).isoformat()
+        c.execute("UPDATE users SET last_login = ? WHERE id = ?", (now, user_id))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # Token management functions

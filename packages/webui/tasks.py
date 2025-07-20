@@ -1599,6 +1599,12 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
         except Exception as e:
             logger.error(f"Operation {operation_id} failed: {e}", exc_info=True)
 
+            # Rollback the session to clear any pending transaction
+            try:
+                await db.rollback()
+            except Exception as rollback_error:
+                logger.error(f"Failed to rollback session: {rollback_error}")
+
             # Ensure status update even if some components failed to initialize
             try:
                 # Record failure metrics
@@ -1658,13 +1664,17 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         await operation_repo.update_status(
                             operation_id, OperationStatus.FAILED, error_message="Task terminated unexpectedly"
                         )
+                        # Commit the status update
+                        await db.commit()
             except Exception as final_error:
                 logger.error(f"Failed to finalize operation status: {final_error}")
+                # Try to rollback if the finalization failed
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass  # Best effort rollback
 
             # Note: Redis connection cleanup is handled automatically by the context manager
-
-            # Commit any pending changes
-            await db.commit()
 
 
 async def _record_operation_metrics(operation_repo: Any, operation_id: str, metrics: dict[str, Any]) -> None:
@@ -1890,7 +1900,7 @@ async def _process_append_operation(
     operation: dict,
     collection: dict,
     collection_repo: Any,  # noqa: ARG001
-    document_repo: Any,  # noqa: ARG001
+    document_repo: Any,
     updater: CeleryTaskWithOperationUpdates,
 ) -> dict[str, Any]:
     """Process APPEND operation - Add documents to existing collection with monitoring."""
@@ -1903,257 +1913,250 @@ async def _process_append_operation(
         raise ValueError("source_path is required for APPEND operation")
 
     # Import required modules for file scanning
-    from shared.database.database import AsyncSessionLocal
-    from shared.database.repositories.document_repository import DocumentRepository
     from webui.services.file_scanning_service import FileScanningService
 
-    # Use proper async session for new repositories
-    async with AsyncSessionLocal() as session:
-        # Create new repository instance with session
-        doc_repo = DocumentRepository(session)
+    # Use the existing document_repo and its session
+    session = document_repo.session
+    
+    # Create file scanning service with existing session
+    file_scanner = FileScanningService(db_session=session, document_repo=document_repo)
 
-        # Create file scanning service
-        file_scanner = FileScanningService(db_session=session, document_repo=doc_repo)
+    # Scan directory and register documents
+    await updater.send_update("scanning_files", {"status": "scanning", "source_path": source_path})
 
-        # Scan directory and register documents
-        await updater.send_update("scanning_files", {"status": "scanning", "source_path": source_path})
+    try:
+        # Time document scanning
+        scan_start = time.time()
 
-        try:
-            # Time document scanning
-            scan_start = time.time()
+        scan_stats = await file_scanner.scan_directory_and_register_documents(
+            collection_id=collection["id"],
+            source_path=source_path,
+            recursive=True,  # Default to recursive scanning
+            batch_size=EMBEDDING_BATCH_SIZE,  # Commit in batches for large directories
+        )
 
-            scan_stats = await file_scanner.scan_directory_and_register_documents(
-                collection_id=collection["id"],
-                source_path=source_path,
-                recursive=True,  # Default to recursive scanning
-                batch_size=EMBEDDING_BATCH_SIZE,  # Commit in batches for large directories
-            )
+        # Record scanning duration
+        scan_duration = time.time() - scan_start
+        document_processing_duration.labels(operation_type="append").observe(scan_duration)
 
-            # Record scanning duration
-            scan_duration = time.time() - scan_start
-            document_processing_duration.labels(operation_type="append").observe(scan_duration)
+        # Send progress update
+        await updater.send_update(
+            "scanning_completed",
+            {
+                "status": "scanning_completed",
+                "total_files_found": scan_stats["total_files_found"],
+                "new_files_registered": scan_stats["new_files_registered"],
+                "duplicate_files_skipped": scan_stats["duplicate_files_skipped"],
+                "errors_count": len(scan_stats.get("errors", [])),
+            },
+        )
 
-            # Final commit to ensure any remaining transactions are persisted
-            await session.commit()
+        # Record document processing metrics
+        for _ in range(scan_stats["new_files_registered"]):
+            record_document_processed("append", "registered")
+        for _ in range(scan_stats["duplicate_files_skipped"]):
+            record_document_processed("append", "skipped")
+        for _ in range(len(scan_stats.get("errors", []))):
+            record_document_processed("append", "failed")
 
-            # Send progress update
+        # Audit log the append operation
+        await _audit_log_operation(
+            collection["id"],
+            operation["id"],
+            operation.get("user_id"),
+            "documents_appended",
+            {
+                "source_path": source_path,
+                "documents_added": scan_stats["new_files_registered"],
+                "duplicates_skipped": scan_stats["duplicate_files_skipped"],
+            },
+        )
+
+        # Process registered documents to generate embeddings
+        if scan_stats["new_files_registered"] > 0:
             await updater.send_update(
-                "scanning_completed",
+                "processing_embeddings",
                 {
-                    "status": "scanning_completed",
-                    "total_files_found": scan_stats["total_files_found"],
-                    "new_files_registered": scan_stats["new_files_registered"],
-                    "duplicate_files_skipped": scan_stats["duplicate_files_skipped"],
-                    "errors_count": len(scan_stats.get("errors", [])),
+                    "status": "generating_embeddings",
+                    "documents_to_process": scan_stats["new_files_registered"],
                 },
             )
-
-            # Record document processing metrics
-            for _ in range(scan_stats["new_files_registered"]):
-                record_document_processed("append", "registered")
-            for _ in range(scan_stats["duplicate_files_skipped"]):
-                record_document_processed("append", "skipped")
-            for _ in range(len(scan_stats.get("errors", []))):
-                record_document_processed("append", "failed")
-
-            # Audit log the append operation
-            await _audit_log_operation(
+            
+            # Get newly registered documents
+            # Note: We'll get all documents and filter by path since there's no source_filter
+            all_docs, _ = await doc_repo.list_by_collection(
                 collection["id"],
-                operation["id"],
-                operation.get("user_id"),
-                "documents_appended",
-                {
-                    "source_path": source_path,
-                    "documents_added": scan_stats["new_files_registered"],
-                    "duplicates_skipped": scan_stats["duplicate_files_skipped"],
-                },
+                status=None,  # Get all statuses
+                limit=10000,  # High limit to get all docs
             )
-
-            # Process registered documents to generate embeddings
-            if scan_stats["new_files_registered"] > 0:
-                await updater.send_update(
-                    "processing_embeddings",
-                    {
-                        "status": "generating_embeddings",
-                        "documents_to_process": scan_stats["new_files_registered"],
-                    },
-                )
-                
-                # Get newly registered documents
-                # Note: We'll get all documents and filter by path since there's no source_filter
-                all_docs, _ = await doc_repo.list_by_collection(
-                    collection["id"],
-                    status=None,  # Get all statuses
-                    limit=10000,  # High limit to get all docs
-                )
-                
-                # Filter documents by source path
-                documents = [doc for doc in all_docs if doc.path.startswith(source_path)]
-                
-                # Get collection configuration
-                embedding_model = collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
-                quantization = collection.get("quantization", "float16")
-                chunk_size = collection.get("chunk_size", 1000)
-                chunk_overlap = collection.get("chunk_overlap", 200)
-                batch_size = config.get("batch_size", EMBEDDING_BATCH_SIZE)
-                instruction = config.get("instruction")
-                
-                # Get the Qdrant collection name
-                qdrant_collection_name = collection.get("vector_store_name")
-                if not qdrant_collection_name:
-                    raise ValueError("Collection missing vector_store_name")
-                
-                # Get Qdrant client
-                qdrant_client = qdrant_manager.get_client()
-                
-                # Process documents and generate embeddings
-                processed_count = 0
-                failed_count = 0
-                total_vectors_created = 0
-                
-                # Import DocumentStatus for status updates
-                from shared.database.models import DocumentStatus
-                
-                for doc in documents:
-                    try:
-                        # Extract text from document
-                        logger.info(f"Processing document: {doc.path}")
-                        
-                        # Run text extraction in thread pool
-                        loop = asyncio.get_event_loop()
-                        text_blocks = await asyncio.wait_for(
-                            loop.run_in_executor(executor, extract_and_serialize_thread_safe, doc.path),
-                            timeout=300,  # 5 minute timeout
-                        )
-                        
-                        if not text_blocks:
-                            logger.warning(f"No text extracted from {doc.path}")
-                            await doc_repo.update_status(
-                                doc.id,
-                                DocumentStatus.FAILED,
-                                error_message="No text content extracted",
-                            )
-                            failed_count += 1
-                            continue
-                        
-                        # Create chunks
-                        chunker = TokenChunker(
-                            chunk_size=chunk_size,
-                            chunk_overlap=chunk_overlap,
-                        )
-                        
-                        chunks = chunker.chunk_blocks(text_blocks, doc.id)
-                        logger.info(f"Created {len(chunks)} chunks for {doc.path}")
-                        
-                        if not chunks:
-                            logger.warning(f"No chunks created for {doc.path}")
-                            await doc_repo.update_status(
-                                doc.id,
-                                DocumentStatus.FAILED,
-                                error_message="No chunks created",
-                            )
-                            failed_count += 1
-                            continue
-                        
-                        # Generate embeddings
-                        texts = [chunk["text"] for chunk in chunks]
-                        
-                        # Prepare task ID for GPU scheduling
-                        task_id = str(uuid.uuid4())
-                        
-                        # Function to run in executor with GPU scheduling
-                        def generate_embeddings_with_gpu(task_id: str = task_id, texts: list[str] = texts) -> Any:
-                            with gpu_task(task_id) as gpu_id:
-                                if gpu_id is None:
-                                    logger.warning(f"No GPU available for task {task_id}, proceeding with CPU")
-                                else:
-                                    logger.info(f"Task {task_id} using GPU {gpu_id}")
-                                
-                                return embedding_service.generate_embeddings(
-                                    texts,
-                                    embedding_model,
-                                    quantization,
-                                    batch_size,
-                                    False,  # show_progress
-                                    instruction,
-                                )
-                        
-                        # Run with GPU scheduling in thread pool
-                        embeddings_array = await loop.run_in_executor(executor, generate_embeddings_with_gpu)
-                        
-                        if embeddings_array is None:
-                            raise Exception("Failed to generate embeddings")
-                        
-                        embeddings = embeddings_array.tolist()
-                        
-                        # Prepare points for Qdrant
-                        points = []
-                        for i, chunk in enumerate(chunks):
-                            point = PointStruct(
-                                id=str(uuid.uuid4()),
-                                vector=embeddings[i],
-                                payload={
-                                    "collection_id": collection["id"],
-                                    "doc_id": doc.id,
-                                    "chunk_id": chunk["chunk_id"],
-                                    "path": doc.path,
-                                    "content": chunk["text"],
-                                    "metadata": chunk.get("metadata", {}),
-                                },
-                            )
-                            points.append(point)
-                        
-                        # Upload to Qdrant in batches
-                        for batch_start in range(0, len(points), VECTOR_UPLOAD_BATCH_SIZE):
-                            batch_end = min(batch_start + VECTOR_UPLOAD_BATCH_SIZE, len(points))
-                            batch_points = points[batch_start:batch_end]
-                            
-                            qdrant_client.upsert(
-                                collection_name=qdrant_collection_name,
-                                points=batch_points,
-                            )
-                        
-                        # Update document status
-                        await doc_repo.update_status(
-                            doc.id,
-                            DocumentStatus.COMPLETED,
-                            chunk_count=len(chunks),
-                        )
-                        
-                        processed_count += 1
-                        total_vectors_created += len(chunks)
-                        
-                        # Send progress update
-                        await updater.send_update(
-                            "document_processed",
-                            {
-                                "processed": processed_count,
-                                "failed": failed_count,
-                                "total": len(documents),
-                                "current_document": doc.path,
-                            },
-                        )
-                        
-                    except Exception as e:
-                        logger.error(f"Failed to process document {doc.path}: {e}")
+            
+            # Filter documents by source path
+            documents = [doc for doc in all_docs if doc.file_path.startswith(source_path)]
+            
+            # Get collection configuration
+            embedding_model = collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
+            quantization = collection.get("quantization", "float16")
+            chunk_size = collection.get("chunk_size", 1000)
+            chunk_overlap = collection.get("chunk_overlap", 200)
+            batch_size = config.get("batch_size", EMBEDDING_BATCH_SIZE)
+            instruction = config.get("instruction")
+            
+            # Get the Qdrant collection name
+            qdrant_collection_name = collection.get("vector_store_name")
+            if not qdrant_collection_name:
+                raise ValueError("Collection missing vector_store_name")
+            
+            # Get Qdrant client
+            qdrant_client = qdrant_manager.get_client()
+            
+            # Process documents and generate embeddings
+            processed_count = 0
+            failed_count = 0
+            total_vectors_created = 0
+            
+            # Import DocumentStatus for status updates
+            from shared.database.models import DocumentStatus
+            
+            for doc in documents:
+                try:
+                    # Extract text from document
+                    logger.info(f"Processing document: {doc.file_path}")
+                    
+                    # Run text extraction in thread pool
+                    loop = asyncio.get_event_loop()
+                    text_blocks = await asyncio.wait_for(
+                        loop.run_in_executor(executor, extract_and_serialize_thread_safe, doc.file_path),
+                        timeout=300,  # 5 minute timeout
+                    )
+                    
+                    if not text_blocks:
+                        logger.warning(f"No text extracted from {doc.file_path}")
                         await doc_repo.update_status(
                             doc.id,
                             DocumentStatus.FAILED,
-                            error_message=str(e),
+                            error_message="No text content extracted",
                         )
                         failed_count += 1
-                
-                # Update collection vector count
-                await collection_repo.update(
-                    collection["id"],
-                    {"vector_count": collection.get("vector_count", 0) + total_vectors_created},
-                )
-                
-                # Log final results
-                logger.info(
-                    f"Embedding generation complete: {processed_count} processed, "
-                    f"{failed_count} failed, {total_vectors_created} vectors created"
-                )
+                        continue
+                    
+                    # Create chunks
+                    chunker = TokenChunker(
+                        chunk_size=chunk_size,
+                        chunk_overlap=chunk_overlap,
+                    )
+                    
+                    chunks = chunker.chunk_blocks(text_blocks, doc.id)
+                    logger.info(f"Created {len(chunks)} chunks for {doc.file_path}")
+                    
+                    if not chunks:
+                        logger.warning(f"No chunks created for {doc.file_path}")
+                        await doc_repo.update_status(
+                            doc.id,
+                            DocumentStatus.FAILED,
+                            error_message="No chunks created",
+                        )
+                        failed_count += 1
+                        continue
+                    
+                    # Generate embeddings
+                    texts = [chunk["text"] for chunk in chunks]
+                    
+                    # Prepare task ID for GPU scheduling
+                    task_id = str(uuid.uuid4())
+                    
+                    # Function to run in executor with GPU scheduling
+                    def generate_embeddings_with_gpu(task_id: str = task_id, texts: list[str] = texts) -> Any:
+                        with gpu_task(task_id) as gpu_id:
+                            if gpu_id is None:
+                                logger.warning(f"No GPU available for task {task_id}, proceeding with CPU")
+                            else:
+                                logger.info(f"Task {task_id} using GPU {gpu_id}")
+                            
+                            return embedding_service.generate_embeddings(
+                                texts,
+                                embedding_model,
+                                quantization,
+                                batch_size,
+                                False,  # show_progress
+                                instruction,
+                            )
+                    
+                    # Run with GPU scheduling in thread pool
+                    embeddings_array = await loop.run_in_executor(executor, generate_embeddings_with_gpu)
+                    
+                    if embeddings_array is None:
+                        raise Exception("Failed to generate embeddings")
+                    
+                    embeddings = embeddings_array.tolist()
+                    
+                    # Prepare points for Qdrant
+                    points = []
+                    for i, chunk in enumerate(chunks):
+                        point = PointStruct(
+                            id=str(uuid.uuid4()),
+                            vector=embeddings[i],
+                            payload={
+                                "collection_id": collection["id"],
+                                "doc_id": doc.id,
+                                "chunk_id": chunk["chunk_id"],
+                                "path": doc.file_path,
+                                "content": chunk["text"],
+                                "metadata": chunk.get("metadata", {}),
+                            },
+                        )
+                        points.append(point)
+                    
+                    # Upload to Qdrant in batches
+                    for batch_start in range(0, len(points), VECTOR_UPLOAD_BATCH_SIZE):
+                        batch_end = min(batch_start + VECTOR_UPLOAD_BATCH_SIZE, len(points))
+                        batch_points = points[batch_start:batch_end]
+                        
+                        qdrant_client.upsert(
+                            collection_name=qdrant_collection_name,
+                            points=batch_points,
+                        )
+                    
+                    # Update document status
+                    await doc_repo.update_status(
+                        doc.id,
+                        DocumentStatus.COMPLETED,
+                        chunk_count=len(chunks),
+                    )
+                    
+                    processed_count += 1
+                    total_vectors_created += len(chunks)
+                    
+                    # Send progress update
+                    await updater.send_update(
+                        "document_processed",
+                        {
+                            "processed": processed_count,
+                            "failed": failed_count,
+                            "total": len(documents),
+                            "current_document": doc.file_path,
+                        },
+                    )
+                    
+                except Exception as e:
+                    logger.error(f"Failed to process document {doc.file_path}: {e}")
+                    await doc_repo.update_status(
+                        doc.id,
+                        DocumentStatus.FAILED,
+                        error_message=str(e),
+                    )
+                    failed_count += 1
+            
+            # Update collection vector count
+            await collection_repo.update(
+                collection["id"],
+                {"vector_count": collection.get("vector_count", 0) + total_vectors_created},
+            )
+            
+            # Log final results
+            logger.info(
+                f"Embedding generation complete: {processed_count} processed, "
+                f"{failed_count} failed, {total_vectors_created} vectors created"
+            )
 
             await updater.send_update(
                 "append_completed",
@@ -2165,21 +2168,21 @@ async def _process_append_operation(
                 },
             )
 
-            return {
-                "success": True,
-                "source_path": source_path,
-                "documents_added": scan_stats["new_files_registered"],
-                "total_files_scanned": scan_stats["total_files_found"],
-                "duplicates_skipped": scan_stats["duplicate_files_skipped"],
-                "total_size_bytes": scan_stats["total_size_bytes"],
-                "scan_duration_seconds": scan_duration,
-                "errors": scan_stats.get("errors", []),
-            }
+        return {
+            "success": True,
+            "source_path": source_path,
+            "documents_added": scan_stats["new_files_registered"],
+            "total_files_scanned": scan_stats["total_files_found"],
+            "duplicates_skipped": scan_stats["duplicate_files_skipped"],
+            "total_size_bytes": scan_stats["total_size_bytes"],
+            "scan_duration_seconds": scan_duration,
+            "errors": scan_stats.get("errors", []),
+        }
 
-        except Exception as e:
-            logger.error(f"Failed to scan and register documents: {e}")
-            await session.rollback()
-            raise
+    except Exception as e:
+        logger.error(f"Failed to scan and register documents: {e}")
+        # Don't rollback here - parent function handles the session
+        raise
 
 
 async def reindex_handler(

@@ -416,3 +416,23 @@ class OperationRepository:
         except Exception as e:
             logger.error(f"Failed to get active operations count: {e}")
             raise DatabaseOperationError("count", "operations", str(e)) from e
+
+    async def get_active_operations(self, collection_id: str) -> list[Operation]:
+        """Get active (pending/processing) operations for a collection.
+
+        Args:
+            collection_id: UUID of the collection
+
+        Returns:
+            List of active operations
+        """
+        try:
+            stmt = select(Operation).where(
+                Operation.collection_id == collection_id,
+                Operation.status.in_([OperationStatus.PENDING, OperationStatus.PROCESSING]),
+            )
+            result = await self.session.execute(stmt)
+            return list(result.scalars().all())
+        except Exception as e:
+            logger.error(f"Failed to get active operations: {e}")
+            raise DatabaseOperationError("list", "operations", str(e)) from e

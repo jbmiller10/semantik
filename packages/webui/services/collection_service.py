@@ -61,51 +61,47 @@ class CollectionService:
         if not name or not name.strip():
             raise ValueError("Collection name is required")
 
-        # Use transaction for atomic operations
-        async with self.db_session.begin():
-            # Create collection in database
-            try:
-                collection = await self.collection_repo.create(
-                    owner_id=user_id,
-                    name=name,
-                    description=description,
-                    embedding_model=(
-                        config.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
-                        if config
-                        else "Qwen/Qwen3-Embedding-0.6B"
-                    ),
-                    quantization=config.get("quantization", "float16") if config else "float16",
-                    chunk_size=config.get("chunk_size", 1000) if config else 1000,
-                    chunk_overlap=config.get("chunk_overlap", 200) if config else 200,
-                    is_public=config.get("is_public", False) if config else False,
-                    meta=config.get("metadata") if config else None,
-                )
-            except Exception as e:
-                logger.error(f"Failed to create collection: {e}")
-                raise
-
-            # Create operation record
-            operation = await self.operation_repo.create(
-                collection_id=collection.id,
-                user_id=user_id,
-                operation_type=OperationType.INDEX,
-                config={
-                    "sources": [],  # Initial creation has no sources
-                    "collection_config": config or {},
-                },
+        # Create collection in database
+        try:
+            collection = await self.collection_repo.create(
+                owner_id=user_id,
+                name=name,
+                description=description,
+                embedding_model=(
+                    config.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
+                    if config
+                    else "Qwen/Qwen3-Embedding-0.6B"
+                ),
+                quantization=config.get("quantization", "float16") if config else "float16",
+                chunk_size=config.get("chunk_size", 1000) if config else 1000,
+                chunk_overlap=config.get("chunk_overlap", 200) if config else 200,
+                is_public=config.get("is_public", False) if config else False,
+                meta=config.get("metadata") if config else None,
             )
+        except Exception as e:
+            logger.error(f"Failed to create collection: {e}")
+            raise
 
-            # Dispatch Celery task
-            celery_app.send_task(
-                "webui.tasks.process_collection_operation",
-                args=[operation.uuid],
-                task_id=str(uuid.uuid4()),
-            )
+        # Create operation record
+        operation = await self.operation_repo.create(
+            collection_id=collection.id,
+            user_id=user_id,
+            operation_type=OperationType.INDEX,
+            config={
+                "sources": [],  # Initial creation has no sources
+                "collection_config": config or {},
+            },
+        )
 
-            # Task ID is now set inside the Celery task as first action for reliability
-            # No need to set it here anymore
+        # Dispatch Celery task
+        celery_app.send_task(
+            "webui.tasks.process_collection_operation",
+            args=[operation.uuid],
+            task_id=str(uuid.uuid4()),
+        )
 
-            # Transaction commits here automatically
+        # Commit the transaction
+        await self.db_session.commit()
 
         # Convert ORM objects to dictionaries
         collection_dict = {
@@ -184,41 +180,41 @@ class CollectionService:
                 f"Collection must be in {CollectionStatus.PENDING}, {CollectionStatus.READY} or {CollectionStatus.DEGRADED} state."
             )
 
-        # Check if there's already an active operation
-        active_ops = await self.operation_repo.get_active_operations_count(collection.id)
-        if active_ops > 0:
-            raise InvalidStateError(
-                "Cannot add source while another operation is in progress. "
-                "Please wait for the current operation to complete."
-            )
+        # Check if there's already an active operation (but allow APPEND after INDEX)
+        active_operations = await self.operation_repo.get_active_operations(collection.id)
+        if active_operations:
+            # Allow APPEND operations if the only active operation is INDEX
+            # INDEX just creates the empty collection and doesn't conflict with APPEND
+            non_index_ops = [op for op in active_operations if op.type != OperationType.INDEX]
+            if non_index_ops:
+                raise InvalidStateError(
+                    "Cannot add source while another operation is in progress. "
+                    "Please wait for the current operation to complete."
+                )
 
-        # Use transaction for atomic operations
-        async with self.db_session.begin():
-            # Create operation record
-            operation = await self.operation_repo.create(
-                collection_id=collection.id,
-                user_id=user_id,
-                operation_type=OperationType.APPEND,
-                config={
-                    "source_path": source_path,
-                    "source_config": source_config or {},
-                },
-            )
+        # Create operation record
+        operation = await self.operation_repo.create(
+            collection_id=collection.id,
+            user_id=user_id,
+            operation_type=OperationType.APPEND,
+            config={
+                "source_path": source_path,
+                "source_config": source_config or {},
+            },
+        )
 
-            # Update collection status to processing
-            await self.collection_repo.update_status(collection.id, CollectionStatus.PROCESSING)
+        # Update collection status to processing
+        await self.collection_repo.update_status(collection.id, CollectionStatus.PROCESSING)
 
-            # Dispatch Celery task
-            celery_app.send_task(
-                "webui.tasks.process_collection_operation",
-                args=[operation.uuid],
-                task_id=str(uuid.uuid4()),
-            )
+        # Dispatch Celery task
+        celery_app.send_task(
+            "webui.tasks.process_collection_operation",
+            args=[operation.uuid],
+            task_id=str(uuid.uuid4()),
+        )
 
-            # Task ID is now set inside the Celery task as first action for reliability
-            # No need to set it here anymore
-
-            # Transaction commits here automatically
+        # Commit the transaction
+        await self.db_session.commit()
 
         # Convert ORM object to dictionary
         return {
@@ -290,41 +286,37 @@ class CollectionService:
         if config_updates:
             new_config.update(config_updates)
 
-        # Use transaction for atomic operations
-        async with self.db_session.begin():
-            # Create operation record
-            operation = await self.operation_repo.create(
-                collection_id=collection.id,
-                user_id=user_id,
-                operation_type=OperationType.REINDEX,
-                config={
-                    "previous_config": {
-                        "embedding_model": collection.embedding_model,
-                        "quantization": collection.quantization,
-                        "chunk_size": collection.chunk_size,
-                        "chunk_overlap": collection.chunk_overlap,
-                        "is_public": collection.is_public,
-                        "metadata": collection.meta,
-                    },
-                    "new_config": new_config,
-                    "blue_green": True,  # Always use blue-green for zero downtime
+        # Create operation record
+        operation = await self.operation_repo.create(
+            collection_id=collection.id,
+            user_id=user_id,
+            operation_type=OperationType.REINDEX,
+            config={
+                "previous_config": {
+                    "embedding_model": collection.embedding_model,
+                    "quantization": collection.quantization,
+                    "chunk_size": collection.chunk_size,
+                    "chunk_overlap": collection.chunk_overlap,
+                    "is_public": collection.is_public,
+                    "metadata": collection.meta,
                 },
-            )
+                "new_config": new_config,
+                "blue_green": True,  # Always use blue-green for zero downtime
+            },
+        )
 
-            # Update collection status to processing
-            await self.collection_repo.update_status(collection.id, CollectionStatus.PROCESSING)
+        # Update collection status to processing
+        await self.collection_repo.update_status(collection.id, CollectionStatus.PROCESSING)
 
-            # Dispatch Celery task
-            celery_app.send_task(
-                "webui.tasks.process_collection_operation",
-                args=[operation.uuid],
-                task_id=str(uuid.uuid4()),
-            )
+        # Dispatch Celery task
+        celery_app.send_task(
+            "webui.tasks.process_collection_operation",
+            args=[operation.uuid],
+            task_id=str(uuid.uuid4()),
+        )
 
-            # Task ID is now set inside the Celery task as first action for reliability
-            # No need to set it here anymore
-
-            # Transaction commits here automatically
+        # Commit the transaction
+        await self.db_session.commit()
 
         # Convert ORM object to dictionary
         return {
@@ -433,32 +425,28 @@ class CollectionService:
                 "Please wait for the current operation to complete."
             )
 
-        # Use transaction for atomic operations
-        async with self.db_session.begin():
-            # Create operation record
-            operation = await self.operation_repo.create(
-                collection_id=collection.id,
-                user_id=user_id,
-                operation_type=OperationType.REMOVE_SOURCE,
-                config={
-                    "source_path": source_path,
-                },
-            )
+        # Create operation record
+        operation = await self.operation_repo.create(
+            collection_id=collection.id,
+            user_id=user_id,
+            operation_type=OperationType.REMOVE_SOURCE,
+            config={
+                "source_path": source_path,
+            },
+        )
 
-            # Update collection status
-            await self.collection_repo.update_status(collection.id, CollectionStatus.PROCESSING)
+        # Update collection status
+        await self.collection_repo.update_status(collection.id, CollectionStatus.PROCESSING)
 
-            # Dispatch Celery task
-            celery_app.send_task(
-                "webui.tasks.process_collection_operation",
-                args=[operation.uuid],
-                task_id=str(uuid.uuid4()),
-            )
+        # Dispatch Celery task
+        celery_app.send_task(
+            "webui.tasks.process_collection_operation",
+            args=[operation.uuid],
+            task_id=str(uuid.uuid4()),
+        )
 
-            # Task ID is now set inside the Celery task as first action for reliability
-            # No need to set it here anymore
-
-            # Transaction commits here automatically
+        # Commit the transaction
+        await self.db_session.commit()
 
         # Convert ORM object to dictionary
         return {

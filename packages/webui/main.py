@@ -202,6 +202,23 @@ def create_app() -> FastAPI:
     app.include_router(v2_operations.router)
     app.include_router(v2_search.router)
 
+    # Mount static files BEFORE catch-all route
+    # Mount static files with proper path resolution
+    base_dir = Path(__file__).resolve().parent
+    static_dir = base_dir / "static"
+    assets_dir = static_dir / "assets"
+
+    # Ensure directories exist (for tests and fresh environments)
+    static_dir.mkdir(parents=True, exist_ok=True)
+    assets_dir.mkdir(parents=True, exist_ok=True)
+
+    # Mount assets directory for React build
+    app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    # Mount static files
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+    # Include root router AFTER static file mounts to ensure catch-all doesn't intercept static files
     app.include_router(root.router)  # No prefix for static + root
 
     # Mount WebSocket endpoints at the app level
@@ -222,21 +239,6 @@ def create_app() -> FastAPI:
     async def health_check() -> dict[str, str]:
         """Health check endpoint for Docker health monitoring"""
         return {"status": "healthy", "service": "webui"}
-
-    # Mount static files with proper path resolution
-    base_dir = Path(__file__).resolve().parent
-    static_dir = base_dir / "static"
-    assets_dir = static_dir / "assets"
-
-    # Ensure directories exist (for tests and fresh environments)
-    static_dir.mkdir(parents=True, exist_ok=True)
-    assets_dir.mkdir(parents=True, exist_ok=True)
-
-    # Mount assets directory for React build
-    app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
-
-    # Mount static files
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     return app
 
