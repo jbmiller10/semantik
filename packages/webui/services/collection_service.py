@@ -16,7 +16,6 @@ from webui.utils.qdrant_manager import qdrant_manager
 logger = logging.getLogger(__name__)
 
 # Configuration constants
-DEFAULT_VECTOR_DIMENSION = 768
 QDRANT_COLLECTION_PREFIX = "collection_"
 
 
@@ -179,10 +178,10 @@ class CollectionService:
         )
 
         # Validate collection state
-        if collection.status not in [CollectionStatus.READY, CollectionStatus.DEGRADED]:
+        if collection.status not in [CollectionStatus.PENDING, CollectionStatus.READY, CollectionStatus.DEGRADED]:
             raise InvalidStateError(
                 f"Cannot add source to collection in {collection.status} state. "
-                f"Collection must be in {CollectionStatus.READY} or {CollectionStatus.DEGRADED} state."
+                f"Collection must be in {CollectionStatus.PENDING}, {CollectionStatus.READY} or {CollectionStatus.DEGRADED} state."
             )
 
         # Check if there's already an active operation
