@@ -10,6 +10,16 @@ interface AddDataToCollectionModalProps {
   onSuccess: () => void;
 }
 
+// Utility function for consistent input styling
+const getInputClassName = (hasError: boolean, isDisabled: boolean) =>
+  `mt-1 block w-full rounded-md shadow-sm sm:text-sm px-3 py-2 border appearance-none ${
+    hasError
+      ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+      : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+  } ${
+    isDisabled ? 'bg-gray-100 cursor-not-allowed' : ''
+  }`;
+
 function AddDataToCollectionModal({
   collection,
   onClose,
@@ -77,7 +87,7 @@ function AddDataToCollectionModal({
                 value={sourcePath}
                 onChange={(e) => setSourcePath(e.target.value)}
                 placeholder="/path/to/documents"
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm px-3 py-2 appearance-none"
+                className={getInputClassName(false, isSubmitting)}
                 required
                 autoFocus
               />
