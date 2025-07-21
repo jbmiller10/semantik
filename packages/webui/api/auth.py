@@ -8,7 +8,6 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from shared.database.base import AuthRepository, UserRepository
-from shared.database.factory import create_auth_repository, create_user_repository
 from webui.auth import (
     Token,
     User,
@@ -20,6 +19,7 @@ from webui.auth import (
     get_password_hash,
     pwd_context,
 )
+from packages.webui.dependencies import get_auth_repository, get_user_repository
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 @router.post("/register", response_model=User)
 async def register(
     user_data: UserCreate,
-    user_repo: UserRepository = Depends(create_user_repository),
+    user_repo: UserRepository = Depends(get_user_repository),
 ) -> User:
     """Register a new user"""
     try:
@@ -53,8 +53,8 @@ async def register(
 @router.post("/login", response_model=Token)
 async def login(
     login_data: UserLogin,
-    user_repo: UserRepository = Depends(create_user_repository),
-    auth_repo: AuthRepository = Depends(create_auth_repository),
+    user_repo: UserRepository = Depends(get_user_repository),
+    auth_repo: AuthRepository = Depends(get_auth_repository),
 ) -> Token:
     """Login and receive access token"""
     # Authenticate user
@@ -87,8 +87,8 @@ async def login(
 @router.post("/refresh", response_model=Token)
 async def refresh_token(
     refresh_token: str,
-    user_repo: UserRepository = Depends(create_user_repository),
-    auth_repo: AuthRepository = Depends(create_auth_repository),
+    user_repo: UserRepository = Depends(get_user_repository),
+    auth_repo: AuthRepository = Depends(get_auth_repository),
 ) -> Token:
     """Refresh access token using refresh token"""
     user_id = await auth_repo.verify_refresh_token(refresh_token)
@@ -119,7 +119,7 @@ async def refresh_token(
 async def logout(
     refresh_token: str | None = None,
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    auth_repo: AuthRepository = Depends(create_auth_repository),
+    auth_repo: AuthRepository = Depends(get_auth_repository),
 ) -> dict[str, str]:
     """Logout and revoke refresh token"""
     if refresh_token:

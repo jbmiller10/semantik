@@ -14,7 +14,7 @@ class BaseRepository(ABC, Generic[T]):
     """Abstract base repository interface.
 
     This defines the common operations that all repositories should support,
-    regardless of the underlying storage mechanism (SQLite, PostgreSQL, etc).
+    regardless of the underlying storage mechanism.
     """
 
     @abstractmethod
@@ -41,8 +41,7 @@ class BaseRepository(ABC, Generic[T]):
 class JobRepository(ABC):
     """Abstract interface for job data access.
 
-    This will be implemented by SQLiteJobRepository initially,
-    and can be replaced with PostgreSQLJobRepository in the future.
+    This is implemented by PostgreSQLJobRepository.
     """
 
     @abstractmethod
@@ -178,3 +177,39 @@ class AuthRepository(ABC):
     @abstractmethod
     async def update_user_last_login(self, user_id: str) -> None:
         """Update user's last login timestamp."""
+
+
+class ApiKeyRepository(ABC):
+    """Abstract interface for API key data access."""
+
+    @abstractmethod
+    async def create_api_key(self, user_id: str, name: str, permissions: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Create a new API key for a user."""
+
+    @abstractmethod
+    async def get_api_key(self, api_key_id: str) -> dict[str, Any] | None:
+        """Get an API key by ID."""
+
+    @abstractmethod
+    async def get_api_key_by_hash(self, key_hash: str) -> dict[str, Any] | None:
+        """Get an API key by its hash."""
+
+    @abstractmethod
+    async def list_user_api_keys(self, user_id: str) -> list[dict[str, Any]]:
+        """List all API keys for a user."""
+
+    @abstractmethod
+    async def update_api_key(self, api_key_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
+        """Update an API key."""
+
+    @abstractmethod
+    async def delete_api_key(self, api_key_id: str) -> bool:
+        """Delete an API key."""
+
+    @abstractmethod
+    async def verify_api_key(self, api_key: str) -> dict[str, Any] | None:
+        """Verify an API key and return associated data if valid."""
+
+    @abstractmethod
+    async def update_last_used(self, api_key_id: str) -> None:
+        """Update the last used timestamp for an API key."""

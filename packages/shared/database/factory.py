@@ -1,109 +1,69 @@
-"""Repository factory for dependency injection.
+"""Repository factory for PostgreSQL implementations.
 
-This module provides factory functions to create repository instances,
-allowing for easy switching between different implementations.
+This module provides factory functions to create PostgreSQL repository instances.
+All repositories now use PostgreSQL exclusively - SQLite support has been removed.
 """
 
+import logging
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-from .base import AuthRepository, CollectionRepository, FileRepository, JobRepository, UserRepository
-from .sqlite_repository import (
-    SQLiteAuthRepository,
-    SQLiteCollectionRepository,
-    SQLiteFileRepository,
-    SQLiteJobRepository,
-    SQLiteUserRepository,
-)
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .base import ApiKeyRepository, AuthRepository, UserRepository
+from .database import AsyncSessionLocal
+
+logger = logging.getLogger(__name__)
 
 
-def create_job_repository() -> JobRepository:
-    """Create a job repository instance.
-
-    Returns:
-        JobRepository instance
-
-    Note:
-        This returns the SQLite implementation for backward compatibility.
-        Jobs have been replaced by operations in the new schema.
-        This function will be removed in a future phase.
-    """
-    return SQLiteJobRepository()
-
-
-def create_user_repository() -> UserRepository:
+def create_user_repository(session: AsyncSession) -> UserRepository:
     """Create a user repository instance.
-
+    
+    Args:
+        session: AsyncSession for database operations
+        
     Returns:
-        UserRepository instance
+        PostgreSQL UserRepository instance
     """
-    return SQLiteUserRepository()
+    from packages.webui.repositories.postgres import PostgreSQLUserRepository
+    return PostgreSQLUserRepository(session)
 
 
-def create_file_repository() -> FileRepository:
-    """Create a file repository instance.
-
-    Returns:
-        FileRepository instance
-
-    Note:
-        This returns the SQLite implementation for backward compatibility.
-        Files have been replaced by documents in the new schema.
-        This function will be removed in a future phase.
-    """
-    return SQLiteFileRepository()
-
-
-def create_collection_repository() -> CollectionRepository:
-    """Create a collection repository instance.
-
-    Returns:
-        CollectionRepository instance
-
-    Note:
-        This returns the SQLite implementation for backward compatibility.
-        The new CollectionRepository uses SQLAlchemy and should be used for new code.
-        This function will be removed in a future phase.
-    """
-    return SQLiteCollectionRepository()
-
-
-def create_auth_repository() -> AuthRepository:
+def create_auth_repository(session: AsyncSession) -> AuthRepository:
     """Create an auth repository instance.
-
+    
+    Args:
+        session: AsyncSession for database operations
+        
     Returns:
-        AuthRepository instance
+        PostgreSQL AuthRepository instance
     """
-    return SQLiteAuthRepository()
+    from packages.webui.repositories.postgres import PostgreSQLAuthRepository
+    return PostgreSQLAuthRepository(session)
 
 
-def create_all_repositories() -> dict[str, object]:
-    """Create all repository instances.
-
+def create_api_key_repository(session: AsyncSession) -> ApiKeyRepository:
+    """Create an API key repository instance.
+    
+    Args:
+        session: AsyncSession for database operations
+        
     Returns:
-        Dictionary mapping repository names to instances
-
-    Note:
-        Job, File, and Collection repositories are using the old SQLite implementation
-        for backward compatibility. They will be replaced in a future phase.
+        PostgreSQL ApiKeyRepository instance
     """
-    return {
-        "job": create_job_repository(),
-        "user": create_user_repository(),
-        "file": create_file_repository(),
-        "collection": create_collection_repository(),
-        "auth": create_auth_repository(),
-    }
+    from packages.webui.repositories.postgres import PostgreSQLApiKeyRepository
+    return PostgreSQLApiKeyRepository(session)
 
 
 def create_operation_repository() -> Any:
-    """Create an operation repository instance.
-
-    Note: This is a compatibility shim for the new async repositories.
-    The actual implementation will create a session and repository on first use.
+    """Create an operation repository instance with session management.
+    
+    This maintains compatibility with existing code that expects
+    a repository that manages its own session.
+    
+    Returns:
+        Async wrapper around OperationRepository
     """
-
-    from .database import AsyncSessionLocal
     from .repositories.operation_repository import OperationRepository
 
     class AsyncOperationRepositoryWrapper:
@@ -143,13 +103,14 @@ def create_operation_repository() -> Any:
 
 
 def create_document_repository() -> Any:
-    """Create a document repository instance.
-
-    Note: This is a compatibility shim for the new async repositories.
-    The actual implementation will create a session and repository on first use.
+    """Create a document repository instance with session management.
+    
+    This maintains compatibility with existing code that expects
+    a repository that manages its own session.
+    
+    Returns:
+        Async wrapper around DocumentRepository
     """
-
-    from .database import AsyncSessionLocal
     from .repositories.document_repository import DocumentRepository
 
     class AsyncDocumentRepositoryWrapper:
@@ -186,3 +147,119 @@ def create_document_repository() -> Any:
             return async_wrapper
 
     return AsyncDocumentRepositoryWrapper()
+
+
+# Legacy compatibility functions - will be removed in future
+def create_job_repository() -> Any:
+    """Legacy job repository - raises error.
+    
+    Note: This is deprecated. Jobs have been replaced by operations.
+    Please migrate to OperationRepository.
+    
+    Raises:
+        NotImplementedError: Always raised to force migration
+    """
+    raise NotImplementedError(
+        "JobRepository is deprecated and has been removed. "
+        "Please migrate to OperationRepository."
+    )
+
+
+def create_file_repository() -> Any:
+    """Legacy file repository - raises error.
+    
+    Note: This is deprecated. Files have been replaced by documents.
+    Please migrate to DocumentRepository.
+    
+    Raises:
+        NotImplementedError: Always raised to force migration
+    """
+    raise NotImplementedError(
+        "FileRepository is deprecated and has been removed. "
+        "Please migrate to DocumentRepository."
+    )
+
+
+def create_collection_repository() -> Any:
+    """Create a collection repository instance.
+    
+    Note: Use packages.shared.database.repositories.collection_repository.CollectionRepository
+    directly with an async session for new code.
+    
+    Returns:
+        Async wrapper around CollectionRepository
+    """
+    from .repositories.collection_repository import CollectionRepository
+
+    class AsyncCollectionRepositoryWrapper:
+        """Async wrapper that manages its own database session."""
+
+        def __init__(self) -> None:
+            self._session: Any | None = None  # AsyncSession
+            self._repo: Any | None = None  # CollectionRepository
+
+        async def _ensure_initialized(self) -> None:
+            """Ensure repository is initialized with a session."""
+            if self._repo is None:
+                self._session = AsyncSessionLocal()
+                self._repo = CollectionRepository(self._session)
+
+        async def __aenter__(self) -> "AsyncCollectionRepositoryWrapper":
+            await self._ensure_initialized()
+            return self
+
+        async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+            if self._session:
+                await self._session.close()
+
+        def __getattr__(self, name: str) -> Callable[..., Coroutine[Any, Any, Any]]:
+            """Proxy all attribute access to the repository."""
+
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                await self._ensure_initialized()
+                result = await getattr(self._repo, name)(*args, **kwargs)
+                if self._session:
+                    await self._session.commit()  # Auto-commit for compatibility
+                return result
+
+            return async_wrapper
+
+    return AsyncCollectionRepositoryWrapper()
+
+
+def create_all_repositories(session: AsyncSession) -> dict[str, object]:
+    """Create all repository instances with the provided session.
+    
+    Args:
+        session: AsyncSession for database operations
+        
+    Returns:
+        Dictionary mapping repository names to instances
+    """
+    return {
+        "user": create_user_repository(session),
+        "auth": create_auth_repository(session),
+        "api_key": create_api_key_repository(session),
+        # Legacy repositories that manage their own sessions
+        "operation": create_operation_repository(),
+        "document": create_document_repository(),
+        "collection": create_collection_repository(),
+    }
+
+
+# Helper function for dependency injection in FastAPI
+async def get_db_session() -> AsyncSession:
+    """Get a database session for dependency injection.
+    
+    Yields:
+        AsyncSession instance
+    """
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()

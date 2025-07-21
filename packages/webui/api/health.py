@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from shared.database.connection_pool import get_db_connection
+from shared.database import check_postgres_connection
 from webui.utils.qdrant_manager import qdrant_manager
 from webui.websocket_manager import ws_manager
 
@@ -83,14 +83,12 @@ async def _check_redis_health() -> dict[str, Any]:
 async def _check_database_health() -> dict[str, Any]:
     """Check database connection health with timeout."""
     try:
-        # Use asyncio to add timeout to database operation
-        def _db_check() -> bool:
-            with get_db_connection() as conn:
-                conn.execute("SELECT 1")
-                return True
-
-        await asyncio.wait_for(asyncio.get_event_loop().run_in_executor(None, _db_check), timeout=HEALTH_CHECK_TIMEOUT)
-        return {"status": "healthy", "message": "Database connection successful"}
+        # Use the PostgreSQL connection check with timeout
+        result = await asyncio.wait_for(check_postgres_connection(), timeout=HEALTH_CHECK_TIMEOUT)
+        if result:
+            return {"status": "healthy", "message": "Database connection successful"}
+        else:
+            return {"status": "unhealthy", "message": "Database connection failed"}
     except TimeoutError:
         return {"status": "unhealthy", "message": "Database connection timeout"}
     except Exception as e:
@@ -180,7 +178,7 @@ async def readiness_probe() -> JSONResponse:
 
     This endpoint checks connectivity to all external dependencies:
     - Redis (for job queue and WebSocket management)
-    - Database (SQLite connection pool)
+    - Database (PostgreSQL)
     - Qdrant (vector database)
     - Search API (for search functionality)
     - Embedding Service (for local embedding operations)

@@ -76,7 +76,7 @@ class OperationRepository:
                 collection_id=collection_id,
                 user_id=user_id,
                 type=operation_type,
-                status=OperationStatus.PENDING,
+                status=OperationStatus.PENDING,  # Pass enum object directly
                 config=config,
                 meta=meta or {},
             )
@@ -212,7 +212,7 @@ class OperationRepository:
             if not operation:
                 raise EntityNotFoundError("operation", operation_uuid)
 
-            operation.status = status
+            operation.status = status  # Pass enum object directly
 
             if error_message is not None:
                 operation.error_message = error_message
@@ -331,13 +331,17 @@ class OperationRepository:
 
             # Handle status filtering
             if status_list is not None and len(status_list) > 0:
-                query = query.where(Operation.status.in_(status_list))
+                # Convert enum values to strings for PostgreSQL compatibility
+                status_values = [s.value if hasattr(s, 'value') else s for s in status_list]
+                query = query.where(Operation.status.in_(status_values))
             elif status is not None:
                 # Backwards compatibility
-                query = query.where(Operation.status == status)
+                status_value = status.value if hasattr(status, 'value') else status
+                query = query.where(Operation.status == status_value)
 
             if operation_type is not None:
-                query = query.where(Operation.type == operation_type)
+                type_value = operation_type.value if hasattr(operation_type, 'value') else operation_type
+                query = query.where(Operation.type == type_value)
 
             # Get total count
             count_query = select(func.count()).select_from(query.subquery())
@@ -382,7 +386,7 @@ class OperationRepository:
             if operation.status not in (OperationStatus.PENDING, OperationStatus.PROCESSING):
                 raise ValidationError(f"Cannot cancel operation in {operation.status} status", "status")
 
-            operation.status = OperationStatus.CANCELLED
+            operation.status = OperationStatus.CANCELLED  # Pass enum object directly
             operation.completed_at = datetime.now(UTC)
 
             await self.session.flush()
@@ -409,7 +413,7 @@ class OperationRepository:
             result = await self.session.scalar(
                 select(func.count(Operation.id)).where(
                     Operation.collection_id == collection_id,
-                    Operation.status.in_([OperationStatus.PENDING, OperationStatus.PROCESSING]),
+                    Operation.status.in_([OperationStatus.PENDING.value, OperationStatus.PROCESSING.value]),
                 )
             )
             return result or 0
@@ -429,7 +433,7 @@ class OperationRepository:
         try:
             stmt = select(Operation).where(
                 Operation.collection_id == collection_id,
-                Operation.status.in_([OperationStatus.PENDING, OperationStatus.PROCESSING]),
+                Operation.status.in_([OperationStatus.PENDING.value, OperationStatus.PROCESSING.value]),
             )
             result = await self.session.execute(stmt)
             return list(result.scalars().all())

@@ -42,7 +42,7 @@ Create a `.env.test` file for test-specific configuration:
 USE_MOCK_EMBEDDINGS=true
 
 # Use test database
-WEBUI_DB=data/test.db
+DATABASE_URL=postgresql://test_user:test_pass@localhost:5432/semantik_test
 
 # Disable authentication for API tests
 DISABLE_AUTH=true
@@ -514,11 +514,12 @@ coverage-badge -o coverage.svg
    poetry run pytest
    ```
 
-2. **Database Lock Errors**
+2. **Database Connection Errors**
    ```bash
    # Use separate test database
-   export WEBUI_DB=data/test.db
-   rm data/test.db
+   export DATABASE_URL=postgresql://test_user:test_pass@localhost:5432/semantik_test
+   # Ensure test database exists
+   createdb semantik_test
    poetry run pytest
    ```
 

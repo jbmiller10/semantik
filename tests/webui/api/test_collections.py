@@ -49,8 +49,8 @@ class TestListCollections:
     """Test cases for list_collections endpoint"""
 
     @pytest.mark.asyncio()
-    async def test_list_collections_single_job_per_collection(self, mock_collection_repository, mock_current_user):
-        """Test listing collections where each collection has a single job"""
+    async def test_list_collections_single_operation_per_collection(self, mock_collection_repository, mock_current_user):
+        """Test listing collections where each collection has a single operation"""
 
         # Mock repository response
         async def mock_list_collections(*_args, **_kwargs):
@@ -62,7 +62,7 @@ class TestListCollections:
                     "model_name": "text-embedding-ada-002",
                     "created_at": "2024-01-01T00:00:00",
                     "updated_at": "2024-01-02T00:00:00",
-                    "job_count": 1,
+                    "operation_count": 1,
                 },
                 {
                     "name": "documentation",
@@ -71,7 +71,7 @@ class TestListCollections:
                     "model_name": "all-MiniLM-L6-v2",
                     "created_at": "2024-01-03T00:00:00",
                     "updated_at": "2024-01-04T00:00:00",
-                    "job_count": 1,
+                    "operation_count": 1,
                 },
             ]
 
@@ -90,17 +90,17 @@ class TestListCollections:
         assert result[0].total_files == 10
         assert result[0].total_vectors == 100
         assert result[0].model_name == "text-embedding-ada-002"
-        assert result[0].job_count == 1
+        assert result[0].operation_count == 1
 
         assert result[1].name == "documentation"
         assert result[1].total_files == 5
         assert result[1].total_vectors == 50
         assert result[1].model_name == "all-MiniLM-L6-v2"
-        assert result[1].job_count == 1
+        assert result[1].operation_count == 1
 
     @pytest.mark.asyncio()
-    async def test_list_collections_multiple_jobs_aggregation(self, mock_collection_repository, mock_current_user):
-        """Test listing collections with proper aggregation of multiple jobs"""
+    async def test_list_collections_multiple_operations_aggregation(self, mock_collection_repository, mock_current_user):
+        """Test listing collections with proper aggregation of multiple operations"""
         # Mock repository response with aggregated data
         setup_async_mock(
             mock_collection_repository,
@@ -108,12 +108,12 @@ class TestListCollections:
             [
                 {
                     "name": "large_dataset",
-                    "total_files": 150,  # Aggregated from 3 jobs
+                    "total_files": 150,  # Aggregated from 3 operations
                     "total_vectors": 1500,  # Aggregated
                     "model_name": "text-embedding-ada-002",
                     "created_at": "2024-01-01T00:00:00",
                     "updated_at": "2024-01-05T00:00:00",
-                    "job_count": 3,  # Multiple jobs
+                    "operation_count": 3,  # Multiple operations
                 }
             ],
         )
@@ -126,7 +126,7 @@ class TestListCollections:
         assert result[0].name == "large_dataset"
         assert result[0].total_files == 150
         assert result[0].total_vectors == 1500
-        assert result[0].job_count == 3
+        assert result[0].operation_count == 3
 
     @pytest.mark.asyncio()
     async def test_list_collections_handles_null_values(self, mock_collection_repository, mock_current_user):
@@ -143,7 +143,7 @@ class TestListCollections:
                     "model_name": None,
                     "created_at": "2024-01-01T00:00:00",
                     "updated_at": "2024-01-01T00:00:00",
-                    "job_count": 1,
+                    "operation_count": 1,
                 }
             ],
         )
@@ -174,10 +174,10 @@ class TestGetCollectionDetails:
     """Test cases for get_collection_details endpoint"""
 
     @pytest.mark.asyncio()
-    async def test_get_collection_details_single_job(
+    async def test_get_collection_details_single_operation(
         self, mock_collection_repository, mock_qdrant_manager, mock_current_user
     ):
-        """Test getting details for a collection with a single job"""
+        """Test getting details for a collection with a single operation"""
         mock_qm, mock_client = mock_qdrant_manager
 
         # Mock database response
@@ -190,7 +190,7 @@ class TestGetCollectionDetails:
                     "total_files": 10,
                     "total_vectors": 100,
                     "total_size": 1000000,
-                    "job_count": 1,
+                    "operation_count": 1,
                 },
                 "configuration": {
                     "model_name": "text-embedding-ada-002",
@@ -201,9 +201,9 @@ class TestGetCollectionDetails:
                     "instruction": None,
                 },
                 "source_directories": ["/data/papers"],
-                "jobs": [
+                "operations": [
                     {
-                        "id": "job123",
+                        "id": "operation123",
                         "status": "completed",
                         "created_at": "2024-01-01T00:00:00",
                         "updated_at": "2024-01-02T00:00:00",
@@ -235,7 +235,7 @@ class TestGetCollectionDetails:
         mock_collection_repository.get_collection_details.assert_called_once_with("research_papers", user_id="user123")
 
         # Verify Qdrant call
-        mock_client.get_collection.assert_called_once_with("job_job123")
+        mock_client.get_collection.assert_called_once_with("operation_operation123")
 
         # Verify result
         assert isinstance(result, CollectionDetails)
@@ -243,17 +243,17 @@ class TestGetCollectionDetails:
         assert result.stats.total_files == 10
         assert result.stats.total_vectors == 150  # Updated from Qdrant
         assert result.configuration.model_name == "text-embedding-ada-002"
-        assert len(result.jobs) == 1
-        assert result.jobs[0].id == "job123"
+        assert len(result.operations) == 1
+        assert result.operations[0].id == "operation123"
 
     @pytest.mark.asyncio()
-    async def test_get_collection_details_multiple_jobs(
+    async def test_get_collection_details_multiple_operations(
         self, mock_collection_repository, mock_qdrant_manager, mock_current_user
     ):
-        """Test getting details for a collection with multiple jobs (parent/child structure)"""
+        """Test getting details for a collection with multiple operations (parent/child structure)"""
         mock_qm, mock_client = mock_qdrant_manager
 
-        # Mock database response with parent and child jobs
+        # Mock database response with parent and child operations
         setup_async_mock(
             mock_collection_repository,
             "get_collection_details",
@@ -263,7 +263,7 @@ class TestGetCollectionDetails:
                     "total_files": 150,
                     "total_vectors": 1000,
                     "total_size": 10000000,
-                    "job_count": 3,
+                    "operation_count": 3,
                 },
                 "configuration": {
                     "model_name": "text-embedding-ada-002",
@@ -274,9 +274,9 @@ class TestGetCollectionDetails:
                     "instruction": "Extract key concepts",
                 },
                 "source_directories": ["/data/part1", "/data/part2", "/data/part3"],
-                "jobs": [
-                    {  # Parent job
-                        "id": "parent_job",
+                "operations": [
+                    {  # Parent operation
+                        "id": "parent_operation",
                         "status": "completed",
                         "created_at": "2024-01-01T00:00:00",
                         "updated_at": "2024-01-01T12:00:00",
@@ -286,8 +286,8 @@ class TestGetCollectionDetails:
                         "failed_files": 0,
                         "mode": "full",
                     },
-                    {  # Child job 1
-                        "id": "child_job1",
+                    {  # Child operation 1
+                        "id": "child_operation1",
                         "status": "completed",
                         "created_at": "2024-01-02T00:00:00",
                         "updated_at": "2024-01-02T12:00:00",
@@ -297,8 +297,8 @@ class TestGetCollectionDetails:
                         "failed_files": 0,
                         "mode": "update",
                     },
-                    {  # Child job 2
-                        "id": "child_job2",
+                    {  # Child operation 2
+                        "id": "child_operation2",
                         "status": "completed",
                         "created_at": "2024-01-03T00:00:00",
                         "updated_at": "2024-01-03T12:00:00",
@@ -312,7 +312,7 @@ class TestGetCollectionDetails:
             },
         )
 
-        # Mock Qdrant responses for each job
+        # Mock Qdrant responses for each operation
         mock_info1 = MagicMock(spec=CollectionInfo)
         mock_info1.points_count = 500
         mock_info2 = MagicMock(spec=CollectionInfo)
@@ -327,18 +327,18 @@ class TestGetCollectionDetails:
             collection_name="large_dataset", current_user=mock_current_user, collection_repo=mock_collection_repository
         )
 
-        # Verify Qdrant was called for each job
+        # Verify Qdrant was called for each operation
         assert mock_client.get_collection.call_count == 3
-        mock_client.get_collection.assert_any_call("job_parent_job")
-        mock_client.get_collection.assert_any_call("job_child_job1")
-        mock_client.get_collection.assert_any_call("job_child_job2")
+        mock_client.get_collection.assert_any_call("operation_parent_operation")
+        mock_client.get_collection.assert_any_call("operation_child_operation1")
+        mock_client.get_collection.assert_any_call("operation_child_operation2")
 
         # Verify result
         assert result.name == "large_dataset"
         assert result.stats.total_files == 150
         assert result.stats.total_vectors == 1800  # 500 + 600 + 700
-        assert result.stats.job_count == 3
-        assert len(result.jobs) == 3
+        assert result.stats.operation_count == 3
+        assert len(result.operations) == 3
         assert len(result.source_directories) == 3
 
     @pytest.mark.asyncio()
@@ -375,7 +375,7 @@ class TestGetCollectionDetails:
                     "total_files": 10,
                     "total_vectors": 100,
                     "total_size": 1000000,
-                    "job_count": 1,
+                    "operation_count": 1,
                 },
                 "configuration": {
                     "model_name": "text-embedding-ada-002",
@@ -386,9 +386,9 @@ class TestGetCollectionDetails:
                     "instruction": None,
                 },
                 "source_directories": ["/data"],
-                "jobs": [
+                "operations": [
                     {
-                        "id": "job123",
+                        "id": "operation123",
                         "status": "completed",
                         "created_at": "2024-01-01T00:00:00",
                         "updated_at": "2024-01-02T00:00:00",
@@ -488,10 +488,10 @@ class TestDeleteCollection:
     """Test cases for delete_collection endpoint"""
 
     @pytest.mark.asyncio()
-    async def test_delete_collection_single_job(
+    async def test_delete_collection_single_operation(
         self, mock_collection_repository, mock_qdrant_manager, mock_current_user
     ):
-        """Test deleting a collection with a single job"""
+        """Test deleting a collection with a single operation"""
         mock_qm, mock_client = mock_qdrant_manager
 
         # Mock database response
@@ -499,8 +499,8 @@ class TestDeleteCollection:
             mock_collection_repository,
             "delete_collection",
             {
-                "job_ids": ["job123"],
-                "qdrant_collections": ["job_job123"],
+                "operation_ids": ["operation123"],
+                "qdrant_collections": ["operation_operation123"],
             },
         )
 
@@ -510,14 +510,14 @@ class TestDeleteCollection:
         # Mock filesystem (patch shutil)
         with patch("webui.api.collections.shutil.rmtree"), patch("webui.api.collections.Path") as mock_path:
             # Mock path existence
-            mock_job_dir = MagicMock()
-            mock_job_dir.exists.return_value = True
+            mock_operation_dir = MagicMock()
+            mock_operation_dir.exists.return_value = True
             mock_output_dir = MagicMock()
             mock_output_dir.exists.return_value = True
 
             mock_path.return_value.__truediv__.side_effect = [
-                mock_job_dir,  # /app/jobs/job123
-                mock_output_dir,  # /app/output/job123
+                mock_operation_dir,  # /app/operations/operation123
+                mock_output_dir,  # /app/output/operation123
             ]
 
             # Call the function
@@ -533,29 +533,29 @@ class TestDeleteCollection:
         )
 
         # Verify Qdrant deletion
-        mock_client.delete_collection.assert_called_once_with("job_job123")
+        mock_client.delete_collection.assert_called_once_with("operation_operation123")
 
         # Verify result
-        assert result["deleted"]["jobs"] == 1
+        assert result["deleted"]["operations"] == 1
         assert result["deleted"]["qdrant_collections"] == 1
         assert result["deleted"]["artifacts"] == 2
         assert len(result["errors"]["qdrant_failures"]) == 0
         assert len(result["errors"]["artifact_failures"]) == 0
 
     @pytest.mark.asyncio()
-    async def test_delete_collection_multiple_jobs(
+    async def test_delete_collection_multiple_operations(
         self, mock_collection_repository, mock_qdrant_manager, mock_current_user
     ):
-        """Test deleting a collection with multiple jobs"""
+        """Test deleting a collection with multiple operations"""
         mock_qm, mock_client = mock_qdrant_manager
 
-        # Mock repository response with multiple jobs
+        # Mock repository response with multiple operations
         setup_async_mock(
             mock_collection_repository,
             "delete_collection",
             {
-                "job_ids": ["job1", "job2", "job3"],
-                "qdrant_collections": ["job_job1", "job_job2", "job_job3"],
+                "operation_ids": ["operation1", "operation2", "operation3"],
+                "qdrant_collections": ["operation_operation1", "operation_operation2", "operation_operation3"],
             },
         )
 
@@ -576,14 +576,14 @@ class TestDeleteCollection:
 
         # Verify Qdrant deletions
         assert mock_client.delete_collection.call_count == 3
-        mock_client.delete_collection.assert_any_call("job_job1")
-        mock_client.delete_collection.assert_any_call("job_job2")
-        mock_client.delete_collection.assert_any_call("job_job3")
+        mock_client.delete_collection.assert_any_call("operation_operation1")
+        mock_client.delete_collection.assert_any_call("operation_operation2")
+        mock_client.delete_collection.assert_any_call("operation_operation3")
 
         # Verify result
-        assert result["deleted"]["jobs"] == 3
+        assert result["deleted"]["operations"] == 3
         assert result["deleted"]["qdrant_collections"] == 3
-        assert result["deleted"]["artifacts"] == 6  # 2 directories per job
+        assert result["deleted"]["artifacts"] == 6  # 2 directories per operation
 
     @pytest.mark.asyncio()
     async def test_delete_collection_with_failures(
@@ -597,8 +597,8 @@ class TestDeleteCollection:
             mock_collection_repository,
             "delete_collection",
             {
-                "job_ids": ["job1", "job2"],
-                "qdrant_collections": ["job_job1", "job_job2"],
+                "operation_ids": ["operation1", "operation2"],
+                "qdrant_collections": ["operation_operation1", "operation_operation2"],
             },
         )
 
@@ -611,9 +611,9 @@ class TestDeleteCollection:
         # Mock filesystem with one failure
         with patch("webui.api.collections.shutil.rmtree") as mock_rmtree:
             mock_rmtree.side_effect = [
-                None,  # First job dir succeeds
+                None,  # First operation dir succeeds
                 None,  # First output dir succeeds
-                Exception("Permission denied"),  # Second job dir fails
+                Exception("Permission denied"),  # Second operation dir fails
                 None,  # Second output dir succeeds
             ]
 
@@ -629,11 +629,11 @@ class TestDeleteCollection:
                 )
 
         # Verify partial success
-        assert result["deleted"]["jobs"] == 2
+        assert result["deleted"]["operations"] == 2
         assert result["deleted"]["qdrant_collections"] == 1
         assert result["deleted"]["artifacts"] == 3
         assert len(result["errors"]["qdrant_failures"]) == 1
-        assert "job_job2" in result["errors"]["qdrant_failures"]
+        assert "operation_operation2" in result["errors"]["qdrant_failures"]
         assert len(result["errors"]["artifact_failures"]) == 1
 
     @pytest.mark.asyncio()
@@ -644,7 +644,7 @@ class TestDeleteCollection:
             mock_collection_repository,
             "delete_collection",
             {
-                "job_ids": [],
+                "operation_ids": [],
                 "qdrant_collections": [],
             },
         )
@@ -675,7 +675,7 @@ class TestGetCollectionFiles:
                 "files": [
                     {
                         "id": 1,
-                        "job_id": "job123",
+                        "operation_id": "job123",
                         "path": "/data/file1.txt",
                         "size": 1024,
                         "modified": "2024-01-01T00:00:00",
@@ -687,7 +687,7 @@ class TestGetCollectionFiles:
                     },
                     {
                         "id": 2,
-                        "job_id": "job123",
+                        "operation_id": "job123",
                         "path": "/data/file2.pdf",
                         "size": 2048,
                         "modified": "2024-01-02T00:00:00",

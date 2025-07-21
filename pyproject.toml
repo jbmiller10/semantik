@@ -41,10 +41,11 @@ questionary = "^2.0.1"
 rich = "^13.0.0"
 alembic = "^1.13.1"
 sqlalchemy = "^2.0.23"
+psycopg2-binary = "^2.9.9"
 celery = {extras = ["redis"], version = "^5.3.0"}
 redis = "^5.0.0"
 flower = "^2.0.0"
-aiosqlite = "^0.21.0"
+asyncpg = "^0.30.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

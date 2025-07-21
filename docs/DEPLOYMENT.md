@@ -50,8 +50,8 @@ docker-compose logs -f
 # Install dependencies
 poetry install
 
-# Initialize database
-poetry run python -c "from shared.database import init_db; init_db()"
+# Run database migrations
+poetry run alembic upgrade head
 
 # Start all services
 ./start_all_services.sh
@@ -69,7 +69,7 @@ ENVIRONMENT=production              # development, staging, production
 LOG_LEVEL=INFO                     # DEBUG, INFO, WARNING, ERROR
 
 # Database Configuration
-WEBUI_DB=data/webui.db            # SQLite database path
+DATABASE_URL=postgresql://user:pass@host:5432/db  # PostgreSQL connection
 QDRANT_HOST=localhost             # Qdrant vector database host
 QDRANT_PORT=6333                  # Qdrant port
 
@@ -234,7 +234,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 ## Volume Management
 
 ### Required Volumes
-1. **Data Volume**: SQLite database and job data
+1. **Data Volume**: Application data and job tracking
    ```bash
    ./data:/app/data
    ```
@@ -574,7 +574,7 @@ docker-compose run --rm search-api bash
 
 ### Regular Tasks
 1. **Log Rotation**: Configure logrotate or use Docker's json-file driver
-2. **Database Backup**: Daily backups of SQLite and Qdrant
+2. **Database Backup**: Daily backups of PostgreSQL and Qdrant
 3. **Model Cache Cleanup**: Remove unused models periodically
 4. **Security Updates**: Regular updates of base images and dependencies
 
@@ -612,11 +612,12 @@ export USE_AMP=true
 
 ### Database Optimization
 ```sql
--- SQLite optimizations
-PRAGMA journal_mode=WAL;
-PRAGMA synchronous=NORMAL;
-PRAGMA cache_size=10000;
-PRAGMA temp_store=MEMORY;
+-- PostgreSQL optimizations
+ALTER SYSTEM SET shared_buffers = '256MB';
+ALTER SYSTEM SET work_mem = '16MB';
+ALTER SYSTEM SET maintenance_work_mem = '64MB';
+ALTER SYSTEM SET effective_cache_size = '1GB';
+-- Restart PostgreSQL after these changes
 ```
 
 ### Caching Strategy

@@ -1,4 +1,4 @@
-"""Database retry utilities for handling SQLite locking issues"""
+"""Database retry utilities for handling database locking issues"""
 import asyncio
 import functools
 import logging

@@ -23,6 +23,7 @@ from starlette.responses import Response
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from shared.config import settings as shared_settings
+from shared.database import pg_connection_manager
 from shared.embedding import configure_global_embedding_service
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,6 @@ from .api import (  # noqa: E402
     files,
     health,
     internal,
-    jobs,
     metrics,
     models,
     root,
@@ -41,7 +41,6 @@ from .api import (  # noqa: E402
     settings,
 )
 from .api.files import scan_websocket  # noqa: E402
-from .api.jobs import operation_websocket_endpoint, websocket_endpoint  # noqa: E402
 from .api.v2 import collections as v2_collections  # noqa: E402
 from .api.v2 import operations as v2_operations  # noqa: E402
 from .api.v2 import search as v2_search  # noqa: E402
@@ -132,6 +131,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     # Startup
     logger.info("Starting up WebUI application...")
 
+    # Initialize PostgreSQL connection
+    logger.info("Initializing PostgreSQL connection...")
+    await pg_connection_manager.initialize()
+    logger.info("PostgreSQL connection initialized")
+
     # Initialize WebSocket manager
     await ws_manager.startup()
 
@@ -148,6 +152,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
 
     # Clean up WebSocket manager
     await ws_manager.shutdown()
+
+    # Close PostgreSQL connection
+    logger.info("Closing PostgreSQL connection...")
+    await pg_connection_manager.close()
+    logger.info("PostgreSQL connection closed")
 
 
 def create_app() -> FastAPI:
@@ -186,7 +195,6 @@ def create_app() -> FastAPI:
 
     # Include routers with their specific prefixes
     app.include_router(auth.router)
-    app.include_router(jobs.router)
     app.include_router(files.router)
     # app.include_router(collections.router)  # Removed v1 collections API - using v2 exclusively
     app.include_router(metrics.router)
@@ -222,17 +230,9 @@ def create_app() -> FastAPI:
     app.include_router(root.router)  # No prefix for static + root
 
     # Mount WebSocket endpoints at the app level
-    @app.websocket("/ws/{job_id}")
-    async def job_websocket(websocket: WebSocket, job_id: str) -> None:
-        await websocket_endpoint(websocket, job_id)
-
     @app.websocket("/ws/scan/{scan_id}")
     async def scan_ws(websocket: WebSocket, scan_id: str) -> None:
         await scan_websocket(websocket, scan_id)
-
-    @app.websocket("/ws/operations/{operation_id}")
-    async def operation_ws(websocket: WebSocket, operation_id: str) -> None:
-        await operation_websocket_endpoint(websocket, operation_id)
 
     # Add health check endpoint
     @app.get("/health")

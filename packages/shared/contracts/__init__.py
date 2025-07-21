@@ -14,16 +14,6 @@ from .errors import (
     create_not_found_error,
     create_validation_error,
 )
-from .jobs import (
-    AddToCollectionRequest,
-    CreateJobRequest,
-    JobFilter,
-    JobListResponse,
-    JobMetrics,
-    JobResponse,
-    JobStatus,
-    JobUpdateRequest,
-)
 from .search import (
     BatchSearchRequest,
     BatchSearchResponse,
@@ -49,15 +39,6 @@ __all__ = [
     "HybridSearchResult",
     "PreloadModelRequest",
     "PreloadModelResponse",
-    # Job contracts
-    "CreateJobRequest",
-    "AddToCollectionRequest",
-    "JobResponse",
-    "JobListResponse",
-    "JobStatus",
-    "JobMetrics",
-    "JobUpdateRequest",
-    "JobFilter",
     # Error contracts
     "ErrorResponse",
     "ErrorDetail",

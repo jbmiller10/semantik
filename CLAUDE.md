@@ -36,6 +36,31 @@ make run                          # Run webui with uvicorn directly
 poetry run python -m uvicorn packages.webui.main:app --reload  # Alternative
 ```
 
+### Fast Local Development (WebUI with Hot Reload)
+
+For faster development without Docker rebuild bottlenecks, you can run the WebUI locally while keeping supporting services in Docker:
+
+```bash
+# One-time setup: Configure local environment
+cp .env.local.example .env.local
+# Edit .env.local to match passwords from your .env file
+
+# Option 1: Use the all-in-one script
+make dev-local                    # Starts Docker services + local webui
+
+# Option 2: Manual control
+make docker-dev-up                # Start only supporting services in Docker
+make run                          # Run webui locally with hot reload
+make docker-dev-logs              # View Docker services logs
+make docker-dev-down              # Stop Docker services when done
+```
+
+This hybrid approach gives you:
+- Hot reload for webui changes (no Docker rebuild needed)
+- Direct access to webui logs in your terminal
+- Faster iteration on backend code
+- All supporting services (PostgreSQL, Redis, Qdrant, VecPipe) still in Docker
+
 ### Code Quality & Testing
 
 ```bash

@@ -15,7 +15,7 @@ from webui.auth import get_current_user, get_current_user_websocket
 from webui.schemas import FileInfo
 from webui.websocket_manager import ws_manager as manager
 
-from .jobs import SUPPORTED_EXTENSIONS
+from ..services.file_scanning_service import SUPPORTED_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 

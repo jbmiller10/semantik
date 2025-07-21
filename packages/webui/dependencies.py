@@ -7,7 +7,15 @@ from typing import Any
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database import get_db
+from packages.shared.database import (
+    ApiKeyRepository,
+    AuthRepository,
+    UserRepository,
+    create_api_key_repository,
+    create_auth_repository,
+    create_user_repository,
+    get_db,
+)
 from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from packages.shared.database.models import Collection
 from packages.shared.database.repositories.collection_repository import CollectionRepository
@@ -49,3 +57,42 @@ async def get_collection_for_user(
         raise HTTPException(status_code=404, detail=f"Collection with UUID '{collection_uuid}' not found") from e
     except AccessDeniedError as e:
         raise HTTPException(status_code=403, detail="You do not have permission to access this collection") from e
+
+
+async def get_user_repository(db: AsyncSession = Depends(get_db)) -> UserRepository:
+    """
+    FastAPI dependency that provides a UserRepository instance.
+    
+    Args:
+        db: Database session from get_db dependency
+        
+    Returns:
+        UserRepository instance configured with the database session
+    """
+    return create_user_repository(db)
+
+
+async def get_auth_repository(db: AsyncSession = Depends(get_db)) -> AuthRepository:
+    """
+    FastAPI dependency that provides an AuthRepository instance.
+    
+    Args:
+        db: Database session from get_db dependency
+        
+    Returns:
+        AuthRepository instance configured with the database session
+    """
+    return create_auth_repository(db)
+
+
+async def get_api_key_repository(db: AsyncSession = Depends(get_db)) -> ApiKeyRepository:
+    """
+    FastAPI dependency that provides an ApiKeyRepository instance.
+    
+    Args:
+        db: Database session from get_db dependency
+        
+    Returns:
+        ApiKeyRepository instance configured with the database session
+    """
+    return create_api_key_repository(db)

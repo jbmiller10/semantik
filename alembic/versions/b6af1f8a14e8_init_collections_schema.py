@@ -9,6 +9,8 @@ Create Date: 2025-07-15 15:25:43.925650
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from sqlalchemy import text
+from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
@@ -21,6 +23,40 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Upgrade schema to collections-based architecture."""
+
+    # Get the database dialect
+    connection = op.get_bind()
+    dialect_name = connection.dialect.name
+
+    # Define enum types
+    document_status_values = ["pending", "processing", "completed", "failed"]
+    permission_type_values = ["read", "write", "admin"]
+
+    # Create enum types based on dialect
+    if dialect_name == 'postgresql':
+        # Create PostgreSQL enum types using raw SQL to handle existence check
+        connection.execute(text("""
+            DO $$ BEGIN
+                CREATE TYPE document_status AS ENUM ('pending', 'processing', 'completed', 'failed');
+            EXCEPTION
+                WHEN duplicate_object THEN null;
+            END $$;
+        """))
+        connection.execute(text("""
+            DO $$ BEGIN
+                CREATE TYPE permission_type AS ENUM ('read', 'write', 'admin');
+            EXCEPTION
+                WHEN duplicate_object THEN null;
+            END $$;
+        """))
+        
+        # Use postgresql.ENUM with create_type=False since we already created them
+        document_status_enum = postgresql.ENUM(*document_status_values, name="document_status", create_type=False)
+        permission_type_enum = postgresql.ENUM(*permission_type_values, name="permission_type", create_type=False)
+    else:
+        # For SQLite, use SQLAlchemy's generic Enum
+        document_status_enum = sa.Enum(*document_status_values, name="document_status")
+        permission_type_enum = sa.Enum(*permission_type_values, name="permission_type")
 
     # Create new tables
 
@@ -63,7 +99,7 @@ def upgrade() -> None:
         sa.Column("content_hash", sa.String(), nullable=False),
         sa.Column(
             "status",
-            sa.Enum("pending", "processing", "completed", "failed", name="document_status"),
+            document_status_enum,
             nullable=False,
             server_default="pending",
         ),
@@ -106,7 +142,7 @@ def upgrade() -> None:
         sa.Column("collection_id", sa.String(), nullable=False),
         sa.Column("user_id", sa.Integer(), nullable=True),
         sa.Column("api_key_id", sa.String(), nullable=True),
-        sa.Column("permission", sa.Enum("read", "write", "admin", name="permission_type"), nullable=False),
+        sa.Column("permission", permission_type_enum, nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.CheckConstraint(
             "(user_id IS NOT NULL AND api_key_id IS NULL) OR (user_id IS NULL AND api_key_id IS NOT NULL)",
@@ -258,4 +294,9 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_collections_name"), table_name="collections")
     op.drop_table("collections")
 
-    # Note: SQLite doesn't support CREATE TYPE, so no need to drop types
+    # Drop enum types for PostgreSQL
+    connection = op.get_bind()
+    if connection.dialect.name == 'postgresql':
+        # Use raw SQL to drop types as SQLAlchemy doesn't always clean them up properly
+        connection.execute(text("DROP TYPE IF EXISTS document_status"))
+        connection.execute(text("DROP TYPE IF EXISTS permission_type"))
