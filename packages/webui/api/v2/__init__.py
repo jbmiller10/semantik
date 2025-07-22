@@ -2,7 +2,7 @@
 Version 2 API modules for collection-centric architecture.
 
 This package contains the new collection-centric API endpoints that replace
-the legacy job-centric endpoints.
+the legacy operation-centric endpoints.
 """
 
 from packages.webui.api.v2.collections import router as collections_router

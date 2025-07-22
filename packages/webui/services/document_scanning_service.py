@@ -1,4 +1,4 @@
-"""File scanning service for discovering and registering documents in collections."""
+"""Document scanning service for discovering and registering documents in collections."""
 
 import hashlib
 import logging
@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
-# Supported file extensions from webui.api.jobs
+# Supported file extensions for document scanning
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".text", ".pptx", ".eml", ".md", ".html"}
 
 # Maximum file size (500 MB)
@@ -24,11 +24,11 @@ MAX_FILE_SIZE = 500 * 1024 * 1024
 HASH_CHUNK_SIZE = 8192
 
 
-class FileScanningService:
+class DocumentScanningService:
     """Service for scanning directories and registering documents with deduplication."""
 
     def __init__(self, db_session: AsyncSession, document_repo: DocumentRepository):
-        """Initialize the file scanning service.
+        """Initialize the document scanning service.
 
         Args:
             db_session: Database session for transactions
@@ -58,7 +58,7 @@ class FileScanningService:
             source_id: Optional source ID to associate with documents
             recursive: Whether to scan subdirectories recursively
             batch_size: Number of files to process before committing (default 100)
-            progress_callback: Optional async callback for progress updates (files_processed, total_documents)
+            progress_callback: Optional async callback for progress updates (documents_processed, total_documents)
 
         Returns:
             Dictionary with scan statistics:
@@ -91,7 +91,7 @@ class FileScanningService:
 
         # Track batch processing
         batch_count = 0
-        files_processed = 0
+        documents_processed = 0
 
         # Use os.walk for memory-efficient directory traversal
         try:
@@ -123,7 +123,7 @@ class FileScanningService:
 
                             stats["total_size_bytes"] += result["file_size"]
                             batch_count += 1
-                            files_processed += 1
+                            documents_processed += 1
 
                             # Commit batch if needed
                             if batch_count >= batch_size:
@@ -132,13 +132,13 @@ class FileScanningService:
 
                             # Call progress callback if provided
                             if progress_callback:
-                                await progress_callback(files_processed, stats["total_documents_found"])
+                                await progress_callback(documents_processed, stats["total_documents_found"])
 
                         except Exception as e:
-                            logger.error(f"Failed to register file {file_path}: {e}")
+                            logger.error(f"Failed to register document {file_path}: {e}")
                             stats["errors"].append(
                                 {
-                                    "file": str(file_path),
+                                    "document": str(file_path),
                                     "error": str(e),
                                 }
                             )
@@ -154,7 +154,7 @@ class FileScanningService:
                     if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
                         continue
 
-                    stats["total_files_found"] += 1
+                    stats["total_documents_found"] += 1
 
                     # Process individual file
                     try:
@@ -166,9 +166,9 @@ class FileScanningService:
                         )
 
                         if result["is_new"]:
-                            stats["new_files_registered"] += 1
+                            stats["new_documents_registered"] += 1
                         else:
-                            stats["duplicate_files_skipped"] += 1
+                            stats["duplicate_documents_skipped"] += 1
 
                         stats["total_size_bytes"] += result["file_size"]
                         batch_count += 1
@@ -181,13 +181,13 @@ class FileScanningService:
 
                         # Call progress callback if provided
                         if progress_callback:
-                            await progress_callback(files_processed, stats["total_files_found"])
+                            await progress_callback(files_processed, stats["total_documents_found"])
 
                     except Exception as e:
-                        logger.error(f"Failed to register file {file_path}: {e}")
+                        logger.error(f"Failed to register document {file_path}: {e}")
                         stats["errors"].append(
                             {
-                                "file": str(file_path),
+                                "document": str(file_path),
                                 "error": str(e),
                             }
                         )
@@ -202,7 +202,7 @@ class FileScanningService:
 
         logger.info(
             f"Scan completed for {source_path}: "
-            f"{stats['total_documents_found']} files found, "
+            f"{stats['total_documents_found']} documents found, "
             f"{stats['new_documents_registered']} new, "
             f"{stats['duplicate_documents_skipped']} duplicates"
         )
@@ -238,11 +238,11 @@ class FileScanningService:
             stat = file_path.stat()
             file_size = stat.st_size
         except Exception as e:
-            raise ValueError(f"Cannot access file {file_path}: {e}") from e
+            raise ValueError(f"Cannot access document at {file_path}: {e}") from e
 
         # Check file size
         if file_size > MAX_FILE_SIZE:
-            raise ValueError(f"File too large: {file_size} bytes (max {MAX_FILE_SIZE} bytes)")
+            raise ValueError(f"Document too large: {file_size} bytes (max {MAX_FILE_SIZE} bytes)")
 
         # Calculate content hash
         content_hash = await self._calculate_file_hash(file_path)
@@ -270,7 +270,7 @@ class FileScanningService:
 
         # Log duplicate detection
         if not is_new:
-            logger.debug(f"Duplicate file detected: {file_path} (existing document created at {document.created_at})")
+            logger.debug(f"Duplicate document detected: {file_path} (existing document created at {document.created_at})")
 
         return {
             "is_new": is_new,
@@ -332,15 +332,15 @@ class FileScanningService:
 
         return mime_type
 
-    async def scan_file(
+    async def scan_document(
         self,
         collection_id: str,
         file_path: str,
         source_id: int | None = None,
     ) -> dict[str, Any]:
-        """Scan and register a single file.
+        """Scan and register a single document.
 
-        This is a convenience method for registering individual files.
+        This is a convenience method for registering individual documents.
 
         Args:
             collection_id: UUID of the collection
@@ -355,11 +355,11 @@ class FileScanningService:
         """
         path = Path(file_path)
         if not path.exists():
-            raise ValueError(f"File does not exist: {file_path}")
+            raise ValueError(f"Document does not exist at: {file_path}")
         if not path.is_file():
-            raise ValueError(f"Path is not a file: {file_path}")
+            raise ValueError(f"Path is not a document: {file_path}")
         if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
-            raise ValueError(f"Unsupported file type: {path.suffix}")
+            raise ValueError(f"Unsupported document type: {path.suffix}")
 
         result = await self._register_file(
             collection_id=collection_id,

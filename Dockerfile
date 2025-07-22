@@ -138,7 +138,7 @@ RUN useradd -m -u 1000 appuser && \
 
 # Create necessary directories with proper permissions
 RUN mkdir -p \
-    /app/data/jobs \
+    /app/data/operations \
     /app/data/ingest \
     /app/data/extract \
     /app/data/loaded \

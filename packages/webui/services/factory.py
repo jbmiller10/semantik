@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from packages.shared.database import get_db
 
 from .collection_service import CollectionService
-from .file_scanning_service import FileScanningService
+from .document_scanning_service import DocumentScanningService
 from .operation_service import OperationService
 from .resource_manager import ResourceManager
 from .search_service import SearchService
@@ -61,8 +61,8 @@ def create_collection_service(db: AsyncSession) -> CollectionService:
     )
 
 
-def create_file_scanning_service(db: AsyncSession) -> FileScanningService:
-    """Create a FileScanningService instance with required dependencies.
+def create_document_scanning_service(db: AsyncSession) -> DocumentScanningService:
+    """Create a DocumentScanningService instance with required dependencies.
 
     This factory function simplifies dependency injection for file scanning operations.
 
@@ -70,25 +70,25 @@ def create_file_scanning_service(db: AsyncSession) -> FileScanningService:
         db: AsyncSession instance from FastAPI's dependency injection
 
     Returns:
-        Configured FileScanningService instance
+        Configured DocumentScanningService instance
 
     Example:
         ```python
         from fastapi import Depends
         from sqlalchemy.ext.asyncio import AsyncSession
         from shared.database import get_db
-        from webui.services.factory import create_file_scanning_service
+        from webui.services.factory import create_document_scanning_service
 
-        async def get_file_scanning_service(
+        async def get_document_scanning_service(
             db: AsyncSession = Depends(get_db)
-        ) -> FileScanningService:
-            return create_file_scanning_service(db)
+        ) -> DocumentScanningService:
+            return create_document_scanning_service(db)
 
         # In your task or endpoint
         async def scan_and_register_files(
             collection_id: str,
             source_path: str,
-            service: FileScanningService = Depends(get_file_scanning_service),
+            service: DocumentScanningService = Depends(get_document_scanning_service),
         ):
             stats = await service.scan_directory_and_register_documents(
                 collection_id=collection_id,
@@ -101,7 +101,7 @@ def create_file_scanning_service(db: AsyncSession) -> FileScanningService:
     document_repo = DocumentRepository(db)
 
     # Create and return service
-    return FileScanningService(
+    return DocumentScanningService(
         db_session=db,
         document_repo=document_repo,
     )

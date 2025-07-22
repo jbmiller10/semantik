@@ -1316,22 +1316,22 @@ async def _process_append_operation(
         raise ValueError("source_path is required for APPEND operation")
 
     # Import required modules for file scanning
-    from webui.services.file_scanning_service import FileScanningService
+    from webui.services.document_scanning_service import DocumentScanningService
 
     # Use the existing document_repo and its session
     session = document_repo.session
 
     # Create file scanning service with existing session
-    file_scanner = FileScanningService(db_session=session, document_repo=document_repo)
+    document_scanner = DocumentScanningService(db_session=session, document_repo=document_repo)
 
     # Scan directory and register documents
-    await updater.send_update("scanning_files", {"status": "scanning", "source_path": source_path})
+    await updater.send_update("scanning_documents", {"status": "scanning", "source_path": source_path})
 
     try:
         # Time document scanning
         scan_start = time.time()
 
-        scan_stats = await file_scanner.scan_directory_and_register_documents(
+        scan_stats = await document_scanner.scan_directory_and_register_documents(
             collection_id=collection["id"],
             source_path=source_path,
             recursive=True,  # Default to recursive scanning
@@ -1348,8 +1348,8 @@ async def _process_append_operation(
             {
                 "status": "scanning_completed",
                 "total_files_found": scan_stats["total_documents_found"],
-                "new_files_registered": scan_stats["new_documents_registered"],
-                "duplicate_files_skipped": scan_stats["duplicate_documents_skipped"],
+                "new_documents_registered": scan_stats["new_documents_registered"],
+                "duplicate_documents_skipped": scan_stats["duplicate_documents_skipped"],
                 "errors_count": len(scan_stats.get("errors", [])),
             },
         )
@@ -1357,7 +1357,7 @@ async def _process_append_operation(
         # Record document processing metrics
         for _ in range(scan_stats["new_documents_registered"]):
             record_document_processed("append", "registered")
-        for _ in range(scan_stats["duplicate_files_skipped"]):
+        for _ in range(scan_stats["duplicate_documents_skipped"]):
             record_document_processed("append", "skipped")
         for _ in range(len(scan_stats.get("errors", []))):
             record_document_processed("append", "failed")
