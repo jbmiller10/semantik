@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from shared.database.db_retry import with_db_retry
 from shared.database.exceptions import DatabaseOperationError, EntityNotFoundError, ValidationError
 from shared.database.models import Collection, Document, DocumentStatus
 from sqlalchemy import and_, delete, desc, func, select, update
@@ -27,6 +28,7 @@ class DocumentRepository:
         """
         self.session = session
 
+    @with_db_retry(retries=5, delay=0.5, backoff=2.0, max_delay=10.0)
     async def create(
         self,
         collection_id: str,
@@ -99,7 +101,7 @@ class DocumentRepository:
                 file_size=file_size,
                 mime_type=mime_type,
                 content_hash=content_hash,
-                status=DocumentStatus.PENDING,
+                status=DocumentStatus.PENDING.value,  # Use .value for PostgreSQL compatibility
                 meta=meta or {},
             )
 
@@ -286,7 +288,7 @@ class DocumentRepository:
             if not document:
                 raise EntityNotFoundError("document", document_id)
 
-            document.status = status
+            document.status = status.value  # Use .value for PostgreSQL compatibility
             document.error_message = error_message
             if chunk_count is not None:
                 document.chunk_count = chunk_count
@@ -327,7 +329,7 @@ class DocumentRepository:
                 update(Document)
                 .where(Document.id.in_(document_ids))
                 .values(
-                    status=status,
+                    status=status.value,  # Use .value for PostgreSQL compatibility
                     error_message=error_message,
                     updated_at=datetime.now(UTC),
                 )
@@ -357,7 +359,7 @@ class DocumentRepository:
             if not document:
                 raise EntityNotFoundError("document", document_id)
 
-            await self.session.delete(document)
+            self.session.delete(document)
             await self.session.flush()
 
             logger.info(f"Deleted document {document_id}")

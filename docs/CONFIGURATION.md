@@ -83,8 +83,14 @@ SEARCH_API_URL=http://localhost:8000 # Search API URL for WebUI proxy
 
 #### Database Configuration
 ```bash
-# SQLite
-WEBUI_DB=data/webui.db              # SQLite database path (default: data/webui.db)
+# PostgreSQL
+DATABASE_URL=postgresql://user:password@localhost:5432/semantik  # PostgreSQL connection string
+# Alternative PostgreSQL configuration (if not using DATABASE_URL):
+POSTGRES_HOST=localhost             # PostgreSQL host (default: localhost)
+POSTGRES_PORT=5432                  # PostgreSQL port (default: 5432)
+POSTGRES_DB=semantik                # Database name (default: semantik)
+POSTGRES_USER=postgres              # Database user
+POSTGRES_PASSWORD=password          # Database password
 
 # Qdrant
 QDRANT_HOST=localhost               # Qdrant host (default: localhost)
@@ -181,7 +187,6 @@ These paths have sensible defaults but can be overridden:
 ```bash
 # Data directories
 FILE_TRACKING_DB=/var/embeddings/file_tracking.json
-WEBUI_DB=/var/embeddings/webui.db
 EXTRACT_DIR=/opt/semantik/extract
 INGEST_DIR=/var/embeddings/ingest
 LOADED_DIR=/var/embeddings/loaded
@@ -345,7 +350,7 @@ When using Docker Compose, the following volumes are created:
 - `qdrant_storage`: Qdrant vector database storage (persistent)
 
 ### Bind Mounts
-- `./data`: Application data (jobs, SQLite DB, processed files)
+- `./data`: Application data (jobs, processed files)
 - `./logs`: Application logs
 - `${DOCUMENT_PATH}`: Your documents directory (read-only)
 
@@ -446,11 +451,11 @@ LOG_LEVEL=INFO
 DEBUG=false
 
 # Database
+DATABASE_URL=postgresql://semantik:secure-password@postgres-server:5432/semantik_prod
 QDRANT_HOST=qdrant.internal.company.com
 QDRANT_PORT=6333
 QDRANT_API_KEY=your-qdrant-api-key
 QDRANT_USE_TLS=true
-WEBUI_DB=/data/semantik/webui.db
 
 # Authentication (CRITICAL - Generate new secrets!)
 JWT_SECRET_KEY=<generate-with-openssl-rand-hex-32>
@@ -837,8 +842,10 @@ services:
 BACKUP_DIR="/backups/semantik/$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$BACKUP_DIR"
 
-# Backup SQLite database
-sqlite3 /data/semantik/webui.db ".backup $BACKUP_DIR/webui.db"
+# Backup PostgreSQL database
+pg_dump -h $POSTGRES_HOST -U $POSTGRES_USER -d $POSTGRES_DB -f "$BACKUP_DIR/semantik.sql"
+# Or using DATABASE_URL:
+# pg_dump $DATABASE_URL -f "$BACKUP_DIR/semantik.sql"
 
 # Backup Qdrant
 curl -X POST "http://qdrant:6333/snapshots" \
@@ -865,8 +872,10 @@ aws s3 cp "$BACKUP_DIR.tar.gz.enc" s3://backups/semantik/
 openssl enc -d -aes-256-cbc -pass pass:$BACKUP_PASSWORD \
   -in backup.tar.gz.enc | tar xzf -
 
-# Restore database
-cp backup/webui.db /data/semantik/webui.db
+# Restore PostgreSQL database
+psql -h $POSTGRES_HOST -U $POSTGRES_USER -d $POSTGRES_DB < backup/semantik.sql
+# Or using DATABASE_URL:
+# psql $DATABASE_URL < backup/semantik.sql
 
 # Restore Qdrant snapshot
 curl -X PUT "http://qdrant:6333/collections/work_docs/snapshots/upload" \

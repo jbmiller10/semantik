@@ -43,5 +43,8 @@ export const useUIStore = create<UIState>((set) => ({
     })),
   setActiveTab: (tab) => set({ activeTab: tab }),
   setShowDocumentViewer: (viewer) => set({ showDocumentViewer: viewer }),
-  setShowCollectionDetailsModal: (collectionId) => set({ showCollectionDetailsModal: collectionId }),
+  setShowCollectionDetailsModal: (collectionId) => {
+    console.log('Setting showCollectionDetailsModal to:', collectionId);
+    set({ showCollectionDetailsModal: collectionId });
+  },
 }));

@@ -61,6 +61,8 @@ class DockerSetupTUI:
             # Run through setup steps
             if not self.select_deployment_type():
                 return
+            if not self.configure_database():
+                return
             if not self.configure_directories():
                 return
             if not self.configure_security():
@@ -724,7 +726,7 @@ class DockerSetupTUI:
 
     def select_deployment_type(self) -> bool:
         """Select GPU or CPU deployment"""
-        self._show_progress(1, 4, "Deployment Type")
+        self._show_progress(1, 5, "Deployment Type")
         console.print("[bold]Select Deployment Type[/bold]\n")
 
         choices = []
@@ -758,9 +760,43 @@ class DockerSetupTUI:
         console.print()
         return True
 
+    def configure_database(self) -> bool:
+        """Configure database settings"""
+        self._show_progress(2, 5, "Database Configuration")
+        console.print("[bold]Database Configuration[/bold]\n")
+        console.print("Semantik uses PostgreSQL for storing user data, collections, and metadata.\n")
+
+        # PostgreSQL password configuration
+        postgres_choice = questionary.select(
+            "PostgreSQL Password:",
+            choices=["Generate secure password automatically (Recommended)", "Enter custom password"],
+        ).ask()
+
+        if postgres_choice is None:
+            return False
+
+        if "Generate" in postgres_choice:
+            self.config["POSTGRES_PASSWORD"] = secrets.token_hex(32)
+            console.print("[green]Generated secure PostgreSQL password[/green]")
+        else:
+            custom_password = questionary.password("Enter PostgreSQL password (min 16 chars):").ask()
+            if custom_password is None or len(custom_password) < 16:
+                console.print("[red]PostgreSQL password must be at least 16 characters[/red]")
+                return False
+            self.config["POSTGRES_PASSWORD"] = custom_password
+
+        # Set default PostgreSQL values
+        self.config["POSTGRES_DB"] = "semantik"
+        self.config["POSTGRES_USER"] = "semantik"
+        self.config["POSTGRES_HOST"] = "postgres"  # Docker service name
+        self.config["POSTGRES_PORT"] = "5432"
+
+        console.print()
+        return True
+
     def configure_directories(self) -> bool:
         """Configure directory mappings"""
-        self._show_progress(2, 4, "Directory Configuration")
+        self._show_progress(3, 5, "Directory Configuration")
         console.print("[bold]Configure Document Directories[/bold]\n")
         console.print("You can add multiple directories containing documents to process.")
         console.print("These directories will be mounted read-only in the Docker container.\n")
@@ -946,7 +982,7 @@ class DockerSetupTUI:
 
     def configure_security(self) -> bool:
         """Configure security and advanced settings"""
-        self._show_progress(3, 4, "Security & Advanced Settings")
+        self._show_progress(4, 5, "Security & Advanced Settings")
         console.print("[bold]Security & Advanced Settings[/bold]\n")
 
         # GPU-specific settings first if GPU is selected
@@ -1039,7 +1075,7 @@ class DockerSetupTUI:
 
     def review_configuration(self) -> bool:
         """Review and confirm configuration"""
-        self._show_progress(4, 4, "Review & Confirm")
+        self._show_progress(5, 5, "Review & Confirm")
         console.print("[bold]Review Configuration[/bold]\n")
 
         # Create review table
@@ -1063,6 +1099,11 @@ class DockerSetupTUI:
             table.add_row("GPU Device", self.config["CUDA_VISIBLE_DEVICES"])
             table.add_row("GPU Memory Limit", f"{self.config['MODEL_MAX_MEMORY_GB']} GB")
 
+        # Database settings
+        table.add_row("Database", "PostgreSQL")
+        table.add_row("PostgreSQL Password", "***" + self.config["POSTGRES_PASSWORD"][-8:])
+
+        # Security settings
         table.add_row("JWT Secret", "***" + self.config["JWT_SECRET_KEY"][-8:])
         table.add_row("Token Expiration", f"{self.config['ACCESS_TOKEN_EXPIRE_MINUTES']} minutes")
         table.add_row("Log Level", self.config["LOG_LEVEL"])
@@ -1108,6 +1149,7 @@ class DockerSetupTUI:
             "DEFAULT_QUANTIZATION=float16": f"DEFAULT_QUANTIZATION={self.config['DEFAULT_QUANTIZATION']}",
             "DOCUMENT_PATH=./documents": f"DOCUMENT_PATH={self.config['DOCUMENT_PATH']}",
             "WEBUI_WORKERS=1": "WEBUI_WORKERS=auto",
+            "POSTGRES_PASSWORD=CHANGE_THIS_TO_A_STRONG_PASSWORD": f"POSTGRES_PASSWORD={self.config['POSTGRES_PASSWORD']}",
             "LOG_LEVEL=INFO": f"LOG_LEVEL={self.config['LOG_LEVEL']}",
         }
 
@@ -1235,8 +1277,11 @@ class DockerSetupTUI:
                     return False
 
     def _get_compose_files(self) -> list[str]:
-        """Get the appropriate docker-compose file arguments based on GPU configuration"""
+        """Get the appropriate docker-compose file arguments based on configuration"""
         files = ["-f", "docker-compose.yml"]
+
+        # Add PostgreSQL support
+        files.extend(["-f", "docker-compose.postgres.yml"])
 
         # Add CUDA override if GPU mode is selected
         # This ensures proper CUDA libraries and environment variables for bitsandbytes
@@ -1550,7 +1595,13 @@ class DockerSetupTUI:
 
         console.print("[bold]Checking port availability...[/bold]\n")
 
-        required_ports = [(8080, "WebUI"), (8000, "VecPipe API"), (6333, "Qdrant"), (6334, "Qdrant gRPC")]
+        required_ports = [
+            (8080, "WebUI"),
+            (8000, "VecPipe API"),
+            (6333, "Qdrant"),
+            (6334, "Qdrant gRPC"),
+            (5432, "PostgreSQL"),
+        ]
 
         blocked_ports = []
 

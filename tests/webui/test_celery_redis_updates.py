@@ -1,4 +1,4 @@
-"""Test suite for CeleryTaskWithUpdates class."""
+"""Test suite for CeleryTaskWithOperationUpdates class."""
 
 import asyncio
 import json
@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import redis.asyncio as redis
-from webui.tasks import CeleryTaskWithUpdates
+from webui.tasks import CeleryTaskWithOperationUpdates
 
 
-class TestCeleryTaskWithUpdates:
-    """Test suite for CeleryTaskWithUpdates class."""
+class TestCeleryTaskWithOperationUpdates:
+    """Test suite for CeleryTaskWithOperationUpdates class."""
 
     @pytest.fixture()
     def mock_redis(self):
@@ -33,12 +33,12 @@ class TestCeleryTaskWithUpdates:
 
     @pytest.fixture()
     def task_updater(self):
-        """Create a CeleryTaskWithUpdates instance."""
-        return CeleryTaskWithUpdates("test-job-123")
+        """Create a CeleryTaskWithOperationUpdates instance."""
+        return CeleryTaskWithOperationUpdates("test-job-123")
 
     @pytest.mark.asyncio()
     async def test_initialization(self, task_updater):
-        """Test proper initialization of CeleryTaskWithUpdates."""
+        """Test proper initialization of CeleryTaskWithOperationUpdates."""
         assert task_updater.job_id == "test-job-123"
         assert task_updater.stream_key == "job:updates:test-job-123"
         assert task_updater._redis_client is None
@@ -208,7 +208,7 @@ class TestCeleryTaskWithUpdates:
             ]
 
             for job_id in job_ids:
-                updater = CeleryTaskWithUpdates(job_id)
+                updater = CeleryTaskWithOperationUpdates(job_id)
                 await updater.send_update("test", {})
 
                 # Verify correct stream key used

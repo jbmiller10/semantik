@@ -9,6 +9,8 @@ Create Date: 2025-07-15 15:41:37.186829
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from sqlalchemy import text
+from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
@@ -22,15 +24,68 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     """Add operations, collection_sources, audit_log and supporting tables."""
 
-    # Note: SQLite doesn't support CREATE TYPE, so we'll use CHECK constraints instead
-    # The Enum columns below will work with SQLAlchemy's enum handling for SQLite
+    # Get the database dialect
+    connection = op.get_bind()
+    dialect_name = connection.dialect.name
+
+    # Define enum types
+    collection_status_values = ["pending", "ready", "processing", "error", "degraded"]
+    operation_type_values = ["index", "append", "reindex", "remove_source", "delete"]
+    operation_status_values = ["pending", "processing", "completed", "failed", "cancelled"]
+
+    # Create enum types based on dialect
+    if dialect_name == "postgresql":
+        # Create PostgreSQL enum types using raw SQL to handle existence check
+        connection.execute(
+            text(
+                """
+            DO $$ BEGIN
+                CREATE TYPE collection_status AS ENUM ('pending', 'ready', 'processing', 'error', 'degraded');
+            EXCEPTION
+                WHEN duplicate_object THEN null;
+            END $$;
+        """
+            )
+        )
+        connection.execute(
+            text(
+                """
+            DO $$ BEGIN
+                CREATE TYPE operation_type AS ENUM ('index', 'append', 'reindex', 'remove_source', 'delete');
+            EXCEPTION
+                WHEN duplicate_object THEN null;
+            END $$;
+        """
+            )
+        )
+        connection.execute(
+            text(
+                """
+            DO $$ BEGIN
+                CREATE TYPE operation_status AS ENUM ('pending', 'processing', 'completed', 'failed', 'cancelled');
+            EXCEPTION
+                WHEN duplicate_object THEN null;
+            END $$;
+        """
+            )
+        )
+
+        # Use postgresql.ENUM with create_type=False since we already created them
+        collection_status_enum = postgresql.ENUM(*collection_status_values, name="collection_status", create_type=False)
+        operation_type_enum = postgresql.ENUM(*operation_type_values, name="operation_type", create_type=False)
+        operation_status_enum = postgresql.ENUM(*operation_status_values, name="operation_status", create_type=False)
+    else:
+        # For SQLite, use SQLAlchemy's generic Enum
+        collection_status_enum = sa.Enum(*collection_status_values, name="collection_status")
+        operation_type_enum = sa.Enum(*operation_type_values, name="operation_type")
+        operation_status_enum = sa.Enum(*operation_status_values, name="operation_status")
 
     # 1. Update collections table to add status fields
     op.add_column(
         "collections",
         sa.Column(
             "status",
-            sa.Enum("pending", "ready", "processing", "error", "degraded", name="collection_status"),
+            collection_status_enum,
             nullable=False,
             server_default="pending",
         ),
@@ -70,12 +125,12 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Integer(), nullable=False),
         sa.Column(
             "type",
-            sa.Enum("index", "append", "reindex", "remove_source", "delete", name="operation_type"),
+            operation_type_enum,
             nullable=False,
         ),
         sa.Column(
             "status",
-            sa.Enum("pending", "processing", "completed", "failed", "cancelled", name="operation_status"),
+            operation_status_enum,
             nullable=False,
             server_default="pending",
         ),
@@ -199,4 +254,13 @@ def downgrade() -> None:
     op.drop_column("collections", "status_message")
     op.drop_column("collections", "status")
 
-    # Note: No need to drop types in SQLite as they are handled differently
+    # Drop enum types for PostgreSQL
+    connection = op.get_bind()
+    if connection.dialect.name == "postgresql":
+        # Drop the enum types (they will be dropped automatically with the tables/columns)
+        # But we explicitly drop them to ensure cleanup
+
+        # Use raw SQL to drop types as SQLAlchemy doesn't always clean them up properly
+        connection.execute(text("DROP TYPE IF EXISTS collection_status"))
+        connection.execute(text("DROP TYPE IF EXISTS operation_type"))
+        connection.execute(text("DROP TYPE IF EXISTS operation_status"))

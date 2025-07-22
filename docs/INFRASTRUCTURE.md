@@ -64,7 +64,7 @@
 ### Service Dependencies
 
 - **Qdrant**: Vector database (v1.9.0+)
-- **PostgreSQL**: Optional for advanced job management
+- **PostgreSQL**: Required for data persistence (users, jobs, collections)
 - **Redis**: Optional for caching and rate limiting
 - **Prometheus**: Metrics collection (optional)
 
@@ -103,7 +103,7 @@ packages/
 ├── webui/                # Web interface
 │   ├── main.py          # FastAPI app
 │   ├── api/             # API routers
-│   ├── database.py      # SQLite management
+│   ├── database.py      # Database connection management
 │   └── static/          # Frontend assets
 ```
 
@@ -523,7 +523,7 @@ class Settings(BaseSettings):
     
     # Paths
     PROJECT_ROOT: Path = Path(__file__).parent.parent.resolve()
-    WEBUI_DB: Path = PROJECT_ROOT / "data" / "webui.db"
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://localhost/semantik")
     JOBS_DIR: Path = PROJECT_ROOT / "data" / "jobs"
 ```
 
@@ -558,8 +558,8 @@ class Settings(BaseSettings):
 ### Backup Procedures
 
 ```bash
-# Backup WebUI database
-cp data/webui.db data/webui.db.backup
+# Backup PostgreSQL database
+pg_dump $DATABASE_URL > data/semantik_backup.sql
 
 # Backup Qdrant data
 qdrant-backup --url http://localhost:6333 --output /backup/qdrant
@@ -684,7 +684,7 @@ curl http://localhost:8000/
 curl http://localhost:8080/api/health
 
 # Database queries
-sqlite3 data/webui.db "SELECT * FROM jobs;"
+psql $DATABASE_URL -c "SELECT * FROM jobs;"
 ```
 
 ### Performance Tuning

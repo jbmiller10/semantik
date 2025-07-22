@@ -19,5 +19,5 @@ echo "Starting Document Embedding Web UI..."
 echo "Access the interface at: http://localhost:8080"
 echo ""
 
-# Run the web UI with SQLite-based job tracking
+# Run the web UI
 poetry run uvicorn webui.app:app --host 0.0.0.0 --port 8080

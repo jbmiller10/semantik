@@ -27,7 +27,7 @@ The WebUI serves as a control plane for the Semantik semantic search engine. It 
 
 1. **Separation of Concerns**: WebUI acts as a control plane, never implementing core search or embedding logic
 2. **Proxy Pattern**: All search functionality proxies to the Semantik search API
-3. **Database Independence**: Semantik core engine never accesses the WebUI SQLite database
+3. **Database Independence**: Semantik core engine never accesses the WebUI PostgreSQL database
 4. **Scalability**: Designed to handle multiple concurrent jobs and users
 
 ## Main Application Structure
@@ -160,7 +160,7 @@ Key components:
 
 ### database.py
 
-Centralized SQLite database management with the following tables:
+Centralized PostgreSQL database management with the following tables:
 
 #### Jobs Table
 ```sql

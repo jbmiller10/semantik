@@ -1,6 +1,5 @@
 # Docker Compose configuration for Semantik (Document Embedding System)
-# This is the default configuration with GPU support enabled
-# For CPU-only deployment, use: docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
+# This is the single source of truth for all Docker services
 version: '3.8'
 
 services:
@@ -8,6 +7,7 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     container_name: semantik-qdrant
+    profiles: ["backend"]
     ports:
       - "6333:6333"
       - "6334:6334"  # gRPC port
@@ -38,6 +38,74 @@ services:
       retries: 3
       start_period: 40s
 
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: semantik-postgres
+    profiles: ["backend"]
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-semantik}
+      - POSTGRES_USER=${POSTGRES_USER:-semantik}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-CHANGE_THIS_TO_A_STRONG_PASSWORD}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=en_US.utf8 --lc-ctype=en_US.utf8
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_READ_SEARCH
+      - FOWNER
+      - SETGID
+      - SETUID
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          memory: 1G
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-semantik} -d ${POSTGRES_DB:-semantik}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    shm_size: 256mb
+
+  # Redis message broker for Celery
+  redis:
+    image: redis:7-alpine
+    container_name: semantik-redis
+    profiles: ["backend"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          memory: 256M
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   # Search API Service (vecpipe)
   vecpipe:
     build:
@@ -45,6 +113,7 @@ services:
       dockerfile: Dockerfile
       target: runtime
     container_name: semantik-vecpipe
+    profiles: ["backend"]
     command: ["vecpipe"]
     ports:
       - "8000:8000"
@@ -54,7 +123,7 @@ services:
       # Qdrant configuration
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
-      # Model defaults (same for GPU and CPU)
+      # Model defaults
       - DEFAULT_COLLECTION=${DEFAULT_COLLECTION:-work_docs}
       - USE_MOCK_EMBEDDINGS=${USE_MOCK_EMBEDDINGS:-false}
       - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
@@ -68,16 +137,25 @@ services:
       # HuggingFace configuration
       - HF_HOME=/app/.cache/huggingface
       - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-false}
-      # Redis configuration (for future Celery integration)
+      # Redis configuration
       - REDIS_URL=redis://redis:6379/0
+      # PostgreSQL configuration
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-semantik}:${POSTGRES_PASSWORD:-CHANGE_THIS_TO_A_STRONG_PASSWORD}@postgres:5432/${POSTGRES_DB:-semantik}}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-semantik}
+      - POSTGRES_USER=${POSTGRES_USER:-semantik}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-CHANGE_THIS_TO_A_STRONG_PASSWORD}
     volumes:
       # Mount data directories
-      # Note: Ensure host directories have appropriate permissions (uid 1000)
       - ./logs:/app/logs
       # Mount HuggingFace cache for persistent model storage
       - ${HF_CACHE_DIR:-./models}:/app/.cache/huggingface
     depends_on:
-      - qdrant
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -93,7 +171,7 @@ services:
           memory: 2G
           devices:
             - driver: nvidia
-              count: 1  # Number of GPUs to use (or "all" for all GPUs)
+              count: 1
               capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
@@ -121,7 +199,7 @@ services:
       - SEARCH_API_HOST=vecpipe
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
-      # Model defaults (same for GPU and CPU)
+      # Model defaults
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_THIS_TO_A_STRONG_SECRET_KEY}
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
       - DEFAULT_COLLECTION=${DEFAULT_COLLECTION:-work_docs}
@@ -142,9 +220,21 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # PostgreSQL configuration
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-semantik}:${POSTGRES_PASSWORD:-CHANGE_THIS_TO_A_STRONG_PASSWORD}@postgres:5432/${POSTGRES_DB:-semantik}}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-semantik}
+      - POSTGRES_USER=${POSTGRES_USER:-semantik}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-CHANGE_THIS_TO_A_STRONG_PASSWORD}
+      # Connection pool settings
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-20}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-40}
+      - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-30}
+      - DB_POOL_RECYCLE=${DB_POOL_RECYCLE:-3600}
+      - DB_POOL_PRE_PING=${DB_POOL_PRE_PING:-true}
     volumes:
       # Mount data directories
-      # Note: Ensure host directories have appropriate permissions (uid 1000)
       - ./data:/app/data
       - ./logs:/app/logs
       # Mount document directories for processing
@@ -152,8 +242,12 @@ services:
       # Mount HuggingFace cache for persistent model storage
       - ${HF_CACHE_DIR:-./models}:/app/.cache/huggingface
     depends_on:
-      - vecpipe
-      - redis
+      postgres:
+        condition: service_healthy
+      vecpipe:
+        condition: service_started
+      redis:
+        condition: service_started
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -179,39 +273,14 @@ services:
       retries: 3
       start_period: 60s
 
-  # Redis message broker for Celery
-  redis:
-    image: redis:7-alpine
-    container_name: semantik-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: ["redis-server", "--appendonly", "yes"]
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          memory: 256M
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
   # Celery Worker Service
   worker:
     build:
       context: .
-      dockerfile: Dockerfile.cuda
+      dockerfile: Dockerfile
       target: runtime
     container_name: semantik-worker
+    profiles: ["backend"]
     command: ["worker"]
     environment:
       # Python path
@@ -225,7 +294,7 @@ services:
       # Qdrant configuration
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
-      # Model defaults (same for GPU and CPU)
+      # Model defaults
       - DEFAULT_COLLECTION=${DEFAULT_COLLECTION:-work_docs}
       - USE_MOCK_EMBEDDINGS=${USE_MOCK_EMBEDDINGS:-false}
       - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
@@ -237,8 +306,21 @@ services:
       # HuggingFace configuration
       - HF_HOME=/app/.cache/huggingface
       - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-false}
-      # Auth configuration (for database operations)
+      # Auth configuration
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_THIS_TO_A_STRONG_SECRET_KEY}
+      # PostgreSQL configuration
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-semantik}:${POSTGRES_PASSWORD:-CHANGE_THIS_TO_A_STRONG_PASSWORD}@postgres:5432/${POSTGRES_DB:-semantik}}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-semantik}
+      - POSTGRES_USER=${POSTGRES_USER:-semantik}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-CHANGE_THIS_TO_A_STRONG_PASSWORD}
+      # Connection pool settings
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-10}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-20}
+      - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-30}
+      - DB_POOL_RECYCLE=${DB_POOL_RECYCLE:-3600}
+      - DB_POOL_PRE_PING=${DB_POOL_PRE_PING:-true}
     volumes:
       # Mount data directories
       - ./data:/app/data
@@ -248,8 +330,12 @@ services:
       # Mount HuggingFace cache for persistent model storage
       - ${HF_CACHE_DIR:-./models}:/app/.cache/huggingface
     depends_on:
-      - redis
-      - qdrant
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      qdrant:
+        condition: service_started
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -275,7 +361,7 @@ services:
       retries: 3
       start_period: 60s
 
-  # Flower monitoring service for Celery
+  # Flower monitoring service
   flower:
     build:
       context: .
@@ -320,6 +406,9 @@ services:
 volumes:
   # Named volume for Qdrant data persistence
   qdrant_storage:
+    driver: local
+  # Named volume for PostgreSQL data persistence
+  postgres_data:
     driver: local
   # Named volume for Redis data persistence
   redis_data:

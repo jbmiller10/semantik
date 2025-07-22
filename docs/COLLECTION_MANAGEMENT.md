@@ -338,11 +338,12 @@ GET /api/search?q=API+documentation&k=10
 
 ### Metadata Storage Locations
 
-1. **SQLite Database** (`jobs` table):
+1. **PostgreSQL Database** (`jobs` and `collections` tables):
    - User-friendly collection names
    - Job relationships and hierarchy
    - Processing statistics
    - Configuration settings
+   - Collection metadata and ownership
 
 2. **Qdrant** (`_collection_metadata`):
    - Quick access to embedding configurations

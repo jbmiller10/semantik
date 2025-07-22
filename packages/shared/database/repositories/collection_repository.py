@@ -95,7 +95,7 @@ class CollectionRepository:
                 chunk_overlap=chunk_overlap,
                 is_public=is_public,
                 vector_store_name=vector_store_name,
-                status=CollectionStatus.PENDING,
+                status=CollectionStatus.PENDING,  # Pass enum object, not value
                 meta=meta or {},
             )
 
@@ -238,7 +238,7 @@ class CollectionRepository:
             if not collection:
                 raise EntityNotFoundError("collection", collection_uuid)
 
-            collection.status = status
+            collection.status = status  # Pass enum object directly
             collection.status_message = status_message
             collection.updated_at = datetime.now(UTC)
 
@@ -378,7 +378,7 @@ class CollectionRepository:
                 raise AccessDeniedError(str(user_id), "collection", collection_uuid)
 
             # Delete the collection (cascade will handle related records)
-            self.session.delete(collection)  # type: ignore[unused-coroutine]
+            self.session.delete(collection)
             await self.session.flush()
 
             logger.info(f"Deleted collection {collection_uuid}")
