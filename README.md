@@ -289,7 +289,7 @@ curl http://localhost:6333/collections/work_docs
 **Solutions**:
 1. Check browser console for WebSocket errors
 2. Ensure no proxy is blocking WebSocket connections
-3. Verify ports 8080 and 8000 are accessible
+3. Verify ports 8080 and 8001 are accessible
 4. Try disabling browser extensions
 
 ```javascript
