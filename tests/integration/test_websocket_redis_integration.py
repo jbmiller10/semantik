@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import WebSocket
 
-from packages.webui.tasks import CeleryTaskWithUpdates
+from packages.webui.tasks import CeleryTaskWithOperationUpdates
 from packages.webui.websocket_manager import RedisStreamWebSocketManager
 
 
@@ -169,12 +169,31 @@ class TestWebSocketRedisIntegration:
             # Create WebSocket client
             ws_client = mock_websocket_factory("client1")
 
-            # Mock job repository
-            with patch("shared.database.factory.create_job_repository") as mock_create_repo:
+            # Mock operation repository
+            with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
+                from unittest.mock import MagicMock
+                from enum import Enum
+                from datetime import datetime, UTC
+                
+                # Create mock operation object
+                class MockStatus(Enum):
+                    PROCESSING = "processing"
+                
+                class MockType(Enum):
+                    INDEX = "index"
+                
+                mock_operation = MagicMock()
+                mock_operation.uuid = "job1"
+                mock_operation.status = MockStatus.PROCESSING
+                mock_operation.type = MockType.INDEX
+                mock_operation.collection_id = "collection1"
+                mock_operation.created_at = datetime.now(UTC)
+                mock_operation.started_at = datetime.now(UTC)
+                mock_operation.completed_at = None
+                mock_operation.error_message = None
+                
                 mock_repo = AsyncMock()
-                mock_repo.get_job = AsyncMock(
-                    return_value={"status": "processing", "total_files": 10, "processed_files": 0}
-                )
+                mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
                 mock_create_repo.return_value = mock_repo
 
                 # Connect WebSocket client
@@ -184,7 +203,7 @@ class TestWebSocketRedisIntegration:
                 await asyncio.sleep(0.1)
 
                 # Simulate Celery task sending updates
-                celery_updater = CeleryTaskWithUpdates("job1")
+                celery_updater = CeleryTaskWithOperationUpdates("job1")
                 celery_updater._redis_client = real_redis_mock
 
                 # Send various updates
@@ -227,9 +246,20 @@ class TestWebSocketRedisIntegration:
             clients = [mock_websocket_factory(f"client{i}") for i in range(3)]
 
             # Mock job repository
-            with patch("shared.database.factory.create_job_repository") as mock_create_repo:
+            with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
-                mock_repo.get_job = AsyncMock(return_value={"status": "processing"})
+                # Create simple mock operation
+                mock_operation = type('MockOp', (), {
+                    'uuid': 'job1',
+                    'status': type('Status', (), {'value': 'processing'}),
+                    'type': type('Type', (), {'value': 'index'}),
+                    'collection_id': 'collection1',
+                    'created_at': datetime.now(UTC),
+                    'started_at': datetime.now(UTC),
+                    'completed_at': None,
+                    'error_message': None
+                })()
+                mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
                 mock_create_repo.return_value = mock_repo
 
                 # Connect all clients
@@ -239,7 +269,7 @@ class TestWebSocketRedisIntegration:
                 await asyncio.sleep(0.1)
 
                 # Send update via manager (simulating from API)
-                await manager.send_job_update("job1", "broadcast", {"message": "Update for all clients"})
+                await manager.send_update("job1", "broadcast", {"message": "Update for all clients"})
 
                 await asyncio.sleep(0.1)
 
@@ -267,16 +297,27 @@ class TestWebSocketRedisIntegration:
             await manager.startup()
 
             # Send some updates before any client connects
-            await manager.send_job_update("job1", "update1", {"data": "first"})
-            await manager.send_job_update("job1", "update2", {"data": "second"})
-            await manager.send_job_update("job1", "update3", {"data": "third"})
+            await manager.send_update("job1", "update1", {"data": "first"})
+            await manager.send_update("job1", "update2", {"data": "second"})
+            await manager.send_update("job1", "update3", {"data": "third"})
 
             # Now connect a client
             client = mock_websocket_factory("client1")
 
-            with patch("shared.database.factory.create_job_repository") as mock_create_repo:
+            with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
-                mock_repo.get_job = AsyncMock(return_value={"status": "processing"})
+                # Create simple mock operation
+                mock_operation = type('MockOp', (), {
+                    'uuid': 'job1',
+                    'status': type('Status', (), {'value': 'processing'}),
+                    'type': type('Type', (), {'value': 'index'}),
+                    'collection_id': 'collection1',
+                    'created_at': datetime.now(UTC),
+                    'started_at': datetime.now(UTC),
+                    'completed_at': None,
+                    'error_message': None
+                })()
+                mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
                 mock_create_repo.return_value = mock_repo
 
                 await manager.connect(client, "job1", "user1")
@@ -318,9 +359,20 @@ class TestWebSocketRedisIntegration:
             client1 = mock_websocket_factory("client1")
             client2 = mock_websocket_factory("client2")
 
-            with patch("shared.database.factory.create_job_repository") as mock_create_repo:
+            with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
-                mock_repo.get_job = AsyncMock(return_value={"status": "processing"})
+                # Create simple mock operation
+                mock_operation = type('MockOp', (), {
+                    'uuid': 'job1',
+                    'status': type('Status', (), {'value': 'processing'}),
+                    'type': type('Type', (), {'value': 'index'}),
+                    'collection_id': 'collection1',
+                    'created_at': datetime.now(UTC),
+                    'started_at': datetime.now(UTC),
+                    'completed_at': None,
+                    'error_message': None
+                })()
+                mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
                 mock_create_repo.return_value = mock_repo
 
                 # Connect to different manager instances
@@ -330,7 +382,7 @@ class TestWebSocketRedisIntegration:
                 await asyncio.sleep(0.1)
 
                 # Send update (could come from any instance)
-                await manager1.send_job_update("job1", "shared_update", {"message": "Update from manager1"})
+                await manager1.send_update("job1", "shared_update", {"message": "Update from manager1"})
 
                 await asyncio.sleep(0.2)
 
@@ -361,14 +413,14 @@ class TestWebSocketRedisIntegration:
             await manager.startup()
 
             # Send some updates
-            await manager.send_job_update("job1", "progress", {"progress": 50})
-            await manager.send_job_update("job1", "complete", {"status": "completed"})
+            await manager.send_update("job1", "progress", {"progress": 50})
+            await manager.send_update("job1", "complete", {"status": "completed"})
 
             # Verify stream exists
             assert "job:updates:job1" in real_redis_mock.streams
 
             # Clean up the stream
-            await manager.cleanup_job_stream("job1")
+            await manager.cleanup_stream("job1")
 
             # Verify stream is deleted
             assert "job:updates:job1" not in real_redis_mock.streams
@@ -392,9 +444,21 @@ class TestWebSocketRedisIntegration:
         # System should still work for direct broadcasts
         client = mock_websocket_factory("client1")
 
-        with patch("shared.database.factory.create_job_repository") as mock_create_repo:
+        with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
             mock_repo = AsyncMock()
-            mock_repo.get_job = AsyncMock(return_value={"status": "processing", "total_files": 10})
+            # Create simple mock operation
+            mock_operation = type('MockOp', (), {
+                'uuid': 'job1',
+                'status': type('Status', (), {'value': 'processing'}),
+                'type': type('Type', (), {'value': 'index'}),
+                'collection_id': 'collection1',
+                'created_at': datetime.now(UTC),
+                'started_at': datetime.now(UTC),
+                'completed_at': None,
+                'error_message': None,
+                'total_files': 10
+            })()
+            mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
             mock_create_repo.return_value = mock_repo
 
             # Connect should still work
@@ -405,7 +469,7 @@ class TestWebSocketRedisIntegration:
             assert client.received_messages[0]["type"] == "current_state"
 
             # Direct updates should work
-            await manager.send_job_update("job1", "progress", {"progress": 75})
+            await manager.send_update("job1", "progress", {"progress": 75})
 
             # Client should receive update via direct broadcast
             progress_updates = [msg for msg in client.received_messages if msg["type"] == "progress"]
@@ -430,9 +494,20 @@ class TestWebSocketRedisIntegration:
             # Create a client that will disconnect
             client = mock_websocket_factory("client1")
 
-            with patch("shared.database.factory.create_job_repository") as mock_create_repo:
+            with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
-                mock_repo.get_job = AsyncMock(return_value={"status": "processing"})
+                # Create simple mock operation
+                mock_operation = type('MockOp', (), {
+                    'uuid': 'job1',
+                    'status': type('Status', (), {'value': 'processing'}),
+                    'type': type('Type', (), {'value': 'index'}),
+                    'collection_id': 'collection1',
+                    'created_at': datetime.now(UTC),
+                    'started_at': datetime.now(UTC),
+                    'completed_at': None,
+                    'error_message': None
+                })()
+                mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
                 mock_create_repo.return_value = mock_repo
 
                 await manager.connect(client, "job1", "user1")
@@ -441,7 +516,7 @@ class TestWebSocketRedisIntegration:
                 client.send_json.side_effect = Exception("Connection lost")
 
                 # Send update - should handle the failed client
-                await manager.send_job_update("job1", "test", {"data": "test"})
+                await manager.send_update("job1", "test", {"data": "test"})
                 await asyncio.sleep(0.1)
 
                 # Client should be automatically removed from connections
@@ -467,9 +542,20 @@ class TestWebSocketRedisIntegration:
                 "job3": [mock_websocket_factory(f"job3_client{i}") for i in range(2)],
             }
 
-            with patch("shared.database.factory.create_job_repository") as mock_create_repo:
+            with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
-                mock_repo.get_job = AsyncMock(return_value={"status": "processing"})
+                # Create simple mock operation
+                mock_operation = type('MockOp', (), {
+                    'uuid': 'job1',
+                    'status': type('Status', (), {'value': 'processing'}),
+                    'type': type('Type', (), {'value': 'index'}),
+                    'collection_id': 'collection1',
+                    'created_at': datetime.now(UTC),
+                    'started_at': datetime.now(UTC),
+                    'completed_at': None,
+                    'error_message': None
+                })()
+                mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
                 mock_create_repo.return_value = mock_repo
 
                 # Connect all clients
@@ -480,9 +566,9 @@ class TestWebSocketRedisIntegration:
                 await asyncio.sleep(0.1)
 
                 # Send updates to different jobs
-                await manager.send_job_update("job1", "update", {"job": "job1"})
-                await manager.send_job_update("job2", "update", {"job": "job2"})
-                await manager.send_job_update("job3", "update", {"job": "job3"})
+                await manager.send_update("job1", "update", {"job": "job1"})
+                await manager.send_update("job2", "update", {"job": "job2"})
+                await manager.send_update("job3", "update", {"job": "job3"})
 
                 await asyncio.sleep(0.1)
 

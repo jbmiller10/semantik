@@ -6,9 +6,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, field_validator
 from shared.config import settings
-from shared.database.base import JobRepository
 from shared.database.database import AsyncSessionLocal
-from shared.database.factory import create_job_repository
 from shared.database.models import CollectionStatus
 from shared.database.repositories.collection_repository import CollectionRepository
 
@@ -19,16 +17,6 @@ def verify_internal_api_key(x_internal_api_key: Annotated[str | None, Header()] 
     """Verify the internal API key."""
     if x_internal_api_key != settings.INTERNAL_API_KEY:
         raise HTTPException(status_code=401, detail="Invalid or missing internal API key")
-
-
-@router.get("/jobs/all-ids", dependencies=[Depends(verify_internal_api_key)])
-async def get_all_job_ids(job_repo: JobRepository = Depends(create_job_repository)) -> list[str]:
-    """
-    Get all job IDs from the database.
-    This endpoint is intended for internal services like maintenance/cleanup.
-    """
-    jobs = await job_repo.list_jobs()
-    return [job["id"] for job in jobs]
 
 
 @router.get("/collections/vector-store-names", dependencies=[Depends(verify_internal_api_key)])

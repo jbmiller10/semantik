@@ -222,7 +222,7 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str |
     for _ in path_obj.glob(pattern):
         total_files += 1
         if total_files % 100 == 0 and scan_id:
-            await manager.send_job_update(f"scan_{scan_id}", "counting", {"count": total_files})
+            await manager.send_update(f"scan_{scan_id}", "counting", {"count": total_files})
 
     # Scan phase with warning thresholds
     file_count = 0
@@ -233,7 +233,7 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str |
     for scanned_files, file_path in enumerate(path_obj.glob(pattern), 1):
         # Send progress update every 10 files or at specific percentages
         if scan_id and (scanned_files % 10 == 0 or scanned_files == total_files):
-            await manager.send_job_update(
+            await manager.send_update(
                 f"scan_{scan_id}",
                 "progress",
                 {"scanned": scanned_files, "total": total_files, "current_path": str(file_path)},
@@ -335,13 +335,13 @@ async def scan_websocket(websocket: WebSocket, scan_id: str) -> None:
 
                 try:
                     # Send initial status
-                    await manager.send_job_update(f"scan_{scan_id}", "started", {"path": path})
+                    await manager.send_update(f"scan_{scan_id}", "started", {"path": path})
 
                     # Perform scan with progress updates
                     result = await scan_directory_async(path, recursive, scan_id)
 
                     # Send completion
-                    await manager.send_job_update(
+                    await manager.send_update(
                         f"scan_{scan_id}",
                         "completed",
                         {
@@ -352,10 +352,10 @@ async def scan_websocket(websocket: WebSocket, scan_id: str) -> None:
                         },
                     )
                 except Exception as e:
-                    await manager.send_job_update(f"scan_{scan_id}", "error", {"error": str(e)})
+                    await manager.send_update(f"scan_{scan_id}", "error", {"error": str(e)})
             elif data.get("action") == "cancel":
                 # Handle cancellation
-                await manager.send_job_update(f"scan_{scan_id}", "cancelled", {})
+                await manager.send_update(f"scan_{scan_id}", "cancelled", {})
                 break
     except WebSocketDisconnect:
         await manager.disconnect(websocket, f"scan_{scan_id}", user_id)

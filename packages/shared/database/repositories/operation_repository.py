@@ -331,17 +331,15 @@ class OperationRepository:
 
             # Handle status filtering
             if status_list is not None and len(status_list) > 0:
-                # Convert enum values to strings for PostgreSQL compatibility
-                status_values = [s.value if hasattr(s, 'value') else s for s in status_list]
-                query = query.where(Operation.status.in_(status_values))
+                # Use enum objects directly with native_enum
+                query = query.where(Operation.status.in_(status_list))
             elif status is not None:
-                # Backwards compatibility
-                status_value = status.value if hasattr(status, 'value') else status
-                query = query.where(Operation.status == status_value)
+                # Backwards compatibility - use enum object directly
+                query = query.where(Operation.status == status)
 
             if operation_type is not None:
-                type_value = operation_type.value if hasattr(operation_type, 'value') else operation_type
-                query = query.where(Operation.type == type_value)
+                # Use enum object directly
+                query = query.where(Operation.type == operation_type)
 
             # Get total count
             count_query = select(func.count()).select_from(query.subquery())
@@ -413,7 +411,7 @@ class OperationRepository:
             result = await self.session.scalar(
                 select(func.count(Operation.id)).where(
                     Operation.collection_id == collection_id,
-                    Operation.status.in_([OperationStatus.PENDING.value, OperationStatus.PROCESSING.value]),
+                    Operation.status.in_([OperationStatus.PENDING, OperationStatus.PROCESSING]),
                 )
             )
             return result or 0
@@ -433,7 +431,7 @@ class OperationRepository:
         try:
             stmt = select(Operation).where(
                 Operation.collection_id == collection_id,
-                Operation.status.in_([OperationStatus.PENDING.value, OperationStatus.PROCESSING.value]),
+                Operation.status.in_([OperationStatus.PENDING, OperationStatus.PROCESSING]),
             )
             result = await self.session.execute(stmt)
             return list(result.scalars().all())
