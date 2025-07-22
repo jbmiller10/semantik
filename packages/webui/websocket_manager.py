@@ -81,8 +81,6 @@ class RedisStreamWebSocketManager:
 
     async def connect(self, websocket: WebSocket, operation_id: str, user_id: str) -> None:
         """Handle new WebSocket connection for operation updates with connection limit enforcement."""
-        from shared.database.factory import create_operation_repository
-
         # Check connection limit for this user
         user_connections = sum(
             len(sockets) for key, sockets in self.connections.items() if key.startswith(f"{user_id}:")
@@ -107,25 +105,29 @@ class RedisStreamWebSocketManager:
 
         # Get current operation state from database and send it
         try:
-            operation_repo = create_operation_repository()
-            operation = await operation_repo.get_by_uuid(operation_id)
+            from shared.database.database import AsyncSessionLocal
+            from shared.database.repositories.operation_repository import OperationRepository
 
-            if operation:
-                # Send current state
-                state_message = {
-                    "timestamp": datetime.now(UTC).isoformat(),
-                    "type": "current_state",
-                    "data": {
-                        "status": operation.status.value,
-                        "operation_type": operation.type.value,
-                        "created_at": operation.created_at.isoformat(),
-                        "started_at": operation.started_at.isoformat() if operation.started_at else None,
-                        "completed_at": operation.completed_at.isoformat() if operation.completed_at else None,
-                        "error_message": operation.error_message,
-                    },
-                }
-                await websocket.send_json(state_message)
-                logger.info(f"Sent current state to client for operation {operation_id}")
+            async with AsyncSessionLocal() as session:
+                operation_repo = OperationRepository(session)
+                operation = await operation_repo.get_by_uuid(operation_id)
+
+                if operation:
+                    # Send current state
+                    state_message = {
+                        "timestamp": datetime.now(UTC).isoformat(),
+                        "type": "current_state",
+                        "data": {
+                            "status": operation.status.value,
+                            "operation_type": operation.type.value,
+                            "created_at": operation.created_at.isoformat(),
+                            "started_at": operation.started_at.isoformat() if operation.started_at else None,
+                            "completed_at": operation.completed_at.isoformat() if operation.completed_at else None,
+                            "error_message": operation.error_message,
+                        },
+                    }
+                    await websocket.send_json(state_message)
+                    logger.info(f"Sent current state to client for operation {operation_id}")
         except Exception as e:
             logger.error(f"Failed to send current state for operation {operation_id}: {e}")
 
