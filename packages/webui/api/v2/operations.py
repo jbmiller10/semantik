@@ -18,6 +18,7 @@ from packages.shared.database.repositories.operation_repository import Operation
 from packages.webui.api.schemas import ErrorResponse, OperationResponse
 from packages.webui.auth import get_current_user
 from packages.webui.celery_app import celery_app
+from packages.webui.dependencies import get_operation_repository
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ router = APIRouter(prefix="/api/v2/operations", tags=["operations-v2"])
 async def get_operation(
     operation_uuid: str,
     current_user: dict[str, Any] = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    repo: OperationRepository = Depends(get_operation_repository),
 ) -> OperationResponse:
     """Get detailed information about a specific operation.
 
@@ -43,7 +44,6 @@ async def get_operation(
     and any error messages.
     """
     try:
-        repo = OperationRepository(db)
         operation = await repo.get_by_uuid_with_permission_check(
             operation_uuid=operation_uuid,
             user_id=int(current_user["id"]),
@@ -91,6 +91,7 @@ async def get_operation(
 async def cancel_operation(
     operation_uuid: str,
     current_user: dict[str, Any] = Depends(get_current_user),
+    repo: OperationRepository = Depends(get_operation_repository),
     db: AsyncSession = Depends(get_db),
 ) -> OperationResponse:
     """Cancel a pending or processing operation.
@@ -100,8 +101,6 @@ async def cancel_operation(
     implementation and may not be immediate.
     """
     try:
-        repo = OperationRepository(db)
-
         # Cancel the operation in database
         operation = await repo.cancel(
             operation_uuid=operation_uuid,
@@ -167,7 +166,7 @@ async def list_operations(
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(50, ge=1, le=100, description="Items per page"),
     current_user: dict[str, Any] = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    repo: OperationRepository = Depends(get_operation_repository),
 ) -> list[OperationResponse]:
     """List operations for the current user.
 
@@ -175,7 +174,6 @@ async def list_operations(
     ordered by creation date (newest first).
     """
     try:
-        repo = OperationRepository(db)
         offset = (page - 1) * per_page
 
         # Convert string parameters to enums if provided

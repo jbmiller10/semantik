@@ -27,20 +27,20 @@ from packages.webui.api.v2.schemas import (
 )
 from packages.webui.auth import get_current_user
 from packages.webui.rate_limiter import limiter
+from packages.webui.dependencies import get_collection_repository
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/search", tags=["search-v2"])
 
 
-async def validate_collection_access(collection_uuids: list[str], user_id: int, db: AsyncSession) -> list[Collection]:
+async def validate_collection_access(collection_uuids: list[str], user_id: int, repository: CollectionRepository) -> list[Collection]:
     """
     Validate user has access to all requested collections.
 
     Returns list of Collection objects user has access to.
     Raises HTTPException if any collection is not found or access is denied.
     """
-    repository = CollectionRepository(db)
     collections: list[Collection] = []
 
     for uuid in collection_uuids:
@@ -223,7 +223,7 @@ async def multi_collection_search(
     request: Request,  # noqa: ARG001
     search_request: CollectionSearchRequest,
     current_user: dict[str, Any] = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    collection_repo: CollectionRepository = Depends(get_collection_repository),
 ) -> CollectionSearchResponse:
     """
     Search across multiple collections with result aggregation and re-ranking.
@@ -235,7 +235,7 @@ async def multi_collection_search(
 
     # Validate collection access
     user_id = int(current_user["id"])
-    collections = await validate_collection_access(search_request.collection_uuids, user_id, db)
+    collections = await validate_collection_access(search_request.collection_uuids, user_id, collection_repo)
 
     # Build common search parameters
     search_params = {
@@ -391,7 +391,7 @@ async def single_collection_search(
     request: Request,  # noqa: ARG001
     search_request: SingleCollectionSearchRequest,
     current_user: dict[str, Any] = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    collection_repo: CollectionRepository = Depends(get_collection_repository),
 ) -> CollectionSearchResponse:
     """
     Search within a single collection (backward compatibility).
@@ -413,5 +413,5 @@ async def single_collection_search(
     )
 
     # Delegate to multi-collection search
-    response = await multi_collection_search(request, multi_request, current_user, db)
+    response = await multi_collection_search(request, multi_request, current_user, collection_repo)
     return cast(CollectionSearchResponse, response)

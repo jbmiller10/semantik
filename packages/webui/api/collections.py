@@ -12,8 +12,8 @@ from pydantic import BaseModel, Field, field_validator
 from qdrant_client.models import CollectionInfo
 from shared.database.base import CollectionRepository
 from shared.database.exceptions import AccessDeniedError, EntityAlreadyExistsError, EntityNotFoundError
-from shared.database.factory import create_collection_repository
 from webui.auth import get_current_user
+from webui.dependencies import get_collection_repository
 from webui.utils.qdrant_manager import qdrant_manager
 
 logger = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ class PaginatedFileList(BaseModel):
 @router.get("", response_model=list[CollectionSummary])
 async def list_collections(
     current_user: dict[str, Any] = Depends(get_current_user),
-    collection_repo: CollectionRepository = Depends(create_collection_repository),
+    collection_repo: CollectionRepository = Depends(get_collection_repository),
 ) -> list[CollectionSummary]:
     """List all unique collections with summary stats"""
     try:
@@ -149,7 +149,7 @@ async def list_collections(
 async def get_collection_details(
     collection_name: str,
     current_user: dict[str, Any] = Depends(get_current_user),
-    collection_repo: CollectionRepository = Depends(create_collection_repository),
+    collection_repo: CollectionRepository = Depends(get_collection_repository),
 ) -> CollectionDetails:
     """Get detailed information for a single collection"""
     try:
@@ -201,7 +201,7 @@ async def rename_collection(
     collection_name: str,
     request: CollectionRenameRequest,
     current_user: dict[str, Any] = Depends(get_current_user),
-    collection_repo: CollectionRepository = Depends(create_collection_repository),
+    collection_repo: CollectionRepository = Depends(get_collection_repository),
 ) -> dict[str, str]:
     """Rename the display name of a collection"""
     try:
@@ -248,7 +248,7 @@ async def rename_collection(
 async def delete_collection(
     collection_name: str,
     current_user: dict[str, Any] = Depends(get_current_user),
-    collection_repo: CollectionRepository = Depends(create_collection_repository),
+    collection_repo: CollectionRepository = Depends(get_collection_repository),
 ) -> dict[str, Any]:
     """Delete a collection and all associated data"""
     try:
@@ -332,7 +332,7 @@ async def get_collection_files(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(50, ge=1, le=100, description="Items per page"),
     current_user: dict[str, Any] = Depends(get_current_user),
-    collection_repo: CollectionRepository = Depends(create_collection_repository),
+    collection_repo: CollectionRepository = Depends(get_collection_repository),
 ) -> PaginatedFileList:
     """Get paginated list of files in a collection"""
     try:
