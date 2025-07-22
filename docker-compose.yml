@@ -276,6 +276,8 @@ services:
       target: runtime
     container_name: semantik-worker
     command: ["worker"]
+    profiles:
+      - backend
     environment:
       # Python path
       - PYTHONPATH=/app/packages
@@ -363,6 +365,8 @@ services:
       target: runtime
     container_name: semantik-flower
     command: ["flower"]
+    profiles:
+      - backend
     ports:
       - "5555:5555"
     environment:

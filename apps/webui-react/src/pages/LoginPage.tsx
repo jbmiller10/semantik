@@ -26,10 +26,26 @@ function LoginPage() {
         const response = await authApi.login({ username, password });
         
         if (response.data.access_token) {
-          // Get user info after login
-          const userResponse = await authApi.me();
+          // First set the auth token so subsequent API calls work
+          // We'll use a temporary user object and update it after
+          setAuth(response.data.access_token, {
+            id: 0,
+            username: username,
+            email: '',
+            is_active: true,
+            created_at: new Date().toISOString()
+          }, response.data.refresh_token);
           
-          setAuth(response.data.access_token, userResponse.data, response.data.refresh_token);
+          // Now get the actual user info
+          try {
+            const userResponse = await authApi.me();
+            // Update with real user data
+            setAuth(response.data.access_token, userResponse.data, response.data.refresh_token);
+          } catch (error) {
+            console.error('Failed to fetch user details:', error);
+            // Continue with login even if user details fetch fails
+          }
+          
           addToast({
             type: 'success',
             message: 'Logged in successfully',
