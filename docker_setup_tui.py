@@ -1069,6 +1069,11 @@ class DockerSetupTUI:
         self.config["DEFAULT_EMBEDDING_MODEL"] = "Qwen/Qwen3-Embedding-0.6B"
         self.config["DEFAULT_QUANTIZATION"] = "float16"
         self.config["WEBUI_WORKERS"] = "auto"
+        self.config["HF_CACHE_DIR"] = "./models"
+        self.config["HF_HUB_OFFLINE"] = "false"
+        self.config["ENVIRONMENT"] = "production"
+        self.config["DEFAULT_COLLECTION"] = "work_docs"
+        self.config["FLOWER_BASIC_AUTH"] = "admin:admin"  # Default, user should change later
 
         console.print()
         return True
@@ -1108,6 +1113,7 @@ class DockerSetupTUI:
         table.add_row("Token Expiration", f"{self.config['ACCESS_TOKEN_EXPIRE_MINUTES']} minutes")
         table.add_row("Log Level", self.config["LOG_LEVEL"])
         table.add_row("WebUI Workers", "auto")
+        table.add_row("Flower Auth", "admin:admin (change in .env later)")
 
         console.print(table)
         console.print()
@@ -1151,6 +1157,9 @@ class DockerSetupTUI:
             "WEBUI_WORKERS=1": "WEBUI_WORKERS=auto",
             "POSTGRES_PASSWORD=CHANGE_THIS_TO_A_STRONG_PASSWORD": f"POSTGRES_PASSWORD={self.config['POSTGRES_PASSWORD']}",
             "LOG_LEVEL=INFO": f"LOG_LEVEL={self.config['LOG_LEVEL']}",
+            "HF_CACHE_DIR=./models": f"HF_CACHE_DIR={self.config['HF_CACHE_DIR']}",
+            "HF_HUB_OFFLINE=false": f"HF_HUB_OFFLINE={self.config['HF_HUB_OFFLINE']}",
+            "DEFAULT_COLLECTION=work_docs": f"DEFAULT_COLLECTION={self.config['DEFAULT_COLLECTION']}",
         }
 
         if self.config["USE_GPU"] == "true":
@@ -1280,9 +1289,6 @@ class DockerSetupTUI:
         """Get the appropriate docker-compose file arguments based on configuration"""
         files = ["-f", "docker-compose.yml"]
 
-        # Add PostgreSQL support
-        files.extend(["-f", "docker-compose.postgres.yml"])
-
         # Add CUDA override if GPU mode is selected
         # This ensures proper CUDA libraries and environment variables for bitsandbytes
         if self.config.get("USE_GPU") == "true":
@@ -1315,14 +1321,14 @@ class DockerSetupTUI:
                 saved_config = json.load(f)
                 self.config.update(saved_config)
 
-        # Determine if using GPU based on config or docker-compose file
+        # Determine if using GPU based on config
         if "USE_GPU" not in self.config:
-            # Check which docker-compose is being used
-            if Path("docker-compose-cpu-only.yml").exists():
-                subprocess.run(["docker", "compose", "config", "--services"], capture_output=True, text=True)
-                self.config["USE_GPU"] = "true"  # Default to GPU unless we detect CPU-only
-            else:
+            # Check if CUDA devices are configured in .env
+            if "CUDA_VISIBLE_DEVICES" in self.config:
                 self.config["USE_GPU"] = "true"
+            else:
+                # Default to GPU if hardware is available
+                self.config["USE_GPU"] = "true" if self._check_gpu() else "false"
 
     def _save_config(self) -> None:
         """Save configuration to JSON file for future use"""
@@ -1513,20 +1519,37 @@ class DockerSetupTUI:
             console.print(f"[cyan]{service}:[/cyan]")
 
             # Try to access health endpoint
-            port_map = {"webui": 8080, "vecpipe": 8000, "qdrant": 6333}
+            port_map = {"webui": 8080, "vecpipe": 8000, "qdrant": 6333, "postgres": 5432, "redis": 6379, "flower": 5555}
 
             if service in port_map:
                 port = port_map[service]
-                try:
-                    import requests
-
-                    response = requests.get(f"http://localhost:{port}/health", timeout=5)
-                    if response.status_code == 200:
-                        console.print("  [green]✓ Health check passed[/green]")
+                # Special handling for services without HTTP health endpoints
+                if service == "worker":
+                    # Worker health is checked via docker healthcheck
+                    result = subprocess.run(
+                        ["docker", "inspect", "--format", "{{.State.Health.Status}}", "semantik-worker"],
+                        capture_output=True,
+                        text=True,
+                    )
+                    if result.returncode == 0:
+                        health_status = result.stdout.strip()
+                        if health_status == "healthy":
+                            console.print("  [green]✓ Health check passed (Docker healthcheck)[/green]")
+                        else:
+                            console.print(f"  [yellow]! Health status: {health_status}[/yellow]")
                     else:
-                        console.print(f"  [yellow]! Health check returned {response.status_code}[/yellow]")
-                except Exception as e:
-                    console.print(f"  [red]✗ Health check failed: {str(e)}[/red]")
+                        console.print("  [red]✗ Could not check health status[/red]")
+                else:
+                    try:
+                        import requests
+
+                        response = requests.get(f"http://localhost:{port}/health", timeout=5)
+                        if response.status_code == 200:
+                            console.print("  [green]✓ Health check passed[/green]")
+                        else:
+                            console.print(f"  [yellow]! Health check returned {response.status_code}[/yellow]")
+                    except Exception as e:
+                        console.print(f"  [red]✗ Health check failed: {str(e)}[/red]")
             else:
                 console.print("  [dim]No health endpoint[/dim]")
 

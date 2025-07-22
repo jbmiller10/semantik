@@ -1,5 +1,5 @@
 import apiClient from './client';
-import type { Document } from './types';
+import type { DocumentResponse } from './types';
 
 /**
  * V2 Documents API client
@@ -30,5 +30,5 @@ export const documentsV2Api = {
    * Get document metadata (if we add this endpoint in the future)
    */
   get: (collectionUuid: string, documentUuid: string) => 
-    apiClient.get<Document>(`/api/v2/collections/${collectionUuid}/documents/${documentUuid}`),
+    apiClient.get<DocumentResponse>(`/api/v2/collections/${collectionUuid}/documents/${documentUuid}`),
 };

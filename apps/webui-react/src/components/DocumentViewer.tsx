@@ -35,8 +35,8 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
         setLoading(true);
         setError(null);
 
-        // Get the document content URL and headers
-        const { url, headers } = documentsV2Api.getContent(collectionId, docId);
+        // Get the document content URL
+        const { url } = documentsV2Api.getContent(collectionId, docId);
 
         // For now, we'll display the document in an iframe
         // TODO: In the future, add specific handlers for different file types:

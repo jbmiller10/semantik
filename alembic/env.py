@@ -11,8 +11,10 @@ from alembic import context
 # Add the packages directory to the Python path
 sys.path.insert(0, str(Path(__file__).parent.parent / "packages"))
 
-# Import our settings and models
-from shared.config.postgres import postgres_config
+# Set up logger
+logger = logging.getLogger(__name__)
+
+# Import our models
 from shared.database.models import Base
 
 # this is the Alembic Config object, which provides
@@ -24,12 +26,26 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Set the SQLAlchemy URL from environment variable or PostgreSQL config
-database_url = os.environ.get("ALEMBIC_DATABASE_URL", postgres_config.sync_database_url)
-config.set_main_option("sqlalchemy.url", database_url)
+# Set the SQLAlchemy URL directly from the DATABASE_URL environment variable,
+# which is reliably set by Docker Compose.
+database_url = os.environ.get("DATABASE_URL")
+if not database_url:
+    raise ValueError("DATABASE_URL environment variable is not set. Cannot run migrations.")
+
+# Alembic needs a synchronous driver. Replace the asyncpg driver with psycopg2.
+# Handle both "postgresql://" and "postgresql+asyncpg://" formats
+if "postgresql+asyncpg://" in database_url:
+    sync_database_url = database_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
+elif "postgresql://" in database_url:
+    sync_database_url = database_url.replace("postgresql://", "postgresql+psycopg2://")
+else:
+    # If it's already using psycopg2 or another driver, use as-is
+    sync_database_url = database_url
+
+config.set_main_option("sqlalchemy.url", sync_database_url)
 
 # Log database type without exposing credentials
-logging.info(f"Using database: {database_url.split('@')[0].split('//')[0]}://...")
+logging.info(f"Using database: {sync_database_url.split('@')[0].split('//')[0]}://...")
 
 # add your model's MetaData object here
 # for 'autogenerate' support
