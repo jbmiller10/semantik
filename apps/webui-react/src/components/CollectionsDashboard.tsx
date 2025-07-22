@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef } from 'react';
-import { useCollectionStore } from '../stores/collectionStore';
+import { useState } from 'react';
+import { useCollections } from '../hooks/useCollections';
 import CollectionCard from './CollectionCard';
 import CreateCollectionModal from './CreateCollectionModal';
 
@@ -7,52 +7,12 @@ function CollectionsDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const isRefreshingRef = useRef(false);
   
-  const {
-    collections,
-    isLoading,
-    error,
-    fetchCollections,
-    getCollectionsArray,
-  } = useCollectionStore();
-
-  // Get all collections directly (not memoized to ensure updates)
-  const allCollections = getCollectionsArray();
-
-
-  // Fetch collections on mount
-  useEffect(() => {
-    fetchCollections().catch(() => {
-      // Error is already handled in the store
-    });
-  }, [fetchCollections]);
-
-  // Auto-refresh every 30 seconds if there are active operations
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      // Prevent concurrent fetches
-      if (isRefreshingRef.current) return;
-      
-      const hasActiveOperations = getCollectionsArray().some(
-        c => c.status === 'processing' || c.activeOperation
-      );
-      
-      if (hasActiveOperations) {
-        isRefreshingRef.current = true;
-        try {
-          await fetchCollections();
-        } finally {
-          isRefreshingRef.current = false;
-        }
-      }
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [fetchCollections, getCollectionsArray]);
+  // Use React Query hook to fetch collections
+  const { data: collections = [], isLoading, error, refetch } = useCollections();
   
   // Filter collections
-  const filteredCollections = allCollections.filter(collection => {
+  const filteredCollections = collections.filter(collection => {
     // Search filter
     const matchesSearch = !searchQuery || 
       collection.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -72,16 +32,15 @@ function CollectionsDashboard() {
   const handleCreateSuccess = () => {
     setShowCreateModal(false);
     // Toast is shown by the modal itself
-    fetchCollections();
+    // React Query will automatically refetch due to query invalidation
   };
 
-
-  if (error && collections.size === 0) {
+  if (error && collections.length === 0) {
     return (
       <div className="text-center py-12">
         <p className="text-red-600 mb-4">Failed to load collections</p>
         <button
-          onClick={() => fetchCollections()}
+          onClick={() => refetch()}
           className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
         >
           Retry
@@ -90,7 +49,7 @@ function CollectionsDashboard() {
     );
   }
 
-  if (isLoading && collections.size === 0) {
+  if (isLoading && collections.length === 0) {
     return (
       <div className="flex justify-center py-12">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -169,7 +128,7 @@ function CollectionsDashboard() {
       </div>
 
       {/* Empty State */}
-      {collections.size === 0 ? (
+      {collections.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
           <svg
             className="mx-auto h-12 w-12 text-gray-400"

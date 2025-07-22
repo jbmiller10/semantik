@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useUIStore } from '../stores/uiStore';
-import { useCollectionStore } from '../stores/collectionStore';
+import { useReindexCollection } from '../hooks/useCollectionOperations';
 import { useNavigate } from 'react-router-dom';
 import type { Collection, ReindexRequest } from '../types/collection';
 
@@ -17,7 +17,7 @@ interface ReindexCollectionModalProps {
 
 function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess }: ReindexCollectionModalProps) {
   const { addToast } = useUIStore();
-  const { reindexCollection } = useCollectionStore();
+  const reindexCollectionMutation = useReindexCollection();
   const navigate = useNavigate();
   const [confirmText, setConfirmText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -49,40 +49,43 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
         request.chunk_overlap = configChanges.chunk_overlap;
       }
       
-      // Call the store method to start re-indexing
-      await reindexCollection(collection.id, request);
+      // Call the mutation to start re-indexing
+      await reindexCollectionMutation.mutateAsync({
+        collectionId: collection.id,
+        config: request
+      });
       
       // Navigate to collection detail page to show operation progress
       navigate(`/collections/${collection.id}`);
-      
-      addToast({
-        type: 'success',
-        message: `Re-indexing started for collection "${collection.name}". You can track progress on the collection page.`,
-      });
+      // Toast is already shown by the mutation
       
       onSuccess();
     } catch (error: any) {
-      console.error('Failed to start re-indexing:', error);
-      
-      // Provide specific error messages based on error type
-      let errorMessage = 'Failed to start re-indexing. Please try again.';
-      
-      if (error.response?.status === 403) {
-        errorMessage = 'You do not have permission to re-index this collection.';
-      } else if (error.response?.status === 404) {
-        errorMessage = 'Collection not found. It may have been deleted.';
-      } else if (error.response?.status === 409) {
-        errorMessage = 'Another operation is already in progress for this collection.';
-      } else if (error.response?.data?.detail) {
-        errorMessage = error.response.data.detail;
-      } else if (error.message) {
-        errorMessage = `Re-indexing failed: ${error.message}`;
+      // Error handling is already done by the mutation
+      // This catch block is for any unexpected errors
+      if (!reindexCollectionMutation.isError) {
+        console.error('Failed to start re-indexing:', error);
+        
+        // Provide specific error messages based on error type
+        let errorMessage = 'Failed to start re-indexing. Please try again.';
+        
+        if (error.response?.status === 403) {
+          errorMessage = 'You do not have permission to re-index this collection.';
+        } else if (error.response?.status === 404) {
+          errorMessage = 'Collection not found. It may have been deleted.';
+        } else if (error.response?.status === 409) {
+          errorMessage = 'Another operation is already in progress for this collection.';
+        } else if (error.response?.data?.detail) {
+          errorMessage = error.response.data.detail;
+        } else if (error.message) {
+          errorMessage = `Re-indexing failed: ${error.message}`;
+        }
+        
+        addToast({
+          type: 'error',
+          message: errorMessage,
+        });
       }
-      
-      addToast({
-        type: 'error',
-        message: errorMessage,
-      });
     } finally {
       setIsSubmitting(false);
     }
@@ -219,17 +222,17 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
                 <button
                   type="button"
                   onClick={handleCancel}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || reindexCollectionMutation.isPending}
                   className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={!isConfirmValid || isSubmitting}
+                  disabled={!isConfirmValid || isSubmitting || reindexCollectionMutation.isPending}
                   className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isSubmitting ? 'Starting Re-index...' : 'Re-index Collection'}
+                  {isSubmitting || reindexCollectionMutation.isPending ? 'Starting Re-index...' : 'Re-index Collection'}
                 </button>
               </div>
             </form>

@@ -181,7 +181,7 @@ async def process_documents_parallel(
 
     # Use tqdm for progress tracking
     results = []
-    for coro in tqdm.as_completed(tasks, desc="Processing files"):
+    for coro in tqdm.as_completed(tasks, desc="Processing documents"):
         result = await coro
         results.append(result)
 

@@ -395,7 +395,7 @@ async def health() -> dict[str, Any]:
 async def search(
     q: str = Query(..., description="Search query"),
     k: int = Query(DEFAULT_K, ge=1, le=100, description="Number of results to return"),
-    collection: str | None = Query(None, description="Collection name (e.g., job_123)"),
+    collection: str | None = Query(None, description="Collection name"),
     search_type: str = Query("semantic", description="Type of search: semantic, question, code, hybrid"),
     model_name: str | None = Query(None, description="Override embedding model"),
     quantization: str | None = Query(None, description="Override quantization"),
@@ -791,7 +791,7 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
 async def hybrid_search(
     q: str = Query(..., description="Search query"),
     k: int = Query(DEFAULT_K, ge=1, le=100, description="Number of results to return"),
-    collection: str | None = Query(None, description="Collection name (e.g., job_123)"),
+    collection: str | None = Query(None, description="Collection name"),
     mode: str = Query("filter", description="Hybrid search mode: 'filter' or 'rerank'"),
     keyword_mode: str = Query("any", description="Keyword matching: 'any' or 'all'"),
     score_threshold: float | None = Query(None, description="Minimum similarity score threshold"),
@@ -1022,7 +1022,7 @@ async def batch_search(request: BatchSearchRequest = Body(...)) -> BatchSearchRe
 async def keyword_search(
     q: str = Query(..., description="Keywords to search for"),
     k: int = Query(DEFAULT_K, ge=1, le=100, description="Number of results to return"),
-    collection: str | None = Query(None, description="Collection name (e.g., job_123)"),
+    collection: str | None = Query(None, description="Collection name"),
     mode: str = Query("any", description="Keyword matching: 'any' or 'all'"),
 ) -> HybridSearchResponse:
     """

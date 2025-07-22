@@ -126,17 +126,6 @@ class QdrantMaintenanceService:
             vector_store_names = self._retry_request(make_request)
             collections.extend(vector_store_names)
 
-            # Also include legacy operation collections for backward compatibility
-            def make_job_request() -> list[str]:
-                response = httpx.get(f"{self.webui_base_url}/api/internal/jobs/all-ids", headers=headers, timeout=30.0)
-                response.raise_for_status()
-                result: list[str] = response.json()
-                return result
-
-            operation_uuids = self._retry_request(make_job_request)
-            for operation_uuid in operation_uuids:
-                collections.append(f"operation_{operation_uuid}")
-
             # Remove duplicates
             collections = list(set(collections))
 

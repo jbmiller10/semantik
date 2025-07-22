@@ -38,8 +38,11 @@ from .api import (  # noqa: E402
     settings,
 )
 from .api.v2 import collections as v2_collections  # noqa: E402
+from .api.v2 import directory_scan as v2_directory_scan  # noqa: E402
+from .api.v2 import documents as v2_documents  # noqa: E402
 from .api.v2 import operations as v2_operations  # noqa: E402
 from .api.v2 import search as v2_search  # noqa: E402
+from .api.v2.directory_scan import directory_scan_websocket  # noqa: E402
 from .api.v2.operations import operation_websocket  # noqa: E402
 from .rate_limiter import limiter  # noqa: E402
 from .websocket_manager import ws_manager  # noqa: E402
@@ -200,6 +203,8 @@ def create_app() -> FastAPI:
 
     # Include v2 API routers
     app.include_router(v2_collections.router)
+    app.include_router(v2_directory_scan.router)
+    app.include_router(v2_documents.router)
     app.include_router(v2_operations.router)
     app.include_router(v2_search.router)
 
@@ -226,6 +231,10 @@ def create_app() -> FastAPI:
     @app.websocket("/ws/operations/{operation_id}")
     async def operation_ws(websocket: WebSocket, operation_id: str) -> None:
         await operation_websocket(websocket, operation_id)
+    
+    @app.websocket("/ws/directory-scan/{scan_id}")
+    async def directory_scan_ws(websocket: WebSocket, scan_id: str) -> None:
+        await directory_scan_websocket(websocket, scan_id)
 
     # Add health check endpoint
     @app.get("/health")

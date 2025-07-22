@@ -1,14 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { operationsV2Api } from '../services/api/v2/collections';
-import { useCollectionStore } from '../stores/collectionStore';
 import { useOperationProgress } from '../hooks/useOperationProgress';
 import type { Operation } from '../types/collection';
 import { RefreshCw, Activity, Clock, AlertCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 function ActiveOperationsTab() {
-  const collections = useCollectionStore((state) => state.collections);
-  const setSelectedCollection = useCollectionStore((state) => state.setSelectedCollection);
 
   // Fetch active operations across all collections
   const { data, isLoading, error, refetch } = useQuery({
@@ -25,14 +22,16 @@ function ActiveOperationsTab() {
 
   // Get collection name for an operation
   const getCollectionName = (collectionId: string) => {
-    const collection = collections.get(collectionId);
-    return collection?.name || 'Unknown Collection';
+    // Collection names should be included in the operation data
+    // For now, return a placeholder
+    return `Collection ${collectionId}`;
   };
 
   // Navigate to collection details
   const navigateToCollection = (collectionId: string) => {
-    setSelectedCollection(collectionId);
-    // The CollectionDetailsPanel will be shown by the CollectionsDashboard
+    // TODO: Implement proper navigation using React Router
+    // For now, this is a no-op since we removed UI state from the store
+    console.log('Navigate to collection:', collectionId);
   };
 
   if (isLoading) {
@@ -126,16 +125,10 @@ interface OperationListItemProps {
 }
 
 function OperationListItem({ operation, collectionName, onNavigateToCollection }: OperationListItemProps) {
-  // Get progress from store (updated via WebSocket)
-  const storeOperations = useCollectionStore((state) => 
-    state.getCollectionOperations(operation.collection_id)
-  );
-  const currentOperation = storeOperations.find(op => op.id === operation.id) || operation;
-  
   // Connect to WebSocket for this operation's progress
   // Only connect if the operation is active
-  const isActive = currentOperation.status === 'processing' || currentOperation.status === 'pending';
-  useOperationProgress(isActive ? currentOperation.id : null, { showToasts: false });
+  const isActive = operation.status === 'processing' || operation.status === 'pending';
+  useOperationProgress(isActive ? operation.id : null, { showToasts: false });
 
   const formatOperationType = (type: string) => {
     switch (type) {
@@ -170,14 +163,14 @@ function OperationListItem({ operation, collectionName, onNavigateToCollection }
       <div className="flex items-center justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center space-x-3">
-            <span className="text-2xl">{getOperationIcon(currentOperation.type)}</span>
+            <span className="text-2xl">{getOperationIcon(operation.type)}</span>
             <div className="flex-1">
               <div className="flex items-center space-x-2">
                 <h4 className="text-sm font-medium text-gray-900">
-                  {formatOperationType(currentOperation.type)}
+                  {formatOperationType(operation.type)}
                 </h4>
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(currentOperation.status)}`}>
-                  {currentOperation.status}
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(operation.status)}`}>
+                  {operation.status}
                 </span>
               </div>
               <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
@@ -190,12 +183,12 @@ function OperationListItem({ operation, collectionName, onNavigateToCollection }
                 <span className="flex items-center space-x-1">
                   <Clock className="h-3 w-3" />
                   <span>
-                    Started {formatDistanceToNow(new Date(currentOperation.created_at), { addSuffix: true })}
+                    Started {formatDistanceToNow(new Date(operation.created_at), { addSuffix: true })}
                   </span>
                 </span>
-                {currentOperation.config?.source_path && (
-                  <span className="truncate max-w-xs" title={currentOperation.config.source_path}>
-                    {currentOperation.config.source_path}
+                {operation.config?.source_path && (
+                  <span className="truncate max-w-xs" title={operation.config.source_path}>
+                    {operation.config.source_path}
                   </span>
                 )}
               </div>
@@ -203,23 +196,23 @@ function OperationListItem({ operation, collectionName, onNavigateToCollection }
           </div>
           
           {/* Progress bar for processing operations */}
-          {currentOperation.status === 'processing' && currentOperation.progress !== undefined && (
+          {operation.status === 'processing' && operation.progress !== undefined && (
             <div className="mt-3">
               <div className="flex justify-between text-sm text-gray-600 mb-1">
                 <span>Progress</span>
-                <span>{Math.round(currentOperation.progress)}%</span>
+                <span>{Math.round(operation.progress)}%</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
                 <div
                   className="bg-blue-600 h-2 rounded-full transition-all duration-300 relative"
-                  style={{ width: `${currentOperation.progress}%` }}
+                  style={{ width: `${operation.progress}%` }}
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"></div>
                 </div>
               </div>
-              {currentOperation.eta && (
+              {operation.eta && (
                 <p className="mt-1 text-xs text-gray-500">
-                  ETA: {Math.ceil(currentOperation.eta / 60)} minutes remaining
+                  ETA: {Math.ceil(operation.eta / 60)} minutes remaining
                 </p>
               )}
             </div>

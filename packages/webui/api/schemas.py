@@ -384,6 +384,114 @@ class BatchDocumentUpload(BaseModel):
     )
 
 
+# Directory scan schemas
+class DirectoryScanRequest(BaseModel):
+    """Request to scan a directory for documents."""
+    
+    path: str = Field(
+        ...,
+        description="Path to the directory to scan",
+    )
+    scan_id: str = Field(
+        ...,
+        pattern="^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+        description="UUID for tracking this scan session",
+    )
+    recursive: bool = Field(
+        default=True,
+        description="Whether to scan subdirectories recursively",
+    )
+    include_patterns: list[str] | None = Field(
+        default=None,
+        description="File patterns to include (e.g., '*.pdf', '*.docx')",
+    )
+    exclude_patterns: list[str] | None = Field(
+        default=None,
+        description="File patterns to exclude",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "path": "/mnt/shared/documents/project-alpha",
+                "scan_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+                "recursive": True,
+                "include_patterns": ["*.pdf", "*.docx"],
+                "exclude_patterns": ["*.tmp", "~*"],
+            }
+        }
+    )
+
+
+class DirectoryScanFile(BaseModel):
+    """Information about a scanned file."""
+    
+    file_path: str
+    file_name: str
+    file_size: int
+    mime_type: str | None
+    content_hash: str
+    modified_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DirectoryScanResponse(BaseModel):
+    """Response from directory scan."""
+    
+    scan_id: str
+    path: str
+    files: list[DirectoryScanFile]
+    total_files: int
+    total_size: int
+    warnings: list[str] = Field(default_factory=list)
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "scan_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+                "path": "/mnt/shared/documents/project-alpha",
+                "files": [
+                    {
+                        "file_path": "/mnt/shared/documents/project-alpha/spec.pdf",
+                        "file_name": "spec.pdf",
+                        "file_size": 1048576,
+                        "mime_type": "application/pdf",
+                        "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                        "modified_at": "2025-07-15T10:00:00Z",
+                    }
+                ],
+                "total_files": 150,
+                "total_size": 536870912,
+                "warnings": ["Permission denied: /mnt/shared/documents/project-alpha/private"],
+            }
+        }
+    )
+
+
+class DirectoryScanProgress(BaseModel):
+    """WebSocket message for directory scan progress."""
+    
+    type: str = Field(default="progress", pattern="^(started|counting|progress|completed|error|warning)$")
+    scan_id: str
+    data: dict[str, Any]
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "type": "progress",
+                "scan_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+                "data": {
+                    "files_scanned": 520,
+                    "total_files": 1250,
+                    "current_path": "/mnt/shared/documents/project-alpha/specs/spec-v2.pdf",
+                    "percentage": 41.6,
+                },
+            }
+        }
+    )
+
+
 # Error schemas
 class ErrorResponse(BaseModel):
     """Standard error response."""

@@ -1,5 +1,4 @@
-import { useEffect } from 'react';
-import { useCollectionStore } from '../stores/collectionStore';
+import { useCollectionOperations } from '../hooks/useCollectionOperations';
 import OperationProgress from './OperationProgress';
 import type { Collection } from '../types/collection';
 
@@ -14,15 +13,8 @@ function CollectionOperations({
   className = '',
   maxOperations = 5,
 }: CollectionOperationsProps) {
-  const { fetchOperations, getCollectionOperations } = useCollectionStore();
-  
-  // Fetch operations on mount and when collection changes
-  useEffect(() => {
-    fetchOperations(collection.id);
-  }, [collection.id, fetchOperations]);
-  
-  // Get operations for this collection
-  const operations = getCollectionOperations(collection.id);
+  // Use React Query hook to fetch operations
+  const { data: operations = [], refetch } = useCollectionOperations(collection.id);
   
   // Sort operations by creation date (newest first)
   const sortedOperations = [...operations].sort((a, b) => 
@@ -77,7 +69,7 @@ function CollectionOperations({
                 showDetails={true}
                 onComplete={() => {
                   // Refresh operations when one completes
-                  fetchOperations(collection.id);
+                  refetch();
                 }}
               />
             </div>

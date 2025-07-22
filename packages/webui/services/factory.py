@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from packages.shared.database import get_db
 
 from .collection_service import CollectionService
+from .directory_scan_service import DirectoryScanService
 from .document_scanning_service import DocumentScanningService
 from .operation_service import OperationService
 from .resource_manager import ResourceManager
@@ -205,3 +206,12 @@ def create_search_service(db: AsyncSession) -> SearchService:
 async def get_search_service(db: AsyncSession = Depends(get_db)) -> SearchService:
     """FastAPI dependency for SearchService injection."""
     return create_search_service(db)
+
+
+async def get_directory_scan_service() -> DirectoryScanService:
+    """FastAPI dependency for DirectoryScanService injection.
+    
+    Note: DirectoryScanService doesn't require database access as it only
+    provides preview functionality without persisting data.
+    """
+    return DirectoryScanService()

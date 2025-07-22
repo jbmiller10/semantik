@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { settingsApi } from '../services/api';
-import { useCollectionStore } from '../stores/collectionStore';
+import { useQueryClient } from '@tanstack/react-query';
+import { settingsApi } from '../services/api/v2';
 
 interface DatabaseStats {
   collection_count: number;
@@ -13,6 +13,7 @@ interface DatabaseStats {
 
 function SettingsPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [stats, setStats] = useState<DatabaseStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -47,8 +48,8 @@ function SettingsPage() {
       setResetting(true);
       await settingsApi.resetDatabase();
       
-      // Clear the collection store to remove cached data
-      useCollectionStore.getState().clearStore();
+      // Clear all React Query caches
+      queryClient.clear();
       
       // Show success message and redirect
       alert('Database reset successfully!');

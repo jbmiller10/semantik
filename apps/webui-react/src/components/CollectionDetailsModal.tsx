@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUIStore } from '../stores/uiStore';
 import { collectionsV2Api } from '../services/api/v2/collections';
-import { useCollectionStore } from '../stores/collectionStore';
+import { collectionKeys } from '../hooks/useCollections';
 import AddDataToCollectionModal from './AddDataToCollectionModal';
 import RenameCollectionModal from './RenameCollectionModal';
 import DeleteCollectionModal from './DeleteCollectionModal';
@@ -135,9 +135,8 @@ function CollectionDetailsModal() {
   const handleDeleteSuccess = () => {
     setShowDeleteModal(false);
     handleClose();
-    // Refresh the collections list in the store
-    const { fetchCollections } = useCollectionStore.getState();
-    fetchCollections();
+    // Invalidate the collections query to refresh the list
+    queryClient.invalidateQueries({ queryKey: collectionKeys.lists() });
     addToast({ type: 'success', message: 'Collection deleted successfully' });
   };
 

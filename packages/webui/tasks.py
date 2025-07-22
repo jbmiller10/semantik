@@ -209,7 +209,7 @@ def cleanup_old_results(days_to_keep: int = DEFAULT_DAYS_TO_KEEP) -> dict[str, A
     """
     from datetime import timedelta
 
-    stats: dict[str, Any] = {"celery_results_deleted": 0, "old_jobs_marked": 0, "errors": []}
+    stats: dict[str, Any] = {"celery_results_deleted": 0, "old_operations_marked": 0, "errors": []}
 
     try:
         # Clean up old Celery results from Redis
