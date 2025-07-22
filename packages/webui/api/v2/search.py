@@ -12,10 +12,8 @@ from typing import Any, cast
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.config import settings
-from packages.shared.database import get_db
 from packages.shared.database.models import Collection, CollectionStatus
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.webui.api.schemas import ErrorResponse
@@ -26,8 +24,8 @@ from packages.webui.api.v2.schemas import (
     SingleCollectionSearchRequest,
 )
 from packages.webui.auth import get_current_user
-from packages.webui.rate_limiter import limiter
 from packages.webui.dependencies import get_collection_repository
+from packages.webui.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 

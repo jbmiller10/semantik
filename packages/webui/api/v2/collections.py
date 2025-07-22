@@ -37,8 +37,8 @@ from packages.webui.auth import get_current_user
 from packages.webui.dependencies import (
     get_collection_for_user,
     get_collection_repository,
-    get_operation_repository,
     get_document_repository,
+    get_operation_repository,
 )
 from packages.webui.rate_limiter import limiter
 from packages.webui.services.collection_service import CollectionService

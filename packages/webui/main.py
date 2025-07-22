@@ -41,10 +41,10 @@ from .api import (  # noqa: E402
     settings,
 )
 from .api.files import scan_websocket  # noqa: E402
-from .api.v2.operations import operation_websocket  # noqa: E402
 from .api.v2 import collections as v2_collections  # noqa: E402
 from .api.v2 import operations as v2_operations  # noqa: E402
 from .api.v2 import search as v2_search  # noqa: E402
+from .api.v2.operations import operation_websocket  # noqa: E402
 from .rate_limiter import limiter  # noqa: E402
 from .websocket_manager import ws_manager  # noqa: E402
 

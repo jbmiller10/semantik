@@ -360,39 +360,6 @@ class SearchResponse(BaseModel):
     )
 
 
-# Job/Task schemas (for async processing)
-class TaskStatus(str, Enum):
-    """Task status enum."""
-
-    PENDING = "pending"
-    STARTED = "started"
-    SUCCESS = "success"
-    FAILURE = "failure"
-    RETRY = "retry"
-    REVOKED = "revoked"
-
-
-class TaskResponse(BaseModel):
-    """Task response schema."""
-
-    task_id: str
-    status: TaskStatus
-    result: Any | None = None
-    error: str | None = None
-    progress: float | None = Field(None, ge=0.0, le=100.0)
-    created_at: datetime
-    updated_at: datetime | None = None
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "task_id": "550e8400-e29b-41d4-a716-446655440000",
-                "status": "started",
-                "progress": 45.5,
-                "created_at": "2025-07-15T10:00:00Z",
-            }
-        }
-    )
 
 
 # Batch operations

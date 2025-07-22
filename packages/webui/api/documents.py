@@ -25,12 +25,11 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
-from shared.database.base import FileRepository
-from shared.database.repositories import OperationRepository
 
+from packages.shared.database.repositories import DocumentRepository, OperationRepository
 from packages.webui.auth import get_current_user
+from packages.webui.dependencies import get_document_repository, get_operation_repository
 from packages.webui.rate_limiter import limiter
-from packages.webui.dependencies import get_file_repository, get_operation_repository
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +132,7 @@ async def validate_file_access(
     doc_id: str,
     current_user: dict[str, Any],
     operation_repo: OperationRepository,
-    file_repo: FileRepository,
+    document_repo: DocumentRepository,
 ) -> dict[str, Any]:
     """Validate that the user has access to the requested document"""
     # Get operation to verify it exists and user has access
@@ -142,24 +141,29 @@ async def validate_file_access(
     except Exception:
         raise HTTPException(status_code=404, detail="Operation not found or access denied")
 
-    # Get file record from database
-    files = await file_repo.get_job_files(operation_id)
-    file_record: dict[str, Any] | None = None
-
-    for file in files:
-        if file.get("doc_id") == doc_id:
-            file_record = file
-            break
-
-    if not file_record:
+    # Get document record from database
+    document = await document_repo.get_by_doc_id(doc_id)
+    if not document:
         raise HTTPException(status_code=404, detail="Document not found")
+
+    # Verify document belongs to this operation
+    if document.operation_id != operation.id:
+        raise HTTPException(status_code=404, detail="Document not found")
+    # Convert to dict format for compatibility
+    file_record = {
+        "doc_id": document.doc_id,
+        "path": document.path,
+        "size": document.size,
+        "extension": document.extension,
+        "modified": document.modified
+    }
 
     # Verify file path is safe (prevent path traversal)
     file_path = Path(file_record["path"])
 
     try:
         # Resolve path to absolute
-        file_path_resolved = file_path.resolve()
+        file_path.resolve()
 
         # Basic security check - ensure no path traversal attempts
         if ".." in str(file_path):
@@ -187,7 +191,7 @@ async def get_document(
     doc_id: str,
     current_user: dict[str, Any] = Depends(get_current_user),
     operation_repo: OperationRepository = Depends(get_operation_repository),
-    file_repo: FileRepository = Depends(get_file_repository),
+    document_repo: DocumentRepository = Depends(get_document_repository),
     range: str | None = Header(None),
 ) -> Response:
     """
@@ -205,7 +209,7 @@ async def get_document(
     Returns a `FileResponse` or `StreamingResponse` for the document.
     """
     # Validate access and get file info
-    file_record = await validate_file_access(operation_id, doc_id, current_user, operation_repo, file_repo)
+    file_record = await validate_file_access(operation_id, doc_id, current_user, operation_repo, document_repo)
     file_path = Path(file_record["path"])
 
     # Check if file extension is supported
@@ -407,7 +411,7 @@ async def get_document_info(
     doc_id: str,
     current_user: dict[str, Any] = Depends(get_current_user),
     operation_repo: OperationRepository = Depends(get_operation_repository),
-    file_repo: FileRepository = Depends(get_file_repository),
+    document_repo: DocumentRepository = Depends(get_document_repository),
 ) -> dict[str, Any]:
     """
     Get document metadata without downloading the file.
@@ -422,7 +426,7 @@ async def get_document_info(
     Returns a JSON object with document metadata.
     """
     # Validate access and get file info
-    file_record = await validate_file_access(operation_id, doc_id, current_user, operation_repo, file_repo)
+    file_record = await validate_file_access(operation_id, doc_id, current_user, operation_repo, document_repo)
     file_path = Path(file_record["path"])
 
     return {

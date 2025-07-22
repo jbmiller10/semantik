@@ -3,7 +3,6 @@ Search routes for the Web UI
 """
 
 import logging
-import warnings
 from typing import Any
 
 import httpx
@@ -11,9 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from shared.config import settings
 from shared.contracts.search import HybridSearchRequest, PreloadModelRequest
 from shared.contracts.search import SearchRequest as SharedSearchRequest
-from shared.database.base import JobRepository
 from webui.auth import get_current_user
-from webui.dependencies import get_job_repository
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +30,6 @@ class SearchRequest(SharedSearchRequest):
 async def search(
     request: SearchRequest,
     current_user: dict[str, Any] = Depends(get_current_user),
-    job_repo: JobRepository = Depends(get_job_repository),
 ) -> dict[str, Any]:
     """Unified search endpoint - handles both vector and hybrid search"""
     logger.info(
@@ -42,47 +38,15 @@ async def search(
     )
 
     try:
-        # Check if job_id is used and issue deprecation warning
-        if request.job_id:
-            warnings.warn(
-                "The 'job_id' parameter is deprecated and will be removed in a future version. "
-                "Please use 'collection' parameter with collection UUID instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            logger.warning(
-                f"Deprecated job_id parameter used: {request.job_id}. " "Please migrate to using collection UUID."
-            )
-
-        # Determine collection name and job_id
+        # Determine collection name
         if request.collection:
             collection_name = request.collection
-            # Extract job_id from collection name if it follows the pattern
-            if request.collection.startswith("job_") and not request.job_id:
-                request.job_id = request.collection.replace("job_", "")
-        elif request.job_id:
-            collection_name = f"job_{request.job_id}"
         else:
             collection_name = "work_docs"
 
-        # Get model name and settings from job if specified
-        model_name = None
-        quantization = None
-
-        if request.job_id:
-            job = await job_repo.get_job(request.job_id)
-            if not job:
-                raise HTTPException(status_code=404, detail="Job not found")
-
-            # Check if the current user owns the job
-            # Allow access to legacy jobs without user_id
-            if job.get("user_id") is not None and job.get("user_id") != current_user.get("id"):
-                raise HTTPException(status_code=403, detail="Access denied to this collection")
-
-            if job.get("model_name"):
-                model_name = job["model_name"]
-            if job.get("quantization"):
-                quantization = job["quantization"]
+        # Get model name and quantization from request if specified
+        model_name = request.model_name
+        quantization = request.quantization
 
         # Route based on search type
         if request.search_type == "hybrid":
@@ -146,11 +110,6 @@ async def search(
                 # Get metadata
                 metadata = result.get("metadata", {})
 
-                # Extract job_id from collection name (format: job_{job_id})
-                job_id_from_collection = (
-                    collection_name.replace("job_", "") if collection_name.startswith("job_") else request.job_id
-                )
-
                 # Create result in format expected by SearchResults component
                 transformed_result = {
                     "doc_id": result.get("doc_id", ""),
@@ -161,7 +120,7 @@ async def search(
                     "file_name": file_name,
                     "chunk_index": metadata.get("chunk_index", 0),
                     "total_chunks": metadata.get("total_chunks", 1),
-                    "job_id": job_id_from_collection,
+                    "collection": collection_name,
                     # Hybrid-specific fields
                     "matched_keywords": result.get("matched_keywords", []),
                     "keyword_score": result.get("keyword_score"),
@@ -243,11 +202,6 @@ async def search(
             # Get metadata
             metadata = result.get("metadata", {})
 
-            # Extract job_id from collection name (format: job_{job_id})
-            job_id_from_collection = (
-                collection_name.replace("job_", "") if collection_name.startswith("job_") else request.job_id
-            )
-
             # Create result in format expected by SearchResults component
             transformed_result = {
                 "doc_id": result.get("doc_id", ""),
@@ -258,7 +212,7 @@ async def search(
                 "file_name": file_name,
                 "chunk_index": metadata.get("chunk_index", 0),
                 "total_chunks": metadata.get("total_chunks", 1),
-                "job_id": job_id_from_collection,
+                "collection": collection_name,
                 # Keep the payload format for backward compatibility
                 "payload": {
                     "path": path,
@@ -364,44 +318,15 @@ async def preload_model(
 async def hybrid_search(
     request: HybridSearchRequest,
     current_user: dict[str, Any] = Depends(get_current_user),
-    job_repo: JobRepository = Depends(get_job_repository),
 ) -> dict[str, Any]:
     """Perform hybrid search combining vector similarity and text matching - proxies to REST API"""
     try:
-        # Check if job_id is used and issue deprecation warning
-        if request.job_id:
-            warnings.warn(
-                "The 'job_id' parameter is deprecated and will be removed in a future version. "
-                "Please use 'collection' parameter with collection UUID instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            logger.warning(
-                f"Deprecated job_id parameter used in hybrid_search: {request.job_id}. "
-                "Please migrate to using collection UUID."
-            )
-
         # Determine collection name
-        collection_name = f"job_{request.job_id}" if request.job_id else "work_docs"
+        collection_name = request.collection if request.collection else "work_docs"
 
-        # Get model name and settings from job if specified
-        model_name = None
-        quantization = None
-
-        if request.job_id:
-            job = await job_repo.get_job(request.job_id)
-            if not job:
-                raise HTTPException(status_code=404, detail="Job not found")
-
-            # Check if the current user owns the job
-            # Allow access to legacy jobs without user_id
-            if job.get("user_id") is not None and job.get("user_id") != current_user.get("id"):
-                raise HTTPException(status_code=403, detail="Access denied to this collection")
-
-            if job.get("model_name"):
-                model_name = job["model_name"]
-            if job.get("quantization"):
-                quantization = job["quantization"]
+        # Get model name and quantization from request if specified
+        model_name = request.model_name
+        quantization = request.quantization
 
         # Prepare hybrid search params for REST API
         search_params: dict[str, str | int | float | None] = {

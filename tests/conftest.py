@@ -55,8 +55,6 @@ def unauthenticated_test_client():
 @pytest.fixture()
 def test_client_with_mocks(
     test_user,
-    mock_job_repository,
-    mock_file_repository,
     mock_collection_repository,
     mock_user_repository,
     mock_auth_repository,
@@ -65,8 +63,6 @@ def test_client_with_mocks(
     from shared.database.factory import (
         create_auth_repository,
         create_collection_repository,
-        create_file_repository,
-        create_job_repository,
         create_user_repository,
     )
 
@@ -79,8 +75,6 @@ def test_client_with_mocks(
 
     # Override repository dependencies
     app.dependency_overrides[get_current_user] = override_get_current_user
-    app.dependency_overrides[create_job_repository] = lambda: mock_job_repository
-    app.dependency_overrides[create_file_repository] = lambda: mock_file_repository
     app.dependency_overrides[create_collection_repository] = lambda: mock_collection_repository
     app.dependency_overrides[create_user_repository] = lambda: mock_user_repository
     app.dependency_overrides[create_auth_repository] = lambda: mock_auth_repository
@@ -160,30 +154,6 @@ def create_async_mock(return_value=None):
     return MagicMock(side_effect=async_mock)
 
 
-@pytest.fixture()
-def mock_job_repository():
-    """Create a mock JobRepository for testing."""
-    mock = MagicMock()
-    # Set up async methods
-    mock.create_job = create_async_mock()
-    mock.get_job = create_async_mock()
-    mock.update_job = create_async_mock()
-    mock.delete_job = create_async_mock()
-    mock.list_jobs = create_async_mock([])
-    mock.get_all_job_ids = create_async_mock([])
-    return mock
-
-
-@pytest.fixture()
-def mock_file_repository():
-    """Create a mock FileRepository for testing."""
-    mock = MagicMock()
-    mock.add_files_to_job = create_async_mock()
-    mock.get_job_files = create_async_mock([])
-    mock.update_file_status = create_async_mock()
-    mock.get_job_total_vectors = create_async_mock(0)
-    mock.get_duplicate_files_in_collection = create_async_mock(set())
-    return mock
 
 
 @pytest.fixture()

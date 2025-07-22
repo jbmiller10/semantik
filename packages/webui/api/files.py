@@ -269,7 +269,7 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str |
         }
         warnings.append(warning)
         if scan_id:
-            await manager.send_job_update(f"scan_{scan_id}", "warning", {"warning": warning})
+            await manager.send_update(f"scan_{scan_id}", "warning", {"warning": warning})
 
     if total_size > warning_size_limit:
         warning = {
@@ -279,7 +279,7 @@ async def scan_directory_async(path: str, recursive: bool = True, scan_id: str |
         }
         warnings.append(warning)
         if scan_id:
-            await manager.send_job_update(f"scan_{scan_id}", "warning", {"warning": warning})
+            await manager.send_update(f"scan_{scan_id}", "warning", {"warning": warning})
 
     return {"files": files, "warnings": warnings, "total_files": file_count, "total_size": total_size}
 

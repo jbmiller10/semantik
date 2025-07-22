@@ -289,7 +289,7 @@ async def operation_websocket(websocket: WebSocket, operation_id: str) -> None:
     # Authentication and authorization successful, connect the WebSocket
     channel_id = f"operation:{operation_id}"
     await ws_manager.connect(websocket, channel_id, user_id)
-    
+
     try:
         # Keep the connection alive and handle any incoming messages
         while True:

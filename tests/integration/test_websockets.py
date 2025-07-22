@@ -10,10 +10,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import WebSocket
-from fastapi.testclient import TestClient
-
-from packages.shared.database.models import OperationStatus, OperationType
-from packages.webui.main import app
 
 
 class TestOperationsWebSocket:
@@ -320,10 +316,10 @@ class TestOperationsWebSocket:
     async def test_full_integration_with_celery_updates(self, mock_redis):
         """Test full integration: Celery task publishes update, WebSocket receives it."""
         # This test simulates the complete flow from Celery task to WebSocket client
-        
+
         # Create a mock operation
         operation_id = "test-operation-123"
-        
+
         # Mock WebSocket client
         mock_websocket = AsyncMock(spec=WebSocket)
         mock_websocket.accept = AsyncMock()
@@ -339,7 +335,7 @@ class TestOperationsWebSocket:
 
         # Mock authentication
         mock_user = {"id": "1", "username": "testuser"}
-        
+
         # Simulate the complete flow
         from packages.webui.api.v2.operations import operation_websocket
         from packages.webui.tasks import CeleryTaskWithOperationUpdates
@@ -384,7 +380,7 @@ class TestOperationsWebSocket:
 
                             # Simulate Celery task sending updates
                             await celery_updater.send_update("start", {"status": "started", "total_files": 100})
-                            
+
                             # Simulate progress update from WebSocket manager
                             if connected_ws:
                                 await connected_ws.send_json({

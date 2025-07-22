@@ -11,24 +11,19 @@ from packages.shared.database import (
     ApiKeyRepository,
     AuthRepository,
     CollectionRepository,
-    FileRepository,
-    JobRepository,
     UserRepository,
     create_api_key_repository,
     create_auth_repository,
     create_collection_repository,
     create_document_repository,
-    create_file_repository,
-    create_job_repository,
     create_operation_repository,
     create_user_repository,
     get_db,
 )
-from packages.shared.database.repositories.operation_repository import OperationRepository
-from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from packages.shared.database.models import Collection
-from packages.shared.database.repositories.collection_repository import CollectionRepository
+from packages.shared.database.repositories.document_repository import DocumentRepository
+from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.webui.auth import get_current_user
 
 
@@ -118,7 +113,8 @@ async def get_collection_repository(db: AsyncSession = Depends(get_db)) -> Colle
     Returns:
         CollectionRepository instance configured with the database session
     """
-    return create_collection_repository(db)
+    # Collection repository now manages its own session
+    return create_collection_repository()
 
 
 async def get_operation_repository(db: AsyncSession = Depends(get_db)) -> OperationRepository:
@@ -131,7 +127,8 @@ async def get_operation_repository(db: AsyncSession = Depends(get_db)) -> Operat
     Returns:
         OperationRepository instance configured with the database session
     """
-    return create_operation_repository(db)
+    # Operation repository now manages its own session
+    return create_operation_repository()
 
 
 async def get_document_repository(db: AsyncSession = Depends(get_db)) -> DocumentRepository:
@@ -144,30 +141,7 @@ async def get_document_repository(db: AsyncSession = Depends(get_db)) -> Documen
     Returns:
         DocumentRepository instance configured with the database session
     """
-    return create_document_repository(db)
+    # Document repository now manages its own session
+    return create_document_repository()
 
 
-async def get_file_repository(db: AsyncSession = Depends(get_db)) -> FileRepository:
-    """
-    FastAPI dependency that provides a FileRepository instance.
-
-    Args:
-        db: Database session from get_db dependency
-
-    Returns:
-        FileRepository instance configured with the database session
-    """
-    return create_file_repository(db)
-
-
-async def get_job_repository(db: AsyncSession = Depends(get_db)) -> JobRepository:
-    """
-    FastAPI dependency that provides a JobRepository instance.
-
-    Args:
-        db: Database session from get_db dependency
-
-    Returns:
-        JobRepository instance configured with the database session
-    """
-    return create_job_repository(db)
