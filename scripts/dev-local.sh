@@ -29,9 +29,9 @@ if [ ! -f .env.local ]; then
     exit 1
 fi
 
-# Start Docker services (without webui)
+# Start Docker services (backend only, without webui)
 echo -e "${GREEN}Starting Docker services (Qdrant, PostgreSQL, Redis, VecPipe, Worker)...${NC}"
-docker compose -f docker-compose.dev.yml up -d
+docker compose --profile backend up -d
 
 # Wait for services to be ready
 echo -e "${YELLOW}Waiting for services to be ready...${NC}"
@@ -39,7 +39,7 @@ sleep 5
 
 # Check if services are healthy
 echo -e "${GREEN}Checking service health...${NC}"
-docker compose -f docker-compose.dev.yml ps
+docker compose --profile backend ps
 
 # Export environment variables from .env.local
 echo -e "${GREEN}Loading local environment variables...${NC}"

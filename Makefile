@@ -148,92 +148,56 @@ docker-up:
 		fi; \
 		echo "✓ Generated secure POSTGRES_PASSWORD"; \
 	fi
-	docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
-	@echo "Services started with PostgreSQL! Access the application at http://localhost:8080"
+	docker compose up -d
+	@echo "Services started! Access the application at http://localhost:8080"
 
 docker-down:
 	@echo "Stopping Semantik services..."
-	docker compose -f docker-compose.yml -f docker-compose.postgres.yml down
+	docker compose down
 
 docker-logs:
-	docker compose -f docker-compose.yml -f docker-compose.postgres.yml logs -f
+	docker compose logs -f
 
 docker-build-fresh:
 	@echo "Rebuilding Docker images without cache..."
-	docker compose -f docker-compose.yml -f docker-compose.postgres.yml build --no-cache
+	docker compose build --no-cache
 
 docker-ps:
-	docker compose -f docker-compose.yml -f docker-compose.postgres.yml ps
+	docker compose ps
 
 docker-restart:
 	@echo "Restarting Semantik services..."
-	docker compose -f docker-compose.yml -f docker-compose.postgres.yml restart
+	docker compose restart
 
 # Quick commands for individual services
 docker-logs-webui:
-	docker compose -f docker-compose.yml -f docker-compose.postgres.yml logs -f webui
+	docker compose logs -f webui
 
 docker-logs-vecpipe:
-	docker compose -f docker-compose.yml -f docker-compose.postgres.yml logs -f vecpipe
+	docker compose logs -f vecpipe
 
 docker-logs-qdrant:
-	docker compose -f docker-compose.yml -f docker-compose.postgres.yml logs -f qdrant
+	docker compose logs -f qdrant
 
 # Shell access to containers
 docker-shell-webui:
-	docker compose -f docker-compose.yml -f docker-compose.postgres.yml exec webui /bin/bash
+	docker compose exec webui /bin/bash
 
 docker-shell-vecpipe:
-	docker compose -f docker-compose.yml -f docker-compose.postgres.yml exec vecpipe /bin/bash
+	docker compose exec vecpipe /bin/bash
 
 # PostgreSQL commands
-docker-postgres-up:
-	@echo "Starting Semantik services with PostgreSQL..."
-	@echo "Setting up directories with correct permissions..."
-	@mkdir -p ./models ./data ./logs
-	@if command -v sudo >/dev/null 2>&1; then \
-		sudo chown -R 1000:1000 ./models ./data ./logs; \
-	else \
-		chown -R 1000:1000 ./models ./data ./logs 2>/dev/null || echo "WARNING: Could not set directory permissions. If you encounter permission errors, run: sudo chown -R 1000:1000 ./models ./data ./logs"; \
-	fi
-	@echo "✓ Directories ready"
-	@if [ ! -f .env ]; then \
-		echo "Creating .env file from .env.docker.example..."; \
-		cp .env.docker.example .env; \
-		echo "Generating secure JWT_SECRET_KEY and PostgreSQL password..."; \
-		if command -v openssl >/dev/null 2>&1; then \
-			JWT_KEY=$$(openssl rand -hex 32); \
-			PG_PASS=$$(openssl rand -hex 32); \
-			if [ "$$(uname)" = "Darwin" ]; then \
-				sed -i '' "s/JWT_SECRET_KEY=.*/JWT_SECRET_KEY=$$JWT_KEY/" .env; \
-				echo "POSTGRES_PASSWORD=$$PG_PASS" >> .env; \
-			else \
-				sed -i "s/JWT_SECRET_KEY=.*/JWT_SECRET_KEY=$$JWT_KEY/" .env; \
-				echo "POSTGRES_PASSWORD=$$PG_PASS" >> .env; \
-			fi; \
-			echo "✓ Generated secure JWT_SECRET_KEY and PostgreSQL password"; \
-		else \
-			echo "WARNING: openssl not found. Please manually set JWT_SECRET_KEY and POSTGRES_PASSWORD in .env"; \
-		fi; \
-	fi
-	docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
-	@echo "Services started with PostgreSQL! Access the application at http://localhost:8080"
-
-docker-postgres-down:
-	@echo "Stopping Semantik services with PostgreSQL..."
-	docker compose -f docker-compose.yml -f docker-compose.postgres.yml down
-
 docker-postgres-logs:
-	docker compose -f docker-compose.yml -f docker-compose.postgres.yml logs -f postgres
+	docker compose logs -f postgres
 
 docker-shell-postgres:
-	docker compose -f docker-compose.yml -f docker-compose.postgres.yml exec postgres psql -U semantik -d semantik
+	docker compose exec postgres psql -U semantik -d semantik
 
 docker-postgres-backup:
 	@echo "Creating PostgreSQL backup..."
 	@mkdir -p ./backups
 	@BACKUP_FILE="./backups/semantik_backup_$$(date +%Y%m%d_%H%M%S).sql" && \
-	docker compose -f docker-compose.yml -f docker-compose.postgres.yml exec -T postgres pg_dump -U semantik semantik > $$BACKUP_FILE && \
+	docker compose exec -T postgres pg_dump -U semantik semantik > $$BACKUP_FILE && \
 	echo "✓ Backup created: $$BACKUP_FILE"
 
 docker-postgres-restore:
@@ -242,7 +206,7 @@ docker-postgres-restore:
 		exit 1; \
 	fi
 	@echo "Restoring PostgreSQL from $(BACKUP_FILE)..."
-	@docker compose -f docker-compose.yml -f docker-compose.postgres.yml exec -T postgres psql -U semantik -d semantik < $(BACKUP_FILE)
+	@docker compose exec -T postgres psql -U semantik -d semantik < $(BACKUP_FILE)
 	@echo "✓ Database restored from $(BACKUP_FILE)"
 
 # Development shortcuts
@@ -279,18 +243,18 @@ dev-local:
 	./scripts/dev-local.sh
 
 docker-dev-up:
-	@echo "Starting development services in Docker (without webui)..."
+	@echo "Starting development services in Docker (backend only, for local webui development)..."
 	@mkdir -p ./models ./data ./logs
 	@if [ ! -f .env ]; then \
 		echo "Creating .env file from .env.docker.example..."; \
 		cp .env.docker.example .env; \
 	fi
-	docker compose -f docker-compose.dev.yml up -d
-	@echo "Development services started! Configure .env.local and run 'make run' to start webui locally"
+	docker compose --profile backend up -d
+	@echo "Backend services started! Configure .env.local and run 'make run' to start webui locally"
 
 docker-dev-down:
 	@echo "Stopping development services..."
-	docker compose -f docker-compose.dev.yml down
+	docker compose --profile backend down
 
 docker-dev-logs:
-	docker compose -f docker-compose.dev.yml logs -f
+	docker compose --profile backend logs -f
