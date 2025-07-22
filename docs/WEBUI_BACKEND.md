@@ -17,18 +17,20 @@
 
 The WebUI serves as a control plane for the Semantik semantic search engine. It provides:
 
-- **User Interface**: React-based frontend for managing embedding jobs and searching
-- **Job Management**: Create, monitor, and manage document embedding jobs
-- **Search Proxy**: Routes search requests to the Semantik search API
-- **Authentication**: JWT-based user authentication and authorization
-- **Real-time Updates**: WebSocket connections for job progress monitoring
+- **User Interface**: React-based frontend for managing collections and searching
+- **Collection Management**: Create, monitor, and manage document collections
+- **Operation Tracking**: Monitor async operations (indexing, reindexing, etc.)
+- **Search Proxy**: Routes search requests to the Semantik search API with multi-collection support
+- **Authentication**: JWT-based user authentication with refresh tokens
+- **Real-time Updates**: WebSocket connections for operation progress monitoring
 
 ### Key Architectural Principles
 
 1. **Separation of Concerns**: WebUI acts as a control plane, never implementing core search or embedding logic
 2. **Proxy Pattern**: All search functionality proxies to the Semantik search API
 3. **Database Independence**: Semantik core engine never accesses the WebUI PostgreSQL database
-4. **Scalability**: Designed to handle multiple concurrent jobs and users
+4. **Scalability**: Designed to handle multiple concurrent operations and users
+5. **Service Layer**: Business logic isolated in services, not in API routers
 
 ## Main Application Structure
 
@@ -73,25 +75,37 @@ Handles user authentication:
 - `POST /logout` - Logout and revoke refresh token
 - `GET /me` - Get current user info
 
-### api/jobs.py
-**Endpoints**: `/api/jobs/*`
+### api/v2/collections.py
+**Endpoints**: `/api/v2/collections/*`
 
-Manages embedding job lifecycle:
-- `GET /new-id` - Generate job ID for WebSocket connection
-- `POST /` - Create new embedding job
-- `GET /` - List all jobs
-- `GET /{job_id}` - Get job details
-- `POST /{job_id}/cancel` - Cancel running job
-- `DELETE /{job_id}` - Delete job and collection
-- `GET /collections-status` - Check Qdrant collection status
-- `GET /{job_id}/collection-exists` - Verify specific collection
+Manages collection lifecycle:
+- `POST /` - Create new collection
+- `GET /` - List all collections
+- `GET /{collection_id}` - Get collection details
+- `PUT /{collection_id}` - Update collection metadata
+- `DELETE /{collection_id}` - Delete collection
+- `POST /{collection_id}/sources` - Add source to collection
+- `DELETE /{collection_id}/sources` - Remove source from collection
+- `POST /{collection_id}/reindex` - Reindex collection
+- `GET /{collection_id}/operations` - List collection operations
+- `GET /{collection_id}/documents` - List collection documents
 
-### api/search.py
-**Endpoints**: `/api/*`
+### api/v2/operations.py
+**Endpoints**: `/api/v2/operations/*`
+
+Manages async operations:
+- `GET /{operation_id}` - Get operation details
+- `DELETE /{operation_id}` - Cancel operation
+- `GET /` - List all operations
+- WebSocket: `/api/v2/operations/{operation_id}/ws` - Real-time progress
+
+### api/v2/search.py
+**Endpoints**: `/api/v2/*`
 
 Proxies search requests to Semantik:
-- `POST /search` - Unified search (vector/hybrid)
-- `POST /hybrid_search` - Legacy hybrid search endpoint
+- `POST /search` - Multi-collection semantic search with optional reranking
+- Supports searching across multiple collections simultaneously
+- Validates user permissions for each collection
 
 ### api/files.py
 **Endpoints**: `/api/*`
@@ -158,52 +172,78 @@ Key components:
 
 ## Database Layer
 
-### database.py
+### Repository Pattern
 
-Centralized PostgreSQL database management with the following tables:
+The new architecture uses a repository pattern for clean data access:
 
-#### Jobs Table
+- **CollectionRepository**: Manages collection CRUD operations
+- **OperationRepository**: Tracks async operations
+- **DocumentRepository**: Handles document metadata
+- **UserRepository**: User management
+
+### Core Tables (PostgreSQL)
+
+#### Collections Table
 ```sql
-CREATE TABLE jobs (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
+CREATE TABLE collections (
+    id VARCHAR PRIMARY KEY,                    -- UUID
+    name VARCHAR UNIQUE NOT NULL,
     description TEXT,
-    status TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    directory_path TEXT NOT NULL,
-    model_name TEXT NOT NULL,
-    chunk_size INTEGER,
-    chunk_overlap INTEGER,
-    batch_size INTEGER,
-    vector_dim INTEGER,
-    quantization TEXT,
-    instruction TEXT,
-    total_files INTEGER DEFAULT 0,
-    processed_files INTEGER DEFAULT 0,
-    failed_files INTEGER DEFAULT 0,
-    current_file TEXT,
-    start_time TEXT,
-    error TEXT
+    owner_id INTEGER NOT NULL,
+    vector_store_name VARCHAR UNIQUE NOT NULL,
+    embedding_model VARCHAR NOT NULL,
+    quantization VARCHAR DEFAULT 'float16',
+    chunk_size INTEGER DEFAULT 1000,
+    chunk_overlap INTEGER DEFAULT 200,
+    is_public BOOLEAN DEFAULT FALSE,
+    metadata JSON,
+    status VARCHAR,                            -- pending|ready|processing|error|degraded
+    status_message TEXT,
+    created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ,
+    FOREIGN KEY (owner_id) REFERENCES users(id)
 )
 ```
 
-#### Files Table
+#### Operations Table
 ```sql
-CREATE TABLE files (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id TEXT NOT NULL,
-    path TEXT NOT NULL,
-    size INTEGER NOT NULL,
-    modified TEXT NOT NULL,
-    extension TEXT NOT NULL,
-    hash TEXT,
-    doc_id TEXT,
-    status TEXT DEFAULT 'pending',
-    error TEXT,
-    chunks_created INTEGER DEFAULT 0,
-    vectors_created INTEGER DEFAULT 0,
-    FOREIGN KEY (job_id) REFERENCES jobs(id)
+CREATE TABLE operations (
+    id SERIAL PRIMARY KEY,
+    uuid VARCHAR UNIQUE NOT NULL,
+    collection_id VARCHAR NOT NULL,
+    user_id INTEGER NOT NULL,
+    type VARCHAR NOT NULL,                     -- index|append|reindex|remove_source|delete
+    status VARCHAR DEFAULT 'pending',          -- pending|processing|completed|failed|cancelled
+    config JSON NOT NULL,
+    progress JSON,
+    error_message TEXT,
+    created_at TIMESTAMPTZ,
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    FOREIGN KEY (collection_id) REFERENCES collections(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+)
+```
+
+#### Documents Table
+```sql
+CREATE TABLE documents (
+    id VARCHAR PRIMARY KEY,                    -- UUID
+    collection_id VARCHAR NOT NULL,
+    source_id INTEGER,
+    file_path VARCHAR NOT NULL,
+    file_name VARCHAR NOT NULL,
+    file_size INTEGER NOT NULL,
+    mime_type VARCHAR,
+    content_hash VARCHAR NOT NULL,
+    status VARCHAR DEFAULT 'pending',          -- pending|processing|completed|failed
+    error_message TEXT,
+    chunk_count INTEGER DEFAULT 0,
+    metadata JSON,
+    created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ,
+    FOREIGN KEY (collection_id) REFERENCES collections(id),
+    FOREIGN KEY (source_id) REFERENCES sources(id)
 )
 ```
 
@@ -234,13 +274,14 @@ CREATE TABLE refresh_tokens (
 )
 ```
 
-### Key Functions
+### Service Layer
 
-- `init_db()`: Initialize database with migration support
-- `create_job()`, `update_job()`, `get_job()`: Job CRUD operations
-- `add_files_to_job()`, `update_file_status()`: File tracking
-- `create_user()`, `get_user()`: User management
-- `save_refresh_token()`, `verify_refresh_token()`: Token management
+The application uses a service layer pattern for business logic:
+
+- **CollectionService**: Collection lifecycle management
+- **OperationService**: Operation tracking and management
+- **DocumentService**: Document processing and deduplication
+- **UserService**: User authentication and management
 
 ## Schemas and Models
 
@@ -309,10 +350,10 @@ class ConnectionManager:
 
 ### WebSocket Endpoints
 
-1. **Job Progress**: `/ws/{job_id}`
-   - Real-time job processing updates
-   - File completion notifications
-   - Error messages
+1. **Operation Progress**: `/api/v2/operations/{operation_id}/ws`
+   - Real-time operation progress updates
+   - Document processing notifications
+   - Error messages and status changes
 
 2. **Directory Scan**: `/ws/scan/{scan_id}`
    - Progress updates during directory scanning
@@ -320,11 +361,11 @@ class ConnectionManager:
 
 ### Message Types
 
-Job WebSocket messages:
-- `job_started`: Initial job start with total files
-- `file_processing`: Current file being processed
-- `file_completed`: File successfully processed
-- `job_completed`: All files processed
+Operation WebSocket messages:
+- `operation_started`: Initial operation start with total documents
+- `document_processing`: Current document being processed
+- `document_completed`: Document successfully processed
+- `operation_completed`: All documents processed
 - `error`: Processing error occurred
 
 ## Rate Limiting
@@ -382,24 +423,34 @@ def some_operation():
 | POST | `/api/auth/logout` | Logout user | Yes |
 | GET | `/api/auth/me` | Get current user | Yes |
 
-### Job Management Endpoints
+### Collection Management Endpoints
 
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| GET | `/api/jobs/new-id` | Generate job ID | Yes |
-| POST | `/api/jobs` | Create new job | Yes |
-| GET | `/api/jobs` | List all jobs | Yes |
-| GET | `/api/jobs/{job_id}` | Get job details | Yes |
-| POST | `/api/jobs/{job_id}/cancel` | Cancel job | Yes |
-| DELETE | `/api/jobs/{job_id}` | Delete job | Yes |
-| GET | `/api/jobs/collections-status` | Check collections | Yes |
+| POST | `/api/v2/collections` | Create new collection | Yes |
+| GET | `/api/v2/collections` | List all collections | Yes |
+| GET | `/api/v2/collections/{id}` | Get collection details | Yes |
+| PUT | `/api/v2/collections/{id}` | Update collection | Yes |
+| DELETE | `/api/v2/collections/{id}` | Delete collection | Yes |
+| POST | `/api/v2/collections/{id}/sources` | Add source | Yes |
+| DELETE | `/api/v2/collections/{id}/sources` | Remove source | Yes |
+| POST | `/api/v2/collections/{id}/reindex` | Reindex collection | Yes |
+| GET | `/api/v2/collections/{id}/operations` | List operations | Yes |
+| GET | `/api/v2/collections/{id}/documents` | List documents | Yes |
+
+### Operation Management Endpoints
+
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| GET | `/api/v2/operations` | List all operations | Yes |
+| GET | `/api/v2/operations/{id}` | Get operation details | Yes |
+| DELETE | `/api/v2/operations/{id}` | Cancel operation | Yes |
 
 ### Search Endpoints
 
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| POST | `/api/search` | Unified search | Yes |
-| POST | `/api/hybrid_search` | Hybrid search | Yes |
+| POST | `/api/v2/search` | Multi-collection search | Yes |
 
 ### File Management Endpoints
 
@@ -421,34 +472,38 @@ def some_operation():
 
 | Endpoint | Description |
 |----------|-------------|
-| `/ws/{job_id}` | Job progress updates |
+| `/api/v2/operations/{operation_id}/ws` | Operation progress updates |
 | `/ws/scan/{scan_id}` | Directory scan progress |
 
 ## Request Flow
 
 ### Search Request Flow
 
-1. Frontend sends search request to `/api/search`
+1. Frontend sends search request to `/api/v2/search` with collection UUIDs
 2. WebUI validates authentication via JWT
-3. WebUI determines collection and model from job_id
-4. WebUI proxies request to Semantik search API
-5. Semantik processes search and returns results
-6. WebUI transforms results for frontend format
-7. Frontend displays search results
+3. WebUI verifies user access to specified collections
+4. WebUI proxies request to Semantik search API with collection metadata
+5. Semantik performs multi-collection search across Qdrant
+6. Results are normalized and optionally reranked
+7. WebUI enriches results with collection context
+8. Frontend displays search results with collection indicators
 
-### Job Creation Flow
+### Collection Creation Flow
 
-1. User selects directory and model configuration
-2. Frontend requests new job ID via `/api/jobs/new-id`
-3. Frontend establishes WebSocket connection
-4. Frontend sends job creation request
-5. WebUI scans directory for supported files
-6. WebUI creates Qdrant collection
-7. WebUI starts async job processing
-8. Job processor sends progress via WebSocket
-9. Files are processed in batches
-10. Embeddings uploaded to Qdrant
-11. Job marked complete or failed
+1. User configures collection (name, model, quantization)
+2. Frontend sends POST to `/api/v2/collections`
+3. WebUI creates collection record in PostgreSQL
+4. WebUI creates Qdrant collection with deterministic naming
+5. Collection marked as 'ready' status
+6. User adds source via `/api/v2/collections/{id}/sources`
+7. WebUI creates operation record and queues to Celery
+8. Celery worker processes operation:
+   - Scans source for supported documents
+   - Creates document records with content hashing
+   - Chunks documents and generates embeddings
+   - Stores vectors in Qdrant
+9. WebSocket updates progress in real-time
+10. Operation marked complete or failed
 
 ## Error Handling
 

@@ -5,7 +5,7 @@ import uuid
 from typing import Any
 
 from shared.database.exceptions import AccessDeniedError, InvalidStateError
-from shared.database.models import CollectionStatus, OperationType
+from shared.database.models import Collection, CollectionStatus, OperationType
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
@@ -460,3 +460,121 @@ class CollectionService:
             "completed_at": operation.completed_at,
             "error_message": operation.error_message,
         }
+
+    async def list_for_user(
+        self, user_id: int, offset: int = 0, limit: int = 50, include_public: bool = True
+    ) -> tuple[list[Collection], int]:
+        """List collections accessible to a user.
+
+        Args:
+            user_id: ID of the user
+            offset: Pagination offset
+            limit: Pagination limit
+            include_public: Whether to include public collections
+
+        Returns:
+            Tuple of (collections list, total count)
+        """
+        return await self.collection_repo.list_for_user(
+            user_id=user_id,
+            offset=offset,
+            limit=limit,
+            include_public=include_public,
+        )
+
+    async def update(self, collection_id: str, user_id: int, updates: dict[str, Any]) -> Collection:
+        """Update collection metadata.
+
+        Args:
+            collection_id: UUID of the collection
+            user_id: ID of the user performing the update
+            updates: Dictionary of fields to update
+
+        Returns:
+            Updated collection object
+
+        Raises:
+            EntityNotFoundError: If collection not found
+            AccessDeniedError: If user doesn't have permission
+            EntityAlreadyExistsError: If new name already exists
+        """
+        # Get collection with permission check (only owner can update)
+        collection = await self.collection_repo.get_by_uuid_with_permission_check(
+            collection_uuid=collection_id, user_id=user_id
+        )
+
+        # Only the owner can update the collection
+        if collection.owner_id != user_id:
+            raise AccessDeniedError("Only the collection owner can update it")
+
+        # Perform the update
+        updated_collection = await self.collection_repo.update(str(collection.id), updates)
+
+        # Commit the transaction
+        await self.db_session.commit()
+
+        return updated_collection
+
+    async def list_documents(
+        self, collection_id: str, user_id: int, offset: int = 0, limit: int = 50
+    ) -> tuple[list[Any], int]:
+        """List documents in a collection.
+
+        Args:
+            collection_id: UUID of the collection
+            user_id: ID of the user requesting documents
+            offset: Pagination offset
+            limit: Pagination limit
+
+        Returns:
+            Tuple of (documents list, total count)
+
+        Raises:
+            EntityNotFoundError: If collection not found
+            AccessDeniedError: If user doesn't have permission
+        """
+        # Get collection with permission check
+        collection = await self.collection_repo.get_by_uuid_with_permission_check(
+            collection_uuid=collection_id, user_id=user_id
+        )
+
+        # Get documents for the collection
+        documents, total = await self.document_repo.list_by_collection(
+            collection_id=collection.id,
+            offset=offset,
+            limit=limit,
+        )
+
+        return documents, total
+
+    async def list_operations(
+        self, collection_id: str, user_id: int, offset: int = 0, limit: int = 50
+    ) -> tuple[list[Any], int]:
+        """List operations for a collection.
+
+        Args:
+            collection_id: UUID of the collection
+            user_id: ID of the user requesting operations
+            offset: Pagination offset
+            limit: Pagination limit
+
+        Returns:
+            Tuple of (operations list, total count)
+
+        Raises:
+            EntityNotFoundError: If collection not found
+            AccessDeniedError: If user doesn't have permission
+        """
+        # Get collection with permission check
+        collection = await self.collection_repo.get_by_uuid_with_permission_check(
+            collection_uuid=collection_id, user_id=user_id
+        )
+
+        # Get operations for the collection
+        operations, total = await self.operation_repo.list_by_collection(
+            collection_id=collection.id,
+            offset=offset,
+            limit=limit,
+        )
+
+        return operations, total

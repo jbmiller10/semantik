@@ -38,37 +38,6 @@ class BaseRepository(ABC, Generic[T]):
         """Delete an entity by ID. Returns True if deleted."""
 
 
-class JobRepository(ABC):
-    """Abstract interface for job data access.
-
-    This is implemented by PostgreSQLJobRepository.
-    """
-
-    @abstractmethod
-    async def create_job(self, job_data: dict[str, Any]) -> dict[str, Any]:
-        """Create a new job."""
-
-    @abstractmethod
-    async def get_job(self, job_id: str) -> dict[str, Any] | None:
-        """Get a job by ID."""
-
-    @abstractmethod
-    async def update_job(self, job_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
-        """Update a job."""
-
-    @abstractmethod
-    async def delete_job(self, job_id: str) -> bool:
-        """Delete a job."""
-
-    @abstractmethod
-    async def list_jobs(self, user_id: str | None = None, **filters: Any) -> list[dict[str, Any]]:
-        """List jobs with optional filters."""
-
-    @abstractmethod
-    async def get_all_job_ids(self) -> list[str]:
-        """Get all job IDs (for maintenance tasks)."""
-
-
 class UserRepository(ABC):
     """Abstract interface for user data access."""
 
@@ -97,38 +66,6 @@ class UserRepository(ABC):
         """List all users with optional filters."""
 
 
-class FileRepository(ABC):
-    """Abstract interface for file data access."""
-
-    @abstractmethod
-    async def add_files_to_job(self, job_id: str, files: list[dict[str, Any]]) -> None:
-        """Add files to a job."""
-
-    @abstractmethod
-    async def get_job_files(self, job_id: str, status: str | None = None) -> list[dict[str, Any]]:
-        """Get files for a job with optional status filter."""
-
-    @abstractmethod
-    async def update_file_status(
-        self,
-        job_id: str,
-        file_path: str,
-        status: str,
-        error: str | None = None,
-        chunks_created: int = 0,
-        vectors_created: int = 0,
-    ) -> None:
-        """Update file processing status."""
-
-    @abstractmethod
-    async def get_job_total_vectors(self, job_id: str) -> int:
-        """Get total vectors created for all files in a job."""
-
-    @abstractmethod
-    async def get_duplicate_files_in_collection(self, collection_name: str, content_hashes: list[str]) -> set[str]:
-        """Check which content hashes already exist in a collection."""
-
-
 class CollectionRepository(ABC):
     """Abstract interface for collection data access."""
 
@@ -141,10 +78,10 @@ class CollectionRepository(ABC):
         """Get detailed information for a collection."""
 
     @abstractmethod
-    async def get_collection_files(
+    async def get_collection_documents(
         self, collection_name: str, user_id: str, page: int = 1, limit: int = 50
     ) -> dict[str, Any]:
-        """Get paginated files in a collection."""
+        """Get paginated documents in a collection."""
 
     @abstractmethod
     async def rename_collection(self, old_name: str, new_name: str, user_id: str) -> bool:
@@ -156,7 +93,7 @@ class CollectionRepository(ABC):
 
     @abstractmethod
     async def get_collection_metadata(self, collection_name: str) -> dict[str, Any] | None:
-        """Get metadata from the first job of a collection."""
+        """Get metadata from the first operation of a collection."""
 
 
 class AuthRepository(ABC):

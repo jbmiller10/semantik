@@ -9,7 +9,6 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database import get_db
 from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError, ValidationError
@@ -17,8 +16,8 @@ from packages.shared.database.models import OperationStatus, OperationType
 from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.webui.api.schemas import ErrorResponse, OperationResponse
 from packages.webui.auth import get_current_user, get_current_user_websocket
-from packages.webui.celery_app import celery_app
-from packages.webui.dependencies import get_operation_repository
+from packages.webui.services.factory import get_operation_service
+from packages.webui.services.operation_service import OperationService
 from packages.webui.websocket_manager import ws_manager
 
 logger = logging.getLogger(__name__)
@@ -37,7 +36,7 @@ router = APIRouter(prefix="/api/v2/operations", tags=["operations-v2"])
 async def get_operation(
     operation_uuid: str,
     current_user: dict[str, Any] = Depends(get_current_user),
-    repo: OperationRepository = Depends(get_operation_repository),
+    service: OperationService = Depends(get_operation_service),
 ) -> OperationResponse:
     """Get detailed information about a specific operation.
 
@@ -45,7 +44,7 @@ async def get_operation(
     and any error messages.
     """
     try:
-        operation = await repo.get_by_uuid_with_permission_check(
+        operation = await service.get_operation(
             operation_uuid=operation_uuid,
             user_id=int(current_user["id"]),
         )
@@ -92,8 +91,7 @@ async def get_operation(
 async def cancel_operation(
     operation_uuid: str,
     current_user: dict[str, Any] = Depends(get_current_user),
-    repo: OperationRepository = Depends(get_operation_repository),
-    db: AsyncSession = Depends(get_db),
+    service: OperationService = Depends(get_operation_service),
 ) -> OperationResponse:
     """Cancel a pending or processing operation.
 
@@ -102,22 +100,10 @@ async def cancel_operation(
     implementation and may not be immediate.
     """
     try:
-        # Cancel the operation in database
-        operation = await repo.cancel(
+        operation = await service.cancel_operation(
             operation_uuid=operation_uuid,
             user_id=int(current_user["id"]),
         )
-
-        # If operation has a Celery task ID, attempt to revoke it
-        if operation.task_id:
-            try:
-                celery_app.control.revoke(operation.task_id, terminate=True)
-                logger.info(f"Revoked Celery task {operation.task_id} for operation {operation_uuid}")
-            except Exception as e:
-                logger.warning(f"Failed to revoke Celery task {operation.task_id}: {e}")
-                # Continue even if Celery revoke fails
-
-        await db.commit()
 
         return OperationResponse(
             id=operation.uuid,
@@ -167,7 +153,7 @@ async def list_operations(
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(50, ge=1, le=100, description="Items per page"),
     current_user: dict[str, Any] = Depends(get_current_user),
-    repo: OperationRepository = Depends(get_operation_repository),
+    service: OperationService = Depends(get_operation_service),
 ) -> list[OperationResponse]:
     """List operations for the current user.
 
@@ -202,7 +188,7 @@ async def list_operations(
                     detail=f"Invalid operation type: {operation_type}. Valid values are: {[t.value for t in OperationType]}",
                 ) from None
 
-        operations, total = await repo.list_for_user(
+        operations, total = await service.list_operations(
             user_id=int(current_user["id"]),
             status_list=status_list,
             operation_type=type_enum,
@@ -267,14 +253,15 @@ async def operation_websocket(websocket: WebSocket, operation_id: str) -> None:
 
     # Verify user has permission to access this operation
     try:
-        repo = OperationRepository(db_session=None)  # We'll use get_db for actual requests
-        # Get a database session
-        async with get_db() as db:
-            repo.db = db
-            operation = await repo.get_by_uuid_with_permission_check(
+        # Get a database session and create service
+        async for db in get_db():
+            operation_repo = OperationRepository(db)
+            service = OperationService(db, operation_repo)
+            await service.verify_websocket_access(
                 operation_uuid=operation_id,
                 user_id=int(user["id"]),
             )
+            break  # Exit after first iteration
     except EntityNotFoundError:
         await websocket.close(code=1008, reason=f"Operation '{operation_id}' not found")
         return
@@ -289,7 +276,7 @@ async def operation_websocket(websocket: WebSocket, operation_id: str) -> None:
     # Authentication and authorization successful, connect the WebSocket
     channel_id = f"operation:{operation_id}"
     await ws_manager.connect(websocket, channel_id, user_id)
-    
+
     try:
         # Keep the connection alive and handle any incoming messages
         while True:

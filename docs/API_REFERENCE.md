@@ -1,16 +1,769 @@
 # API Reference
 
-## Search API
+## Overview
 
-The Search API provides programmatic access to the vector search functionality.
+Semantik provides two main API services:
+- **WebUI API** (Port 8080) - User-facing API with authentication, collection management, and search
+- **Search API** (Port 8001) - Core search engine API for vector similarity search
+
+All APIs follow RESTful principles with JSON request/response bodies.
+
+## WebUI API
 
 ### Base URL
 ```
-http://localhost:8000
+http://localhost:8080
 ```
 
 ### Authentication
-The Search API does not require authentication. Authentication is handled by the Web UI layer.
+All API endpoints except authentication endpoints require JWT authentication. Include the token in the Authorization header:
+```
+Authorization: Bearer {token}
+```
+
+### V2 API Endpoints
+
+The v2 API provides a modern collection-based architecture for document management and search.
+
+#### Authentication Endpoints
+
+##### Register New User
+```http
+POST /api/auth/register
+Content-Type: application/json
+
+{
+  "username": "john_doe",
+  "email": "john@example.com",
+  "password": "SecurePassword123!",
+  "full_name": "John Doe"
+}
+```
+
+**Response (201):**
+```json
+{
+  "id": 1,
+  "username": "john_doe",
+  "email": "john@example.com",
+  "full_name": "John Doe",
+  "is_active": true,
+  "created_at": "2024-01-15T10:00:00Z"
+}
+```
+
+##### Login
+```http
+POST /api/auth/login
+Content-Type: application/json
+
+{
+  "username": "john_doe",
+  "password": "SecurePassword123!"
+}
+```
+
+**Response (200):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer"
+}
+```
+
+##### Refresh Token
+```http
+POST /api/auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**Response (200):** Same as login endpoint
+
+##### Logout
+```http
+POST /api/auth/logout
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**Response (200):**
+```json
+{
+  "message": "Logged out successfully"
+}
+```
+
+##### Get Current User
+```http
+GET /api/auth/me
+Authorization: Bearer {token}
+```
+
+**Response (200):**
+```json
+{
+  "id": 1,
+  "username": "john_doe",
+  "email": "john@example.com",
+  "full_name": "John Doe",
+  "is_active": true,
+  "created_at": "2024-01-15T10:00:00Z",
+  "last_login": "2024-01-15T14:30:00Z"
+}
+```
+
+#### Collection Management Endpoints
+
+##### Create Collection
+```http
+POST /api/v2/collections
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "name": "Technical Documentation",
+  "description": "Company technical documentation and guides",
+  "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+  "quantization": "float16",
+  "chunk_size": 1000,
+  "chunk_overlap": 200,
+  "is_public": false
+}
+```
+
+**Response (201):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Technical Documentation",
+  "description": "Company technical documentation and guides",
+  "owner_id": 1,
+  "vector_store_name": "coll_550e8400_qwen06b_f16",
+  "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+  "quantization": "float16",
+  "chunk_size": 1000,
+  "chunk_overlap": 200,
+  "is_public": false,
+  "status": "pending",
+  "created_at": "2024-01-15T10:00:00Z",
+  "updated_at": "2024-01-15T10:00:00Z",
+  "document_count": 0,
+  "total_chunks": 0,
+  "total_size_bytes": 0
+}
+```
+
+##### List Collections
+```http
+GET /api/v2/collections?page=1&per_page=20&search=docs&sort_by=created_at&sort_order=desc
+Authorization: Bearer {token}
+```
+
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+- `per_page` (optional): Items per page (default: 20, max: 100)
+- `search` (optional): Search collections by name
+- `sort_by` (optional): Sort field (name, created_at, updated_at, document_count)
+- `sort_order` (optional): Sort order (asc, desc)
+
+**Response (200):**
+```json
+{
+  "collections": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "Technical Documentation",
+      "description": "Company technical documentation and guides",
+      "owner_id": 1,
+      "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+      "status": "ready",
+      "document_count": 150,
+      "total_chunks": 3420,
+      "total_size_bytes": 45678900,
+      "created_at": "2024-01-15T10:00:00Z",
+      "updated_at": "2024-01-15T14:30:00Z"
+    }
+  ],
+  "total": 5,
+  "page": 1,
+  "per_page": 20,
+  "pages": 1
+}
+```
+
+##### Get Collection Details
+```http
+GET /api/v2/collections/{collection_id}
+Authorization: Bearer {token}
+```
+
+**Response (200):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Technical Documentation",
+  "description": "Company technical documentation and guides",
+  "owner_id": 1,
+  "vector_store_name": "coll_550e8400_qwen06b_f16",
+  "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+  "quantization": "float16",
+  "chunk_size": 1000,
+  "chunk_overlap": 200,
+  "is_public": false,
+  "status": "ready",
+  "created_at": "2024-01-15T10:00:00Z",
+  "updated_at": "2024-01-15T14:30:00Z",
+  "document_count": 150,
+  "total_chunks": 3420,
+  "total_size_bytes": 45678900,
+  "sources": [
+    {
+      "id": 1,
+      "source_path": "/docs/technical",
+      "source_type": "directory",
+      "document_count": 150,
+      "size_bytes": 45678900,
+      "last_indexed_at": "2024-01-15T14:30:00Z"
+    }
+  ],
+  "recent_operations": [
+    {
+      "id": 1,
+      "uuid": "op_123e4567-e89b-12d3-a456-426614174000",
+      "type": "index",
+      "status": "completed",
+      "created_at": "2024-01-15T10:00:00Z",
+      "completed_at": "2024-01-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+##### Update Collection
+```http
+PATCH /api/v2/collections/{collection_id}
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "name": "Technical Documentation v2",
+  "description": "Updated company technical documentation",
+  "is_public": true
+}
+```
+
+**Response (200):** Same structure as get collection details
+
+##### Delete Collection
+```http
+DELETE /api/v2/collections/{collection_id}
+Authorization: Bearer {token}
+```
+
+**Response (204):** No content
+
+##### Add Source to Collection
+```http
+POST /api/v2/collections/{collection_id}/sources
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "source_type": "directory",
+  "source_path": "/docs/api",
+  "filters": {
+    "extensions": [".md", ".txt", ".pdf"],
+    "ignore_patterns": ["**/node_modules/**", "**/.git/**"]
+  },
+  "config": {
+    "recursive": true,
+    "follow_symlinks": false
+  }
+}
+```
+
+**Response (202):**
+```json
+{
+  "operation_id": "op_123e4567-e89b-12d3-a456-426614174000",
+  "operation_type": "append",
+  "status": "pending",
+  "message": "Source addition operation started"
+}
+```
+
+##### List Collection Documents
+```http
+GET /api/v2/collections/{collection_id}/documents?page=1&per_page=50&status=completed
+Authorization: Bearer {token}
+```
+
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+- `per_page` (optional): Items per page (default: 50, max: 100)
+- `status` (optional): Filter by status (pending, processing, completed, failed)
+- `source_id` (optional): Filter by source ID
+
+**Response (200):**
+```json
+{
+  "documents": [
+    {
+      "id": "doc_123e4567-e89b-12d3-a456-426614174000",
+      "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+      "file_path": "/docs/api/endpoints.md",
+      "file_name": "endpoints.md",
+      "file_size": 15420,
+      "mime_type": "text/markdown",
+      "content_hash": "sha256:abcd...",
+      "status": "completed",
+      "chunk_count": 28,
+      "created_at": "2024-01-15T10:15:00Z",
+      "updated_at": "2024-01-15T10:16:00Z"
+    }
+  ],
+  "total": 150,
+  "page": 1,
+  "per_page": 50,
+  "pages": 3
+}
+```
+
+##### Reindex Collection
+```http
+POST /api/v2/collections/{collection_id}/reindex
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "config": {
+    "force": false,
+    "only_failed": false
+  }
+}
+```
+
+**Response (202):**
+```json
+{
+  "operation_id": "op_456e7890-e89b-12d3-a456-426614174001",
+  "operation_type": "reindex",
+  "status": "pending",
+  "message": "Reindex operation started"
+}
+```
+
+#### Operation Management Endpoints
+
+##### Get Operation Details
+```http
+GET /api/v2/operations/{operation_uuid}
+Authorization: Bearer {token}
+```
+
+**Response (200):**
+```json
+{
+  "id": 1,
+  "uuid": "op_123e4567-e89b-12d3-a456-426614174000",
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "user_id": 1,
+  "type": "index",
+  "status": "processing",
+  "task_id": "celery_task_12345",
+  "config": {
+    "source_path": "/docs/technical",
+    "recursive": true
+  },
+  "created_at": "2024-01-15T10:00:00Z",
+  "started_at": "2024-01-15T10:01:00Z",
+  "completed_at": null,
+  "error_message": null,
+  "progress": {
+    "total_files": 150,
+    "processed_files": 45,
+    "failed_files": 2,
+    "current_file": "api/endpoints.md",
+    "percentage": 30.0
+  }
+}
+```
+
+##### List Operations
+```http
+GET /api/v2/operations?collection_id={collection_id}&status=processing&type=index
+Authorization: Bearer {token}
+```
+
+**Query Parameters:**
+- `collection_id` (optional): Filter by collection UUID
+- `status` (optional): Filter by status (pending, processing, completed, failed, cancelled)
+- `type` (optional): Filter by type (index, append, reindex, remove_source, delete)
+- `page` (optional): Page number (default: 1)
+- `per_page` (optional): Items per page (default: 20)
+
+**Response (200):**
+```json
+{
+  "operations": [
+    {
+      "id": 1,
+      "uuid": "op_123e4567-e89b-12d3-a456-426614174000",
+      "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+      "type": "index",
+      "status": "processing",
+      "created_at": "2024-01-15T10:00:00Z",
+      "progress_percentage": 30.0
+    }
+  ],
+  "total": 5,
+  "page": 1,
+  "per_page": 20,
+  "pages": 1
+}
+```
+
+##### Cancel Operation
+```http
+POST /api/v2/operations/{operation_uuid}/cancel
+Authorization: Bearer {token}
+```
+
+**Response (200):**
+```json
+{
+  "message": "Operation cancellation requested",
+  "operation_id": "op_123e4567-e89b-12d3-a456-426614174000",
+  "status": "cancelled"
+}
+```
+
+#### Search Endpoints
+
+##### Multi-Collection Search
+```http
+POST /api/v2/search
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "collection_uuids": [
+    "550e8400-e89b-41d4-a716-446655440000",
+    "660f9511-f29c-52e5-b827-557755551111"
+  ],
+  "query": "How to implement authentication?",
+  "k": 20,
+  "search_type": "semantic",
+  "use_reranker": true,
+  "score_threshold": 0.5,
+  "metadata_filter": {
+    "mime_type": "text/markdown"
+  },
+  "include_content": true,
+  "hybrid_alpha": 0.7,
+  "hybrid_mode": "rerank",
+  "keyword_mode": "any"
+}
+```
+
+**Parameters:**
+- `collection_uuids` (required): List of collection UUIDs to search (1-10)
+- `query` (required): Search query text
+- `k` (optional): Number of results (default: 10, max: 100)
+- `search_type` (optional): Type of search (semantic, question, code, hybrid)
+- `use_reranker` (optional): Enable cross-encoder reranking (default: true)
+- `rerank_model` (optional): Override reranker model
+- `score_threshold` (optional): Minimum score threshold (0.0-1.0)
+- `metadata_filter` (optional): Filter results by metadata
+- `include_content` (optional): Include chunk content (default: true)
+- `hybrid_alpha` (optional): Weight for hybrid search (0.0-1.0, default: 0.7)
+- `hybrid_mode` (optional): Hybrid mode (filter, rerank, default: rerank)
+- `keyword_mode` (optional): Keyword matching (any, all, default: any)
+
+**Response (200):**
+```json
+{
+  "query": "How to implement authentication?",
+  "results": [
+    {
+      "document_id": "doc_123e4567-e89b-12d3-a456-426614174000",
+      "chunk_id": "chunk_456",
+      "score": 0.95,
+      "original_score": 0.85,
+      "reranked_score": 0.95,
+      "text": "To implement authentication, you can use JWT tokens...",
+      "metadata": {
+        "page": 1,
+        "section": "Authentication"
+      },
+      "file_name": "auth_guide.md",
+      "file_path": "/docs/auth_guide.md",
+      "collection_id": "550e8400-e89b-41d4-a716-446655440000",
+      "collection_name": "Technical Documentation",
+      "embedding_model": "Qwen/Qwen3-Embedding-0.6B"
+    }
+  ],
+  "total_results": 15,
+  "collections_searched": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "Technical Documentation",
+      "embedding_model": "Qwen/Qwen3-Embedding-0.6B"
+    }
+  ],
+  "search_type": "semantic",
+  "reranking_used": true,
+  "reranker_model": "Qwen/Qwen3-Reranker-0.6B",
+  "search_time_ms": 245.5
+}
+```
+
+#### Document Access Endpoints
+
+##### Get Document Content
+```http
+GET /api/v2/documents/{document_id}
+Authorization: Bearer {token}
+Range: bytes=0-1023 (optional)
+```
+
+**Response:**
+- Binary file content with appropriate Content-Type
+- Supports range requests for partial content (HTTP 206)
+
+**Response Headers:**
+```http
+Content-Type: application/pdf
+Content-Length: 1048576
+Accept-Ranges: bytes
+Content-Range: bytes 0-1023/1048576
+Content-Disposition: inline; filename="document.pdf"
+Cache-Control: private, max-age=3600
+ETag: "1705315200-1048576"
+Last-Modified: Mon, 15 Jan 2024 10:00:00 GMT
+```
+
+##### Get Document Metadata
+```http
+GET /api/v2/documents/{document_id}/metadata
+Authorization: Bearer {token}
+```
+
+**Response (200):**
+```json
+{
+  "id": "doc_123e4567-e89b-12d3-a456-426614174000",
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "file_path": "/docs/api/endpoints.md",
+  "file_name": "endpoints.md",
+  "file_size": 15420,
+  "mime_type": "text/markdown",
+  "content_hash": "sha256:abcd...",
+  "status": "completed",
+  "chunk_count": 28,
+  "created_at": "2024-01-15T10:15:00Z",
+  "updated_at": "2024-01-15T10:16:00Z",
+  "collection_name": "Technical Documentation",
+  "owner_id": 1
+}
+```
+
+#### Directory Scanning Endpoints
+
+##### Scan Directory
+```http
+POST /api/v2/directory-scan
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "path": "/docs/technical",
+  "recursive": true,
+  "follow_symlinks": false,
+  "filters": {
+    "extensions": [".md", ".txt", ".pdf"],
+    "ignore_patterns": ["**/node_modules/**", "**/.git/**"],
+    "min_size": 100,
+    "max_size": 104857600
+  }
+}
+```
+
+**Response (200):**
+```json
+{
+  "scan_id": "scan_123e4567",
+  "path": "/docs/technical",
+  "files": [
+    {
+      "path": "/docs/technical/api/endpoints.md",
+      "name": "endpoints.md",
+      "size": 15420,
+      "mime_type": "text/markdown",
+      "modified": "2024-01-15T09:00:00Z"
+    }
+  ],
+  "summary": {
+    "total_files": 150,
+    "total_size_bytes": 45678900,
+    "by_extension": {
+      ".md": 120,
+      ".txt": 20,
+      ".pdf": 10
+    }
+  },
+  "errors": []
+}
+```
+
+### WebSocket Endpoints
+
+#### Operation Progress
+```
+WS /api/v2/operations/{operation_uuid}/ws
+```
+
+Real-time operation progress updates via WebSocket.
+
+**Connection Example (JavaScript):**
+```javascript
+const ws = new WebSocket(`ws://localhost:8080/api/v2/operations/${operationId}/ws`);
+
+ws.onmessage = (event) => {
+    const message = JSON.parse(event.data);
+    
+    switch(message.type) {
+        case 'progress':
+            console.log(`Progress: ${message.percentage}%`);
+            break;
+        case 'file_processed':
+            console.log(`Processed: ${message.file_path}`);
+            break;
+        case 'error':
+            console.error(`Error: ${message.message}`);
+            break;
+        case 'completed':
+            console.log('Operation completed!');
+            ws.close();
+            break;
+    }
+};
+```
+
+**Message Types:**
+
+1. **Progress Update:**
+```json
+{
+  "type": "progress",
+  "percentage": 45.5,
+  "processed_files": 68,
+  "total_files": 150,
+  "current_file": "api/authentication.md"
+}
+```
+
+2. **File Processed:**
+```json
+{
+  "type": "file_processed",
+  "file_path": "/docs/api/authentication.md",
+  "chunks_created": 15,
+  "status": "completed"
+}
+```
+
+3. **Error:**
+```json
+{
+  "type": "error",
+  "message": "Failed to process file",
+  "file_path": "/docs/corrupted.pdf",
+  "error_code": "PARSE_ERROR"
+}
+```
+
+4. **Completed:**
+```json
+{
+  "type": "completed",
+  "total_files": 150,
+  "processed_files": 148,
+  "failed_files": 2,
+  "total_chunks": 3420,
+  "duration_seconds": 125.5
+}
+```
+
+### System Endpoints
+
+#### Health Check
+```http
+GET /api/health
+```
+
+**Response (200):**
+```json
+{
+  "status": "healthy",
+  "service": "webui",
+  "version": "2.0.0",
+  "database": "connected",
+  "search_api": "connected",
+  "qdrant": "connected"
+}
+```
+
+#### Metrics
+```http
+GET /api/metrics
+Authorization: Bearer {token}
+```
+
+**Response:** Prometheus-formatted metrics
+
+#### Settings
+
+##### Get Database Statistics
+```http
+GET /api/settings/stats
+Authorization: Bearer {token}
+```
+
+**Response (200):**
+```json
+{
+  "total_collections": 15,
+  "total_documents": 1250,
+  "total_operations": 45,
+  "total_users": 3,
+  "database_size_mb": 125.4,
+  "vector_storage_size_mb": 2048.5,
+  "oldest_collection": "2024-01-01T00:00:00Z",
+  "newest_collection": "2024-01-15T10:30:00Z"
+}
+```
+
+## Search API
+
+The Search API provides the core vector search functionality.
+
+### Base URL
+```
+http://localhost:8001
+```
+
+### Authentication
+The Search API does not require authentication. Authentication is handled by the WebUI layer.
 
 ### Endpoints
 
@@ -18,8 +771,6 @@ The Search API does not require authentication. Authentication is handled by the
 ```http
 GET /
 ```
-
-Returns detailed API status and configuration information.
 
 **Response:**
 ```json
@@ -67,68 +818,6 @@ Content-Type: application/json
 
 Performs vector similarity search with optional cross-encoder reranking.
 
-**Example Requests:**
-
-1. **Simple GET Search:**
-```bash
-curl "http://localhost:8000/search?q=machine%20learning%20algorithms&k=5"
-```
-
-2. **POST Search with Reranking:**
-```bash
-curl -X POST http://localhost:8000/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "How do neural networks learn?",
-    "k": 10,
-    "search_type": "question",
-    "use_reranker": true,
-    "include_content": true
-  }'
-```
-
-3. **Search with Metadata Filters:**
-```bash
-curl -X POST http://localhost:8000/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "API documentation",
-    "k": 20,
-    "collection": "technical_docs",
-    "filters": {
-      "must": [
-        {
-          "key": "metadata.doc_type",
-          "match": {"value": "api"}
-        },
-        {
-          "key": "metadata.version",
-          "range": {
-            "gte": "2.0",
-            "lte": "3.0"
-          }
-        }
-      ]
-    }
-  }'
-```
-
-4. **Code Search with Custom Model:**
-```bash
-curl -X POST http://localhost:8000/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "async function implementation",
-    "k": 15,
-    "search_type": "code",
-    "model_name": "Qwen/Qwen3-Embedding-4B",
-    "quantization": "int8",
-    "use_reranker": true,
-    "rerank_model": "Qwen/Qwen3-Reranker-4B",
-    "rerank_quantization": "int8"
-  }'
-```
-
 **Parameters:**
 - `query` (required): Search query text
 - `k` (optional): Number of results to return (default: 10, max: 100)
@@ -138,45 +827,25 @@ curl -X POST http://localhost:8000/search \
 - `quantization` (optional): Override default quantization
 - `include_content` (optional): Include full text content in results
 - `filters` (optional): Filter results by metadata
-- `use_reranker` (optional): Enable cross-encoder reranking for improved accuracy (default: false)
-- `rerank_model` (optional): Override default reranker model (auto-selected based on embedding model)
-- `rerank_quantization` (optional): Override reranker quantization (default: matches embedding quantization)
-
-**Cross-Encoder Reranking:**
-
-When `use_reranker` is enabled, the system uses a two-stage retrieval process:
-
-1. **Candidate Retrieval**: The system retrieves more candidates than requested (5x the `k` value, bounded between 20-200 results) using vector similarity search.
-2. **Reranking**: A cross-encoder model re-scores each candidate by considering the query and document together, providing more accurate relevance scores.
-
-**Automatic Model Selection**: If `rerank_model` is not specified, the system automatically selects an appropriate reranker based on the embedding model:
-- `BAAI/bge-*` models → `BAAI/bge-reranker-v2-m3`
-- `sentence-transformers/*` models → `cross-encoder/ms-marco-MiniLM-L-12-v2`
-- `Qwen/Qwen3-Embedding-*` models → Matching Qwen3-Reranker size (0.6B, 4B, or 8B)
-- Default fallback → `Qwen/Qwen3-Reranker-0.6B`
-
-**Quantization**: If `rerank_quantization` is not specified, it defaults to match the embedding model's quantization for consistency.
-
-**Benefits**: Reranking significantly improves search accuracy, especially for:
-- Complex queries requiring semantic understanding
-- Questions seeking specific answers
-- Searches where exact relevance matters more than speed
+- `use_reranker` (optional): Enable cross-encoder reranking (default: false)
+- `rerank_model` (optional): Override default reranker model
+- `rerank_quantization` (optional): Override reranker quantization
 
 **Response:**
 ```json
 {
-  "query": "original query",
+  "query": "machine learning",
   "results": [
     {
-      "path": "/path/to/document.pdf",
-      "chunk_id": "chunk_0001",
+      "path": "/docs/ml_guide.pdf",
+      "chunk_id": "chunk_123",
       "score": 0.95,
-      "doc_id": "document_hash",
-      "content": "Full text content if include_content=true...",
+      "doc_id": "doc_456",
+      "content": "Machine learning is...",
       "metadata": {}
     }
   ],
-  "num_results": 1,
+  "num_results": 10,
   "search_type": "semantic",
   "model_used": "Qwen/Qwen3-Embedding-0.6B/float16",
   "embedding_time_ms": 12.3,
@@ -186,24 +855,6 @@ When `use_reranker` is enabled, the system uses a two-stage retrieval process:
   "reranking_time_ms": null
 }
 ```
-
-**Response fields:**
-- `query`: The original search query
-- `results`: Array of search results
-  - `path`: Path to the source document
-  - `chunk_id`: Unique identifier for the text chunk
-  - `score`: Similarity score (0-1)
-  - `doc_id`: Document identifier (optional)
-  - `content`: Full text content (only included if `include_content=true` or `use_reranker=true`)
-  - `metadata`: Additional metadata (optional)
-- `num_results`: Number of results returned
-- `search_type`: Type of search performed
-- `model_used`: Embedding model used (e.g., "Qwen/Qwen3-Embedding-0.6B/float16")
-- `embedding_time_ms`: Time to generate query embedding
-- `search_time_ms`: Time to search vector database
-- `reranking_used`: Whether cross-encoder reranking was applied
-- `reranker_model`: The model used for reranking (e.g., "Qwen/Qwen3-Reranker-0.6B/float16")
-- `reranking_time_ms`: Time spent on reranking in milliseconds
 
 #### Batch Search
 ```http
@@ -222,65 +873,18 @@ Content-Type: application/json
 
 Process multiple search queries in a single request.
 
-**Example Request:**
-```bash
-curl -X POST http://localhost:8000/search/batch \
-  -H "Content-Type: application/json" \
-  -d '{
-    "queries": [
-      "What is machine learning?",
-      "How to implement async/await in Python?",
-      "Database indexing best practices"
-    ],
-    "k": 5,
-    "collection": "knowledge_base",
-    "search_type": "question",
-    "use_reranker": true
-  }'
-```
-
 **Response:**
 ```json
 {
   "responses": [
     {
       "query": "query1",
-      "results": [
-        {
-          "path": "/docs/api/overview.md",
-          "chunk_id": "chunk_001",
-          "score": 0.92,
-          "doc_id": "doc_abc123",
-          "content": null,
-          "metadata": null
-        }
-      ],
-      "num_results": 10,
-      "search_type": "semantic",
-      "model_used": "BAAI/bge-large-en-v1.5/float16",
-      "embedding_time_ms": null,
-      "search_time_ms": null,
-      "reranking_used": null,
-      "reranker_model": null,
-      "reranking_time_ms": null
-    },
-    {
-      "query": "query2",
       "results": [...],
       "num_results": 10,
-      "search_type": "semantic", 
-      "model_used": "BAAI/bge-large-en-v1.5/float16",
+      "search_type": "semantic",
+      "model_used": "Qwen/Qwen3-Embedding-0.6B/float16",
       "embedding_time_ms": 10.3,
       "search_time_ms": 37.8
-    },
-    {
-      "query": "query3",
-      "results": [...],
-      "num_results": 10,
-      "search_type": "semantic",
-      "model_used": "BAAI/bge-large-en-v1.5/float16",
-      "embedding_time_ms": 11.2,
-      "search_time_ms": 41.2
     }
   ],
   "total_time_ms": 145.7
@@ -294,59 +898,13 @@ GET /hybrid_search?q={query}&k={num_results}&mode={mode}&keyword_mode={keyword_m
 
 Combines vector similarity with keyword matching for improved search results.
 
-**Example Requests:**
-
-1. **Filter Mode with Any Keywords:**
-```bash
-curl "http://localhost:8000/hybrid_search?q=python%20async%20programming&k=10&mode=filter&keyword_mode=any"
-```
-
-2. **Rerank Mode with All Keywords Required:**
-```bash
-curl "http://localhost:8000/hybrid_search?q=docker%20kubernetes%20deployment&k=20&mode=rerank&keyword_mode=all&score_threshold=0.7"
-```
-
-**Example Response:**
-```json
-{
-  "query": "docker kubernetes deployment",
-  "results": [
-    {
-      "path": "/docs/devops/k8s-docker-guide.md",
-      "chunk_id": "chunk_k8s_001",
-      "score": 0.91,
-      "doc_id": "doc_devops_k8s",
-      "matched_keywords": ["docker", "kubernetes", "deployment"],
-      "keyword_score": 1.0,
-      "combined_score": 0.955,
-      "content": "Deploying Docker containers to Kubernetes involves...",
-      "metadata": {
-        "category": "devops",
-        "tags": ["docker", "k8s", "containers"]
-      }
-    }
-  ],
-  "num_results": 2,
-  "keywords_extracted": ["docker", "kubernetes", "deployment"],
-  "search_mode": "rerank",
-  "candidates_retrieved": 100,
-  "candidates_after_keyword_filter": 15
-}
-```
-
 **Parameters:**
 - `q` (required): Search query
 - `k` (optional): Number of results (default: 10)
 - `mode` (optional): "filter" or "rerank" (default: "filter")
-  - `filter`: Use Qdrant filters to match keywords
-  - `rerank`: Retrieve candidates and rerank based on keyword matches
 - `keyword_mode` (optional): "any" or "all" (default: "any")
-  - `any`: Match documents containing any of the keywords
-  - `all`: Match documents containing all keywords
 - `collection` (optional): Collection to search
 - `score_threshold` (optional): Minimum similarity score threshold
-- `model_name` (optional): Override embedding model
-- `quantization` (optional): Override quantization
 
 **Response:**
 ```json
@@ -370,65 +928,11 @@ curl "http://localhost:8000/hybrid_search?q=docker%20kubernetes%20deployment&k=2
 }
 ```
 
-**Response fields:**
-- `matched_keywords`: Keywords from the query found in this result
-- `keyword_score`: Score based on keyword matches (0-1)
-- `combined_score`: Combined vector and keyword score (when mode="rerank")
+#### Model Management
 
-#### Keyword Search
-```http
-GET /keyword_search?q={query}&k={num_results}&mode={mode}
-```
-
-Text-only search without vector similarity.
-
-**Example Request:**
-```bash
-curl "http://localhost:8000/keyword_search?q=python%20decorators%20metaclass&k=10&mode=all"
-```
-
-**Parameters:**
-- `q` (required): Search query
-- `k` (optional): Number of results (default: 10)
-- `mode` (optional): "any" or "all" (default: "any")
-- `collection` (optional): Collection to search
-
-#### Collection Info
-```http
-GET /collection/info?name={collection_name}
-```
-
-Get information about the default Qdrant collection. Note: The collection name parameter in the path is not currently used.
-
-**Example Request:**
-```bash
-curl "http://localhost:8000/collection/info?name=work_docs"
-```
-
-**Response:**
-```json
-{
-  "collection": "work_docs",
-  "vectors_count": 15420,
-  "points_count": 15420,
-  "segments_count": 2,
-  "config": {
-    "vector_size": 1024,
-    "distance": "Cosine"
-  }
-}
-```
-
-#### Available Models
+##### List Available Models
 ```http
 GET /models
-```
-
-List available embedding models.
-
-**Example Request:**
-```bash
-curl http://localhost:8000/models
 ```
 
 **Response:**
@@ -436,21 +940,21 @@ curl http://localhost:8000/models
 {
   "models": [
     {
-      "name": "BAAI/bge-large-en-v1.5",
-      "dimensions": 1024,
-      "description": "High quality general purpose"
-    },
-    {
       "name": "Qwen/Qwen3-Embedding-0.6B",
       "dimensions": 1024,
-      "description": "Fast, good quality"
+      "description": "Lightweight Chinese-English embedding model"
+    },
+    {
+      "name": "BAAI/bge-large-en-v1.5",
+      "dimensions": 1024,
+      "description": "High quality general purpose model"
     }
   ],
   "current_model": "Qwen/Qwen3-Embedding-0.6B"
 }
 ```
 
-#### Load Model
+##### Load Model
 ```http
 POST /models/load
 Content-Type: application/json
@@ -459,18 +963,6 @@ Content-Type: application/json
   "model_name": "Qwen/Qwen3-Embedding-4B",
   "quantization": "float16"
 }
-```
-
-Dynamically load a different embedding model.
-
-**Example Request:**
-```bash
-curl -X POST http://localhost:8000/models/load \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model_name": "Qwen/Qwen3-Embedding-4B",
-    "quantization": "float16"
-  }'
 ```
 
 **Success Response (200):**
@@ -483,62 +975,9 @@ curl -X POST http://localhost:8000/models/load \
 }
 ```
 
-#### Model Suggestions
-```http
-GET /models/suggest
-```
-
-Get optimal model configuration suggestions based on system resources.
-
-**Example Request:**
-```bash
-curl http://localhost:8000/models/suggest
-```
-
-**Response:**
-```json
-{
-  "gpu_available": true,
-  "gpu_memory_gb": 12.0,
-  "recommended_model": "Qwen/Qwen3-Embedding-0.6B",
-  "recommended_quantization": "int8",
-  "reasoning": "GPU with 12GB VRAM can handle 0.6B model with int8 quantization for optimal speed/quality balance"
-}
-```
-
-#### Embedding Info
-```http
-GET /embedding/info
-```
-
-Get current embedding configuration.
-
-**Example Request:**
-```bash
-curl http://localhost:8000/embedding/info
-```
-
-**Response:**
-```json
-{
-  "model_name": "Qwen/Qwen3-Embedding-0.6B",
-  "quantization": "float16",
-  "mock_mode": false,
-  "device": "cuda",
-  "max_batch_size": 96
-}
-```
-
-#### Model Status
+##### Model Status
 ```http
 GET /model/status
-```
-
-Get detailed model manager status including loaded embedding and reranker models.
-
-**Example Request:**
-```bash
-curl http://localhost:8000/model/status
 ```
 
 **Response:**
@@ -565,1050 +1004,13 @@ curl http://localhost:8000/model/status
 }
 ```
 
-**Note**: Models are automatically unloaded after the configured inactivity timeout (default: 300 seconds) to free GPU memory.
-
-## Web UI API
-
-The Web UI provides additional endpoints with authentication.
-
-### Base URL
-```
-http://localhost:8080
-```
-
-### Authentication
-All API endpoints require JWT authentication. Include the token in the Authorization header:
-```
-Authorization: Bearer {token}
-```
-
-#### Authentication Flow Examples
-
-**1. Register New User:**
-```bash
-curl -X POST http://localhost:8080/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "john_doe",
-    "email": "john@example.com",
-    "password": "SecurePassword123!",
-    "full_name": "John Doe"
-  }'
-```
-
-**2. Login and Get Token:**
-```bash
-curl -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "john_doe",
-    "password": "SecurePassword123!"
-  }'
-```
-
-**Response:**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refresh_token": "dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4gZXhhbXBsZQ==",
-  "token_type": "bearer"
-}
-```
-
-**3. Use Token in Requests:**
-```bash
-# Save token
-TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-
-# Use in API calls
-curl -X GET http://localhost:8080/api/jobs \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-### Endpoints
-
-#### Authentication Endpoints
-
-##### Register
-```http
-POST /api/auth/register
-Content-Type: application/json
-
-{
-  "username": "string",
-  "email": "string",
-  "password": "string",
-  "full_name": "string"
-}
-```
-
-Register a new user account.
-
-**Response (201):**
-```json
-{
-  "id": 1,
-  "username": "john_doe",
-  "email": "john@example.com",
-  "full_name": "John Doe",
-  "created_at": "2024-01-15T10:30:00Z"
-}
-```
-
-##### Login
-```http
-POST /api/auth/login
-Content-Type: application/json
-
-{
-  "username": "string",
-  "password": "string"
-}
-```
-
-Login and receive access and refresh tokens.
-
-**Response (200):**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refresh_token": "dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4gZXhhbXBsZQ==",
-  "token_type": "bearer"
-}
-```
-
-##### Refresh Token
-```http
-POST /api/auth/refresh
-Content-Type: application/json
-
-{
-  "refresh_token": "string"
-}
-```
-
-Get a new access token using a refresh token.
-
-**Response (200):**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "bearer"
-}
-```
-
-##### Logout
-```http
-POST /api/auth/logout
-Content-Type: application/json
-Authorization: Bearer {token}
-
-{
-  "refresh_token": "string"
-}
-```
-
-Logout and revoke the refresh token.
-
-**Response (200):**
-```json
-{
-  "message": "Successfully logged out"
-}
-```
-
-##### Get Current User
-```http
-GET /api/auth/me
-Authorization: Bearer {token}
-```
-
-Get information about the currently authenticated user.
-
-**Response (200):**
-```json
-{
-  "id": 1,
-  "username": "john_doe",
-  "email": "john@example.com",
-  "full_name": "John Doe",
-  "created_at": "2024-01-15T10:30:00Z"
-}
-```
-
-#### Scan Directory
-```http
-POST /api/scan-directory
-Content-Type: application/json
-
-{
-  "path": "/path/to/documents"
-}
-```
-
-Scan a directory for documents.
-
-**Example Request:**
-```bash
-curl -X POST http://localhost:8080/api/scan-directory \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "path": "/mnt/shared/documents",
-    "recursive": true
-  }'
-```
-
-**Response:**
-```json
-{
-  "files": [
-    {
-      "path": "/path/to/document.pdf",
-      "size": 1048576,
-      "type": "pdf"
-    }
-  ],
-  "total_files": 42,
-  "total_size": 104857600
-}
-```
-
-#### Create Job
-```http
-POST /api/jobs
-Content-Type: application/json
-
-{
-  "name": "Job Name",
-  "directories": ["/path/to/docs"],
-  "model_name": "Qwen/Qwen3-Embedding-0.6B",
-  "quantization": "float16",
-  "instruction": "Represent this document for retrieval:"
-}
-```
-
-Create a new embedding job.
-
-**Example Request:**
-```bash
-curl -X POST http://localhost:8080/api/jobs \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Technical Documentation v2.0",
-    "description": "Embedding all technical docs for Q4 2024",
-    "directory_path": "/mnt/shared/docs/technical",
-    "model_name": "Qwen/Qwen3-Embedding-4B",
-    "chunk_size": 800,
-    "chunk_overlap": 200,
-    "batch_size": 64,
-    "vector_dim": 2560,
-    "quantization": "float16",
-    "instruction": "Represent this technical document for searching:",
-    "job_id": "tech_docs_v2_2024q4"
-  }'
-```
-
-**Response:**
-```json
-{
-  "job_id": "job_abc123",
-  "status": "created",
-  "created_at": "2024-01-15T10:00:00Z"
-}
-```
-
-#### List Jobs
-```http
-GET /api/jobs
-```
-
-List all embedding jobs.
-
-**Example Request:**
-```bash
-curl -X GET http://localhost:8080/api/jobs \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response:**
-```json
-{
-  "jobs": [
-    {
-      "id": "job_abc123",
-      "name": "Job Name",
-      "status": "completed",
-      "progress": 100,
-      "created_at": "2024-01-15T10:00:00Z",
-      "completed_at": "2024-01-15T11:30:00Z"
-    }
-  ]
-}
-```
-
-#### Get Job Details
-```http
-GET /api/jobs/{job_id}
-```
-
-Get detailed information about a specific job.
-
-**Example Request:**
-```bash
-curl -X GET http://localhost:8080/api/jobs/tech_docs_v2_2024q4 \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response:**
-```json
-{
-  "id": "tech_docs_v2_2024q4",
-  "name": "Technical Documentation v2.0",
-  "status": "processing",
-  "progress": 67.5,
-  "created_at": "2024-01-15T10:00:00Z",
-  "updated_at": "2024-01-15T10:45:00Z",
-  "total_files": 156,
-  "processed_files": 105,
-  "failed_files": 2,
-  "model_name": "Qwen/Qwen3-Embedding-4B",
-  "directory_path": "/mnt/shared/docs/technical",
-  "error_details": [
-    {"file": "/docs/corrupted.pdf", "error": "PDF parsing failed"},
-    {"file": "/docs/empty.txt", "error": "Empty file"}
-  ]
-}
-```
-
-#### Generate New Job ID
-```http
-GET /api/jobs/new-id
-```
-
-Generate a new unique job ID for creating jobs.
-
-**Example Request:**
-```bash
-curl -X GET http://localhost:8080/api/jobs/new-id \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response:**
-```json
-{
-  "job_id": "job_abc123_20240115_103000"
-}
-```
-
-#### Get Collection Metadata
-```http
-GET /api/jobs/collection-metadata/{collection_name}
-```
-
-Get metadata for a specific collection across all jobs.
-
-**Example Request:**
-```bash
-curl -X GET http://localhost:8080/api/jobs/collection-metadata/tech_docs \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response:**
-```json
-{
-  "collection_name": "tech_docs",
-  "total_jobs": 3,
-  "total_files": 450,
-  "total_vectors": 15420,
-  "model_used": "Qwen/Qwen3-Embedding-0.6B",
-  "last_updated": "2024-01-15T10:45:00Z"
-}
-```
-
-#### Check Duplicates
-```http
-POST /api/jobs/check-duplicates
-Content-Type: application/json
-
-{
-  "content_hashes": ["hash1", "hash2", "hash3"],
-  "collection_name": "tech_docs"
-}
-```
-
-Check which content hashes already exist in a collection.
-
-**Example Request:**
-```bash
-curl -X POST http://localhost:8080/api/jobs/check-duplicates \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "content_hashes": ["abc123...", "def456...", "ghi789..."],
-    "collection_name": "tech_docs"
-  }'
-```
-
-**Response:**
-```json
-{
-  "existing_hashes": ["abc123...", "ghi789..."],
-  "new_hashes": ["def456..."]
-}
-```
-
-#### Get Collections Status
-```http
-GET /api/jobs/collections-status
-```
-
-Check which job collections exist in Qdrant.
-
-**Example Request:**
-```bash
-curl -X GET http://localhost:8080/api/jobs/collections-status \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response:**
-```json
-{
-  "existing_collections": ["job_abc123", "job_def456"],
-  "missing_collections": ["job_ghi789"]
-}
-```
-
-#### Cancel Job
-```http
-POST /api/jobs/{job_id}/cancel
-```
-
-Cancel a running job.
-
-**Example Request:**
-```bash
-curl -X POST http://localhost:8080/api/jobs/job_abc123/cancel \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response:**
-```json
-{
-  "message": "Job cancelled successfully",
-  "job_id": "job_abc123",
-  "status": "cancelled"
-}
-```
-
-#### Delete Job
-```http
-DELETE /api/jobs/{job_id}
-```
-
-Delete a job and its associated collection.
-
-**Example Request:**
-```bash
-curl -X DELETE http://localhost:8080/api/jobs/job_abc123 \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response:**
-```json
-{
-  "message": "Job deleted successfully",
-  "job_id": "job_abc123",
-  "collection_deleted": true
-}
-```
-
-#### Check Collection Exists
-```http
-GET /api/jobs/{job_id}/collection-exists
-```
-
-Check if a job's collection exists in Qdrant.
-
-**Example Request:**
-```bash
-curl -X GET http://localhost:8080/api/jobs/job_abc123/collection-exists \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response:**
-```json
-{
-  "exists": true,
-  "collection_name": "job_abc123",
-  "vector_count": 15420
-}
-```
-
-#### Search (Web UI)
-```http
-POST /api/search
-Content-Type: application/json
-
-{
-  "query": "search text",
-  "top_k": 10,
-  "collection": "job_abc123",
-  "search_type": "vector|hybrid",
-  "use_reranker": false,
-  "rerank_model": "string",
-  "rerank_quantization": "float32|float16|int8",
-  "hybrid_alpha": 0.7,
-  "hybrid_mode": "rerank|filter",
-  "keyword_mode": "any|all"
-}
-```
-
-Search within a specific collection. This endpoint proxies to the Search API.
-
-**Example Request:**
-```bash
-curl -X POST http://localhost:8080/api/search \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "kubernetes deployment strategies",
-    "top_k": 10,
-    "collection": "tech_docs_v2_2024q4",
-    "search_type": "hybrid",
-    "use_reranker": true,
-    "hybrid_alpha": 0.7,
-    "hybrid_mode": "rerank",
-    "keyword_mode": "any"
-  }'
-```
-
-**Parameters:**
-- `query` (required): Search query text
-- `top_k` (optional): Number of results to return (default: 10)
-- `collection` (optional): Collection to search in (e.g., "job_123")
-- `search_type` (optional): "vector" or "hybrid" (default: "vector")
-- `use_reranker` (optional): Enable cross-encoder reranking (default: false)
-- `rerank_model` (optional): Override reranker model selection
-- `rerank_quantization` (optional): Override reranker quantization
-- `hybrid_alpha` (optional): Weight for hybrid search (0.0-1.0, default: 0.7)
-- `hybrid_mode` (optional): "rerank" or "filter" for hybrid search (default: "rerank")
-- `keyword_mode` (optional): "any" or "all" for keyword matching (default: "any")
-
-#### Hybrid Search (Web UI)
-```http
-POST /api/hybrid_search
-Content-Type: application/json
-
-{
-  "query": "search text",
-  "k": 10,
-  "job_id": "job_abc123",
-  "mode": "filter",
-  "keyword_mode": "any"
-}
-```
-
-Hybrid search within a specific job's embeddings.
-
-**Example Request:**
-```bash
-curl -X POST http://localhost:8080/api/hybrid_search \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "async programming patterns",
-    "k": 15,
-    "job_id": "tech_docs_v2_2024q4",
-    "mode": "rerank",
-    "keyword_mode": "any",
-    "score_threshold": 0.6
-  }'
-```
-
-#### Available Models (Web UI)
-```http
-GET /api/models
-```
-
-Get list of available embedding models.
-
-**Example Request:**
-```bash
-curl -X GET http://localhost:8080/api/models \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response:**
-```json
-{
-  "models": {
-    "Qwen/Qwen3-Embedding-0.6B": {
-      "description": "Lightweight Chinese-English embedding model",
-      "dim": 1024,
-      "supports_quantization": true,
-      "recommended_quantization": "float32"
-    },
-    "Qwen/Qwen3-Embedding-4B": {
-      "description": "Large high-quality embedding model",
-      "dim": 2560,
-      "supports_quantization": true,
-      "recommended_quantization": "float16"
-    }
-  },
-  "current_device": "cuda",
-  "using_real_embeddings": true
-}
-```
-
-### Collections Management
-
-#### List Collections
-```http
-GET /api/collections/
-```
-
-Get all unique collection names with aggregated statistics.
-
-**Example Request:**
-```bash
-curl -X GET http://localhost:8080/api/collections/ \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response:**
-```json
-{
-  "collections": [
-    {
-      "name": "Technical Documentation",
-      "total_files": 156,
-      "total_chunks": 3420,
-      "created_at": "2024-01-15T10:30:00Z",
-      "root_job_id": 1
-    }
-  ]
-}
-```
-
-#### Get Collection Details
-```http
-GET /api/collections/{collection_name}
-```
-
-Get detailed information about a specific collection.
-
-**Example Request:**
-```bash
-curl -X GET http://localhost:8080/api/collections/Technical%20Documentation \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response:**
-```json
-{
-  "name": "Technical Documentation",
-  "jobs": [
-    {
-      "id": 1,
-      "mode": "create",
-      "source_path": "/docs/api",
-      "files_found": 45,
-      "status": "completed"
-    }
-  ],
-  "total_files": 156,
-  "total_chunks": 3420,
-  "duplicates_found": 3
-}
-```
-
-#### Get Collection Files
-```http
-GET /api/collections/{collection_name}/files?page={page}&per_page={per_page}
-```
-
-Get paginated list of files in a collection.
-
-**Parameters:**
-- `page` (optional): Page number (default: 1)
-- `per_page` (optional): Items per page (default: 50)
-
-#### Rename Collection
-```http
-PUT /api/collections/{collection_name}
-Content-Type: application/json
-
-{
-  "new_name": "API Documentation v2"
-}
-```
-
-Rename a collection.
-
-#### Delete Collection
-```http
-DELETE /api/collections/{collection_name}
-```
-
-Delete a collection and all associated data.
-
-#### Add to Collection
-```http
-POST /api/jobs/add-to-collection
-Content-Type: application/json
-
-{
-  "collection_name": "Technical Documentation",
-  "source_type": "file|directory|github|url",
-  "source_path": "/path/to/new/docs",
-  "filters": {
-    "extensions": [".md", ".txt"],
-    "ignore_patterns": ["**/node_modules/**"]
-  }
-}
-```
-
-Add new data to an existing collection.
-
-#### Preload Model
-```http
-POST /api/preload_model
-Content-Type: application/json
-
-{
-  "model_name": "BAAI/bge-large-en-v1.5",
-  "quantization": "float16"
-}
-```
-
-Preload an embedding model to prevent timeout issues during search.
-
-#### Document Endpoints
-
-##### Get Document
-```http
-GET /api/documents/{job_id}/{doc_id}
-```
-
-Retrieve a document by job ID and document ID.
-
-**Example Request:**
-```bash
-curl -X GET http://localhost:8080/api/documents/job_abc123/doc_xyz789 \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response:**
-Document content is returned with appropriate content-type header.
-
-##### Get Document Info
-```http
-GET /api/documents/{job_id}/{doc_id}/info
-```
-
-Get document metadata without downloading the full content.
-
-**Example Request:**
-```bash
-curl -X GET http://localhost:8080/api/documents/job_abc123/doc_xyz789/info \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response:**
-```json
-{
-  "doc_id": "doc_xyz789",
-  "job_id": "job_abc123",
-  "filename": "technical_spec.pdf",
-  "content_type": "application/pdf",
-  "size_bytes": 1048576,
-  "created_at": "2024-01-15T10:30:00Z"
-}
-```
-
-##### Get Temporary Image
-```http
-GET /api/documents/temp-images/{session_id}/{filename}
-```
-
-Serve temporary images extracted from documents.
-
-**Example Request:**
-```bash
-curl -X GET http://localhost:8080/api/documents/temp-images/session123/image1.png \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response:**
-Image content with appropriate content-type header.
-
-#### Metrics
-```http
-GET /api/metrics
-```
-
-Get current Prometheus metrics.
-
-**Example Request:**
-```bash
-curl -X GET http://localhost:8080/api/metrics \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response:**
-```
-# HELP http_requests_total Total HTTP requests
-# TYPE http_requests_total counter
-http_requests_total{method="GET",endpoint="/api/search",status="200"} 1234.0
-http_requests_total{method="POST",endpoint="/api/jobs",status="201"} 56.0
-
-# HELP embedding_generation_seconds Time spent generating embeddings
-# TYPE embedding_generation_seconds histogram
-embedding_generation_seconds_bucket{le="0.1"} 100.0
-embedding_generation_seconds_bucket{le="0.5"} 450.0
-embedding_generation_seconds_bucket{le="1.0"} 480.0
-embedding_generation_seconds_bucket{le="+Inf"} 500.0
-embedding_generation_seconds_sum 234.5
-embedding_generation_seconds_count 500.0
-```
-
-#### Settings Endpoints
-
-##### Reset Database
-```http
-POST /api/settings/reset-database
-```
-
-Reset the database (requires confirmation).
-
-**Example Request:**
-```bash
-curl -X POST http://localhost:8080/api/settings/reset-database \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "confirm": true
-  }'
-```
-
-**Response:**
-```json
-{
-  "message": "Database reset successfully",
-  "jobs_deleted": 15,
-  "files_deleted": 1250,
-  "collections_deleted": 5
-}
-```
-
-##### Get Database Statistics
-```http
-GET /api/settings/stats
-```
-
-Get database statistics.
-
-**Example Request:**
-```bash
-curl -X GET http://localhost:8080/api/settings/stats \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response:**
-```json
-{
-  "total_jobs": 15,
-  "total_files": 1250,
-  "total_users": 3,
-  "database_size_mb": 125.4,
-  "parquet_files": 0,
-  "parquet_size_mb": 0.0,
-  "oldest_job": "2024-01-01T00:00:00Z",
-  "newest_job": "2024-01-15T10:30:00Z"
-}
-```
-
-### WebSocket Endpoints
-
-#### Job Progress
-```
-WS /ws/{job_id}
-```
-
-Real-time job progress updates via WebSocket.
-
-**Connection Example (JavaScript):**
-```javascript
-// Connect to job progress WebSocket
-const jobId = 'tech_docs_v2_2024q4';
-const ws = new WebSocket(`ws://localhost:8080/ws/${jobId}`);
-
-ws.onopen = () => {
-    console.log('Connected to job progress');
-};
-
-ws.onmessage = (event) => {
-    const message = JSON.parse(event.data);
-    console.log('Progress update:', message);
-    
-    switch(message.type) {
-        case 'job_started':
-            console.log(`Job started with ${message.total_files} files`);
-            break;
-        case 'file_processing':
-            console.log(`Processing: ${message.current_file}`);
-            break;
-        case 'file_completed':
-            console.log(`Progress: ${message.processed_files}/${message.total_files}`);
-            break;
-        case 'job_completed':
-            console.log('Job completed successfully!');
-            ws.close();
-            break;
-        case 'error':
-            console.error('Job error:', message.message);
-            break;
-    }
-};
-
-ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
-};
-
-ws.onclose = (event) => {
-    console.log(`Connection closed: ${event.code} - ${event.reason}`);
-};
-```
-
-**Message Types:**
-
-1. **Job Started:**
-```json
-{
-  "type": "job_started",
-  "total_files": 156,
-  "job_id": "tech_docs_v2_2024q4",
-  "timestamp": "2024-01-15T10:00:05Z"
-}
-```
-
-2. **File Processing:**
-```json
-{
-  "type": "file_processing",
-  "current_file": "/mnt/shared/docs/technical/api/rest-api-guide.pdf",
-  "processed_files": 42,
-  "total_files": 156,
-  "status": "Extracting chunks",
-  "file_size_mb": 2.4,
-  "timestamp": "2024-01-15T10:15:23Z"
-}
-```
-
-3. **File Completed:**
-```json
-{
-  "type": "file_completed",
-  "processed_files": 43,
-  "total_files": 156,
-  "chunks_created": 127,
-  "processing_time_ms": 3456,
-  "timestamp": "2024-01-15T10:15:27Z"
-}
-```
-
-4. **Progress Update:**
-```json
-{
-  "type": "progress",
-  "data": {
-    "progress": 27.56,
-    "processed_files": 43,
-    "total_files": 156,
-    "failed_files": 2,
-    "total_chunks": 5234,
-    "estimated_time_remaining_seconds": 4320,
-    "current_file": "architecture-overview.md",
-    "processing_rate": "2.5 files/minute"
-  },
-  "timestamp": "2024-01-15T10:15:30Z"
-}
-```
-
-5. **Error Message:**
-```json
-{
-  "type": "error",
-  "message": "Failed to process file: /docs/corrupted.pdf - PDF parsing error",
-  "file": "/docs/corrupted.pdf",
-  "error_code": "PDF_PARSE_ERROR",
-  "recoverable": true,
-  "timestamp": "2024-01-15T10:16:45Z"
-}
-```
-
-6. **Job Completed:**
-```json
-{
-  "type": "job_completed",
-  "message": "Job completed successfully",
-  "total_files": 156,
-  "processed_files": 154,
-  "failed_files": 2,
-  "total_chunks": 12567,
-  "total_time_seconds": 7625,
-  "collection_name": "tech_docs_v2_2024q4",
-  "timestamp": "2024-01-15T12:07:30Z"
-}
-```
-
-**Connection Best Practices:**
-
-1. **Reconnection Logic:**
-```javascript
-class JobProgressClient {
-    constructor(jobId) {
-        this.jobId = jobId;
-        this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 5;
-        this.reconnectDelay = 3000;
-        this.connect();
-    }
-
-    connect() {
-        this.ws = new WebSocket(`ws://localhost:8080/ws/${this.jobId}`);
-        this.setupEventHandlers();
-    }
-
-    setupEventHandlers() {
-        this.ws.onopen = () => {
-            console.log('Connected');
-            this.reconnectAttempts = 0;
-        };
-
-        this.ws.onclose = (event) => {
-            if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
-                console.log(`Reconnecting in ${this.reconnectDelay}ms...`);
-                setTimeout(() => {
-                    this.reconnectAttempts++;
-                    this.connect();
-                }, this.reconnectDelay);
-            }
-        };
-
-        // ... other handlers
-    }
-}
-```
-
 ## Error Responses
 
 All endpoints return standard HTTP status codes:
 
 - `200 OK` - Success
 - `201 Created` - Resource created successfully
+- `202 Accepted` - Async operation started
 - `204 No Content` - Success with no response body
 - `206 Partial Content` - Partial file content (range requests)
 - `400 Bad Request` - Invalid parameters
@@ -1623,124 +1025,87 @@ All endpoints return standard HTTP status codes:
 - `500 Internal Server Error` - Server error
 - `502 Bad Gateway` - Upstream service error
 - `503 Service Unavailable` - Service temporarily unavailable
-- `507 Insufficient Storage` - Insufficient GPU memory for operation
+- `507 Insufficient Storage` - Insufficient GPU memory
 
-### Error Response Examples
+### Error Response Format
 
-**1. Validation Error (422):**
+All error responses follow a consistent format:
 ```json
 {
-  "detail": [
-    {
-      "loc": ["body", "chunk_size"],
-      "msg": "ensure this value is greater than or equal to 100",
-      "type": "value_error.number.not_ge",
-      "ctx": {"limit_value": 100}
-    },
-    {
-      "loc": ["body", "chunk_overlap"],
-      "msg": "chunk_overlap must be less than chunk_size",
-      "type": "value_error"
-    }
-  ],
-  "status_code": 422
-}
-```
-
-**2. Authentication Error (401):**
-```json
-{
-  "detail": "Could not validate credentials",
-  "status_code": 401,
-  "headers": {
-    "WWW-Authenticate": "Bearer"
+  "detail": "Detailed error message",
+  "error_code": "UNIQUE_ERROR_CODE",
+  "status_code": 400,
+  "context": {
+    "field": "additional context"
   }
 }
 ```
 
-**3. Resource Not Found (404):**
+### Common Error Examples
+
+**Validation Error (422):**
 ```json
 {
-  "detail": "Job with ID 'non_existent_job' not found",
+  "detail": "Validation failed",
+  "error_code": "VALIDATION_ERROR",
+  "status_code": 422,
+  "context": {
+    "chunk_size": "must be between 100 and 50000",
+    "chunk_overlap": "must be less than chunk_size"
+  }
+}
+```
+
+**Authentication Error (401):**
+```json
+{
+  "detail": "Could not validate credentials",
+  "error_code": "AUTH_INVALID_CREDENTIALS",
+  "status_code": 401
+}
+```
+
+**Resource Not Found (404):**
+```json
+{
+  "detail": "Collection not found",
+  "error_code": "COLLECTION_NOT_FOUND",
   "status_code": 404,
-  "resource_type": "job",
-  "resource_id": "non_existent_job"
+  "context": {
+    "collection_id": "550e8400-e29b-41d4-a716-446655440000"
+  }
 }
 ```
 
-**4. Insufficient GPU Memory (507):**
+**Rate Limit Exceeded (429):**
 ```json
 {
-  "detail": {
-    "error": "insufficient_memory",
-    "message": "Not enough GPU memory to load reranker model Qwen/Qwen3-Reranker-8B with quantization float16",
-    "required_memory_gb": 15.2,
-    "available_memory_gb": 7.8,
-    "suggestion": "Try using a smaller model (e.g., Qwen/Qwen3-Reranker-0.6B) or different quantization (e.g., int8)",
-    "alternatives": [
-      {"model": "Qwen/Qwen3-Reranker-0.6B", "quantization": "float16", "memory_gb": 1.2},
-      {"model": "Qwen/Qwen3-Reranker-4B", "quantization": "int8", "memory_gb": 4.0},
-      {"model": "cross-encoder/ms-marco-MiniLM-L-12-v2", "quantization": "float32", "memory_gb": 1.5}
-    ]
-  },
-  "status_code": 507
-}
-```
-
-**5. Service Unavailable (503):**
-```json
-{
-  "detail": {
-    "error": "service_unavailable",
-    "message": "Search API service is temporarily unavailable",
-    "service": "search_api",
-    "retry_after_seconds": 30,
-    "maintenance_mode": false
-  },
-  "status_code": 503
-}
-```
-
-**6. Rate Limit Exceeded (429):**
-```json
-{
-  "detail": "Rate limit exceeded: 30 per 1 minute",
+  "detail": "Rate limit exceeded",
+  "error_code": "RATE_LIMIT_EXCEEDED",
   "status_code": 429,
-  "retry_after": 45
-}
-```
-
-**7. File Processing Error (500):**
-```json
-{
-  "detail": {
-    "error": "processing_error",
-    "message": "Failed to extract text from PDF file",
-    "file": "/docs/corrupted_scan.pdf",
-    "error_type": "PDFParsingError",
-    "traceback": "File \"extract_chunks.py\", line 234...\nPDFParsingError: Unable to decode PDF structure"
-  },
-  "status_code": 500
+  "context": {
+    "limit": 30,
+    "window": "1 minute",
+    "retry_after": 45
+  }
 }
 ```
 
 ## Rate Limiting
 
-The WebUI API implements rate limiting to prevent abuse and ensure fair usage. The Search API currently has no rate limits.
+The WebUI API implements rate limiting to ensure fair usage:
 
-### Rate Limit Configuration
-
-| Endpoint Category | Rate Limit | Window | Notes |
-|------------------|------------|--------|---------|
-| Authentication (`/api/auth/*`) | 5 requests | 1 minute | Prevents brute force attacks |
-| Search (`/api/search`, `/api/hybrid_search`) | 30 requests | 1 minute | Per user |
-| Job Management (`/api/jobs/*`) | 20 requests | 1 minute | Per user |
-| Document Access (`/api/documents/*`) | 10 requests | 1 minute | Prevents abuse |
-| General API | 100 requests | 1 minute | Default for other endpoints |
+| Endpoint Category | Rate Limit | Window |
+|------------------|------------|---------|
+| Authentication | 5 requests | 1 minute |
+| Search | 30 requests | 1 minute |
+| Collection Management | 20 requests | 1 minute |
+| Document Access | 10 requests | 1 minute |
+| General API | 100 requests | 1 minute |
 
 ### Rate Limit Headers
 
-All API responses include rate limit information in headers:
+All API responses include rate limit information:
 
 ```http
 X-RateLimit-Limit: 30
@@ -1749,161 +1114,119 @@ X-RateLimit-Reset: 1705318860
 X-RateLimit-Reset-After: 45
 ```
 
-- `X-RateLimit-Limit`: Maximum requests allowed in the window
-- `X-RateLimit-Remaining`: Requests remaining in current window
-- `X-RateLimit-Reset`: Unix timestamp when the window resets
-- `X-RateLimit-Reset-After`: Seconds until the window resets
+## Authentication Flow
 
-### Rate Limit Exceeded Response
+### JWT Token Flow
 
-When rate limit is exceeded:
+1. **Register**: Create a new user account
+2. **Login**: Exchange credentials for access and refresh tokens
+3. **Access**: Include access token in Authorization header
+4. **Refresh**: Use refresh token to get new access token when expired
+5. **Logout**: Revoke refresh token
 
-```http
-HTTP/1.1 429 Too Many Requests
-Retry-After: 45
-X-RateLimit-Limit: 30
-X-RateLimit-Remaining: 0
-X-RateLimit-Reset: 1705318860
-Content-Type: application/json
+### Token Details
 
-{
-  "detail": "Rate limit exceeded: 30 per 1 minute",
-  "status_code": 429,
-  "retry_after": 45
-}
-```
+**Access Token**:
+- Algorithm: HS256
+- Expiration: 30 minutes
+- Claims: `sub` (username), `exp`, `iat`
 
-### Implementing Rate Limit Handling
+**Refresh Token**:
+- Random secure token
+- Expiration: 30 days
+- Stored hashed in database
 
-**Python Example with Retry Logic:**
+## Best Practices
+
+### API Usage
+
+1. **Batch Operations**: Use batch endpoints when processing multiple items
+2. **Pagination**: Always paginate large result sets
+3. **Error Handling**: Implement retry logic with exponential backoff
+4. **Rate Limiting**: Monitor rate limit headers and implement client-side limiting
+5. **WebSocket**: Use WebSocket for real-time progress updates on long operations
+
+### Security
+
+1. **Token Storage**: Store tokens securely (not in localStorage for web apps)
+2. **HTTPS**: Always use HTTPS in production
+3. **Input Validation**: Validate all inputs client-side before sending
+4. **Error Messages**: Don't expose sensitive information in error responses
+
+### Performance
+
+1. **Caching**: Cache search results when appropriate
+2. **Compression**: Enable gzip compression for API responses
+3. **Connection Pooling**: Reuse HTTP connections
+4. **Async Operations**: Use WebSocket for long-running operations
+
+## SDK Support
+
+While no official SDK is provided, the API is designed to work with any HTTP client library:
+
+### Python Example
 ```python
-import time
-import requests
-from typing import Optional
+import httpx
 
-class RateLimitedClient:
+class SemantikClient:
     def __init__(self, base_url: str, token: str):
         self.base_url = base_url
         self.headers = {"Authorization": f"Bearer {token}"}
-        self.session = requests.Session()
+        self.client = httpx.AsyncClient()
     
-    def request_with_retry(
-        self, 
-        method: str, 
-        endpoint: str, 
-        max_retries: int = 3,
-        **kwargs
-    ) -> Optional[requests.Response]:
-        url = f"{self.base_url}{endpoint}"
-        
-        for attempt in range(max_retries):
-            response = self.session.request(
-                method, url, headers=self.headers, **kwargs
-            )
-            
-            if response.status_code == 429:
-                retry_after = int(response.headers.get('Retry-After', 60))
-                print(f"Rate limited. Waiting {retry_after} seconds...")
-                time.sleep(retry_after)
-                continue
-            
-            # Check remaining requests
-            remaining = response.headers.get('X-RateLimit-Remaining')
-            if remaining and int(remaining) < 5:
-                print(f"Warning: Only {remaining} requests remaining")
-            
-            return response
-        
-        raise Exception(f"Max retries ({max_retries}) exceeded")
-
-# Usage
-client = RateLimitedClient("http://localhost:8080", "your_token")
-response = client.request_with_retry(
-    "POST", 
-    "/api/search", 
-    json={"query": "test", "top_k": 10}
-)
+    async def search(self, collection_ids: list[str], query: str):
+        response = await self.client.post(
+            f"{self.base_url}/api/v2/search",
+            headers=self.headers,
+            json={
+                "collection_uuids": collection_ids,
+                "query": query,
+                "k": 20,
+                "use_reranker": True
+            }
+        )
+        response.raise_for_status()
+        return response.json()
 ```
 
-**JavaScript Example with Exponential Backoff:**
+### JavaScript Example
 ```javascript
-class ApiClient {
+class SemantikClient {
     constructor(baseUrl, token) {
         this.baseUrl = baseUrl;
-        this.token = token;
-        this.defaultHeaders = {
+        this.headers = {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
         };
     }
-
-    async requestWithRetry(method, endpoint, options = {}, maxRetries = 3) {
-        let lastError;
+    
+    async search(collectionIds, query) {
+        const response = await fetch(`${this.baseUrl}/api/v2/search`, {
+            method: 'POST',
+            headers: this.headers,
+            body: JSON.stringify({
+                collection_uuids: collectionIds,
+                query: query,
+                k: 20,
+                use_reranker: true
+            })
+        });
         
-        for (let attempt = 0; attempt < maxRetries; attempt++) {
-            try {
-                const response = await fetch(`${this.baseUrl}${endpoint}`, {
-                    method,
-                    headers: { ...this.defaultHeaders, ...options.headers },
-                    ...options
-                });
-                
-                // Check rate limit headers
-                const remaining = response.headers.get('X-RateLimit-Remaining');
-                if (remaining && parseInt(remaining) < 5) {
-                    console.warn(`Low rate limit: ${remaining} requests remaining`);
-                }
-                
-                if (response.status === 429) {
-                    const retryAfter = parseInt(
-                        response.headers.get('Retry-After') || '60'
-                    );
-                    console.log(`Rate limited. Retrying after ${retryAfter}s...`);
-                    await this.sleep(retryAfter * 1000);
-                    continue;
-                }
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                
-                return response;
-                
-            } catch (error) {
-                lastError = error;
-                if (attempt < maxRetries - 1) {
-                    // Exponential backoff
-                    const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
-                    console.log(`Retrying in ${delay}ms...`);
-                    await this.sleep(delay);
-                }
-            }
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
         }
         
-        throw lastError;
-    }
-
-    sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+        return response.json();
     }
 }
-
-// Usage
-const client = new ApiClient('http://localhost:8080', 'your_token');
-const response = await client.requestWithRetry('POST', '/api/search', {
-    body: JSON.stringify({ query: 'test', top_k: 10 })
-});
 ```
 
-### Rate Limiting Best Practices
+## OpenAPI Documentation
 
-1. **Implement Client-Side Rate Limiting**: Don't wait for 429 errors
-2. **Use Batch Endpoints**: Reduce request count with batch operations
-3. **Cache Responses**: Store results to avoid repeated requests
-4. **Monitor Rate Limit Headers**: Proactively slow down when limits approach
-5. **Implement Backoff**: Use exponential backoff for retries
-6. **Queue Requests**: Implement a request queue with rate control
+Both services provide interactive OpenAPI documentation:
+- WebUI API: `http://localhost:8080/docs`
+- Search API: `http://localhost:8001/docs`
 
-## CORS
-
-Both APIs support CORS for browser-based access. The Web UI is configured to allow requests from common development origins.
+The OpenAPI spec can be accessed at:
+- WebUI API: `http://localhost:8080/openapi.json`
+- Search API: `http://localhost:8001/openapi.json`

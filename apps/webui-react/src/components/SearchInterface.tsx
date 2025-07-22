@@ -1,8 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useSearchStore } from '../stores/searchStore';
 import { useUIStore } from '../stores/uiStore';
-import { useCollectionStore } from '../stores/collectionStore';
+import { useCollections } from '../hooks/useCollections';
 import { searchV2Api } from '../services/api/v2/collections';
 import SearchResults from './SearchResults';
 import { CollectionMultiSelect } from './CollectionMultiSelect';
@@ -19,24 +18,15 @@ function SearchInterface() {
     setPartialFailure,
   } = useSearchStore();
   const addToast = useUIStore((state) => state.addToast);
-  const collectionStore = useCollectionStore();
-  const collectionsArray = Array.from(collectionStore.collections.values());
+  
+  // Use React Query hook to fetch collections
+  const { data: collections = [], refetch: refetchCollections } = useCollections();
 
   const statusUpdateIntervalRef = useRef<number | null>(null);
 
-  // Fetch collections using v2 API
-  const { refetch: refetchCollections } = useQuery({
-    queryKey: ['collections-v2'],
-    queryFn: async () => {
-      // Use the collection store's fetchCollections method
-      await collectionStore.fetchCollections();
-      return collectionStore.getCollectionsArray();
-    },
-  });
-
   // Check if any collections are processing and set up auto-refresh
   useEffect(() => {
-    const hasProcessing = collectionsArray.some(
+    const hasProcessing = collections.some(
       (col) => col.status === 'processing' || col.status === 'pending'
     );
 
@@ -54,7 +44,7 @@ function SearchInterface() {
         window.clearInterval(statusUpdateIntervalRef.current);
       }
     };
-  }, [collectionsArray, refetchCollections]);
+  }, [collections, refetchCollections]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -202,7 +192,7 @@ function SearchInterface() {
                 </button>
               </label>
               <CollectionMultiSelect
-                collections={collectionsArray}
+                collections={collections}
                 selectedCollections={searchParams.selectedCollections}
                 onChange={(selected) => updateSearchParams({ selectedCollections: selected })}
                 placeholder="Select collections to search..."

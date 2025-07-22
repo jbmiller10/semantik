@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-File change tracking functionality for maintenance service
-Tracks files using SHA256 hashes and identifies removed files
+Document change tracking functionality for maintenance service
+Tracks documents using SHA256 hashes and identifies removed documents
 """
 
 import json
@@ -13,12 +13,12 @@ from typing import Any, cast
 logger = logging.getLogger(__name__)
 
 
-class FileChangeTracker:
-    """Track file changes using SHA256 and SCD-like approach"""
+class DocumentChangeTracker:
+    """Track document changes using SHA256 and SCD-like approach"""
 
     def __init__(self, db_path: str | None = None):
         """
-        Initialize file change tracker
+        Initialize document change tracker
 
         Args:
             db_path: Path to JSON database file. If None, uses in-memory storage only.
@@ -40,7 +40,7 @@ class FileChangeTracker:
             try:
                 with db_file.open("r") as f:
                     self.tracking_data = json.load(f)
-                logger.info(f"Loaded {len(self.tracking_data.get('files', {}))} tracked files from {self.db_path}")
+                logger.info(f"Loaded {len(self.tracking_data.get('files', {}))} tracked documents from {self.db_path}")
             except Exception as e:
                 logger.error(f"Failed to load tracking data from {self.db_path}: {e}")
                 # Keep default empty tracking data
@@ -67,17 +67,17 @@ class FileChangeTracker:
         except Exception as e:
             logger.error(f"Failed to save tracking data to {self.db_path}: {e}")
 
-    def get_removed_files(self, current_files: list[str]) -> list[dict[str, str]]:
+    def get_removed_documents(self, current_documents: list[str]) -> list[dict[str, str]]:
         """
-        Get list of files that were tracked but are no longer in current files
+        Get list of documents that were tracked but are no longer in current files
 
         Args:
-            current_files: List of currently existing file paths
+            current_documents: List of currently existing document paths
 
         Returns:
-            List of dicts with 'path' and 'doc_id' keys for removed files
+            List of dicts with 'path' and 'doc_id' keys for removed documents
         """
-        current_set = set(current_files)
+        current_set = set(current_documents)
         tracked_files = self.tracking_data.get("files", {})
 
         removed = []
@@ -90,31 +90,31 @@ class FileChangeTracker:
                     }
                 )
 
-        logger.info(f"Found {len(removed)} removed files out of {len(tracked_files)} tracked files")
+        logger.info(f"Found {len(removed)} removed documents out of {len(tracked_files)} tracked documents")
         return removed
 
-    def remove_file(self, file_path: str) -> None:
+    def remove_document(self, file_path: str) -> None:
         """
-        Remove a file from tracking
+        Remove a document from tracking
 
         Args:
-            file_path: Path of file to remove from tracking
+            file_path: Path of document to remove from tracking
         """
         files = self.tracking_data.get("files", {})
         if file_path in files:
             del files[file_path]
             logger.info(f"Removed {file_path} from tracking")
         else:
-            logger.warning(f"File {file_path} not found in tracking data")
+            logger.warning(f"Document {file_path} not found in tracking data")
 
-    def add_file(self, file_path: str, doc_id: str, file_hash: str) -> None:
+    def add_document(self, file_path: str, doc_id: str, file_hash: str) -> None:
         """
-        Add or update a file in tracking
+        Add or update a document in tracking
 
         Args:
-            file_path: Path of file to track
-            doc_id: Document ID for the file
-            file_hash: SHA256 hash of the file
+            file_path: Path of document to track
+            doc_id: Document ID for the document
+            file_hash: SHA256 hash of the document
         """
         self.tracking_data.setdefault("files", {})[file_path] = {
             "doc_id": doc_id,
@@ -123,15 +123,15 @@ class FileChangeTracker:
         }
         logger.debug(f"Added/updated tracking for {file_path} with doc_id={doc_id}")
 
-    def get_file_info(self, file_path: str) -> dict[str, str] | None:
+    def get_document_info(self, file_path: str) -> dict[str, str] | None:
         """
-        Get tracking info for a specific file
+        Get tracking info for a specific document
 
         Args:
-            file_path: Path of file to look up
+            file_path: Path of document to look up
 
         Returns:
-            Dict with file info or None if not tracked
+            Dict with document info or None if not tracked
         """
         result = self.tracking_data.get("files", {}).get(file_path)
         if result is None or not isinstance(result, dict):
@@ -139,18 +139,18 @@ class FileChangeTracker:
         # Type cast to satisfy mypy - we've verified it's a dict
         return cast(dict[str, str], result)
 
-    def is_file_changed(self, file_path: str, new_hash: str) -> bool:
+    def is_document_changed(self, file_path: str, new_hash: str) -> bool:
         """
-        Check if a file has changed based on hash comparison
+        Check if a document has changed based on hash comparison
 
         Args:
-            file_path: Path of file to check
+            file_path: Path of document to check
             new_hash: New SHA256 hash to compare
 
         Returns:
-            True if file has changed or is new, False otherwise
+            True if document has changed or is new, False otherwise
         """
-        file_info = self.get_file_info(file_path)
+        file_info = self.get_document_info(file_path)
         if not file_info:
-            return True  # New file
+            return True  # New document
         return file_info.get("hash") != new_hash

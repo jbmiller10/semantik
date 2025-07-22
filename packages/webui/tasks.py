@@ -199,7 +199,7 @@ def test_task(self: Any) -> dict[str, str]:  # noqa: ARG001
 
 @celery_app.task(name="webui.tasks.cleanup_old_results")
 def cleanup_old_results(days_to_keep: int = DEFAULT_DAYS_TO_KEEP) -> dict[str, Any]:
-    """Clean up old Celery results and job records.
+    """Clean up old Celery results and operation records.
 
     Args:
         days_to_keep: Number of days to keep results (default: 7)
@@ -209,7 +209,7 @@ def cleanup_old_results(days_to_keep: int = DEFAULT_DAYS_TO_KEEP) -> dict[str, A
     """
     from datetime import timedelta
 
-    stats: dict[str, Any] = {"celery_results_deleted": 0, "old_jobs_marked": 0, "errors": []}
+    stats: dict[str, Any] = {"celery_results_deleted": 0, "old_operations_marked": 0, "errors": []}
 
     try:
         # Clean up old Celery results from Redis
@@ -219,7 +219,7 @@ def cleanup_old_results(days_to_keep: int = DEFAULT_DAYS_TO_KEEP) -> dict[str, A
         # Celery's built-in result expiration or a more sophisticated cleanup
         logger.info(f"Starting cleanup of results older than {days_to_keep} days")
 
-        # Job archiving removed - operations are handled differently
+        # Operation archiving removed - operations are handled differently
         logger.info(f"Cleanup of operations older than {cutoff_time} is handled by operation lifecycle")
 
         logger.info(f"Cleanup completed: {stats}")
@@ -1316,22 +1316,22 @@ async def _process_append_operation(
         raise ValueError("source_path is required for APPEND operation")
 
     # Import required modules for file scanning
-    from webui.services.file_scanning_service import FileScanningService
+    from webui.services.document_scanning_service import DocumentScanningService
 
     # Use the existing document_repo and its session
     session = document_repo.session
 
     # Create file scanning service with existing session
-    file_scanner = FileScanningService(db_session=session, document_repo=document_repo)
+    document_scanner = DocumentScanningService(db_session=session, document_repo=document_repo)
 
     # Scan directory and register documents
-    await updater.send_update("scanning_files", {"status": "scanning", "source_path": source_path})
+    await updater.send_update("scanning_documents", {"status": "scanning", "source_path": source_path})
 
     try:
         # Time document scanning
         scan_start = time.time()
 
-        scan_stats = await file_scanner.scan_directory_and_register_documents(
+        scan_stats = await document_scanner.scan_directory_and_register_documents(
             collection_id=collection["id"],
             source_path=source_path,
             recursive=True,  # Default to recursive scanning
@@ -1347,17 +1347,17 @@ async def _process_append_operation(
             "scanning_completed",
             {
                 "status": "scanning_completed",
-                "total_files_found": scan_stats["total_files_found"],
-                "new_files_registered": scan_stats["new_files_registered"],
-                "duplicate_files_skipped": scan_stats["duplicate_files_skipped"],
+                "total_files_found": scan_stats["total_documents_found"],
+                "new_documents_registered": scan_stats["new_documents_registered"],
+                "duplicate_documents_skipped": scan_stats["duplicate_documents_skipped"],
                 "errors_count": len(scan_stats.get("errors", [])),
             },
         )
 
         # Record document processing metrics
-        for _ in range(scan_stats["new_files_registered"]):
+        for _ in range(scan_stats["new_documents_registered"]):
             record_document_processed("append", "registered")
-        for _ in range(scan_stats["duplicate_files_skipped"]):
+        for _ in range(scan_stats["duplicate_documents_skipped"]):
             record_document_processed("append", "skipped")
         for _ in range(len(scan_stats.get("errors", []))):
             record_document_processed("append", "failed")
@@ -1370,24 +1370,24 @@ async def _process_append_operation(
             "documents_appended",
             {
                 "source_path": source_path,
-                "documents_added": scan_stats["new_files_registered"],
-                "duplicates_skipped": scan_stats["duplicate_files_skipped"],
+                "documents_added": scan_stats["new_documents_registered"],
+                "duplicates_skipped": scan_stats["duplicate_documents_skipped"],
             },
         )
 
         # Process registered documents to generate embeddings
-        if scan_stats["new_files_registered"] > 0:
+        if scan_stats["new_documents_registered"] > 0:
             await updater.send_update(
                 "processing_embeddings",
                 {
                     "status": "generating_embeddings",
-                    "documents_to_process": scan_stats["new_files_registered"],
+                    "documents_to_process": scan_stats["new_documents_registered"],
                 },
             )
 
             # Get newly registered documents
             # Note: We'll get all documents and filter by path since there's no source_filter
-            all_docs, _ = await doc_repo.list_by_collection(
+            all_docs, _ = await document_repo.list_by_collection(
                 collection["id"],
                 status=None,  # Get all statuses
                 limit=10000,  # High limit to get all docs
@@ -1434,7 +1434,7 @@ async def _process_append_operation(
 
                     if not text_blocks:
                         logger.warning(f"No text extracted from {doc.file_path}")
-                        await doc_repo.update_status(
+                        await document_repo.update_status(
                             doc.id,
                             DocumentStatus.FAILED,
                             error_message="No text content extracted",
@@ -1453,7 +1453,7 @@ async def _process_append_operation(
 
                     if not chunks:
                         logger.warning(f"No chunks created for {doc.file_path}")
-                        await doc_repo.update_status(
+                        await document_repo.update_status(
                             doc.id,
                             DocumentStatus.FAILED,
                             error_message="No chunks created",
@@ -1520,7 +1520,7 @@ async def _process_append_operation(
                         )
 
                     # Update document status
-                    await doc_repo.update_status(
+                    await document_repo.update_status(
                         doc.id,
                         DocumentStatus.COMPLETED,
                         chunk_count=len(chunks),
@@ -1542,7 +1542,7 @@ async def _process_append_operation(
 
                 except Exception as e:
                     logger.error(f"Failed to process document {doc.file_path}: {e}")
-                    await doc_repo.update_status(
+                    await document_repo.update_status(
                         doc.id,
                         DocumentStatus.FAILED,
                         error_message=str(e),
@@ -1565,18 +1565,18 @@ async def _process_append_operation(
                 "append_completed",
                 {
                     "source_path": source_path,
-                    "documents_added": scan_stats["new_files_registered"],
-                    "total_files_scanned": scan_stats["total_files_found"],
-                    "duplicates_skipped": scan_stats["duplicate_files_skipped"],
+                    "documents_added": scan_stats["new_documents_registered"],
+                    "total_files_scanned": scan_stats["total_documents_found"],
+                    "duplicates_skipped": scan_stats["duplicate_documents_skipped"],
                 },
             )
 
         return {
             "success": True,
             "source_path": source_path,
-            "documents_added": scan_stats["new_files_registered"],
-            "total_files_scanned": scan_stats["total_files_found"],
-            "duplicates_skipped": scan_stats["duplicate_files_skipped"],
+            "documents_added": scan_stats["new_documents_registered"],
+            "total_files_scanned": scan_stats["total_documents_found"],
+            "duplicates_skipped": scan_stats["duplicate_documents_skipped"],
             "total_size_bytes": scan_stats["total_size_bytes"],
             "scan_duration_seconds": scan_duration,
             "errors": scan_stats.get("errors", []),

@@ -155,7 +155,7 @@ class Collection(Base):
 
 
 class Document(Base):
-    """Document model representing files in collections."""
+    """Document model representing documents in collections."""
 
     __tablename__ = "documents"
 
