@@ -10,7 +10,9 @@ from packages.shared.database import get_db
 
 from .collection_service import CollectionService
 from .file_scanning_service import FileScanningService
+from .operation_service import OperationService
 from .resource_manager import ResourceManager
+from .search_service import SearchService
 
 
 def create_collection_service(db: AsyncSession) -> CollectionService:
@@ -155,3 +157,51 @@ def create_resource_manager(db: AsyncSession) -> ResourceManager:
 async def get_collection_service(db: AsyncSession = Depends(get_db)) -> CollectionService:
     """FastAPI dependency for CollectionService injection."""
     return create_collection_service(db)
+
+
+def create_operation_service(db: AsyncSession) -> OperationService:
+    """Create an OperationService instance with required dependencies.
+
+    Args:
+        db: AsyncSession instance from FastAPI's dependency injection
+
+    Returns:
+        Configured OperationService instance
+    """
+    # Create repository instances
+    operation_repo = OperationRepository(db)
+
+    # Create and return service
+    return OperationService(
+        db_session=db,
+        operation_repo=operation_repo,
+    )
+
+
+async def get_operation_service(db: AsyncSession = Depends(get_db)) -> OperationService:
+    """FastAPI dependency for OperationService injection."""
+    return create_operation_service(db)
+
+
+def create_search_service(db: AsyncSession) -> SearchService:
+    """Create a SearchService instance with required dependencies.
+
+    Args:
+        db: AsyncSession instance from FastAPI's dependency injection
+
+    Returns:
+        Configured SearchService instance
+    """
+    # Create repository instances
+    collection_repo = CollectionRepository(db)
+
+    # Create and return service
+    return SearchService(
+        db_session=db,
+        collection_repo=collection_repo,
+    )
+
+
+async def get_search_service(db: AsyncSession = Depends(get_db)) -> SearchService:
+    """FastAPI dependency for SearchService injection."""
+    return create_search_service(db)

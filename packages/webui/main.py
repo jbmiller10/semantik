@@ -30,17 +30,13 @@ logger = logging.getLogger(__name__)
 
 from .api import (  # noqa: E402
     auth,
-    documents,
-    files,
     health,
     internal,
     metrics,
     models,
     root,
-    search,
     settings,
 )
-from .api.files import scan_websocket  # noqa: E402
 from .api.v2 import collections as v2_collections  # noqa: E402
 from .api.v2 import operations as v2_operations  # noqa: E402
 from .api.v2 import search as v2_search  # noqa: E402
@@ -196,13 +192,9 @@ def create_app() -> FastAPI:
 
     # Include routers with their specific prefixes
     app.include_router(auth.router)
-    app.include_router(files.router)
-    # app.include_router(collections.router)  # Removed v1 collections API - using v2 exclusively
     app.include_router(metrics.router)
     app.include_router(settings.router)
     app.include_router(models.router)
-    app.include_router(search.router)
-    app.include_router(documents.router)
     app.include_router(health.router)
     app.include_router(internal.router)
 
@@ -231,10 +223,6 @@ def create_app() -> FastAPI:
     app.include_router(root.router)  # No prefix for static + root
 
     # Mount WebSocket endpoints at the app level
-    @app.websocket("/ws/scan/{scan_id}")
-    async def scan_ws(websocket: WebSocket, scan_id: str) -> None:
-        await scan_websocket(websocket, scan_id)
-
     @app.websocket("/ws/operations/{operation_id}")
     async def operation_ws(websocket: WebSocket, operation_id: str) -> None:
         await operation_websocket(websocket, operation_id)

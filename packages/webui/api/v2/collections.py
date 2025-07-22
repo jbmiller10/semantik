@@ -9,9 +9,6 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from packages.shared.database import get_db
 from packages.shared.database.exceptions import (
     AccessDeniedError,
     EntityAlreadyExistsError,
@@ -20,9 +17,6 @@ from packages.shared.database.exceptions import (
     ValidationError,
 )
 from packages.shared.database.models import Collection
-from packages.shared.database.repositories.collection_repository import CollectionRepository
-from packages.shared.database.repositories.document_repository import DocumentRepository
-from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.webui.api.schemas import (
     AddSourceRequest,
     CollectionCreate,
@@ -36,9 +30,6 @@ from packages.webui.api.schemas import (
 from packages.webui.auth import get_current_user
 from packages.webui.dependencies import (
     get_collection_for_user,
-    get_collection_repository,
-    get_document_repository,
-    get_operation_repository,
 )
 from packages.webui.rate_limiter import limiter
 from packages.webui.services.collection_service import CollectionService
@@ -134,7 +125,7 @@ async def list_collections(
     per_page: int = Query(50, ge=1, le=100, description="Items per page"),
     include_public: bool = Query(True, description="Include public collections"),
     current_user: dict[str, Any] = Depends(get_current_user),
-    repo: CollectionRepository = Depends(get_collection_repository),
+    service: CollectionService = Depends(get_collection_service),
 ) -> CollectionListResponse:
     """List collections accessible to the current user.
 
@@ -144,7 +135,7 @@ async def list_collections(
     try:
         offset = (page - 1) * per_page
 
-        collections, total = await repo.list_for_user(
+        collections, total = await service.list_for_user(
             user_id=int(current_user["id"]),
             offset=offset,
             limit=per_page,
@@ -197,11 +188,10 @@ async def get_collection(
     },
 )
 async def update_collection(
-    collection_uuid: str,  # noqa: ARG001
+    collection_uuid: str,
     request: CollectionUpdate,
-    collection: Collection = Depends(get_collection_for_user),
-    repo: CollectionRepository = Depends(get_collection_repository),
-    db: AsyncSession = Depends(get_db),
+    current_user: dict[str, Any] = Depends(get_current_user),
+    service: CollectionService = Depends(get_collection_service),
 ) -> CollectionResponse:
     """Update collection metadata.
 
@@ -221,13 +211,25 @@ async def update_collection(
         if request.metadata is not None:
             updates["meta"] = request.metadata
 
-        # Perform update
-        updated_collection = await repo.update(str(collection.id), updates)
-
-        await db.commit()
+        # Perform update through service
+        updated_collection = await service.update(
+            collection_id=collection_uuid,
+            user_id=int(current_user["id"]),
+            updates=updates,
+        )
 
         return CollectionResponse.from_collection(updated_collection)
 
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Collection '{collection_uuid}' not found",
+        ) from e
+    except AccessDeniedError as e:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the collection owner can update it",
+        ) from e
     except EntityAlreadyExistsError as e:
         raise HTTPException(
             status_code=409,
@@ -516,7 +518,7 @@ async def list_collection_operations(
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(50, ge=1, le=100, description="Items per page"),
     current_user: dict[str, Any] = Depends(get_current_user),
-    repo: OperationRepository = Depends(get_operation_repository),
+    service: CollectionService = Depends(get_collection_service),
 ) -> list[OperationResponse]:
     """List operations for a collection.
 
@@ -526,37 +528,41 @@ async def list_collection_operations(
     try:
         offset = (page - 1) * per_page
 
-        # Convert string parameters to enums if provided
-        from packages.shared.database.models import OperationStatus, OperationType
-
-        status_enum = None
-        if status:
-            try:
-                status_enum = OperationStatus(status)
-            except ValueError:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid status: {status}",
-                ) from None
-
-        type_enum = None
-        if operation_type:
-            try:
-                type_enum = OperationType(operation_type)
-            except ValueError:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid operation type: {operation_type}",
-                ) from None
-
-        operations, total = await repo.list_for_collection(
+        # Note: We'll handle status/type filtering at the API level for now
+        # since the service method doesn't support filtering yet
+        operations, total = await service.list_operations(
             collection_id=collection_uuid,
             user_id=int(current_user["id"]),
-            status=status_enum,
-            operation_type=type_enum,
             offset=offset,
             limit=per_page,
         )
+
+        # Filter operations if status or type specified
+        from packages.shared.database.models import OperationStatus, OperationType
+
+        if status or operation_type:
+            filtered_operations = operations
+            
+            if status:
+                try:
+                    status_enum = OperationStatus(status)
+                    filtered_operations = [op for op in filtered_operations if op.status == status_enum]
+                except ValueError:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid status: {status}",
+                    ) from None
+            
+            if operation_type:
+                try:
+                    type_enum = OperationType(operation_type)
+                    filtered_operations = [op for op in filtered_operations if op.type == type_enum]
+                except ValueError:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid operation type: {operation_type}",
+                    ) from None
+            operations = filtered_operations
 
         # Convert ORM objects to response models
         return [
@@ -601,11 +607,12 @@ async def list_collection_operations(
     },
 )
 async def list_collection_documents(
-    collection: Collection = Depends(get_collection_for_user),
+    collection_uuid: str,
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(50, ge=1, le=100, description="Items per page"),
     status: str | None = Query(None, description="Filter by document status"),
-    doc_repo: DocumentRepository = Depends(get_document_repository),
+    current_user: dict[str, Any] = Depends(get_current_user),
+    service: CollectionService = Depends(get_collection_service),
 ) -> DocumentListResponse:
     """List documents in a collection.
 
@@ -614,25 +621,27 @@ async def list_collection_documents(
     try:
         offset = (page - 1) * per_page
 
-        # Convert string status to enum if provided
+        # Get documents through service
+        documents, total = await service.list_documents(
+            collection_id=collection_uuid,
+            user_id=int(current_user["id"]),
+            offset=offset,
+            limit=per_page,
+        )
+
+        # Filter by status if provided
         from packages.shared.database.models import DocumentStatus
 
-        status_enum = None
         if status:
             try:
                 status_enum = DocumentStatus(status)
+                documents = [doc for doc in documents if doc.status == status_enum]
+                total = len(documents)  # Update total after filtering
             except ValueError:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Invalid status: {status}",
                 ) from None
-
-        documents, total = await doc_repo.list_by_collection(
-            collection_id=str(collection.id),
-            status=status_enum,
-            offset=offset,
-            limit=per_page,
-        )
 
         # Convert ORM objects to response models
         from packages.webui.api.schemas import DocumentResponse
@@ -663,6 +672,16 @@ async def list_collection_documents(
             per_page=per_page,
         )
 
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Collection '{collection_uuid}' not found",
+        ) from e
+    except AccessDeniedError as e:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to this collection",
+        ) from e
     except Exception as e:
         logger.error(f"Failed to list documents: {e}")
         raise HTTPException(
