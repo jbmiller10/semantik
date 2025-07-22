@@ -34,7 +34,12 @@ from packages.webui.api.schemas import (
     OperationResponse,
 )
 from packages.webui.auth import get_current_user
-from packages.webui.dependencies import get_collection_for_user
+from packages.webui.dependencies import (
+    get_collection_for_user,
+    get_collection_repository,
+    get_operation_repository,
+    get_document_repository,
+)
 from packages.webui.rate_limiter import limiter
 from packages.webui.services.collection_service import CollectionService
 from packages.webui.services.factory import get_collection_service
@@ -129,7 +134,7 @@ async def list_collections(
     per_page: int = Query(50, ge=1, le=100, description="Items per page"),
     include_public: bool = Query(True, description="Include public collections"),
     current_user: dict[str, Any] = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    repo: CollectionRepository = Depends(get_collection_repository),
 ) -> CollectionListResponse:
     """List collections accessible to the current user.
 
@@ -137,7 +142,6 @@ async def list_collections(
     Public collections are included by default.
     """
     try:
-        repo = CollectionRepository(db)
         offset = (page - 1) * per_page
 
         collections, total = await repo.list_for_user(
@@ -196,6 +200,7 @@ async def update_collection(
     collection_uuid: str,  # noqa: ARG001
     request: CollectionUpdate,
     collection: Collection = Depends(get_collection_for_user),
+    repo: CollectionRepository = Depends(get_collection_repository),
     db: AsyncSession = Depends(get_db),
 ) -> CollectionResponse:
     """Update collection metadata.
@@ -205,8 +210,6 @@ async def update_collection(
     changed after creation - use reindexing for those changes.
     """
     try:
-        repo = CollectionRepository(db)
-
         # Build updates dict from non-None values
         updates: dict[str, Any] = {}
         if request.name is not None:
@@ -513,7 +516,7 @@ async def list_collection_operations(
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(50, ge=1, le=100, description="Items per page"),
     current_user: dict[str, Any] = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    repo: OperationRepository = Depends(get_operation_repository),
 ) -> list[OperationResponse]:
     """List operations for a collection.
 
@@ -521,7 +524,6 @@ async def list_collection_operations(
     ordered by creation date (newest first).
     """
     try:
-        repo = OperationRepository(db)
         offset = (page - 1) * per_page
 
         # Convert string parameters to enums if provided
@@ -603,14 +605,13 @@ async def list_collection_documents(
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(50, ge=1, le=100, description="Items per page"),
     status: str | None = Query(None, description="Filter by document status"),
-    db: AsyncSession = Depends(get_db),
+    doc_repo: DocumentRepository = Depends(get_document_repository),
 ) -> DocumentListResponse:
     """List documents in a collection.
 
     Returns a paginated list of documents in the collection.
     """
     try:
-        doc_repo = DocumentRepository(db)
         offset = (page - 1) * per_page
 
         # Convert string status to enum if provided

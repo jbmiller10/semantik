@@ -26,11 +26,11 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from shared.database.base import FileRepository
-from shared.database.factory import create_file_repository, create_operation_repository
 from shared.database.repositories import OperationRepository
 
 from packages.webui.auth import get_current_user
 from packages.webui.rate_limiter import limiter
+from packages.webui.dependencies import get_file_repository, get_operation_repository
 
 logger = logging.getLogger(__name__)
 
@@ -186,8 +186,8 @@ async def get_document(
     operation_id: str,
     doc_id: str,
     current_user: dict[str, Any] = Depends(get_current_user),
-    operation_repo: OperationRepository = Depends(create_operation_repository),
-    file_repo: FileRepository = Depends(create_file_repository),
+    operation_repo: OperationRepository = Depends(get_operation_repository),
+    file_repo: FileRepository = Depends(get_file_repository),
     range: str | None = Header(None),
 ) -> Response:
     """
@@ -406,8 +406,8 @@ async def get_document_info(
     operation_id: str,
     doc_id: str,
     current_user: dict[str, Any] = Depends(get_current_user),
-    operation_repo: OperationRepository = Depends(create_operation_repository),
-    file_repo: FileRepository = Depends(create_file_repository),
+    operation_repo: OperationRepository = Depends(get_operation_repository),
+    file_repo: FileRepository = Depends(get_file_repository),
 ) -> dict[str, Any]:
     """
     Get document metadata without downloading the file.

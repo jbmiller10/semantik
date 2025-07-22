@@ -12,8 +12,8 @@ from shared.config import settings
 from shared.contracts.search import HybridSearchRequest, PreloadModelRequest
 from shared.contracts.search import SearchRequest as SharedSearchRequest
 from shared.database.base import JobRepository
-from shared.database.factory import create_job_repository
 from webui.auth import get_current_user
+from webui.dependencies import get_job_repository
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class SearchRequest(SharedSearchRequest):
 async def search(
     request: SearchRequest,
     current_user: dict[str, Any] = Depends(get_current_user),
-    job_repo: JobRepository = Depends(create_job_repository),
+    job_repo: JobRepository = Depends(get_job_repository),
 ) -> dict[str, Any]:
     """Unified search endpoint - handles both vector and hybrid search"""
     logger.info(
@@ -364,7 +364,7 @@ async def preload_model(
 async def hybrid_search(
     request: HybridSearchRequest,
     current_user: dict[str, Any] = Depends(get_current_user),
-    job_repo: JobRepository = Depends(create_job_repository),
+    job_repo: JobRepository = Depends(get_job_repository),
 ) -> dict[str, Any]:
     """Perform hybrid search combining vector similarity and text matching - proxies to REST API"""
     try:

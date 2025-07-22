@@ -6,9 +6,11 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, field_validator
 from shared.config import settings
-from shared.database.database import AsyncSessionLocal
+from shared.database import get_db
 from shared.database.models import CollectionStatus
 from shared.database.repositories.collection_repository import CollectionRepository
+from sqlalchemy.ext.asyncio import AsyncSession
+from packages.webui.dependencies import get_collection_repository
 
 router = APIRouter(prefix="/api/internal", tags=["internal"])
 
@@ -20,7 +22,9 @@ def verify_internal_api_key(x_internal_api_key: Annotated[str | None, Header()] 
 
 
 @router.get("/collections/vector-store-names", dependencies=[Depends(verify_internal_api_key)])
-async def get_all_collection_vector_store_names() -> list[str]:
+async def get_all_collection_vector_store_names(
+    collection_repo: CollectionRepository = Depends(get_collection_repository),
+) -> list[str]:
     """
     Get all Qdrant collection names (vector_store_names) from the database.
     This endpoint is intended for internal services like maintenance/cleanup.
@@ -28,17 +32,15 @@ async def get_all_collection_vector_store_names() -> list[str]:
     Returns:
         List of vector_store_name values from all collections
     """
-    async with AsyncSessionLocal() as session:
-        collection_repo = CollectionRepository(session)
-        collections = await collection_repo.list_all()
+    collections = await collection_repo.list_all()
 
-        # Extract vector_store_names, filtering out None values
-        vector_store_names = []
-        for collection in collections:
-            if hasattr(collection, "vector_store_name") and collection.vector_store_name:
-                vector_store_names.append(collection.vector_store_name)
+    # Extract vector_store_names, filtering out None values
+    vector_store_names = []
+    for collection in collections:
+        if hasattr(collection, "vector_store_name") and collection.vector_store_name:
+            vector_store_names.append(collection.vector_store_name)
 
-        return vector_store_names
+    return vector_store_names
 
 
 class CompleteReindexRequest(BaseModel):
@@ -90,6 +92,8 @@ class CompleteReindexResponse(BaseModel):
 )
 async def complete_reindex(
     request: CompleteReindexRequest,
+    db: AsyncSession = Depends(get_db),
+    collection_repo: CollectionRepository = Depends(get_collection_repository),
 ) -> CompleteReindexResponse:
     """
     Atomically complete a reindex operation by switching from staging to active.
@@ -115,10 +119,7 @@ async def complete_reindex(
 
     try:
         # Begin atomic transaction
-        async with AsyncSessionLocal() as session, session.begin():
-            # Initialize repositories
-            collection_repo = CollectionRepository(session)
-
+        async with db.begin():
             # Get the collection
             collection = await collection_repo.get_by_uuid(request.collection_id)
             if not collection:

@@ -10,9 +10,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from packages.shared.database import (
     ApiKeyRepository,
     AuthRepository,
+    CollectionRepository,
+    DocumentRepository,
+    FileRepository,
+    JobRepository,
+    OperationRepository,
     UserRepository,
     create_api_key_repository,
     create_auth_repository,
+    create_collection_repository,
+    create_document_repository,
+    create_file_repository,
+    create_job_repository,
+    create_operation_repository,
     create_user_repository,
     get_db,
 )
@@ -96,3 +106,68 @@ async def get_api_key_repository(db: AsyncSession = Depends(get_db)) -> ApiKeyRe
         ApiKeyRepository instance configured with the database session
     """
     return create_api_key_repository(db)
+
+
+async def get_collection_repository(db: AsyncSession = Depends(get_db)) -> CollectionRepository:
+    """
+    FastAPI dependency that provides a CollectionRepository instance.
+
+    Args:
+        db: Database session from get_db dependency
+
+    Returns:
+        CollectionRepository instance configured with the database session
+    """
+    return create_collection_repository(db)
+
+
+async def get_operation_repository(db: AsyncSession = Depends(get_db)) -> OperationRepository:
+    """
+    FastAPI dependency that provides an OperationRepository instance.
+
+    Args:
+        db: Database session from get_db dependency
+
+    Returns:
+        OperationRepository instance configured with the database session
+    """
+    return create_operation_repository(db)
+
+
+async def get_document_repository(db: AsyncSession = Depends(get_db)) -> DocumentRepository:
+    """
+    FastAPI dependency that provides a DocumentRepository instance.
+
+    Args:
+        db: Database session from get_db dependency
+
+    Returns:
+        DocumentRepository instance configured with the database session
+    """
+    return create_document_repository(db)
+
+
+async def get_file_repository(db: AsyncSession = Depends(get_db)) -> FileRepository:
+    """
+    FastAPI dependency that provides a FileRepository instance.
+
+    Args:
+        db: Database session from get_db dependency
+
+    Returns:
+        FileRepository instance configured with the database session
+    """
+    return create_file_repository(db)
+
+
+async def get_job_repository(db: AsyncSession = Depends(get_db)) -> JobRepository:
+    """
+    FastAPI dependency that provides a JobRepository instance.
+
+    Args:
+        db: Database session from get_db dependency
+
+    Returns:
+        JobRepository instance configured with the database session
+    """
+    return create_job_repository(db)
