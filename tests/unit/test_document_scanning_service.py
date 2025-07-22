@@ -1,4 +1,4 @@
-"""Unit tests for FileScanningService."""
+"""Unit tests for DocumentScanningService."""
 
 # mypy: ignore-errors
 
@@ -10,11 +10,11 @@ from uuid import uuid4
 
 import pytest
 from shared.database.models import Document
-from webui.services.file_scanning_service import SUPPORTED_EXTENSIONS, FileScanningService
+from webui.services.document_scanning_service import SUPPORTED_EXTENSIONS, DocumentScanningService
 
 
-class TestFileScanningService:
-    """Test cases for FileScanningService."""
+class TestDocumentScanningService:
+    """Test cases for DocumentScanningService."""
 
     @pytest.fixture()
     def mock_session(self):
@@ -45,8 +45,8 @@ class TestFileScanningService:
 
     @pytest.fixture()
     def service(self, mock_session, mock_document_repo):
-        """Create a FileScanningService instance with mocked dependencies."""
-        return FileScanningService(db_session=mock_session, document_repo=mock_document_repo)
+        """Create a DocumentScanningService instance with mocked dependencies."""
+        return DocumentScanningService(db_session=mock_session, document_repo=mock_document_repo)
 
     def create_test_file(self, temp_dir: Path, filename: str, content: str = "test content") -> Path:
         """Helper to create a test file."""

@@ -21,8 +21,6 @@ from .base import (
     AuthRepository,
     BaseRepository,
     CollectionRepository,
-    FileRepository,
-    JobRepository,
     UserRepository,
 )
 from .collection_metadata import ensure_metadata_collection, store_collection_metadata
@@ -48,8 +46,6 @@ from .factory import (
     create_auth_repository,
     create_collection_repository,
     create_document_repository,
-    create_file_repository,
-    create_job_repository,
     create_operation_repository,
     create_user_repository,
     get_db_session,
@@ -66,17 +62,13 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 __all__ = [
     # Repository interfaces
     "BaseRepository",
-    "JobRepository",
     "UserRepository",
-    "FileRepository",
     "CollectionRepository",
     "AuthRepository",
     "ApiKeyRepository",
     # Factory functions
     "create_all_repositories",
-    "create_job_repository",
     "create_user_repository",
-    "create_file_repository",
     "create_collection_repository",
     "create_auth_repository",
     "create_api_key_repository",

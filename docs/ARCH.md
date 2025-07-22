@@ -4,15 +4,19 @@
 
 Semantik is a production-ready, high-performance document embedding and vector search system designed for technical users who prioritize performance and control. The system features a clean three-package architecture with clear separation between its core search engine (vecpipe), control plane (webui), and shared components. This modular design enables both standalone usage and user-friendly management through a modern React interface.
 
+The system has undergone a major architectural refactoring, transitioning from a job-centric model to a collection-centric architecture. This new design provides better organization, scalability, and multi-model support through collections that group related documents with shared embedding configurations.
+
 ### Key Features
-- 🚀 High-performance vector search powered by Qdrant
-- 🤖 Support for multiple embedding models with quantization (float32, float16, int8)
-- 🎯 Hybrid search combining vector similarity and keyword matching
-- 🌐 Full-featured web interface with real-time progress tracking
-- 🔧 Comprehensive REST API for programmatic access
-- 🔐 JWT-based authentication system
-- 📊 Prometheus metrics for monitoring
-- 🧪 Mock mode for testing without GPU resources
+- High-performance vector search powered by Qdrant
+- Collection-based document organization with multi-model support
+- Support for multiple embedding models with quantization (float32, float16, int8)
+- Hybrid search combining vector similarity and keyword matching
+- Full-featured web interface with real-time progress tracking
+- Comprehensive REST API v2 for programmatic access
+- JWT-based authentication system with refresh tokens
+- Prometheus metrics for monitoring
+- Async operations with WebSocket progress updates
+- Mock mode for testing without GPU resources
 
 ## System Architecture Overview
 
@@ -25,9 +29,10 @@ Semantik is a production-ready, high-performance document embedding and vector s
 ┌────────────────────────────────┴───────────────────────────────────────┐
 │                        WebUI Package (Port 8080)                        │
 │                         FastAPI Control Plane                           │
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐  ┌─────────────┐ │
-│  │Auth Service │  │Job Management│  │Search Proxy │  │ WebSockets  │ │
-│  └─────────────┘  └──────────────┘  └─────────────┘  └─────────────┘ │
+│  ┌─────────────┐  ┌─────────────────┐  ┌─────────────┐  ┌──────────┐ │
+│  │Auth Service │  │Collection Mgmt  │  │Search Proxy │  │WebSockets│ │
+│  │   (JWT)     │  │& Operations     │  │   (v2 API)  │  │(Progress)│ │
+│  └─────────────┘  └─────────────────┘  └─────────────┘  └──────────┘ │
 └────────┬──────────────────────────────┬────────────────────────────────┘
          │                              │
          │                              │ HTTP Proxy
@@ -43,16 +48,17 @@ Semantik is a production-ready, high-performance document embedding and vector s
          │ │  └──────────────┘  └──────────────┘  └───────────────┘  │
          │ └────────────────────────────────────────────────────────────┘
          │                              │
-┌────────┴─────────┐                   │
-│  PostgreSQL DB   │                   │
-│  (WebUI-owned)   │                   │
-│  Jobs, Files,    │                   │
-│  Users, Tokens,  │                   │
-│  Collections     │                   │
+┌────────┴─────────┐                   │            ┌─────────────────┐
+│  PostgreSQL DB   │                   │            │   Celery Worker │
+│  (WebUI-owned)   │                   │            │  (Background    │
+│  Collections,    │                   │            │   Operations)   │
+│  Operations,     │←──────────────────┼────────────┤                 │
+│  Documents,      │                   │            └─────────────────┘
+│  Users, Tokens   │                   │
 └──────────────────┘                   │
                                       │
 ┌──────────────────────────────────────┴─────────────────────────────────┐
-│                         VecPipe Package (Port 8000)                    │
+│                         VecPipe Package (Port 8001)                    │
 │                          Search & Processing API                        │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐  ┌────────────┐  │
 │  │  Extract    │  │  Maintenance │  │   Ingest    │  │   Search   │  │
@@ -64,6 +70,7 @@ Semantik is a production-ready, high-performance document embedding and vector s
 ┌───────────────────────────┴────────────────────────────────────────────┐
 │                         Qdrant Vector Database                          │
 │                     Vector Storage & Similarity Search                  │
+│                 (Collection naming: {uuid}_{model}_{quant})             │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -71,7 +78,7 @@ Semantik is a production-ready, high-performance document embedding and vector s
 
 ### 1. VecPipe Package (`packages/vecpipe/`)
 
-The headless data processing and search API that forms the heart of the system. This package is completely independent and has no dependencies on the webui package.
+The headless data processing and search API that forms the heart of the system. This package is completely independent and has no dependencies on the webui package. Operates on port 8001 in the refactored architecture.
 
 **Key Services:**
 - **Extract Service** (`extract_service.py`): Document parsing and intelligent chunking
@@ -86,31 +93,35 @@ The headless data processing and search API that forms the heart of the system. 
 
 **Design Principles:**
 - Completely standalone operation
-- No awareness of users, jobs, or authentication
-- Direct interaction with Qdrant vector database
+- No awareness of users, collections, or authentication
+- Direct interaction with Qdrant vector database using collection naming convention
 - Resource-efficient GPU memory management
+- Supports multiple concurrent collections with different embedding models
 
 ### 2. WebUI Package (`packages/webui/`)
 
-User-facing application providing authentication, job management, and search interface. Owns and manages the PostgreSQL database containing user data, jobs, files, and collections.
+User-facing application providing authentication, collection management, and search interface. Owns and manages the PostgreSQL database containing user data, collections, operations, and documents.
 
 **Backend Components:**
 - **main.py**: FastAPI application with modular router architecture
-- **api/**: RESTful API routers for auth, jobs, search, files, metrics
-- **auth.py**: JWT-based authentication system
-- **job_processing.py**: Orchestrates document processing pipeline
+- **api/v2/**: Modern RESTful API routers for collections, operations, documents, search
+- **api/auth/**: JWT-based authentication with refresh tokens
+- **services/**: Service layer with business logic (collection_service, operation_service)
+- **worker/**: Celery worker for asynchronous operation processing
 
 **Frontend (React):**
 - Modern React 19 with TypeScript
 - Zustand for state management
-- Real-time WebSocket updates
+- Real-time WebSocket updates for operation progress
 - Tailwind CSS for styling
+- React Query for data fetching
 
 **Key Responsibilities:**
 - User authentication and authorization
-- Job creation and management
-- File tracking and status updates
-- Search request proxying with authentication
+- Collection lifecycle management
+- Operation orchestration and tracking
+- Document management and deduplication
+- Search request proxying with multi-collection support
 - Real-time progress updates via WebSocket
 
 ### 3. Shared Package (`packages/shared/`)
@@ -122,13 +133,15 @@ Common components and utilities used by both webui and vecpipe packages. This pa
 **Database Module (`shared/database/`):**
 - **Repository Pattern**: Clean data access layer with type-safe interfaces
 - **PostgreSQL Implementation**: Concrete implementations of repository interfaces
-- **Legacy Wrappers**: Deprecated direct database functions for backward compatibility
+- **Models**: SQLAlchemy models for collections, operations, documents, users
 - **Schema Management**: Centralized database schema definitions
+- **Exceptions**: Custom database exceptions for error handling
 
 **Contracts Module (`shared/contracts/`):**
 - **API Models**: Pydantic models for request/response validation
 - **Search Models**: Unified search request and response structures
-- **Job Models**: Shared job and file status definitions
+- **Collection Models**: Shared collection and operation status definitions
+- **Document Models**: Document metadata and status tracking
 
 **Config Module (`shared/config/`):**
 - **Settings Management**: Environment-based configuration
@@ -148,65 +161,94 @@ Common components and utilities used by both webui and vecpipe packages. This pa
 ### 4. Database Architecture
 
 **Hybrid Database Design:**
-- **PostgreSQL**: Relational data (jobs, files, users, auth tokens, collections)
+- **PostgreSQL**: Relational data (collections, operations, documents, users, auth tokens)
 - **Qdrant**: Vector storage and similarity search
 
+**Collection-Centric Schema:**
+- **Collections**: Primary organizational unit with UUID identifiers
+- **Operations**: Async tasks (index, reindex, append, remove_source)
+- **Documents**: Individual files within collections
+- **Sources**: Data sources that provide documents to collections
+
 **Key Design Decisions:**
+- UUID-based identifiers for collections and documents
 - Clear separation between metadata and vectors
-- Optimized for single-instance deployments
+- Operation tracking for async task management
+- Content hash-based duplicate detection
 - Comprehensive indexing for performance
 
 For detailed documentation, see [DATABASE_ARCH.md](./DATABASE_ARCH.md)
 
 ## Data Flow
 
-### Document Processing Pipeline
+### Collection Creation and Document Processing
 
 ```
-1. User uploads documents via WebUI
+1. User creates collection with embedding configuration
    ↓
-2. WebUI creates job record in PostgreSQL
+2. WebUI creates collection record in PostgreSQL
    ↓
-3. Directory scan identifies processable files
+3. Qdrant collection created with deterministic naming
    ↓
-4. Extract service chunks documents by tokens
+4. User adds source (directory/file) to collection
    ↓
-5. Embed service generates vectors (with batching)
+5. Operation created and queued to Celery worker
    ↓
-6. Ingest service stores vectors in Qdrant
+6. Worker scans source and creates document records
    ↓
-7. WebSocket updates UI with progress
+7. Extract service chunks documents by tokens
+   ↓
+8. Embed service generates vectors (with batching)
+   ↓
+9. Ingest service stores vectors in Qdrant
+   ↓
+10. WebSocket updates UI with real-time progress
 ```
 
-### Search Flow
+### Multi-Collection Search Flow
 
 ```
-1. User enters search query in UI
+1. User selects collections and enters search query
    ↓
-2. WebUI proxies request to Search API
+2. WebUI validates access permissions
    ↓
-3. Search API generates query embedding
+3. Request proxied to Search API with collection UUIDs
    ↓
-4. Qdrant performs similarity search
+4. Search API maps UUIDs to Qdrant collection names
    ↓
-5. Results enriched with metadata
+5. Query embedding generated for each model type
    ↓
-6. Response returned through proxy
+6. Parallel search across multiple Qdrant collections
+   ↓
+7. Results normalized and optionally reranked
+   ↓
+8. Response enriched with collection metadata
+   ↓
+9. Results returned through proxy with scores
 ```
 
 ## API Architecture
 
-### Search API (Port 8000)
+### Search API (Port 8001)
 - Pure REST API for vector/hybrid search
 - No authentication required
-- Supports batch operations
+- Supports batch operations and multi-collection search
 - Model lazy-loading for efficiency
+- Collection-aware with Qdrant naming convention
 
-### WebUI API (Port 8080)
-- JWT-authenticated endpoints
-- Job management and monitoring
-- Search proxy with authentication
-- WebSocket for real-time updates
+### WebUI API v2 (Port 8080)
+- JWT-authenticated endpoints with refresh tokens
+- Collection lifecycle management
+- Operation tracking and monitoring
+- Document management with deduplication
+- Search proxy with multi-collection support
+- WebSocket for real-time operation progress
+
+**Key v2 API Endpoints:**
+- `/api/v2/collections` - Collection CRUD operations
+- `/api/v2/operations` - Operation tracking and management
+- `/api/v2/search` - Multi-collection semantic search
+- `/api/v2/documents` - Document access and metadata
 
 For complete API documentation, see [API_ARCHITECTURE.md](./API_ARCHITECTURE.md)
 
@@ -337,24 +379,28 @@ cp .env.example .env
 
 ### Planned Features
 1. **Horizontal Scaling**
-   - Distributed job processing
-   - Multi-instance WebUI
-   - Qdrant cluster support
+   - Distributed operation processing
+   - Multi-instance WebUI with session affinity
+   - Qdrant cluster support for large deployments
 
 2. **Enhanced Search**
-   - Cross-lingual search
-   - Faceted search
-   - Query expansion
+   - Cross-lingual search with multilingual models
+   - Faceted search with metadata filtering
+   - Query expansion and suggestion
+   - Collection federation for enterprise deployments
 
-3. **Advanced Features**
-   - Incremental updates
-   - Real-time indexing
-   - Custom model fine-tuning
+3. **Advanced Collection Features**
+   - Collection versioning and snapshots
+   - Incremental document updates
+   - Real-time indexing for live data sources
+   - Collection sharing with fine-grained permissions
+   - Custom model fine-tuning per collection
 
 ### Architecture Evolution
-- Microservices decomposition
-- Event-driven architecture
-- Cloud-native deployment
+- Microservices decomposition for scalability
+- Event-driven architecture with message queuing
+- Cloud-native deployment with Kubernetes operators
+- Multi-tenant support with resource isolation
 
 ## Related Documentation
 

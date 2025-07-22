@@ -22,7 +22,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from shared.config import settings
 
-from .file_tracker import FileChangeTracker
+from .document_tracker import DocumentChangeTracker
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -47,7 +47,7 @@ class QdrantMaintenanceService:
         if qdrant_port is None:
             qdrant_port = settings.QDRANT_PORT
         self.client = QdrantClient(url=f"http://{qdrant_host}:{qdrant_port}")
-        self.tracker = FileChangeTracker()
+        self.tracker = DocumentChangeTracker()
         self.webui_base_url = f"http://{webui_host}:{webui_port}"
 
     def _retry_request(self, func: Any, max_attempts: int = 3, base_delay: float = 1.0) -> Any:
@@ -77,7 +77,7 @@ class QdrantMaintenanceService:
             raise last_exception
         raise RuntimeError(f"Request failed after {max_attempts} attempts")
 
-    def get_current_files(self, file_list_path: str) -> list[str]:
+    def get_current_documents(self, file_list_path: str) -> list[str]:
         """Read current file list from null-delimited file"""
         file_path = Path(file_list_path)
         if not file_path.exists():
@@ -93,36 +93,17 @@ class QdrantMaintenanceService:
         logger.info(f"Found {len(files)} current files")
         return files
 
-    def get_job_collections(self) -> list[str]:
-        """Get all job collection names from webui API"""
+    def get_operation_collections(self) -> list[str]:
+        """Get all collection names from webui API
+
+        Note: This now returns only the default collection. In the new collection-centric
+        architecture, collections have their own Qdrant collection names stored in the
+        qdrant_collections field, not operation-based naming.
+        """
         collections = [settings.DEFAULT_COLLECTION]
-
-        try:
-            # Call the internal API endpoint to get all job IDs
-            headers = {}
-            if settings.INTERNAL_API_KEY:
-                headers["X-Internal-Api-Key"] = settings.INTERNAL_API_KEY
-
-            def make_request() -> list[str]:
-                response = httpx.get(f"{self.webui_base_url}/api/internal/jobs/all-ids", headers=headers, timeout=30.0)
-                response.raise_for_status()
-                result: list[str] = response.json()
-                return result
-
-            job_ids = self._retry_request(make_request)
-
-            for job_id in job_ids:
-                collections.append(f"job_{job_id}")
-
-            logger.info(f"Found {len(collections)} collections to check")
-            return collections
-
-        except httpx.HTTPError as e:
-            logger.error(f"Failed to fetch job collections from API: {e}")
-            return collections
-        except Exception as e:
-            logger.error(f"Unexpected error while fetching job collections: {e}")
-            return collections
+        # Legacy operation-based collections (operation_{uuid}) are no longer used
+        logger.info(f"Found {len(collections)} collections to check")
+        return collections
 
     def get_active_collections(self) -> list[str]:
         """Get all active collection names from the database"""
@@ -144,17 +125,6 @@ class QdrantMaintenanceService:
 
             vector_store_names = self._retry_request(make_request)
             collections.extend(vector_store_names)
-
-            # Also include legacy job collections for backward compatibility
-            def make_job_request() -> list[str]:
-                response = httpx.get(f"{self.webui_base_url}/api/internal/jobs/all-ids", headers=headers, timeout=30.0)
-                response.raise_for_status()
-                result: list[str] = response.json()
-                return result
-
-            job_ids = self._retry_request(make_job_request)
-            for job_id in job_ids:
-                collections.append(f"job_{job_id}")
 
             # Remove duplicates
             collections = list(set(collections))
@@ -205,16 +175,16 @@ class QdrantMaintenanceService:
             logger.error(f"Error deleting points from {collection_name}: {e}")
             return 0
 
-    def cleanup_removed_files(self, current_files: list[str], dry_run: bool = False) -> dict:
+    def cleanup_removed_documents(self, current_documents: list[str], dry_run: bool = False) -> dict:
         """Main cleanup logic"""
         # Get removed files
-        removed_files = self.tracker.get_removed_files(current_files)
+        removed_documents = self.tracker.get_removed_documents(current_documents)
 
-        if not removed_files:
-            logger.info("No removed files detected")
-            return {"removed_files": 0, "deleted_points": 0}
+        if not removed_documents:
+            logger.info("No removed documents detected")
+            return {"removed_documents": 0, "deleted_points": 0}
 
-        logger.info(f"Found {len(removed_files)} removed files")
+        logger.info(f"Found {len(removed_documents)} removed documents")
 
         # Get all collections to clean
         collections = self.get_active_collections()
@@ -224,10 +194,10 @@ class QdrantMaintenanceService:
         deleted_by_collection = {}
 
         # Process each removed file
-        for removed_file in removed_files:
+        for removed_file in removed_documents:
             doc_id = removed_file["doc_id"]
             file_path = removed_file["path"]
-            logger.info(f"Processing removed file: {file_path} (doc_id: {doc_id})")
+            logger.info(f"Processing removed document: {file_path} (doc_id: {doc_id})")
 
             if dry_run:
                 logger.info(f"[DRY RUN] Would delete points with doc_id={doc_id}")
@@ -245,14 +215,14 @@ class QdrantMaintenanceService:
 
         # Update tracker to remove these files from tracking
         if not dry_run:
-            for removed_file in removed_files:
+            for removed_file in removed_documents:
                 self.tracker.remove_file(removed_file["path"])
             self.tracker.save()
 
         # Log summary
         summary = {
             "timestamp": datetime.now(UTC).isoformat(),
-            "removed_files": len(removed_files),
+            "removed_documents": len(removed_documents),
             "deleted_points": total_deleted,
             "by_collection": deleted_by_collection,
             "dry_run": dry_run,
@@ -293,7 +263,7 @@ class QdrantMaintenanceService:
                 # Check if collection is not in the valid list and matches known patterns
                 if col_name not in valid_collections:
                     # Only consider collections with known patterns as orphaned
-                    if col_name.startswith(("job_", "col_")) and col_name != settings.DEFAULT_COLLECTION:
+                    if col_name.startswith(("operation_", "col_")) and col_name != settings.DEFAULT_COLLECTION:
                         # Add to orphaned list
                         orphaned.append(col_name)
                         logger.info(f"Found orphaned collection: {col_name}")
@@ -347,7 +317,7 @@ def main() -> int:
     parser.add_argument(
         "--cleanup-orphaned",
         action="store_true",
-        help="Clean up orphaned Qdrant collections that don't have corresponding jobs",
+        help="Clean up orphaned Qdrant collections that don't have corresponding operations",
     )
 
     args = parser.parse_args()
@@ -363,14 +333,14 @@ def main() -> int:
             logger.info(f"Orphaned collection cleanup result: {result}")
         else:
             # Get current files
-            current_files = service.get_current_files(args.file_list)
+            current_documents = service.get_current_documents(args.file_list)
 
-            if not current_files:
+            if not current_documents:
                 logger.error("No current files found, exiting")
                 return 1
 
             # Run file cleanup
-            service.cleanup_removed_files(current_files, dry_run=args.dry_run)
+            service.cleanup_removed_documents(current_documents, dry_run=args.dry_run)
 
         # Exit with success if no errors
         return 0

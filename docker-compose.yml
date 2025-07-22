@@ -1,13 +1,11 @@
 # Docker Compose configuration for Semantik (Document Embedding System)
 # This is the single source of truth for all Docker services
-version: '3.8'
 
 services:
   # Qdrant Vector Database
   qdrant:
     image: qdrant/qdrant:latest
     container_name: semantik-qdrant
-    profiles: ["backend"]
     ports:
       - "6333:6333"
       - "6334:6334"  # gRPC port
@@ -42,7 +40,6 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: semantik-postgres
-    profiles: ["backend"]
     ports:
       - "5432:5432"
     environment:
@@ -83,7 +80,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: semantik-redis
-    profiles: ["backend"]
     ports:
       - "6379:6379"
     volumes:
@@ -113,7 +109,6 @@ services:
       dockerfile: Dockerfile
       target: runtime
     container_name: semantik-vecpipe
-    profiles: ["backend"]
     command: ["vecpipe"]
     ports:
       - "8000:8000"
@@ -280,7 +275,6 @@ services:
       dockerfile: Dockerfile
       target: runtime
     container_name: semantik-worker
-    profiles: ["backend"]
     command: ["worker"]
     environment:
       # Python path

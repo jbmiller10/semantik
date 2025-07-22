@@ -177,7 +177,7 @@ async def readiness_probe() -> JSONResponse:
     Readiness probe endpoint for Kubernetes/container orchestration.
 
     This endpoint checks connectivity to all external dependencies:
-    - Redis (for job queue and WebSocket management)
+    - Redis (for operation queue and WebSocket management)
     - Database (PostgreSQL)
     - Qdrant (vector database)
     - Search API (for search functionality)

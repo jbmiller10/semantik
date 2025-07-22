@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useCollectionStore } from '../stores/collectionStore';
+import { useAddSource } from '../hooks/useCollectionOperations';
 import { useUIStore } from '../stores/uiStore';
 import { useNavigate } from 'react-router-dom';
 import { getInputClassName } from '../utils/formStyles';
@@ -16,7 +16,7 @@ function AddDataToCollectionModal({
   onClose,
   onSuccess,
 }: AddDataToCollectionModalProps) {
-  const { addSource } = useCollectionStore();
+  const addSourceMutation = useAddSource();
   const { addToast } = useUIStore();
   const navigate = useNavigate();
   const [sourcePath, setSourcePath] = useState('');
@@ -32,23 +32,28 @@ function AddDataToCollectionModal({
     setIsSubmitting(true);
     
     try {
-      await addSource(collection.id, sourcePath.trim(), {
-        chunk_size: collection.chunk_size,
-        chunk_overlap: collection.chunk_overlap,
+      await addSourceMutation.mutateAsync({
+        collectionId: collection.id,
+        sourcePath: sourcePath.trim(),
+        config: {
+          chunk_size: collection.chunk_size,
+          chunk_overlap: collection.chunk_overlap,
+        }
       });
       
       // Navigate to collection detail page to show operation progress
       navigate(`/collections/${collection.id}`);
-      addToast({
-        message: 'Data source added, indexing started',
-        type: 'success'
-      });
+      // Toast is already shown by the mutation
       onSuccess();
     } catch (error) {
-      addToast({
-        message: error instanceof Error ? error.message : 'Failed to add data source',
-        type: 'error'
-      });
+      // Error handling is already done by the mutation
+      // This catch block is for any unexpected errors
+      if (!addSourceMutation.isError) {
+        addToast({
+          message: error instanceof Error ? error.message : 'Failed to add data source',
+          type: 'error'
+        });
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -135,16 +140,16 @@ function AddDataToCollectionModal({
               type="button"
               onClick={onClose}
               className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-              disabled={isSubmitting}
+              disabled={isSubmitting || addSourceMutation.isPending}
             >
               Cancel
             </button>
             <button
               type="submit"
               className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={isSubmitting}
+              disabled={isSubmitting || addSourceMutation.isPending}
             >
-              {isSubmitting ? 'Adding Source...' : 'Add Data'}
+              {isSubmitting || addSourceMutation.isPending ? 'Adding Source...' : 'Add Data'}
             </button>
           </div>
         </form>

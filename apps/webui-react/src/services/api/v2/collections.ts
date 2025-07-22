@@ -1,4 +1,4 @@
-import api from '../../api';
+import apiClient from './client';
 import type {
   Collection,
   Operation,
@@ -21,36 +21,36 @@ import type {
 export const collectionsV2Api = {
   // Collections CRUD
   list: (params?: PaginationParams) => 
-    api.get<CollectionListResponse>('/api/v2/collections', { params }),
+    apiClient.get<CollectionListResponse>('/api/v2/collections', { params }),
     
   get: (uuid: string) => 
-    api.get<Collection>(`/api/v2/collections/${uuid}`),
+    apiClient.get<Collection>(`/api/v2/collections/${uuid}`),
     
   create: (data: CreateCollectionRequest) => 
-    api.post<Collection>('/api/v2/collections', data),
+    apiClient.post<Collection>('/api/v2/collections', data),
     
   update: (uuid: string, data: UpdateCollectionRequest) => 
-    api.put<Collection>(`/api/v2/collections/${uuid}`, data),
+    apiClient.put<Collection>(`/api/v2/collections/${uuid}`, data),
     
   delete: (uuid: string) => 
-    api.delete<void>(`/api/v2/collections/${uuid}`),
+    apiClient.delete<void>(`/api/v2/collections/${uuid}`),
   
   // Collection operations
   addSource: (uuid: string, data: AddSourceRequest) => 
-    api.post<Operation>(`/api/v2/collections/${uuid}/sources`, data),
+    apiClient.post<Operation>(`/api/v2/collections/${uuid}/sources`, data),
     
   removeSource: (uuid: string, data: RemoveSourceRequest) => 
-    api.delete<Operation>(`/api/v2/collections/${uuid}/sources`, { data }),
+    apiClient.delete<Operation>(`/api/v2/collections/${uuid}/sources`, { data }),
     
   reindex: (uuid: string, data?: ReindexRequest) => 
-    api.post<Operation>(`/api/v2/collections/${uuid}/reindex`, data || {}),
+    apiClient.post<Operation>(`/api/v2/collections/${uuid}/reindex`, data || {}),
   
   // Collection queries
   listOperations: (uuid: string, params?: PaginationParams) => 
-    api.get<Operation[]>(`/api/v2/collections/${uuid}/operations`, { params }),
+    apiClient.get<Operation[]>(`/api/v2/collections/${uuid}/operations`, { params }),
     
   listDocuments: (uuid: string, params?: PaginationParams) => 
-    api.get<DocumentListResponse>(`/api/v2/collections/${uuid}/documents`, { params }),
+    apiClient.get<DocumentListResponse>(`/api/v2/collections/${uuid}/documents`, { params }),
 };
 
 /**
@@ -59,13 +59,13 @@ export const collectionsV2Api = {
  */
 export const operationsV2Api = {
   get: (uuid: string) => 
-    api.get<Operation>(`/api/v2/operations/${uuid}`),
+    apiClient.get<Operation>(`/api/v2/operations/${uuid}`),
     
   cancel: (uuid: string) => 
-    api.delete<void>(`/api/v2/operations/${uuid}`),
+    apiClient.delete<void>(`/api/v2/operations/${uuid}`),
     
   list: (params?: PaginationParams & { collection_id?: string; status?: string }) => 
-    api.get<Operation[]>('/api/v2/operations', { params }),
+    apiClient.get<Operation[]>('/api/v2/operations', { params }),
 };
 
 /**
@@ -74,10 +74,10 @@ export const operationsV2Api = {
  */
 export const searchV2Api = {
   search: (data: SearchRequest) => 
-    api.post<SearchResponse>('/api/v2/search', data),
+    apiClient.post<SearchResponse>('/api/v2/search', data),
     
   multiSearch: (data: SearchRequest) => 
-    api.post<SearchResponse>('/api/v2/search/multi', data),
+    apiClient.post<SearchResponse>('/api/v2/search/multi', data),
 };
 
 // Helper function to handle API errors

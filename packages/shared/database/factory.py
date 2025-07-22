@@ -152,35 +152,6 @@ def create_document_repository() -> Any:
     return AsyncDocumentRepositoryWrapper()
 
 
-# Legacy compatibility functions - will be removed in future
-def create_job_repository() -> Any:
-    """Legacy job repository - raises error.
-
-    Note: This is deprecated. Jobs have been replaced by operations.
-    Please migrate to OperationRepository.
-
-    Raises:
-        NotImplementedError: Always raised to force migration
-    """
-    raise NotImplementedError(
-        "JobRepository is deprecated and has been removed. Please migrate to OperationRepository."
-    )
-
-
-def create_file_repository() -> Any:
-    """Legacy file repository - raises error.
-
-    Note: This is deprecated. Files have been replaced by documents.
-    Please migrate to DocumentRepository.
-
-    Raises:
-        NotImplementedError: Always raised to force migration
-    """
-    raise NotImplementedError(
-        "FileRepository is deprecated and has been removed. Please migrate to DocumentRepository."
-    )
-
-
 def create_collection_repository() -> Any:
     """Create a collection repository instance.
 

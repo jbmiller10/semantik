@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useWebSocket } from './useWebSocket';
-import { useCollectionStore } from '../stores/collectionStore';
+import { useUpdateOperationInCache } from './useCollectionOperations';
 import { useUIStore } from '../stores/uiStore';
 import type { OperationProgressMessage } from '../types/collection';
 
@@ -14,7 +14,7 @@ export function useOperationProgress(
   operationId: string | null,
   options: UseOperationProgressOptions = {}
 ) {
-  const { updateOperationProgress } = useCollectionStore();
+  const updateOperationInCache = useUpdateOperationInCache();
   const { addToast } = useUIStore();
   const { onComplete, onError, showToasts = true } = options;
   
@@ -29,8 +29,8 @@ export function useOperationProgress(
       try {
         const message: OperationProgressMessage = JSON.parse(event.data);
         
-        // Update operation in store
-        updateOperationProgress(message.operation_id, {
+        // Update operation in React Query cache
+        updateOperationInCache(message.operation_id, {
           status: message.status,
           progress: message.progress,
         });
@@ -84,7 +84,7 @@ export function useOperationProgress(
         
         // Handle metadata updates (e.g., ETA, current file)
         if (message.metadata) {
-          updateOperationProgress(message.operation_id, {
+          updateOperationInCache(message.operation_id, {
             eta: message.metadata.eta,
             // Add any other metadata fields as needed
           });

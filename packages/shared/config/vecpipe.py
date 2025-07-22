@@ -29,8 +29,8 @@ class VecpipeConfig(BaseConfig):
 
     # Additional Paths specific to vecpipe
     @property
-    def jobs_dir(self) -> Path:
-        return self.data_dir / "jobs"
+    def operations_dir(self) -> Path:
+        return self.data_dir / "operations"
 
     @property
     def output_dir(self) -> Path:

@@ -20,8 +20,8 @@ class TestWebSocketBasic:
         assert manager.max_connections_per_user == 10
 
     @pytest.mark.asyncio()
-    async def test_send_job_update_without_redis(self):
-        """Test sending job update when Redis is not available."""
+    async def test_send_operation_update_without_redis(self):
+        """Test sending operation update when Redis is not available."""
         manager = RedisStreamWebSocketManager()
         manager.redis = None  # No Redis connection
 

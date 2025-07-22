@@ -215,8 +215,8 @@ class TestRedisStreamWebSocketManager:
         assert mock_task.cancelled()
 
     @pytest.mark.asyncio()
-    async def test_send_job_update_with_redis(self, manager, mock_redis):
-        """Test sending job update via Redis stream."""
+    async def test_send_operation_update_with_redis(self, manager, mock_redis):
+        """Test sending operation update via Redis stream."""
         manager.redis = mock_redis
 
         update_data = {"progress": 50, "current_file": "test.pdf"}
@@ -237,7 +237,7 @@ class TestRedisStreamWebSocketManager:
         assert "timestamp" in message
 
     @pytest.mark.asyncio()
-    async def test_send_job_update_without_redis(self, manager, mock_websocket):
+    async def test_send_operation_update_without_redis(self, manager, mock_websocket):
         """Test fallback to direct broadcast when Redis is unavailable."""
         manager.redis = None
         manager.connections["user1:operation:job1"] = {mock_websocket}
@@ -391,9 +391,11 @@ class TestRedisStreamWebSocketManager:
         websockets = [AsyncMock(spec=WebSocket) for _ in range(5)]
 
         # Connect all websockets concurrently
-        with patch("shared.database.factory.create_job_repository") as mock_create_repo:
+        with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
             mock_repo = AsyncMock()
-            mock_repo.get_job = AsyncMock(return_value={"status": "processing"})
+            mock_operation = MagicMock()
+            mock_operation.status = "processing"
+            mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
             mock_create_repo.return_value = mock_repo
 
             connect_tasks = [manager.connect(ws, "job1", f"user{i}") for i, ws in enumerate(websockets)]

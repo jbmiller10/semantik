@@ -182,7 +182,7 @@ All service methods that trigger background work return an operation object with
 
 ### Real-time Updates via Redis Streams
 
-Operations send updates to Redis streams at key: `job:updates:{operation_uuid}`
+Operations send updates to Redis streams at key: `operation:updates:{operation_uuid}`
 
 Update types:
 - `operation_started`
@@ -203,7 +203,7 @@ async def operation_updates(
     await websocket.accept()
     
     # Subscribe to Redis stream
-    stream_key = f"job:updates:{operation_id}"
+    stream_key = f"operation:updates:{operation_id}"
     
     # Stream updates to client
     # Implementation needed...

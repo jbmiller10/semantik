@@ -9,8 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from packages.shared.database import get_db
 
 from .collection_service import CollectionService
-from .file_scanning_service import FileScanningService
+from .directory_scan_service import DirectoryScanService
+from .document_scanning_service import DocumentScanningService
+from .operation_service import OperationService
 from .resource_manager import ResourceManager
+from .search_service import SearchService
 
 
 def create_collection_service(db: AsyncSession) -> CollectionService:
@@ -59,8 +62,8 @@ def create_collection_service(db: AsyncSession) -> CollectionService:
     )
 
 
-def create_file_scanning_service(db: AsyncSession) -> FileScanningService:
-    """Create a FileScanningService instance with required dependencies.
+def create_document_scanning_service(db: AsyncSession) -> DocumentScanningService:
+    """Create a DocumentScanningService instance with required dependencies.
 
     This factory function simplifies dependency injection for file scanning operations.
 
@@ -68,25 +71,25 @@ def create_file_scanning_service(db: AsyncSession) -> FileScanningService:
         db: AsyncSession instance from FastAPI's dependency injection
 
     Returns:
-        Configured FileScanningService instance
+        Configured DocumentScanningService instance
 
     Example:
         ```python
         from fastapi import Depends
         from sqlalchemy.ext.asyncio import AsyncSession
         from shared.database import get_db
-        from webui.services.factory import create_file_scanning_service
+        from webui.services.factory import create_document_scanning_service
 
-        async def get_file_scanning_service(
+        async def get_document_scanning_service(
             db: AsyncSession = Depends(get_db)
-        ) -> FileScanningService:
-            return create_file_scanning_service(db)
+        ) -> DocumentScanningService:
+            return create_document_scanning_service(db)
 
         # In your task or endpoint
         async def scan_and_register_files(
             collection_id: str,
             source_path: str,
-            service: FileScanningService = Depends(get_file_scanning_service),
+            service: DocumentScanningService = Depends(get_document_scanning_service),
         ):
             stats = await service.scan_directory_and_register_documents(
                 collection_id=collection_id,
@@ -99,7 +102,7 @@ def create_file_scanning_service(db: AsyncSession) -> FileScanningService:
     document_repo = DocumentRepository(db)
 
     # Create and return service
-    return FileScanningService(
+    return DocumentScanningService(
         db_session=db,
         document_repo=document_repo,
     )
@@ -155,3 +158,60 @@ def create_resource_manager(db: AsyncSession) -> ResourceManager:
 async def get_collection_service(db: AsyncSession = Depends(get_db)) -> CollectionService:
     """FastAPI dependency for CollectionService injection."""
     return create_collection_service(db)
+
+
+def create_operation_service(db: AsyncSession) -> OperationService:
+    """Create an OperationService instance with required dependencies.
+
+    Args:
+        db: AsyncSession instance from FastAPI's dependency injection
+
+    Returns:
+        Configured OperationService instance
+    """
+    # Create repository instances
+    operation_repo = OperationRepository(db)
+
+    # Create and return service
+    return OperationService(
+        db_session=db,
+        operation_repo=operation_repo,
+    )
+
+
+async def get_operation_service(db: AsyncSession = Depends(get_db)) -> OperationService:
+    """FastAPI dependency for OperationService injection."""
+    return create_operation_service(db)
+
+
+def create_search_service(db: AsyncSession) -> SearchService:
+    """Create a SearchService instance with required dependencies.
+
+    Args:
+        db: AsyncSession instance from FastAPI's dependency injection
+
+    Returns:
+        Configured SearchService instance
+    """
+    # Create repository instances
+    collection_repo = CollectionRepository(db)
+
+    # Create and return service
+    return SearchService(
+        db_session=db,
+        collection_repo=collection_repo,
+    )
+
+
+async def get_search_service(db: AsyncSession = Depends(get_db)) -> SearchService:
+    """FastAPI dependency for SearchService injection."""
+    return create_search_service(db)
+
+
+async def get_directory_scan_service() -> DirectoryScanService:
+    """FastAPI dependency for DirectoryScanService injection.
+
+    Note: DirectoryScanService doesn't require database access as it only
+    provides preview functionality without persisting data.
+    """
+    return DirectoryScanService()

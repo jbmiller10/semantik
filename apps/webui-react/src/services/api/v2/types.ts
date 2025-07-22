@@ -112,3 +112,46 @@ export interface ErrorResponse {
   status_code: number;
   type?: string;
 }
+
+// Directory scan types
+export interface DirectoryScanRequest {
+  path: string;
+  scan_id: string;
+  recursive?: boolean;
+  include_patterns?: string[];
+  exclude_patterns?: string[];
+}
+
+export interface DirectoryScanFile {
+  file_path: string;
+  file_name: string;
+  file_size: number;
+  mime_type: string | null;
+  content_hash: string;
+  modified_at: string;
+}
+
+export interface DirectoryScanResponse {
+  scan_id: string;
+  path: string;
+  files: DirectoryScanFile[];
+  total_files: number;
+  total_size: number;
+  warnings: string[];
+}
+
+export interface DirectoryScanProgress {
+  type: 'started' | 'counting' | 'progress' | 'completed' | 'error' | 'warning';
+  scan_id: string;
+  data: {
+    files_scanned?: number;
+    total_files?: number;
+    current_path?: string;
+    percentage?: number;
+    message?: string;
+    path?: string;
+    recursive?: boolean;
+    warnings?: string[];
+    total_size?: number;
+  };
+}

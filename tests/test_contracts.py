@@ -1,6 +1,5 @@
 """Unit tests for shared API contracts."""
 
-
 import pytest
 from pydantic import ValidationError
 from shared.contracts.errors import (

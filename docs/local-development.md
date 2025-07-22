@@ -51,7 +51,7 @@ make docker-dev-down
 - PostgreSQL (port 5432)
 - Redis (port 6379)
 - Qdrant (port 6333)
-- VecPipe/Search API (port 8000)
+- VecPipe/Search API (port 8001)
 - Celery Worker
 - Flower (port 5555)
 

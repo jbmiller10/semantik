@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useCollectionStore } from '../stores/collectionStore';
+import { useCreateCollection } from '../hooks/useCollections';
+import { useAddSource } from '../hooks/useCollectionOperations';
 import { useUIStore } from '../stores/uiStore';
 import { useNavigate } from 'react-router-dom';
 import { useDirectoryScan } from '../hooks/useDirectoryScan';
@@ -28,7 +29,8 @@ function formatFileSize(bytes: number): string {
 }
 
 function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProps) {
-  const { createCollection, addSource } = useCollectionStore();
+  const createCollectionMutation = useCreateCollection();
+  const addSourceMutation = useAddSource();
   const { addToast } = useUIStore();
   const navigate = useNavigate();
   const { scanning, scanResult, error: scanError, startScan, reset: resetScan } = useDirectoryScan();
@@ -111,14 +113,18 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     
     try {
       // Step 1: Create the collection
-      const collection = await createCollection(formData);
+      const collection = await createCollectionMutation.mutateAsync(formData);
       
       // Step 2: Add initial source if provided
       if (sourcePath.trim()) {
         try {
-          await addSource(collection.id, sourcePath.trim(), {
-            chunk_size: formData.chunk_size,
-            chunk_overlap: formData.chunk_overlap,
+          await addSourceMutation.mutateAsync({
+            collectionId: collection.id,
+            sourcePath: sourcePath.trim(),
+            config: {
+              chunk_size: formData.chunk_size,
+              chunk_overlap: formData.chunk_overlap,
+            }
           });
           
           // Show success with source addition
@@ -160,10 +166,14 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
         onSuccess();
       }
     } catch (error) {
-      addToast({
-        message: error instanceof Error ? error.message : 'Failed to create collection',
-        type: 'error'
-      });
+      // Error handling is already done by the mutations
+      // This catch block is for any unexpected errors
+      if (!createCollectionMutation.isError && !addSourceMutation.isError) {
+        addToast({
+          message: error instanceof Error ? error.message : 'Failed to create collection',
+          type: 'error'
+        });
+      }
       setIsSubmitting(false);
     }
   };
@@ -507,17 +517,17 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
             <button
               type="button"
               onClick={onClose}
-              disabled={isSubmitting}
+              disabled={isSubmitting || createCollectionMutation.isPending || addSourceMutation.isPending}
               className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || createCollectionMutation.isPending || addSourceMutation.isPending}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? (
+              {isSubmitting || createCollectionMutation.isPending || addSourceMutation.isPending ? (
                 <>
                   <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
