@@ -11,10 +11,8 @@ from packages.shared.database import (
     ApiKeyRepository,
     AuthRepository,
     CollectionRepository,
-    DocumentRepository,
     FileRepository,
     JobRepository,
-    OperationRepository,
     UserRepository,
     create_api_key_repository,
     create_auth_repository,
@@ -26,6 +24,8 @@ from packages.shared.database import (
     create_user_repository,
     get_db,
 )
+from packages.shared.database.repositories.operation_repository import OperationRepository
+from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from packages.shared.database.models import Collection
 from packages.shared.database.repositories.collection_repository import CollectionRepository
