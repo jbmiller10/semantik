@@ -115,8 +115,7 @@ async def get_document_content(
 
         # Log successful document access for audit
         logger.info(
-            f"User {current_user['id']} accessed document {document_uuid} "
-            f"from collection {collection_uuid}"
+            f"User {current_user['id']} accessed document {document_uuid} from collection {collection_uuid}"
         )
 
         # Return the file

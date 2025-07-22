@@ -95,7 +95,7 @@ class QdrantMaintenanceService:
 
     def get_operation_collections(self) -> list[str]:
         """Get all collection names from webui API
-        
+
         Note: This now returns only the default collection. In the new collection-centric
         architecture, collections have their own Qdrant collection names stored in the
         qdrant_collections field, not operation-based naming.

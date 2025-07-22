@@ -39,7 +39,7 @@ def test_client_with_document_mocks(
     mock_document_repository,
 ):
     """Create a test client with mocked document-related repositories."""
-    from shared.database.factory import create_operation_repository, create_document_repository
+    from shared.database.factory import create_document_repository, create_operation_repository
 
     from packages.webui.auth import get_current_user
     from packages.webui.main import app
@@ -54,6 +54,7 @@ def test_client_with_document_mocks(
     app.dependency_overrides[create_document_repository] = lambda: mock_document_repository
 
     from fastapi.testclient import TestClient
+
     client = TestClient(app)
 
     # Ensure we clean up after the test
@@ -66,7 +67,12 @@ class TestDocumentAPI:
     """Test document serving API endpoints"""
 
     def test_get_document_success(
-        self, test_client_with_document_mocks, test_user, temp_test_dir, mock_operation_repository, mock_document_repository
+        self,
+        test_client_with_document_mocks,
+        test_user,
+        temp_test_dir,
+        mock_operation_repository,
+        mock_document_repository,
     ):
         """Test successful document retrieval"""
         # Setup
@@ -79,9 +85,7 @@ class TestDocumentAPI:
         # Create mock operation
         mock_operation = MagicMock()
         mock_operation.id = 1
-        mock_operation_repository.get_by_uuid_with_permission_check = AsyncMock(
-            return_value=mock_operation
-        )
+        mock_operation_repository.get_by_uuid_with_permission_check = AsyncMock(return_value=mock_operation)
 
         # Create mock document
         mock_document = MagicMock()
@@ -91,9 +95,7 @@ class TestDocumentAPI:
         mock_document.extension = ".pdf"
         mock_document.modified = "2024-01-01"
         mock_document.operation_id = 1
-        mock_document_repository.get_by_doc_id = AsyncMock(
-            return_value=mock_document
-        )
+        mock_document_repository.get_by_doc_id = AsyncMock(return_value=mock_document)
 
         # Test
         response = test_client_with_document_mocks.get("/api/documents/test-operation/test-doc")
@@ -111,7 +113,12 @@ class TestDocumentAPI:
         assert response.status_code == 404
 
     def test_file_size_limit(
-        self, test_client_with_document_mocks, test_user, temp_test_dir, mock_operation_repository, mock_document_repository
+        self,
+        test_client_with_document_mocks,
+        test_user,
+        temp_test_dir,
+        mock_operation_repository,
+        mock_document_repository,
     ):
         """Test file size limit enforcement"""
 
@@ -125,9 +132,7 @@ class TestDocumentAPI:
         # Create mock operation
         mock_operation = MagicMock()
         mock_operation.id = 1
-        mock_operation_repository.get_by_uuid_with_permission_check = AsyncMock(
-            return_value=mock_operation
-        )
+        mock_operation_repository.get_by_uuid_with_permission_check = AsyncMock(return_value=mock_operation)
 
         # Create mock document
         mock_document = MagicMock()
@@ -137,9 +142,7 @@ class TestDocumentAPI:
         mock_document.extension = ".pdf"
         mock_document.modified = "2024-01-01"
         mock_document.operation_id = 1
-        mock_document_repository.get_by_doc_id = AsyncMock(
-            return_value=mock_document
-        )
+        mock_document_repository.get_by_doc_id = AsyncMock(return_value=mock_document)
 
         # Mock file size to exceed limit
         with patch("pathlib.Path.stat") as mock_stat:
@@ -195,8 +198,13 @@ class TestPPTXConversion:
     @patch("packages.webui.api.documents.PPTX2MD_AVAILABLE", True)
     @patch("subprocess.run")
     def test_pptx_conversion_success(
-        self, mock_run, test_client_with_document_mocks, test_user, temp_test_dir, 
-        mock_operation_repository, mock_document_repository
+        self,
+        mock_run,
+        test_client_with_document_mocks,
+        test_user,
+        temp_test_dir,
+        mock_operation_repository,
+        mock_document_repository,
     ):
         """Test successful PPTX to Markdown conversion"""
 
@@ -210,9 +218,7 @@ class TestPPTXConversion:
         # Create mock operation
         mock_operation = MagicMock()
         mock_operation.id = 1
-        mock_operation_repository.get_by_uuid_with_permission_check = AsyncMock(
-            return_value=mock_operation
-        )
+        mock_operation_repository.get_by_uuid_with_permission_check = AsyncMock(return_value=mock_operation)
 
         # Create mock document
         mock_document = MagicMock()
@@ -222,9 +228,7 @@ class TestPPTXConversion:
         mock_document.extension = ".pptx"
         mock_document.modified = "2024-01-01"
         mock_document.operation_id = 1
-        mock_document_repository.get_by_doc_id = AsyncMock(
-            return_value=mock_document
-        )
+        mock_document_repository.get_by_doc_id = AsyncMock(return_value=mock_document)
 
         # Mock conversion output
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")

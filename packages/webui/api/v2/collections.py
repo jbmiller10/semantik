@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+
 from packages.shared.database.exceptions import (
     AccessDeniedError,
     EntityAlreadyExistsError,
@@ -542,7 +543,7 @@ async def list_collection_operations(
 
         if status or operation_type:
             filtered_operations = operations
-            
+
             if status:
                 try:
                     status_enum = OperationStatus(status)
@@ -552,7 +553,7 @@ async def list_collection_operations(
                         status_code=400,
                         detail=f"Invalid status: {status}",
                     ) from None
-            
+
             if operation_type:
                 try:
                     type_enum = OperationType(operation_type)

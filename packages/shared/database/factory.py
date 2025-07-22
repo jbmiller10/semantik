@@ -152,8 +152,6 @@ def create_document_repository() -> Any:
     return AsyncDocumentRepositoryWrapper()
 
 
-
-
 def create_collection_repository() -> Any:
     """Create a collection repository instance.
 

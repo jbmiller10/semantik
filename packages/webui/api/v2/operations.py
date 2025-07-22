@@ -16,8 +16,8 @@ from packages.shared.database.models import OperationStatus, OperationType
 from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.webui.api.schemas import ErrorResponse, OperationResponse
 from packages.webui.auth import get_current_user, get_current_user_websocket
-from packages.webui.services.operation_service import OperationService
 from packages.webui.services.factory import get_operation_service
+from packages.webui.services.operation_service import OperationService
 from packages.webui.websocket_manager import ws_manager
 
 logger = logging.getLogger(__name__)

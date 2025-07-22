@@ -94,9 +94,7 @@ class DirectoryScanService:
                 data={"message": "Counting files...", "path": path},
             )
 
-            total_files = await self._count_files(
-                scan_path, recursive, include_patterns, exclude_patterns
-            )
+            total_files = await self._count_files(scan_path, recursive, include_patterns, exclude_patterns)
 
             logger.info(f"Found {total_files} supported files in {path}")
 
@@ -118,9 +116,7 @@ class DirectoryScanService:
         # Scan files
         try:
             if recursive:
-                async for file_info, warning in self._scan_recursive(
-                    scan_path, include_patterns, exclude_patterns
-                ):
+                async for file_info, warning in self._scan_recursive(scan_path, include_patterns, exclude_patterns):
                     if warning:
                         warnings.append(warning)
                         await self._send_progress(
@@ -153,9 +149,7 @@ class DirectoryScanService:
                 for entry in os.listdir(scan_path):
                     entry_path = scan_path / entry
                     if entry_path.is_file():
-                        file_info, warning = await self._scan_file(
-                            entry_path, include_patterns, exclude_patterns
-                        )
+                        file_info, warning = await self._scan_file(entry_path, include_patterns, exclude_patterns)
                         if warning:
                             warnings.append(warning)
                         elif file_info:
@@ -252,9 +246,7 @@ class DirectoryScanService:
             for root, _, files in os.walk(path):
                 for filename in files:
                     file_path = Path(root) / filename
-                    file_info, warning = await self._scan_file(
-                        file_path, include_patterns, exclude_patterns
-                    )
+                    file_info, warning = await self._scan_file(file_path, include_patterns, exclude_patterns)
                     yield file_info, warning
         except Exception as e:
             logger.error(f"Error scanning directory {path}: {e}")

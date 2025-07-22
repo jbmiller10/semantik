@@ -383,10 +383,9 @@ class TestOperationsWebSocket:
 
                             # Simulate progress update from WebSocket manager
                             if connected_ws:
-                                await connected_ws.send_json({
-                                    "type": "progress",
-                                    "data": {"progress": 25, "current_file": "doc1.pdf"}
-                                })
+                                await connected_ws.send_json(
+                                    {"type": "progress", "data": {"progress": 25, "current_file": "doc1.pdf"}}
+                                )
 
                             await asyncio.sleep(0.1)
 

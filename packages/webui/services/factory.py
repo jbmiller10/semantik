@@ -210,7 +210,7 @@ async def get_search_service(db: AsyncSession = Depends(get_db)) -> SearchServic
 
 async def get_directory_scan_service() -> DirectoryScanService:
     """FastAPI dependency for DirectoryScanService injection.
-    
+
     Note: DirectoryScanService doesn't require database access as it only
     provides preview functionality without persisting data.
     """

@@ -134,7 +134,9 @@ class SearchService:
             logger.error(f"Unexpected error searching collection {collection.name}: {e}")
             return (collection, None, f"Unexpected error searching collection '{collection.name}': {str(e)}")
 
-    def _handle_http_error(self, error: httpx.HTTPStatusError, collection: Collection, retry: bool) -> tuple[Collection, None, str]:
+    def _handle_http_error(
+        self, error: httpx.HTTPStatusError, collection: Collection, retry: bool
+    ) -> tuple[Collection, None, str]:
         """Handle HTTP status errors during search."""
         retry_suffix = " after retry" if retry else ""
         status_code = error.response.status_code
@@ -277,8 +279,7 @@ class SearchService:
 
         # Execute searches in parallel
         search_tasks = [
-            self.search_single_collection(collection, query, k, search_params, timeout)
-            for collection in collections
+            self.search_single_collection(collection, query, k, search_params, timeout) for collection in collections
         ]
 
         search_results = await asyncio.gather(*search_tasks)

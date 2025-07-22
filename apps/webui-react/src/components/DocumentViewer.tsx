@@ -1,8 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-// TODO: Document viewing endpoints need to be implemented in the v2 API
-// The legacy endpoints (/api/documents/{collectionId}/{docId}/info and /api/documents/{collectionId}/{docId})
-// have been removed from the backend. This component is temporarily disabled until the backend
-// implements document viewing functionality in the v2 API.
+import { documentsV2Api } from '../services/api/v2';
 
 // Declare global types for external libraries
 declare global {
@@ -31,11 +28,50 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
   const markInstanceRef = useRef<any>(null);
   const pdfDocRef = useRef<any>(null);
 
-  // Load document info
+  // Load document content
   useEffect(() => {
-    // Document viewing endpoints not yet implemented in v2 API
-    setError('Document viewing is temporarily unavailable. The backend v2 API does not yet support document content retrieval.');
-    setLoading(false);
+    const loadDocument = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Get the document content URL and headers
+        const { url, headers } = documentsV2Api.getContent(collectionId, docId);
+
+        // For now, we'll display the document in an iframe
+        // TODO: In the future, add specific handlers for different file types:
+        // - PDF: Use pdf.js for better rendering and text selection
+        // - DOCX: Use mammoth.js to convert to HTML
+        // - TXT/Markdown: Fetch and display as text with syntax highlighting
+        // - Images: Display directly with zoom controls
+        // This will require fetching document metadata first to determine file type
+        
+        if (contentRef.current) {
+          // Create iframe for document display
+          const iframe = document.createElement('iframe');
+          iframe.src = url;
+          iframe.style.width = '100%';
+          iframe.style.height = '100%';
+          iframe.style.border = 'none';
+          iframe.style.minHeight = '600px';
+          
+          // Set sandbox attributes for security
+          iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts');
+          
+          // Clear existing content and add iframe
+          contentRef.current.innerHTML = '';
+          contentRef.current.appendChild(iframe);
+        }
+
+        setLoading(false);
+      } catch (err) {
+        console.error('Failed to load document:', err);
+        setError('Failed to load document. Please try again.');
+        setLoading(false);
+      }
+    };
+
+    loadDocument();
   }, [collectionId, docId]);
 
   // Apply highlights when content or query changes
@@ -44,8 +80,36 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
   }, []);
 
   const handleDownload = () => {
-    // TODO: Implement document download in v2 API
-    alert('Document download is temporarily unavailable. The backend v2 API does not yet support document retrieval.');
+    // Get the document content URL and headers
+    const { url, headers } = documentsV2Api.getContent(collectionId, docId);
+    
+    // Create a temporary anchor element to trigger download
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = ''; // This will use the filename from the server response
+    
+    // If we have auth headers, we need to fetch the file first
+    if (headers.Authorization) {
+      fetch(url, { headers })
+        .then(response => response.blob())
+        .then(blob => {
+          const blobUrl = URL.createObjectURL(blob);
+          link.href = blobUrl;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(blobUrl);
+        })
+        .catch(err => {
+          console.error('Download failed:', err);
+          alert('Failed to download document. Please try again.');
+        });
+    } else {
+      // No auth required, direct download
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   };
 
   // Cleanup

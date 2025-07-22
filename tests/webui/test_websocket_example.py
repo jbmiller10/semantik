@@ -30,13 +30,13 @@ class TestWebSocketExamples:
 
         # Mock operation repository
         with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
-            from unittest.mock import AsyncMock, MagicMock
             from enum import Enum
+            from unittest.mock import AsyncMock, MagicMock
 
             # Create mock enums
             class MockStatus(Enum):
                 PROCESSING = "processing"
-            
+
             class MockType(Enum):
                 INDEX = "index"
 
@@ -84,13 +84,13 @@ class TestWebSocketExamples:
         harness = WebSocketTestHarness(manager)
 
         with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
-            from unittest.mock import AsyncMock, MagicMock
             from enum import Enum
+            from unittest.mock import AsyncMock, MagicMock
 
             # Create mock enums
             class MockStatus(Enum):
                 PROCESSING = "processing"
-            
+
             class MockType(Enum):
                 INDEX = "index"
 
@@ -109,7 +109,9 @@ class TestWebSocketExamples:
             await harness.connect_clients("operation456", num_clients=3)
 
             # Broadcast a message
-            results = await harness.broadcast_and_verify("operation456", "announcement", {"message": "Processing started"})
+            results = await harness.broadcast_and_verify(
+                "operation456", "announcement", {"message": "Processing started"}
+            )
 
             # Verify all clients received it
             for client_id, result in results.items():
@@ -129,13 +131,13 @@ class TestWebSocketExamples:
         harness = WebSocketTestHarness(manager)
 
         with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
-            from unittest.mock import AsyncMock, MagicMock
             from enum import Enum
+            from unittest.mock import AsyncMock, MagicMock
 
             # Create mock enums
             class MockStatus(Enum):
                 PENDING = "pending"
-            
+
             class MockType(Enum):
                 INDEX = "index"
 
@@ -194,13 +196,13 @@ class TestWebSocketExamples:
         harness = WebSocketTestHarness(manager)
 
         with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
-            from unittest.mock import AsyncMock, MagicMock
             from enum import Enum
+            from unittest.mock import AsyncMock, MagicMock
 
             # Create mock enums
             class MockStatus(Enum):
                 PROCESSING = "processing"
-            
+
             class MockType(Enum):
                 INDEX = "index"
 
@@ -252,13 +254,13 @@ class TestWebSocketExamples:
         harness = WebSocketTestHarness(manager)
 
         with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
-            from unittest.mock import AsyncMock, MagicMock
             from enum import Enum
+            from unittest.mock import AsyncMock, MagicMock
 
             # Create mock enums
             class MockStatus(Enum):
                 PROCESSING = "processing"
-            
+
             class MockType(Enum):
                 INDEX = "index"
 

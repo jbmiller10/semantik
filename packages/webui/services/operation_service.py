@@ -1,9 +1,7 @@
 """Operation Service for managing operation-related business logic."""
 
 import logging
-from typing import Any
 
-from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, ValidationError
 from shared.database.models import Operation, OperationStatus, OperationType
 from shared.database.repositories.operation_repository import OperationRepository
 from sqlalchemy.ext.asyncio import AsyncSession

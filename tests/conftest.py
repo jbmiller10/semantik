@@ -154,8 +154,6 @@ def create_async_mock(return_value=None):
     return MagicMock(side_effect=async_mock)
 
 
-
-
 @pytest.fixture()
 def mock_collection_repository():
     """Create a mock CollectionRepository for testing."""

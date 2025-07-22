@@ -231,7 +231,7 @@ def create_app() -> FastAPI:
     @app.websocket("/ws/operations/{operation_id}")
     async def operation_ws(websocket: WebSocket, operation_id: str) -> None:
         await operation_websocket(websocket, operation_id)
-    
+
     @app.websocket("/ws/directory-scan/{scan_id}")
     async def directory_scan_ws(websocket: WebSocket, scan_id: str) -> None:
         await directory_scan_websocket(websocket, scan_id)

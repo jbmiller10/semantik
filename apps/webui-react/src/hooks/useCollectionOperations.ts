@@ -26,9 +26,9 @@ export function useCollectionOperations(collectionId: string, options?: { limit?
     },
     enabled: !!collectionId,
     // Refetch more frequently if there are active operations
-    refetchInterval: (data) => {
-      const hasActiveOps = data?.some(
-        op => op.status === 'pending' || op.status === 'processing'
+    refetchInterval: (query) => {
+      const hasActiveOps = query.state.data?.some(
+        (op: Operation) => op.status === 'pending' || op.status === 'processing'
       );
       return hasActiveOps ? 5000 : false; // 5 seconds for active operations
     },
@@ -118,7 +118,7 @@ export function useAddSource() {
       const errorMessage = handleApiError(error);
       addToast({ type: 'error', message: errorMessage });
     },
-    onSuccess: ({ operation, collectionId }, variables, context) => {
+    onSuccess: ({ operation, collectionId }, _variables, context) => {
       // Replace temp operation with real one
       queryClient.setQueryData<Operation[]>(
         operationKeys.list(collectionId),
@@ -219,7 +219,7 @@ export function useRemoveSource() {
       const errorMessage = handleApiError(error);
       addToast({ type: 'error', message: errorMessage });
     },
-    onSuccess: ({ operation, collectionId }, variables, context) => {
+    onSuccess: ({ operation, collectionId }, _variables, context) => {
       queryClient.setQueryData<Operation[]>(
         operationKeys.list(collectionId),
         old => {
@@ -315,7 +315,7 @@ export function useReindexCollection() {
       const errorMessage = handleApiError(error);
       addToast({ type: 'error', message: errorMessage });
     },
-    onSuccess: ({ operation, collectionId }, variables, context) => {
+    onSuccess: ({ operation, collectionId }, _variables, context) => {
       queryClient.setQueryData<Operation[]>(
         operationKeys.list(collectionId),
         old => {

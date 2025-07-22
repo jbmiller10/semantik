@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
 import { directoryScanV2Api, generateScanId } from '../services/api/v2/directoryScan';
-import type { DirectoryScanResponse } from '../services/api/v2/types';
 
 interface ScanResult {
   files: string[];

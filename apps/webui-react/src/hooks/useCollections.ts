@@ -28,9 +28,9 @@ export function useCollections() {
       return response.data.collections;
     },
     // Automatically refetch every 30 seconds if there are active operations
-    refetchInterval: (data) => {
-      const hasActiveOperations = data?.some(
-        c => c.status === 'processing' || c.activeOperation
+    refetchInterval: (query) => {
+      const hasActiveOperations = query.state.data?.some(
+        (c: Collection) => c.status === 'processing' || c.activeOperation
       );
       return hasActiveOperations ? 30000 : false;
     },
@@ -98,7 +98,7 @@ export function useCreateCollection() {
       // Return a context object with the previous value
       return { previousCollections, tempId: tempCollection.id };
     },
-    onError: (error, newCollection, context) => {
+    onError: (error, _newCollection, context) => {
       // If the mutation fails, rollback to the previous value
       queryClient.setQueryData(
         collectionKeys.lists(),
@@ -108,7 +108,7 @@ export function useCreateCollection() {
       const errorMessage = handleApiError(error);
       addToast({ type: 'error', message: errorMessage });
     },
-    onSuccess: (data, variables, context) => {
+    onSuccess: (data, _variables, context) => {
       // Remove the temporary collection and add the real one
       queryClient.setQueryData<Collection[]>(
         collectionKeys.lists(),
@@ -200,7 +200,7 @@ export function useUpdateCollection() {
         message: `Collection "${data.name}" updated successfully`,
       });
     },
-    onSettled: (data, error, { id }) => {
+    onSettled: (_data, _error, { id }) => {
       // Always refetch after error or success
       queryClient.invalidateQueries({ queryKey: collectionKeys.detail(id) });
       queryClient.invalidateQueries({ queryKey: collectionKeys.lists() });
@@ -238,7 +238,7 @@ export function useDeleteCollection() {
 
       return { previousCollections };
     },
-    onError: (error, id, context) => {
+    onError: (error, _id, context) => {
       // Rollback on error
       if (context?.previousCollections) {
         queryClient.setQueryData(

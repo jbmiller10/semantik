@@ -20,8 +20,12 @@ system_info = Info("embedding_system", "Document embedding system information", 
 system_info.info({"version": "2.0", "pipeline": "tiktoken_parallel"})
 
 # Operation Metrics
-operations_created = Counter("embedding_operations_created_total", "Total number of operations created", registry=registry)
-operations_completed = Counter("embedding_operations_completed_total", "Total number of operations completed", registry=registry)
+operations_created = Counter(
+    "embedding_operations_created_total", "Total number of operations created", registry=registry
+)
+operations_completed = Counter(
+    "embedding_operations_completed_total", "Total number of operations completed", registry=registry
+)
 operations_failed = Counter("embedding_operations_failed_total", "Total number of operations failed", registry=registry)
 operation_duration = Histogram(
     "embedding_operation_duration_seconds",

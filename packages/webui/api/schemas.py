@@ -360,8 +360,6 @@ class SearchResponse(BaseModel):
     )
 
 
-
-
 # Batch operations
 class BatchDocumentUpload(BaseModel):
     """Schema for batch document upload."""
@@ -387,7 +385,7 @@ class BatchDocumentUpload(BaseModel):
 # Directory scan schemas
 class DirectoryScanRequest(BaseModel):
     """Request to scan a directory for documents."""
-    
+
     path: str = Field(
         ...,
         description="Path to the directory to scan",
@@ -425,27 +423,27 @@ class DirectoryScanRequest(BaseModel):
 
 class DirectoryScanFile(BaseModel):
     """Information about a scanned file."""
-    
+
     file_path: str
     file_name: str
     file_size: int
     mime_type: str | None
     content_hash: str
     modified_at: datetime
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
 class DirectoryScanResponse(BaseModel):
     """Response from directory scan."""
-    
+
     scan_id: str
     path: str
     files: list[DirectoryScanFile]
     total_files: int
     total_size: int
     warnings: list[str] = Field(default_factory=list)
-    
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -471,11 +469,11 @@ class DirectoryScanResponse(BaseModel):
 
 class DirectoryScanProgress(BaseModel):
     """WebSocket message for directory scan progress."""
-    
+
     type: str = Field(default="progress", pattern="^(started|counting|progress|completed|error|warning)$")
     scan_id: str
     data: dict[str, Any]
-    
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {

@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { collectionsV2Api } from '../services/api/v2/collections';
-import type { DocumentsResponse } from '../services/api/v2/types';
+import type { DocumentListResponse } from '../services/api/v2/types';
 
 // Query key factory for documents
 export const documentKeys = {
@@ -38,7 +38,7 @@ export function useCollectionDocuments(
     },
     enabled: !!collectionId && enabled,
     staleTime: 30000, // Consider data stale after 30 seconds
-    keepPreviousData: true, // Keep previous page data while fetching new page
+    placeholderData: keepPreviousData, // Keep previous page data while fetching new page
   });
 }
 
@@ -72,10 +72,10 @@ export function usePrefetchDocuments() {
 }
 
 // Utility hook to aggregate source directories from documents
-export function useSourceDirectories(documentsData?: DocumentsResponse) {
+export function useSourceDirectories(documentsData?: DocumentListResponse) {
   if (!documentsData) return [];
   
-  const sourceMap = documentsData.documents.reduce((acc, doc) => {
+  const sourceMap = documentsData.documents.reduce((acc: Map<string, { path: string; document_count: number }>, doc: any) => {
     if (!acc.has(doc.source_path)) {
       acc.set(doc.source_path, { 
         path: doc.source_path, 

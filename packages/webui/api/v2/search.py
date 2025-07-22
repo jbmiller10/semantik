@@ -19,9 +19,9 @@ from packages.webui.api.v2.schemas import (
     SingleCollectionSearchRequest,
 )
 from packages.webui.auth import get_current_user
-from packages.webui.services.search_service import SearchService
-from packages.webui.services.factory import get_search_service
 from packages.webui.rate_limiter import limiter
+from packages.webui.services.factory import get_search_service
+from packages.webui.services.search_service import SearchService
 
 logger = logging.getLogger(__name__)
 
@@ -108,15 +108,19 @@ async def multi_collection_search(
             reranking_time_ms=None,  # Not available in new format
             total_time_ms=metadata["processing_time"] * 1000,
             partial_failure=bool(metadata.get("errors")),
-            failed_collections=[
-                {
-                    "collection_id": str(cd["collection_id"]),
-                    "collection_name": cd["collection_name"],
-                    "error": cd["error"],
-                }
-                for cd in metadata["collection_details"]
-                if "error" in cd
-            ] if metadata.get("errors") else None,
+            failed_collections=(
+                [
+                    {
+                        "collection_id": str(cd["collection_id"]),
+                        "collection_name": cd["collection_name"],
+                        "error": cd["error"],
+                    }
+                    for cd in metadata["collection_details"]
+                    if "error" in cd
+                ]
+                if metadata.get("errors")
+                else None
+            ),
         )
 
     except AccessDeniedError as e:

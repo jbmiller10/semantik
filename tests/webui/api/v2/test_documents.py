@@ -65,9 +65,7 @@ class TestGetDocumentContent:
     """Test document content retrieval endpoint."""
 
     @pytest.mark.asyncio()
-    async def test_get_document_content_success(
-        self, mock_user, mock_collection, mock_document, temp_file
-    ):
+    async def test_get_document_content_success(self, mock_user, mock_collection, mock_document, temp_file):
         """Test successful document content retrieval."""
         # Update document to use temp file path
         mock_document.file_path = temp_file
@@ -93,9 +91,7 @@ class TestGetDocumentContent:
         assert result.headers["Content-Disposition"] == 'inline; filename="test_document.pdf"'
 
     @pytest.mark.asyncio()
-    async def test_get_document_content_document_not_found(
-        self, mock_user, mock_collection
-    ):
+    async def test_get_document_content_document_not_found(self, mock_user, mock_collection):
         """Test 404 when document doesn't exist."""
         mock_db = AsyncMock(spec=AsyncSession)
         mock_document_repo = AsyncMock()
@@ -115,9 +111,7 @@ class TestGetDocumentContent:
         assert "Document nonexistent-doc-id not found" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
-    async def test_get_document_content_cross_collection_access(
-        self, mock_user, mock_collection, mock_document
-    ):
+    async def test_get_document_content_cross_collection_access(self, mock_user, mock_collection, mock_document):
         """Test 403 when document belongs to different collection."""
         # Set document to belong to a different collection
         mock_document.collection_id = "different-collection-id"
@@ -140,9 +134,7 @@ class TestGetDocumentContent:
         assert "Document does not belong to the specified collection" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
-    async def test_get_document_content_file_not_found(
-        self, mock_user, mock_collection, mock_document
-    ):
+    async def test_get_document_content_file_not_found(self, mock_user, mock_collection, mock_document):
         """Test 404 when document file doesn't exist on disk."""
         # Use a non-existent file path
         mock_document.file_path = "/tmp/nonexistent_file.pdf"
@@ -165,9 +157,7 @@ class TestGetDocumentContent:
         assert "Document file not found on disk" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
-    async def test_get_document_content_path_is_directory(
-        self, mock_user, mock_collection, mock_document
-    ):
+    async def test_get_document_content_path_is_directory(self, mock_user, mock_collection, mock_document):
         """Test 500 when document path points to a directory."""
         # Use temp directory instead of file
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -191,9 +181,7 @@ class TestGetDocumentContent:
             assert "Invalid document path" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
-    async def test_get_document_content_path_traversal_attempt(
-        self, mock_user, mock_collection, mock_document
-    ):
+    async def test_get_document_content_path_traversal_attempt(self, mock_user, mock_collection, mock_document):
         """Test that path traversal attempts are properly handled."""
         # Try various path traversal patterns
         path_traversal_attempts = [
@@ -228,9 +216,7 @@ class TestGetDocumentContent:
                 assert exc_info.value.status_code in (404, 500)
 
     @pytest.mark.asyncio()
-    async def test_get_document_content_default_mime_type(
-        self, mock_user, mock_collection, mock_document, temp_file
-    ):
+    async def test_get_document_content_default_mime_type(self, mock_user, mock_collection, mock_document, temp_file):
         """Test that default mime type is used when document has no mime type."""
         mock_document.file_path = temp_file
         mock_document.mime_type = None  # No mime type set
@@ -252,9 +238,7 @@ class TestGetDocumentContent:
         assert result.media_type == "application/octet-stream"
 
     @pytest.mark.asyncio()
-    async def test_get_document_content_cache_headers(
-        self, mock_user, mock_collection, mock_document, temp_file
-    ):
+    async def test_get_document_content_cache_headers(self, mock_user, mock_collection, mock_document, temp_file):
         """Test that appropriate cache headers are set."""
         mock_document.file_path = temp_file
 
@@ -273,4 +257,3 @@ class TestGetDocumentContent:
 
         # Check cache control header
         assert result.headers["Cache-Control"] == "private, max-age=3600"
-

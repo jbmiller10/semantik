@@ -38,8 +38,6 @@ class BaseRepository(ABC, Generic[T]):
         """Delete an entity by ID. Returns True if deleted."""
 
 
-
-
 class UserRepository(ABC):
     """Abstract interface for user data access."""
 
@@ -66,8 +64,6 @@ class UserRepository(ABC):
     @abstractmethod
     async def list_users(self, **filters: Any) -> list[dict[str, Any]]:
         """List all users with optional filters."""
-
-
 
 
 class CollectionRepository(ABC):

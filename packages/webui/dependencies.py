@@ -143,5 +143,3 @@ async def get_document_repository(db: AsyncSession = Depends(get_db)) -> Documen
     """
     # Document repository now manages its own session
     return create_document_repository()
-
-

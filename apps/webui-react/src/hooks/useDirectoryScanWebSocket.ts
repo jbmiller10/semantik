@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { directoryScanV2Api, generateScanId } from '../services/api/v2/directoryScan';
-import type { DirectoryScanFile, DirectoryScanProgress } from '../services/api/v2/types';
+import type { DirectoryScanProgress } from '../services/api/v2/types';
 
 interface ScanResult {
   files: string[];
@@ -88,7 +88,7 @@ export function useDirectoryScanWebSocket(scanId?: string) {
                 ...prev,
                 warnings: [...(prev.warnings || []), {
                   type: 'warning',
-                  message: message.data.message,
+                  message: message.data.message || '',
                   severity: 'low',
                 }]
               } : null);
