@@ -2,22 +2,25 @@
 
 ## Overview
 
-Semantik provides WebSocket endpoints for real-time updates during job processing and directory scanning. This enables responsive user interfaces that show live progress without polling.
+Semantik provides WebSocket endpoints for real-time updates during operation processing and directory scanning. This enables responsive user interfaces that show live progress without polling.
 
 ## WebSocket Endpoints
 
-### 1. Job Progress WebSocket
+### 1. Operation Progress WebSocket
 
-**Endpoint**: `ws://localhost:8080/ws/{job_id}`
+**Endpoint**: `ws://localhost:8080/ws/operations/{operation_id}`
 
-Provides real-time updates during embedding job processing.
+Provides real-time updates during operation processing (indexing, reindexing, etc.).
+
+**Authentication**: Pass JWT token as query parameter: `?token=<jwt_token>`
 
 **Connection Example**:
 ```javascript
-const ws = new WebSocket('ws://localhost:8080/ws/abc123-job-id');
+const token = localStorage.getItem('authToken');
+const ws = new WebSocket(`ws://localhost:8080/ws/operations/abc123-operation-id?token=${token}`);
 
 ws.onopen = () => {
-    console.log('Connected to job progress');
+    console.log('Connected to operation progress');
 };
 
 ws.onmessage = (event) => {
@@ -49,14 +52,16 @@ ws.onopen = () => {
 
 ## Message Formats
 
-### Job Progress Messages
+### Operation Progress Messages
 
 #### Server → Client Messages
 
-**Job Started**
+**Operation Started**
 ```json
 {
-    "type": "job_started",
+    "type": "operation_started",
+    "operation_id": "abc123-operation-id",
+    "operation_type": "index",
     "total_files": 42
 }
 ```
@@ -81,11 +86,13 @@ ws.onopen = () => {
 }
 ```
 
-**Job Completed**
+**Operation Completed**
 ```json
 {
-    "type": "job_completed",
-    "message": "Job completed successfully"
+    "type": "operation_completed",
+    "operation_id": "abc123-operation-id",
+    "status": "completed",
+    "message": "Operation completed successfully"
 }
 ```
 
@@ -160,14 +167,19 @@ ws.onopen = () => {
 ### JavaScript/TypeScript Example
 
 ```typescript
-class JobProgressClient {
+class OperationProgressClient {
     private ws: WebSocket | null = null;
     private reconnectAttempts = 0;
     private maxReconnectAttempts = 5;
     private reconnectDelay = 3000;
+    private token: string;
 
-    connect(jobId: string) {
-        const wsUrl = `ws://localhost:8080/ws/${jobId}`;
+    constructor(token: string) {
+        this.token = token;
+    }
+
+    connect(operationId: string) {
+        const wsUrl = `ws://localhost:8080/ws/operations/${operationId}?token=${this.token}`;
         
         try {
             this.ws = new WebSocket(wsUrl);
@@ -206,8 +218,8 @@ class JobProgressClient {
 
     private handleMessage(data: any) {
         switch (data.type) {
-            case 'job_started':
-                console.log(`Job started: ${data.total_files} files to process`);
+            case 'operation_started':
+                console.log(`Operation started: ${data.total_files} files to process`);
                 break;
             
             case 'file_processing':
@@ -218,13 +230,13 @@ class JobProgressClient {
                 console.log(`Progress: ${data.processed_files}/${data.total_files}`);
                 break;
             
-            case 'job_completed':
-                console.log('Job completed!');
+            case 'operation_completed':
+                console.log('Operation completed!');
                 this.disconnect();
                 break;
             
             case 'error':
-                console.error('Job error:', data.message);
+                console.error('Operation error:', data.message);
                 break;
         }
     }
@@ -234,7 +246,7 @@ class JobProgressClient {
         console.log(`Reconnecting... (attempt ${this.reconnectAttempts})`);
         
         setTimeout(() => {
-            this.connect(jobId);
+            this.connect(operationId);
         }, this.reconnectDelay);
     }
 
@@ -251,7 +263,7 @@ class JobProgressClient {
 ```tsx
 import { useEffect, useRef, useState } from 'react';
 
-interface JobProgress {
+interface OperationProgress {
     currentFile?: string;
     processedFiles: number;
     totalFiles: number;
@@ -259,8 +271,8 @@ interface JobProgress {
     error?: string;
 }
 
-export function useJobProgress(jobId: string): JobProgress {
-    const [progress, setProgress] = useState<JobProgress>({
+export function useOperationProgress(operationId: string, token: string): OperationProgress {
+    const [progress, setProgress] = useState<OperationProgress>({
         processedFiles: 0,
         totalFiles: 0,
         status: 'connecting'
@@ -269,16 +281,16 @@ export function useJobProgress(jobId: string): JobProgress {
     const wsRef = useRef<WebSocket | null>(null);
     
     useEffect(() => {
-        if (!jobId) return;
+        if (!operationId || !token) return;
         
-        const ws = new WebSocket(`ws://localhost:8080/ws/${jobId}`);
+        const ws = new WebSocket(`ws://localhost:8080/ws/operations/${operationId}?token=${token}`);
         wsRef.current = ws;
         
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
             
             switch (data.type) {
-                case 'job_started':
+                case 'operation_started':
                     setProgress(prev => ({
                         ...prev,
                         totalFiles: data.total_files,
@@ -295,7 +307,7 @@ export function useJobProgress(jobId: string): JobProgress {
                     });
                     break;
                 
-                case 'job_completed':
+                case 'operation_completed':
                     setProgress(prev => ({
                         ...prev,
                         status: 'completed'
@@ -325,7 +337,7 @@ export function useJobProgress(jobId: string): JobProgress {
                 ws.close();
             }
         };
-    }, [jobId]);
+    }, [operationId, token]);
     
     return progress;
 }
@@ -338,50 +350,58 @@ export function useJobProgress(jobId: string): JobProgress {
 The server uses a `ConnectionManager` class to handle multiple WebSocket connections:
 
 ```python
-class ConnectionManager:
+class WebSocketManager:
     def __init__(self):
         self.active_connections: dict[str, list[WebSocket]] = {}
     
-    async def connect(self, websocket: WebSocket, job_id: str):
+    async def connect(self, websocket: WebSocket, channel_id: str, user_id: str):
         await websocket.accept()
-        if job_id not in self.active_connections:
-            self.active_connections[job_id] = []
-        self.active_connections[job_id].append(websocket)
+        connection_key = f"{user_id}:{channel_id}"
+        if connection_key not in self.active_connections:
+            self.active_connections[connection_key] = []
+        self.active_connections[connection_key].append(websocket)
     
-    def disconnect(self, websocket: WebSocket, job_id: str):
-        if job_id in self.active_connections:
-            self.active_connections[job_id].remove(websocket)
-            if not self.active_connections[job_id]:
-                del self.active_connections[job_id]
+    def disconnect(self, websocket: WebSocket, channel_id: str, user_id: str):
+        connection_key = f"{user_id}:{channel_id}"
+        if connection_key in self.active_connections:
+            self.active_connections[connection_key].remove(websocket)
+            if not self.active_connections[connection_key]:
+                del self.active_connections[connection_key]
     
-    async def send_update(self, job_id: str, message: dict[str, Any]):
-        if job_id in self.active_connections:
-            disconnected = []
-            for connection in self.active_connections[job_id]:
-                try:
-                    await connection.send_json(message)
-                except Exception:
-                    disconnected.append(connection)
-            
-            # Clean up disconnected clients
-            for conn in disconnected:
-                self.disconnect(conn, job_id)
+    async def send_update(self, channel_id: str, message_type: str, data: dict[str, Any]):
+        # Send to all connections subscribed to this channel
+        for key in self.active_connections:
+            if channel_id in key:
+                disconnected = []
+                for connection in self.active_connections[key]:
+                    try:
+                        await connection.send_json({
+                            "type": message_type,
+                            **data
+                        })
+                    except Exception:
+                        disconnected.append(connection)
+                
+                # Clean up disconnected clients
+                for conn in disconnected:
+                    user_id = key.split(":")[0]
+                    self.disconnect(conn, channel_id, user_id)
 ```
 
 ### Sending Updates During Processing
 
-Updates are sent at key points during job processing:
+Updates are sent at key points during operation processing:
 
 ```python
-# Job started
-await manager.send_update(job_id, {
-    "type": "job_started",
+# Operation started
+await ws_manager.send_update(f"operation:{operation_id}", "operation_started", {
+    "operation_id": operation_id,
+    "operation_type": "index",
     "total_files": total_files
 })
 
 # Processing each file
-await manager.send_update(job_id, {
-    "type": "file_processing",
+await ws_manager.send_update(f"operation:{operation_id}", "file_processing", {
     "current_file": file_path,
     "processed_files": processed_count,
     "total_files": total_files,
@@ -389,16 +409,16 @@ await manager.send_update(job_id, {
 })
 
 # File completed
-await manager.send_update(job_id, {
-    "type": "file_completed",
+await ws_manager.send_update(f"operation:{operation_id}", "file_completed", {
     "processed_files": processed_count,
     "total_files": total_files
 })
 
-# Job completed
-await manager.send_update(job_id, {
-    "type": "job_completed",
-    "message": "Job completed successfully"
+# Operation completed
+await ws_manager.send_update(f"operation:{operation_id}", "operation_completed", {
+    "operation_id": operation_id,
+    "status": "completed",
+    "message": "Operation completed successfully"
 })
 ```
 
@@ -434,40 +454,47 @@ Both client and server handle various error scenarios:
 
 ## Security Considerations
 
-⚠️ **Important**: The current WebSocket implementation does not include authentication checks. Consider these security improvements:
+✅ **Security Update**: The operation WebSocket endpoint now includes authentication via JWT tokens passed as query parameters.
 
 ### Recommended Security Enhancements
 
-1. **Add Authentication**:
+1. **Authentication (Already Implemented)**:
 ```python
-@app.websocket("/ws/{job_id}")
-async def job_websocket(websocket: WebSocket, job_id: str, token: str = Query(...)):
-    # Verify JWT token before accepting connection
-    user = verify_token(token)
-    if not user:
-        await websocket.close(code=1008, reason="Unauthorized")
-        return
-    
-    # Check if user has access to this job
-    if not user_can_access_job(user, job_id):
-        await websocket.close(code=1008, reason="Forbidden")
-        return
-    
-    await websocket_endpoint(websocket, job_id)
+# Extract token from query parameters
+token = websocket.query_params.get("token")
+
+try:
+    # Authenticate the user
+    user = await get_current_user_websocket(token)
+    user_id = str(user["id"])
+except ValueError as e:
+    # Authentication failed
+    await websocket.close(code=1008, reason=str(e))
+    return
+
+# Verify user has permission to access this operation
+try:
+    operation = await repo.get_by_uuid_with_permission_check(
+        operation_uuid=operation_id,
+        user_id=int(user["id"]),
+    )
+except EntityNotFoundError:
+    await websocket.close(code=1008, reason=f"Operation '{operation_id}' not found")
+    return
+except AccessDeniedError:
+    await websocket.close(code=1008, reason="You don't have access to this operation")
+    return
 ```
 
-2. **Connection Limits**:
+2. **Connection Limits (Available in WebSocketManager)**:
 ```python
-MAX_CONNECTIONS_PER_USER = 10
-MAX_CONNECTIONS_PER_JOB = 50
+# The WebSocketManager includes built-in connection limits:
+MAX_USER_CONNECTIONS = 10  # Per user limit
+MAX_OPERATION_CONNECTIONS = 100  # Per operation limit
 
-async def connect(self, websocket: WebSocket, job_id: str, user_id: str):
-    # Check connection limits
-    if self.count_user_connections(user_id) >= MAX_CONNECTIONS_PER_USER:
-        raise ConnectionLimitExceeded("User connection limit reached")
-    
-    if len(self.active_connections.get(job_id, [])) >= MAX_CONNECTIONS_PER_JOB:
-        raise ConnectionLimitExceeded("Job connection limit reached")
+# Automatically enforced when connecting:
+await ws_manager.connect(websocket, channel_id, user_id)
+# Raises ConnectionLimitExceeded if limits are exceeded
 ```
 
 3. **Message Validation**:
@@ -531,8 +558,10 @@ import asyncio
 import websockets
 import json
 
-async def test_job_progress():
-    uri = "ws://localhost:8080/ws/test-job-id"
+async def test_operation_progress():
+    token = "your-jwt-token"  # Get from auth endpoint
+    operation_id = "test-operation-id"
+    uri = f"ws://localhost:8080/ws/operations/{operation_id}?token={token}"
     
     async with websockets.connect(uri) as websocket:
         # Wait for connection
@@ -542,21 +571,21 @@ async def test_job_progress():
         message = await websocket.recv()
         data = json.loads(message)
         
-        assert data["type"] in ["job_started", "file_processing", "error"]
+        assert data["type"] in ["operation_started", "file_processing", "error"]
         print(f"Received: {data}")
 
 # Run test
-asyncio.run(test_job_progress())
+asyncio.run(test_operation_progress())
 ```
 
 ### Load Testing
 
 ```python
-async def load_test_websockets(num_connections: int):
+async def load_test_websockets(num_connections: int, token: str):
     tasks = []
     for i in range(num_connections):
-        job_id = f"load-test-{i}"
-        task = asyncio.create_task(maintain_connection(job_id))
+        operation_id = f"load-test-{i}"
+        task = asyncio.create_task(maintain_connection(operation_id, token))
         tasks.append(task)
     
     # Run all connections for 60 seconds
@@ -585,9 +614,10 @@ logging.getLogger("uvicorn.access").setLevel(logging.DEBUG)
    - Check for CORS issues
 
 2. **No Messages Received**
-   - Ensure job is actually processing
-   - Check ConnectionManager has connection registered
+   - Ensure operation is actually processing
+   - Check WebSocketManager has connection registered
    - Verify message sending code is reached
+   - Check Redis pub/sub is working correctly
 
 3. **Messages Delayed or Batched**
    - Check for blocking operations in message handler
@@ -609,4 +639,4 @@ Planned improvements for the WebSocket API:
 
 ## Conclusion
 
-The WebSocket API provides efficient real-time updates for job processing and directory scanning. While the current implementation is functional, adding authentication and enhanced connection management would improve security and reliability for production deployments.
+The WebSocket API provides efficient real-time updates for operation processing and directory scanning. The operation WebSocket endpoint includes authentication via JWT tokens and proper permission checks. The WebSocketManager handles connection limits, graceful disconnections, and Redis-based message distribution for scalability.

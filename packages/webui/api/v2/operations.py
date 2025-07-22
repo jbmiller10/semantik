@@ -8,7 +8,7 @@ in the new collection-centric architecture.
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database import get_db
@@ -16,9 +16,10 @@ from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoun
 from packages.shared.database.models import OperationStatus, OperationType
 from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.webui.api.schemas import ErrorResponse, OperationResponse
-from packages.webui.auth import get_current_user
+from packages.webui.auth import get_current_user, get_current_user_websocket
 from packages.webui.celery_app import celery_app
 from packages.webui.dependencies import get_operation_repository
+from packages.webui.websocket_manager import ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -233,3 +234,77 @@ async def list_operations(
             status_code=500,
             detail="Failed to list operations",
         ) from e
+
+
+# WebSocket handler for operation progress - export this separately so it can be mounted at the app level
+async def operation_websocket(websocket: WebSocket, operation_id: str) -> None:
+    """WebSocket for real-time operation progress updates.
+
+    Authentication is handled via JWT token passed as query parameter.
+    The token should be passed as ?token=<jwt_token> in the WebSocket URL.
+
+    The WebSocket will:
+    1. Authenticate the user via JWT token
+    2. Verify user has permission to access the operation
+    3. Subscribe to Redis updates for the operation
+    4. Stream progress updates until the operation completes or the connection closes
+    """
+    # Extract token from query parameters
+    token = websocket.query_params.get("token")
+
+    try:
+        # Authenticate the user
+        user = await get_current_user_websocket(token)
+        user_id = str(user["id"])
+    except ValueError as e:
+        # Authentication failed
+        await websocket.close(code=1008, reason=str(e))
+        return
+    except Exception as e:
+        logger.error(f"WebSocket authentication error: {e}")
+        await websocket.close(code=1011, reason="Internal server error")
+        return
+
+    # Verify user has permission to access this operation
+    try:
+        repo = OperationRepository(db_session=None)  # We'll use get_db for actual requests
+        # Get a database session
+        async with get_db() as db:
+            repo.db = db
+            operation = await repo.get_by_uuid_with_permission_check(
+                operation_uuid=operation_id,
+                user_id=int(user["id"]),
+            )
+    except EntityNotFoundError:
+        await websocket.close(code=1008, reason=f"Operation '{operation_id}' not found")
+        return
+    except AccessDeniedError:
+        await websocket.close(code=1008, reason="You don't have access to this operation")
+        return
+    except Exception as e:
+        logger.error(f"Error verifying operation access: {e}")
+        await websocket.close(code=1011, reason="Internal server error")
+        return
+
+    # Authentication and authorization successful, connect the WebSocket
+    channel_id = f"operation:{operation_id}"
+    await ws_manager.connect(websocket, channel_id, user_id)
+    
+    try:
+        # Keep the connection alive and handle any incoming messages
+        while True:
+            # We don't expect the client to send data, but we need to keep receiving
+            # to detect disconnections properly
+            try:
+                data = await websocket.receive_json()
+                # Handle ping messages to keep connection alive
+                if data.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+            except Exception:
+                # If receiving fails, the connection is likely closed
+                break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        # Ensure we always disconnect properly to clean up resources
+        await ws_manager.disconnect(websocket, channel_id, user_id)
