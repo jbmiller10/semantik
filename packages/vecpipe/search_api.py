@@ -420,7 +420,7 @@ async def search(
         collection=collection,
         filters=None,
         include_content=False,
-        job_id=None,
+        operation_uuid=None,
         use_reranker=False,
         rerank_model=None,
         rerank_quantization=None,
@@ -472,7 +472,7 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
         collection_instruction = None
 
         try:
-            # Check if this is a job collection and get metadata
+            # Check if this is an operation collection and get metadata
             from qdrant_client import QdrantClient
 
             sync_client = QdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
@@ -606,7 +606,7 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
                     metadata=payload.get("metadata"),
                     file_path=None,
                     file_name=None,
-                    job_id=None,
+                    operation_uuid=None,
                 )
             else:
                 # Parsed format from search_utils
@@ -621,7 +621,7 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
                         metadata=parsed_item.get("metadata"),
                         file_path=None,
                         file_name=None,
-                        job_id=None,
+                        operation_uuid=None,
                     )
                     results.append(result)
                 break
@@ -820,7 +820,7 @@ async def hybrid_search(
         collection_quantization = None
 
         try:
-            # Check if this is a job collection and get metadata
+            # Check if this is an operation collection and get metadata
             from qdrant_client import QdrantClient
 
             sync_client = QdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
@@ -977,7 +977,7 @@ async def batch_search(request: BatchSearchRequest = Body(...)) -> BatchSearchRe
                             content=None,
                             file_path=None,
                             file_name=None,
-                            job_id=None,
+                            operation_uuid=None,
                         )
                     )
                 else:
@@ -993,7 +993,7 @@ async def batch_search(request: BatchSearchRequest = Body(...)) -> BatchSearchRe
                                 content=None,
                                 file_path=None,
                                 file_name=None,
-                                job_id=None,
+                                operation_uuid=None,
                             )
                         )
                     break

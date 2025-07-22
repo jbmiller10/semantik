@@ -199,7 +199,7 @@ def test_task(self: Any) -> dict[str, str]:  # noqa: ARG001
 
 @celery_app.task(name="webui.tasks.cleanup_old_results")
 def cleanup_old_results(days_to_keep: int = DEFAULT_DAYS_TO_KEEP) -> dict[str, Any]:
-    """Clean up old Celery results and job records.
+    """Clean up old Celery results and operation records.
 
     Args:
         days_to_keep: Number of days to keep results (default: 7)
@@ -219,7 +219,7 @@ def cleanup_old_results(days_to_keep: int = DEFAULT_DAYS_TO_KEEP) -> dict[str, A
         # Celery's built-in result expiration or a more sophisticated cleanup
         logger.info(f"Starting cleanup of results older than {days_to_keep} days")
 
-        # Job archiving removed - operations are handled differently
+        # Operation archiving removed - operations are handled differently
         logger.info(f"Cleanup of operations older than {cutoff_time} is handled by operation lifecycle")
 
         logger.info(f"Cleanup completed: {stats}")
@@ -1347,15 +1347,15 @@ async def _process_append_operation(
             "scanning_completed",
             {
                 "status": "scanning_completed",
-                "total_files_found": scan_stats["total_files_found"],
-                "new_files_registered": scan_stats["new_files_registered"],
-                "duplicate_files_skipped": scan_stats["duplicate_files_skipped"],
+                "total_files_found": scan_stats["total_documents_found"],
+                "new_files_registered": scan_stats["new_documents_registered"],
+                "duplicate_files_skipped": scan_stats["duplicate_documents_skipped"],
                 "errors_count": len(scan_stats.get("errors", [])),
             },
         )
 
         # Record document processing metrics
-        for _ in range(scan_stats["new_files_registered"]):
+        for _ in range(scan_stats["new_documents_registered"]):
             record_document_processed("append", "registered")
         for _ in range(scan_stats["duplicate_files_skipped"]):
             record_document_processed("append", "skipped")
@@ -1370,18 +1370,18 @@ async def _process_append_operation(
             "documents_appended",
             {
                 "source_path": source_path,
-                "documents_added": scan_stats["new_files_registered"],
-                "duplicates_skipped": scan_stats["duplicate_files_skipped"],
+                "documents_added": scan_stats["new_documents_registered"],
+                "duplicates_skipped": scan_stats["duplicate_documents_skipped"],
             },
         )
 
         # Process registered documents to generate embeddings
-        if scan_stats["new_files_registered"] > 0:
+        if scan_stats["new_documents_registered"] > 0:
             await updater.send_update(
                 "processing_embeddings",
                 {
                     "status": "generating_embeddings",
-                    "documents_to_process": scan_stats["new_files_registered"],
+                    "documents_to_process": scan_stats["new_documents_registered"],
                 },
             )
 
@@ -1565,18 +1565,18 @@ async def _process_append_operation(
                 "append_completed",
                 {
                     "source_path": source_path,
-                    "documents_added": scan_stats["new_files_registered"],
-                    "total_files_scanned": scan_stats["total_files_found"],
-                    "duplicates_skipped": scan_stats["duplicate_files_skipped"],
+                    "documents_added": scan_stats["new_documents_registered"],
+                    "total_files_scanned": scan_stats["total_documents_found"],
+                    "duplicates_skipped": scan_stats["duplicate_documents_skipped"],
                 },
             )
 
         return {
             "success": True,
             "source_path": source_path,
-            "documents_added": scan_stats["new_files_registered"],
-            "total_files_scanned": scan_stats["total_files_found"],
-            "duplicates_skipped": scan_stats["duplicate_files_skipped"],
+            "documents_added": scan_stats["new_documents_registered"],
+            "total_files_scanned": scan_stats["total_documents_found"],
+            "duplicates_skipped": scan_stats["duplicate_documents_skipped"],
             "total_size_bytes": scan_stats["total_size_bytes"],
             "scan_duration_seconds": scan_duration,
             "errors": scan_stats.get("errors", []),

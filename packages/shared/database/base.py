@@ -82,10 +82,10 @@ class CollectionRepository(ABC):
         """Get detailed information for a collection."""
 
     @abstractmethod
-    async def get_collection_files(
+    async def get_collection_documents(
         self, collection_name: str, user_id: str, page: int = 1, limit: int = 50
     ) -> dict[str, Any]:
-        """Get paginated files in a collection."""
+        """Get paginated documents in a collection."""
 
     @abstractmethod
     async def rename_collection(self, old_name: str, new_name: str, user_id: str) -> bool:
@@ -97,7 +97,7 @@ class CollectionRepository(ABC):
 
     @abstractmethod
     async def get_collection_metadata(self, collection_name: str) -> dict[str, Any] | None:
-        """Get metadata from the first job of a collection."""
+        """Get metadata from the first operation of a collection."""
 
 
 class AuthRepository(ABC):

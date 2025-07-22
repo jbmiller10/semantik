@@ -58,13 +58,13 @@ class FileScanningService:
             source_id: Optional source ID to associate with documents
             recursive: Whether to scan subdirectories recursively
             batch_size: Number of files to process before committing (default 100)
-            progress_callback: Optional async callback for progress updates (files_processed, total_files)
+            progress_callback: Optional async callback for progress updates (files_processed, total_documents)
 
         Returns:
             Dictionary with scan statistics:
-                - total_files_found: Total number of supported files found
-                - new_files_registered: Number of new files registered
-                - duplicate_files_skipped: Number of duplicate files skipped
+                - total_documents_found: Total number of supported files found
+                - new_documents_registered: Number of new files registered
+                - duplicate_documents_skipped: Number of duplicate files skipped
                 - errors: List of files that couldn't be processed
                 - total_size_bytes: Total size of all processed files
 
@@ -79,9 +79,9 @@ class FileScanningService:
 
         # Initialize statistics
         stats: dict[str, Any] = {
-            "total_files_found": 0,
-            "new_files_registered": 0,
-            "duplicate_files_skipped": 0,
+            "total_documents_found": 0,
+            "new_documents_registered": 0,
+            "duplicate_documents_skipped": 0,
             "errors": [],
             "total_size_bytes": 0,
         }
@@ -105,7 +105,7 @@ class FileScanningService:
                         if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
                             continue
 
-                        stats["total_files_found"] += 1
+                        stats["total_documents_found"] += 1
 
                         # Process individual file
                         try:
@@ -117,9 +117,9 @@ class FileScanningService:
                             )
 
                             if result["is_new"]:
-                                stats["new_files_registered"] += 1
+                                stats["new_documents_registered"] += 1
                             else:
-                                stats["duplicate_files_skipped"] += 1
+                                stats["duplicate_documents_skipped"] += 1
 
                             stats["total_size_bytes"] += result["file_size"]
                             batch_count += 1
@@ -132,7 +132,7 @@ class FileScanningService:
 
                             # Call progress callback if provided
                             if progress_callback:
-                                await progress_callback(files_processed, stats["total_files_found"])
+                                await progress_callback(files_processed, stats["total_documents_found"])
 
                         except Exception as e:
                             logger.error(f"Failed to register file {file_path}: {e}")
@@ -202,9 +202,9 @@ class FileScanningService:
 
         logger.info(
             f"Scan completed for {source_path}: "
-            f"{stats['total_files_found']} files found, "
-            f"{stats['new_files_registered']} new, "
-            f"{stats['duplicate_files_skipped']} duplicates"
+            f"{stats['total_documents_found']} files found, "
+            f"{stats['new_documents_registered']} new, "
+            f"{stats['duplicate_documents_skipped']} duplicates"
         )
 
         return stats

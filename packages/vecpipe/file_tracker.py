@@ -67,15 +67,15 @@ class FileChangeTracker:
         except Exception as e:
             logger.error(f"Failed to save tracking data to {self.db_path}: {e}")
 
-    def get_removed_files(self, current_files: list[str]) -> list[dict[str, str]]:
+    def get_removed_documents(self, current_files: list[str]) -> list[dict[str, str]]:
         """
-        Get list of files that were tracked but are no longer in current files
+        Get list of documents that were tracked but are no longer in current files
 
         Args:
             current_files: List of currently existing file paths
 
         Returns:
-            List of dicts with 'path' and 'doc_id' keys for removed files
+            List of dicts with 'path' and 'doc_id' keys for removed documents
         """
         current_set = set(current_files)
         tracked_files = self.tracking_data.get("files", {})
@@ -90,7 +90,7 @@ class FileChangeTracker:
                     }
                 )
 
-        logger.info(f"Found {len(removed)} removed files out of {len(tracked_files)} tracked files")
+        logger.info(f"Found {len(removed)} removed documents out of {len(tracked_files)} tracked files")
         return removed
 
     def remove_file(self, file_path: str) -> None:
@@ -123,9 +123,9 @@ class FileChangeTracker:
         }
         logger.debug(f"Added/updated tracking for {file_path} with doc_id={doc_id}")
 
-    def get_file_info(self, file_path: str) -> dict[str, str] | None:
+    def get_document_info(self, file_path: str) -> dict[str, str] | None:
         """
-        Get tracking info for a specific file
+        Get tracking info for a specific document
 
         Args:
             file_path: Path of file to look up
@@ -150,7 +150,7 @@ class FileChangeTracker:
         Returns:
             True if file has changed or is new, False otherwise
         """
-        file_info = self.get_file_info(file_path)
+        file_info = self.get_document_info(file_path)
         if not file_info:
             return True  # New file
         return file_info.get("hash") != new_hash
