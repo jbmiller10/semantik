@@ -160,7 +160,7 @@ async def validate_file_access(
     try:
         # Resolve path to absolute
         file_path_resolved = file_path.resolve()
-        
+
         # Basic security check - ensure no path traversal attempts
         if ".." in str(file_path):
             raise HTTPException(status_code=403, detail="Access denied")

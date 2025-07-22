@@ -49,7 +49,9 @@ class TestListCollections:
     """Test cases for list_collections endpoint"""
 
     @pytest.mark.asyncio()
-    async def test_list_collections_single_operation_per_collection(self, mock_collection_repository, mock_current_user):
+    async def test_list_collections_single_operation_per_collection(
+        self, mock_collection_repository, mock_current_user
+    ):
         """Test listing collections where each collection has a single operation"""
 
         # Mock repository response
@@ -99,7 +101,9 @@ class TestListCollections:
         assert result[1].operation_count == 1
 
     @pytest.mark.asyncio()
-    async def test_list_collections_multiple_operations_aggregation(self, mock_collection_repository, mock_current_user):
+    async def test_list_collections_multiple_operations_aggregation(
+        self, mock_collection_repository, mock_current_user
+    ):
         """Test listing collections with proper aggregation of multiple operations"""
         # Mock repository response with aggregated data
         setup_async_mock(

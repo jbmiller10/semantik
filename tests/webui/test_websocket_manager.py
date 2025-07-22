@@ -136,17 +136,17 @@ class TestRedisStreamWebSocketManager:
         manager.redis = mock_redis
 
         # Mock operation object with proper attributes
-        from unittest.mock import MagicMock
+        from datetime import UTC, datetime
         from enum import Enum
-        from datetime import datetime, UTC
-        
+        from unittest.mock import MagicMock
+
         # Create mock enums
         class MockStatus(Enum):
             PROCESSING = "processing"
-        
+
         class MockType(Enum):
             INDEX = "index"
-        
+
         mock_operation = MagicMock()
         mock_operation.uuid = "job1"
         mock_operation.status = MockStatus.PROCESSING

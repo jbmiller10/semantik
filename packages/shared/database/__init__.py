@@ -13,7 +13,18 @@ Import Organization:
 - Utilities: Password hashing, user ID parsing, and metadata management
 """
 
-from .base import ApiKeyRepository, AuthRepository, BaseRepository, CollectionRepository, FileRepository, JobRepository, UserRepository
+# Password hashing context
+from passlib.context import CryptContext
+
+from .base import (
+    ApiKeyRepository,
+    AuthRepository,
+    BaseRepository,
+    CollectionRepository,
+    FileRepository,
+    JobRepository,
+    UserRepository,
+)
 from .collection_metadata import ensure_metadata_collection, store_collection_metadata
 from .collection_metadata import get_collection_metadata as get_collection_metadata_qdrant
 
@@ -50,8 +61,6 @@ from .postgres_database import check_postgres_connection, get_postgres_db, pg_co
 # Utilities
 from .utils import parse_user_id
 
-# Password hashing context
-from passlib.context import CryptContext
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 __all__ = [

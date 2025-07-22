@@ -34,30 +34,42 @@ def upgrade() -> None:
     operation_status_values = ["pending", "processing", "completed", "failed", "cancelled"]
 
     # Create enum types based on dialect
-    if dialect_name == 'postgresql':
+    if dialect_name == "postgresql":
         # Create PostgreSQL enum types using raw SQL to handle existence check
-        connection.execute(text("""
+        connection.execute(
+            text(
+                """
             DO $$ BEGIN
                 CREATE TYPE collection_status AS ENUM ('pending', 'ready', 'processing', 'error', 'degraded');
             EXCEPTION
                 WHEN duplicate_object THEN null;
             END $$;
-        """))
-        connection.execute(text("""
+        """
+            )
+        )
+        connection.execute(
+            text(
+                """
             DO $$ BEGIN
                 CREATE TYPE operation_type AS ENUM ('index', 'append', 'reindex', 'remove_source', 'delete');
             EXCEPTION
                 WHEN duplicate_object THEN null;
             END $$;
-        """))
-        connection.execute(text("""
+        """
+            )
+        )
+        connection.execute(
+            text(
+                """
             DO $$ BEGIN
                 CREATE TYPE operation_status AS ENUM ('pending', 'processing', 'completed', 'failed', 'cancelled');
             EXCEPTION
                 WHEN duplicate_object THEN null;
             END $$;
-        """))
-        
+        """
+            )
+        )
+
         # Use postgresql.ENUM with create_type=False since we already created them
         collection_status_enum = postgresql.ENUM(*collection_status_values, name="collection_status", create_type=False)
         operation_type_enum = postgresql.ENUM(*operation_type_values, name="operation_type", create_type=False)
@@ -244,11 +256,10 @@ def downgrade() -> None:
 
     # Drop enum types for PostgreSQL
     connection = op.get_bind()
-    if connection.dialect.name == 'postgresql':
+    if connection.dialect.name == "postgresql":
         # Drop the enum types (they will be dropped automatically with the tables/columns)
         # But we explicitly drop them to ensure cleanup
-        from sqlalchemy.dialects.postgresql import ENUM
-        
+
         # Use raw SQL to drop types as SQLAlchemy doesn't always clean them up properly
         connection.execute(text("DROP TYPE IF EXISTS collection_status"))
         connection.execute(text("DROP TYPE IF EXISTS operation_type"))

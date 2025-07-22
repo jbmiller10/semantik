@@ -4,13 +4,12 @@ import hashlib
 import logging
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import uuid4
 
 from shared.database.base import ApiKeyRepository
 from shared.database.exceptions import (
     DatabaseOperationError,
-    EntityAlreadyExistsError,
     EntityNotFoundError,
     InvalidUserIdError,
 )
@@ -30,28 +29,25 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
 
     def __init__(self, session: AsyncSession):
         """Initialize with database session.
-        
+
         Args:
             session: AsyncSession instance for database operations
         """
         super().__init__(session, ApiKey)
 
     async def create_api_key(
-        self, 
-        user_id: str, 
-        name: str, 
-        permissions: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, user_id: str, name: str, permissions: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Create a new API key for a user.
-        
+
         Args:
             user_id: ID of the user creating the key
             name: Name/description for the API key
             permissions: Optional permissions dictionary
-            
+
         Returns:
             Created API key data including the actual key (only returned on creation)
-            
+
         Raises:
             InvalidUserIdError: If user_id is not numeric
             EntityNotFoundError: If user doesn't exist
@@ -65,9 +61,7 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
                 raise InvalidUserIdError(user_id)
 
             # Verify user exists
-            user_exists = await self.session.scalar(
-                select(User.id).where(User.id == user_id_int)
-            )
+            user_exists = await self.session.scalar(select(User.id).where(User.id == user_id_int))
             if not user_exists:
                 raise EntityNotFoundError("user", user_id)
 
@@ -83,12 +77,12 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
                 name=name,
                 key_hash=key_hash,
                 permissions=permissions or {},
-                is_active=True
+                is_active=True,
             )
 
             self.session.add(api_key_record)
             await self.session.flush()
-            
+
             # Refresh to get database-generated defaults (like created_at)
             await self.session.refresh(api_key_record)
 
@@ -107,61 +101,57 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             logger.error(f"Failed to create API key: {e}")
             raise DatabaseOperationError("create", "api_key", str(e)) from e
 
-    async def get_api_key(self, api_key_id: str) -> Optional[Dict[str, Any]]:
+    async def get_api_key(self, api_key_id: str) -> dict[str, Any] | None:
         """Get an API key by ID.
-        
+
         Args:
             api_key_id: UUID of the API key
-            
+
         Returns:
             API key data or None if not found
         """
         try:
             result = await self.session.execute(
-                select(ApiKey)
-                .where(ApiKey.id == api_key_id)
-                .options(selectinload(ApiKey.user))
+                select(ApiKey).where(ApiKey.id == api_key_id).options(selectinload(ApiKey.user))
             )
             api_key = result.scalar_one_or_none()
-            
+
             return self._api_key_to_dict(api_key) if api_key else None
-            
+
         except Exception as e:
             logger.error(f"Failed to get API key {api_key_id}: {e}")
             raise DatabaseOperationError("get", "api_key", str(e)) from e
 
-    async def get_api_key_by_hash(self, key_hash: str) -> Optional[Dict[str, Any]]:
+    async def get_api_key_by_hash(self, key_hash: str) -> dict[str, Any] | None:
         """Get an API key by its hash.
-        
+
         Args:
             key_hash: Hash of the API key
-            
+
         Returns:
             API key data or None if not found
         """
         try:
             result = await self.session.execute(
-                select(ApiKey)
-                .where(ApiKey.key_hash == key_hash)
-                .options(selectinload(ApiKey.user))
+                select(ApiKey).where(ApiKey.key_hash == key_hash).options(selectinload(ApiKey.user))
             )
             api_key = result.scalar_one_or_none()
-            
+
             return self._api_key_to_dict(api_key) if api_key else None
-            
+
         except Exception as e:
             logger.error(f"Failed to get API key by hash: {e}")
             raise DatabaseOperationError("get", "api_key", str(e)) from e
 
-    async def list_user_api_keys(self, user_id: str) -> List[Dict[str, Any]]:
+    async def list_user_api_keys(self, user_id: str) -> list[dict[str, Any]]:
         """List all API keys for a user.
-        
+
         Args:
             user_id: ID of the user
-            
+
         Returns:
             List of API key dictionaries
-            
+
         Raises:
             InvalidUserIdError: If user_id is not numeric
         """
@@ -173,27 +163,25 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
                 raise InvalidUserIdError(user_id)
 
             result = await self.session.execute(
-                select(ApiKey)
-                .where(ApiKey.user_id == user_id_int)
-                .order_by(ApiKey.created_at.desc())
+                select(ApiKey).where(ApiKey.user_id == user_id_int).order_by(ApiKey.created_at.desc())
             )
             api_keys = result.scalars().all()
-            
+
             return [self._api_key_to_dict(key) for key in api_keys]
-            
+
         except InvalidUserIdError:
             raise
         except Exception as e:
             logger.error(f"Failed to list API keys for user {user_id}: {e}")
             raise DatabaseOperationError("list", "api_keys", str(e)) from e
 
-    async def update_api_key(self, api_key_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def update_api_key(self, api_key_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
         """Update an API key.
-        
+
         Args:
             api_key_id: ID of the API key to update
             updates: Dictionary of fields to update
-            
+
         Returns:
             Updated API key data or None if not found
         """
@@ -210,65 +198,58 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
                     setattr(api_key, field, value)
 
             await self.session.flush()
-            
+
             logger.info(f"Updated API key {api_key_id} with fields: {list(updates.keys())}")
             return self._api_key_to_dict(api_key)
-            
+
         except Exception as e:
             logger.error(f"Failed to update API key {api_key_id}: {e}")
             raise DatabaseOperationError("update", "api_key", str(e)) from e
 
     async def delete_api_key(self, api_key_id: str) -> bool:
         """Delete an API key.
-        
+
         Args:
             api_key_id: ID of the API key to delete
-            
+
         Returns:
             True if deleted, False if not found
         """
         try:
             # Use PostgreSQL's DELETE ... RETURNING
-            result = await self.session.execute(
-                delete(ApiKey)
-                .where(ApiKey.id == api_key_id)
-                .returning(ApiKey.id)
-            )
+            result = await self.session.execute(delete(ApiKey).where(ApiKey.id == api_key_id).returning(ApiKey.id))
             deleted_id = result.scalar_one_or_none()
-            
+
             if deleted_id:
                 logger.info(f"Deleted API key {api_key_id}")
                 return True
             return False
-            
+
         except Exception as e:
             logger.error(f"Failed to delete API key {api_key_id}: {e}")
             raise DatabaseOperationError("delete", "api_key", str(e)) from e
 
-    async def verify_api_key(self, api_key: str) -> Optional[Dict[str, Any]]:
+    async def verify_api_key(self, api_key: str) -> dict[str, Any] | None:
         """Verify an API key and return associated data if valid.
-        
+
         Args:
             api_key: The actual API key string
-            
+
         Returns:
             API key data with user info if valid, None otherwise
         """
         try:
             # Hash the provided key
             key_hash = self._hash_api_key(api_key)
-            
+
             # Look up by hash
             result = await self.session.execute(
                 select(ApiKey)
-                .where(
-                    (ApiKey.key_hash == key_hash) & 
-                    (ApiKey.is_active == True)
-                )
+                .where((ApiKey.key_hash == key_hash) & (ApiKey.is_active == True))
                 .options(selectinload(ApiKey.user))
             )
             api_key_record = result.scalar_one_or_none()
-            
+
             if not api_key_record:
                 return None
 
@@ -286,118 +267,109 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             await self.update_last_used(api_key_record.id)
 
             return self._api_key_to_dict(api_key_record)
-            
+
         except Exception as e:
             logger.error(f"Failed to verify API key: {e}")
             raise DatabaseOperationError("verify", "api_key", str(e)) from e
 
     async def update_last_used(self, api_key_id: str) -> None:
         """Update the last used timestamp for an API key.
-        
+
         Args:
             api_key_id: ID of the API key
         """
         try:
             await self.session.execute(
-                update(ApiKey)
-                .where(ApiKey.id == api_key_id)
-                .values(last_used_at=datetime.now(UTC))
+                update(ApiKey).where(ApiKey.id == api_key_id).values(last_used_at=datetime.now(UTC))
             )
             # Don't flush here - this is often called during request processing
-            
+
         except Exception as e:
             # Log but don't raise - this is a non-critical operation
             logger.warning(f"Failed to update last used for API key {api_key_id}: {e}")
 
     async def cleanup_expired_keys(self) -> int:
         """Delete expired API keys.
-        
+
         Returns:
             Number of keys deleted
         """
         try:
             result = await self.session.execute(
                 delete(ApiKey)
-                .where(
-                    (ApiKey.expires_at.isnot(None)) & 
-                    (ApiKey.expires_at < datetime.now(UTC))
-                )
+                .where((ApiKey.expires_at.isnot(None)) & (ApiKey.expires_at < datetime.now(UTC)))
                 .returning(ApiKey.id)
             )
             deleted_ids = result.scalars().all()
-            
+
             if deleted_ids:
                 logger.info(f"Cleaned up {len(deleted_ids)} expired API keys")
-            
+
             return len(deleted_ids)
-            
+
         except Exception as e:
             logger.error(f"Failed to cleanup expired keys: {e}")
             raise DatabaseOperationError("cleanup", "api_keys", str(e)) from e
 
     async def create_api_key_with_expiration(
-        self,
-        user_id: str,
-        name: str,
-        expires_in_days: int = 365,
-        permissions: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, user_id: str, name: str, expires_in_days: int = 365, permissions: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Create an API key with automatic expiration.
-        
+
         Args:
             user_id: ID of the user
             name: Name for the API key
             expires_in_days: Days until expiration (default: 365)
             permissions: Optional permissions
-            
+
         Returns:
             Created API key data including the actual key
         """
         # Calculate expiration
         expires_at = datetime.now(UTC) + timedelta(days=expires_in_days)
-        
+
         # Create the key
         result = await self.create_api_key(user_id, name, permissions)
-        
+
         # Update with expiration
         await self.update_api_key(result["id"], {"expires_at": expires_at})
-        
+
         # Return result with expiration info
         result["expires_at"] = expires_at.isoformat()
         return result
 
     def _hash_api_key(self, api_key: str) -> str:
         """Hash an API key using SHA-256.
-        
+
         Args:
             api_key: The API key to hash
-            
+
         Returns:
             Hexadecimal hash string
         """
         return hashlib.sha256(api_key.encode()).hexdigest()
 
-    def _api_key_to_dict(self, api_key: Optional[ApiKey]) -> Optional[Dict[str, Any]]:
+    def _api_key_to_dict(self, api_key: ApiKey | None) -> dict[str, Any] | None:
         """Convert ApiKey model to dictionary.
-        
+
         Args:
             api_key: ApiKey model instance
-            
+
         Returns:
             API key dictionary or None
         """
         if not api_key:
             return None
-            
+
         # Helper function to safely convert datetime to string
         def datetime_to_str(dt):
             if dt is None:
                 return None
-            if hasattr(dt, 'isoformat'):
+            if hasattr(dt, "isoformat"):
                 return dt.isoformat()
             # If it's already a string, return it
             return str(dt)
-            
+
         return {
             "id": api_key.id,
             "user_id": api_key.user_id,
@@ -408,10 +380,14 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             "expires_at": datetime_to_str(api_key.expires_at),
             "created_at": datetime_to_str(api_key.created_at),
             # Include user info if loaded
-            "user": {
-                "id": api_key.user.id,
-                "username": api_key.user.username,
-                "email": api_key.user.email,
-                "is_active": api_key.user.is_active,
-            } if hasattr(api_key, "user") and api_key.user else None
+            "user": (
+                {
+                    "id": api_key.user.id,
+                    "username": api_key.user.username,
+                    "email": api_key.user.email,
+                    "is_active": api_key.user.is_active,
+                }
+                if hasattr(api_key, "user") and api_key.user
+                else None
+            ),
         }

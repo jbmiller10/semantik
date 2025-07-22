@@ -48,13 +48,12 @@ async def search(
                 "The 'job_id' parameter is deprecated and will be removed in a future version. "
                 "Please use 'collection' parameter with collection UUID instead.",
                 DeprecationWarning,
-                stacklevel=2
+                stacklevel=2,
             )
             logger.warning(
-                f"Deprecated job_id parameter used: {request.job_id}. "
-                "Please migrate to using collection UUID."
+                f"Deprecated job_id parameter used: {request.job_id}. " "Please migrate to using collection UUID."
             )
-        
+
         # Determine collection name and job_id
         if request.collection:
             collection_name = request.collection
@@ -375,13 +374,13 @@ async def hybrid_search(
                 "The 'job_id' parameter is deprecated and will be removed in a future version. "
                 "Please use 'collection' parameter with collection UUID instead.",
                 DeprecationWarning,
-                stacklevel=2
+                stacklevel=2,
             )
             logger.warning(
                 f"Deprecated job_id parameter used in hybrid_search: {request.job_id}. "
                 "Please migrate to using collection UUID."
             )
-        
+
         # Determine collection name
         collection_name = f"job_{request.job_id}" if request.job_id else "work_docs"
 

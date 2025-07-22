@@ -18,49 +18,52 @@ logger = logging.getLogger(__name__)
 
 def create_user_repository(session: AsyncSession) -> UserRepository:
     """Create a user repository instance.
-    
+
     Args:
         session: AsyncSession for database operations
-        
+
     Returns:
         PostgreSQL UserRepository instance
     """
     from packages.webui.repositories.postgres import PostgreSQLUserRepository
+
     return PostgreSQLUserRepository(session)
 
 
 def create_auth_repository(session: AsyncSession) -> AuthRepository:
     """Create an auth repository instance.
-    
+
     Args:
         session: AsyncSession for database operations
-        
+
     Returns:
         PostgreSQL AuthRepository instance
     """
     from packages.webui.repositories.postgres import PostgreSQLAuthRepository
+
     return PostgreSQLAuthRepository(session)
 
 
 def create_api_key_repository(session: AsyncSession) -> ApiKeyRepository:
     """Create an API key repository instance.
-    
+
     Args:
         session: AsyncSession for database operations
-        
+
     Returns:
         PostgreSQL ApiKeyRepository instance
     """
     from packages.webui.repositories.postgres import PostgreSQLApiKeyRepository
+
     return PostgreSQLApiKeyRepository(session)
 
 
 def create_operation_repository() -> Any:
     """Create an operation repository instance with session management.
-    
+
     This maintains compatibility with existing code that expects
     a repository that manages its own session.
-    
+
     Returns:
         Async wrapper around OperationRepository
     """
@@ -104,10 +107,10 @@ def create_operation_repository() -> Any:
 
 def create_document_repository() -> Any:
     """Create a document repository instance with session management.
-    
+
     This maintains compatibility with existing code that expects
     a repository that manages its own session.
-    
+
     Returns:
         Async wrapper around DocumentRepository
     """
@@ -152,40 +155,38 @@ def create_document_repository() -> Any:
 # Legacy compatibility functions - will be removed in future
 def create_job_repository() -> Any:
     """Legacy job repository - raises error.
-    
+
     Note: This is deprecated. Jobs have been replaced by operations.
     Please migrate to OperationRepository.
-    
+
     Raises:
         NotImplementedError: Always raised to force migration
     """
     raise NotImplementedError(
-        "JobRepository is deprecated and has been removed. "
-        "Please migrate to OperationRepository."
+        "JobRepository is deprecated and has been removed. Please migrate to OperationRepository."
     )
 
 
 def create_file_repository() -> Any:
     """Legacy file repository - raises error.
-    
+
     Note: This is deprecated. Files have been replaced by documents.
     Please migrate to DocumentRepository.
-    
+
     Raises:
         NotImplementedError: Always raised to force migration
     """
     raise NotImplementedError(
-        "FileRepository is deprecated and has been removed. "
-        "Please migrate to DocumentRepository."
+        "FileRepository is deprecated and has been removed. Please migrate to DocumentRepository."
     )
 
 
 def create_collection_repository() -> Any:
     """Create a collection repository instance.
-    
+
     Note: Use packages.shared.database.repositories.collection_repository.CollectionRepository
     directly with an async session for new code.
-    
+
     Returns:
         Async wrapper around CollectionRepository
     """
@@ -229,10 +230,10 @@ def create_collection_repository() -> Any:
 
 def create_all_repositories(session: AsyncSession) -> dict[str, object]:
     """Create all repository instances with the provided session.
-    
+
     Args:
         session: AsyncSession for database operations
-        
+
     Returns:
         Dictionary mapping repository names to instances
     """
@@ -250,7 +251,7 @@ def create_all_repositories(session: AsyncSession) -> dict[str, object]:
 # Helper function for dependency injection in FastAPI
 async def get_db_session() -> AsyncSession:
     """Get a database session for dependency injection.
-    
+
     Yields:
         AsyncSession instance
     """

@@ -20,7 +20,7 @@ from pydantic import BaseModel, EmailStr, field_validator
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 # Import database module
 from shared.config import settings
-from shared.database import create_user_repository, create_auth_repository, get_db_session
+from shared.database import create_auth_repository, create_user_repository, get_db_session
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -138,7 +138,7 @@ async def authenticate_user(username: str, password: str) -> dict[str, Any] | No
     async for session in get_db_session():
         user_repo = create_user_repository(session)
         auth_repo = create_auth_repository(session)
-        
+
         user = await user_repo.get_user_by_username(username)
         if not user:
             return None

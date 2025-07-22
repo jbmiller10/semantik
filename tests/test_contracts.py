@@ -1,6 +1,5 @@
 """Unit tests for shared API contracts."""
 
-from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -298,7 +297,6 @@ class TestStringLengthValidation:
         with pytest.raises(ValidationError) as exc_info:
             SearchResult(doc_id="doc1", chunk_id="chunk1", score=0.95, path="/" + "p" * 4096)  # 4097 chars, exceeds max
         assert "at most 4096 characters" in str(exc_info.value)
-
 
     def test_batch_search_request_query_validation(self):
         """Test that each query in BatchSearchRequest respects max length."""

@@ -171,17 +171,17 @@ class TestWebSocketRedisIntegration:
 
             # Mock operation repository
             with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
-                from unittest.mock import MagicMock
+                from datetime import UTC, datetime
                 from enum import Enum
-                from datetime import datetime, UTC
-                
+                from unittest.mock import MagicMock
+
                 # Create mock operation object
                 class MockStatus(Enum):
                     PROCESSING = "processing"
-                
+
                 class MockType(Enum):
                     INDEX = "index"
-                
+
                 mock_operation = MagicMock()
                 mock_operation.uuid = "job1"
                 mock_operation.status = MockStatus.PROCESSING
@@ -191,7 +191,7 @@ class TestWebSocketRedisIntegration:
                 mock_operation.started_at = datetime.now(UTC)
                 mock_operation.completed_at = None
                 mock_operation.error_message = None
-                
+
                 mock_repo = AsyncMock()
                 mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
                 mock_create_repo.return_value = mock_repo
@@ -249,16 +249,20 @@ class TestWebSocketRedisIntegration:
             with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 # Create simple mock operation
-                mock_operation = type('MockOp', (), {
-                    'uuid': 'job1',
-                    'status': type('Status', (), {'value': 'processing'}),
-                    'type': type('Type', (), {'value': 'index'}),
-                    'collection_id': 'collection1',
-                    'created_at': datetime.now(UTC),
-                    'started_at': datetime.now(UTC),
-                    'completed_at': None,
-                    'error_message': None
-                })()
+                mock_operation = type(
+                    "MockOp",
+                    (),
+                    {
+                        "uuid": "job1",
+                        "status": type("Status", (), {"value": "processing"}),
+                        "type": type("Type", (), {"value": "index"}),
+                        "collection_id": "collection1",
+                        "created_at": datetime.now(UTC),
+                        "started_at": datetime.now(UTC),
+                        "completed_at": None,
+                        "error_message": None,
+                    },
+                )()
                 mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
                 mock_create_repo.return_value = mock_repo
 
@@ -307,16 +311,20 @@ class TestWebSocketRedisIntegration:
             with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 # Create simple mock operation
-                mock_operation = type('MockOp', (), {
-                    'uuid': 'job1',
-                    'status': type('Status', (), {'value': 'processing'}),
-                    'type': type('Type', (), {'value': 'index'}),
-                    'collection_id': 'collection1',
-                    'created_at': datetime.now(UTC),
-                    'started_at': datetime.now(UTC),
-                    'completed_at': None,
-                    'error_message': None
-                })()
+                mock_operation = type(
+                    "MockOp",
+                    (),
+                    {
+                        "uuid": "job1",
+                        "status": type("Status", (), {"value": "processing"}),
+                        "type": type("Type", (), {"value": "index"}),
+                        "collection_id": "collection1",
+                        "created_at": datetime.now(UTC),
+                        "started_at": datetime.now(UTC),
+                        "completed_at": None,
+                        "error_message": None,
+                    },
+                )()
                 mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
                 mock_create_repo.return_value = mock_repo
 
@@ -362,16 +370,20 @@ class TestWebSocketRedisIntegration:
             with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 # Create simple mock operation
-                mock_operation = type('MockOp', (), {
-                    'uuid': 'job1',
-                    'status': type('Status', (), {'value': 'processing'}),
-                    'type': type('Type', (), {'value': 'index'}),
-                    'collection_id': 'collection1',
-                    'created_at': datetime.now(UTC),
-                    'started_at': datetime.now(UTC),
-                    'completed_at': None,
-                    'error_message': None
-                })()
+                mock_operation = type(
+                    "MockOp",
+                    (),
+                    {
+                        "uuid": "job1",
+                        "status": type("Status", (), {"value": "processing"}),
+                        "type": type("Type", (), {"value": "index"}),
+                        "collection_id": "collection1",
+                        "created_at": datetime.now(UTC),
+                        "started_at": datetime.now(UTC),
+                        "completed_at": None,
+                        "error_message": None,
+                    },
+                )()
                 mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
                 mock_create_repo.return_value = mock_repo
 
@@ -447,17 +459,21 @@ class TestWebSocketRedisIntegration:
         with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
             mock_repo = AsyncMock()
             # Create simple mock operation
-            mock_operation = type('MockOp', (), {
-                'uuid': 'job1',
-                'status': type('Status', (), {'value': 'processing'}),
-                'type': type('Type', (), {'value': 'index'}),
-                'collection_id': 'collection1',
-                'created_at': datetime.now(UTC),
-                'started_at': datetime.now(UTC),
-                'completed_at': None,
-                'error_message': None,
-                'total_files': 10
-            })()
+            mock_operation = type(
+                "MockOp",
+                (),
+                {
+                    "uuid": "job1",
+                    "status": type("Status", (), {"value": "processing"}),
+                    "type": type("Type", (), {"value": "index"}),
+                    "collection_id": "collection1",
+                    "created_at": datetime.now(UTC),
+                    "started_at": datetime.now(UTC),
+                    "completed_at": None,
+                    "error_message": None,
+                    "total_files": 10,
+                },
+            )()
             mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
             mock_create_repo.return_value = mock_repo
 
@@ -497,16 +513,20 @@ class TestWebSocketRedisIntegration:
             with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 # Create simple mock operation
-                mock_operation = type('MockOp', (), {
-                    'uuid': 'job1',
-                    'status': type('Status', (), {'value': 'processing'}),
-                    'type': type('Type', (), {'value': 'index'}),
-                    'collection_id': 'collection1',
-                    'created_at': datetime.now(UTC),
-                    'started_at': datetime.now(UTC),
-                    'completed_at': None,
-                    'error_message': None
-                })()
+                mock_operation = type(
+                    "MockOp",
+                    (),
+                    {
+                        "uuid": "job1",
+                        "status": type("Status", (), {"value": "processing"}),
+                        "type": type("Type", (), {"value": "index"}),
+                        "collection_id": "collection1",
+                        "created_at": datetime.now(UTC),
+                        "started_at": datetime.now(UTC),
+                        "completed_at": None,
+                        "error_message": None,
+                    },
+                )()
                 mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
                 mock_create_repo.return_value = mock_repo
 
@@ -545,16 +565,20 @@ class TestWebSocketRedisIntegration:
             with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 # Create simple mock operation
-                mock_operation = type('MockOp', (), {
-                    'uuid': 'job1',
-                    'status': type('Status', (), {'value': 'processing'}),
-                    'type': type('Type', (), {'value': 'index'}),
-                    'collection_id': 'collection1',
-                    'created_at': datetime.now(UTC),
-                    'started_at': datetime.now(UTC),
-                    'completed_at': None,
-                    'error_message': None
-                })()
+                mock_operation = type(
+                    "MockOp",
+                    (),
+                    {
+                        "uuid": "job1",
+                        "status": type("Status", (), {"value": "processing"}),
+                        "type": type("Type", (), {"value": "index"}),
+                        "collection_id": "collection1",
+                        "created_at": datetime.now(UTC),
+                        "started_at": datetime.now(UTC),
+                        "completed_at": None,
+                        "error_message": None,
+                    },
+                )()
                 mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
                 mock_create_repo.return_value = mock_repo
 

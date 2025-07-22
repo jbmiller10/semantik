@@ -765,19 +765,16 @@ class DockerSetupTUI:
         self._show_progress(2, 5, "Database Configuration")
         console.print("[bold]Database Configuration[/bold]\n")
         console.print("Semantik uses PostgreSQL for storing user data, collections, and metadata.\n")
-        
+
         # PostgreSQL password configuration
         postgres_choice = questionary.select(
             "PostgreSQL Password:",
-            choices=[
-                "Generate secure password automatically (Recommended)",
-                "Enter custom password"
-            ]
+            choices=["Generate secure password automatically (Recommended)", "Enter custom password"],
         ).ask()
-        
+
         if postgres_choice is None:
             return False
-            
+
         if "Generate" in postgres_choice:
             self.config["POSTGRES_PASSWORD"] = secrets.token_hex(32)
             console.print("[green]Generated secure PostgreSQL password[/green]")
@@ -787,16 +784,16 @@ class DockerSetupTUI:
                 console.print("[red]PostgreSQL password must be at least 16 characters[/red]")
                 return False
             self.config["POSTGRES_PASSWORD"] = custom_password
-        
+
         # Set default PostgreSQL values
         self.config["POSTGRES_DB"] = "semantik"
         self.config["POSTGRES_USER"] = "semantik"
         self.config["POSTGRES_HOST"] = "postgres"  # Docker service name
         self.config["POSTGRES_PORT"] = "5432"
-        
+
         console.print()
         return True
-    
+
     def configure_directories(self) -> bool:
         """Configure directory mappings"""
         self._show_progress(3, 5, "Directory Configuration")
@@ -1105,7 +1102,7 @@ class DockerSetupTUI:
         # Database settings
         table.add_row("Database", "PostgreSQL")
         table.add_row("PostgreSQL Password", "***" + self.config["POSTGRES_PASSWORD"][-8:])
-        
+
         # Security settings
         table.add_row("JWT Secret", "***" + self.config["JWT_SECRET_KEY"][-8:])
         table.add_row("Token Expiration", f"{self.config['ACCESS_TOKEN_EXPIRE_MINUTES']} minutes")
@@ -1282,7 +1279,7 @@ class DockerSetupTUI:
     def _get_compose_files(self) -> list[str]:
         """Get the appropriate docker-compose file arguments based on configuration"""
         files = ["-f", "docker-compose.yml"]
-        
+
         # Add PostgreSQL support
         files.extend(["-f", "docker-compose.postgres.yml"])
 
@@ -1598,7 +1595,13 @@ class DockerSetupTUI:
 
         console.print("[bold]Checking port availability...[/bold]\n")
 
-        required_ports = [(8080, "WebUI"), (8000, "VecPipe API"), (6333, "Qdrant"), (6334, "Qdrant gRPC"), (5432, "PostgreSQL")]
+        required_ports = [
+            (8080, "WebUI"),
+            (8000, "VecPipe API"),
+            (6333, "Qdrant"),
+            (6334, "Qdrant gRPC"),
+            (5432, "PostgreSQL"),
+        ]
 
         blocked_ports = []
 

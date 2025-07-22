@@ -33,23 +33,31 @@ def upgrade() -> None:
     permission_type_values = ["read", "write", "admin"]
 
     # Create enum types based on dialect
-    if dialect_name == 'postgresql':
+    if dialect_name == "postgresql":
         # Create PostgreSQL enum types using raw SQL to handle existence check
-        connection.execute(text("""
+        connection.execute(
+            text(
+                """
             DO $$ BEGIN
                 CREATE TYPE document_status AS ENUM ('pending', 'processing', 'completed', 'failed');
             EXCEPTION
                 WHEN duplicate_object THEN null;
             END $$;
-        """))
-        connection.execute(text("""
+        """
+            )
+        )
+        connection.execute(
+            text(
+                """
             DO $$ BEGIN
                 CREATE TYPE permission_type AS ENUM ('read', 'write', 'admin');
             EXCEPTION
                 WHEN duplicate_object THEN null;
             END $$;
-        """))
-        
+        """
+            )
+        )
+
         # Use postgresql.ENUM with create_type=False since we already created them
         document_status_enum = postgresql.ENUM(*document_status_values, name="document_status", create_type=False)
         permission_type_enum = postgresql.ENUM(*permission_type_values, name="permission_type", create_type=False)
@@ -296,7 +304,7 @@ def downgrade() -> None:
 
     # Drop enum types for PostgreSQL
     connection = op.get_bind()
-    if connection.dialect.name == 'postgresql':
+    if connection.dialect.name == "postgresql":
         # Use raw SQL to drop types as SQLAlchemy doesn't always clean them up properly
         connection.execute(text("DROP TYPE IF EXISTS document_status"))
         connection.execute(text("DROP TYPE IF EXISTS permission_type"))

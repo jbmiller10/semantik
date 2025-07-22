@@ -6,9 +6,9 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from shared.database.db_retry import with_db_retry
 from shared.database.exceptions import DatabaseOperationError, EntityNotFoundError, ValidationError
 from shared.database.models import Collection, Document, DocumentStatus
-from shared.database.db_retry import with_db_retry
 from sqlalchemy import and_, delete, desc, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession

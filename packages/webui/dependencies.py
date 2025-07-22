@@ -62,10 +62,10 @@ async def get_collection_for_user(
 async def get_user_repository(db: AsyncSession = Depends(get_db)) -> UserRepository:
     """
     FastAPI dependency that provides a UserRepository instance.
-    
+
     Args:
         db: Database session from get_db dependency
-        
+
     Returns:
         UserRepository instance configured with the database session
     """
@@ -75,10 +75,10 @@ async def get_user_repository(db: AsyncSession = Depends(get_db)) -> UserReposit
 async def get_auth_repository(db: AsyncSession = Depends(get_db)) -> AuthRepository:
     """
     FastAPI dependency that provides an AuthRepository instance.
-    
+
     Args:
         db: Database session from get_db dependency
-        
+
     Returns:
         AuthRepository instance configured with the database session
     """
@@ -88,10 +88,10 @@ async def get_auth_repository(db: AsyncSession = Depends(get_db)) -> AuthReposit
 async def get_api_key_repository(db: AsyncSession = Depends(get_db)) -> ApiKeyRepository:
     """
     FastAPI dependency that provides an ApiKeyRepository instance.
-    
+
     Args:
         db: Database session from get_db dependency
-        
+
     Returns:
         ApiKeyRepository instance configured with the database session
     """

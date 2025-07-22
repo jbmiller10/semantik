@@ -183,7 +183,9 @@ class ApiKeyRepository(ABC):
     """Abstract interface for API key data access."""
 
     @abstractmethod
-    async def create_api_key(self, user_id: str, name: str, permissions: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def create_api_key(
+        self, user_id: str, name: str, permissions: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Create a new API key for a user."""
 
     @abstractmethod
