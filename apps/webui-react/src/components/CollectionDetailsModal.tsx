@@ -20,6 +20,7 @@ function CollectionDetailsModal() {
   const { showCollectionDetailsModal, setShowCollectionDetailsModal, addToast } = useUIStore();
   const [showAddDataModal, setShowAddDataModal] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
+  
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'jobs' | 'files' | 'settings'>('overview');
   const [filesPage, setFilesPage] = useState(1);

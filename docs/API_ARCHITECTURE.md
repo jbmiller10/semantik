@@ -28,7 +28,7 @@ Semantik follows a clean three-package architecture with two main services:
    - Port: 8000 (default)
    - REST API + WebSocket support
    - User authentication and job management
-   - Owns and manages the SQLite database
+   - Owns and manages the PostgreSQL database
    - Proxies search requests to Vecpipe API
    - Uses shared package for embeddings and database operations
 
@@ -36,7 +36,7 @@ Semantik follows a clean three-package architecture with two main services:
 
 - **Clean Architecture**: Three packages - vecpipe (search), webui (control plane), shared (utilities)
 - **No Circular Dependencies**: Both services depend on shared, but not on each other
-- **Database Ownership**: WebUI exclusively owns the SQLite database
+- **Database Ownership**: WebUI exclusively owns the PostgreSQL database
 - **RESTful Design**: Standard HTTP methods and status codes
 - **Stateless Search**: All search state stored in Qdrant
 - **JWT Authentication**: Secure token-based auth for WebUI
@@ -1094,7 +1094,7 @@ The WebUI service acts as a control plane and proxy for search requests:
 graph TD
     Client[Client] --> WebUI[WebUI Service<br/>Control Plane]
     WebUI --> Vecpipe[Vecpipe Service<br/>Search Engine]
-    WebUI --> SQLite[(SQLite DB<br/>Owned by WebUI)]
+    WebUI --> PostgreSQL[(PostgreSQL DB<br/>Owned by WebUI)]
     Vecpipe --> Qdrant[(Qdrant<br/>Vector DB)]
     
     WebUI -.->|uses| Shared[Shared Package]
@@ -1115,7 +1115,7 @@ For inter-service communication:
 ### Collection Metadata Synchronization
 
 When creating a job:
-1. WebUI creates job in SQLite via JobRepository
+1. WebUI creates job in PostgreSQL via JobRepository
 2. WebUI processes documents using shared.text_processing
 3. WebUI generates embeddings using shared.embedding
 4. WebUI stores vectors in Qdrant

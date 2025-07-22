@@ -29,14 +29,14 @@ class CollectionSummary(BaseModel):
     model_name: str
     created_at: str
     updated_at: str
-    job_count: int
+    operation_count: int
 
 
 class CollectionStats(BaseModel):
     total_files: int
     total_vectors: int
     total_size: int
-    job_count: int
+    operation_count: int
 
 
 class CollectionConfig(BaseModel):
@@ -48,7 +48,7 @@ class CollectionConfig(BaseModel):
     instruction: str | None
 
 
-class JobInfo(BaseModel):
+class OperationInfo(BaseModel):
     id: str
     status: str
     created_at: str
@@ -65,7 +65,7 @@ class CollectionDetails(BaseModel):
     stats: CollectionStats
     configuration: CollectionConfig
     source_directories: list[str]
-    jobs: list[JobInfo]
+    operations: list[OperationInfo]
 
 
 class CollectionRenameRequest(BaseModel):
@@ -88,7 +88,7 @@ class CollectionRenameRequest(BaseModel):
 
 class FileInfo(BaseModel):
     id: int
-    job_id: str
+    operation_id: str
     path: str
     size: int
     modified: str
@@ -134,7 +134,7 @@ async def list_collections(
                     model_name=collection["model_name"] or "Unknown",
                     created_at=collection["created_at"],
                     updated_at=collection["updated_at"],
-                    job_count=collection["job_count"],
+                    operation_count=collection["operation_count"],
                 )
             )
 
@@ -166,10 +166,10 @@ async def get_collection_details(
         qdrant = qdrant_manager.get_client()
         actual_vectors = 0
 
-        for job in details["jobs"]:
-            if job["status"] == "completed":
+        for operation in details["operations"]:
+            if operation["status"] == "completed":
                 try:
-                    qdrant_collection = f"job_{job['id']}"
+                    qdrant_collection = f"operation_{operation['id']}"
                     info = qdrant.get_collection(qdrant_collection)
                     if isinstance(info, CollectionInfo) and info.points_count is not None:
                         actual_vectors += info.points_count
@@ -186,7 +186,7 @@ async def get_collection_details(
             stats=CollectionStats(**details["stats"]),
             configuration=CollectionConfig(**details["configuration"]),
             source_directories=details["source_directories"],
-            jobs=[JobInfo(**job) for job in details["jobs"]],
+            operations=[OperationInfo(**operation) for operation in details["operations"]],
         )
 
     except HTTPException:
@@ -257,7 +257,7 @@ async def delete_collection(
             collection_name=collection_name, user_id=str(current_user["id"])
         )
 
-        if not deletion_info["job_ids"]:
+        if not deletion_info["operation_ids"]:
             raise HTTPException(
                 status_code=404,
                 detail=f"Collection '{collection_name}' not found or access denied",
@@ -280,19 +280,19 @@ async def delete_collection(
         deleted_artifacts = []
         failed_artifacts = []
 
-        for job_id in deletion_info["job_ids"]:
-            # Try to delete job directory
-            job_dir = Path("/app/jobs") / job_id
-            if job_dir.exists():
+        for operation_id in deletion_info["operation_ids"]:
+            # Try to delete operation directory
+            operation_dir = Path("/app/operations") / operation_id
+            if operation_dir.exists():
                 try:
-                    shutil.rmtree(job_dir)
-                    deleted_artifacts.append(str(job_dir))
+                    shutil.rmtree(operation_dir)
+                    deleted_artifacts.append(str(operation_dir))
                 except Exception as e:
-                    logger.error(f"Failed to delete job directory {job_dir}: {e}")
-                    failed_artifacts.append(str(job_dir))
+                    logger.error(f"Failed to delete operation directory {operation_dir}: {e}")
+                    failed_artifacts.append(str(operation_dir))
 
             # Try to delete output files
-            output_dir = Path("/app/output") / job_id
+            output_dir = Path("/app/output") / operation_id
             if output_dir.exists():
                 try:
                     shutil.rmtree(output_dir)
@@ -303,13 +303,13 @@ async def delete_collection(
 
         logger.info(
             f"User {current_user['username']} deleted collection '{collection_name}' "
-            f"({len(deletion_info['job_ids'])} jobs, {len(deleted_qdrant)} Qdrant collections)"
+            f"({len(deletion_info['operation_ids'])} operations, {len(deleted_qdrant)} Qdrant collections)"
         )
 
         return {
             "message": "Collection deleted successfully",
             "deleted": {
-                "jobs": len(deletion_info["job_ids"]),
+                "operations": len(deletion_info["operation_ids"]),
                 "qdrant_collections": len(deleted_qdrant),
                 "artifacts": len(deleted_artifacts),
             },

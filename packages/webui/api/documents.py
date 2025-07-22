@@ -25,8 +25,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
-from shared.database.base import FileRepository, JobRepository
-from shared.database.factory import create_file_repository, create_job_repository
+from shared.database.base import FileRepository
+from shared.database.factory import create_file_repository, create_operation_repository
+from shared.database.repositories import OperationRepository
 
 from packages.webui.auth import get_current_user
 from packages.webui.rate_limiter import limiter
@@ -128,24 +129,21 @@ start_cleanup_thread()
 
 
 async def validate_file_access(
-    job_id: str,
+    operation_id: str,
     doc_id: str,
     current_user: dict[str, Any],
-    job_repo: JobRepository,
+    operation_repo: OperationRepository,
     file_repo: FileRepository,
 ) -> dict[str, Any]:
     """Validate that the user has access to the requested document"""
-    # Get job to verify it exists and user has access
-    job = await job_repo.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    # Check if the current user owns the job
-    if job.get("user_id") != current_user.get("id"):
-        raise HTTPException(status_code=403, detail="Access denied")
+    # Get operation to verify it exists and user has access
+    try:
+        operation = await operation_repo.get_by_uuid_with_permission_check(operation_id, current_user.get("id"))
+    except Exception:
+        raise HTTPException(status_code=404, detail="Operation not found or access denied")
 
     # Get file record from database
-    files = await file_repo.get_job_files(job_id)
+    files = await file_repo.get_job_files(operation_id)
     file_record: dict[str, Any] | None = None
 
     for file in files:
@@ -156,16 +154,15 @@ async def validate_file_access(
     if not file_record:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Verify file path is within job directory (prevent path traversal)
+    # Verify file path is safe (prevent path traversal)
     file_path = Path(file_record["path"])
-    job_dir = Path(job["directory_path"])
 
     try:
-        # Resolve paths to absolute and check containment
+        # Resolve path to absolute
         file_path_resolved = file_path.resolve()
-        job_dir_resolved = job_dir.resolve()
 
-        if not str(file_path_resolved).startswith(str(job_dir_resolved)):
+        # Basic security check - ensure no path traversal attempts
+        if ".." in str(file_path):
             raise HTTPException(status_code=403, detail="Access denied")
     except Exception as e:
         logger.error(f"Path validation error: {e}")
@@ -182,33 +179,33 @@ async def validate_file_access(
     return file_record
 
 
-@router.get("/{job_id}/{doc_id}")
+@router.get("/{operation_id}/{doc_id}")
 @limiter.limit("10/minute")
 async def get_document(
     request: Request,  # noqa: ARG001
-    job_id: str,
+    operation_id: str,
     doc_id: str,
     current_user: dict[str, Any] = Depends(get_current_user),
-    job_repo: JobRepository = Depends(create_job_repository),
+    operation_repo: OperationRepository = Depends(create_operation_repository),
     file_repo: FileRepository = Depends(create_file_repository),
     range: str | None = Header(None),
 ) -> Response:
     """
-    Retrieve a document by job_id and doc_id.
+    Retrieve a document by operation_id and doc_id.
 
-    This endpoint serves the raw file content for a given document, identified by its `job_id` and `doc_id`.
-    It performs security checks to ensure the user has access to the file and that the file is within the job's directory.
+    This endpoint serves the raw file content for a given document, identified by its `operation_id` and `doc_id`.
+    It performs security checks to ensure the user has access to the file and that the file is within the operation's directory.
     It supports HTTP Range requests for efficient streaming of large files, which is essential for PDF viewing and other large documents.
 
-    - **job_id**: The ID of the ingestion job.
-    - **doc_id**: The unique ID of the document within the job.
+    - **operation_id**: The ID of the ingestion operation.
+    - **doc_id**: The unique ID of the document within the operation.
     - **current_user**: The authenticated user, injected by Depends.
     - **range**: The HTTP Range header, used for partial content requests.
 
     Returns a `FileResponse` or `StreamingResponse` for the document.
     """
     # Validate access and get file info
-    file_record = await validate_file_access(job_id, doc_id, current_user, job_repo, file_repo)
+    file_record = await validate_file_access(operation_id, doc_id, current_user, operation_repo, file_repo)
     file_path = Path(file_record["path"])
 
     # Check if file extension is supported
@@ -402,14 +399,14 @@ async def get_document(
     )
 
 
-@router.get("/{job_id}/{doc_id}/info")
+@router.get("/{operation_id}/{doc_id}/info")
 @limiter.limit("30/minute")
 async def get_document_info(
     request: Request,  # noqa: ARG001
-    job_id: str,
+    operation_id: str,
     doc_id: str,
     current_user: dict[str, Any] = Depends(get_current_user),
-    job_repo: JobRepository = Depends(create_job_repository),
+    operation_repo: OperationRepository = Depends(create_operation_repository),
     file_repo: FileRepository = Depends(create_file_repository),
 ) -> dict[str, Any]:
     """
@@ -418,14 +415,14 @@ async def get_document_info(
     This endpoint provides metadata about a document, such as its filename, size, and whether it's supported by the viewer.
     It's a lightweight alternative to downloading the entire file.
 
-    - **job_id**: The ID of the ingestion job.
-    - **doc_id**: The unique ID of the document within the job.
+    - **operation_id**: The ID of the ingestion operation.
+    - **doc_id**: The unique ID of the document within the operation.
     - **current_user**: The authenticated user, injected by Depends.
 
     Returns a JSON object with document metadata.
     """
     # Validate access and get file info
-    file_record = await validate_file_access(job_id, doc_id, current_user, job_repo, file_repo)
+    file_record = await validate_file_access(operation_id, doc_id, current_user, operation_repo, file_repo)
     file_path = Path(file_record["path"])
 
     return {

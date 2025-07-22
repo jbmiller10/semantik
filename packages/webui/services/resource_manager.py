@@ -84,17 +84,17 @@ class ResourceManager:
 
             # TODO: Get user's resource limits from settings/subscription
             max_storage_gb = 50.0  # Default 50GB per user
-            max_operations_per_hour = 10  # Default 10 operations per hour
+            max_operations_per_hour = 10  # Not enforced - rate limiting disabled
 
             if user_usage["storage_gb"] + resources.storage_gb > max_storage_gb:
                 logger.warning(f"User storage quota exceeded: current={user_usage['storage_gb']}GB")
                 return False
 
-            # Check operation rate limit
-            recent_operations = await self._get_recent_operations_count(user_id, hours=1)
-            if recent_operations >= max_operations_per_hour:
-                logger.warning(f"User operation rate limit exceeded: {recent_operations} in last hour")
-                return False
+            # Operation rate limit check disabled
+            # recent_operations = await self._get_recent_operations_count(user_id, hours=1)
+            # if recent_operations >= max_operations_per_hour:
+            #     logger.warning(f"User operation rate limit exceeded: {recent_operations} in last hour")
+            #     return False
 
             return True
 

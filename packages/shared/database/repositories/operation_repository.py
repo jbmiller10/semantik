@@ -76,7 +76,7 @@ class OperationRepository:
                 collection_id=collection_id,
                 user_id=user_id,
                 type=operation_type,
-                status=OperationStatus.PENDING,
+                status=OperationStatus.PENDING,  # Pass enum object directly
                 config=config,
                 meta=meta or {},
             )
@@ -212,7 +212,7 @@ class OperationRepository:
             if not operation:
                 raise EntityNotFoundError("operation", operation_uuid)
 
-            operation.status = status
+            operation.status = status  # Pass enum object directly
 
             if error_message is not None:
                 operation.error_message = error_message
@@ -331,12 +331,14 @@ class OperationRepository:
 
             # Handle status filtering
             if status_list is not None and len(status_list) > 0:
+                # Use enum objects directly with native_enum
                 query = query.where(Operation.status.in_(status_list))
             elif status is not None:
-                # Backwards compatibility
+                # Backwards compatibility - use enum object directly
                 query = query.where(Operation.status == status)
 
             if operation_type is not None:
+                # Use enum object directly
                 query = query.where(Operation.type == operation_type)
 
             # Get total count
@@ -382,7 +384,7 @@ class OperationRepository:
             if operation.status not in (OperationStatus.PENDING, OperationStatus.PROCESSING):
                 raise ValidationError(f"Cannot cancel operation in {operation.status} status", "status")
 
-            operation.status = OperationStatus.CANCELLED
+            operation.status = OperationStatus.CANCELLED  # Pass enum object directly
             operation.completed_at = datetime.now(UTC)
 
             await self.session.flush()
@@ -416,3 +418,23 @@ class OperationRepository:
         except Exception as e:
             logger.error(f"Failed to get active operations count: {e}")
             raise DatabaseOperationError("count", "operations", str(e)) from e
+
+    async def get_active_operations(self, collection_id: str) -> list[Operation]:
+        """Get active (pending/processing) operations for a collection.
+
+        Args:
+            collection_id: UUID of the collection
+
+        Returns:
+            List of active operations
+        """
+        try:
+            stmt = select(Operation).where(
+                Operation.collection_id == collection_id,
+                Operation.status.in_([OperationStatus.PENDING, OperationStatus.PROCESSING]),
+            )
+            result = await self.session.execute(stmt)
+            return list(result.scalars().all())
+        except Exception as e:
+            logger.error(f"Failed to get active operations: {e}")
+            raise DatabaseOperationError("list", "operations", str(e)) from e

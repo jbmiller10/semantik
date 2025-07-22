@@ -33,7 +33,7 @@ class TestWebSocketBasic:
         manager.connections["user1:job1"] = {mock_ws}
 
         # Send update
-        await manager.send_job_update("job1", "progress", {"progress": 50})
+        await manager.send_update("job1", "progress", {"progress": 50})
 
         # Verify WebSocket received the update
         mock_ws.send_json.assert_called_once()

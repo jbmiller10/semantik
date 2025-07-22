@@ -33,7 +33,6 @@ Usage:
 """
 
 import asyncio
-import contextlib
 import gc
 import hashlib
 import json
@@ -48,7 +47,6 @@ import psutil
 import redis.asyncio as redis
 from qdrant_client.models import PointStruct
 from shared.config import settings
-from shared.database.factory import create_collection_repository, create_file_repository, create_job_repository
 from shared.embedding import embedding_service
 from shared.gpu_scheduler import gpu_task
 from shared.managers.qdrant_manager import QdrantManager
@@ -99,67 +97,9 @@ CLEANUP_DELAY_PER_10K_VECTORS = 60  # Additional 1 minute per 10k vectors
 executor = ThreadPoolExecutor(max_workers=8)
 
 
-class CeleryTaskWithUpdates:
-    """Helper class to send updates to Redis Stream from Celery tasks.
-
-    Implements context manager protocol for automatic resource cleanup.
-    """
-
-    def __init__(self, job_id: str):
-        """Initialize with job ID."""
-        self.job_id = job_id
-        self.redis_url = settings.REDIS_URL
-        self.stream_key = f"job:updates:{job_id}"
-        self._redis_client: redis.Redis | None = None
-
-    async def _get_redis(self) -> redis.Redis:
-        """Get or create Redis client."""
-        if self._redis_client is None:
-            self._redis_client = await redis.from_url(self.redis_url, decode_responses=True)
-        assert self._redis_client is not None
-        return self._redis_client
-
-    async def send_update(self, update_type: str, data: dict) -> None:
-        """Send update to Redis Stream."""
-        try:
-            redis_client = await self._get_redis()
-            message = {"timestamp": datetime.now(UTC).isoformat(), "type": update_type, "data": data}
-
-            # Add to stream with automatic ID
-            await redis_client.xadd(self.stream_key, {"message": json.dumps(message)}, maxlen=REDIS_STREAM_MAX_LEN)
-
-            # Set TTL on first message
-            await redis_client.expire(self.stream_key, REDIS_STREAM_TTL)
-
-            logger.debug(f"Sent update to Redis stream {self.stream_key}: type={update_type}")
-        except Exception as e:
-            logger.error(f"Failed to send update to Redis stream: {e}")
-
-    async def close(self) -> None:
-        """Close Redis connection."""
-        if self._redis_client:
-            await self._redis_client.close()
-            self._redis_client = None
-
-    async def __aenter__(self) -> "CeleryTaskWithUpdates":
-        """Async context manager entry - ensures Redis connection is available."""
-        # Verify Redis connection is available
-        try:
-            redis_client = await self._get_redis()
-            await redis_client.ping()
-        except Exception as e:
-            logger.error(f"Failed to connect to Redis: {e}")
-            raise
-        return self
-
-    async def __aexit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:
-        """Async context manager exit - ensures cleanup even on exceptions."""
-        await self.close()
-
-
 class CeleryTaskWithOperationUpdates:
     """Helper class to send operation updates to Redis Stream from Celery tasks.
-    Similar to CeleryTaskWithUpdates but uses operation-progress:{operation_id} stream format.
+    Uses operation-progress:{operation_id} stream format for real-time updates.
     Implements context manager protocol for automatic resource cleanup.
     """
 
@@ -279,17 +219,8 @@ def cleanup_old_results(days_to_keep: int = DEFAULT_DAYS_TO_KEEP) -> dict[str, A
         # Celery's built-in result expiration or a more sophisticated cleanup
         logger.info(f"Starting cleanup of results older than {days_to_keep} days")
 
-        # Mark old jobs as archived (not deleting to preserve history)
-        try:
-            job_repo = create_job_repository()  # noqa: F841
-            # This would need a new method in the repository
-            # For now, just log what we would do
-            logger.info(f"Would archive jobs older than {cutoff_time}")
-            # stats["old_jobs_marked"] = await job_repo.archive_old_jobs(cutoff_time)
-        except Exception as e:
-            error_msg = f"Error archiving old jobs: {e}"
-            logger.error(error_msg)
-            stats["errors"].append(error_msg)
+        # Job archiving removed - operations are handled differently
+        logger.info(f"Cleanup of operations older than {cutoff_time} is handled by operation lifecycle")
 
         logger.info(f"Cleanup completed: {stats}")
         return stats
@@ -625,534 +556,6 @@ async def _audit_collection_deletions_batch(deletions: list[tuple[str, int]]) ->
             logger.info(f"Created {len(deletions)} audit log entries for collection deletions")
     except Exception as e:
         logger.error(f"Failed to create batch audit logs for collection deletions: {e}")
-
-
-@celery_app.task(bind=True, name="webui.tasks.process_embedding_job_task", max_retries=3, default_retry_delay=60)
-def process_embedding_job_task(self: Any, job_id: str) -> dict[str, Any]:
-    """
-    Process an embedding job as a Celery task.
-
-    This is a synchronous wrapper that runs the async processing logic.
-    """
-    # Run the async function in an event loop
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    try:
-        return loop.run_until_complete(_process_embedding_job_async(job_id, self))
-    except Exception as exc:
-        logger.error(f"Task failed for job {job_id}: {exc}")
-        # Don't retry for certain exceptions
-        if isinstance(exc, ValueError | TypeError):
-            raise  # Don't retry on programming errors
-        # Retry for other exceptions (network issues, temporary failures)
-        raise self.retry(exc=exc, countdown=60) from exc
-    finally:
-        loop.close()
-
-
-async def _process_embedding_job_async(job_id: str, celery_task: Any) -> dict[str, Any]:
-    """Async implementation of the embedding job processing."""
-    metrics_task = None
-
-    # Create repository instances
-    job_repo = create_job_repository()
-    file_repo = create_file_repository()
-    collection_repo = create_collection_repository()  # noqa: F841
-
-    # Import metrics if available
-    try:
-        from shared.metrics.prometheus import (
-            embedding_batch_duration,
-            metrics_collector,
-            record_chunks_created,
-            record_embeddings_generated,
-            record_file_failed,
-            record_file_processed,
-        )
-
-        metrics_tracking = True
-        # Start background metrics updater
-        metrics_task = asyncio.create_task(_update_metrics_continuously())
-    except ImportError:
-        metrics_tracking = False
-        logger.warning("Metrics tracking not available for embedding job")
-
-    # Use context manager for automatic Redis cleanup
-    async with CeleryTaskWithUpdates(job_id) as updater:
-        try:
-            # Update job status and set start time
-            await job_repo.update_job(job_id, {"status": "processing", "start_time": datetime.now(UTC).isoformat()})
-
-            # Send job started update via Redis
-            await updater.send_update("job_started", {"status": "processing"})
-
-            # Get job details
-            job = await job_repo.get_job(job_id)
-            if not job:
-                raise Exception(f"Job {job_id} not found")
-
-            # Determine collection name based on mode
-            if job.get("mode") == "append" and job.get("parent_job_id"):
-                # For append mode, use the parent job's collection
-                collection_name = f"job_{job['parent_job_id']}"
-            else:
-                # For create mode, use this job's ID
-                collection_name = f"job_{job_id}"
-
-            # Get pending files
-            files = await file_repo.get_job_files(job_id, status="pending")
-
-            # Update Celery task state (keep for backwards compatibility)
-            celery_task.update_state(
-                state="PROCESSING", meta={"total_files": len(files), "processed_files": 0, "status": "job_started"}
-            )
-
-            # Send initial file count via Redis
-            await updater.send_update(
-                "status_update", {"status": "processing", "total_files": len(files), "processed_files": 0}
-            )
-
-            # Get Qdrant client with retry logic
-            try:
-                qdrant = qdrant_manager.get_client()
-            except Exception as e:
-                error_msg = f"Failed to connect to Qdrant after retries: {e}"
-                logger.error(error_msg)
-                await job_repo.update_job(job_id, {"status": "failed", "error": error_msg})
-                raise
-
-            processed_count = 0
-            failed_count = 0
-
-            for file_idx, file_row in enumerate(files):
-                try:
-                    # For append mode, check if file already exists in collection
-                    if job.get("mode") == "append" and file_row.get("content_hash"):
-                        # Check if this content hash already exists in the collection
-                        existing_hashes = await file_repo.get_duplicate_files_in_collection(
-                            job["name"], [file_row["content_hash"]]
-                        )
-                        if file_row["content_hash"] in existing_hashes:
-                            logger.info(
-                                f"Skipping duplicate file: {file_row['path']} (content_hash: {file_row['content_hash']})"
-                            )
-                            # Mark as completed since it already exists
-                            await file_repo.update_file_status(
-                                job_id, file_row["path"], "completed", chunks_created=0, vectors_created=0
-                            )
-                            # Update processed files count
-                            current_job = await job_repo.get_job(job_id)
-                            if current_job:
-                                await job_repo.update_job(
-                                    job_id, {"processed_files": current_job.get("processed_files", 0) + 1}
-                                )
-                            processed_count += 1
-                            continue
-
-                    # Update current file
-                    await job_repo.update_job(job_id, {"current_file": file_row["path"]})
-
-                    # Update Celery task state (keep for backwards compatibility)
-                    celery_task.update_state(
-                        state="PROCESSING",
-                        meta={
-                            "total_files": len(files),
-                            "processed_files": file_idx,
-                            "current_file": file_row["path"],
-                            "status": "file_processing",
-                        },
-                    )
-
-                    # Send file processing update via Redis
-                    await updater.send_update(
-                        "file_processing",
-                        {
-                            "status": "processing",
-                            "current_file": file_row["path"],
-                            "processed_files": file_idx,
-                            "total_files": len(files),
-                        },
-                    )
-
-                    # Yield control to event loop to keep UI responsive
-                    await asyncio.sleep(0)
-
-                    # Extract text and create chunks
-                    logger.info(f"Processing file: {file_row['path']}")
-
-                    # Add memory tracking
-                    process = psutil.Process()
-                    initial_memory = process.memory_info().rss / 1024 / 1024  # MB
-                    logger.info(f"Memory before extraction: {initial_memory:.2f} MB")
-
-                    logger.info(f"Starting text extraction for: {file_row['path']}")
-                    # Run text extraction in thread pool to avoid blocking
-                    try:
-                        loop = asyncio.get_event_loop()
-                        # Use asyncio timeout instead of signal-based timeout
-                        file_path = file_row["path"]
-                        text_blocks = await asyncio.wait_for(
-                            loop.run_in_executor(executor, extract_and_serialize_thread_safe, file_path),
-                            timeout=300,  # 5 minute timeout
-                        )
-                    except TimeoutError:
-                        raise TimeoutError(
-                            f"Text extraction timed out after 300 seconds for {file_row['path']}"
-                        ) from None
-
-                    memory_after_extract = process.memory_info().rss / 1024 / 1024  # MB
-                    logger.info(
-                        f"Memory after extraction: {memory_after_extract:.2f} MB (delta: {memory_after_extract - initial_memory:.2f} MB)"
-                    )
-                    logger.info(f"Extracted {len(text_blocks)} text blocks")
-
-                    doc_id = hashlib.md5(file_row["path"].encode()).hexdigest()[:16]
-
-                    logger.info(
-                        f"Starting chunking for: {file_row['path']} with chunk_size={job['chunk_size']}, overlap={job['chunk_overlap']}"
-                    )
-
-                    # Create a chunker with job-specific settings
-                    chunker = TokenChunker(
-                        chunk_size=job["chunk_size"] or 600, chunk_overlap=job["chunk_overlap"] or 200
-                    )
-
-                    # Process each text block with its metadata
-                    all_chunks = []
-                    for text, metadata in text_blocks:
-                        if not text.strip():
-                            continue
-
-                        # Run chunking in thread pool to avoid blocking
-                        chunks = await loop.run_in_executor(
-                            executor,
-                            chunker.chunk_text,
-                            text,
-                            doc_id,
-                            metadata,  # Pass metadata to preserve page numbers
-                        )
-                        all_chunks.extend(chunks)
-
-                    memory_after_chunk = process.memory_info().rss / 1024 / 1024  # MB
-                    logger.info(
-                        f"Memory after chunking: {memory_after_chunk:.2f} MB (delta: {memory_after_chunk - memory_after_extract:.2f} MB)"
-                    )
-                    logger.info(f"Created {len(all_chunks)} chunks")
-
-                    # Record chunks created
-                    if metrics_tracking:
-                        record_chunks_created(len(all_chunks))
-
-                    # Update chunks variable to use all_chunks
-                    chunks = all_chunks
-
-                    # Generate embeddings
-                    texts = [chunk["text"] for chunk in chunks]
-
-                    # Use unified embedding service - run in thread pool to avoid blocking
-                    loop = asyncio.get_event_loop()
-
-                    # Time the embedding generation
-                    embed_start_time = time.time()
-
-                    # Prepare task ID for GPU scheduling
-                    task_id = celery_task.request.id if hasattr(celery_task, "request") else str(uuid.uuid4())
-
-                    # Function to run in executor with GPU scheduling
-                    def generate_embeddings_with_gpu(task_id: str = task_id, texts: list[str] = texts) -> Any:
-                        with gpu_task(task_id) as gpu_id:
-                            if gpu_id is None:
-                                logger.warning(f"No GPU available for task {task_id}, proceeding with CPU")
-                            else:
-                                logger.info(f"Task {task_id} using GPU {gpu_id}")
-
-                            return embedding_service.generate_embeddings(
-                                texts,
-                                job["model_name"],
-                                job["quantization"] or "float32",
-                                job["batch_size"],
-                                False,  # show_progress
-                                job["instruction"],
-                            )
-
-                    # Run with GPU scheduling in thread pool
-                    embeddings_array = await loop.run_in_executor(executor, generate_embeddings_with_gpu)
-
-                    # Record embedding time
-                    if metrics_tracking:
-                        embed_duration = time.time() - embed_start_time
-                        logger.info(f"Embedding generation took {embed_duration:.3f} seconds for {len(texts)} texts")
-                        embedding_batch_duration.observe(embed_duration)
-
-                    # Free texts list after embedding generation
-                    del texts
-
-                    if embeddings_array is None:
-                        raise Exception("Failed to generate embeddings")
-
-                    # Record embeddings generated
-                    if metrics_tracking:
-                        record_embeddings_generated(len(embeddings_array))
-
-                    embeddings = embeddings_array.tolist()
-
-                    # Free the numpy array after conversion
-                    del embeddings_array
-
-                    # Handle dimension override if specified
-                    target_dim = job["vector_dim"]
-                    if target_dim and len(embeddings) > 0:
-                        model_dim = len(embeddings[0])
-                        if target_dim != model_dim:
-                            logger.info(f"Adjusting embeddings from {model_dim} to {target_dim} dimensions")
-                            adjusted_embeddings = []
-                            for emb in embeddings:
-                                if target_dim < model_dim:
-                                    # Truncate
-                                    adjusted = emb[:target_dim]
-                                else:
-                                    # Pad with zeros
-                                    adjusted = emb + [0.0] * (target_dim - model_dim)
-
-                                # Renormalize
-                                norm = sum(x**2 for x in adjusted) ** 0.5
-                                if norm > 0:
-                                    adjusted = [x / norm for x in adjusted]
-                                adjusted_embeddings.append(adjusted)
-                            embeddings = adjusted_embeddings
-
-                    # Prepare points for Qdrant in batches to avoid memory spikes
-                    upload_batch_size = VECTOR_UPLOAD_BATCH_SIZE
-                    total_points = len(chunks)
-                    successfully_uploaded = 0
-
-                    for batch_start in range(0, total_points, upload_batch_size):
-                        batch_end = min(batch_start + upload_batch_size, total_points)
-                        points = []
-
-                        for i in range(batch_start, batch_end):
-                            chunk = chunks[i]
-                            embedding = embeddings[i]
-                            point = {
-                                "id": str(uuid.uuid4()),
-                                "vector": embedding,
-                                "payload": {
-                                    "job_id": job_id,
-                                    "doc_id": doc_id,
-                                    "chunk_id": chunk["chunk_id"],
-                                    "path": file_row["path"],
-                                    "content": chunk["text"],  # Store full text for hybrid search
-                                    "metadata": chunk.get("metadata", {}),  # Store metadata including page_number
-                                },
-                            }
-                            points.append(point)
-
-                        # Upload batch to Qdrant
-                        if points:
-                            try:
-                                point_structs = [
-                                    PointStruct(id=point["id"], vector=point["vector"], payload=point["payload"])
-                                    for point in points
-                                ]
-                                qdrant.upsert(collection_name=collection_name, points=point_structs, wait=True)
-                                successfully_uploaded += len(point_structs)
-                                logger.info(f"Successfully uploaded {len(point_structs)} points to Qdrant")
-                            except Exception as e:
-                                error_msg = f"Failed to upload vectors to Qdrant: {e}"
-                                logger.error(error_msg)
-                                await file_repo.update_file_status(job_id, file_row["path"], "failed", error=str(e))
-                                raise  # Re-raise to be caught by outer exception handler
-
-                        # Free the points batch
-                        del points
-
-                    # Update database after all batches uploaded
-                    await file_repo.update_file_status(
-                        job_id, file_row["path"], "completed", vectors_created=total_points, chunks_created=len(chunks)
-                    )
-                    # Get current job to update processed files count
-                    current_job = await job_repo.get_job(job_id)
-                    if current_job:
-                        await job_repo.update_job(
-                            job_id, {"processed_files": current_job.get("processed_files", 0) + 1}
-                        )
-
-                    processed_count += 1
-
-                    # Record file processed
-                    if metrics_tracking:
-                        record_file_processed("embedding")
-
-                    # Update Celery task state (keep for backwards compatibility)
-                    celery_task.update_state(
-                        state="PROCESSING",
-                        meta={
-                            "total_files": len(files),
-                            "processed_files": processed_count,
-                            "current_file": file_row["path"],
-                            "status": "file_completed",
-                        },
-                    )
-
-                    # Send file completed update via Redis
-                    await updater.send_update(
-                        "file_completed",
-                        {
-                            "status": "processing",
-                            "current_file": file_row["path"],
-                            "processed_files": processed_count,
-                            "total_files": len(files),
-                        },
-                    )
-
-                    # Free chunks and embeddings after upload
-                    del chunks
-                    del embeddings
-
-                    # Force garbage collection after each file
-                    gc.collect()
-
-                    # Update resource metrics periodically (force update)
-                    if metrics_tracking:
-                        # Force update by resetting the last update time
-                        metrics_collector.last_update = 0
-                        metrics_collector.update_resource_metrics()
-
-                    # Yield control to event loop after processing each file
-                    await asyncio.sleep(0)
-
-                except Exception as e:
-                    logger.error(f"Failed to process file {file_row['path']}: {e}")
-                    # Record file failed
-                    if metrics_tracking:
-                        record_file_failed("embedding", type(e).__name__)
-                    failed_count += 1
-                    # File status already updated in the database.update_file_status call above
-
-                    # Send error update via Redis
-                    await updater.send_update(
-                        "error",
-                        {
-                            "status": "processing",
-                            "current_file": file_row["path"],
-                            "error": str(e),
-                            "processed_files": processed_count,
-                            "failed_files": failed_count,
-                            "total_files": len(files),
-                        },
-                    )
-
-            # Check total vectors created from database
-            total_vectors_created = await file_repo.get_job_total_vectors(job_id)
-
-            if total_vectors_created == 0:
-                # No vectors were created - this is a failure condition
-                error_msg = (
-                    "No vectors were created. All files either failed to process or contained no extractable text."
-                )
-                logger.error(f"Job {job_id} failed: {error_msg}")
-                await job_repo.update_job(job_id, {"status": "failed", "error": error_msg})
-                raise Exception(error_msg)
-
-            # Verify collection has points before marking as completed
-            try:
-                # Use the correct collection name (considering append mode)
-                collection_info = qdrant.get_collection(collection_name)
-
-                if collection_info.points_count == 0:
-                    # This shouldn't happen if total_vectors_created > 0, but check anyway
-                    error_msg = f"Qdrant collection has 0 points but {total_vectors_created} vectors were expected"
-                    raise Exception(error_msg)
-
-                # Allow up to 10% discrepancy between database count and Qdrant count
-                if (
-                    collection_info.points_count is not None
-                    and collection_info.points_count < total_vectors_created * 0.9
-                ):
-                    logger.warning(
-                        f"Vector count mismatch: {collection_info.points_count} in Qdrant vs {total_vectors_created} expected"
-                    )
-
-                logger.info(f"Collection {collection_name} has {collection_info.points_count} points")
-            except Exception as e:
-                error_msg = f"Failed to verify Qdrant collection: {e}"
-                logger.error(error_msg)
-                await job_repo.update_job(job_id, {"status": "failed", "error": error_msg})
-                raise
-
-            # Mark job as completed only if vectors were successfully created
-            await job_repo.update_job(job_id, {"status": "completed", "current_file": None})
-
-            # Send job completed update via Redis
-            await updater.send_update(
-                "job_completed",
-                {
-                    "status": "completed",
-                    "processed_files": processed_count,
-                    "failed_files": failed_count,
-                    "total_vectors": total_vectors_created,
-                },
-            )
-
-            # Clean up Redis stream for completed job
-            try:
-                from webui.websocket_manager import ws_manager
-
-                await ws_manager.cleanup_job_stream(job_id)
-                logger.info(f"Cleaned up Redis stream for completed job {job_id}")
-            except Exception as e:
-                logger.warning(f"Failed to clean up Redis stream for job {job_id}: {e}")
-
-                return {
-                    "status": "completed",
-                    "job_id": job_id,
-                    "processed_files": processed_count,
-                    "failed_files": failed_count,
-                    "total_vectors": total_vectors_created,
-                }
-
-        except Exception as e:
-            logger.error(f"Job {job_id} failed: {e}")
-            await job_repo.update_job(job_id, {"status": "failed", "error": str(e)})
-
-            # Send job failed update via Redis
-            await updater.send_update("job_failed", {"status": "failed", "error": str(e)})
-
-            raise
-
-        finally:
-            # Cancel metrics updater task if it exists
-            if metrics_task:
-                metrics_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await metrics_task
-            # Note: Redis connection cleanup is handled automatically by the context manager
-
-    # Return a default result if we somehow reach here
-    return {
-        "status": "failed",
-        "job_id": job_id,
-        "processed_files": 0,
-        "failed_files": 0,
-        "total_vectors": 0,
-        "error": "Unexpected error in task execution",
-    }
-
-
-async def _update_metrics_continuously() -> None:
-    """Background task to update resource metrics during job processing."""
-    while True:
-        try:
-            from shared.metrics.prometheus import metrics_collector
-
-            # Only update if it's been more than 0.5 seconds since last update
-            current_time = time.time()
-            if current_time - metrics_collector.last_update > 0.5:
-                metrics_collector.update_resource_metrics()
-        except Exception as e:
-            logger.warning(f"Error updating metrics in job: {e}")
-        await asyncio.sleep(1)  # Check every 1 second
 
 
 def _handle_task_failure(
@@ -1599,6 +1002,12 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
         except Exception as e:
             logger.error(f"Operation {operation_id} failed: {e}", exc_info=True)
 
+            # Rollback the session to clear any pending transaction
+            try:
+                await db.rollback()
+            except Exception as rollback_error:
+                logger.error(f"Failed to rollback session: {rollback_error}")
+
             # Ensure status update even if some components failed to initialize
             try:
                 # Record failure metrics
@@ -1658,13 +1067,17 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         await operation_repo.update_status(
                             operation_id, OperationStatus.FAILED, error_message="Task terminated unexpectedly"
                         )
+                        # Commit the status update
+                        await db.commit()
             except Exception as final_error:
                 logger.error(f"Failed to finalize operation status: {final_error}")
+                # Try to rollback if the finalization failed
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass  # Best effort rollback
 
             # Note: Redis connection cleanup is handled automatically by the context manager
-
-            # Commit any pending changes
-            await db.commit()
 
 
 async def _record_operation_metrics(operation_repo: Any, operation_id: str, metrics: dict[str, Any]) -> None:
@@ -1815,11 +1228,24 @@ async def _process_index_operation(
             vector_store_name = f"col_{collection['uuid'].replace('-', '_')}"
             logger.warning(f"Collection {collection['id']} missing vector_store_name, generated: {vector_store_name}")
 
-        # Get vector dimension from config
-        from webui.services.collection_service import DEFAULT_VECTOR_DIMENSION
+        # Get vector dimension from the model
+        from shared.embedding.models import get_model_config
 
         config = collection.get("config", {})
-        vector_dim = config.get("vector_dim", DEFAULT_VECTOR_DIMENSION)
+
+        # First try to get from config
+        vector_dim = config.get("vector_dim")
+
+        # If not in config, get from model configuration
+        if not vector_dim:
+            model_name = collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
+            model_config = get_model_config(model_name)
+            if model_config:
+                vector_dim = model_config.dimension
+            else:
+                # Fallback for unknown models
+                logger.warning(f"Unknown model {model_name}, using default dimension 1024")
+                vector_dim = 1024
 
         # Create collection in Qdrant with monitoring
         from qdrant_client.models import Distance, VectorParams
@@ -1877,7 +1303,7 @@ async def _process_append_operation(
     operation: dict,
     collection: dict,
     collection_repo: Any,  # noqa: ARG001
-    document_repo: Any,  # noqa: ARG001
+    document_repo: Any,
     updater: CeleryTaskWithOperationUpdates,
 ) -> dict[str, Any]:
     """Process APPEND operation - Add documents to existing collection with monitoring."""
@@ -1890,74 +1316,250 @@ async def _process_append_operation(
         raise ValueError("source_path is required for APPEND operation")
 
     # Import required modules for file scanning
-    from shared.database.database import AsyncSessionLocal
-    from shared.database.repositories.document_repository import DocumentRepository
     from webui.services.file_scanning_service import FileScanningService
 
-    # Use proper async session for new repositories
-    async with AsyncSessionLocal() as session:
-        # Create new repository instance with session
-        doc_repo = DocumentRepository(session)
+    # Use the existing document_repo and its session
+    session = document_repo.session
 
-        # Create file scanning service
-        file_scanner = FileScanningService(db_session=session, document_repo=doc_repo)
+    # Create file scanning service with existing session
+    file_scanner = FileScanningService(db_session=session, document_repo=document_repo)
 
-        # Scan directory and register documents
-        await updater.send_update("scanning_files", {"status": "scanning", "source_path": source_path})
+    # Scan directory and register documents
+    await updater.send_update("scanning_files", {"status": "scanning", "source_path": source_path})
 
-        try:
-            # Time document scanning
-            scan_start = time.time()
+    try:
+        # Time document scanning
+        scan_start = time.time()
 
-            scan_stats = await file_scanner.scan_directory_and_register_documents(
-                collection_id=collection["id"],
-                source_path=source_path,
-                recursive=True,  # Default to recursive scanning
-                batch_size=EMBEDDING_BATCH_SIZE,  # Commit in batches for large directories
-            )
+        scan_stats = await file_scanner.scan_directory_and_register_documents(
+            collection_id=collection["id"],
+            source_path=source_path,
+            recursive=True,  # Default to recursive scanning
+            batch_size=EMBEDDING_BATCH_SIZE,  # Commit in batches for large directories
+        )
 
-            # Record scanning duration
-            scan_duration = time.time() - scan_start
-            document_processing_duration.labels(operation_type="append").observe(scan_duration)
+        # Record scanning duration
+        scan_duration = time.time() - scan_start
+        document_processing_duration.labels(operation_type="append").observe(scan_duration)
 
-            # Final commit to ensure any remaining transactions are persisted
-            await session.commit()
+        # Send progress update
+        await updater.send_update(
+            "scanning_completed",
+            {
+                "status": "scanning_completed",
+                "total_files_found": scan_stats["total_files_found"],
+                "new_files_registered": scan_stats["new_files_registered"],
+                "duplicate_files_skipped": scan_stats["duplicate_files_skipped"],
+                "errors_count": len(scan_stats.get("errors", [])),
+            },
+        )
 
-            # Send progress update
+        # Record document processing metrics
+        for _ in range(scan_stats["new_files_registered"]):
+            record_document_processed("append", "registered")
+        for _ in range(scan_stats["duplicate_files_skipped"]):
+            record_document_processed("append", "skipped")
+        for _ in range(len(scan_stats.get("errors", []))):
+            record_document_processed("append", "failed")
+
+        # Audit log the append operation
+        await _audit_log_operation(
+            collection["id"],
+            operation["id"],
+            operation.get("user_id"),
+            "documents_appended",
+            {
+                "source_path": source_path,
+                "documents_added": scan_stats["new_files_registered"],
+                "duplicates_skipped": scan_stats["duplicate_files_skipped"],
+            },
+        )
+
+        # Process registered documents to generate embeddings
+        if scan_stats["new_files_registered"] > 0:
             await updater.send_update(
-                "scanning_completed",
+                "processing_embeddings",
                 {
-                    "status": "scanning_completed",
-                    "total_files_found": scan_stats["total_files_found"],
-                    "new_files_registered": scan_stats["new_files_registered"],
-                    "duplicate_files_skipped": scan_stats["duplicate_files_skipped"],
-                    "errors_count": len(scan_stats.get("errors", [])),
+                    "status": "generating_embeddings",
+                    "documents_to_process": scan_stats["new_files_registered"],
                 },
             )
 
-            # Record document processing metrics
-            for _ in range(scan_stats["new_files_registered"]):
-                record_document_processed("append", "registered")
-            for _ in range(scan_stats["duplicate_files_skipped"]):
-                record_document_processed("append", "skipped")
-            for _ in range(len(scan_stats.get("errors", []))):
-                record_document_processed("append", "failed")
-
-            # Audit log the append operation
-            await _audit_log_operation(
+            # Get newly registered documents
+            # Note: We'll get all documents and filter by path since there's no source_filter
+            all_docs, _ = await doc_repo.list_by_collection(
                 collection["id"],
-                operation["id"],
-                operation.get("user_id"),
-                "documents_appended",
-                {
-                    "source_path": source_path,
-                    "documents_added": scan_stats["new_files_registered"],
-                    "duplicates_skipped": scan_stats["duplicate_files_skipped"],
-                },
+                status=None,  # Get all statuses
+                limit=10000,  # High limit to get all docs
             )
 
-            # TODO: Process registered documents to generate embeddings and add to Qdrant
-            # This will be implemented in future tasks
+            # Filter documents by source path
+            documents = [doc for doc in all_docs if doc.file_path.startswith(source_path)]
+
+            # Get collection configuration
+            embedding_model = collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
+            quantization = collection.get("quantization", "float16")
+            chunk_size = collection.get("chunk_size", 1000)
+            chunk_overlap = collection.get("chunk_overlap", 200)
+            batch_size = config.get("batch_size", EMBEDDING_BATCH_SIZE)
+            instruction = config.get("instruction")
+
+            # Get the Qdrant collection name
+            qdrant_collection_name = collection.get("vector_store_name")
+            if not qdrant_collection_name:
+                raise ValueError("Collection missing vector_store_name")
+
+            # Get Qdrant client
+            qdrant_client = qdrant_manager.get_client()
+
+            # Process documents and generate embeddings
+            processed_count = 0
+            failed_count = 0
+            total_vectors_created = 0
+
+            # Import DocumentStatus for status updates
+            from shared.database.models import DocumentStatus
+
+            for doc in documents:
+                try:
+                    # Extract text from document
+                    logger.info(f"Processing document: {doc.file_path}")
+
+                    # Run text extraction in thread pool
+                    loop = asyncio.get_event_loop()
+                    text_blocks = await asyncio.wait_for(
+                        loop.run_in_executor(executor, extract_and_serialize_thread_safe, doc.file_path),
+                        timeout=300,  # 5 minute timeout
+                    )
+
+                    if not text_blocks:
+                        logger.warning(f"No text extracted from {doc.file_path}")
+                        await doc_repo.update_status(
+                            doc.id,
+                            DocumentStatus.FAILED,
+                            error_message="No text content extracted",
+                        )
+                        failed_count += 1
+                        continue
+
+                    # Create chunks
+                    chunker = TokenChunker(
+                        chunk_size=chunk_size,
+                        chunk_overlap=chunk_overlap,
+                    )
+
+                    chunks = chunker.chunk_blocks(text_blocks, doc.id)
+                    logger.info(f"Created {len(chunks)} chunks for {doc.file_path}")
+
+                    if not chunks:
+                        logger.warning(f"No chunks created for {doc.file_path}")
+                        await doc_repo.update_status(
+                            doc.id,
+                            DocumentStatus.FAILED,
+                            error_message="No chunks created",
+                        )
+                        failed_count += 1
+                        continue
+
+                    # Generate embeddings
+                    texts = [chunk["text"] for chunk in chunks]
+
+                    # Prepare task ID for GPU scheduling
+                    task_id = str(uuid.uuid4())
+
+                    # Function to run in executor with GPU scheduling
+                    def generate_embeddings_with_gpu(task_id: str = task_id, texts: list[str] = texts) -> Any:
+                        with gpu_task(task_id) as gpu_id:
+                            if gpu_id is None:
+                                logger.warning(f"No GPU available for task {task_id}, proceeding with CPU")
+                            else:
+                                logger.info(f"Task {task_id} using GPU {gpu_id}")
+
+                            return embedding_service.generate_embeddings(
+                                texts,
+                                embedding_model,
+                                quantization,
+                                batch_size,
+                                False,  # show_progress
+                                instruction,
+                            )
+
+                    # Run with GPU scheduling in thread pool
+                    embeddings_array = await loop.run_in_executor(executor, generate_embeddings_with_gpu)
+
+                    if embeddings_array is None:
+                        raise Exception("Failed to generate embeddings")
+
+                    embeddings = embeddings_array.tolist()
+
+                    # Prepare points for Qdrant
+                    points = []
+                    for i, chunk in enumerate(chunks):
+                        point = PointStruct(
+                            id=str(uuid.uuid4()),
+                            vector=embeddings[i],
+                            payload={
+                                "collection_id": collection["id"],
+                                "doc_id": doc.id,
+                                "chunk_id": chunk["chunk_id"],
+                                "path": doc.file_path,
+                                "content": chunk["text"],
+                                "metadata": chunk.get("metadata", {}),
+                            },
+                        )
+                        points.append(point)
+
+                    # Upload to Qdrant in batches
+                    for batch_start in range(0, len(points), VECTOR_UPLOAD_BATCH_SIZE):
+                        batch_end = min(batch_start + VECTOR_UPLOAD_BATCH_SIZE, len(points))
+                        batch_points = points[batch_start:batch_end]
+
+                        qdrant_client.upsert(
+                            collection_name=qdrant_collection_name,
+                            points=batch_points,
+                        )
+
+                    # Update document status
+                    await doc_repo.update_status(
+                        doc.id,
+                        DocumentStatus.COMPLETED,
+                        chunk_count=len(chunks),
+                    )
+
+                    processed_count += 1
+                    total_vectors_created += len(chunks)
+
+                    # Send progress update
+                    await updater.send_update(
+                        "document_processed",
+                        {
+                            "processed": processed_count,
+                            "failed": failed_count,
+                            "total": len(documents),
+                            "current_document": doc.file_path,
+                        },
+                    )
+
+                except Exception as e:
+                    logger.error(f"Failed to process document {doc.file_path}: {e}")
+                    await doc_repo.update_status(
+                        doc.id,
+                        DocumentStatus.FAILED,
+                        error_message=str(e),
+                    )
+                    failed_count += 1
+
+            # Update collection vector count
+            await collection_repo.update(
+                collection["id"],
+                {"vector_count": collection.get("vector_count", 0) + total_vectors_created},
+            )
+
+            # Log final results
+            logger.info(
+                f"Embedding generation complete: {processed_count} processed, "
+                f"{failed_count} failed, {total_vectors_created} vectors created"
+            )
 
             await updater.send_update(
                 "append_completed",
@@ -1969,21 +1571,21 @@ async def _process_append_operation(
                 },
             )
 
-            return {
-                "success": True,
-                "source_path": source_path,
-                "documents_added": scan_stats["new_files_registered"],
-                "total_files_scanned": scan_stats["total_files_found"],
-                "duplicates_skipped": scan_stats["duplicate_files_skipped"],
-                "total_size_bytes": scan_stats["total_size_bytes"],
-                "scan_duration_seconds": scan_duration,
-                "errors": scan_stats.get("errors", []),
-            }
+        return {
+            "success": True,
+            "source_path": source_path,
+            "documents_added": scan_stats["new_files_registered"],
+            "total_files_scanned": scan_stats["total_files_found"],
+            "duplicates_skipped": scan_stats["duplicate_files_skipped"],
+            "total_size_bytes": scan_stats["total_size_bytes"],
+            "scan_duration_seconds": scan_duration,
+            "errors": scan_stats.get("errors", []),
+        }
 
-        except Exception as e:
-            logger.error(f"Failed to scan and register documents: {e}")
-            await session.rollback()
-            raise
+    except Exception as e:
+        logger.error(f"Failed to scan and register documents: {e}")
+        # Don't rollback here - parent function handles the session
+        raise
 
 
 async def reindex_handler(

@@ -44,10 +44,11 @@ Semantik is a production-ready, high-performance document embedding and vector s
          │ └────────────────────────────────────────────────────────────┘
          │                              │
 ┌────────┴─────────┐                   │
-│   SQLite DB      │                   │
+│  PostgreSQL DB   │                   │
 │  (WebUI-owned)   │                   │
 │  Jobs, Files,    │                   │
-│  Users, Tokens   │                   │
+│  Users, Tokens,  │                   │
+│  Collections     │                   │
 └──────────────────┘                   │
                                       │
 ┌──────────────────────────────────────┴─────────────────────────────────┐
@@ -91,7 +92,7 @@ The headless data processing and search API that forms the heart of the system. 
 
 ### 2. WebUI Package (`packages/webui/`)
 
-User-facing application providing authentication, job management, and search interface. Owns and manages the SQLite database containing user data, jobs, and files.
+User-facing application providing authentication, job management, and search interface. Owns and manages the PostgreSQL database containing user data, jobs, files, and collections.
 
 **Backend Components:**
 - **main.py**: FastAPI application with modular router architecture
@@ -120,7 +121,7 @@ Common components and utilities used by both webui and vecpipe packages. This pa
 
 **Database Module (`shared/database/`):**
 - **Repository Pattern**: Clean data access layer with type-safe interfaces
-- **SQLite Implementation**: Concrete implementations of repository interfaces
+- **PostgreSQL Implementation**: Concrete implementations of repository interfaces
 - **Legacy Wrappers**: Deprecated direct database functions for backward compatibility
 - **Schema Management**: Centralized database schema definitions
 
@@ -147,7 +148,7 @@ Common components and utilities used by both webui and vecpipe packages. This pa
 ### 4. Database Architecture
 
 **Hybrid Database Design:**
-- **SQLite**: Relational data (jobs, files, users, auth tokens)
+- **PostgreSQL**: Relational data (jobs, files, users, auth tokens, collections)
 - **Qdrant**: Vector storage and similarity search
 
 **Key Design Decisions:**
@@ -164,7 +165,7 @@ For detailed documentation, see [DATABASE_ARCH.md](./DATABASE_ARCH.md)
 ```
 1. User uploads documents via WebUI
    ↓
-2. WebUI creates job record in SQLite
+2. WebUI creates job record in PostgreSQL
    ↓
 3. Directory scan identifies processable files
    ↓

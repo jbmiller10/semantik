@@ -3,24 +3,24 @@
 ## Overview
 
 The Document Embedding System uses a hybrid database architecture combining:
-- **SQLite** for relational data (jobs, files, users, authentication)
+- **PostgreSQL** for relational data (jobs, files, users, authentication, collections)
 - **Qdrant** for vector storage and similarity search
 
 This architecture separates transactional/metadata storage from high-performance vector operations, following the architectural principle of using the right tool for each job.
 
 **Key Architectural Decisions**:
-- The SQLite database is owned and managed exclusively by the **webui package**
+- The PostgreSQL database is owned and managed exclusively by the **webui package**
 - All database operations use the **repository pattern** implemented in `packages/shared/database/`
 - The **vecpipe package** has no direct database access - it must use webui API endpoints
 - The **shared package** provides the repository interfaces and implementations used by webui
 
 ## Database Distribution Strategy
 
-### SQLite (Relational Data)
-- **Purpose**: Stores structured metadata, job tracking, user management, authentication
-- **Location**: `data/webui.db` (primary), with backups at `data/webui.db.backup`
-- **Why SQLite**: Lightweight, serverless, perfect for single-instance deployments
-- **Data Types**: User accounts, job metadata, file processing status, authentication tokens
+### PostgreSQL (Relational Data)
+- **Purpose**: Stores structured metadata, job tracking, user management, authentication, collections
+- **Connection**: Configured via `DATABASE_URL` or individual connection parameters
+- **Why PostgreSQL**: Production-ready, supports concurrent operations, advanced features, scalable
+- **Data Types**: User accounts, job metadata, file processing status, authentication tokens, collection metadata
 
 ### Qdrant (Vector Database)
 - **Purpose**: Stores document embeddings and enables similarity search
@@ -28,16 +28,15 @@ This architecture separates transactional/metadata storage from high-performance
 - **Why Qdrant**: High-performance vector search, supports various distance metrics, scalable
 - **Data Types**: Document chunks as vectors with metadata payloads
 
-## SQLite Database Schema
+## PostgreSQL Database Schema
 
-### Location and Configuration
-- **Primary Database**: `data/webui.db`
+### Configuration
+- **Connection**: Via `DATABASE_URL` environment variable or individual parameters
 - **Ownership**: Exclusively owned by webui service
 - **Access Pattern**: Repository pattern via `packages/shared/database/`
-- **Legacy Access**: Deprecated wrappers in `packages/shared/database/legacy_wrappers.py`
-- **Backup Strategy**: Manual backups to `data/webui.db.backup`
-- **Connection Management**: Handled by `packages/webui/database.py`
-- **Initialization**: Auto-creates tables on first run via `init_db()`
+- **Migration Tool**: Alembic for schema versioning and migrations
+- **Connection Pool**: SQLAlchemy connection pooling for performance
+- **Database Name**: Configurable, defaults to `semantik`
 
 ### Table Structures
 
@@ -271,10 +270,11 @@ The system uses a clean repository pattern for all database operations, implemen
 - `AuthTokenRepository`: Abstract interface for authentication tokens
 - `CollectionRepository`: Abstract interface for collection metadata
 
-**Concrete Implementations** (`sqlite_implementation.py`):
-- SQLite-specific implementations of all repository interfaces
-- Handles connection management, transactions, and SQL queries
+**Concrete Implementations** (`postgres_implementation.py`):
+- PostgreSQL-specific implementations of all repository interfaces
+- Handles connection pooling, transactions, and SQL queries
 - Type-safe operations with proper error handling
+- Uses SQLAlchemy for database abstraction
 
 **Factory Functions**:
 ```python
@@ -314,11 +314,12 @@ with create_job_repository() as repo:
 
 ### Connection Management
 
-**SQLite**:
-- Direct connection per operation (no pooling needed)
-- Thread-safe with proper transaction handling
-- Connection string: `sqlite:///data/webui.db`
+**PostgreSQL**:
+- Connection pooling via SQLAlchemy
+- Configurable pool size and overflow settings
+- Connection string: `postgresql://user:password@host:port/database`
 - Access only through repository pattern
+- Automatic retry on connection failures
 
 **Qdrant**:
 - Singleton connection manager with retry logic
@@ -336,15 +337,18 @@ with create_job_repository() as repo:
 6. Final job status update
 
 **Atomic Operations**:
-- All SQLite operations use implicit transactions
+- PostgreSQL transactions ensure ACID compliance
 - File status updates are atomic
 - Job statistics computed from file aggregations
+- Proper rollback on errors
 
 ### Error Handling
 
-**SQLite Errors**:
+**PostgreSQL Errors**:
 - Unique constraint violations (duplicate users/jobs)
 - Foreign key violations (orphaned files)
+- Connection pool exhaustion handling
+- Deadlock detection and retry
 - Graceful handling with meaningful error messages
 
 **Repository Pattern Benefits**:
@@ -392,7 +396,7 @@ with create_job_repository() as repo:
    └─> Searches Qdrant for similar vectors
    
 3. Vecpipe returns results to WebUI
-   └─> WebUI enriches with file metadata (from SQLite)
+   └─> WebUI enriches with file metadata (from PostgreSQL)
    └─> Format for UI display
 ```
 
@@ -400,10 +404,12 @@ with create_job_repository() as repo:
 
 ### Query Optimization
 
-**SQLite**:
-- Indexes on foreign keys and frequently queried fields
-- Compound queries use indexed fields first
-- PRAGMA optimizations for read-heavy workload
+**PostgreSQL**:
+- B-tree indexes on primary keys and foreign keys
+- Composite indexes for complex queries
+- ANALYZE statistics for query planner
+- Partial indexes for filtered queries
+- Connection pooling for concurrent access
 
 **Qdrant**:
 - Pre-filtering with metadata before vector search
@@ -418,23 +424,25 @@ with create_job_repository() as repo:
 - Batch vector uploads (4000 points/batch)
 
 **Database Writes**:
-- Bulk insert for initial file records
+- Bulk insert using PostgreSQL COPY or multi-value INSERT
 - Batch status updates during processing
 - Transaction batching for related updates
+- Write-ahead logging for durability
 
 ## Backup and Recovery
 
-### SQLite Backup
+### PostgreSQL Backup
 
 **Manual Backup**:
 ```bash
-cp data/webui.db data/webui.db.backup
+pg_dump $DATABASE_URL > backup/semantik_$(date +%Y%m%d).sql
 ```
 
-**Automated Backup** (not implemented):
-- Could use SQLite backup API
-- Schedule regular snapshots
-- Rotate old backups
+**Automated Backup**:
+- Use pg_dump with cron scheduling
+- Support for incremental backups with pg_basebackup
+- Point-in-time recovery with WAL archiving
+- Backup rotation policies
 
 ### Qdrant Backup
 
@@ -444,9 +452,9 @@ client.create_snapshot(collection_name="work_docs")
 ```
 
 **Recovery Process**:
-1. Restore SQLite from backup
-2. Recreate Qdrant collections
-3. Re-ingest vectors from parquet files
+1. Restore PostgreSQL from backup using pg_restore or psql
+2. Recreate Qdrant collections if needed
+3. Re-ingest vectors from parquet files if necessary
 
 ### Data Integrity
 
@@ -488,11 +496,12 @@ client.create_snapshot(collection_name="work_docs")
 6. **Backup Automation**: Scheduled backups with retention
 7. **Performance Monitoring**: Query performance tracking
 8. **Data Versioning**: Track embedding model versions
-9. **Migration to PostgreSQL**: For better concurrency and scaling
+9. **Advanced PostgreSQL Features**: JSON columns, full-text search, materialized views
 10. **Remove Legacy Wrappers**: Complete migration from legacy database functions
 
 ### Scalability Path
-1. **SQLite → PostgreSQL**: For concurrent write scaling
-2. **Qdrant Clustering**: For distributed vector search
-3. **Read Replicas**: For search performance
+1. **PostgreSQL Read Replicas**: For read scaling
+2. **Connection Pooling**: PgBouncer for connection management
+3. **Qdrant Clustering**: For distributed vector search
 4. **Caching Layer**: Redis for frequent queries
+5. **Partitioning**: Table partitioning for large datasets

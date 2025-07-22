@@ -84,9 +84,9 @@ case "$SERVICE" in
             wait_for_service "$SEARCH_HOST" 8000 "Search API"
         fi
         
-        # Run database migrations if needed
-        echo "Setting up database..."
-        python -c "from shared.database import init_db; init_db()"
+        # Run database migrations using Alembic
+        echo "Running database migrations..."
+        alembic upgrade head
         
         # Start the WebUI service
         exec uvicorn webui.main:app \

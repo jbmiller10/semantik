@@ -85,7 +85,7 @@ class WebSocketTestHarness:
 
     async def broadcast_and_verify(self, job_id: str, message_type: str, data: dict[str, Any]):
         """Broadcast a message and verify all clients received it."""
-        await self.manager.send_job_update(job_id, message_type, data)
+        await self.manager.send_update(job_id, message_type, data)
 
         # Allow message propagation
         await asyncio.sleep(0.1)

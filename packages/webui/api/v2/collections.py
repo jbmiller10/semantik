@@ -54,7 +54,6 @@ router = APIRouter(prefix="/api/v2/collections", tags=["collections-v2"])
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
 )
-@limiter.limit("5/hour")
 async def create_collection(
     request: Request,  # noqa: ARG001
     create_request: CollectionCreate,

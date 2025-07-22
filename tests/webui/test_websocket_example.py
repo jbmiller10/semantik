@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from packages.webui.tasks import CeleryTaskWithUpdates
+from packages.webui.tasks import CeleryTaskWithOperationUpdates
 from packages.webui.websocket_manager import RedisStreamWebSocketManager
 from tests.webui.test_websocket_helpers import (
     WebSocketTestHarness,
@@ -45,7 +45,7 @@ class TestWebSocketExamples:
             assert initial_messages[0]["data"]["total_files"] == 5
 
             # Send an update
-            await manager.send_job_update("job123", "progress", {"progress": 50, "processed_files": 2})
+            await manager.send_update("job123", "progress", {"progress": 50, "processed_files": 2})
 
             await asyncio.sleep(0.1)
 
@@ -111,7 +111,7 @@ class TestWebSocketExamples:
             client.clear_messages()
 
             # Simulate job updates
-            updater = CeleryTaskWithUpdates("job789")
+            updater = CeleryTaskWithOperationUpdates("job789")
             updater._redis_client = mock_redis_client
 
             await simulate_job_updates(updater, delays=[0.05] * 6)
@@ -161,7 +161,7 @@ class TestWebSocketExamples:
             bad_client.websocket.send_json.side_effect = Exception("Connection lost")
 
             # Send update - should handle the failure gracefully
-            await manager.send_job_update("job_error", "test", {"data": "test"})
+            await manager.send_update("job_error", "test", {"data": "test"})
             await asyncio.sleep(0.1)
 
             # Good client should still receive the message
@@ -205,8 +205,8 @@ class TestWebSocketExamples:
                 client.clear_messages()
 
             # Send updates to different jobs
-            await manager.send_job_update("job_A", "update_A", {"job": "A"})
-            await manager.send_job_update("job_B", "update_B", {"job": "B"})
+            await manager.send_update("job_A", "update_A", {"job": "A"})
+            await manager.send_update("job_B", "update_B", {"job": "B"})
 
             await asyncio.sleep(0.1)
 

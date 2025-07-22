@@ -12,7 +12,7 @@ def parse_user_id(user_id: str | int) -> int:
 
     The repository interface uses string IDs for consistency across different
     storage backends (some databases use UUIDs, others use integers).
-    The SQLite implementation requires integer IDs.
+    The PostgreSQL implementation uses integer IDs.
 
     Args:
         user_id: User ID as string or integer

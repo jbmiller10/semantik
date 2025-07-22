@@ -12,7 +12,7 @@ from alembic import context
 sys.path.insert(0, str(Path(__file__).parent.parent / "packages"))
 
 # Import our settings and models
-from shared.config import settings
+from shared.config.postgres import postgres_config
 from shared.database.models import Base
 
 # this is the Alembic Config object, which provides
@@ -24,17 +24,12 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Set the SQLAlchemy URL from environment variable or settings
-
-database_url = os.environ.get("ALEMBIC_DATABASE_URL", f"sqlite:///{settings.webui_db}")
+# Set the SQLAlchemy URL from environment variable or PostgreSQL config
+database_url = os.environ.get("ALEMBIC_DATABASE_URL", postgres_config.sync_database_url)
 config.set_main_option("sqlalchemy.url", database_url)
 
-# Log database location without exposing full URL
-if database_url.startswith("sqlite:///"):
-    logging.info(f"Using SQLite database: {database_url.split('///')[-1]}")
-else:
-    # For other databases, only show the type and host
-    logging.info(f"Using database: {database_url.split('@')[0].split('//')[0]}://...")
+# Log database type without exposing credentials
+logging.info(f"Using database: {database_url.split('@')[0].split('//')[0]}://...")
 
 # add your model's MetaData object here
 # for 'autogenerate' support

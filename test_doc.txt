@@ -1,0 +1,10 @@
+This is a test document for the refactored Semantik system.
+
+The system now uses collections and operations instead of jobs.
+
+Key changes:
+- Jobs are now called Operations
+- File tracking is now Document tracking
+- Collection-based architecture
+
+This document will be used to test the indexing functionality.

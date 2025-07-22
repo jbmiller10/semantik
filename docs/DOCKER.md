@@ -33,10 +33,11 @@ graph TB
     D[Host Machine] -->|User Access| C
     
     subgraph "Volumes"
-        E[data/<br/>SQLite DB]
+        E[data/<br/>Job Files]
         F[models/<br/>ML Models]
         G[logs/<br/>App Logs]
         H[documents/<br/>User Files]
+        I[postgres/<br/>PostgreSQL Data]
     end
     
     subgraph "Volume Access"
@@ -48,6 +49,8 @@ graph TB
         C -->|RW| G
         B -.->|RO| H
         C -.->|RO| H
+        J[PostgreSQL Container] -->|RW| I
+        C -->|TCP| J
     end
     
     style C fill:#f9f,stroke:#333,stroke-width:2px
@@ -205,7 +208,7 @@ services:
       - "8000:8000"
       - "9091:9091"  # Metrics port
     volumes:
-      - ./data:/app/data:ro  # Read-only access to SQLite
+      - ./data:/app/data:ro  # Read-only access to job files
       - ./models:/app/models
       - ./logs:/app/logs
       - ./documents:/documents:ro
@@ -237,7 +240,7 @@ services:
       - "8080:8080"
       - "9092:9092"  # Metrics port
     volumes:
-      - ./data:/app/data  # Full access to SQLite (owns the DB)
+      - ./data:/app/data  # Full access to job files
       - ./models:/app/models
       - ./logs:/app/logs
       - ./documents:/documents:ro
@@ -307,7 +310,7 @@ services:
               count: 1
               capabilities: [gpu]
     volumes:
-      - /opt/semantik/data:/app/data:ro  # Read-only SQLite access
+      - /opt/semantik/data:/app/data:ro  # Read-only job file access
       - /opt/semantik/models:/app/models
       - /opt/semantik/logs/vecpipe:/app/logs
       - /mnt/documents:/documents:ro
@@ -397,9 +400,9 @@ services:
 ### Volume Types and Purposes
 
 1. **Data Volume** (`/app/data`)
-   - SQLite database
-   - Job metadata
-   - Processing state
+   - Job processing files
+   - Temporary extraction data
+   - Processing state files
    - **Persistence**: Required
    - **Backup**: Critical
 
@@ -478,7 +481,8 @@ Services can communicate using container names:
 - WebUI → Vecpipe: Search requests (HTTP)
 - WebUI → Qdrant: Collection management
 - Vecpipe → Qdrant: Vector search operations
-- WebUI owns SQLite database exclusively
+- WebUI → PostgreSQL: All relational data operations
+- WebUI owns PostgreSQL database exclusively
 
 ### External Access
 ```yaml

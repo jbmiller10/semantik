@@ -3,6 +3,7 @@ Search routes for the Web UI
 """
 
 import logging
+import warnings
 from typing import Any
 
 import httpx
@@ -41,6 +42,18 @@ async def search(
     )
 
     try:
+        # Check if job_id is used and issue deprecation warning
+        if request.job_id:
+            warnings.warn(
+                "The 'job_id' parameter is deprecated and will be removed in a future version. "
+                "Please use 'collection' parameter with collection UUID instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            logger.warning(
+                f"Deprecated job_id parameter used: {request.job_id}. " "Please migrate to using collection UUID."
+            )
+
         # Determine collection name and job_id
         if request.collection:
             collection_name = request.collection
@@ -355,6 +368,19 @@ async def hybrid_search(
 ) -> dict[str, Any]:
     """Perform hybrid search combining vector similarity and text matching - proxies to REST API"""
     try:
+        # Check if job_id is used and issue deprecation warning
+        if request.job_id:
+            warnings.warn(
+                "The 'job_id' parameter is deprecated and will be removed in a future version. "
+                "Please use 'collection' parameter with collection UUID instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            logger.warning(
+                f"Deprecated job_id parameter used in hybrid_search: {request.job_id}. "
+                "Please migrate to using collection UUID."
+            )
+
         # Determine collection name
         collection_name = f"job_{request.job_id}" if request.job_id else "work_docs"
 
