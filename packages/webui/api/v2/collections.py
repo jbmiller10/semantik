@@ -269,11 +269,14 @@ async def delete_collection(
     operations. This action cannot be undone. Only the collection owner can
     delete a collection.
     """
+    logger.info(f"User {current_user['id']} attempting to delete collection {collection_uuid}")
+    
     try:
         await service.delete_collection(
             collection_id=collection_uuid,
             user_id=int(current_user["id"]),
         )
+        logger.info(f"Successfully deleted collection {collection_uuid}")
 
     except EntityNotFoundError as e:
         raise HTTPException(

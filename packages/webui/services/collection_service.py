@@ -93,15 +93,15 @@ class CollectionService:
             },
         )
 
-        # Dispatch Celery task
+        # Commit the transaction BEFORE dispatching the task
+        await self.db_session.commit()
+
+        # Dispatch Celery task AFTER commit to avoid race condition
         celery_app.send_task(
             "webui.tasks.process_collection_operation",
             args=[operation.uuid],
             task_id=str(uuid.uuid4()),
         )
-
-        # Commit the transaction
-        await self.db_session.commit()
 
         # Convert ORM objects to dictionaries
         collection_dict = {
@@ -206,15 +206,15 @@ class CollectionService:
         # Update collection status to processing
         await self.collection_repo.update_status(collection.id, CollectionStatus.PROCESSING)
 
-        # Dispatch Celery task
+        # Commit the transaction BEFORE dispatching the task
+        await self.db_session.commit()
+
+        # Dispatch Celery task AFTER commit to avoid race condition
         celery_app.send_task(
             "webui.tasks.process_collection_operation",
             args=[operation.uuid],
             task_id=str(uuid.uuid4()),
         )
-
-        # Commit the transaction
-        await self.db_session.commit()
 
         # Convert ORM object to dictionary
         return {
@@ -308,15 +308,15 @@ class CollectionService:
         # Update collection status to processing
         await self.collection_repo.update_status(collection.id, CollectionStatus.PROCESSING)
 
-        # Dispatch Celery task
+        # Commit the transaction BEFORE dispatching the task
+        await self.db_session.commit()
+
+        # Dispatch Celery task AFTER commit to avoid race condition
         celery_app.send_task(
             "webui.tasks.process_collection_operation",
             args=[operation.uuid],
             task_id=str(uuid.uuid4()),
         )
-
-        # Commit the transaction
-        await self.db_session.commit()
 
         # Convert ORM object to dictionary
         return {
@@ -438,15 +438,15 @@ class CollectionService:
         # Update collection status
         await self.collection_repo.update_status(collection.id, CollectionStatus.PROCESSING)
 
-        # Dispatch Celery task
+        # Commit the transaction BEFORE dispatching the task
+        await self.db_session.commit()
+
+        # Dispatch Celery task AFTER commit to avoid race condition
         celery_app.send_task(
             "webui.tasks.process_collection_operation",
             args=[operation.uuid],
             task_id=str(uuid.uuid4()),
         )
-
-        # Commit the transaction
-        await self.db_session.commit()
 
         # Convert ORM object to dictionary
         return {

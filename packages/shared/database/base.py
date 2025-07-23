@@ -65,6 +65,10 @@ class UserRepository(ABC):
     async def list_users(self, **filters: Any) -> list[dict[str, Any]]:
         """List all users with optional filters."""
 
+    @abstractmethod
+    async def count_users(self, is_active: bool | None = None) -> int:
+        """Count total users with optional active filter."""
+
 
 class CollectionRepository(ABC):
     """Abstract interface for collection data access."""

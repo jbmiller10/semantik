@@ -9,17 +9,20 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from qdrant_client import AsyncQdrantClient
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
-from shared import database
-from shared.config import settings
-from shared.database import get_db
-from shared.database.models import Collection, Document
-from webui.auth import get_current_user
+from packages.shared.config import settings
+from packages.shared.database import get_db
+from packages.shared.database.models import (
+    Collection, Document, Operation, CollectionSource,
+    CollectionPermission, CollectionAuditLog, CollectionResourceLimits,
+    OperationMetrics
+)
+from packages.webui.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +34,17 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 @router.post("/reset-database")
 async def reset_database_endpoint(
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    current_user: dict[str, Any] = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
-    """Reset the database"""
+    """Reset the database - ADMIN ONLY"""
+    # Check if user is admin/superuser
+    if not current_user.get("is_superuser", False):
+        raise HTTPException(
+            status_code=403,
+            detail="Only administrators can reset the database"
+        )
+    
     try:
         # Get all collections before reset
         # We need to get all collections, not just for the current user
@@ -69,8 +79,27 @@ async def reset_database_endpoint(
         except Exception as e:
             logger.warning(f"Failed to delete parquet files: {e}")
 
-        # Reset database
-        database.reset_database()
+        # Clear all tables in the database
+        # Note: This is a destructive operation and should be protected
+        # We'll delete all records from the tables in the correct order to respect foreign keys
+        try:
+            # Delete in order of dependencies (most dependent first)
+            await db.execute(delete(OperationMetrics))
+            await db.execute(delete(CollectionAuditLog))
+            await db.execute(delete(CollectionResourceLimits))
+            await db.execute(delete(CollectionPermission))
+            await db.execute(delete(Operation))
+            await db.execute(delete(Document))
+            await db.execute(delete(CollectionSource))
+            await db.execute(delete(Collection))
+            # Note: We don't delete Users, ApiKeys, or RefreshTokens as they're auth-related
+            
+            await db.commit()
+            logger.info("Database tables cleared successfully")
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Failed to clear database tables: {e}")
+            raise
 
         return {"status": "success", "message": "Database reset successfully"}
     except Exception as e:
@@ -93,9 +122,10 @@ async def get_database_stats(
     document_count_query = select(func.count()).select_from(Document)
     document_count = await db.scalar(document_count_query) or 0
 
-    # Get database file size
-    db_path = Path(database.DB_PATH)
-    db_size = db_path.stat().st_size if db_path.exists() else 0
+    # Get database size estimate (PostgreSQL)
+    # Note: For PostgreSQL, we can't get file size directly
+    # This is a placeholder - actual size would require a DB query
+    db_size = 0  # TODO: Implement PostgreSQL database size query
 
     # Get total parquet files size
     output_path = Path(OUTPUT_DIR)

@@ -813,8 +813,15 @@ def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]
     - Guaranteed status updates via try...finally
     """
     # Run the async function in an event loop
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+    except RuntimeError:
+        # No event loop in current thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
     try:
         return loop.run_until_complete(_process_collection_operation_async(operation_id, self))
@@ -825,8 +832,6 @@ def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]
             raise  # Don't retry on programming errors
         # Retry for other exceptions (network issues, temporary failures)
         raise self.retry(exc=exc, countdown=60) from exc
-    finally:
-        loop.close()
 
 
 async def _process_collection_operation_async(operation_id: str, celery_task: Any) -> dict[str, Any]:
@@ -843,11 +848,17 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
     # Store task ID immediately as FIRST action
     task_id = celery_task.request.id if hasattr(celery_task, "request") else str(uuid.uuid4())
 
-    # Import repository classes
+    # Import repository classes and ensure database is initialized
+    from shared.database import pg_connection_manager
     from shared.database.database import AsyncSessionLocal
     from shared.database.repositories.collection_repository import CollectionRepository
     from shared.database.repositories.document_repository import DocumentRepository
     from shared.database.repositories.operation_repository import OperationRepository
+
+    # Ensure database is initialized for this event loop
+    if not pg_connection_manager._sessionmaker:
+        await pg_connection_manager.initialize()
+        logger.info("Initialized database connection for this task")
 
     # Use async session for all database operations
     async with AsyncSessionLocal() as db:
@@ -1448,7 +1459,15 @@ async def _process_append_operation(
                         chunk_overlap=chunk_overlap,
                     )
 
-                    chunks = chunker.chunk_blocks(text_blocks, doc.id)
+                    # Process each text block
+                    all_chunks = []
+                    for text, metadata in text_blocks:
+                        if not text.strip():
+                            continue
+                        chunks = chunker.chunk_text(text, doc.id, metadata)
+                        all_chunks.extend(chunks)
+                    
+                    chunks = all_chunks
                     logger.info(f"Created {len(chunks)} chunks for {doc.file_path}")
 
                     if not chunks:

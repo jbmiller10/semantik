@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { useUpdateOperationInCache } from './useCollectionOperations';
 import { useUIStore } from '../stores/uiStore';
+import { operationsV2Api } from '../services/api/v2/operations';
 import type { OperationProgressMessage } from '../types/collection';
 
 interface UseOperationProgressOptions {
@@ -21,8 +22,8 @@ export function useOperationProgress(
   // Track if we've already shown completion toast to avoid duplicates
   const hasShownComplete = useRef(false);
   
-  // Construct WebSocket URL
-  const wsUrl = operationId ? `/ws/operations/${operationId}` : null;
+  // Construct WebSocket URL with authentication token
+  const wsUrl = operationId ? operationsV2Api.getWebSocketUrl(operationId) : null;
   
   const { sendMessage, readyState } = useWebSocket(wsUrl, {
     onMessage: (event) => {

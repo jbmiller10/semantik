@@ -23,9 +23,21 @@ export const directoryScanV2Api = {
    * @returns WebSocket URL with authentication token
    */
   getWebSocketUrl: (scanId: string): string => {
-    const token = localStorage.getItem('access_token');
+    // Get auth state from Zustand store persisted in localStorage
+    const authStorage = localStorage.getItem('auth-storage');
+    let token = '';
+    
+    if (authStorage) {
+      try {
+        const authState = JSON.parse(authStorage);
+        token = authState.state?.token || '';
+      } catch (error) {
+        console.error('Failed to parse auth storage:', error);
+      }
+    }
+    
     const baseUrl = window.location.origin.replace(/^http/, 'ws');
-    return `${baseUrl}/ws/directory-scan/${scanId}?token=${encodeURIComponent(token || '')}`;
+    return `${baseUrl}/ws/directory-scan/${scanId}?token=${encodeURIComponent(token)}`;
   },
 };
 
