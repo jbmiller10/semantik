@@ -180,17 +180,13 @@ class CollectionService:
                 f"Collection must be in {CollectionStatus.PENDING}, {CollectionStatus.READY} or {CollectionStatus.DEGRADED} state."
             )
 
-        # Check if there's already an active operation (but allow APPEND after INDEX)
+        # Check if there's already an active operation
         active_operations = await self.operation_repo.get_active_operations(collection.id)
         if active_operations:
-            # Allow APPEND operations if the only active operation is INDEX
-            # INDEX just creates the empty collection and doesn't conflict with APPEND
-            non_index_ops = [op for op in active_operations if op.type != OperationType.INDEX]
-            if non_index_ops:
-                raise InvalidStateError(
-                    "Cannot add source while another operation is in progress. "
-                    "Please wait for the current operation to complete."
-                )
+            raise InvalidStateError(
+                "Cannot add source while another operation is in progress. "
+                "Please wait for the current operation to complete."
+            )
 
         # Create operation record
         operation = await self.operation_repo.create(

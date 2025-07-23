@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useCreateCollection } from '../hooks/useCollections';
 import { useAddSource } from '../hooks/useCollectionOperations';
+import { useOperationProgress } from '../hooks/useOperationProgress';
 import { useUIStore } from '../stores/uiStore';
 import { useNavigate } from 'react-router-dom';
 import { useDirectoryScan } from '../hooks/useDirectoryScan';
@@ -50,6 +51,69 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const [pendingIndexOperationId, setPendingIndexOperationId] = useState<string | null>(null);
+  const [collectionIdForSource, setCollectionIdForSource] = useState<string | null>(null);
+  const [sourcePathForDelayedAdd, setSourcePathForDelayedAdd] = useState<string | null>(null);
+
+  // Monitor INDEX operation progress
+  useOperationProgress(pendingIndexOperationId, {
+    showToasts: false, // We'll show our own toasts
+    onComplete: async () => {
+      // INDEX operation completed, now we can add the source
+      if (collectionIdForSource && sourcePathForDelayedAdd) {
+        try {
+          await addSourceMutation.mutateAsync({
+            collectionId: collectionIdForSource,
+            sourcePath: sourcePathForDelayedAdd,
+            config: {
+              chunk_size: formData.chunk_size,
+              chunk_overlap: formData.chunk_overlap,
+            }
+          });
+          
+          // Show success with source addition
+          addToast({
+            message: 'Collection created and source added successfully! Navigating to collection...',
+            type: 'success'
+          });
+          
+          // Call onSuccess first, then navigate
+          onSuccess();
+          
+          // Delay navigation slightly to let user see the success feedback
+          setTimeout(() => {
+            navigate(`/collections/${collectionIdForSource}`);
+          }, 1000);
+        } catch (sourceError) {
+          // Collection was created but source addition failed
+          addToast({
+            message: 'Collection created but failed to add source: ' + 
+                     (sourceError instanceof Error ? sourceError.message : 'Unknown error'),
+            type: 'warning'
+          });
+          
+          // Still call onSuccess since collection was created
+          onSuccess();
+        } finally {
+          // Clean up state
+          setPendingIndexOperationId(null);
+          setCollectionIdForSource(null);
+          setSourcePathForDelayedAdd(null);
+          setIsSubmitting(false);
+        }
+      }
+    },
+    onError: (error) => {
+      addToast({
+        message: `INDEX operation failed: ${error}`,
+        type: 'error'
+      });
+      setPendingIndexOperationId(null);
+      setCollectionIdForSource(null);
+      setSourcePathForDelayedAdd(null);
+      setIsSubmitting(false);
+    }
+  });
 
   // Handle escape key
   useEffect(() => {
@@ -113,48 +177,37 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     
     try {
       // Step 1: Create the collection
-      const collection = await createCollectionMutation.mutateAsync(formData);
+      const response = await createCollectionMutation.mutateAsync(formData);
       
-      // Step 2: Add initial source if provided
-      if (sourcePath.trim()) {
-        try {
-          await addSourceMutation.mutateAsync({
-            collectionId: collection.id,
-            sourcePath: sourcePath.trim(),
-            config: {
-              chunk_size: formData.chunk_size,
-              chunk_overlap: formData.chunk_overlap,
-            }
-          });
-          
-          // Show success with source addition
-          addToast({
-            message: 'Collection created successfully! Navigating to collection...',
-            type: 'success'
-          });
-          
-          // Call onSuccess first, then navigate
-          onSuccess();
-          
-          // Delay navigation slightly to let user see the success feedback
-          setTimeout(() => {
-            navigate(`/collections/${collection.id}`);
-          }, 1000);
-          
-          // Exit early since we already called onSuccess
-          return;
-        } catch (sourceError) {
-          // Collection was created but source addition failed
-          addToast({
-            message: 'Collection created but failed to add source: ' + 
-                     (sourceError instanceof Error ? sourceError.message : 'Unknown error'),
-            type: 'warning'
-          });
-          
-          // Still call onSuccess since collection was created
-          onSuccess();
-          return;
-        }
+      // The response should include the initial INDEX operation ID
+      // Let's check if we have an operation in the response
+      const indexOperationId = response.initial_operation_id;
+      
+      // Step 2: Handle initial source if provided
+      if (sourcePath.trim() && indexOperationId) {
+        // Set up state to track the INDEX operation and add source when it completes
+        setPendingIndexOperationId(indexOperationId);
+        setCollectionIdForSource(response.id);
+        setSourcePathForDelayedAdd(sourcePath.trim());
+        
+        // Show progress message
+        addToast({
+          message: 'Collection created! Waiting for initialization before adding source...',
+          type: 'info'
+        });
+        
+        // Don't set isSubmitting to false yet - it will be done when operations complete
+        return;
+      } else if (sourcePath.trim() && !indexOperationId) {
+        // Fallback: if we don't get an operation ID, just show success
+        // This shouldn't happen but handle it gracefully
+        addToast({
+          message: 'Collection created! Please add the source manually.',
+          type: 'warning'
+        });
+        onSuccess();
+        setIsSubmitting(false);
+        return;
       } else {
         // Show success for collection without source
         addToast({

@@ -78,8 +78,8 @@ async def create_collection(
             },
         )
 
-        # Convert to response model
-        return CollectionResponse(
+        # Convert to response model and add operation uuid
+        response = CollectionResponse(
             id=collection["id"],
             name=collection["name"],
             description=collection["description"],
@@ -98,6 +98,17 @@ async def create_collection(
             status=collection["status"],
             status_message=collection.get("status_message"),
         )
+        
+        # Add the initial operation ID as a custom header
+        # This allows the frontend to track the INDEX operation
+        from fastapi import Response
+        import json
+        
+        # Return the response with the operation ID in a custom header
+        response_dict = response.model_dump()
+        response_dict["initial_operation_id"] = operation["uuid"]
+        
+        return response_dict
 
     except EntityAlreadyExistsError as e:
         raise HTTPException(

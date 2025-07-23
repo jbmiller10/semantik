@@ -1010,6 +1010,9 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     },
                 )
 
+                # Commit all database changes
+                await db.commit()
+
                 return result
 
         except Exception as e:
