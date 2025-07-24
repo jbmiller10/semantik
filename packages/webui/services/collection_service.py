@@ -4,7 +4,7 @@ import logging
 import uuid
 from typing import Any
 
-from shared.database.exceptions import AccessDeniedError, InvalidStateError
+from shared.database.exceptions import AccessDeniedError, InvalidStateError, EntityAlreadyExistsError
 from shared.database.models import Collection, CollectionStatus, OperationType
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
@@ -78,6 +78,9 @@ class CollectionService:
                 is_public=config.get("is_public", False) if config else False,
                 meta=config.get("metadata") if config else None,
             )
+        except EntityAlreadyExistsError:
+            # Re-raise EntityAlreadyExistsError to be handled by the API endpoint
+            raise
         except Exception as e:
             logger.error(f"Failed to create collection: {e}")
             raise

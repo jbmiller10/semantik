@@ -97,16 +97,10 @@ async def create_collection(
             vector_count=collection.get("vector_count", 0),
             status=collection["status"],
             status_message=collection.get("status_message"),
+            initial_operation_id=operation["uuid"],  # Include the initial operation ID
         )
 
-        # Add the initial operation ID as a custom header
-        # This allows the frontend to track the INDEX operation
-
-        # Return the response with the operation ID in a custom header
-        response_dict = response.model_dump()
-        response_dict["initial_operation_id"] = operation["uuid"]
-
-        return CollectionResponse(**response_dict)
+        return response
 
     except EntityAlreadyExistsError as e:
         raise HTTPException(

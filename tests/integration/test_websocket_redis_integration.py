@@ -293,7 +293,7 @@ class TestWebSocketRedisIntegration:
             # Create multiple clients
             clients = [mock_websocket_factory(f"client{i}") for i in range(3)]
 
-            # Mock job repository
+            # Mock operation repository
             with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 # Create simple mock operation
@@ -316,12 +316,16 @@ class TestWebSocketRedisIntegration:
 
                 # Set up operation getter for all clients
                 self._setup_operation_getter(manager, ["operation1"])
+                
+                # Create the stream by sending an initial update BEFORE connecting clients
+                await manager.send_update("operation1", "initial", {"status": "stream_created"})
+                await asyncio.sleep(0.1)
 
                 # Connect all clients
                 for i, client in enumerate(clients):
                     await manager.connect(client, "operation1", f"user{i}")
 
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.2)
 
                 # Send update via manager (simulating from API)
                 await manager.send_update("operation1", "broadcast", {"message": "Update for all clients"})

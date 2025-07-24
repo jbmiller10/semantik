@@ -41,10 +41,10 @@ def test_metrics_endpoint():
                 # Check specific fields
                 print("-" * 60)
                 print("Metrics Analysis:")
-                print(f"Total jobs: {data.get('total_jobs', 'NOT FOUND')}")
-                print(f"Running jobs: {data.get('running_jobs', 'NOT FOUND')}")
-                print(f"Completed jobs: {data.get('completed_jobs', 'NOT FOUND')}")
-                print(f"Failed jobs: {data.get('failed_jobs', 'NOT FOUND')}")
+                print(f"Total operations: {data.get('total_operations', 'NOT FOUND')}")
+                print(f"Running operations: {data.get('running_operations', 'NOT FOUND')}")
+                print(f"Completed operations: {data.get('completed_operations', 'NOT FOUND')}")
+                print(f"Failed operations: {data.get('failed_operations', 'NOT FOUND')}")
                 print(f"Total documents: {data.get('total_documents', 'NOT FOUND')}")
                 print(f"Total embeddings: {data.get('total_embeddings', 'NOT FOUND')}")
 

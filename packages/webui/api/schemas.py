@@ -150,6 +150,7 @@ class CollectionResponse(CollectionBase):
     vector_count: int | None = 0
     status: str  # Collection status: pending, ready, processing, error, degraded
     status_message: str | None = None
+    initial_operation_id: str | None = None  # ID of the initial INDEX operation
 
     model_config = ConfigDict(from_attributes=True)
 

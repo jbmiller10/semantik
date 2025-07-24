@@ -69,10 +69,12 @@ class TestCurrentSystemBehavior:
         headers = self._get_auth_headers()
 
         # 1. Create collection
+        import uuid
+        collection_name = f"E2E Test Collection {uuid.uuid4().hex[:8]}"
         response = requests.post(
             f"{self.API_BASE_URL}/api/v2/collections",
             json={
-                "name": "E2E Test Collection",
+                "name": collection_name,
                 "description": "End-to-end test for refactoring validation",
             },
             headers=headers,
@@ -82,10 +84,36 @@ class TestCurrentSystemBehavior:
         assert response.status_code == 201
 
         collection_data = response.json()
+        print(f"Collection response data: {collection_data}")
         collection_id = collection_data["id"]
 
         # Store collection_id for cleanup
         cleanup_operation.append(collection_id)
+        
+        # Get the initial operation ID if present
+        initial_operation_id = collection_data.get("initial_operation_id")
+        
+        # Wait for initial INDEX operation to complete
+        if initial_operation_id:
+            print(f"Waiting for initial INDEX operation {initial_operation_id} to complete...")
+            start_time = time.time()
+            while time.time() - start_time < 60:  # 1-minute timeout for initial operation
+                status_response = requests.get(
+                    f"{self.API_BASE_URL}/api/v2/operations/{initial_operation_id}", 
+                    headers=headers
+                )
+                if status_response.status_code == 200:
+                    op_status = status_response.json()
+                    if op_status["status"] in ["completed", "failed"]:
+                        print(f"Initial operation {op_status['status']} after {time.time() - start_time:.1f}s")
+                        if op_status["status"] == "failed":
+                            pytest.fail(f"Initial INDEX operation failed: {op_status.get('error_message', 'Unknown error')}")
+                        break
+                time.sleep(2)
+        else:
+            # If no initial_operation_id, wait a bit for any background operations to complete
+            print("No initial_operation_id received, waiting 5 seconds for background operations...")
+            time.sleep(5)
 
         # 2. Add source to collection
         # Note: When running in Docker, we use a path accessible inside the container

@@ -102,8 +102,8 @@ class TestWebuiIntegration(unittest.TestCase):
     """Test embedding service integration with webui."""
 
     @patch("torch.cuda.is_available")
-    def test_jobs_api_integration(self, mock_cuda: Mock) -> None:
-        """Test jobs API usage pattern."""
+    def test_operations_api_integration(self, mock_cuda: Mock) -> None:
+        """Test operations API usage pattern."""
         mock_cuda.return_value = False
 
         from shared.embedding import EmbeddingService
@@ -111,7 +111,7 @@ class TestWebuiIntegration(unittest.TestCase):
         # Create mock service for testing
         mock_service = EmbeddingService(mock_mode=True)
 
-        # Simulate job processing workflow
+        # Simulate operation processing workflow
         # 1. Load model
         mock_service.load_model("test-model", quantization="float32")
 
