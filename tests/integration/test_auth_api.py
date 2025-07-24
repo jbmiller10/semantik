@@ -7,8 +7,6 @@ import pytest
 from fastapi.testclient import TestClient
 from passlib.context import CryptContext
 
-from packages.shared.database.models import User
-
 # Create pwd_context locally to avoid imports from shared.database
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -38,17 +36,17 @@ def mock_repositories():
             hashed_password = None
             full_name = ""
             is_superuser = False
-        
+
         # Check for existing username
         if username in users_db:
             raise ValueError(f"User with username '{username}' already exists")
-            
+
         # Check for existing email
         if email and email in users_db:
             raise ValueError(f"User with email '{email}' already exists")
-            
+
         user_dict = {
-            "id": len(set(user.get("id") for user in users_db.values() if isinstance(user, dict))) + 1,
+            "id": len({user.get("id") for user in users_db.values() if isinstance(user, dict)}) + 1,
             "username": username,
             "email": email,
             "hashed_password": hashed_password,
@@ -58,12 +56,12 @@ def mock_repositories():
             "created_at": datetime.now(UTC).isoformat(),
             "updated_at": datetime.now(UTC).isoformat(),
         }
-        
+
         # Store user
         users_db[username] = user_dict
         if email:
             users_db[email] = user_dict
-            
+
         return user_dict
 
     async def get_user_by_username(username: str):
@@ -124,7 +122,7 @@ def client(mock_repositories):
 
             # Mock database session
             mock_db = AsyncMock()
-            
+
             async def override_get_db():
                 yield mock_db
 
@@ -273,7 +271,7 @@ def test_user_login_failure(client):
     assert "incorrect username or password" in response.json()["detail"].lower()
 
 
-def test_get_me_protected(client, monkeypatch, mock_repositories):
+def test_get_me_protected(client, monkeypatch, mock_repositories):  # noqa: ARG001
     """Test that /me endpoint requires authentication."""
     # Test without token - should fail when auth is enabled
     monkeypatch.setattr("packages.webui.auth.settings.DISABLE_AUTH", False)
@@ -289,7 +287,7 @@ def test_get_me_protected(client, monkeypatch, mock_repositories):
     # Register and login to get valid token
     # Re-enable DISABLE_AUTH for registration/login to work with mocks
     monkeypatch.setattr("packages.webui.auth.settings.DISABLE_AUTH", True)
-    
+
     registration_data = {
         "username": "protecteduser",
         "email": "protected@example.com",

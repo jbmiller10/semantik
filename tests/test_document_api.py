@@ -34,35 +34,36 @@ def mock_document_repository():
 @pytest.fixture()
 def test_client_with_document_mocks(
     test_user,
-    mock_operation_repository,
-    mock_document_repository,
+    mock_operation_repository,  # noqa: ARG001
+    mock_document_repository,  # noqa: ARG001
 ):
     """Create a test client with mocked document-related repositories."""
-    from packages.webui.dependencies import get_collection_for_user
     from packages.webui.auth import get_current_user
+    from packages.webui.dependencies import get_collection_for_user
     from packages.webui.main import app
 
     # Override the authentication dependency
     async def override_get_current_user():
         return test_user
-    
+
     # Mock collection for access control
     mock_collection = MagicMock()
     mock_collection.uuid = "test-operation"
     mock_collection.user_id = test_user["id"]
-    
-    async def override_get_collection_for_user(collection_uuid: str, current_user=None, db=None):
+
+    async def override_get_collection_for_user(collection_uuid: str, current_user=None, db=None):  # noqa: ARG001
         return mock_collection
 
     # Mock database session
-    from packages.shared.database import get_db
     from unittest.mock import AsyncMock
-    
+
+    from packages.shared.database import get_db
+
     mock_db = AsyncMock()
-    
+
     async def override_get_db():
         yield mock_db
-    
+
     # Override dependencies
     app.dependency_overrides[get_current_user] = override_get_current_user
     app.dependency_overrides[get_collection_for_user] = override_get_collection_for_user

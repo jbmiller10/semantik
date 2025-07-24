@@ -2,7 +2,6 @@
 
 from unittest.mock import Mock, patch
 
-import httpx
 import pytest
 
 # Mock settings before importing maintenance module
@@ -45,7 +44,7 @@ class TestQdrantMaintenanceService:
 
         # No need to mock HTTP calls as get_operation_collections now only returns default collection
         collections = maintenance_service.get_operation_collections()
-        
+
         # Should only include DEFAULT_COLLECTION in new architecture
         assert collections == ["work_docs"]
 
@@ -53,7 +52,7 @@ class TestQdrantMaintenanceService:
         """Test that get_operation_collections now only returns default collection without retry."""
         # In new architecture, no API calls are made
         collections = maintenance_service.get_operation_collections()
-        
+
         assert collections == ["work_docs"]
 
     def test_collection_not_found_handling(self, maintenance_service):

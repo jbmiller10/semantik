@@ -56,8 +56,8 @@ class AsyncSessionLocalWrapper:
 
     def __call__(self) -> AsyncSession:
         """Support callable syntax."""
-        return self.__new__(self.__class__)
+        return self.__new__(self.__class__)  # type: ignore[no-any-return]
 
 
 # Replace the module-level AsyncSessionLocal with our wrapper
-AsyncSessionLocal = AsyncSessionLocalWrapper
+AsyncSessionLocal = AsyncSessionLocalWrapper  # type: ignore[assignment]

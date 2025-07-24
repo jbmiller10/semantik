@@ -262,7 +262,7 @@ async def test_directory_scan_preview_no_auth(monkeypatch) -> None:
     """Test that authentication is required."""
     # Temporarily enable authentication
     monkeypatch.setattr("packages.webui.auth.settings.DISABLE_AUTH", False)
-    
+
     from packages.webui.main import app
 
     # Create a client without auth overrides

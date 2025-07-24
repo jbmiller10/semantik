@@ -74,10 +74,10 @@ class TestOperationsWebSocket:
             # Mock the OperationService class
             mock_service_instance = AsyncMock()
             mock_operation = AsyncMock()
-            mock_operation.uuid = "test-operation-id" 
+            mock_operation.uuid = "test-operation-id"
             mock_operation.user_id = 1
             mock_service_instance.verify_websocket_access = AsyncMock(return_value=mock_operation)
-            
+
             # Make OperationService return our mock instance when instantiated
             mock_service_class.return_value = mock_service_instance
 
@@ -88,10 +88,10 @@ class TestOperationsWebSocket:
 
                 # Mock database session as an async generator
                 mock_db = AsyncMock()
-                
+
                 async def mock_get_db_generator():
                     yield mock_db
-                
+
                 # Make get_db return the generator directly (not a coroutine)
                 mock_get_db.side_effect = lambda: mock_get_db_generator()
 
