@@ -370,6 +370,7 @@ export function useUpdateOperationInCache() {
         
         // If operation is completed/failed, update collection status
         if (updates.status === 'completed' || updates.status === 'failed' || updates.status === 'cancelled') {
+          // Update the detail view
           queryClient.setQueryData<Collection>(
             collectionKeys.detail(collectionId),
             old => {
@@ -383,6 +384,33 @@ export function useUpdateOperationInCache() {
               };
             }
           );
+          
+          // Also update the collection in the lists view (dashboard)
+          queryClient.setQueryData<Collection[]>(
+            collectionKeys.lists(),
+            oldList => {
+              if (!oldList) return oldList;
+              
+              return oldList.map(collection => {
+                if (collection.id === collectionId && collection.activeOperation?.id === operationId) {
+                  return {
+                    ...collection,
+                    activeOperation: undefined,
+                    isProcessing: false,
+                    status: updates.status === 'completed' ? 'ready' : 'error'
+                  };
+                }
+                return collection;
+              });
+            }
+          );
+          
+          // If operation completed successfully, invalidate to get fresh data
+          if (updates.status === 'completed') {
+            // Invalidate queries to fetch updated document/vector counts
+            queryClient.invalidateQueries({ queryKey: collectionKeys.detail(collectionId) });
+            queryClient.invalidateQueries({ queryKey: collectionKeys.lists() });
+          }
         }
       }
     });

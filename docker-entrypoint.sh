@@ -92,7 +92,8 @@ case "$SERVICE" in
         exec uvicorn webui.main:app \
             --host 0.0.0.0 \
             --port "${WEBUI_PORT:-8080}" \
-            --workers "${WEBUI_WORKERS:-1}"
+            --workers "${WEBUI_WORKERS:-1}" \
+            --log-level "${LOG_LEVEL:-info}"
         ;;
         
     vecpipe)

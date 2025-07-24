@@ -567,8 +567,9 @@ class CollectionService:
         )
 
         # Get operations for the collection
-        operations, total = await self.operation_repo.list_by_collection(
+        operations, total = await self.operation_repo.list_for_collection(
             collection_id=collection.id,
+            user_id=user_id,
             offset=offset,
             limit=limit,
         )

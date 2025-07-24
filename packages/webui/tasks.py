@@ -1390,25 +1390,31 @@ async def _process_append_operation(
         )
 
         # Process registered documents to generate embeddings
-        if scan_stats["new_documents_registered"] > 0:
+        # Check for both new documents AND existing documents that haven't been processed
+        # (This handles cases where documents were registered but never chunked/embedded)
+        
+        # Get all documents from this source path
+        all_docs, _ = await document_repo.list_by_collection(
+            collection["id"],
+            status=None,  # Get all statuses
+            limit=10000,  # High limit to get all docs
+        )
+
+        # Filter documents by source path and check for unprocessed ones
+        documents = [doc for doc in all_docs if doc.file_path.startswith(source_path)]
+        unprocessed_documents = [doc for doc in documents if doc.chunk_count == 0]
+        
+        if len(unprocessed_documents) > 0:
             await updater.send_update(
                 "processing_embeddings",
                 {
                     "status": "generating_embeddings",
-                    "documents_to_process": scan_stats["new_documents_registered"],
+                    "documents_to_process": len(unprocessed_documents),
                 },
             )
 
-            # Get newly registered documents
-            # Note: We'll get all documents and filter by path since there's no source_filter
-            all_docs, _ = await document_repo.list_by_collection(
-                collection["id"],
-                status=None,  # Get all statuses
-                limit=10000,  # High limit to get all docs
-            )
-
-            # Filter documents by source path
-            documents = [doc for doc in all_docs if doc.file_path.startswith(source_path)]
+            # Use unprocessed documents for processing
+            documents = unprocessed_documents
 
             # Get collection configuration
             embedding_model = collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
@@ -1585,16 +1591,29 @@ async def _process_append_operation(
                     )
                     failed_count += 1
 
-            # Update collection vector count
-            await collection_repo.update(
+            # Update collection statistics (document count and vector count)
+            # Get current document stats from database
+            doc_stats = await document_repo.get_stats_by_collection(collection["id"])
+            current_doc_count = doc_stats.get("total_documents", 0)
+            
+            # Get current vector count from Qdrant
+            qdrant_client = qdrant_manager.get_client()
+            qdrant_info = qdrant_client.get_collection(qdrant_collection_name)
+            # Use points_count instead of vectors_count (which can be None)
+            current_vector_count = qdrant_info.points_count if qdrant_info else 0
+            
+            # Update collection stats
+            await collection_repo.update_stats(
                 collection["id"],
-                {"vector_count": collection.get("vector_count", 0) + total_vectors_created},
+                document_count=current_doc_count,
+                vector_count=current_vector_count,
             )
 
             # Log final results
             logger.info(
                 f"Embedding generation complete: {processed_count} processed, "
-                f"{failed_count} failed, {total_vectors_created} vectors created"
+                f"{failed_count} failed, {total_vectors_created} vectors created, "
+                f"collection now has {current_doc_count} documents and {current_vector_count} vectors"
             )
 
             await updater.send_update(

@@ -137,7 +137,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     logger.info("PostgreSQL connection initialized")
 
     # Initialize WebSocket manager
+    logger.info("Initializing WebSocket manager...")
     await ws_manager.startup()
+    logger.info("WebSocket manager initialization complete")
 
     # Configure global embedding service
     _configure_embedding_service()
@@ -151,7 +153,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     logger.info("Shutting down WebUI application...")
 
     # Clean up WebSocket manager
+    logger.info("Shutting down WebSocket manager...")
     await ws_manager.shutdown()
+    logger.info("WebSocket manager shutdown complete")
 
     # Close PostgreSQL connection
     logger.info("Closing PostgreSQL connection...")
