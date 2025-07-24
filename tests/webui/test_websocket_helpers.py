@@ -65,9 +65,7 @@ class MockWebSocketClient:
                 if call.args:
                     msg = call.args[0]
                     # Avoid duplicates - compare by content, not identity
-                    already_exists = any(
-                        existing == msg for existing in self.received_messages
-                    )
+                    already_exists = any(existing == msg for existing in self.received_messages)
                     if not already_exists:
                         self.received_messages.append(msg)
 
