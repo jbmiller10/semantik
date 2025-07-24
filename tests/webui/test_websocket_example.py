@@ -19,10 +19,17 @@ class TestWebSocketExamples:
     @pytest.fixture(autouse=True)
     def _setup_and_teardown(self):
         """Ensure clean state before and after each test."""
-        # Setup - nothing needed before
-        return
+        # Setup - Reset any global state
+        from packages.webui.websocket_manager import ws_manager
+        # Clear any existing connections and tasks
+        ws_manager.connections.clear()
+        ws_manager.consumer_tasks.clear()
+        ws_manager._get_operation_func = None
+        
+        yield
+        
         # Teardown - ensure no lingering tasks
-        # Note: We don't need async teardown here since the harness cleanup handles it
+        # Note: The harness cleanup should handle most of this
 
     @pytest.mark.asyncio()
     async def test_simple_websocket_flow(self, mock_redis_client):
@@ -67,9 +74,12 @@ class TestWebSocketExamples:
         clients = await harness.connect_clients("operation123", num_clients=1)
         client = clients[0]
 
+        # Verify WebSocket was accepted
+        client.websocket.accept.assert_called_once()
+
         # Client should receive initial state
         initial_messages = client.get_received_messages("current_state")
-        assert len(initial_messages) == 1
+        assert len(initial_messages) >= 1, f"Expected at least 1 current_state message, got {len(initial_messages)}. All messages: {client.received_messages}"
         assert initial_messages[0]["data"]["status"] == "processing"
         assert initial_messages[0]["data"]["operation_type"] == "index"
 

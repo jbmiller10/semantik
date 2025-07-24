@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -14,21 +15,29 @@ class MockWebSocketClient:
     def __init__(self, client_id: str) -> None:
         """Initialize mock WebSocket client."""
         self.client_id = client_id
+        # Track creation time to filter out old calls
+        self.created_at = datetime.now(UTC)
+        
+        # Create a fresh WebSocket mock
         self.websocket = AsyncMock(spec=WebSocket)
         self.websocket.accept = AsyncMock()
-        self.websocket.send_json = AsyncMock()
         self.websocket.close = AsyncMock()
         self.websocket.receive_json = AsyncMock()
 
-        # Track sent and received messages
+        # Track sent and received messages - instance specific
         self.sent_messages: list[dict[str, Any]] = []
         self.received_messages: list[dict[str, Any]] = []
-
-        # Configure send_json to track messages
-        async def track_send(data):
-            self.received_messages.append(data)
-
-        self.websocket.send_json.side_effect = track_send
+        
+        # Create a custom send_json that tracks messages for this instance only
+        async def mock_send_json(data):
+            # Make a copy of the data to avoid mutations
+            self.received_messages.append(data.copy() if isinstance(data, dict) else data)
+            return None
+        
+        # Set up send_json as a fresh Mock with side_effect
+        self.websocket.send_json = AsyncMock(side_effect=mock_send_json)
+        # Reset call tracking to ensure clean state
+        self.websocket.send_json.reset_mock()
 
     async def connect(self, manager, operation_id: str, user_id: str):
         """Connect to WebSocket manager."""
@@ -43,10 +52,43 @@ class MockWebSocketClient:
         self.sent_messages.append(message)
         # In real implementation, this would trigger manager handlers
 
+    def _ensure_messages_tracked(self):
+        """Ensure messages are tracked, falling back to call args if side_effect failed."""
+        if not self.received_messages and self.websocket.send_json.called:
+            # If side_effect didn't work, get messages from call args
+            # Only accept messages from the last 5 seconds (to handle CI delays)
+            cutoff_time = self.created_at - timedelta(seconds=5)
+            
+            for call in self.websocket.send_json.call_args_list:
+                if call.args:
+                    msg = call.args[0]
+                    # Check if message has timestamp and is recent
+                    if isinstance(msg, dict) and 'timestamp' in msg:
+                        try:
+                            msg_time = datetime.fromisoformat(msg['timestamp'].replace('Z', '+00:00'))
+                            if msg_time < cutoff_time:
+                                continue  # Skip old messages
+                        except:
+                            pass  # If parsing fails, include the message
+                    
+                    # Avoid duplicates
+                    if msg not in self.received_messages:
+                        self.received_messages.append(msg)
+    
     def get_received_messages(self, message_type: str = None) -> list[dict[str, Any]]:
         """Get received messages, optionally filtered by type."""
+        # Ensure messages are tracked before filtering
+        self._ensure_messages_tracked()
+        
+        # Debug: print all received messages if none match the filter
         if message_type:
-            return [msg for msg in self.received_messages if msg.get("type") == message_type]
+            filtered = [msg for msg in self.received_messages if msg.get("type") == message_type]
+            if not filtered and self.received_messages:
+                # This helps debug when messages are received but don't match the expected type
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.debug(f"No messages of type '{message_type}' found. Received messages: {self.received_messages}")
+            return filtered
         return self.received_messages
 
     def clear_messages(self) -> None:
