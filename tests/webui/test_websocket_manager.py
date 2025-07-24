@@ -160,25 +160,27 @@ class TestRedisStreamWebSocketManager:
         mock_operation.completed_at = None
         mock_operation.error_message = None
 
-        # Need to patch where it's imported from
-        with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
-            mock_repo = AsyncMock()
-            mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
-            mock_create_repo.return_value = mock_repo
+        # Set up the operation getter function
+        async def mock_get_operation(operation_id):
+            if operation_id == "job1":
+                return mock_operation
+            return None
 
-            await manager.connect(mock_websocket, "job1", "user1")
+        manager.set_operation_getter(mock_get_operation)
 
-            # Verify connection accepted
-            mock_websocket.accept.assert_called_once()
+        await manager.connect(mock_websocket, "job1", "user1")
 
-            # Verify connection stored
-            assert mock_websocket in manager.connections["user1:operation:job1"]
+        # Verify connection accepted
+        mock_websocket.accept.assert_called_once()
 
-            # Verify current state sent
-            mock_websocket.send_json.assert_called()
-            sent_data = mock_websocket.send_json.call_args[0][0]
-            assert sent_data["type"] == "current_state"
-            assert sent_data["data"]["status"] == "processing"
+        # Verify connection stored
+        assert mock_websocket in manager.connections["user1:operation:job1"]
+
+        # Verify current state sent
+        mock_websocket.send_json.assert_called()
+        sent_data = mock_websocket.send_json.call_args[0][0]
+        assert sent_data["type"] == "current_state"
+        assert sent_data["data"]["status"] == "processing"
 
     @pytest.mark.asyncio()
     async def test_connect_connection_limit(self, manager, mock_websocket):

@@ -112,6 +112,4 @@ class TestOperationsWebSocket:
                 mock_ws_manager.connect.assert_called_once_with(mock_websocket_client, "test-operation-id", "1")
 
                 # Verify disconnection was called
-                mock_ws_manager.disconnect.assert_called_once_with(
-                    mock_websocket_client, "test-operation-id", "1"
-                )
+                mock_ws_manager.disconnect.assert_called_once_with(mock_websocket_client, "test-operation-id", "1")

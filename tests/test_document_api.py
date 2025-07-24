@@ -28,6 +28,7 @@ def mock_operation_repository():
 def mock_document_repository():
     """Create a mock DocumentRepository for testing."""
     from unittest.mock import AsyncMock
+
     return AsyncMock()
 
 
@@ -116,7 +117,9 @@ class TestDocumentAPI:
         # Patch create_document_repository to return our mock
         with patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repository):
             # Test
-            response = test_client_with_document_mocks.get("/api/v2/collections/test-operation/documents/test-doc/content")
+            response = test_client_with_document_mocks.get(
+                "/api/v2/collections/test-operation/documents/test-doc/content"
+            )
 
             assert response.status_code == 200
             assert response.headers["content-type"] == "application/pdf"

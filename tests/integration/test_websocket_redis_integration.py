@@ -14,6 +14,37 @@ from packages.webui.websocket_manager import RedisStreamWebSocketManager
 class TestWebSocketRedisIntegration:
     """Integration tests for WebSocket and Redis streaming."""
 
+    def _setup_operation_getter(self, manager, operation_ids):
+        """Helper to set up mock operation getter for tests."""
+        from datetime import UTC, datetime
+        from enum import Enum
+        from unittest.mock import MagicMock
+
+        # Create mock enums
+        class MockStatus(Enum):
+            PROCESSING = "processing"
+
+        class MockType(Enum):
+            INDEX = "index"
+
+        # Create mock operation
+        mock_operation = MagicMock()
+        mock_operation.status = MockStatus.PROCESSING
+        mock_operation.type = MockType.INDEX
+        mock_operation.collection_id = "collection1"
+        mock_operation.created_at = datetime.now(UTC)
+        mock_operation.started_at = datetime.now(UTC)
+        mock_operation.completed_at = None
+        mock_operation.error_message = None
+
+        # Set up the operation getter function
+        async def mock_get_operation(operation_id):
+            if operation_id in operation_ids:
+                return mock_operation
+            return None
+
+        manager.set_operation_getter(mock_get_operation)
+
     @pytest.fixture()
     def real_redis_mock(self):
         """Create a more realistic Redis mock that simulates stream behavior."""
@@ -197,6 +228,14 @@ class TestWebSocketRedisIntegration:
                 mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
                 mock_create_repo.return_value = mock_repo
 
+                # Set up the operation getter function
+                async def mock_get_operation(operation_id):
+                    if operation_id == "job1":
+                        return mock_operation
+                    return None
+
+                manager.set_operation_getter(mock_get_operation)
+
                 # Connect WebSocket client
                 await manager.connect(ws_client, "job1", "user1")
 
@@ -267,6 +306,9 @@ class TestWebSocketRedisIntegration:
                 mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
                 mock_create_repo.return_value = mock_repo
 
+                # Set up operation getter for all clients
+                self._setup_operation_getter(manager, ["job1"])
+
                 # Connect all clients
                 for i, client in enumerate(clients):
                     await manager.connect(client, "job1", f"user{i}")
@@ -328,6 +370,9 @@ class TestWebSocketRedisIntegration:
                 )()
                 mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
                 mock_create_repo.return_value = mock_repo
+
+                # Set up operation getter
+                self._setup_operation_getter(manager, ["job1"])
 
                 await manager.connect(client, "job1", "user1")
                 await asyncio.sleep(0.1)
@@ -457,7 +502,7 @@ class TestWebSocketRedisIntegration:
         # System should still work for direct broadcasts
         client = mock_websocket_factory("client1")
 
-        with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
+        with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
             mock_repo = AsyncMock()
             # Create simple mock operation
             mock_operation = type(
@@ -477,6 +522,9 @@ class TestWebSocketRedisIntegration:
             )()
             mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
             mock_create_repo.return_value = mock_repo
+
+            # Set up operation getter
+            self._setup_operation_getter(manager, ["job1"])
 
             # Connect should still work
             await manager.connect(client, "job1", "user1")
@@ -531,6 +579,9 @@ class TestWebSocketRedisIntegration:
                 mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
                 mock_create_repo.return_value = mock_repo
 
+                # Set up operation getter
+                self._setup_operation_getter(manager, ["job1"])
+
                 await manager.connect(client, "job1", "user1")
 
                 # Simulate client disconnect by making send_json fail
@@ -582,6 +633,9 @@ class TestWebSocketRedisIntegration:
                 )()
                 mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
                 mock_create_repo.return_value = mock_repo
+
+                # Set up operation getter for both jobs
+                self._setup_operation_getter(manager, ["job1", "job2"])
 
                 # Connect all clients
                 for job_id, job_clients in clients.items():

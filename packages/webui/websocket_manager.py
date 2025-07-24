@@ -28,6 +28,7 @@ class RedisStreamWebSocketManager:
         self.max_connections_per_user = 10  # Prevent DOS attacks
         self._startup_lock = asyncio.Lock()
         self._startup_attempted = False
+        self._get_operation_func = None  # Function to get operation by ID
 
     async def startup(self) -> None:
         """Initialize Redis connection on application startup with retry logic."""
@@ -90,6 +91,15 @@ class RedisStreamWebSocketManager:
             await self.redis.close()
             logger.info("WebSocket manager Redis connection closed")
 
+    def set_operation_getter(self, get_operation_func) -> None:
+        """Set the function to get operation by ID.
+
+        This allows dependency injection for testing.
+        The function should be an async function that takes an operation_id
+        and returns an operation object or None.
+        """
+        self._get_operation_func = get_operation_func
+
     async def connect(self, websocket: WebSocket, operation_id: str, user_id: str) -> None:
         """Handle new WebSocket connection for operation updates with connection limit enforcement."""
         # Try to reconnect to Redis if not connected
@@ -121,29 +131,36 @@ class RedisStreamWebSocketManager:
 
         # Get current operation state from database and send it
         try:
-            from packages.shared.database.database import AsyncSessionLocal
-            from packages.shared.database.repositories.operation_repository import OperationRepository
+            operation = None
 
-            async with AsyncSessionLocal() as session:  # type: ignore[misc]
-                operation_repo = OperationRepository(session)
-                operation = await operation_repo.get_by_uuid(operation_id)
+            if self._get_operation_func:
+                # Use injected function (for testing)
+                operation = await self._get_operation_func(operation_id)
+            else:
+                # Use default implementation
+                from packages.shared.database.database import AsyncSessionLocal
+                from packages.shared.database.repositories.operation_repository import OperationRepository
 
-                if operation:
-                    # Send current state
-                    state_message = {
-                        "timestamp": datetime.now(UTC).isoformat(),
-                        "type": "current_state",
-                        "data": {
-                            "status": operation.status.value,
-                            "operation_type": operation.type.value,
-                            "created_at": operation.created_at.isoformat(),
-                            "started_at": operation.started_at.isoformat() if operation.started_at else None,
-                            "completed_at": operation.completed_at.isoformat() if operation.completed_at else None,
-                            "error_message": operation.error_message,
-                        },
-                    }
-                    await websocket.send_json(state_message)
-                    logger.info(f"Sent current state to client for operation {operation_id}")
+                async with AsyncSessionLocal() as session:  # type: ignore[misc]
+                    operation_repo = OperationRepository(session)
+                    operation = await operation_repo.get_by_uuid(operation_id)
+
+            if operation:
+                # Send current state
+                state_message = {
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "type": "current_state",
+                    "data": {
+                        "status": operation.status.value,
+                        "operation_type": operation.type.value,
+                        "created_at": operation.created_at.isoformat(),
+                        "started_at": operation.started_at.isoformat() if operation.started_at else None,
+                        "completed_at": operation.completed_at.isoformat() if operation.completed_at else None,
+                        "error_message": operation.error_message,
+                    },
+                }
+                await websocket.send_json(state_message)
+                logger.info(f"Sent current state to client for operation {operation_id}")
         except Exception as e:
             logger.error(f"Failed to send current state for operation {operation_id}: {e}")
 
