@@ -185,3 +185,4 @@ ticket_*
 CODEBASE_*
 images/*
 .serena/*
+*.pkl
