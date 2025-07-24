@@ -7,8 +7,8 @@ import os
 from typing import Any
 from urllib.parse import urlparse
 
-from pydantic import ConfigDict, Field, field_validator
-from pydantic_settings import BaseSettings
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +42,11 @@ class PostgresConfig(BaseSettings):
     DB_RETRY_LIMIT: int = Field(default=3, description="Number of connection retries")
     DB_RETRY_INTERVAL: float = Field(default=0.5, description="Retry interval in seconds")
 
-    model_config = ConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
-    def construct_database_url(cls, v: str | None, values: dict[str, Any]) -> str:  # noqa: ARG003
+    def construct_database_url(cls, v: str | None) -> str:
         """Construct DATABASE_URL from components if not provided."""
         if v:
             return v
@@ -118,9 +118,9 @@ class PostgresConfig(BaseSettings):
 
             # For asyncpg driver, use 'timeout' instead of 'command_timeout'
             if "asyncpg" in parsed.scheme:
-                connect_args["timeout"] = self.DB_QUERY_TIMEOUT
+                connect_args["timeout"] = self.DB_QUERY_TIMEOUT  # type: ignore[assignment]
             else:
-                connect_args["command_timeout"] = self.DB_QUERY_TIMEOUT
+                connect_args["command_timeout"] = self.DB_QUERY_TIMEOUT  # type: ignore[assignment]
 
             return connect_args
         return {}

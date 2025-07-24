@@ -409,7 +409,8 @@ class SearchService:
                 response = await client.post(f"{settings.SEARCH_API_URL}/search", json=search_params)
                 response.raise_for_status()
 
-            return response.json()
+            result: dict[str, Any] = response.json()
+            return result
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:

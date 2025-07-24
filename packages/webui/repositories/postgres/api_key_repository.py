@@ -90,6 +90,7 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
 
             # Return data including the actual key (only time it's available)
             result = self._api_key_to_dict(api_key_record)
+            assert result is not None  # API key was just created, can't be None
             result["api_key"] = api_key  # Include actual key only on creation
             return result
 

@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import AsyncClient
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -114,10 +115,34 @@ def test_user():
 @pytest.fixture()
 def auth_headers(test_user):
     """Create authorization headers with a test JWT token."""
-    from webui.auth import create_access_token
+    from packages.webui.auth import create_access_token
 
     token = create_access_token(data={"sub": test_user["username"]})
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture()
+def test_user_headers(auth_headers):
+    """Alias for auth_headers to match test expectations."""
+    return auth_headers
+
+
+@pytest.fixture()
+async def async_client(test_user):
+    """Create an async test client for the FastAPI app with auth mocked."""
+    from packages.webui.auth import get_current_user
+    from packages.webui.main import app
+
+    # Override the authentication dependency
+    async def override_get_current_user():
+        return test_user
+
+    app.dependency_overrides[get_current_user] = override_get_current_user
+
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        yield client
+
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture()

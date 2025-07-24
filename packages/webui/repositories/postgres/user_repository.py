@@ -90,7 +90,9 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
             logger.info(f"Created user {user.id} with username '{username}'")
 
             # Return user as dictionary
-            return self._user_to_dict(user)
+            result = self._user_to_dict(user)
+            assert result is not None  # User was just created, can't be None
+            return result
 
         except EntityAlreadyExistsError:
             raise

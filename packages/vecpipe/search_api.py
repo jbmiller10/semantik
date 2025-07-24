@@ -1399,7 +1399,7 @@ async def upsert_points(request: UpsertRequest = Body(...)) -> UpsertResponse:
         qdrant_points = []
         for point in request.points:
             # Convert Pydantic model to dict for payload
-            payload_dict = {
+            payload_dict: dict[str, Any] = {
                 "doc_id": point.payload.doc_id,
                 "chunk_id": point.payload.chunk_id,
                 "path": point.payload.path,
@@ -1413,7 +1413,7 @@ async def upsert_points(request: UpsertRequest = Body(...)) -> UpsertResponse:
             qdrant_points.append(qdrant_point)
 
         # Prepare upsert request
-        upsert_request = {"points": [{"id": p.id, "vector": p.vector, "payload": p.payload} for p in qdrant_points]}
+        upsert_request: dict[str, Any] = {"points": [{"id": p.id, "vector": p.vector, "payload": p.payload} for p in qdrant_points]}
 
         if request.wait:
             upsert_request["wait"] = True

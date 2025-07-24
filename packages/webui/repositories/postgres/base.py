@@ -8,7 +8,7 @@ from shared.database.exceptions import (
     DatabaseOperationError,
     EntityAlreadyExistsError,
 )
-from sqlalchemy import func, insert
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,17 +61,17 @@ class PostgreSQLBaseRepository:
                 stmt = pg_insert(self.model).values(records)
 
                 # Get primary key columns
-                pk_columns = [col.name for col in self.model.__table__.primary_key.columns]
+                pk_columns = [col.name for col in self.model.__table__.primary_key.columns]  # type: ignore[attr-defined]
 
                 # Update all non-primary key columns on conflict
                 update_columns = {col.name: col for col in stmt.excluded if col.name not in pk_columns}
 
-                stmt = stmt.on_conflict_do_update(index_elements=pk_columns, set_=update_columns).returning(self.model)
+                stmt = stmt.on_conflict_do_update(index_elements=pk_columns, set_=update_columns).returning(self.model)  # type: ignore[assignment]  # type: ignore[assignment]
 
                 result = await self.session.execute(stmt)
                 return list(result.scalars().all())
             # Regular bulk insert
-            stmt = insert(self.model).values(records).returning(self.model)
+            stmt = insert(self.model).values(records).returning(self.model)  # type: ignore[assignment]
             result = await self.session.execute(stmt)
             return list(result.scalars().all())
 
@@ -104,15 +104,15 @@ class PostgreSQLBaseRepository:
             stmt = pg_insert(self.model).values(**kwargs)
 
             # Get primary key columns
-            pk_columns = [col.name for col in self.model.__table__.primary_key.columns]
+            pk_columns = [col.name for col in self.model.__table__.primary_key.columns]  # type: ignore[attr-defined]
 
             # Update all non-primary key columns on conflict
             update_columns = {col.name: col for col in stmt.excluded if col.name not in pk_columns}
 
-            stmt = stmt.on_conflict_do_update(index_elements=pk_columns, set_=update_columns).returning(self.model)
+            stmt = stmt.on_conflict_do_update(index_elements=pk_columns, set_=update_columns).returning(self.model)  # type: ignore[assignment]
 
             result = await self.session.execute(stmt)
-            return result.scalar_one()
+            return result.scalar_one()  # type: ignore[no-any-return]
 
         except Exception as e:
             logger.error(f"Failed to upsert {self.model_name}: {e}")
@@ -173,7 +173,7 @@ class PostgreSQLBaseRepository:
                 # Use the provided select statement but only count
                 count_query = filters.with_only_columns(func.count()).select_from(self.model)
             else:
-                count_query = self.session.query(func.count()).select_from(self.model)
+                count_query = select(func.count()).select_from(self.model)
 
             result = await self.session.scalar(count_query)
             return result or 0
