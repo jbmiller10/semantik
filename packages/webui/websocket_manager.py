@@ -328,6 +328,10 @@ class RedisStreamWebSocketManager:
                         # Stream doesn't exist yet
                         logger.debug(f"Stream {stream_key} not ready yet, waiting...")
                         await asyncio.sleep(2)
+                    elif "no running event loop" in error_str.lower():
+                        # Event loop has been closed, exit gracefully
+                        logger.debug(f"Event loop closed for operation {operation_id}, exiting consumer")
+                        return
                     else:
                         logger.error(f"Error in consumer loop for operation {operation_id}: {e}")
                         await asyncio.sleep(5)  # Wait before retry
@@ -335,6 +339,11 @@ class RedisStreamWebSocketManager:
         except asyncio.CancelledError:
             logger.info(f"Consumer task cancelled for operation {operation_id}")
             raise
+        except RuntimeError as e:
+            if "no running event loop" in str(e).lower():
+                logger.debug(f"Event loop closed for operation {operation_id}, exiting consumer")
+            else:
+                logger.error(f"Fatal runtime error in consumer for operation {operation_id}: {e}")
         except Exception as e:
             logger.error(f"Fatal error in consumer for operation {operation_id}: {e}")
 

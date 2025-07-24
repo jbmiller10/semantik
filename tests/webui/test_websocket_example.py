@@ -16,6 +16,14 @@ from tests.webui.test_websocket_helpers import (
 class TestWebSocketExamples:
     """Example tests showing how to test WebSocket functionality."""
 
+    @pytest.fixture(autouse=True)
+    def setup_and_teardown(self):
+        """Ensure clean state before and after each test."""
+        # Setup - nothing needed before
+        yield
+        # Teardown - ensure no lingering tasks
+        # Note: We don't need async teardown here since the harness cleanup handles it
+
     @pytest.mark.asyncio()
     async def test_simple_websocket_flow(self, mock_redis_client):
         """Example: Test a simple WebSocket connection and message flow."""

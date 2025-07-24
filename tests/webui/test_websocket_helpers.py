@@ -99,7 +99,16 @@ class WebSocketTestHarness:
         return results
 
     async def cleanup(self):
-        """Clean up all connections."""
+        """Clean up all connections and consumer tasks."""
+        # First, cancel all consumer tasks to prevent event loop errors
+        for operation_id, task in list(self.manager.consumer_tasks.items()):
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        self.manager.consumer_tasks.clear()
+        
         # Disconnect all clients
         for client in self.clients.values():
             # Find the connection info from manager
@@ -112,6 +121,9 @@ class WebSocketTestHarness:
                         await client.disconnect(self.manager, operation_id, user_id)
 
         self.clients.clear()
+        
+        # Clear all remaining connections
+        self.manager.connections.clear()
 
 
 async def simulate_operation_updates(updater, delays: list[float] = None):
