@@ -115,6 +115,7 @@ from pydantic import BaseModel, Field
 
 class EmbedRequest(BaseModel):
     """Request model for batch embedding generation"""
+
     texts: list[str] = Field(..., min_length=1, max_length=1000, description="List of texts to embed")
     model_name: str = Field(..., description="Embedding model name")
     quantization: str = Field("float32", description="Model quantization type: float32, float16, int8")
@@ -124,6 +125,7 @@ class EmbedRequest(BaseModel):
 
 class EmbedResponse(BaseModel):
     """Response model for batch embedding generation"""
+
     embeddings: list[list[float]] = Field(..., description="List of embedding vectors")
     model_used: str = Field(..., description="Model and quantization used")
     embedding_time_ms: float | None = Field(None, description="Time taken to generate embeddings in milliseconds")
@@ -132,6 +134,7 @@ class EmbedResponse(BaseModel):
 
 class PointPayload(BaseModel):
     """Payload structure for Qdrant points"""
+
     doc_id: str
     chunk_id: str
     path: str
@@ -141,6 +144,7 @@ class PointPayload(BaseModel):
 
 class UpsertPoint(BaseModel):
     """Individual point for upserting to Qdrant"""
+
     id: str = Field(..., description="Unique point ID")
     vector: list[float] = Field(..., description="Embedding vector")
     payload: PointPayload = Field(..., description="Point metadata")
@@ -148,6 +152,7 @@ class UpsertPoint(BaseModel):
 
 class UpsertRequest(BaseModel):
     """Request model for Qdrant upsert operation"""
+
     collection_name: str = Field(..., description="Target collection name")
     points: list[UpsertPoint] = Field(..., min_length=1, max_length=1000, description="Points to upsert")
     wait: bool = Field(True, description="Wait for operation to complete")
@@ -155,6 +160,7 @@ class UpsertRequest(BaseModel):
 
 class UpsertResponse(BaseModel):
     """Response model for Qdrant upsert operation"""
+
     status: str = Field(..., description="Operation status")
     points_upserted: int = Field(..., description="Number of points successfully upserted")
     collection_name: str = Field(..., description="Target collection name")
@@ -1275,10 +1281,10 @@ async def embedding_info() -> dict[str, Any]:
 async def embed_texts(request: EmbedRequest = Body(...)) -> EmbedResponse:
     """
     Generate embeddings for a batch of texts
-    
+
     This endpoint allows external services (like the worker) to generate embeddings
     without needing direct GPU access. It handles batch processing and model management.
-    
+
     - **texts**: List of texts to embed (max 1000)
     - **model_name**: Embedding model to use
     - **quantization**: Model quantization (float32, float16, int8)
@@ -1286,61 +1292,58 @@ async def embed_texts(request: EmbedRequest = Body(...)) -> EmbedResponse:
     - **batch_size**: Batch size for processing (1-100, default 32)
     """
     start_time = time.time()
-    
+
     # Record request
     search_requests.labels(endpoint="/embed", search_type="embedding").inc()
-    
+
     try:
         if model_manager is None:
             raise RuntimeError("Model manager not initialized")
-            
+
         logger.info(
             f"Processing embedding request: {len(request.texts)} texts, "
             f"model={request.model_name}, quantization={request.quantization}"
         )
-        
+
         # Process texts in batches
         embeddings = []
         batch_count = 0
-        
+
         for i in range(0, len(request.texts), request.batch_size):
-            batch_texts = request.texts[i:i + request.batch_size]
+            batch_texts = request.texts[i : i + request.batch_size]
             batch_embeddings = []
-            
+
             # Generate embeddings for batch
             for text in batch_texts:
                 embedding = await generate_embedding_async(
-                    text,
-                    request.model_name,
-                    request.quantization,
-                    request.instruction
+                    text, request.model_name, request.quantization, request.instruction
                 )
                 batch_embeddings.append(embedding)
-            
+
             embeddings.extend(batch_embeddings)
             batch_count += 1
-            
+
             # Log progress for large batches
             if len(request.texts) > 100 and i % 100 == 0:
                 logger.info(f"Processed {i + len(batch_texts)}/{len(request.texts)} texts")
-        
+
         total_time = (time.time() - start_time) * 1000
-        
+
         logger.info(
             f"Embedding generation completed: {len(embeddings)} embeddings in "
             f"{total_time:.2f}ms ({batch_count} batches)"
         )
-        
+
         # Record latency
         search_latency.labels(endpoint="/embed", search_type="embedding").observe(time.time() - start_time)
-        
+
         return EmbedResponse(
             embeddings=embeddings,
             model_used=f"{request.model_name}/{request.quantization}",
             embedding_time_ms=total_time,
-            batch_count=batch_count
+            batch_count=batch_count,
         )
-        
+
     except InsufficientMemoryError as e:
         logger.error(f"Insufficient memory for embedding generation: {e}")
         search_errors.labels(endpoint="/embed", error_type="memory_error").inc()
@@ -1349,55 +1352,50 @@ async def embed_texts(request: EmbedRequest = Body(...)) -> EmbedResponse:
             detail={
                 "error": "insufficient_memory",
                 "message": str(e),
-                "suggestion": "Try using a smaller model or different quantization (float16/int8)"
-            }
+                "suggestion": "Try using a smaller model or different quantization (float16/int8)",
+            },
         ) from e
     except RuntimeError as e:
         logger.error(f"Embedding generation failed: {e}")
         search_errors.labels(endpoint="/embed", error_type="runtime_error").inc()
-        raise HTTPException(
-            status_code=503,
-            detail=f"Embedding service error: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=503, detail=f"Embedding service error: {str(e)}") from e
     except Exception as e:
         logger.error(f"Unexpected error in /embed: {e}")
         search_errors.labels(endpoint="/embed", error_type="unknown_error").inc()
         import traceback
+
         traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}") from e
 
 
 @app.post("/upsert", response_model=UpsertResponse)
 async def upsert_points(request: UpsertRequest = Body(...)) -> UpsertResponse:
     """
     Upsert points to a Qdrant collection
-    
+
     This endpoint allows external services (like the worker) to upload vectors
     to Qdrant without direct access. It handles batch operations and validation.
-    
+
     - **collection_name**: Target collection name
     - **points**: List of points to upsert (max 1000)
     - **wait**: Wait for operation to complete (default True)
     """
     start_time = time.time()
-    
+
     # Record request
     search_requests.labels(endpoint="/upsert", search_type="vector_upload").inc()
-    
+
     try:
         if qdrant_client is None:
             raise RuntimeError("Qdrant client not initialized")
-            
+
         logger.info(
             f"Processing upsert request: {len(request.points)} points to collection '{request.collection_name}'"
         )
-        
+
         # Convert request points to PointStruct format
         from qdrant_client.models import PointStruct
-        
+
         qdrant_points = []
         for point in request.points:
             # Convert Pydantic model to dict for payload
@@ -1410,57 +1408,40 @@ async def upsert_points(request: UpsertRequest = Body(...)) -> UpsertResponse:
                 payload_dict["content"] = point.payload.content
             if point.payload.metadata is not None:
                 payload_dict["metadata"] = point.payload.metadata
-                
-            qdrant_point = PointStruct(
-                id=point.id,
-                vector=point.vector,
-                payload=payload_dict
-            )
+
+            qdrant_point = PointStruct(id=point.id, vector=point.vector, payload=payload_dict)
             qdrant_points.append(qdrant_point)
-        
+
         # Prepare upsert request
-        upsert_request = {
-            "points": [
-                {
-                    "id": p.id,
-                    "vector": p.vector,
-                    "payload": p.payload
-                }
-                for p in qdrant_points
-            ]
-        }
-        
+        upsert_request = {"points": [{"id": p.id, "vector": p.vector, "payload": p.payload} for p in qdrant_points]}
+
         if request.wait:
             upsert_request["wait"] = True
-            
+
         # Perform upsert
-        response = await qdrant_client.put(
-            f"/collections/{request.collection_name}/points",
-            json=upsert_request
-        )
+        response = await qdrant_client.put(f"/collections/{request.collection_name}/points", json=upsert_request)
         response.raise_for_status()
-        
+
         total_time = (time.time() - start_time) * 1000
-        
+
         logger.info(
-            f"Upsert completed: {len(request.points)} points to '{request.collection_name}' "
-            f"in {total_time:.2f}ms"
+            f"Upsert completed: {len(request.points)} points to '{request.collection_name}' " f"in {total_time:.2f}ms"
         )
-        
+
         # Record latency
         search_latency.labels(endpoint="/upsert", search_type="vector_upload").observe(time.time() - start_time)
-        
+
         return UpsertResponse(
             status="success",
             points_upserted=len(request.points),
             collection_name=request.collection_name,
-            upsert_time_ms=total_time
+            upsert_time_ms=total_time,
         )
-        
+
     except httpx.HTTPStatusError as e:
         logger.error(f"Qdrant error during upsert: {e}")
         search_errors.labels(endpoint="/upsert", error_type="qdrant_error").inc()
-        
+
         # Parse error details if available
         error_detail = "Vector database error"
         try:
@@ -1469,20 +1450,15 @@ async def upsert_points(request: UpsertRequest = Body(...)) -> UpsertResponse:
                 error_detail = error_response["status"]["error"]
         except Exception:
             pass
-            
-        raise HTTPException(
-            status_code=502,
-            detail=f"Qdrant error: {error_detail}"
-        ) from e
+
+        raise HTTPException(status_code=502, detail=f"Qdrant error: {error_detail}") from e
     except Exception as e:
         logger.error(f"Unexpected error in /upsert: {e}")
         search_errors.labels(endpoint="/upsert", error_type="unknown_error").inc()
         import traceback
+
         traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}") from e
 
 
 if __name__ == "__main__":

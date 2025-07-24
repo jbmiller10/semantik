@@ -11,6 +11,7 @@ from datetime import datetime, UTC
 
 # Handle both Docker and local environments
 import os
+
 if os.path.exists("/app"):
     sys.path.insert(0, "/app")
 else:
@@ -28,31 +29,29 @@ async def create_superuser(username: str, email: str, password: str):
     # Create async session
     async for session in get_db():
         # Check if user already exists
-        result = await session.execute(
-            select(User).where((User.username == username) | (User.email == email))
-        )
+        result = await session.execute(select(User).where((User.username == username) | (User.email == email)))
         existing_user = result.scalar_one_or_none()
-        
+
         if existing_user:
             if existing_user.username == username:
                 print(f"Error: User with username '{username}' already exists.")
             else:
                 print(f"Error: User with email '{email}' already exists.")
-            
+
             # Ask if they want to make existing user a superuser
             if existing_user.is_superuser:
                 print("This user is already a superuser.")
                 return False
             else:
                 response = input("Would you like to make this existing user a superuser? (y/n): ")
-                if response.lower() == 'y':
+                if response.lower() == "y":
                     existing_user.is_superuser = True
                     existing_user.updated_at = datetime.now(UTC)
                     await session.commit()
                     print(f"User '{existing_user.username}' is now a superuser!")
                     return True
                 return False
-        
+
         # Create new superuser
         hashed_password = pwd_context.hash(password)
         new_user = User(
@@ -62,18 +61,18 @@ async def create_superuser(username: str, email: str, password: str):
             is_active=True,
             is_superuser=True,
             full_name=f"{username} (Superuser)",
-            created_at=datetime.now(UTC)
+            created_at=datetime.now(UTC),
         )
-        
+
         session.add(new_user)
         await session.commit()
-        
+
         print(f"\nSuperuser created successfully!")
         print(f"Username: {username}")
         print(f"Email: {email}")
         print(f"You can now log in and use the reset database functionality.")
         return True
-        
+
     # Should not reach here, but return False if somehow we do
     return False
 
@@ -81,7 +80,7 @@ async def create_superuser(username: str, email: str, password: str):
 async def main():
     """Main function to handle command line arguments or interactive input."""
     print("=== Semantik Superuser Creation ===\n")
-    
+
     if len(sys.argv) == 4:
         # Use command line arguments
         username = sys.argv[1]
@@ -94,20 +93,20 @@ async def main():
         email = input("Enter email: ").strip()
         password = getpass("Enter password: ")
         confirm_password = getpass("Confirm password: ")
-        
+
         if password != confirm_password:
             print("Error: Passwords do not match.")
             sys.exit(1)
-    
+
     if not username or not email or not password:
         print("Error: All fields are required.")
         sys.exit(1)
-    
+
     # Basic email validation
-    if '@' not in email:
+    if "@" not in email:
         print("Error: Invalid email address.")
         sys.exit(1)
-    
+
     # Create the superuser
     success = await create_superuser(username, email, password)
     sys.exit(0 if success else 1)

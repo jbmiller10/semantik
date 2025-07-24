@@ -35,12 +35,12 @@ async def register(
     """Register a new user"""
     try:
         hashed_password = get_password_hash(user_data.password)
-        
+
         # Check if this is the first user in the system
         # If so, make them a superuser automatically
         user_count = await user_repo.count_users()
         is_first_user = user_count == 0
-        
+
         user_dict = await user_repo.create_user(
             {
                 "username": user_data.username,
@@ -50,7 +50,7 @@ async def register(
                 "is_superuser": is_first_user,  # First user becomes superuser
             }
         )
-        
+
         if is_first_user:
             logger.info(f"Created first user '{user_data.username}' as superuser")
         return User(**user_dict)

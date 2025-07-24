@@ -18,9 +18,14 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from packages.shared.config import settings
 from packages.shared.database import get_db
 from packages.shared.database.models import (
-    Collection, Document, Operation, CollectionSource,
-    CollectionPermission, CollectionAuditLog, CollectionResourceLimits,
-    OperationMetrics
+    Collection,
+    Document,
+    Operation,
+    CollectionSource,
+    CollectionPermission,
+    CollectionAuditLog,
+    CollectionResourceLimits,
+    OperationMetrics,
 )
 from packages.webui.auth import get_current_user
 
@@ -40,11 +45,8 @@ async def reset_database_endpoint(
     """Reset the database - ADMIN ONLY"""
     # Check if user is admin/superuser
     if not current_user.get("is_superuser", False):
-        raise HTTPException(
-            status_code=403,
-            detail="Only administrators can reset the database"
-        )
-    
+        raise HTTPException(status_code=403, detail="Only administrators can reset the database")
+
     try:
         # Get all collections before reset
         # We need to get all collections, not just for the current user
@@ -93,7 +95,7 @@ async def reset_database_endpoint(
             await db.execute(delete(CollectionSource))
             await db.execute(delete(Collection))
             # Note: We don't delete Users, ApiKeys, or RefreshTokens as they're auth-related
-            
+
             await db.commit()
             logger.info("Database tables cleared successfully")
         except Exception as e:

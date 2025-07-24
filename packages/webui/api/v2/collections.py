@@ -98,16 +98,16 @@ async def create_collection(
             status=collection["status"],
             status_message=collection.get("status_message"),
         )
-        
+
         # Add the initial operation ID as a custom header
         # This allows the frontend to track the INDEX operation
         from fastapi import Response
         import json
-        
+
         # Return the response with the operation ID in a custom header
         response_dict = response.model_dump()
         response_dict["initial_operation_id"] = operation["uuid"]
-        
+
         return response_dict
 
     except EntityAlreadyExistsError as e:
@@ -281,7 +281,7 @@ async def delete_collection(
     delete a collection.
     """
     logger.info(f"User {current_user['id']} attempting to delete collection {collection_uuid}")
-    
+
     try:
         await service.delete_collection(
             collection_id=collection_uuid,
