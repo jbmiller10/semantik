@@ -101,8 +101,6 @@ async def create_collection(
 
         # Add the initial operation ID as a custom header
         # This allows the frontend to track the INDEX operation
-        from fastapi import Response
-        import json
 
         # Return the response with the operation ID in a custom header
         response_dict = response.model_dump()

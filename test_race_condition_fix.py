@@ -2,8 +2,9 @@
 """Test script to verify the race condition fix for collection creation with initial source."""
 
 import asyncio
-from playwright.async_api import async_playwright
 import time
+
+from playwright.async_api import async_playwright
 
 
 async def test_collection_creation_with_source():

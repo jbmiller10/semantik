@@ -1,6 +1,5 @@
 """Celery application configuration."""
 
-import asyncio
 import logging
 import os
 
@@ -67,6 +66,6 @@ celery_app.autodiscover_tasks(["webui"])
 
 # Worker initialization
 @worker_process_init.connect
-def init_worker_process(**kwargs):
+def init_worker_process(**kwargs):  # noqa: ARG001
     """Initialize worker process - prepare for database connections."""
     logger.info("Worker process initialized - database will be initialized per task")

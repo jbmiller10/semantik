@@ -6,16 +6,15 @@ This helps identify why embeddings might not be generated.
 
 import asyncio
 import sys
-from datetime import datetime
-from typing import Optional
+from datetime import UTC, datetime
 
 # Add the packages directory to the Python path
 sys.path.insert(0, "/home/dockertest/semantik/packages")
 
 from shared.database import pg_connection_manager
 from shared.database.database import AsyncSessionLocal
-from shared.database.models import Collection, Operation, Document, CollectionStatus, OperationStatus, DocumentStatus
-from sqlalchemy import select, func
+from shared.database.models import Collection, Document, DocumentStatus, Operation, OperationStatus
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 
@@ -51,7 +50,7 @@ async def check_collections():
             # Check operations for this collection
             operations = sorted(collection.operations, key=lambda x: x.created_at, reverse=True)
             if operations:
-                print(f"\n  Recent Operations:")
+                print("\n  Recent Operations:")
                 for op in operations[:5]:  # Show last 5 operations
                     print(f"    - Type: {op.type.value}, Status: {op.status.value}")
                     print(f"      ID: {op.uuid}")
@@ -89,7 +88,7 @@ async def check_failed_operations():
                 print()
 
 
-async def check_document_status(collection_id: Optional[str] = None):
+async def check_document_status(collection_id: str | None = None):
     """Check document processing status."""
     async with AsyncSessionLocal() as db:
         # Build query
@@ -182,7 +181,7 @@ async def check_pending_operations():
                 print(f"  Created: {op.created_at}")
                 if op.started_at:
                     print(f"  Started: {op.started_at}")
-                    duration = datetime.utcnow() - op.started_at.replace(tzinfo=None)
+                    duration = datetime.now(tz=UTC) - op.started_at.replace(tzinfo=None)
                     print(f"  Running for: {duration}")
                 print(f"  Task ID: {op.task_id or 'None'}")
                 print(f"  Config: {op.config}")

@@ -127,6 +127,7 @@ class PostgresConnectionManager:
                     await asyncio.sleep(self.config.DB_RETRY_INTERVAL)
                 else:
                     raise
+        return None
 
 
 # Global connection manager instance

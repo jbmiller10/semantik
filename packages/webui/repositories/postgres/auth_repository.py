@@ -44,8 +44,8 @@ class PostgreSQLAuthRepository(PostgreSQLBaseRepository, AuthRepository):
             # Validate and convert user_id
             try:
                 user_id_int = int(user_id)
-            except ValueError:
-                raise InvalidUserIdError(user_id)
+            except ValueError as e:
+                raise InvalidUserIdError(user_id) from e
 
             # Create refresh token record
             refresh_token = RefreshToken(
@@ -87,7 +87,7 @@ class PostgreSQLAuthRepository(PostgreSQLBaseRepository, AuthRepository):
             result = await self.session.execute(
                 select(RefreshToken).where(
                     (RefreshToken.token_hash == token_hash)
-                    & (RefreshToken.is_revoked == False)
+                    & (~RefreshToken.is_revoked)
                     & (RefreshToken.expires_at > datetime.now(UTC))
                 )
             )
@@ -154,8 +154,8 @@ class PostgreSQLAuthRepository(PostgreSQLBaseRepository, AuthRepository):
             # Validate and convert user_id
             try:
                 user_id_int = int(user_id)
-            except ValueError:
-                raise InvalidUserIdError(user_id)
+            except ValueError as e:
+                raise InvalidUserIdError(user_id) from e
 
             # Update last login
             await self.session.execute(update(User).where(User.id == user_id_int).values(last_login=datetime.now(UTC)))
@@ -210,13 +210,13 @@ class PostgreSQLAuthRepository(PostgreSQLBaseRepository, AuthRepository):
             # Validate and convert user_id
             try:
                 user_id_int = int(user_id)
-            except ValueError:
-                raise InvalidUserIdError(user_id)
+            except ValueError as e:
+                raise InvalidUserIdError(user_id) from e
 
             # Revoke all user's tokens
             result = await self.session.execute(
                 update(RefreshToken)
-                .where((RefreshToken.user_id == user_id_int) & (RefreshToken.is_revoked == False))
+                .where((RefreshToken.user_id == user_id_int) & (RefreshToken.is_revoked.is_(False)))
                 .values(is_revoked=True)
                 .returning(RefreshToken.id)
             )
@@ -249,15 +249,15 @@ class PostgreSQLAuthRepository(PostgreSQLBaseRepository, AuthRepository):
             # Validate and convert user_id
             try:
                 user_id_int = int(user_id)
-            except ValueError:
-                raise InvalidUserIdError(user_id)
+            except ValueError as e:
+                raise InvalidUserIdError(user_id) from e
 
             from sqlalchemy import func
 
             count = await self.session.scalar(
                 select(func.count(RefreshToken.id)).where(
                     (RefreshToken.user_id == user_id_int)
-                    & (RefreshToken.is_revoked == False)
+                    & (~RefreshToken.is_revoked)
                     & (RefreshToken.expires_at > datetime.now(UTC))
                 )
             )

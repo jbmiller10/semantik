@@ -2,9 +2,9 @@
 """Simple test to verify the race condition fix."""
 
 import asyncio
-from playwright.async_api import async_playwright
 import time
-import json
+
+from playwright.async_api import async_playwright
 
 
 async def test_simple():
@@ -36,7 +36,7 @@ async def test_simple():
                 try:
                     data = await response.json()
                     responses.append({"url": response.url, "status": response.status, "data": data})
-                except:
+                except Exception:
                     pass
 
         page.on("response", capture_response)

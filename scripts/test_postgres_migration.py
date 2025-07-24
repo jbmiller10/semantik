@@ -54,8 +54,8 @@ def test_migration():
             result = conn.execute(
                 text(
                     """
-                SELECT typname 
-                FROM pg_type 
+                SELECT typname
+                FROM pg_type
                 WHERE typname IN ('document_status', 'permission_type', 'collection_status', 'operation_type', 'operation_status')
                 ORDER BY typname
             """
@@ -74,8 +74,8 @@ def test_migration():
             result = conn.execute(
                 text(
                     """
-                SELECT typname 
-                FROM pg_type 
+                SELECT typname
+                FROM pg_type
                 WHERE typname IN ('document_status', 'permission_type', 'collection_status', 'operation_type', 'operation_status')
             """
                 )

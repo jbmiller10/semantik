@@ -65,8 +65,7 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
             if existing:
                 if existing.username == username:
                     raise EntityAlreadyExistsError("user", f"username: {username}")
-                else:
-                    raise EntityAlreadyExistsError("user", f"email: {email}")
+                raise EntityAlreadyExistsError("user", f"email: {email}")
 
             # Create user with PostgreSQL RETURNING clause
             user = User(
@@ -136,8 +135,8 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
             # Validate and convert user_id
             try:
                 user_id_int = int(user_id)
-            except ValueError:
-                raise InvalidUserIdError(user_id)
+            except ValueError as e:
+                raise InvalidUserIdError(user_id) from e
 
             result = await self.session.execute(select(User).where(User.id == user_id_int))
             user = result.scalar_one_or_none()
@@ -187,8 +186,8 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
             # Validate and convert user_id
             try:
                 user_id_int = int(user_id)
-            except ValueError:
-                raise InvalidUserIdError(user_id)
+            except ValueError as e:
+                raise InvalidUserIdError(user_id) from e
 
             # Check if user exists
             user = await self.session.get(User, user_id_int)
@@ -242,8 +241,8 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
             # Validate and convert user_id
             try:
                 user_id_int = int(user_id)
-            except ValueError:
-                raise InvalidUserIdError(user_id)
+            except ValueError as e:
+                raise InvalidUserIdError(user_id) from e
 
             # Use PostgreSQL's DELETE ... RETURNING for efficiency
             result = await self.session.execute(delete(User).where(User.id == user_id_int).returning(User.id))
@@ -326,8 +325,8 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
             # Validate and convert user_id
             try:
                 user_id_int = int(user_id)
-            except ValueError:
-                raise InvalidUserIdError(user_id)
+            except ValueError as e:
+                raise InvalidUserIdError(user_id) from e
 
             # Use PostgreSQL's UPDATE ... RETURNING for efficiency
             await self.session.execute(update(User).where(User.id == user_id_int).values(last_login=datetime.now(UTC)))

@@ -5,14 +5,13 @@ This script tests text extraction and chunking for a specific file.
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add the packages directory to the Python path
 sys.path.insert(0, "/home/dockertest/semantik/packages")
 
-from shared.text_extraction.text_extractor import extract_text_and_serialize
 from shared.chunking.token_chunker import TokenChunker
+from shared.text_extraction.text_extractor import extract_text_and_serialize
 
 
 def test_text_extraction(file_path: str):
@@ -21,7 +20,7 @@ def test_text_extraction(file_path: str):
     print(f"Testing text extraction for: {file_path}")
     print(f"{'='*60}\n")
 
-    if not os.path.exists(file_path):
+    if not Path(file_path).exists():
         print(f"❌ File not found: {file_path}")
         return None
 
@@ -116,7 +115,7 @@ def main():
 
         test_file = None
         for f in sample_files:
-            if os.path.exists(f):
+            if Path(f).exists():
                 test_file = f
                 break
 

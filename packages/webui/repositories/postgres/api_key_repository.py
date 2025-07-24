@@ -57,8 +57,8 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             # Validate and convert user_id
             try:
                 user_id_int = int(user_id)
-            except ValueError:
-                raise InvalidUserIdError(user_id)
+            except ValueError as e:
+                raise InvalidUserIdError(user_id) from e
 
             # Verify user exists
             user_exists = await self.session.scalar(select(User.id).where(User.id == user_id_int))
@@ -159,8 +159,8 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             # Validate and convert user_id
             try:
                 user_id_int = int(user_id)
-            except ValueError:
-                raise InvalidUserIdError(user_id)
+            except ValueError as e:
+                raise InvalidUserIdError(user_id) from e
 
             result = await self.session.execute(
                 select(ApiKey).where(ApiKey.user_id == user_id_int).order_by(ApiKey.created_at.desc())
@@ -245,7 +245,7 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             # Look up by hash
             result = await self.session.execute(
                 select(ApiKey)
-                .where((ApiKey.key_hash == key_hash) & (ApiKey.is_active == True))
+                .where((ApiKey.key_hash == key_hash) & (ApiKey.is_active))
                 .options(selectinload(ApiKey.user))
             )
             api_key_record = result.scalar_one_or_none()

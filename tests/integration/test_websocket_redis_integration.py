@@ -1,6 +1,7 @@
 """Integration tests for WebSocket and Redis streaming functionality."""
 
 import asyncio
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest

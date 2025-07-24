@@ -1,6 +1,7 @@
 import asyncio
-from sqlalchemy import select, text
+
 from shared.database import pg_connection_manager
+from sqlalchemy import text
 
 
 async def check_operations():
@@ -9,7 +10,7 @@ async def check_operations():
         result = await db.execute(
             text(
                 """
-            SELECT 
+            SELECT
                 c.name as collection_name,
                 o.type,
                 o.status,

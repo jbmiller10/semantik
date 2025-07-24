@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Direct API test to verify race condition prevention."""
 
-import httpx
 import asyncio
-import time
 import json
+import time
+
+import httpx
 
 
 async def test_api_directly():

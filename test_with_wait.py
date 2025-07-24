@@ -2,13 +2,14 @@
 """Test script with better wait conditions."""
 
 import asyncio
+
 from playwright.async_api import async_playwright
 
 
 async def test_with_proper_waits():
     async with async_playwright() as p:
         # Launch with devtools to see console errors
-        browser = await p.chromium.launch(headless=False if False else True)
+        browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
         page = await context.new_page()
 
@@ -25,7 +26,7 @@ async def test_with_proper_waits():
             # Wait for login form or collections page
             await page.wait_for_selector('input[name="username"], h1:has-text("Collections")', timeout=10000)
             print("App loaded!")
-        except:
+        except Exception:
             print("App failed to load properly")
             await page.screenshot(path="app_load_error.png")
             content = await page.content()
@@ -50,7 +51,7 @@ async def test_with_proper_waits():
         try:
             await page.wait_for_selector('h1:has-text("Collections"), h2:has-text("Collections")', timeout=5000)
             print("Collections page loaded!")
-        except:
+        except Exception:
             print("Collections page not found")
             await page.screenshot(path="collections_error.png")
 
@@ -86,7 +87,7 @@ async def test_with_proper_waits():
                     print("7. Create Collection modal opened!")
 
                     break
-            except:
+            except Exception:
                 continue
 
         if not button_found:

@@ -70,22 +70,20 @@ class PostgreSQLBaseRepository:
 
                 result = await self.session.execute(stmt)
                 return list(result.scalars().all())
-            else:
-                # Regular bulk insert
-                stmt = insert(self.model).values(records).returning(self.model)
-                result = await self.session.execute(stmt)
-                return list(result.scalars().all())
+            # Regular bulk insert
+            stmt = insert(self.model).values(records).returning(self.model)
+            result = await self.session.execute(stmt)
+            return list(result.scalars().all())
 
         except IntegrityError as e:
             if isinstance(e.orig, UniqueViolationError):
                 logger.error(f"Unique constraint violation during bulk insert: {e}")
                 raise EntityAlreadyExistsError(self.model_name, "multiple records") from e
-            elif isinstance(e.orig, ForeignKeyViolationError):
+            if isinstance(e.orig, ForeignKeyViolationError):
                 logger.error(f"Foreign key violation during bulk insert: {e}")
                 raise DatabaseOperationError("bulk_insert", self.model_name, str(e)) from e
-            else:
-                logger.error(f"Integrity error during bulk insert: {e}")
-                raise DatabaseOperationError("bulk_insert", self.model_name, str(e)) from e
+            logger.error(f"Integrity error during bulk insert: {e}")
+            raise DatabaseOperationError("bulk_insert", self.model_name, str(e)) from e
         except Exception as e:
             logger.error(f"Failed to bulk insert {self.model_name} records: {e}")
             raise DatabaseOperationError("bulk_insert", self.model_name, str(e)) from e
@@ -218,11 +216,10 @@ class PostgreSQLBaseRepository:
             constraint_name = getattr(error.orig, "constraint_name", "unknown")
             logger.error(f"Unique constraint violation ({constraint_name}) during {operation}")
             raise EntityAlreadyExistsError(self.model_name, f"constraint: {constraint_name}") from error
-        elif isinstance(error.orig, ForeignKeyViolationError):
+        if isinstance(error.orig, ForeignKeyViolationError):
             # Extract foreign key info if available
             detail = getattr(error.orig, "detail", "unknown")
             logger.error(f"Foreign key violation during {operation}: {detail}")
             raise DatabaseOperationError(operation, self.model_name, f"Foreign key violation: {detail}") from error
-        else:
-            logger.error(f"Integrity error during {operation}: {error}")
-            raise DatabaseOperationError(operation, self.model_name, str(error)) from error
+        logger.error(f"Integrity error during {operation}: {error}")
+        raise DatabaseOperationError(operation, self.model_name, str(error)) from error

@@ -53,7 +53,7 @@ async def collections_list_page() -> FileResponse:
 
 
 @router.get("/collections/{collection_id}")
-async def collection_detail_page(collection_id: str) -> FileResponse:
+async def collection_detail_page(collection_id: str) -> FileResponse:  # noqa: ARG001
     """Serve the React app for collection detail route"""
     base_dir = Path(__file__).resolve().parent.parent
     return FileResponse(base_dir / "static" / "index.html")

@@ -45,8 +45,7 @@ class AsyncSessionLocalWrapper:
                 # If we're already in an async context, we can't await here
                 # This should be rare as most code paths go through get_db()
                 raise RuntimeError("Database not initialized. Use get_db() or initialize the connection manager first.")
-            else:
-                loop.run_until_complete(pg_connection_manager.initialize())
+            loop.run_until_complete(pg_connection_manager.initialize())
 
         return pg_connection_manager._sessionmaker()
 

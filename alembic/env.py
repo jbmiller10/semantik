@@ -11,11 +11,10 @@ from alembic import context
 # Add the packages directory to the Python path
 sys.path.insert(0, str(Path(__file__).parent.parent / "packages"))
 
+from shared.database.models import Base  # noqa: E402
+
 # Set up logger
 logger = logging.getLogger(__name__)
-
-# Import our models
-from shared.database.models import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

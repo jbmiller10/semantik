@@ -46,7 +46,7 @@ class PostgresConfig(BaseSettings):
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
-    def construct_database_url(cls, v: str | None, values: dict[str, Any]) -> str:
+    def construct_database_url(cls, v: str | None, values: dict[str, Any]) -> str:  # noqa: ARG003
         """Construct DATABASE_URL from components if not provided."""
         if v:
             return v
@@ -72,12 +72,7 @@ class PostgresConfig(BaseSettings):
 
         # Parse the URL and replace scheme with async version
         parsed = urlparse(self.DATABASE_URL)
-        if parsed.scheme == "postgresql":
-            # Use asyncpg for async PostgreSQL
-            async_scheme = "postgresql+asyncpg"
-        else:
-            # Keep original scheme if not recognized
-            async_scheme = parsed.scheme
+        async_scheme = "postgresql+asyncpg" if parsed.scheme == "postgresql" else parsed.scheme
 
         # Reconstruct URL with async scheme
         return self.DATABASE_URL.replace(f"{parsed.scheme}://", f"{async_scheme}://", 1)
@@ -90,12 +85,7 @@ class PostgresConfig(BaseSettings):
 
         # Parse the URL and ensure it uses sync driver
         parsed = urlparse(self.DATABASE_URL)
-        if parsed.scheme == "postgresql":
-            # Use psycopg2 for sync PostgreSQL
-            sync_scheme = "postgresql+psycopg2"
-        else:
-            # Keep original scheme if not recognized
-            sync_scheme = parsed.scheme
+        sync_scheme = "postgresql+psycopg2" if parsed.scheme == "postgresql" else parsed.scheme
 
         # Reconstruct URL with sync scheme
         return self.DATABASE_URL.replace(f"{parsed.scheme}://", f"{sync_scheme}://", 1)
@@ -133,8 +123,7 @@ class PostgresConfig(BaseSettings):
                 connect_args["command_timeout"] = self.DB_QUERY_TIMEOUT
 
             return connect_args
-        else:
-            return {}
+        return {}
 
 
 # Create a singleton instance

@@ -4,21 +4,20 @@ Script to create a superuser for Semantik.
 Usage: python create_superuser.py [username] [email] [password]
 If no arguments provided, will prompt interactively.
 """
-import sys
 import asyncio
-from getpass import getpass
-from datetime import datetime, UTC
 
 # Handle both Docker and local environments
-import os
+import sys
+from datetime import UTC, datetime
+from getpass import getpass
+from pathlib import Path
 
-if os.path.exists("/app"):
+if Path("/app").exists():
     sys.path.insert(0, "/app")
 else:
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database import get_db, pwd_context
 from packages.shared.database.models import User
@@ -42,15 +41,14 @@ async def create_superuser(username: str, email: str, password: str):
             if existing_user.is_superuser:
                 print("This user is already a superuser.")
                 return False
-            else:
-                response = input("Would you like to make this existing user a superuser? (y/n): ")
-                if response.lower() == "y":
-                    existing_user.is_superuser = True
-                    existing_user.updated_at = datetime.now(UTC)
-                    await session.commit()
-                    print(f"User '{existing_user.username}' is now a superuser!")
-                    return True
-                return False
+            response = input("Would you like to make this existing user a superuser? (y/n): ")
+            if response.lower() == "y":
+                existing_user.is_superuser = True
+                existing_user.updated_at = datetime.now(UTC)
+                await session.commit()
+                print(f"User '{existing_user.username}' is now a superuser!")
+                return True
+            return False
 
         # Create new superuser
         hashed_password = pwd_context.hash(password)
@@ -67,10 +65,10 @@ async def create_superuser(username: str, email: str, password: str):
         session.add(new_user)
         await session.commit()
 
-        print(f"\nSuperuser created successfully!")
+        print("\nSuperuser created successfully!")
         print(f"Username: {username}")
         print(f"Email: {email}")
-        print(f"You can now log in and use the reset database functionality.")
+        print("You can now log in and use the reset database functionality.")
         return True
 
     # Should not reach here, but return False if somehow we do

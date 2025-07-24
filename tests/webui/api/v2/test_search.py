@@ -72,13 +72,9 @@ def mock_search_results():
     }
 
 
-# Note: Internal functions (validate_collection_access, search_single_collection, 
+# Note: Internal functions (validate_collection_access, search_single_collection,
 # rerank_merged_results) have been moved to SearchService and are tested separately.
 # This file now tests only the API endpoints.
-
-
-
-
 
 
 class TestMultiCollectionSearch:

@@ -2,6 +2,8 @@
 """Debug script to check login and page state."""
 
 import asyncio
+from pathlib import Path
+
 from playwright.async_api import async_playwright
 
 
@@ -50,7 +52,7 @@ async def debug_login():
 
         # Get page content
         content = await page.content()
-        with open("page_content.html", "w") as f:
+        with Path("page_content.html").open("w") as f:
             f.write(content)
         print("\nPage content saved to page_content.html")
 

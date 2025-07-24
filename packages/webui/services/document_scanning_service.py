@@ -172,7 +172,7 @@ class DocumentScanningService:
 
                         stats["total_size_bytes"] += result["file_size"]
                         batch_count += 1
-                        files_processed += 1
+                        documents_processed += 1
 
                         # Commit batch if needed
                         if batch_count >= batch_size:
@@ -181,7 +181,7 @@ class DocumentScanningService:
 
                         # Call progress callback if provided
                         if progress_callback:
-                            await progress_callback(files_processed, stats["total_documents_found"])
+                            await progress_callback(documents_processed, stats["total_documents_found"])
 
                     except Exception as e:
                         logger.error(f"Failed to register document {file_path}: {e}")

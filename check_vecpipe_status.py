@@ -4,8 +4,9 @@ Check vecpipe service status and test embedding generation.
 """
 
 import asyncio
-import httpx
 import json
+
+import httpx
 
 
 async def check_vecpipe_health():
@@ -71,13 +72,13 @@ async def test_embedding_generation():
                 result = response.json()
                 if "embeddings" in result and result["embeddings"]:
                     embedding = result["embeddings"][0]
-                    print(f"✓ Embedding generated successfully!")
+                    print("✓ Embedding generated successfully!")
                     print(f"  Embedding dimension: {len(embedding)}")
                     print(f"  First 10 values: {embedding[:10]}")
                 else:
                     print(f"✗ No embeddings in response: {result}")
             else:
-                print(f"✗ Failed to generate embeddings:")
+                print("✗ Failed to generate embeddings:")
                 print(f"  Status: {response.status_code}")
                 print(f"  Response: {response.text}")
 
@@ -102,7 +103,7 @@ async def test_qdrant_connection():
             response = await client.get(f"{vecpipe_url}/collections")
 
             if response.status_code == 200:
-                print(f"✓ Can access Qdrant via vecpipe")
+                print("✓ Can access Qdrant via vecpipe")
                 collections = response.json()
                 print(f"  Collections found: {len(collections) if isinstance(collections, list) else 'Unknown'}")
             else:
@@ -128,12 +129,10 @@ async def check_required_services():
         try:
             if service_name == "PostgreSQL":
                 # For PostgreSQL, we'll just check if we can import the connection manager
-                from shared.database import pg_connection_manager
 
                 print(f"✓ {service_name}: Connection module available")
             elif service_name == "Redis":
                 # For Redis, check if we can import redis
-                import redis
 
                 print(f"✓ {service_name}: Redis module available")
             else:

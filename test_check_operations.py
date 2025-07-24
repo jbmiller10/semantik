@@ -2,9 +2,10 @@
 """Check the operations in the database to verify the fix."""
 
 import asyncio
-from playwright.async_api import async_playwright
-import time
 import json
+import time
+
+from playwright.async_api import async_playwright
 
 
 async def check_operations():
@@ -38,7 +39,7 @@ async def check_operations():
                             "data": data,
                         }
                     )
-                except:
+                except Exception:
                     pass
 
         page.on("response", capture_response)

@@ -19,12 +19,12 @@ from packages.shared.config import settings
 from packages.shared.database import get_db
 from packages.shared.database.models import (
     Collection,
+    CollectionAuditLog,
+    CollectionPermission,
+    CollectionResourceLimits,
+    CollectionSource,
     Document,
     Operation,
-    CollectionSource,
-    CollectionPermission,
-    CollectionAuditLog,
-    CollectionResourceLimits,
     OperationMetrics,
 )
 from packages.webui.auth import get_current_user

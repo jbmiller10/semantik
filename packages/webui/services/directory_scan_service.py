@@ -37,7 +37,7 @@ class DirectoryScanService:
         self,
         path: str,
         scan_id: str,
-        user_id: int,
+        user_id: int,  # noqa: ARG002
         recursive: bool = True,
         include_patterns: list[str] | None = None,
         exclude_patterns: list[str] | None = None,

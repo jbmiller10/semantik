@@ -21,15 +21,13 @@ def temp_test_dir():
 @pytest.fixture()
 def mock_operation_repository():
     """Create a mock OperationRepository for testing."""
-    mock = MagicMock()
-    return mock
+    return MagicMock()
 
 
 @pytest.fixture()
 def mock_document_repository():
     """Create a mock DocumentRepository for testing."""
-    mock = MagicMock()
-    return mock
+    return MagicMock()
 
 
 @pytest.fixture()

@@ -1,6 +1,5 @@
 """Integration tests for directory scan v2 API endpoints."""
 
-import os
 import tempfile
 import uuid
 from pathlib import Path
@@ -213,7 +212,7 @@ async def test_directory_scan_preview_file_instead_of_directory(
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "not a directory" in response.json()["detail"].lower()
     finally:
-        os.unlink(tmpfile_path)
+        Path(tmpfile_path).unlink()
 
 
 @pytest.mark.asyncio()

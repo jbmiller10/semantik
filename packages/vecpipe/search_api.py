@@ -17,6 +17,7 @@ from typing import Any, cast
 import httpx
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Query
+from pydantic import BaseModel, Field
 
 # Import contracts from shared
 from shared.contracts.search import (
@@ -31,15 +32,15 @@ from shared.contracts.search import (
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from prometheus_client import Counter, Histogram
-from shared.config import settings
-from shared.embedding.service import get_embedding_service
-from shared.metrics.prometheus import metrics_collector, registry, start_metrics_server
+from prometheus_client import Counter, Histogram  # noqa: E402
+from shared.config import settings  # noqa: E402
+from shared.embedding.service import get_embedding_service  # noqa: E402
+from shared.metrics.prometheus import metrics_collector, registry, start_metrics_server  # noqa: E402
 
-from .hybrid_search import HybridSearchEngine
-from .memory_utils import InsufficientMemoryError
-from .qwen3_search_config import RERANK_CONFIG, RERANKING_INSTRUCTIONS, get_reranker_for_embedding_model
-from .search_utils import parse_search_results, search_qdrant
+from .hybrid_search import HybridSearchEngine  # noqa: E402
+from .memory_utils import InsufficientMemoryError  # noqa: E402
+from .qwen3_search_config import RERANK_CONFIG, RERANKING_INSTRUCTIONS, get_reranker_for_embedding_model  # noqa: E402
+from .search_utils import parse_search_results, search_qdrant  # noqa: E402
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -110,7 +111,6 @@ SEARCH_INSTRUCTIONS = {
 # Response models are now imported from shared.contracts.search above
 
 # Additional Pydantic models for new vecpipe API endpoints
-from pydantic import BaseModel, Field
 
 
 class EmbedRequest(BaseModel):
@@ -1425,7 +1425,7 @@ async def upsert_points(request: UpsertRequest = Body(...)) -> UpsertResponse:
         total_time = (time.time() - start_time) * 1000
 
         logger.info(
-            f"Upsert completed: {len(request.points)} points to '{request.collection_name}' " f"in {total_time:.2f}ms"
+            f"Upsert completed: {len(request.points)} points to '{request.collection_name}' in {total_time:.2f}ms"
         )
 
         # Record latency

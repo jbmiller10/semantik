@@ -2,9 +2,10 @@
 """Final test script to verify the race condition fix."""
 
 import asyncio
-from playwright.async_api import async_playwright
-import time
 import json
+import time
+
+from playwright.async_api import async_playwright
 
 
 async def test_race_condition_fix():
@@ -53,7 +54,7 @@ async def test_race_condition_fix():
                     print(f"Collection created with ID: {data.get('id')}")
                     if "initial_operation_id" in data:
                         print(f"Initial operation ID: {data['initial_operation_id']}")
-                except:
+                except Exception:
                     pass
 
         page.on("response", handle_response)
@@ -87,7 +88,7 @@ async def test_race_condition_fix():
                     const alerts = document.querySelectorAll('[role="alert"]');
                     for (const alert of alerts) {
                         const text = alert.textContent || '';
-                        if (text.toLowerCase().includes('error') || 
+                        if (text.toLowerCase().includes('error') ||
                             text.toLowerCase().includes('failed') ||
                             text.toLowerCase().includes('cannot add source')) {
                             return true;
@@ -135,7 +136,7 @@ async def test_race_condition_fix():
 
             # Print response data if captured
             if response_data:
-                print(f"\n=== API Response ===")
+                print("\n=== API Response ===")
                 print(json.dumps(response_data, indent=2))
 
         except Exception as e:

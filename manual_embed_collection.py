@@ -7,20 +7,20 @@ This bypasses the Celery task queue to help diagnose issues.
 import asyncio
 import sys
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 # Add the packages directory to the Python path
 sys.path.insert(0, "/home/dockertest/semantik/packages")
 
+import httpx
+from qdrant_client.models import PointStruct
+from shared.chunking.token_chunker import TokenChunker
 from shared.database import pg_connection_manager
 from shared.database.database import AsyncSessionLocal
 from shared.database.models import Collection, Document, DocumentStatus
-from shared.text_extraction.text_extractor import extract_text_and_serialize
-from shared.chunking.token_chunker import TokenChunker
 from shared.database.qdrant_manager import qdrant_manager
-from qdrant_client.models import PointStruct
+from shared.text_extraction.text_extractor import extract_text_and_serialize
 from sqlalchemy import select
-import httpx
 
 
 async def process_document(document, collection, session):
@@ -40,7 +40,7 @@ async def process_document(document, collection, session):
                 .values(
                     status=DocumentStatus.FAILED,
                     error_message="No text content extracted",
-                    updated_at=datetime.utcnow(),
+                    updated_at=datetime.now(tz=UTC),
                 )
                 .where(Document.id == document.id)
             )
@@ -66,7 +66,7 @@ async def process_document(document, collection, session):
                 .values(
                     status=DocumentStatus.FAILED,
                     error_message="No chunks created from text",
-                    updated_at=datetime.utcnow(),
+                    updated_at=datetime.now(tz=UTC),
                 )
                 .where(Document.id == document.id)
             )
@@ -148,24 +148,24 @@ async def process_document(document, collection, session):
                     print(f"  ❌ Upsert error: {response.status_code} - {response.text}")
                     raise Exception(f"Upsert API returned {response.status_code}")
 
-        print(f"  ✓ Uploaded all vectors")
+        print("  ✓ Uploaded all vectors")
 
         # Update document status
         await session.execute(
             document.update()
-            .values(status=DocumentStatus.COMPLETED, chunk_count=len(all_chunks), updated_at=datetime.utcnow())
+            .values(status=DocumentStatus.COMPLETED, chunk_count=len(all_chunks), updated_at=datetime.now(tz=UTC))
             .where(Document.id == document.id)
         )
         await session.commit()
 
-        print(f"  ✓ Document processed successfully")
+        print("  ✓ Document processed successfully")
         return True
 
     except Exception as e:
         print(f"  ❌ Error: {e}")
         await session.execute(
             document.update()
-            .values(status=DocumentStatus.FAILED, error_message=str(e), updated_at=datetime.utcnow())
+            .values(status=DocumentStatus.FAILED, error_message=str(e), updated_at=datetime.now(tz=UTC))
             .where(Document.id == document.id)
         )
         await session.commit()
@@ -240,7 +240,7 @@ async def process_collection(collection_name_or_id):
                 failed_count += 1
 
         print("\n" + "=" * 80)
-        print(f"Processing complete:")
+        print("Processing complete:")
         print(f"  Successful: {success_count}")
         print(f"  Failed: {failed_count}")
 
@@ -254,7 +254,7 @@ async def process_collection(collection_name_or_id):
 
                 await session.execute(
                     Collection.update()
-                    .values(vector_count=vector_count, updated_at=datetime.utcnow())
+                    .values(vector_count=vector_count, updated_at=datetime.now(tz=UTC))
                     .where(Collection.id == collection.id)
                 )
                 await session.commit()
