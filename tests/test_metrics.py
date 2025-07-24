@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import requests
 
 
-def test_metrics_endpoint():
+def test_metrics_endpoint() -> None:
     """Test the metrics endpoint and print raw response"""
     base_url = "http://localhost:8080"
     metrics_url = f"{base_url}/api/metrics"
@@ -66,7 +66,7 @@ def test_metrics_endpoint():
         print(f"ERROR: {type(e).__name__}: {e}")
 
 
-def test_with_curl():
+def test_with_curl() -> None:
     """Also test with curl for comparison"""
     import subprocess
 

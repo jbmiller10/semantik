@@ -6,6 +6,7 @@ This script tests text extraction and chunking for a specific file.
 
 import sys
 from pathlib import Path
+from typing import Any
 
 # Add the packages directory to the Python path
 sys.path.insert(0, "/home/dockertest/semantik/packages")
@@ -14,7 +15,7 @@ from shared.chunking.token_chunker import TokenChunker
 from shared.text_extraction.text_extractor import extract_text_and_serialize
 
 
-def test_text_extraction(file_path: str):
+def test_text_extraction(file_path: str) -> list[dict[str, Any]] | None:
     """Test text extraction from a file."""
     print(f"\n{'='*60}")
     print(f"Testing text extraction for: {file_path}")
@@ -55,7 +56,9 @@ def test_text_extraction(file_path: str):
         return None
 
 
-def test_chunking(text_blocks, chunk_size=1000, chunk_overlap=200):
+def test_chunking(
+    text_blocks: list[dict[str, Any]], chunk_size: int = 1000, chunk_overlap: int = 200
+) -> list[dict[str, Any]] | None:
     """Test chunking of extracted text."""
     print(f"\n{'='*60}")
     print(f"Testing chunking (size={chunk_size}, overlap={chunk_overlap})")
@@ -101,7 +104,7 @@ def test_chunking(text_blocks, chunk_size=1000, chunk_overlap=200):
         return None
 
 
-def main():
+def main() -> None:
     """Run document processing tests."""
     print("Document Processing Pipeline Test")
     print("=" * 80)
@@ -126,6 +129,9 @@ def main():
             return
 
     # Test text extraction
+    if test_file is None:
+        print("No test file available")
+        return
     text_blocks = test_text_extraction(test_file)
 
     if text_blocks:

@@ -26,7 +26,7 @@ from shared.metrics.prometheus import (  # noqa: E402
 )
 
 
-def print_current_metrics():
+def print_current_metrics() -> None:
     """Print current metric values"""
     metrics_data = prometheus_client.generate_latest(registry).decode("utf-8")
     print("Current Metrics:")
@@ -52,7 +52,7 @@ def print_current_metrics():
     print("-" * 60)
 
 
-def simulate_operation_processing():
+def simulate_operation_processing() -> None:
     """Simulate operation processing and check if metrics are updated"""
     print("Initial metrics state:")
     print_current_metrics()

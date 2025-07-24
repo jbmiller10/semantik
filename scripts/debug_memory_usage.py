@@ -26,7 +26,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def monitor_memory():
+def monitor_memory() -> dict[str, float]:
     """Print current memory usage"""
     process = psutil.Process()
     memory_info = process.memory_info()
@@ -37,7 +37,7 @@ def monitor_memory():
     }
 
 
-def test_file(filepath: str):
+def test_file(filepath: str) -> bool:
     """Test processing a single file"""
     logger.info(f"\n{'='*60}")
     logger.info(f"Testing file: {filepath}")
@@ -80,7 +80,7 @@ def test_file(filepath: str):
     return True
 
 
-def main():
+def main() -> None:
     if len(sys.argv) < 2:
         print("Usage: python test_memory_issue.py <file_or_directory>")
         sys.exit(1)
@@ -93,7 +93,7 @@ def main():
     elif Path(path).is_dir():
         # Test all supported files in directory
         extensions = {".pdf", ".docx", ".doc", ".txt", ".text"}
-        files = []
+        files: list[Path] = []
 
         for ext in extensions:
             files.extend(Path(path).glob(f"**/*{ext}"))

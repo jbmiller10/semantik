@@ -70,6 +70,7 @@ class TestCurrentSystemBehavior:
 
         # 1. Create collection
         import uuid
+
         collection_name = f"E2E Test Collection {uuid.uuid4().hex[:8]}"
         response = requests.post(
             f"{self.API_BASE_URL}/api/v2/collections",
@@ -99,15 +100,16 @@ class TestCurrentSystemBehavior:
             start_time = time.time()
             while time.time() - start_time < 60:  # 1-minute timeout for initial operation
                 status_response = requests.get(
-                    f"{self.API_BASE_URL}/api/v2/operations/{initial_operation_id}",
-                    headers=headers
+                    f"{self.API_BASE_URL}/api/v2/operations/{initial_operation_id}", headers=headers
                 )
                 if status_response.status_code == 200:
                     op_status = status_response.json()
                     if op_status["status"] in ["completed", "failed"]:
                         print(f"Initial operation {op_status['status']} after {time.time() - start_time:.1f}s")
                         if op_status["status"] == "failed":
-                            pytest.fail(f"Initial INDEX operation failed: {op_status.get('error_message', 'Unknown error')}")
+                            pytest.fail(
+                                f"Initial INDEX operation failed: {op_status.get('error_message', 'Unknown error')}"
+                            )
                         break
                 time.sleep(2)
         else:
