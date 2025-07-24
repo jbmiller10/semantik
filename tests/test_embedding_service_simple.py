@@ -14,7 +14,7 @@ class TestEmbeddingService(unittest.TestCase):
     """Test cases for EmbeddingService"""
 
     @patch("torch.cuda.is_available")
-    def test_basic_functionality(self, mock_cuda):
+    def test_basic_functionality(self, mock_cuda) -> None:
         """Test basic embedding service functionality"""
         mock_cuda.return_value = False  # Use CPU for simplicity
 
@@ -30,7 +30,7 @@ class TestEmbeddingService(unittest.TestCase):
         assert service.device == "cpu"
 
     @patch("torch.cuda.is_available")
-    def test_quantization_fallback_property(self, mock_cuda):
+    def test_quantization_fallback_property(self, mock_cuda) -> None:
         """Test quantization fallback can be configured"""
         mock_cuda.return_value = False
 
@@ -45,7 +45,7 @@ class TestEmbeddingService(unittest.TestCase):
         service.allow_quantization_fallback = False
         assert service.allow_quantization_fallback is False
 
-    def test_model_info_export(self):
+    def test_model_info_export(self) -> None:
         """Test that model info is exported"""
         from shared.embedding import POPULAR_MODELS, QUANTIZED_MODEL_INFO
 

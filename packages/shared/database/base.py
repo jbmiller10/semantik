@@ -14,7 +14,7 @@ class BaseRepository(ABC, Generic[T]):
     """Abstract base repository interface.
 
     This defines the common operations that all repositories should support,
-    regardless of the underlying storage mechanism (SQLite, PostgreSQL, etc).
+    regardless of the underlying storage mechanism.
     """
 
     @abstractmethod
@@ -36,38 +36,6 @@ class BaseRepository(ABC, Generic[T]):
     @abstractmethod
     async def delete(self, id: str) -> bool:
         """Delete an entity by ID. Returns True if deleted."""
-
-
-class JobRepository(ABC):
-    """Abstract interface for job data access.
-
-    This will be implemented by SQLiteJobRepository initially,
-    and can be replaced with PostgreSQLJobRepository in the future.
-    """
-
-    @abstractmethod
-    async def create_job(self, job_data: dict[str, Any]) -> dict[str, Any]:
-        """Create a new job."""
-
-    @abstractmethod
-    async def get_job(self, job_id: str) -> dict[str, Any] | None:
-        """Get a job by ID."""
-
-    @abstractmethod
-    async def update_job(self, job_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
-        """Update a job."""
-
-    @abstractmethod
-    async def delete_job(self, job_id: str) -> bool:
-        """Delete a job."""
-
-    @abstractmethod
-    async def list_jobs(self, user_id: str | None = None, **filters: Any) -> list[dict[str, Any]]:
-        """List jobs with optional filters."""
-
-    @abstractmethod
-    async def get_all_job_ids(self) -> list[str]:
-        """Get all job IDs (for maintenance tasks)."""
 
 
 class UserRepository(ABC):
@@ -97,37 +65,9 @@ class UserRepository(ABC):
     async def list_users(self, **filters: Any) -> list[dict[str, Any]]:
         """List all users with optional filters."""
 
-
-class FileRepository(ABC):
-    """Abstract interface for file data access."""
-
     @abstractmethod
-    async def add_files_to_job(self, job_id: str, files: list[dict[str, Any]]) -> None:
-        """Add files to a job."""
-
-    @abstractmethod
-    async def get_job_files(self, job_id: str, status: str | None = None) -> list[dict[str, Any]]:
-        """Get files for a job with optional status filter."""
-
-    @abstractmethod
-    async def update_file_status(
-        self,
-        job_id: str,
-        file_path: str,
-        status: str,
-        error: str | None = None,
-        chunks_created: int = 0,
-        vectors_created: int = 0,
-    ) -> None:
-        """Update file processing status."""
-
-    @abstractmethod
-    async def get_job_total_vectors(self, job_id: str) -> int:
-        """Get total vectors created for all files in a job."""
-
-    @abstractmethod
-    async def get_duplicate_files_in_collection(self, collection_name: str, content_hashes: list[str]) -> set[str]:
-        """Check which content hashes already exist in a collection."""
+    async def count_users(self, is_active: bool | None = None) -> int:
+        """Count total users with optional active filter."""
 
 
 class CollectionRepository(ABC):
@@ -142,10 +82,10 @@ class CollectionRepository(ABC):
         """Get detailed information for a collection."""
 
     @abstractmethod
-    async def get_collection_files(
+    async def get_collection_documents(
         self, collection_name: str, user_id: str, page: int = 1, limit: int = 50
     ) -> dict[str, Any]:
-        """Get paginated files in a collection."""
+        """Get paginated documents in a collection."""
 
     @abstractmethod
     async def rename_collection(self, old_name: str, new_name: str, user_id: str) -> bool:
@@ -157,7 +97,7 @@ class CollectionRepository(ABC):
 
     @abstractmethod
     async def get_collection_metadata(self, collection_name: str) -> dict[str, Any] | None:
-        """Get metadata from the first job of a collection."""
+        """Get metadata from the first operation of a collection."""
 
 
 class AuthRepository(ABC):
@@ -178,3 +118,41 @@ class AuthRepository(ABC):
     @abstractmethod
     async def update_user_last_login(self, user_id: str) -> None:
         """Update user's last login timestamp."""
+
+
+class ApiKeyRepository(ABC):
+    """Abstract interface for API key data access."""
+
+    @abstractmethod
+    async def create_api_key(
+        self, user_id: str, name: str, permissions: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Create a new API key for a user."""
+
+    @abstractmethod
+    async def get_api_key(self, api_key_id: str) -> dict[str, Any] | None:
+        """Get an API key by ID."""
+
+    @abstractmethod
+    async def get_api_key_by_hash(self, key_hash: str) -> dict[str, Any] | None:
+        """Get an API key by its hash."""
+
+    @abstractmethod
+    async def list_user_api_keys(self, user_id: str) -> list[dict[str, Any]]:
+        """List all API keys for a user."""
+
+    @abstractmethod
+    async def update_api_key(self, api_key_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
+        """Update an API key."""
+
+    @abstractmethod
+    async def delete_api_key(self, api_key_id: str) -> bool:
+        """Delete an API key."""
+
+    @abstractmethod
+    async def verify_api_key(self, api_key: str) -> dict[str, Any] | None:
+        """Verify an API key and return associated data if valid."""
+
+    @abstractmethod
+    async def update_last_used(self, api_key_id: str) -> None:
+        """Update the last used timestamp for an API key."""

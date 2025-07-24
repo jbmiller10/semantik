@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 
-def test_build_progress():
+def test_build_progress() -> None:
     """Test that Docker build shows progress"""
     print("Testing Docker build progress display...")
     print("=" * 60)

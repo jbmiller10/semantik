@@ -10,7 +10,7 @@ from packages.vecpipe.model_manager import ModelManager
 
 
 @pytest.fixture()
-def mock_embedding_service():
+def mock_embedding_service() -> None:
     """Create a mock EmbeddingService."""
     with patch("packages.vecpipe.model_manager.EmbeddingService") as mock:
         instance = mock.return_value
@@ -25,7 +25,7 @@ def mock_embedding_service():
 
 
 @pytest.fixture()
-def mock_reranker():
+def mock_reranker() -> None:
     """Create a mock CrossEncoderReranker."""
     with patch("packages.vecpipe.model_manager.CrossEncoderReranker") as mock:
         instance = mock.return_value
@@ -37,7 +37,7 @@ def mock_reranker():
 
 
 @pytest.fixture()
-def model_manager():
+def model_manager() -> None:
     """Create a ModelManager instance with a short unload timeout for testing."""
     return ModelManager(unload_after_seconds=1)
 

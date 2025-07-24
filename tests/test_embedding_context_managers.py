@@ -11,7 +11,7 @@ from shared.embedding.context import ManagedEmbeddingService, embedding_service_
 class MockEmbeddingService(BaseEmbeddingService):
     """Mock embedding service for testing."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         self._initialized = False
         self.cleanup_called = False
         self.initialize_called = False
@@ -141,7 +141,7 @@ class TestManagedEmbeddingService:
 
             assert mock_service.cleanup_called
 
-    def test_managed_service_sync_context_not_supported(self):
+    def test_managed_service_sync_context_not_supported(self) -> None:
         """Test that sync context manager raises error."""
         managed = ManagedEmbeddingService()
 

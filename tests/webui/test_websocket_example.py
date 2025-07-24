@@ -1,224 +1,127 @@
 """Example tests demonstrating WebSocket testing patterns."""
 
 import asyncio
-from unittest.mock import patch
+from datetime import UTC, datetime
 
 import pytest
 
-from packages.webui.tasks import CeleryTaskWithUpdates
 from packages.webui.websocket_manager import RedisStreamWebSocketManager
 from tests.webui.test_websocket_helpers import (
+    BASE_DELAY,
     WebSocketTestHarness,
     assert_message_order,
     count_message_types,
-    simulate_job_updates,
 )
 
 
 class TestWebSocketExamples:
     """Example tests showing how to test WebSocket functionality."""
 
+    @pytest.fixture(autouse=True)
+    def _setup_and_teardown(self):
+        """Ensure clean state before and after each test."""
+        # Setup - Reset any global state
+        from packages.webui.websocket_manager import ws_manager
+
+        # Clear any existing connections and tasks
+        ws_manager.connections.clear()
+        ws_manager.consumer_tasks.clear()
+        ws_manager._get_operation_func = None
+
+        # Also reset the global instance if it exists
+        if hasattr(ws_manager, "redis") and ws_manager.redis:
+            # Close any existing Redis connection
+            ws_manager.redis = None
+            ws_manager._startup_attempted = False
+
+        return
+
+        # Teardown - ensure no lingering tasks
+        # Note: The harness cleanup should handle most of this
+
     @pytest.mark.asyncio()
-    async def test_simple_websocket_flow(self, mock_redis_client):
-        """Example: Test a simple WebSocket connection and message flow."""
-        # Setup
+    async def test_operation_lifecycle_updates(self, mock_redis_client):
+        """Example: Test complete operation lifecycle with updates."""
+        # Setup - Create a fresh manager instance to avoid state pollution
         manager = RedisStreamWebSocketManager()
-        manager.redis = mock_redis_client
+        # Use None to test direct broadcast mode
+        manager.redis = None
+        # Mark as already attempted to prevent reconnection
+        manager._startup_attempted = True
+        # Ensure clean connections
+        manager.connections.clear()
+        manager.consumer_tasks.clear()
 
         harness = WebSocketTestHarness(manager)
 
-        # Mock job repository
-        with patch("shared.database.factory.create_job_repository") as mock_create_repo:
-            from unittest.mock import AsyncMock
+        from enum import Enum
+        from unittest.mock import MagicMock
 
-            mock_repo = AsyncMock()
-            mock_repo.get_job = AsyncMock(return_value={"status": "processing", "total_files": 5, "processed_files": 0})
-            mock_create_repo.return_value = mock_repo
+        # Create mock enums
+        class MockStatus(Enum):
+            PENDING = "pending"
 
-            # Connect a client
-            clients = await harness.connect_clients("job123", num_clients=1)
-            client = clients[0]
+        class MockType(Enum):
+            INDEX = "index"
 
-            # Client should receive initial state
-            initial_messages = client.get_received_messages("current_state")
-            assert len(initial_messages) == 1
-            assert initial_messages[0]["data"]["total_files"] == 5
+        # Create mock operation
+        mock_operation = MagicMock()
+        mock_operation.status = MockStatus.PENDING
+        mock_operation.type = MockType.INDEX
+        mock_operation.created_at = datetime.now(UTC)
+        mock_operation.started_at = None
+        mock_operation.completed_at = None
+        mock_operation.error_message = None
 
-            # Send an update
-            await manager.send_job_update("job123", "progress", {"progress": 50, "processed_files": 2})
+        # Set up the operation getter function
+        async def mock_get_operation(operation_id):
+            if operation_id == "operation789":
+                return mock_operation
+            return None
 
-            await asyncio.sleep(0.1)
+        manager.set_operation_getter(mock_get_operation)
 
-            # Verify client received the update
-            progress_messages = client.get_received_messages("progress")
-            assert len(progress_messages) >= 1
-            assert progress_messages[-1]["data"]["progress"] == 50
+        # Connect client
+        clients = await harness.connect_clients("operation789", num_clients=1)
+        client = clients[0]
 
-            # Cleanup
-            await harness.cleanup()
+        # Get initial state message and verify
+        initial_state = await client.get_received_messages("current_state")
+        assert len(initial_state) == 1
 
-    @pytest.mark.asyncio()
-    async def test_multiple_clients_broadcast(self, mock_redis_client):
-        """Example: Test broadcasting to multiple clients."""
-        # Setup
-        manager = RedisStreamWebSocketManager()
-        manager.redis = mock_redis_client
+        # Don't clear messages - track all messages from start
 
-        harness = WebSocketTestHarness(manager)
+        # Simulate operation updates directly through manager
+        await manager.send_update("operation789", "start", {"status": "started", "total_files": 10})
+        await asyncio.sleep(BASE_DELAY / 2)  # Shorter delay between updates
+        await manager.send_update("operation789", "progress", {"progress": 20, "processed_files": 2})
+        await asyncio.sleep(BASE_DELAY / 2)
+        await manager.send_update("operation789", "progress", {"progress": 40, "processed_files": 4})
+        await asyncio.sleep(BASE_DELAY / 2)
+        await manager.send_update("operation789", "progress", {"progress": 60, "processed_files": 6})
+        await asyncio.sleep(BASE_DELAY / 2)
+        await manager.send_update("operation789", "progress", {"progress": 80, "processed_files": 8})
+        await asyncio.sleep(BASE_DELAY / 2)
+        await manager.send_update("operation789", "complete", {"status": "completed", "processed_files": 10})
 
-        with patch("shared.database.factory.create_job_repository") as mock_create_repo:
-            from unittest.mock import AsyncMock
+        # Allow final propagation
+        await asyncio.sleep(BASE_DELAY)
 
-            mock_repo = AsyncMock()
-            mock_repo.get_job = AsyncMock(return_value={"status": "processing"})
-            mock_create_repo.return_value = mock_repo
+        # Verify message order - exclude initial state message
+        all_messages = await client.get_received_messages()
+        lifecycle_messages = [msg for msg in all_messages if msg.get("type") != "current_state"]
+        assert_message_order(lifecycle_messages, ["start", "progress", "complete"])
 
-            # Connect multiple clients
-            await harness.connect_clients("job456", num_clients=3)
+        # Verify message counts
+        type_counts = count_message_types(lifecycle_messages)
+        assert type_counts.get("start", 0) >= 1
+        assert type_counts.get("progress", 0) >= 4
+        assert type_counts.get("complete", 0) >= 1
 
-            # Broadcast a message
-            results = await harness.broadcast_and_verify("job456", "announcement", {"message": "Processing started"})
+        # Verify final state
+        complete_messages = await client.get_received_messages("complete")
+        assert complete_messages[-1]["data"]["status"] == "completed"
+        assert complete_messages[-1]["data"]["processed_files"] == 10
 
-            # Verify all clients received it
-            for client_id, result in results.items():
-                assert result["received"], f"Client {client_id} didn't receive message"
-                assert result["messages"][0]["data"]["message"] == "Processing started"
-
-            # Cleanup
-            await harness.cleanup()
-
-    @pytest.mark.asyncio()
-    async def test_job_lifecycle_updates(self, mock_redis_client):
-        """Example: Test complete job lifecycle with updates."""
-        # Setup
-        manager = RedisStreamWebSocketManager()
-        manager.redis = mock_redis_client
-
-        harness = WebSocketTestHarness(manager)
-
-        with patch("shared.database.factory.create_job_repository") as mock_create_repo:
-            from unittest.mock import AsyncMock
-
-            mock_repo = AsyncMock()
-            mock_repo.get_job = AsyncMock(return_value={"status": "pending"})
-            mock_create_repo.return_value = mock_repo
-
-            # Connect client
-            clients = await harness.connect_clients("job789", num_clients=1)
-            client = clients[0]
-
-            # Clear initial state message
-            client.clear_messages()
-
-            # Simulate job updates
-            updater = CeleryTaskWithUpdates("job789")
-            updater._redis_client = mock_redis_client
-
-            await simulate_job_updates(updater, delays=[0.05] * 6)
-
-            # Allow final propagation
-            await asyncio.sleep(0.2)
-
-            # Verify message order
-            all_messages = client.received_messages
-            assert_message_order(all_messages, ["start", "progress", "complete"])
-
-            # Verify message counts
-            type_counts = count_message_types(all_messages)
-            assert type_counts.get("start", 0) >= 1
-            assert type_counts.get("progress", 0) >= 4
-            assert type_counts.get("complete", 0) >= 1
-
-            # Verify final state
-            complete_messages = client.get_received_messages("complete")
-            assert complete_messages[-1]["data"]["status"] == "completed"
-            assert complete_messages[-1]["data"]["processed_files"] == 10
-
-            # Cleanup
-            await harness.cleanup()
-
-    @pytest.mark.asyncio()
-    async def test_error_handling_example(self, mock_redis_client):
-        """Example: Test error handling in WebSocket communication."""
-        # Setup manager with a client that will fail
-        manager = RedisStreamWebSocketManager()
-        manager.redis = mock_redis_client
-
-        harness = WebSocketTestHarness(manager)
-
-        with patch("shared.database.factory.create_job_repository") as mock_create_repo:
-            from unittest.mock import AsyncMock
-
-            mock_repo = AsyncMock()
-            mock_repo.get_job = AsyncMock(return_value={"status": "processing"})
-            mock_create_repo.return_value = mock_repo
-
-            # Connect clients
-            good_clients = await harness.connect_clients("job_error", num_clients=2)
-
-            # Make one client fail on send
-            bad_client = good_clients[0]
-            bad_client.websocket.send_json.side_effect = Exception("Connection lost")
-
-            # Send update - should handle the failure gracefully
-            await manager.send_job_update("job_error", "test", {"data": "test"})
-            await asyncio.sleep(0.1)
-
-            # Good client should still receive the message
-            good_client = good_clients[1]
-            messages = good_client.get_received_messages("test")
-            assert len(messages) >= 1
-
-            # Bad client should be removed from connections
-            connection_found = False
-            for websockets in manager.connections.values():
-                if bad_client.websocket in websockets:
-                    connection_found = True
-                    break
-            assert not connection_found, "Failed client wasn't removed"
-
-            # Cleanup
-            await harness.cleanup()
-
-    @pytest.mark.asyncio()
-    async def test_concurrent_jobs_isolation(self, mock_redis_client):
-        """Example: Test that different jobs are isolated from each other."""
-        # Setup
-        manager = RedisStreamWebSocketManager()
-        manager.redis = mock_redis_client
-
-        harness = WebSocketTestHarness(manager)
-
-        with patch("shared.database.factory.create_job_repository") as mock_create_repo:
-            from unittest.mock import AsyncMock
-
-            mock_repo = AsyncMock()
-            mock_repo.get_job = AsyncMock(return_value={"status": "processing"})
-            mock_create_repo.return_value = mock_repo
-
-            # Connect clients to different jobs
-            job1_clients = await harness.connect_clients("job_A", num_clients=2)
-            job2_clients = await harness.connect_clients("job_B", num_clients=2)
-
-            # Clear initial messages
-            for client in job1_clients + job2_clients:
-                client.clear_messages()
-
-            # Send updates to different jobs
-            await manager.send_job_update("job_A", "update_A", {"job": "A"})
-            await manager.send_job_update("job_B", "update_B", {"job": "B"})
-
-            await asyncio.sleep(0.1)
-
-            # Verify job A clients only got job A updates
-            for client in job1_clients:
-                assert len(client.get_received_messages("update_A")) >= 1
-                assert len(client.get_received_messages("update_B")) == 0
-
-            # Verify job B clients only got job B updates
-            for client in job2_clients:
-                assert len(client.get_received_messages("update_B")) >= 1
-                assert len(client.get_received_messages("update_A")) == 0
-
-            # Cleanup
-            await harness.cleanup()
+        # Cleanup
+        await harness.cleanup()

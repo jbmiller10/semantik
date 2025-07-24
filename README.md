@@ -6,7 +6,10 @@ While we will do our best to avoid any breaking changes, we do not gurantee back
 
 🚨🚨🚨
 
-# Semantik 🔎 - Easy, Private, and Powerful Document Search
+---
+
+
+# Semantik - Easy, Private, and Powerful Document Search
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
@@ -53,7 +56,7 @@ Semantik is built for users who want to be in the driver's seat.
 A powerful backend deserves a clean frontend.
 <ul>
   <li><b>Intuitive UI:</b> Easily create and manage your search collections.</li>
-  <li><b>Real-time Monitoring:</b> Watch your documents get processed with a detailed job monitor.</li>
+  <li><b>Real-time Monitoring:</b> Watch your documents get processed with detailed operation tracking.</li>
   <li><b>Document Viewer:</b> Preview your search results directly in the app.</li>
 </ul>
 </details>
@@ -99,7 +102,7 @@ Semantik can run on both CPU and GPU, but a CUDA-compatible GPU is **strongly re
 
 ## Quick Start
 
-### Option 1: Interactive Setup Wizard (Recommended) 🧙‍♂️
+### Option 1: Interactive Setup Wizard (Recommended)
 <details>
 <summary>The easiest way to get started is using our interactive setup wizard.</summary>
 
@@ -136,12 +139,12 @@ The setup wizard guides you through the entire configuration process with an int
    - All security keys are generated automatically
 
 4. **That's it!** The wizard will:
-   - ✅ Check system requirements
-   - ✅ Configure GPU or CPU mode automatically
-   - ✅ Set up your document directories
-   - ✅ Generate secure configurations
-   - ✅ Start all services
-   - ✅ Provide a service monitor for ongoing management
+   - Check system requirements
+   - Configure GPU or CPU mode automatically
+   - Set up your document directories
+   - Generate secure configurations
+   - Start all services
+   - Provide a service monitor for ongoing management
 
 > ** Tip:** If you've already configured Semantik, running `make wizard` again will take you directly to the service monitor where you can start, stop, and manage your services.
 
@@ -178,7 +181,7 @@ The setup wizard guides you through the entire configuration process with an int
 
 That's it!  Semantik is now running with:
 - **WebUI** on port 8080
-- **Search API** on port 8000
+- **Search API** on port 8001
 - **Qdrant** vector database on port 6333
 
 **Additional Docker Options:**
@@ -286,7 +289,7 @@ curl http://localhost:6333/collections/work_docs
 **Solutions**:
 1. Check browser console for WebSocket errors
 2. Ensure no proxy is blocking WebSocket connections
-3. Verify ports 8080 and 8000 are accessible
+3. Verify ports 8080 and 8001 are accessible
 4. Try disabling browser extensions
 
 ```javascript

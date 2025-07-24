@@ -9,13 +9,25 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from qdrant_client import AsyncQdrantClient
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
-from shared import database
-from shared.config import settings
-from webui.auth import get_current_user
+from packages.shared.config import settings
+from packages.shared.database import get_db
+from packages.shared.database.models import (
+    Collection,
+    CollectionAuditLog,
+    CollectionPermission,
+    CollectionResourceLimits,
+    CollectionSource,
+    Document,
+    Operation,
+    OperationMetrics,
+)
+from packages.webui.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -27,20 +39,28 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 @router.post("/reset-database")
 async def reset_database_endpoint(
-    current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
+    current_user: dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
-    """Reset the database"""
-    try:
-        # Get all job IDs before reset
-        jobs = database.list_jobs()
-        job_ids = [job["id"] for job in jobs]
+    """Reset the database - ADMIN ONLY"""
+    # Check if user is admin/superuser
+    if not current_user.get("is_superuser", False):
+        raise HTTPException(status_code=403, detail="Only administrators can reset the database")
 
-        # Delete Qdrant collections for all jobs
+    try:
+        # Get all collections before reset
+        # We need to get all collections, not just for the current user
+        # Since this is an admin function, we'll query all collections
+        result = await db.execute(select(Collection))
+        collections = result.scalars().all()
+
+        # Delete Qdrant collections for all collections
         async_client = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
-        for job_id in job_ids:
-            collection_name = f"job_{job_id}"
+        for collection in collections:
+            collection_name = str(collection.vector_store_name)
             try:
                 await async_client.delete_collection(collection_name)
+                logger.info(f"Deleted Qdrant collection: {collection_name}")
             except Exception as e:
                 logger.warning(f"Failed to delete collection {collection_name}: {e}")
 
@@ -61,8 +81,27 @@ async def reset_database_endpoint(
         except Exception as e:
             logger.warning(f"Failed to delete parquet files: {e}")
 
-        # Reset database
-        database.reset_database()
+        # Clear all tables in the database
+        # Note: This is a destructive operation and should be protected
+        # We'll delete all records from the tables in the correct order to respect foreign keys
+        try:
+            # Delete in order of dependencies (most dependent first)
+            await db.execute(delete(OperationMetrics))
+            await db.execute(delete(CollectionAuditLog))
+            await db.execute(delete(CollectionResourceLimits))
+            await db.execute(delete(CollectionPermission))
+            await db.execute(delete(Operation))
+            await db.execute(delete(Document))
+            await db.execute(delete(CollectionSource))
+            await db.execute(delete(Collection))
+            # Note: We don't delete Users, ApiKeys, or RefreshTokens as they're auth-related
+
+            await db.commit()
+            logger.info("Database tables cleared successfully")
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Failed to clear database tables: {e}")
+            raise
 
         return {"status": "success", "message": "Database reset successfully"}
     except Exception as e:
@@ -72,15 +111,23 @@ async def reset_database_endpoint(
 
 @router.get("/stats")
 async def get_database_stats(
-    current_user: dict[str, Any] = Depends(get_current_user)  # noqa: ARG001
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Get database statistics"""
-    # Get stats from database module
-    stats = database.get_database_stats()
+    # Get collection and document counts by querying directly
+    # Get collection count
+    collection_count_query = select(func.count()).select_from(Collection)
+    collection_count = await db.scalar(collection_count_query) or 0
 
-    # Get database file size
-    db_path = Path(database.DB_PATH)
-    db_size = db_path.stat().st_size if db_path.exists() else 0
+    # Get document count
+    document_count_query = select(func.count()).select_from(Document)
+    document_count = await db.scalar(document_count_query) or 0
+
+    # Get database size estimate (PostgreSQL)
+    # Note: For PostgreSQL, we can't get file size directly
+    # This is a placeholder - actual size would require a DB query
+    db_size = 0  # TODO: Implement PostgreSQL database size query
 
     # Get total parquet files size
     output_path = Path(OUTPUT_DIR)
@@ -88,8 +135,8 @@ async def get_database_stats(
     parquet_size = sum(f.stat().st_size for f in parquet_files)
 
     return {
-        "job_count": stats["jobs"]["total"],
-        "file_count": stats["files"]["total"],
+        "collection_count": collection_count,
+        "file_count": document_count,
         "database_size_mb": round(db_size / 1024 / 1024, 2),
         "parquet_files_count": len(parquet_files),
         "parquet_size_mb": round(parquet_size / 1024 / 1024, 2),

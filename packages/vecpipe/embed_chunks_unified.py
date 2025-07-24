@@ -88,10 +88,10 @@ async def write_parquet_async(output_path: str, data: dict[str, Any]) -> None:
     await loop.run_in_executor(None, _write)
 
 
-async def process_file_async(
+async def process_document_async(
     file_path: str, output_dir: str, embedding_service: EmbeddingService, args: argparse.Namespace
 ) -> str | None:
-    """Process a single file asynchronously"""
+    """Process a single document asynchronously"""
     try:
         # Generate output filename
         filename = Path(file_path).stem
@@ -165,23 +165,23 @@ async def process_file_async(
         return None
 
 
-async def process_files_parallel(
+async def process_documents_parallel(
     file_paths: list[str], output_dir: str, embedding_service: EmbeddingService, args: argparse.Namespace
 ) -> list[str | None]:
-    """Process multiple files in parallel"""
+    """Process multiple documents in parallel"""
     # Create semaphore to limit concurrent I/O operations
     io_semaphore = asyncio.Semaphore(MAX_CONCURRENT_IO)
 
     async def process_with_limit(file_path: str) -> str | None:
         async with io_semaphore:
-            return await process_file_async(file_path, output_dir, embedding_service, args)
+            return await process_document_async(file_path, output_dir, embedding_service, args)
 
     # Process all files concurrently
     tasks = [process_with_limit(fp) for fp in file_paths]
 
     # Use tqdm for progress tracking
     results = []
-    for coro in tqdm.as_completed(tasks, desc="Processing files"):
+    for coro in tqdm.as_completed(tasks, desc="Processing documents"):
         result = await coro
         results.append(result)
 
@@ -225,7 +225,7 @@ async def main_async(args: argparse.Namespace) -> None:
         logger.info(f"Found {len(input_files)} files to process")
 
         # Process files in parallel
-        results = await process_files_parallel([str(f) for f in input_files], args.output, embedding_service, args)
+        results = await process_documents_parallel([str(f) for f in input_files], args.output, embedding_service, args)
 
         # Count successes
         successful = sum(1 for r in results if r is not None)

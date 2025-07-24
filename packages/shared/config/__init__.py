@@ -6,6 +6,7 @@ Provides backward compatibility by instantiating a default Settings object.
 
 
 from .base import BaseConfig
+from .postgres import PostgresConfig, postgres_config
 from .vecpipe import VecpipeConfig
 from .webui import WebuiConfig
 
@@ -22,4 +23,4 @@ class Settings(VecpipeConfig, WebuiConfig):
 settings = Settings()
 
 # Export all config classes
-__all__ = ["BaseConfig", "VecpipeConfig", "WebuiConfig", "Settings", "settings"]
+__all__ = ["BaseConfig", "VecpipeConfig", "WebuiConfig", "PostgresConfig", "Settings", "settings", "postgres_config"]

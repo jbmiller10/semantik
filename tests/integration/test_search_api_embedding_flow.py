@@ -21,7 +21,7 @@ class TestSearchAPIEmbeddingFlow:
     This is a known limitation that will be addressed in the CORE-003 refactor.
     """
 
-    def test_search_endpoint_embedding_flow(self):
+    def test_search_endpoint_embedding_flow(self) -> None:
         """Test that /search endpoint follows the expected embedding generation flow.
 
         This test verifies:
@@ -92,7 +92,7 @@ class TestSearchAPIEmbeddingFlow:
                 assert len(search_call.kwargs["query_vector"]) > 0
 
     @patch("packages.vecpipe.search_api.model_manager")
-    def test_embedding_service_dependency_structure(self, mock_model_manager):
+    def test_embedding_service_dependency_structure(self, mock_model_manager) -> None:
         """Document and verify the current dependency structure.
 
         This test documents the current problematic dependency where:
@@ -123,7 +123,7 @@ class TestSearchAPIEmbeddingFlow:
         # This assertion will need to be updated after CORE-003
         # to verify imports come from shared.embedding_service instead
 
-    def test_search_with_custom_parameters_flow(self):
+    def test_search_with_custom_parameters_flow(self) -> None:
         """Test that custom model parameters are handled in the flow.
 
         This verifies that custom parameters are accepted and processed,

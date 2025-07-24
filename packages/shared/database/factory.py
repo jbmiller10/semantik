@@ -1,116 +1,144 @@
-"""Repository factory for dependency injection.
+"""Repository factory for PostgreSQL implementations.
 
-This module provides factory functions to create repository instances,
-allowing for easy switching between different implementations.
+This module provides factory functions to create PostgreSQL repository instances.
+All repositories now use PostgreSQL exclusively - SQLite support has been removed.
 """
 
-from .base import AuthRepository, CollectionRepository, FileRepository, JobRepository, UserRepository
-from .sqlite_repository import (
-    SQLiteAuthRepository,
-    SQLiteCollectionRepository,
-    SQLiteFileRepository,
-    SQLiteJobRepository,
-    SQLiteUserRepository,
-)
+import logging
+from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .base import ApiKeyRepository, AuthRepository, UserRepository
+from .database import AsyncSessionLocal
+
+if TYPE_CHECKING:
+    from .repositories.collection_repository import CollectionRepository
+    from .repositories.document_repository import DocumentRepository
+    from .repositories.operation_repository import OperationRepository
+
+logger = logging.getLogger(__name__)
 
 
-def create_job_repository() -> JobRepository:
-    """Create a job repository instance.
-
-    Returns:
-        JobRepository instance
-
-    Note:
-        In the future, this can check configuration to decide whether to
-        return SQLiteJobRepository or PostgreSQLJobRepository.
-    """
-    return SQLiteJobRepository()
-
-
-def create_user_repository() -> UserRepository:
+def create_user_repository(session: AsyncSession) -> UserRepository:
     """Create a user repository instance.
 
-    Returns:
-        UserRepository instance
-    """
-    return SQLiteUserRepository()
-
-
-def create_file_repository() -> FileRepository:
-    """Create a file repository instance.
+    Args:
+        session: AsyncSession for database operations
 
     Returns:
-        FileRepository instance
+        PostgreSQL UserRepository instance
     """
-    return SQLiteFileRepository()
+    from packages.webui.repositories.postgres import PostgreSQLUserRepository
+
+    return PostgreSQLUserRepository(session)
 
 
-def create_collection_repository() -> CollectionRepository:
+def create_auth_repository(session: AsyncSession) -> AuthRepository:
+    """Create an auth repository instance.
+
+    Args:
+        session: AsyncSession for database operations
+
+    Returns:
+        PostgreSQL AuthRepository instance
+    """
+    from packages.webui.repositories.postgres import PostgreSQLAuthRepository
+
+    return PostgreSQLAuthRepository(session)
+
+
+def create_api_key_repository(session: AsyncSession) -> ApiKeyRepository:
+    """Create an API key repository instance.
+
+    Args:
+        session: AsyncSession for database operations
+
+    Returns:
+        PostgreSQL ApiKeyRepository instance
+    """
+    from packages.webui.repositories.postgres import PostgreSQLApiKeyRepository
+
+    return PostgreSQLApiKeyRepository(session)
+
+
+def create_operation_repository(session: AsyncSession) -> "OperationRepository":
+    """Create an operation repository instance.
+
+    Args:
+        session: AsyncSession for database operations
+
+    Returns:
+        OperationRepository instance
+    """
+    from .repositories.operation_repository import OperationRepository
+
+    return OperationRepository(session)
+
+
+def create_document_repository(session: AsyncSession) -> "DocumentRepository":
+    """Create a document repository instance.
+
+    Args:
+        session: AsyncSession for database operations
+
+    Returns:
+        DocumentRepository instance
+    """
+    from .repositories.document_repository import DocumentRepository
+
+    return DocumentRepository(session)
+
+
+def create_collection_repository(session: AsyncSession) -> "CollectionRepository":
     """Create a collection repository instance.
+
+    Args:
+        session: AsyncSession for database operations
 
     Returns:
         CollectionRepository instance
     """
-    return SQLiteCollectionRepository()
+    from .repositories.collection_repository import CollectionRepository
+
+    return CollectionRepository(session)
 
 
-def create_auth_repository() -> AuthRepository:
-    """Create an auth repository instance.
+def create_all_repositories(session: AsyncSession) -> dict[str, object]:
+    """Create all repository instances with the provided session.
 
-    Returns:
-        AuthRepository instance
-    """
-    return SQLiteAuthRepository()
-
-
-def create_all_repositories() -> (
-    dict[str, JobRepository | UserRepository | FileRepository | CollectionRepository | AuthRepository]
-):
-    """Create all repository instances at once.
-
-    This function provides a centralized way to create all repositories,
-    ensuring consistency and making it easier to manage dependencies.
+    Args:
+        session: AsyncSession for database operations
 
     Returns:
-        Dictionary containing all repository instances with keys:
-        - 'job': JobRepository instance
-        - 'user': UserRepository instance
-        - 'file': FileRepository instance
-        - 'collection': CollectionRepository instance
-        - 'auth': AuthRepository instance
-
-    Example:
-        repos = create_all_repositories()
-        job_repo = repos['job']
-        user_repo = repos['user']
+        Dictionary mapping repository names to instances
     """
     return {
-        "job": SQLiteJobRepository(),
-        "user": SQLiteUserRepository(),
-        "file": SQLiteFileRepository(),
-        "collection": SQLiteCollectionRepository(),
-        "auth": SQLiteAuthRepository(),
+        "user": create_user_repository(session),
+        "auth": create_auth_repository(session),
+        "api_key": create_api_key_repository(session),
+        "operation": create_operation_repository(session),
+        "document": create_document_repository(session),
+        "collection": create_collection_repository(session),
     }
 
 
-# Future implementation with configuration support:
-# def create_all_repositories(config: Config | None = None) -> dict[str, Any]:
-#     """Create all repositories based on configuration."""
-#     config = config or get_default_config()
-#
-#     if config.DATABASE_TYPE == "postgresql":
-#         return {
-#             'job': PostgreSQLJobRepository(config.DATABASE_URL),
-#             'user': PostgreSQLUserRepository(config.DATABASE_URL),
-#             'file': PostgreSQLFileRepository(config.DATABASE_URL),
-#             'collection': PostgreSQLCollectionRepository(config.DATABASE_URL),
-#             'auth': PostgreSQLAuthRepository(config.DATABASE_URL),
-#         }
-#     else:
-#         return {
-#             'job': SQLiteJobRepository(),
-#             'user': SQLiteUserRepository(),
-#             'file': SQLiteFileRepository(),
-#             'collection': SQLiteCollectionRepository(),
-#             'auth': SQLiteAuthRepository(),
-#         }
+# Helper function for dependency injection in FastAPI
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """Get a database session for dependency injection.
+
+    Yields:
+        AsyncSession instance
+    """
+    if AsyncSessionLocal is None:
+        raise RuntimeError("Database not initialized")
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()

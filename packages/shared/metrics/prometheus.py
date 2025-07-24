@@ -19,13 +19,17 @@ registry = CollectorRegistry()
 system_info = Info("embedding_system", "Document embedding system information", registry=registry)
 system_info.info({"version": "2.0", "pipeline": "tiktoken_parallel"})
 
-# Job Metrics
-jobs_created = Counter("embedding_jobs_created_total", "Total number of jobs created", registry=registry)
-jobs_completed = Counter("embedding_jobs_completed_total", "Total number of jobs completed", registry=registry)
-jobs_failed = Counter("embedding_jobs_failed_total", "Total number of jobs failed", registry=registry)
-job_duration = Histogram(
-    "embedding_job_duration_seconds",
-    "Job processing duration",
+# Operation Metrics
+operations_created = Counter(
+    "embedding_operations_created_total", "Total number of operations created", registry=registry
+)
+operations_completed = Counter(
+    "embedding_operations_completed_total", "Total number of operations completed", registry=registry
+)
+operations_failed = Counter("embedding_operations_failed_total", "Total number of operations failed", registry=registry)
+operation_duration = Histogram(
+    "embedding_operation_duration_seconds",
+    "Operation processing duration",
     buckets=(60, 300, 600, 1800, 3600, 7200),
     registry=registry,
 )
@@ -175,20 +179,20 @@ class TimingContext:
 
 
 # Helper functions
-def record_job_started() -> None:
-    """Record that a job has started"""
-    jobs_created.inc()
+def record_operation_started() -> None:
+    """Record that an operation has started"""
+    operations_created.inc()
 
 
-def record_job_completed(duration_seconds: float) -> None:
-    """Record that a job has completed"""
-    jobs_completed.inc()
-    job_duration.observe(duration_seconds)
+def record_operation_completed(duration_seconds: float) -> None:
+    """Record that an operation has completed"""
+    operations_completed.inc()
+    operation_duration.observe(duration_seconds)
 
 
-def record_job_failed() -> None:
-    """Record that a job has failed"""
-    jobs_failed.inc()
+def record_operation_failed() -> None:
+    """Record that an operation has failed"""
+    operations_failed.inc()
 
 
 def record_file_processed(stage: str) -> None:
@@ -242,14 +246,14 @@ if __name__ == "__main__":
         # Update resource metrics
         metrics_collector.update_resource_metrics()
 
-        # Simulate job metrics
+        # Simulate operation metrics
         if random.random() < 0.1:
-            record_job_started()
+            record_operation_started()
 
             if random.random() < 0.9:
-                record_job_completed(random.uniform(300, 3600))
+                record_operation_completed(random.uniform(300, 3600))
             else:
-                record_job_failed()
+                record_operation_failed()
 
         # Simulate file processing
         if random.random() < 0.3:

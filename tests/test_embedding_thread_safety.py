@@ -241,7 +241,7 @@ class TestAsyncConcurrency(unittest.TestCase):
 
             # Create a custom service that sometimes fails
             class FailingService:
-                def __init__(self, service: Any):
+                def __init__(self, service: Any) -> None:
                     self.service = service
                     self.call_count = 0
 

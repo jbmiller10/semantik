@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script to verify metrics are being collected during job processing
+Test script to verify metrics are being collected during operation processing
 """
 import os
 import sys
@@ -19,14 +19,14 @@ from shared.metrics.prometheus import (  # noqa: E402
     record_embeddings_generated,
     record_file_failed,
     record_file_processed,
-    record_job_completed,
-    record_job_failed,
-    record_job_started,
+    record_operation_completed,
+    record_operation_failed,
+    record_operation_started,
     registry,
 )
 
 
-def print_current_metrics():
+def print_current_metrics() -> None:
     """Print current metric values"""
     metrics_data = prometheus_client.generate_latest(registry).decode("utf-8")
     print("Current Metrics:")
@@ -39,9 +39,9 @@ def print_current_metrics():
         if any(
             metric in line
             for metric in [
-                "embedding_jobs_created_total",
-                "embedding_jobs_completed_total",
-                "embedding_jobs_failed_total",
+                "embedding_operations_created_total",
+                "embedding_operations_completed_total",
+                "embedding_operations_failed_total",
                 "embedding_chunks_created_total",
                 "embedding_vectors_generated_total",
                 "embedding_files_processed_total",
@@ -52,14 +52,14 @@ def print_current_metrics():
     print("-" * 60)
 
 
-def simulate_job_processing():
-    """Simulate job processing and check if metrics are updated"""
+def simulate_operation_processing() -> None:
+    """Simulate operation processing and check if metrics are updated"""
     print("Initial metrics state:")
     print_current_metrics()
 
-    # Simulate job creation
-    print("\nSimulating job creation...")
-    record_job_started()
+    # Simulate operation creation
+    print("\nSimulating operation creation...")
+    record_operation_started()
 
     # Simulate file processing
     print("Simulating file processing...")
@@ -74,18 +74,18 @@ def simulate_job_processing():
     print("Simulating embedding generation (100 embeddings)...")
     record_embeddings_generated(100)
 
-    # Simulate job completion
-    print("Simulating job completion (duration: 60 seconds)...")
-    record_job_completed(60.0)
+    # Simulate operation completion
+    print("Simulating operation completion (duration: 60 seconds)...")
+    record_operation_completed(60.0)
 
     print("\nFinal metrics state:")
     print_current_metrics()
 
     # Also test failure scenarios
-    print("\nSimulating a failed job...")
-    record_job_started()
+    print("\nSimulating a failed operation...")
+    record_operation_started()
     record_file_failed("extraction", "io_error")
-    record_job_failed()
+    record_operation_failed()
 
     print("\nMetrics after failure:")
     print_current_metrics()
@@ -94,13 +94,13 @@ def simulate_job_processing():
 if __name__ == "__main__":
     print("Testing Semantik Metrics Collection")
     print("=" * 60)
-    simulate_job_processing()
+    simulate_operation_processing()
 
     print("\nDiagnosis:")
     print("- Metrics are being collected correctly when the functions are called")
-    print("- The issue is that the job processing code is not calling these metric functions")
+    print("- The issue is that the operation processing code is not calling these metric functions")
     print("- Specifically:")
-    print("  1. record_job_started() is never called when a job is created")
-    print("  2. record_job_completed() is never called when a job completes")
-    print("  3. record_job_failed() is never called when a job fails")
-    print("\nTo fix this, we need to add these metric calls to the job processing workflow.")
+    print("  1. record_operation_started() is never called when an operation is created")
+    print("  2. record_operation_completed() is never called when an operation completes")
+    print("  3. record_operation_failed() is never called when an operation fails")
+    print("\nTo fix this, we need to add these metric calls to the operation processing workflow.")

@@ -3,7 +3,8 @@
 from unittest.mock import AsyncMock
 
 import pytest
-from webui.websocket_manager import RedisStreamWebSocketManager
+
+from packages.webui.websocket_manager import RedisStreamWebSocketManager
 
 
 class TestWebSocketBasic:
@@ -20,8 +21,8 @@ class TestWebSocketBasic:
         assert manager.max_connections_per_user == 10
 
     @pytest.mark.asyncio()
-    async def test_send_job_update_without_redis(self):
-        """Test sending job update when Redis is not available."""
+    async def test_send_operation_update_without_redis(self):
+        """Test sending operation update when Redis is not available."""
         manager = RedisStreamWebSocketManager()
         manager.redis = None  # No Redis connection
 
@@ -30,10 +31,10 @@ class TestWebSocketBasic:
         mock_ws.send_json = AsyncMock()
 
         # Add connection
-        manager.connections["user1:job1"] = {mock_ws}
+        manager.connections["user1:operation:test-op-123"] = {mock_ws}
 
         # Send update
-        await manager.send_job_update("job1", "progress", {"progress": 50})
+        await manager.send_update("test-op-123", "progress", {"progress": 50})
 
         # Verify WebSocket received the update
         mock_ws.send_json.assert_called_once()
@@ -42,7 +43,7 @@ class TestWebSocketBasic:
         assert sent_data["data"]["progress"] == 50
 
     @pytest.mark.asyncio()
-    async def test_broadcast_to_job(self):
+    async def test_broadcast_to_operation(self):
         """Test broadcasting to multiple WebSocket connections."""
         manager = RedisStreamWebSocketManager()
 
@@ -52,12 +53,12 @@ class TestWebSocketBasic:
         ws3 = AsyncMock()
 
         # Add connections
-        manager.connections["user1:job1"] = {ws1, ws2}
-        manager.connections["user2:job1"] = {ws3}
+        manager.connections["user1:operation:test-op-123"] = {ws1, ws2}
+        manager.connections["user2:operation:test-op-123"] = {ws3}
 
         # Broadcast message
         test_message = {"type": "test", "data": {"msg": "hello"}}
-        await manager._broadcast_to_job("job1", test_message)
+        await manager._broadcast("test-op-123", test_message)
 
         # Verify all WebSockets received the message
         ws1.send_json.assert_called_once_with(test_message)
@@ -71,7 +72,7 @@ class TestWebSocketBasic:
 
         # Add connections up to the limit
         for i in range(10):
-            manager.connections[f"user1:job{i}"] = {AsyncMock()}
+            manager.connections[f"user1:operation:op{i}"] = {AsyncMock()}
 
         # Check if user has reached limit
         user_connections = sum(len(sockets) for key, sockets in manager.connections.items() if key.startswith("user1:"))

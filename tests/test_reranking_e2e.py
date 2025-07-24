@@ -9,7 +9,7 @@ import pytest
 class TestRerankingE2E:
     """Test complete reranking flow through all layers"""
 
-    def test_frontend_sends_reranking_params(self):
+    def test_frontend_sends_reranking_params(self) -> None:
         """Verify frontend SearchInterface sends all reranking parameters"""
         # This is verified by code inspection of SearchInterface.tsx lines 108-112
         # The frontend correctly sends:
@@ -17,7 +17,7 @@ class TestRerankingE2E:
         # - rerank_model: string | undefined
         assert True, "Frontend implementation verified by code inspection"
 
-    def test_api_service_forwards_params(self):
+    def test_api_service_forwards_params(self) -> None:
         """Verify api.ts forwards all reranking parameters"""
         # This is verified by code inspection of api.ts lines 79-81
         # The API service correctly includes:
@@ -28,16 +28,16 @@ class TestRerankingE2E:
     @pytest.mark.asyncio()
     async def test_webui_search_forwards_to_vecpipe(self):
         """Test that webui search.py forwards reranking params to vecpipe"""
-        from webui.api.search import SearchRequest
+        from packages.shared.contracts.search import SearchRequest
 
         # Create a request with reranking parameters
         request = SearchRequest(
             query="test query",
             collection="test_collection",
-            top_k=10,
+            k=10,
             use_reranker=True,
             rerank_model="cross-encoder/ms-marco-MiniLM-L-12-v2",
-            search_type="vector",
+            search_type="semantic",
             score_threshold=0.0,
         )
 
@@ -100,7 +100,7 @@ class TestRerankingE2E:
         assert mock_response.reranker_model == "cross-encoder/ms-marco-MiniLM-L-12-v2/float16"
         assert mock_response.reranking_time_ms == 30.0
 
-    def test_webui_returns_reranking_metrics(self):
+    def test_webui_returns_reranking_metrics(self) -> None:
         """Test that webui search.py returns reranking metrics to frontend"""
         # This is verified by code inspection of search.py lines 291-294
         # The webui correctly forwards reranking metrics:
@@ -109,7 +109,7 @@ class TestRerankingE2E:
         # - reranking_time_ms: from API response
         assert True, "WebUI response forwarding verified by code inspection"
 
-    def test_frontend_stores_and_displays_metrics(self):
+    def test_frontend_stores_and_displays_metrics(self) -> None:
         """Test that frontend stores and displays reranking metrics"""
         # Verified by code inspection:
         # 1. SearchInterface.tsx lines 121-129: Stores metrics in store
@@ -117,7 +117,7 @@ class TestRerankingE2E:
         # 3. SearchResults.tsx lines 78-92: Displays reranking badge and time
         assert True, "Frontend metrics handling verified by code inspection"
 
-    def test_reranking_parameter_flow(self):
+    def test_reranking_parameter_flow(self) -> None:
         """Summary test of complete parameter flow"""
         flow_verified = {
             "frontend_sends_params": True,  # SearchInterface.tsx:108-112

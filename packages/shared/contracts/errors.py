@@ -35,7 +35,7 @@ class ErrorResponse(BaseModel):
                 {
                     "error": "NotFoundError",
                     "message": "Collection not found",
-                    "details": {"collection": "job_123", "suggestion": "Check if the job has completed"},
+                    "details": {"collection": "operation_123", "suggestion": "Check if the operation has completed"},
                     "status_code": 404,
                 },
                 {

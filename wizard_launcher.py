@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 
-def check_python_version():
+def check_python_version() -> None:
     """Check if Python version is 3.12 or higher"""
     if sys.version_info < (3, 12):
         print(f"❌ Error: Python 3.12 or higher is required (found {sys.version})")
@@ -19,7 +19,7 @@ def check_python_version():
     print(f"✅ Python {sys.version.split()[0]} detected")
 
 
-def check_poetry():
+def check_poetry() -> bool:
     """Check if Poetry is installed, install if not"""
     # Check common Poetry locations based on platform
     poetry_cmd = None
@@ -47,7 +47,7 @@ def check_poetry():
             ]
 
         for path in possible_paths:
-            if Path(path).exists():
+            if path.exists():
                 poetry_cmd = str(path)
                 break
 
@@ -98,12 +98,12 @@ def check_poetry():
         return False
 
 
-def get_poetry_cmd():
+def get_poetry_cmd() -> str:
     """Get the Poetry command to use"""
     return os.environ.get("POETRY_CMD", "poetry")
 
 
-def check_dependencies():
+def check_dependencies() -> bool:
     """Check if required dependencies are installed"""
     try:
         # Try to import the required modules
@@ -116,7 +116,7 @@ def check_dependencies():
         return False
 
 
-def install_dependencies():
+def install_dependencies() -> bool:
     """Install required dependencies using Poetry"""
     print("📦 Installing dependencies...")
     try:
@@ -133,7 +133,7 @@ def install_dependencies():
         return False
 
 
-def run_wizard():
+def run_wizard() -> None:
     """Run the actual setup wizard"""
     print("\n🧙 Starting interactive setup wizard...\n")
     try:
@@ -147,7 +147,7 @@ def run_wizard():
         sys.exit(1)
 
 
-def main():
+def main() -> None:
     """Main entry point"""
     print("🚀 Semantik Setup Wizard")
     print("========================\n")

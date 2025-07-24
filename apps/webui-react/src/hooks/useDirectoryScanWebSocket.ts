@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { useWebSocket } from './useWebSocket';
-import api from '../services/api';
+import { directoryScanV2Api, generateScanId } from '../services/api/v2/directoryScan';
+import type { DirectoryScanProgress } from '../services/api/v2/types';
 
 interface ScanResult {
   files: string[];
@@ -26,88 +27,94 @@ export function useDirectoryScanWebSocket(scanId?: string) {
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [useWebSocketMode, setUseWebSocketMode] = useState(true);
-  const wsRef = useRef<WebSocket | null>(null);
-  const scanIdRef = useRef<string>(scanId || Math.random().toString(36).substring(7));
+  const scanIdRef = useRef<string>(scanId || generateScanId());
 
-  // WebSocket URL
+  // WebSocket URL for v2 API
   const wsUrl = scanning && useWebSocketMode 
-    ? `ws://${window.location.host}/ws/scan/${scanIdRef.current}` 
+    ? directoryScanV2Api.getWebSocketUrl(scanIdRef.current)
     : null;
 
   const { disconnect } = useWebSocket(wsUrl, {
     onOpen: () => {
-      console.log('Scan WebSocket connected');
+      console.log('Directory scan WebSocket connected');
     },
     onMessage: (event) => {
       try {
-        const data = JSON.parse(event.data);
-        console.log('Scan WebSocket message:', data);
+        const message: DirectoryScanProgress = JSON.parse(event.data);
+        console.log('Directory scan WebSocket message:', message);
 
-        switch (data.type) {
+        switch (message.type) {
           case 'started':
             setScanProgress({ files_scanned: 0 });
             break;
 
           case 'counting':
             setScanProgress({
-              current_path: 'Counting files...',
+              current_path: message.data.message || 'Counting files...',
               files_scanned: 0,
             });
             break;
 
           case 'progress':
             setScanProgress({
-              current_path: data.current_path,
-              files_scanned: data.files_scanned,
-              total_files: data.total_files,
-              percentage: data.percentage,
+              current_path: message.data.current_path,
+              files_scanned: message.data.files_scanned,
+              total_files: message.data.total_files,
+              percentage: message.data.percentage,
             });
             break;
 
           case 'completed':
             setScanning(false);
+            // Note: The completed message doesn't include the full file list
+            // We need to make another API call or adjust the backend
             setScanResult({
-              files: data.files.map((f: any) => typeof f === 'string' ? f : f.path),
-              total_files: data.count || data.files.length,
-              total_size: data.total_size || 0,
-              warnings: data.warnings || [],
+              files: [], // Files will be populated from the initial API call
+              total_files: message.data.total_files || 0,
+              total_size: message.data.total_size || 0,
+              warnings: message.data.warnings?.map(w => ({
+                type: 'warning',
+                message: w,
+                severity: 'low',
+              })) || [],
             });
             setScanProgress(null);
             break;
             
           case 'warning':
             // Handle warning messages during scan
-            if (data.warning) {
+            if (message.data.message) {
               setScanResult(prev => prev ? {
                 ...prev,
-                warnings: [...(prev.warnings || []), data.warning]
+                warnings: [...(prev.warnings || []), {
+                  type: 'warning',
+                  message: message.data.message || '',
+                  severity: 'low',
+                }]
               } : null);
             }
             break;
 
           case 'error':
             setScanning(false);
-            setError(data.error || data.message || 'Scan failed');
-            setScanProgress(null);
-            break;
-
-          case 'cancelled':
-            setScanning(false);
+            setError(message.data.message || 'Scan failed');
             setScanProgress(null);
             break;
         }
       } catch (error) {
-        console.error('Error parsing scan WebSocket message:', error);
+        console.error('Error parsing directory scan WebSocket message:', error);
       }
     },
     onError: () => {
-      console.error('Scan WebSocket error, falling back to REST API');
+      console.error('Directory scan WebSocket error, falling back to REST API');
       setUseWebSocketMode(false);
-      // The startScan function will be called again automatically
     },
     onClose: () => {
-      console.log('Scan WebSocket closed');
-      setScanning(false);
+      console.log('Directory scan WebSocket closed');
+      if (scanning) {
+        // If we were still scanning when the connection closed, mark as complete
+        setScanning(false);
+      }
     },
   });
 
@@ -119,28 +126,25 @@ export function useDirectoryScanWebSocket(scanId?: string) {
       setScanning(true);
 
       try {
-        const response = await api.post('/api/scan-directory', {
+        const response = await directoryScanV2Api.preview({
           path: directory,
-          recursive: true,
           scan_id: scanIdRef.current,
+          recursive: true,
         });
 
-        const { files, count, total_size, warnings } = response.data;
-        
-        // Calculate total size if not provided
-        const totalSize = total_size || files.reduce((sum: number, file: any) => sum + file.size, 0);
-        
+        // Convert response to legacy format for compatibility
         setScanResult({
-          files: files.map((f: any) => f.path),
-          total_files: count,
-          total_size: totalSize,
-          warnings: warnings || [],
+          files: response.files.map(f => f.file_path),
+          total_files: response.total_files,
+          total_size: response.total_size,
+          warnings: response.warnings.filter(w => w !== 'Scan in progress - connect to WebSocket for real-time updates').map(w => ({
+            type: 'warning',
+            message: w,
+            severity: 'low',
+          })),
         });
-        setError(null);
       } catch (err: any) {
-        console.error('Scan error:', err);
-        const errorMessage = err.response?.data?.detail || err.message || 'Failed to scan directory';
-        setError(errorMessage);
+        setError(err.response?.data?.detail || 'Failed to scan directory');
         setScanResult(null);
       } finally {
         setScanning(false);
@@ -156,44 +160,47 @@ export function useDirectoryScanWebSocket(scanId?: string) {
         return;
       }
 
+      // Generate new scan ID for each scan
+      scanIdRef.current = generateScanId();
+
       // If WebSocket mode failed previously, use REST directly
       if (!useWebSocketMode) {
         return startScanREST(directory);
       }
 
-      // Try WebSocket first
+      // Try WebSocket mode - start API call which will trigger WebSocket updates
       setError(null);
       setScanResult(null);
       setScanProgress(null);
       setScanning(true);
 
-      // Send scan request via REST API, which will trigger WebSocket updates
       try {
-        const response = await api.post('/api/scan-directory', {
+        // Start the scan via API (this triggers WebSocket updates)
+        const response = await directoryScanV2Api.preview({
           path: directory,
-          recursive: true,
           scan_id: scanIdRef.current,
-          use_websocket: true,
+          recursive: true,
         });
 
-        // If REST returns immediately with results, WebSocket might not be available
-        if (response.data.files) {
-          setUseWebSocketMode(false);
-          const { files, count } = response.data;
-          const totalSize = files.reduce((sum: number, file: any) => sum + file.size, 0);
-          
-          setScanResult({
-            files: files.map((f: any) => f.path),
-            total_files: count,
-            total_size: totalSize,
-          });
+        // If we get an immediate response (small directory), use it
+        if (response.files.length > 0 || !response.warnings.includes('Scan in progress - connect to WebSocket for real-time updates')) {
           setScanning(false);
+          setScanResult({
+            files: response.files.map(f => f.file_path),
+            total_files: response.total_files,
+            total_size: response.total_size,
+            warnings: response.warnings.filter(w => w !== 'Scan in progress - connect to WebSocket for real-time updates').map(w => ({
+              type: 'warning',
+              message: w,
+              severity: 'low',
+            })),
+          });
         }
+        // Otherwise, WebSocket updates will handle the progress
       } catch (err: any) {
-        console.error('Scan initialization error:', err);
-        // Fall back to REST
-        setUseWebSocketMode(false);
-        return startScanREST(directory);
+        setScanning(false);
+        setError(err.response?.data?.detail || 'Failed to scan directory');
+        setScanResult(null);
       }
     },
     [startScanREST, useWebSocketMode]
@@ -204,9 +211,7 @@ export function useDirectoryScanWebSocket(scanId?: string) {
     setScanResult(null);
     setScanProgress(null);
     setError(null);
-    if (wsRef.current) {
-      disconnect();
-    }
+    disconnect();
   }, [disconnect]);
 
   return {

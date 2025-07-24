@@ -4,10 +4,12 @@ import os
 import sys
 from datetime import UTC
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
+from httpx import AsyncClient
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -22,7 +24,7 @@ os.environ.setdefault("DISABLE_AUTH", "true")
 
 
 @pytest.fixture()
-def test_client(test_user):
+def test_client(test_user) -> None:
     """Create a test client for the FastAPI app with auth mocked."""
     from packages.webui.auth import get_current_user
     from packages.webui.main import app
@@ -42,7 +44,7 @@ def test_client(test_user):
 
 
 @pytest.fixture()
-def unauthenticated_test_client():
+def unauthenticated_test_client() -> None:
     """Create a test client without authentication override."""
     from packages.webui.main import app
 
@@ -55,21 +57,16 @@ def unauthenticated_test_client():
 @pytest.fixture()
 def test_client_with_mocks(
     test_user,
-    mock_job_repository,
-    mock_file_repository,
     mock_collection_repository,
     mock_user_repository,
     mock_auth_repository,
-):
+) -> None:
     """Create a test client with mocked repositories and auth."""
-    from shared.database.factory import (
+    from packages.shared.database.factory import (
         create_auth_repository,
         create_collection_repository,
-        create_file_repository,
-        create_job_repository,
         create_user_repository,
     )
-
     from packages.webui.auth import get_current_user
     from packages.webui.main import app
 
@@ -79,8 +76,6 @@ def test_client_with_mocks(
 
     # Override repository dependencies
     app.dependency_overrides[get_current_user] = override_get_current_user
-    app.dependency_overrides[create_job_repository] = lambda: mock_job_repository
-    app.dependency_overrides[create_file_repository] = lambda: mock_file_repository
     app.dependency_overrides[create_collection_repository] = lambda: mock_collection_repository
     app.dependency_overrides[create_user_repository] = lambda: mock_user_repository
     app.dependency_overrides[create_auth_repository] = lambda: mock_auth_repository
@@ -94,7 +89,7 @@ def test_client_with_mocks(
 
 
 @pytest.fixture()
-def mock_qdrant_client():
+def mock_qdrant_client() -> None:
     """Mock Qdrant client for testing."""
     mock = MagicMock()
     mock.get_collections.return_value = MagicMock(collections=[])
@@ -103,7 +98,7 @@ def mock_qdrant_client():
 
 
 @pytest.fixture()
-def test_user():
+def test_user() -> None:
     """Test user data."""
     from datetime import datetime
 
@@ -118,16 +113,40 @@ def test_user():
 
 
 @pytest.fixture()
-def auth_headers(test_user):
+def auth_headers(test_user) -> None:
     """Create authorization headers with a test JWT token."""
-    from webui.auth import create_access_token
+    from packages.webui.auth import create_access_token
 
     token = create_access_token(data={"sub": test_user["username"]})
     return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture()
-def temp_test_file(tmp_path):
+def test_user_headers(auth_headers) -> None:
+    """Alias for auth_headers to match test expectations."""
+    return auth_headers
+
+
+@pytest_asyncio.fixture
+async def async_client(test_user):
+    """Create an async test client for the FastAPI app with auth mocked."""
+    from packages.webui.auth import get_current_user
+    from packages.webui.main import app
+
+    # Override the authentication dependency
+    async def override_get_current_user():
+        return test_user
+
+    app.dependency_overrides[get_current_user] = override_get_current_user
+
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        yield client
+
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def temp_test_file(tmp_path) -> None:
     """Create a temporary test file."""
     test_file = tmp_path / "test_document.txt"
     test_file.write_text("This is a test document.")
@@ -135,7 +154,7 @@ def temp_test_file(tmp_path):
 
 
 @pytest.fixture()
-def mock_embedding_service():
+def mock_embedding_service() -> None:
     """Mock embedding service."""
     mock = MagicMock()
     mock.embed_texts.return_value = [[0.1] * 384]  # Mock embedding vector
@@ -144,14 +163,14 @@ def mock_embedding_service():
 
 
 @pytest.fixture(autouse=True)
-def _reset_singletons():
+def _reset_singletons() -> None:
     """Reset any singleton instances between tests."""
     # This helps ensure test isolation
     return
     # Cleanup code here if needed
 
 
-def create_async_mock(return_value=None):
+def create_async_mock(return_value=None) -> None:
     """Helper to create an async mock that returns a value."""
 
     async def async_mock(*_args, **_kwargs):
@@ -161,33 +180,7 @@ def create_async_mock(return_value=None):
 
 
 @pytest.fixture()
-def mock_job_repository():
-    """Create a mock JobRepository for testing."""
-    mock = MagicMock()
-    # Set up async methods
-    mock.create_job = create_async_mock()
-    mock.get_job = create_async_mock()
-    mock.update_job = create_async_mock()
-    mock.delete_job = create_async_mock()
-    mock.list_jobs = create_async_mock([])
-    mock.get_all_job_ids = create_async_mock([])
-    return mock
-
-
-@pytest.fixture()
-def mock_file_repository():
-    """Create a mock FileRepository for testing."""
-    mock = MagicMock()
-    mock.add_files_to_job = create_async_mock()
-    mock.get_job_files = create_async_mock([])
-    mock.update_file_status = create_async_mock()
-    mock.get_job_total_vectors = create_async_mock(0)
-    mock.get_duplicate_files_in_collection = create_async_mock(set())
-    return mock
-
-
-@pytest.fixture()
-def mock_collection_repository():
+def mock_collection_repository() -> None:
     """Create a mock CollectionRepository for testing."""
     mock = MagicMock()
     mock.list_collections = create_async_mock([])
@@ -200,7 +193,7 @@ def mock_collection_repository():
 
 
 @pytest.fixture()
-def mock_user_repository():
+def mock_user_repository() -> None:
     """Create a mock UserRepository for testing."""
     mock = MagicMock()
     mock.create_user = create_async_mock()
@@ -212,7 +205,7 @@ def mock_user_repository():
 
 
 @pytest.fixture()
-def mock_auth_repository():
+def mock_auth_repository() -> None:
     """Create a mock AuthRepository for testing."""
     mock = MagicMock()
     mock.save_refresh_token = create_async_mock()
@@ -223,14 +216,13 @@ def mock_auth_repository():
 
 
 @pytest.fixture()
-def mock_redis_client():
+def mock_redis_client() -> None:
     """Create a mock Redis client for testing WebSocket functionality."""
-    from unittest.mock import AsyncMock
 
     import redis.asyncio as redis
 
     class MockRedisStreams:
-        def __init__(self):
+        def __init__(self) -> None:
             self.streams = {}
             self.consumer_groups = {}
             self.message_counter = 0
@@ -329,9 +321,8 @@ def mock_redis_client():
 
 
 @pytest.fixture()
-def mock_websocket():
+def mock_websocket() -> None:
     """Create a mock WebSocket connection."""
-    from unittest.mock import AsyncMock
 
     from fastapi import WebSocket
 
@@ -344,9 +335,9 @@ def mock_websocket():
 
 
 @pytest.fixture()
-def mock_websocket_manager(mock_redis_client):
+def mock_websocket_manager(mock_redis_client) -> None:
     """Create a mock WebSocket manager with Redis client."""
-    from webui.websocket_manager import RedisStreamWebSocketManager
+    from packages.webui.websocket_manager import RedisStreamWebSocketManager
 
     manager = RedisStreamWebSocketManager()
     manager.redis = mock_redis_client
@@ -354,7 +345,7 @@ def mock_websocket_manager(mock_redis_client):
 
 
 @pytest.fixture()
-def websocket_test_client(test_client):
+def websocket_test_client(test_client) -> None:
     """Create a test client with WebSocket support."""
 
     # TestClient already supports WebSocket testing
