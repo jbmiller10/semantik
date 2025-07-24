@@ -59,23 +59,24 @@ class MockWebSocketClient:
 
     def _ensure_messages_tracked(self):
         """Ensure messages are tracked, falling back to call args if side effect failed."""
-        if not self.received_messages and self.websocket.send_json.called:
-            # If side effect didn't work, get messages from call args
+        if self.websocket.send_json.called:
+            # Always check call args to ensure we have all messages
             for call in self.websocket.send_json.call_args_list:
                 if call.args:
                     msg = call.args[0]
-                    # Avoid duplicates
-                    if msg not in self.received_messages:
+                    # Avoid duplicates - compare by content, not identity
+                    already_exists = any(
+                        existing == msg for existing in self.received_messages
+                    )
+                    if not already_exists:
                         self.received_messages.append(msg)
 
     async def get_received_messages(self, message_type: str = None) -> list[dict[str, Any]]:
         """Get received messages, optionally filtered by type."""
         # Use lock to ensure thread safety
         async with self._message_lock:
-            # Always check if we need to pull from call args
-            if not self.received_messages and self.websocket.send_json.called:
-                # Try to get from mock calls as a last resort
-                self._ensure_messages_tracked()
+            # Always ensure we have all messages from mock calls
+            self._ensure_messages_tracked()
 
             # Debug: print all received messages if none match the filter
             if message_type:
