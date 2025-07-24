@@ -6,6 +6,7 @@ import json
 import logging
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 import redis.asyncio as redis
 from fastapi import WebSocket
@@ -91,7 +92,7 @@ class RedisStreamWebSocketManager:
             await self.redis.close()
             logger.info("WebSocket manager Redis connection closed")
 
-    def set_operation_getter(self, get_operation_func) -> None:
+    def set_operation_getter(self, get_operation_func: Any) -> None:
         """Set the function to get operation by ID.
 
         This allows dependency injection for testing.

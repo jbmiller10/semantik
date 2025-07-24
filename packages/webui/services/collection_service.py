@@ -4,7 +4,7 @@ import logging
 import uuid
 from typing import Any
 
-from shared.database.exceptions import AccessDeniedError, InvalidStateError, EntityAlreadyExistsError
+from shared.database.exceptions import AccessDeniedError, EntityAlreadyExistsError, InvalidStateError
 from shared.database.models import Collection, CollectionStatus, OperationType
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository

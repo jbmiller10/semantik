@@ -159,7 +159,7 @@ class TestWebSocketRedisIntegration:
             async def xgroup_destroy(self, stream_key, group_name):
                 if stream_key in self.consumer_groups:
                     self.consumer_groups[stream_key].pop(group_name, None)
-            
+
             async def xinfo_stream(self, stream_key):
                 if stream_key not in self.streams:
                     raise Exception(f"Stream {stream_key} does not exist")
@@ -246,14 +246,14 @@ class TestWebSocketRedisIntegration:
                 # This ensures the stream exists before the consumer starts
                 celery_updater = CeleryTaskWithOperationUpdates("operation1")
                 celery_updater._redis_client = real_redis_mock
-                
+
                 # Send initial update to create the stream
                 await celery_updater.send_update("start", {"status": "started"})
                 await asyncio.sleep(0.1)  # Allow stream creation
-                
+
                 # Now connect WebSocket client - consumer will find existing stream
                 await manager.connect(ws_client, "operation1", "user1")
-                
+
                 # Allow consumer task to start and read initial message
                 await asyncio.sleep(0.2)
 
@@ -316,7 +316,7 @@ class TestWebSocketRedisIntegration:
 
                 # Set up operation getter for all clients
                 self._setup_operation_getter(manager, ["operation1"])
-                
+
                 # Create the stream by sending an initial update BEFORE connecting clients
                 await manager.send_update("operation1", "initial", {"status": "stream_created"})
                 await asyncio.sleep(0.1)

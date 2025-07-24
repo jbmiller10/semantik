@@ -86,40 +86,40 @@ class TestWebuiHealthEndpoints:
 
     def test_readiness_check_ready(self, test_client):
         """Test readiness check when all services are ready"""
-        
+
         # Mock Redis connection
         mock_redis = Mock()
-        
+
         async def async_ping():
             return True
-        
+
         mock_redis.ping = async_ping
-        
+
         # Mock Search API response
         class MockResponse:
             status_code = 200
-            
+
             def json(self):
                 return {"status": "healthy", "components": {}}
-        
+
         async def mock_get(*_args, **_kwargs):
             return MockResponse()
-        
+
         # Mock embedding service health check
         async def mock_check_embedding_service_health():
             return {"status": "unhealthy", "message": "Embedding service not initialized"}
-        
+
         # Mock database health check
         async def mock_check_postgres():
             return True
-            
+
         # Mock Qdrant connection
         mock_qdrant_client = Mock()
         mock_qdrant_client.get_collections = Mock(return_value=Mock(collections=[]))
-        
+
         mock_qdrant_manager = Mock()
         mock_qdrant_manager.get_client = Mock(return_value=mock_qdrant_client)
-        
+
         with (
             patch("packages.webui.api.health.ws_manager.redis", mock_redis),
             patch("httpx.AsyncClient.get", side_effect=mock_get),
@@ -159,18 +159,18 @@ class TestWebuiHealthEndpoints:
         # Mock embedding service health check
         async def mock_check_embedding_service_health():
             return {"status": "unhealthy", "message": "Embedding service not initialized"}
-        
+
         # Mock database health check - make it fail
         async def mock_check_postgres():
             return False
-            
+
         # Mock Qdrant connection
         mock_qdrant_client = Mock()
         mock_qdrant_client.get_collections = Mock(return_value=Mock(collections=[]))
-        
+
         mock_qdrant_manager = Mock()
         mock_qdrant_manager.get_client = Mock(return_value=mock_qdrant_client)
-        
+
         with (
             patch("packages.webui.api.health.ws_manager.redis", mock_redis),
             patch("httpx.AsyncClient.get", side_effect=mock_get),

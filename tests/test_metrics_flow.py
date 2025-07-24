@@ -58,8 +58,7 @@ def simulate_operation_processing():
     print_current_metrics()
 
     # Simulate operation creation
-    print("
-Simulating operation creation...")
+    print("\nSimulating operation creation...")
     record_operation_started()
 
     # Simulate file processing
@@ -83,8 +82,7 @@ Simulating operation creation...")
     print_current_metrics()
 
     # Also test failure scenarios
-    print("
-Simulating a failed operation...")
+    print("\nSimulating a failed operation...")
     record_operation_started()
     record_file_failed("extraction", "io_error")
     record_operation_failed()
@@ -98,13 +96,11 @@ if __name__ == "__main__":
     print("=" * 60)
     simulate_operation_processing()
 
-    print("
-Diagnosis:")
+    print("\nDiagnosis:")
     print("- Metrics are being collected correctly when the functions are called")
     print("- The issue is that the operation processing code is not calling these metric functions")
     print("- Specifically:")
     print("  1. record_operation_started() is never called when an operation is created")
     print("  2. record_operation_completed() is never called when an operation completes")
     print("  3. record_operation_failed() is never called when an operation fails")
-    print("
-To fix this, we need to add these metric calls to the operation processing workflow.")
+    print("\nTo fix this, we need to add these metric calls to the operation processing workflow.")

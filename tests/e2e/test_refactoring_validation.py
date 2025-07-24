@@ -89,17 +89,17 @@ class TestCurrentSystemBehavior:
 
         # Store collection_id for cleanup
         cleanup_operation.append(collection_id)
-        
+
         # Get the initial operation ID if present
         initial_operation_id = collection_data.get("initial_operation_id")
-        
+
         # Wait for initial INDEX operation to complete
         if initial_operation_id:
             print(f"Waiting for initial INDEX operation {initial_operation_id} to complete...")
             start_time = time.time()
             while time.time() - start_time < 60:  # 1-minute timeout for initial operation
                 status_response = requests.get(
-                    f"{self.API_BASE_URL}/api/v2/operations/{initial_operation_id}", 
+                    f"{self.API_BASE_URL}/api/v2/operations/{initial_operation_id}",
                     headers=headers
                 )
                 if status_response.status_code == 200:

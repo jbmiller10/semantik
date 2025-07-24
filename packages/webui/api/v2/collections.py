@@ -79,7 +79,7 @@ async def create_collection(
         )
 
         # Convert to response model and add operation uuid
-        response = CollectionResponse(
+        return CollectionResponse(
             id=collection["id"],
             name=collection["name"],
             description=collection["description"],
@@ -99,8 +99,6 @@ async def create_collection(
             status_message=collection.get("status_message"),
             initial_operation_id=operation["uuid"],  # Include the initial operation ID
         )
-
-        return response
 
     except EntityAlreadyExistsError as e:
         raise HTTPException(

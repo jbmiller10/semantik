@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+
 from packages.webui.api.internal import router, verify_internal_api_key
 
 
@@ -49,17 +50,19 @@ class TestInternalAPIEndpoints:
     @pytest.fixture()
     def client_with_mocked_repos(self, mock_collection_repository):
         """Create test client with mocked repositories."""
+        from unittest.mock import AsyncMock
+
         from fastapi import FastAPI
+
         from packages.shared.database.factory import create_collection_repository
         from packages.webui.dependencies import get_collection_repository, get_db
-        from unittest.mock import AsyncMock
 
         app = FastAPI()
         app.include_router(router)
 
         # Mock database session
         mock_db = AsyncMock()
-        
+
         # Override dependencies
         app.dependency_overrides[get_db] = lambda: mock_db
         app.dependency_overrides[get_collection_repository] = lambda: mock_collection_repository
@@ -143,15 +146,15 @@ class TestInternalAPIIntegration:
     async def test_maintenance_service_api_integration(self):
         """Test that maintenance service can successfully call internal API."""
         from packages.vecpipe.maintenance import QdrantMaintenanceService
-        
+
         # Create maintenance service
         with patch("packages.vecpipe.maintenance.QdrantClient", return_value=MagicMock()):
             service = QdrantMaintenanceService(webui_host="test-server", webui_port=80)
-        
+
         with patch("packages.vecpipe.maintenance.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"
             mock_settings.DEFAULT_COLLECTION = "work_docs"
             result = service.get_operation_collections()
-            
+
             # In the new architecture, this returns only the default collection
             assert result == ["work_docs"]
