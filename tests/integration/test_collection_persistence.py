@@ -10,7 +10,7 @@ from packages.shared.database.repositories.collection_repository import Collecti
 
 
 @pytest.fixture()
-def mock_qdrant_client():
+def mock_qdrant_client() -> None:
     """Mock Qdrant client."""
     client = Mock(spec=QdrantClient)
     # Mock successful collection creation

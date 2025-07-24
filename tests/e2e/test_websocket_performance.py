@@ -97,7 +97,7 @@ class TestWebSocketPerformanceAndValidation:
             message_types = defaultdict(int)
             invalid_messages = []
 
-            def on_message(_ws, message):
+            def on_message(_ws, message) -> None:
                 try:
                     data = json.loads(message)
                     all_messages.append(data)
@@ -195,7 +195,7 @@ class TestWebSocketPerformanceAndValidation:
             message_timestamps = []
             message_intervals = []
 
-            def on_message(_ws, _message):
+            def on_message(_ws, _message) -> None:
                 current_time = time.time()
                 message_timestamps.append(current_time)
 
@@ -286,7 +286,7 @@ class TestWebSocketPerformanceAndValidation:
             # Connect first time
             first_messages = []
 
-            def on_message_first(ws, message):
+            def on_message_first(ws, message) -> None:
                 data = json.loads(message)
                 first_messages.append(data)
                 # Disconnect after receiving initial state
@@ -307,7 +307,7 @@ class TestWebSocketPerformanceAndValidation:
             # Reconnect
             second_messages = []
 
-            def on_message_second(_ws, message):
+            def on_message_second(_ws, message) -> None:
                 data = json.loads(message)
                 second_messages.append(data)
 

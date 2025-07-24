@@ -14,7 +14,7 @@ from alembic import command
 from alembic.config import Config
 
 
-def test_migration():
+def test_migration() -> None:
     """Test the migration against PostgreSQL."""
 
     # Get PostgreSQL connection URL from environment or use default

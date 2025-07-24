@@ -14,13 +14,13 @@ with patch("packages.vecpipe.maintenance.settings") as mock_settings:
 
 
 @pytest.fixture()
-def mock_qdrant_client():
+def mock_qdrant_client() -> None:
     """Create a mock Qdrant client."""
     return Mock()
 
 
 @pytest.fixture()
-def maintenance_service(mock_qdrant_client, monkeypatch):
+def maintenance_service(mock_qdrant_client, monkeypatch) -> None:
     """Create a maintenance service instance with mocked dependencies."""
     monkeypatch.setattr("packages.vecpipe.maintenance.settings.DEFAULT_COLLECTION", "work_docs")
     monkeypatch.setattr("packages.vecpipe.maintenance.settings.QDRANT_HOST", "localhost")
@@ -36,7 +36,7 @@ def maintenance_service(mock_qdrant_client, monkeypatch):
 class TestQdrantMaintenanceService:
     """Test the maintenance service functionality."""
 
-    def test_get_operation_collections_success(self, maintenance_service):
+    def test_get_operation_collections_success(self, maintenance_service) -> None:
         """Test successful retrieval of operation collections from API."""
         mock_response = Mock()
         mock_response.json.return_value = ["operation_1", "operation_2", "operation_3"]
@@ -48,14 +48,14 @@ class TestQdrantMaintenanceService:
         # Should only include DEFAULT_COLLECTION in new architecture
         assert collections == ["work_docs"]
 
-    def test_get_operation_collections_with_retry(self, maintenance_service):
+    def test_get_operation_collections_with_retry(self, maintenance_service) -> None:
         """Test that get_operation_collections now only returns default collection without retry."""
         # In new architecture, no API calls are made
         collections = maintenance_service.get_operation_collections()
 
         assert collections == ["work_docs"]
 
-    def test_collection_not_found_handling(self, maintenance_service):
+    def test_collection_not_found_handling(self, maintenance_service) -> None:
         """Test handling of collection not found errors during deletion."""
         # In new architecture, all operation_* collections are orphaned
         # Mock Qdrant collections
@@ -78,7 +78,7 @@ class TestQdrantMaintenanceService:
         # Both collections should have attempted deletion
         assert maintenance_service.client.delete_collection.call_count == 2
 
-    def test_internal_api_key_configuration(self, monkeypatch):
+    def test_internal_api_key_configuration(self, monkeypatch) -> None:
         """Test that maintenance service is properly configured."""
         # Test that service can be created with API key configured
         monkeypatch.setattr("packages.vecpipe.maintenance.settings.INTERNAL_API_KEY", "test-api-key")

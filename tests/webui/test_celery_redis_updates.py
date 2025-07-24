@@ -15,7 +15,7 @@ class TestCeleryTaskWithOperationUpdates:
     """Test suite for CeleryTaskWithOperationUpdates class."""
 
     @pytest.fixture()
-    def mock_redis(self):
+    def mock_redis(self) -> None:
         """Create a mock Redis client."""
         mock = AsyncMock(spec=redis.Redis)
         mock.xadd = AsyncMock()
@@ -24,7 +24,7 @@ class TestCeleryTaskWithOperationUpdates:
         return mock
 
     @pytest.fixture()
-    def mock_redis_from_url(self, mock_redis):
+    def mock_redis_from_url(self, mock_redis) -> None:
         """Create a mock for redis.from_url that returns the mock_redis."""
 
         async def async_from_url(*_, **__):
@@ -33,7 +33,7 @@ class TestCeleryTaskWithOperationUpdates:
         return async_from_url
 
     @pytest.fixture()
-    def task_updater(self):
+    def task_updater(self) -> None:
         """Create a CeleryTaskWithOperationUpdates instance."""
         return CeleryTaskWithOperationUpdates("test-operation-123")
 

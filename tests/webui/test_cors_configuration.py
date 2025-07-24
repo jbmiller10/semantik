@@ -13,7 +13,7 @@ from packages.webui.main import _validate_cors_origins, create_app
 class TestCORSOriginValidation:
     """Test CORS origin validation function."""
 
-    def test_valid_origins(self):
+    def test_valid_origins(self) -> None:
         """Test that valid origins are accepted."""
         origins = [
             "http://localhost:3000",
@@ -24,7 +24,7 @@ class TestCORSOriginValidation:
         assert len(result) == 3
         assert all(origin in result for origin in origins)
 
-    def test_invalid_origin_format(self):
+    def test_invalid_origin_format(self) -> None:
         """Test that invalid origins are rejected."""
         origins = [
             "not-a-url",
@@ -37,7 +37,7 @@ class TestCORSOriginValidation:
         assert len(result) == 1
         assert "ftp://example.com" in result
 
-    def test_wildcard_origin_development(self):
+    def test_wildcard_origin_development(self) -> None:
         """Test wildcard origin handling in development."""
         origins = ["*", "http://localhost:3000"]
 
@@ -54,7 +54,7 @@ class TestCORSOriginValidation:
             mock_logger.warning.assert_called()
 
     @patch("packages.webui.main.logger")
-    def test_wildcard_origin_production(self, mock_logger):
+    def test_wildcard_origin_production(self, mock_logger) -> None:
         """Test wildcard origin rejection in production."""
         origins = ["*", "http://localhost:3000", "null"]
 
@@ -75,7 +75,7 @@ class TestCORSConfiguration:
 
     @patch("packages.webui.main.shared_settings")
     @patch("packages.webui.main.configure_global_embedding_service")
-    def test_cors_middleware_configuration(self, mock_embed_service, mock_settings):
+    def test_cors_middleware_configuration(self, mock_embed_service, mock_settings) -> None:
         """Test that CORS middleware is configured correctly."""
         # Mock settings
         mock_settings.CORS_ORIGINS = "http://localhost:3000,http://127.0.0.1:5173"
@@ -101,7 +101,7 @@ class TestCORSConfiguration:
     @patch("packages.webui.main.shared_settings")
     @patch("packages.webui.main.configure_global_embedding_service")
     @patch("packages.webui.main.logger")
-    def test_empty_cors_origins_warning(self, mock_logger, mock_embed_service, mock_settings):
+    def test_empty_cors_origins_warning(self, mock_logger, mock_embed_service, mock_settings) -> None:
         """Test warning when no valid CORS origins are configured."""
         # Mock settings with invalid origins
         mock_settings.CORS_ORIGINS = "not-a-url,,"
@@ -119,7 +119,7 @@ class TestCORSConfiguration:
 
     @patch("packages.webui.main.shared_settings")
     @patch("packages.webui.main.configure_global_embedding_service")
-    def test_cors_headers_in_response(self, mock_embed_service, mock_settings):
+    def test_cors_headers_in_response(self, mock_embed_service, mock_settings) -> None:
         """Test that CORS headers are present in responses."""
         # Mock settings
         mock_settings.CORS_ORIGINS = "http://testclient"  # TestClient default origin
@@ -143,7 +143,7 @@ class TestCORSConfiguration:
 
     @patch("packages.webui.main.shared_settings")
     @patch("packages.webui.main.configure_global_embedding_service")
-    def test_cors_preflight_request(self, mock_embed_service, mock_settings):
+    def test_cors_preflight_request(self, mock_embed_service, mock_settings) -> None:
         """Test CORS preflight (OPTIONS) request handling."""
         # Mock settings
         mock_settings.CORS_ORIGINS = "http://testclient"

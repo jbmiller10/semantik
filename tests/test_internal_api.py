@@ -12,7 +12,7 @@ from packages.webui.api.internal import router, verify_internal_api_key
 class TestInternalAPIAuth:
     """Test internal API authentication."""
 
-    def test_verify_internal_api_key_valid(self):
+    def test_verify_internal_api_key_valid(self) -> None:
         """Test successful API key verification."""
         with patch("packages.webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "valid-key"
@@ -20,7 +20,7 @@ class TestInternalAPIAuth:
             # Should not raise exception
             verify_internal_api_key("valid-key")
 
-    def test_verify_internal_api_key_invalid(self):
+    def test_verify_internal_api_key_invalid(self) -> None:
         """Test API key verification with invalid key."""
         with patch("packages.webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "valid-key"
@@ -32,7 +32,7 @@ class TestInternalAPIAuth:
             assert exc_info.value.status_code == 401
             assert "Invalid or missing internal API key" in str(exc_info.value.detail)
 
-    def test_verify_internal_api_key_missing(self):
+    def test_verify_internal_api_key_missing(self) -> None:
         """Test API key verification with missing key."""
         with patch("packages.webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "valid-key"
@@ -48,7 +48,7 @@ class TestInternalAPIEndpoints:
     """Test internal API endpoints."""
 
     @pytest.fixture()
-    def client_with_mocked_repos(self, mock_collection_repository):
+    def client_with_mocked_repos(self, mock_collection_repository) -> None:
         """Create test client with mocked repositories."""
         from unittest.mock import AsyncMock
 
@@ -73,7 +73,7 @@ class TestInternalAPIEndpoints:
 
         app.dependency_overrides.clear()
 
-    def test_get_all_vector_store_names_success(self, client_with_mocked_repos, mock_collection_repository):
+    def test_get_all_vector_store_names_success(self, client_with_mocked_repos, mock_collection_repository) -> None:
         """Test successful retrieval of all vector store names."""
         # Mock repository response
         from unittest.mock import AsyncMock, MagicMock
@@ -102,7 +102,7 @@ class TestInternalAPIEndpoints:
             assert response.json() == ["collection_1", "collection_2"]
             mock_collection_repository.list_all.assert_called_once()
 
-    def test_get_all_vector_store_names_unauthorized(self, client_with_mocked_repos, mock_collection_repository):
+    def test_get_all_vector_store_names_unauthorized(self, client_with_mocked_repos, mock_collection_repository) -> None:
         """Test unauthorized access to vector store names endpoint."""
         with patch("packages.webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"
@@ -121,7 +121,7 @@ class TestInternalAPIEndpoints:
             if hasattr(mock_collection_repository, "list_all"):
                 mock_collection_repository.list_all.assert_not_called()
 
-    def test_get_all_vector_store_names_empty_list(self, client_with_mocked_repos, mock_collection_repository):
+    def test_get_all_vector_store_names_empty_list(self, client_with_mocked_repos, mock_collection_repository) -> None:
         """Test retrieval when no collections exist."""
         # Mock repository response
         from unittest.mock import AsyncMock

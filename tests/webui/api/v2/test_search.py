@@ -2,6 +2,8 @@
 Tests for v2 search API endpoints.
 """
 
+from typing import Any
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,13 +22,13 @@ from packages.webui.api.v2.search import (
 
 
 @pytest.fixture()
-def mock_user():
+def mock_user() -> dict[str, Any]:
     """Mock authenticated user."""
     return {"id": 1, "username": "testuser"}
 
 
 @pytest.fixture()
-def mock_collections():
+def mock_collections() -> list[MagicMock]:
     """Mock collection objects."""
     collection1 = MagicMock(spec=Collection)
     collection1.id = "123e4567-e89b-12d3-a456-426614174000"
@@ -48,7 +50,7 @@ def mock_collections():
 
 
 @pytest.fixture()
-def mock_search_results():
+def mock_search_results() -> dict[str, list[dict[str, Any]]]:
     """Mock search results from Qdrant."""
     return {
         "results": [
@@ -81,7 +83,9 @@ class TestMultiCollectionSearch:
     """Test multi-collection search endpoint."""
 
     @pytest.mark.asyncio()
-    async def test_multi_collection_search_success(self, mock_user, mock_collections, mock_search_results):
+    async def test_multi_collection_search_success(
+        self, mock_user: dict[str, Any], mock_collections: list[MagicMock], mock_search_results: list[dict[str, Any]]
+    ) -> None:
         """Test successful multi-collection search."""
         # Create a proper Request object with minimal required attributes
         scope = {
@@ -98,6 +102,8 @@ class TestMultiCollectionSearch:
             query="authentication",
             k=10,
             use_reranker=True,
+            rerank_model=None,
+            metadata_filter=None,
         )
 
         # Mock the service response
@@ -174,6 +180,8 @@ class TestMultiCollectionSearch:
             collection_uuids=[c.id for c in mock_collections],
             query="test",
             k=10,
+            rerank_model=None,
+            metadata_filter=None,
         )
 
         # Mock the service response with partial failure
@@ -240,6 +248,8 @@ class TestMultiCollectionSearch:
             query="test",
             k=10,
             use_reranker=False,  # Explicitly disable
+            rerank_model=None,
+            metadata_filter=None,
         )
 
         # Mock the service response
@@ -317,6 +327,7 @@ class TestSingleCollectionSearch:
             collection_id="123e4567-e89b-12d3-a456-426614174000",
             query="test",
             k=5,
+            metadata_filter=None,
         )
 
         # Mock the service response

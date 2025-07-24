@@ -118,15 +118,15 @@ class TestWebSocketIntegration:
             ws_url = f"{self.WS_BASE_URL}/ws/operations/{operation_id}?token={token}"
             progress_messages = []
 
-            def on_message(_ws, message):
+            def on_message(_ws, message) -> None:
                 data = json.loads(message)
                 progress_messages.append(data)
                 print(f"WebSocket message: {data}")
 
-            def on_error(_ws, error):
+            def on_error(_ws, error) -> None:
                 print(f"WebSocket error: {error}")
 
-            def on_close(_ws, close_status_code, close_msg):
+            def on_close(_ws, close_status_code, close_msg) -> None:
                 print(f"WebSocket closed: {close_status_code} - {close_msg}")
 
             ws = websocket.WebSocketApp(
@@ -224,7 +224,7 @@ class TestWebSocketIntegration:
             ws_url = f"{self.WS_BASE_URL}/ws/operations/{operation_id}?token={token}"
             progress_messages = []
 
-            def on_message(_ws, message):
+            def on_message(_ws, message) -> None:
                 data = json.loads(message)
                 progress_messages.append(data)
                 print(f"Add source WebSocket message: {data}")
@@ -306,12 +306,12 @@ class TestWebSocketIntegration:
         # Monitor all operations concurrently via WebSocket
         import threading
 
-        def monitor_operation(op_data):
+        def monitor_operation(op_data) -> None:
             """Monitor a single operation via WebSocket."""
             ws_url = f"{self.WS_BASE_URL}/ws/operations/{op_data['operation_id']}?token={token}"
             messages = []
 
-            def on_message(_ws, message):
+            def on_message(_ws, message) -> None:
                 data = json.loads(message)
                 messages.append(data)
                 print(f"[{op_data['name']}] WebSocket: {data}")
@@ -407,7 +407,7 @@ class TestWebSocketIntegration:
             messages_after_reconnect = []
             disconnected = False
 
-            def on_message(_ws, message):
+            def on_message(_ws, message) -> None:
                 data = json.loads(message)
                 if not disconnected:
                     messages_before_disconnect.append(data)
@@ -466,7 +466,7 @@ class TestWebSocketIntegration:
         close_code = None
         close_reason = None
 
-        def on_close(_ws, code, reason):
+        def on_close(_ws, code, reason) -> None:
             nonlocal connection_closed, close_code, close_reason
             connection_closed = True
             close_code = code
@@ -556,7 +556,7 @@ class TestWebSocketIntegration:
                         connection_closed = False
                         close_code = None
 
-                        def on_close(_ws, code, reason):
+                        def on_close(_ws, code, reason) -> None:
                             nonlocal connection_closed, close_code
                             connection_closed = True
                             close_code = code

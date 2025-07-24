@@ -11,7 +11,7 @@ import pytest
 
 
 @pytest.fixture()
-def temp_test_dir():
+def temp_test_dir() -> None:
     """Create temporary directory for tests"""
     temp_dir = tempfile.mkdtemp()
     yield Path(temp_dir)
@@ -19,13 +19,13 @@ def temp_test_dir():
 
 
 @pytest.fixture()
-def mock_operation_repository():
+def mock_operation_repository() -> None:
     """Create a mock OperationRepository for testing."""
     return MagicMock()
 
 
 @pytest.fixture()
-def mock_document_repository():
+def mock_document_repository() -> None:
     """Create a mock DocumentRepository for testing."""
     from unittest.mock import AsyncMock
 
@@ -37,7 +37,7 @@ def test_client_with_document_mocks(
     test_user,
     mock_operation_repository,  # noqa: ARG001
     mock_document_repository,  # noqa: ARG001
-):
+) -> None:
     """Create a test client with mocked document-related repositories."""
     from packages.webui.auth import get_current_user
     from packages.webui.dependencies import get_collection_for_user
@@ -90,7 +90,7 @@ class TestDocumentAPI:
         temp_test_dir,
         mock_operation_repository,
         mock_document_repository,
-    ):
+    ) -> None:
         """Test successful document retrieval"""
         # Setup
         test_file = temp_test_dir / "test.pdf"

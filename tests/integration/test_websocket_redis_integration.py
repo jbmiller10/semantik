@@ -14,7 +14,7 @@ from packages.webui.websocket_manager import RedisStreamWebSocketManager
 class TestWebSocketRedisIntegration:
     """Integration tests for WebSocket and Redis streaming."""
 
-    def _setup_operation_getter(self, manager, operation_ids):
+    def _setup_operation_getter(self, manager, operation_ids) -> None:
         """Helper to set up mock operation getter for tests."""
         from datetime import UTC, datetime
         from enum import Enum
@@ -46,11 +46,11 @@ class TestWebSocketRedisIntegration:
         manager.set_operation_getter(mock_get_operation)
 
     @pytest.fixture()
-    def real_redis_mock(self):
+    def real_redis_mock(self) -> None:
         """Create a more realistic Redis mock that simulates stream behavior."""
 
         class RedisStreamMock:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.streams = {}
                 self.consumer_groups = {}
                 self.closed = False
@@ -171,10 +171,10 @@ class TestWebSocketRedisIntegration:
         return RedisStreamMock()
 
     @pytest.fixture()
-    def mock_websocket_factory(self):
+    def mock_websocket_factory(self) -> None:
         """Factory to create mock WebSocket connections."""
 
-        def create_mock_websocket(client_id):
+        def create_mock_websocket(client_id) -> None:
             mock = AsyncMock(spec=WebSocket)
             mock.accept = AsyncMock()
             mock.send_json = AsyncMock()

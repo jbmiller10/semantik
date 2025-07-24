@@ -10,7 +10,7 @@ from fastapi import WebSocket
 class MockWebSocketClient:
     """Mock WebSocket client for testing."""
 
-    def __init__(self, client_id: str):
+    def __init__(self, client_id: str) -> None:
         """Initialize mock WebSocket client."""
         self.client_id = client_id
         self.websocket = AsyncMock(spec=WebSocket)
@@ -48,7 +48,7 @@ class MockWebSocketClient:
             return [msg for msg in self.received_messages if msg.get("type") == message_type]
         return self.received_messages
 
-    def clear_messages(self):
+    def clear_messages(self) -> None:
         """Clear all tracked messages."""
         self.sent_messages.clear()
         self.received_messages.clear()
@@ -57,7 +57,7 @@ class MockWebSocketClient:
 class WebSocketTestHarness:
     """Test harness for WebSocket integration testing."""
 
-    def __init__(self, manager):
+    def __init__(self, manager) -> None:
         """Initialize test harness."""
         self.manager = manager
         self.clients: dict[str, MockWebSocketClient] = {}
@@ -134,7 +134,7 @@ async def simulate_operation_updates(updater, delays: list[float] = None):
             await asyncio.sleep(delays[i])
 
 
-def assert_message_order(messages: list[dict[str, Any]], expected_types: list[str]):
+def assert_message_order(messages: list[dict[str, Any]], expected_types: list[str]) -> None:
     """Assert that messages appear in the expected order."""
     actual_types = [msg.get("type") for msg in messages]
 

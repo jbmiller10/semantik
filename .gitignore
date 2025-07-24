@@ -184,3 +184,4 @@ TICKET*
 ticket_*
 CODEBASE_*
 images/*
+.serena/*

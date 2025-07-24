@@ -12,7 +12,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 @pytest.fixture()
-def mock_repositories():
+def mock_repositories() -> None:
     """Create mock repositories for testing."""
     # Mock user repository
     mock_user_repo = MagicMock()
@@ -102,7 +102,7 @@ def mock_repositories():
 
 
 @pytest.fixture()
-def client(mock_repositories):
+def client(mock_repositories) -> None:
     """Create a test client with mocked repositories."""
     # Mock the database connection manager to prevent real DB connections
     with patch("packages.webui.main.pg_connection_manager") as mock_pg_manager:
@@ -137,7 +137,7 @@ def client(mock_repositories):
             app.dependency_overrides.clear()
 
 
-def test_user_registration_success(client):
+def test_user_registration_success(client) -> None:
     """Test successful user registration."""
     # Prepare registration data
     registration_data = {
@@ -167,7 +167,7 @@ def test_user_registration_success(client):
     assert "hashed_password" not in data
 
 
-def test_user_registration_duplicate(client):
+def test_user_registration_duplicate(client) -> None:
     """Test that duplicate registration fails."""
     # Register first user
     registration_data = {
@@ -206,7 +206,7 @@ def test_user_registration_duplicate(client):
     assert "already exists" in response.json()["detail"].lower()
 
 
-def test_user_login_success(client):
+def test_user_login_success(client) -> None:
     """Test successful user login."""
     # First register a user
     registration_data = {
@@ -241,7 +241,7 @@ def test_user_login_success(client):
     assert len(data["refresh_token"]) > 0
 
 
-def test_user_login_failure(client):
+def test_user_login_failure(client) -> None:
     """Test login with incorrect password."""
     # First register a user
     registration_data = {
@@ -271,7 +271,7 @@ def test_user_login_failure(client):
     assert "incorrect username or password" in response.json()["detail"].lower()
 
 
-def test_get_me_protected(client, monkeypatch, mock_repositories):  # noqa: ARG001
+def test_get_me_protected(client, monkeypatch, mock_repositories) -> None:  # noqa: ARG001
     """Test that /me endpoint requires authentication."""
     # Test without token - should fail when auth is enabled
     monkeypatch.setattr("packages.webui.auth.settings.DISABLE_AUTH", False)

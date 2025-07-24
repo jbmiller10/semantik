@@ -17,7 +17,7 @@ class TestRedisStreamWebSocketManager:
     """Test suite for RedisStreamWebSocketManager."""
 
     @pytest.fixture()
-    def mock_redis(self):
+    def mock_redis(self) -> None:
         """Create a mock Redis client."""
         # Create a proper async mock that can be awaited
         mock = MagicMock(spec=redis.Redis)
@@ -46,7 +46,7 @@ class TestRedisStreamWebSocketManager:
         return mock
 
     @pytest.fixture()
-    def mock_websocket(self):
+    def mock_websocket(self) -> None:
         """Create a mock WebSocket connection."""
         mock = AsyncMock(spec=WebSocket)
         mock.accept = AsyncMock()
@@ -55,7 +55,7 @@ class TestRedisStreamWebSocketManager:
         return mock
 
     @pytest.fixture()
-    def manager(self):
+    def manager(self) -> None:
         """Create a WebSocket manager instance."""
         return RedisStreamWebSocketManager()
 

@@ -15,7 +15,7 @@ class TestOperationsWebSocket:
     """Integration tests for the operations WebSocket endpoint."""
 
     @pytest.fixture()
-    def mock_websocket_client(self):
+    def mock_websocket_client(self) -> None:
         """Create a mock WebSocket client for testing."""
         mock = AsyncMock(spec=WebSocket)
         mock.accept = AsyncMock()
@@ -32,11 +32,11 @@ class TestOperationsWebSocket:
         return mock
 
     @pytest.fixture()
-    def mock_redis(self):
+    def mock_redis(self) -> None:
         """Create a mock Redis client for testing."""
 
         class MockRedis:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.published_messages = []
                 self.subscriptions = {}
 
@@ -51,7 +51,7 @@ class TestOperationsWebSocket:
                 if channel not in self.subscriptions:
                     self.subscriptions[channel] = []
 
-            def add_subscriber(self, channel, callback):
+            def add_subscriber(self, channel, callback) -> None:
                 if channel not in self.subscriptions:
                     self.subscriptions[channel] = []
                 self.subscriptions[channel].append(callback)

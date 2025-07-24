@@ -18,17 +18,17 @@ class TestDocumentScanningService:
     """Test cases for DocumentScanningService."""
 
     @pytest.fixture()
-    def mock_session(self):
+    def mock_session(self) -> None:
         """Create a mock async session."""
         return AsyncMock()
 
     @pytest.fixture()
-    def mock_document_repo(self):
+    def mock_document_repo(self) -> None:
         """Create a mock DocumentRepository."""
         mock = AsyncMock()
 
         # Default behavior - create returns a new document
-        def default_create(**kwargs):
+        def default_create(**kwargs) -> None:
             doc = Document(
                 id=str(uuid4()),
                 collection_id=kwargs.get("collection_id", str(uuid4())),
@@ -45,7 +45,7 @@ class TestDocumentScanningService:
         return mock
 
     @pytest.fixture()
-    def service(self, mock_session, mock_document_repo):
+    def service(self, mock_session, mock_document_repo) -> None:
         """Create a DocumentScanningService instance with mocked dependencies."""
         return DocumentScanningService(db_session=mock_session, document_repo=mock_document_repo)
 
@@ -92,7 +92,7 @@ class TestDocumentScanningService:
         collection_id = str(uuid4())
 
         # Setup mock to return documents with created_at timestamps
-        def create_mock_document(**kwargs):
+        def create_mock_document(**kwargs) -> None:
             doc = Document(
                 id=str(uuid4()),
                 collection_id=collection_id,
@@ -150,7 +150,7 @@ class TestDocumentScanningService:
 
         # Configure mock to return existing doc for first file,
         # and create a new doc dynamically for second file
-        def create_side_effect(**kwargs):
+        def create_side_effect(**kwargs) -> None:
             if kwargs.get("file_name") == "test1.txt":
                 return existing_doc
             # Create new document with current timestamp
@@ -303,7 +303,7 @@ class TestDocumentScanningService:
             finally:
                 Path(tmp_file.name).unlink()
 
-    def test_get_mime_type(self, service):
+    def test_get_mime_type(self, service) -> None:
         """Test MIME type detection."""
         # Test known extensions
         assert service._get_mime_type(Path("test.pdf")) == "application/pdf"
@@ -318,7 +318,7 @@ class TestDocumentScanningService:
         # Test case insensitive
         assert service._get_mime_type(Path("TEST.PDF")) == "application/pdf"
 
-    def test_supported_extensions(self):
+    def test_supported_extensions(self) -> None:
         """Test that all supported extensions are defined correctly."""
         # Verify expected extensions are supported
         expected_extensions = {".pdf", ".docx", ".doc", ".txt", ".text", ".pptx", ".eml", ".md", ".html"}
@@ -349,7 +349,7 @@ class TestDocumentScanningService:
         collection_id = str(uuid4())
 
         # Setup mock to return documents with created_at
-        def create_mock_document(**kwargs):
+        def create_mock_document(**kwargs) -> None:
             doc = Document(
                 id=str(uuid4()),
                 collection_id=collection_id,
@@ -386,7 +386,7 @@ class TestDocumentScanningService:
         progress_calls = []
 
         # Setup mock to return documents with created_at
-        def create_mock_document(**kwargs):
+        def create_mock_document(**kwargs) -> None:
             doc = Document(
                 id=str(uuid4()),
                 collection_id=collection_id,

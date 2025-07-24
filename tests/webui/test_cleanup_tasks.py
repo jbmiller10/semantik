@@ -8,7 +8,7 @@ import pytest
 class TestCleanupOldCollections:
     """Test suite for cleanup_old_collections task."""
 
-    def test_cleanup_old_collections_empty_list(self):
+    def test_cleanup_old_collections_empty_list(self) -> None:
         """Test cleanup with empty collection list."""
         from packages.webui.tasks import cleanup_old_collections
 
@@ -21,7 +21,7 @@ class TestCleanupOldCollections:
 
     @patch("shared.metrics.collection_metrics.QdrantOperationTimer")
     @patch("webui.utils.qdrant_manager.qdrant_manager")
-    def test_cleanup_old_collections_success(self, mock_conn_manager, mock_timer):
+    def test_cleanup_old_collections_success(self, mock_conn_manager, mock_timer) -> None:
         """Test successful cleanup of collections."""
         from packages.webui.tasks import cleanup_old_collections
 
@@ -55,7 +55,7 @@ class TestCleanupOldCollections:
 class TestCleanupQdrantCollections:
     """Test suite for enhanced cleanup_qdrant_collections task."""
 
-    def test_cleanup_qdrant_collections_empty_list(self):
+    def test_cleanup_qdrant_collections_empty_list(self) -> None:
         """Test cleanup with empty collection list."""
         from packages.webui.tasks import cleanup_qdrant_collections
 
@@ -79,7 +79,7 @@ class TestCleanupQdrantCollections:
         mock_asyncio_run,
         mock_audit,
         mock_timer,
-    ):
+    ) -> None:
         """Test that system collections are skipped."""
         # Setup mocks
         mock_qdrant_manager = MagicMock()
@@ -117,7 +117,7 @@ class TestCleanupQdrantCollections:
         mock_asyncio_run,
         mock_audit,
         mock_timer,
-    ):
+    ) -> None:
         """Test that active collections are skipped."""
         # Setup mocks
         mock_qdrant_manager = MagicMock()
@@ -152,7 +152,7 @@ class TestCleanupQdrantCollections:
         mock_asyncio_run,
         mock_audit,
         mock_timer,
-    ):
+    ) -> None:
         """Test that recent staging collections are skipped."""
         # Setup mocks
         mock_qdrant_manager = MagicMock()
@@ -190,7 +190,7 @@ class TestCleanupQdrantCollections:
         mock_asyncio_run,
         mock_audit_batch,
         mock_timer,
-    ):
+    ) -> None:
         """Test successful collection deletion with all safety checks passed."""
         # Setup mocks
         mock_qdrant_manager = MagicMock()
@@ -200,7 +200,7 @@ class TestCleanupQdrantCollections:
         mock_conn_manager.get_client.return_value = mock_qdrant_client
 
         # Mock asyncio.run to return empty set for _get_active_collections, None for audit
-        def mock_run_side_effect(coro):
+        def mock_run_side_effect(coro) -> None:
             coro_str = str(coro)
             if "_get_active_collections" in coro_str:
                 return set()

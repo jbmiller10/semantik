@@ -20,13 +20,13 @@ from packages.webui.api.v2.documents import get_document_content
 
 
 @pytest.fixture()
-def mock_user():
+def mock_user() -> None:
     """Mock authenticated user."""
     return {"id": 1, "username": "testuser"}
 
 
 @pytest.fixture()
-def mock_collection():
+def mock_collection() -> None:
     """Mock collection object."""
     collection = MagicMock(spec=Collection)
     collection.id = "123e4567-e89b-12d3-a456-426614174000"
@@ -36,7 +36,7 @@ def mock_collection():
 
 
 @pytest.fixture()
-def mock_document():
+def mock_document() -> None:
     """Mock document object."""
     document = MagicMock(spec=Document)
     document.id = "456e7890-e89b-12d3-a456-426614174001"
@@ -49,7 +49,7 @@ def mock_document():
 
 
 @pytest.fixture()
-def temp_file():
+def temp_file() -> None:
     """Create a temporary test file."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".pdf", delete=False) as f:
         f.write("Test PDF content")

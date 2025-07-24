@@ -20,16 +20,16 @@ class TestQdrantManager:
     """Test suite for QdrantManager class"""
 
     @pytest.fixture()
-    def mock_qdrant_client(self):
+    def mock_qdrant_client(self) -> None:
         """Create a mock Qdrant client"""
         return MagicMock()
 
     @pytest.fixture()
-    def qdrant_manager(self, mock_qdrant_client):
+    def qdrant_manager(self, mock_qdrant_client) -> None:
         """Create a QdrantManager instance with mocked client"""
         return QdrantManager(mock_qdrant_client)
 
-    def test_initialization(self, mock_qdrant_client):
+    def test_initialization(self, mock_qdrant_client) -> None:
         """Test QdrantManager initialization"""
         manager = QdrantManager(mock_qdrant_client)
 
@@ -37,7 +37,7 @@ class TestQdrantManager:
         assert manager._staging_prefix == "staging_"
         assert manager._collection_prefix == "collection_"
 
-    def test_create_staging_collection_success(self, qdrant_manager, mock_qdrant_client):
+    def test_create_staging_collection_success(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test successful creation of staging collection"""
         # Mock successful collection creation
         mock_collection_info = Mock(spec=CollectionInfo)
@@ -62,7 +62,7 @@ class TestQdrantManager:
         assert call_args.kwargs["vectors_config"].distance == Distance.COSINE
         assert call_args.kwargs["optimizers_config"]["indexing_threshold"] == 20000
 
-    def test_create_staging_collection_with_custom_config(self, qdrant_manager, mock_qdrant_client):
+    def test_create_staging_collection_with_custom_config(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test staging collection creation with custom optimizer config"""
         mock_collection_info = Mock(spec=CollectionInfo)
         mock_collection_info.vectors_count = 0
@@ -79,7 +79,7 @@ class TestQdrantManager:
         assert call_args.kwargs["optimizers_config"] == custom_config
         assert call_args.kwargs["vectors_config"].distance == Distance.DOT
 
-    def test_create_staging_collection_failure_with_cleanup(self, qdrant_manager, mock_qdrant_client):
+    def test_create_staging_collection_failure_with_cleanup(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test staging collection creation failure triggers cleanup"""
         # Mock creation success but verification failure
         mock_qdrant_client.get_collection.side_effect = Exception("Verification failed")
@@ -90,7 +90,7 @@ class TestQdrantManager:
         # Verify cleanup was attempted
         mock_qdrant_client.delete_collection.assert_called_once()
 
-    def test_cleanup_orphaned_collections_basic(self, qdrant_manager, mock_qdrant_client):
+    def test_cleanup_orphaned_collections_basic(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test basic orphaned collection cleanup"""
         # Mock existing collections
         mock_collections = MagicMock()
@@ -132,7 +132,7 @@ class TestQdrantManager:
         # Verify delete was called for each orphaned collection
         assert mock_qdrant_client.delete_collection.call_count == 2
 
-    def test_cleanup_orphaned_collections_dry_run(self, qdrant_manager, mock_qdrant_client):
+    def test_cleanup_orphaned_collections_dry_run(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test cleanup in dry run mode doesn't delete anything"""
         # Mock existing collections
         mock_collections = MagicMock()
@@ -165,7 +165,7 @@ class TestQdrantManager:
         # But should not actually delete
         mock_qdrant_client.delete_collection.assert_not_called()
 
-    def test_cleanup_orphaned_collections_recent_staging(self, qdrant_manager, mock_qdrant_client):
+    def test_cleanup_orphaned_collections_recent_staging(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test that recent staging collections are not deleted"""
         # Create recent and old staging collection names
         now = datetime.now(UTC)
@@ -198,7 +198,7 @@ class TestQdrantManager:
         assert f"staging_collection_test_{old_time}" in deleted
         assert f"staging_collection_test_{recent_time}" not in deleted
 
-    def test_cleanup_orphaned_collections_error_handling(self, qdrant_manager, mock_qdrant_client):
+    def test_cleanup_orphaned_collections_error_handling(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test cleanup continues after individual delete failures"""
         mock_collections = MagicMock()
 
@@ -235,7 +235,7 @@ class TestQdrantManager:
         assert "collection_orphaned3" in deleted
         assert "collection_orphaned2" not in deleted
 
-    def test_list_collections(self, qdrant_manager, mock_qdrant_client):
+    def test_list_collections(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test listing all collections"""
         mock_collections = MagicMock()
 
@@ -254,7 +254,7 @@ class TestQdrantManager:
 
         assert result == ["collection1", "collection2", "collection3"]
 
-    def test_get_collection_info_success(self, qdrant_manager, mock_qdrant_client):
+    def test_get_collection_info_success(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test getting collection info successfully"""
         mock_info = Mock(spec=CollectionInfo)
         mock_info.vectors_count = 1000
@@ -266,14 +266,14 @@ class TestQdrantManager:
         assert result == mock_info
         assert result.vectors_count == 1000
 
-    def test_get_collection_info_not_found(self, qdrant_manager, mock_qdrant_client):
+    def test_get_collection_info_not_found(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test getting info for non-existent collection"""
         mock_qdrant_client.get_collection.side_effect = UnexpectedResponse(status_code=404, reason_phrase="Not Found", content=b"", headers={})  # type: ignore
 
         with pytest.raises(ValueError, match="Collection test_collection not found"):
             qdrant_manager.get_collection_info("test_collection")
 
-    def test_collection_exists_true(self, qdrant_manager, mock_qdrant_client):
+    def test_collection_exists_true(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test checking if collection exists - positive case"""
         mock_info = Mock(spec=CollectionInfo)
         mock_qdrant_client.get_collection.return_value = mock_info
@@ -282,7 +282,7 @@ class TestQdrantManager:
 
         assert result is True
 
-    def test_collection_exists_false(self, qdrant_manager, mock_qdrant_client):
+    def test_collection_exists_false(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test checking if collection exists - negative case"""
         mock_qdrant_client.get_collection.side_effect = UnexpectedResponse(status_code=404, reason_phrase="Not Found", content=b"", headers={})  # type: ignore
 
@@ -290,7 +290,7 @@ class TestQdrantManager:
 
         assert result is False
 
-    def test_validate_collection_health_healthy(self, qdrant_manager, mock_qdrant_client):
+    def test_validate_collection_health_healthy(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test validating health of a healthy collection"""
         mock_info = Mock(spec=CollectionInfo)
         mock_info.vectors_count = 5000
@@ -308,7 +308,7 @@ class TestQdrantManager:
         assert result["vectors_count"] == 5000
         assert result["status"] == "green"
 
-    def test_validate_collection_health_degraded(self, qdrant_manager, mock_qdrant_client):
+    def test_validate_collection_health_degraded(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test validating health of a degraded collection"""
         mock_info = Mock(spec=CollectionInfo)
         mock_info.vectors_count = 1000
@@ -327,7 +327,7 @@ class TestQdrantManager:
         assert "warning" in result
         assert "optimizer_error" in result
 
-    def test_validate_collection_health_not_found(self, qdrant_manager, mock_qdrant_client):
+    def test_validate_collection_health_not_found(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test validating health of non-existent collection"""
         mock_qdrant_client.get_collection.side_effect = UnexpectedResponse(status_code=404, reason_phrase="Not Found", content=b"", headers={})  # type: ignore
 
@@ -337,7 +337,7 @@ class TestQdrantManager:
         assert result["exists"] is False
         assert "error" in result
 
-    def test_is_staging_collection_old_valid_format(self, qdrant_manager):
+    def test_is_staging_collection_old_valid_format(self, qdrant_manager) -> None:
         """Test checking age of staging collections with valid format"""
         # Create collection names with specific timestamps
         old_name = "staging_collection_test_20240101_120000"
@@ -349,7 +349,7 @@ class TestQdrantManager:
         # Test recent collection (should be False)
         assert qdrant_manager._is_staging_collection_old(recent_name, hours=24) is False
 
-    def test_is_staging_collection_old_invalid_format(self, qdrant_manager):
+    def test_is_staging_collection_old_invalid_format(self, qdrant_manager) -> None:
         """Test checking age with invalid collection name format"""
         invalid_names = [
             "staging_collection",  # No timestamp
@@ -362,7 +362,7 @@ class TestQdrantManager:
             # Should return True (consider old) for invalid formats
             assert qdrant_manager._is_staging_collection_old(name) is True
 
-    def test_rename_collection_warning(self, qdrant_manager, mock_qdrant_client):
+    def test_rename_collection_warning(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test rename collection creates new collection but warns about data migration"""
         # Create proper mock structure for CollectionInfo
         mock_info = Mock(spec=CollectionInfo)
@@ -389,7 +389,7 @@ class TestQdrantManager:
         # Should not delete old collection (data migration not implemented)
         mock_qdrant_client.delete_collection.assert_not_called()
 
-    def test_sleep_calls_in_cleanup(self, qdrant_manager, mock_qdrant_client):
+    def test_sleep_calls_in_cleanup(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test that cleanup includes delays between deletions"""
         mock_collections = MagicMock()
 
