@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 
 import redis.asyncio as redis
 from fastapi import WebSocket
-from shared.config import settings
+from packages.shared.config import settings
 
 logger = logging.getLogger(__name__)
 

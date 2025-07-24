@@ -337,7 +337,7 @@ def mock_websocket():
 @pytest.fixture()
 def mock_websocket_manager(mock_redis_client):
     """Create a mock WebSocket manager with Redis client."""
-    from webui.websocket_manager import RedisStreamWebSocketManager
+    from packages.webui.websocket_manager import RedisStreamWebSocketManager
 
     manager = RedisStreamWebSocketManager()
     manager.redis = mock_redis_client
