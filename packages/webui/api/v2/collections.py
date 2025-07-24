@@ -106,7 +106,7 @@ async def create_collection(
         response_dict = response.model_dump()
         response_dict["initial_operation_id"] = operation["uuid"]
 
-        return response_dict
+        return CollectionResponse(**response_dict)
 
     except EntityAlreadyExistsError as e:
         raise HTTPException(

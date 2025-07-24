@@ -57,7 +57,7 @@ async def reset_database_endpoint(
         # Delete Qdrant collections for all collections
         async_client = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
         for collection in collections:
-            collection_name = collection.vector_store_name
+            collection_name = str(collection.vector_store_name)
             try:
                 await async_client.delete_collection(collection_name)
                 logger.info(f"Deleted Qdrant collection: {collection_name}")

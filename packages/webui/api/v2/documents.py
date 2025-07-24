@@ -58,7 +58,9 @@ async def get_document_content(
         document_repo = create_document_repository(db)
 
         # Fetch the document
-        document: Document = await document_repo.get_by_id(document_uuid)
+        document = await document_repo.get_by_id(document_uuid)
+        if not document:
+            raise HTTPException(status_code=404, detail=f"Document {document_uuid} not found")
 
         # Verify document belongs to the specified collection
         if document.collection_id != collection_uuid:
@@ -119,10 +121,10 @@ async def get_document_content(
         # Return the file
         return FileResponse(
             path=str(file_path),
-            media_type=media_type,
-            filename=document.file_name,
+            media_type=str(media_type),
+            filename=str(document.file_name),
             headers={
-                "Content-Disposition": f'inline; filename="{document.file_name}"',
+                "Content-Disposition": f'inline; filename="{str(document.file_name)}"',
                 "Cache-Control": "private, max-age=3600",  # Cache for 1 hour
             },
         )

@@ -105,6 +105,9 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
 
             logger.error(f"Full traceback:\n{traceback.format_exc()}")
             raise DatabaseOperationError("create", "user", str(e)) from e
+        
+        # This should never be reached due to exceptions, but mypy needs it
+        raise RuntimeError("Unexpected code path in create_user")
 
     async def get_user(self, user_id: str) -> dict[str, Any] | None:
         """Get a user by ID.
@@ -169,6 +172,9 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
         except Exception as e:
             logger.error(f"Failed to get user by username {username}: {e}")
             raise DatabaseOperationError("get", "user", str(e)) from e
+        
+        # This should never be reached due to exceptions, but mypy needs it
+        raise RuntimeError("Unexpected code path in get_user_by_username")
 
     async def update_user(self, user_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
         """Update a user.
@@ -285,7 +291,7 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
             result = await self.session.execute(query)
             users = result.scalars().all()
 
-            return [self._user_to_dict(user) for user in users]
+            return [d for d in (self._user_to_dict(user) for user in users) if d is not None]
 
         except Exception as e:
             logger.error(f"Failed to list users: {e}")

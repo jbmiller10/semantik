@@ -18,7 +18,7 @@ def with_db_retry(
     delay: float = 1.0,
     backoff: float = 2.0,
     max_delay: float = 30.0,
-) -> Callable[[Callable[..., T]], Callable[..., T]]:
+) -> Any:  # type: ignore[misc]
     """
     Decorator to retry database operations on lock errors.
 
@@ -37,7 +37,7 @@ def with_db_retry(
 
             for attempt in range(retries + 1):
                 try:
-                    return await func(*args, **kwargs)  # type: ignore[misc]
+                    return await func(*args, **kwargs)  # type: ignore[no-any-return, misc]
                 except OperationalError as e:
                     if "database is locked" not in str(e) or attempt == retries:
                         raise
@@ -86,7 +86,7 @@ def with_db_retry(
 
         # Return appropriate wrapper based on function type
         if asyncio.iscoroutinefunction(func):
-            return async_wrapper  # type: ignore[return-value]
-        return sync_wrapper  # type: ignore[return-value]
+            return async_wrapper
+        return sync_wrapper
 
     return decorator
