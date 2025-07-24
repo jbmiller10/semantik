@@ -23,6 +23,8 @@ class TestWebSocketExamples:
         manager = RedisStreamWebSocketManager()
         # Use None to test direct broadcast mode first
         manager.redis = None
+        # Mark as already attempted to prevent reconnection
+        manager._startup_attempted = True
 
         harness = WebSocketTestHarness(manager)
 
@@ -84,6 +86,8 @@ class TestWebSocketExamples:
         manager = RedisStreamWebSocketManager()
         # Use None to test direct broadcast mode
         manager.redis = None
+        # Mark as already attempted to prevent reconnection
+        manager._startup_attempted = True
 
         harness = WebSocketTestHarness(manager)
 
@@ -135,6 +139,8 @@ class TestWebSocketExamples:
         manager = RedisStreamWebSocketManager()
         # Use None to test direct broadcast mode
         manager.redis = None
+        # Mark as already attempted to prevent reconnection
+        manager._startup_attempted = True
 
         harness = WebSocketTestHarness(manager)
 
@@ -217,6 +223,8 @@ class TestWebSocketExamples:
         manager = RedisStreamWebSocketManager()
         # Use None to test direct broadcast mode
         manager.redis = None
+        # Mark as already attempted to prevent reconnection
+        manager._startup_attempted = True
 
         harness = WebSocketTestHarness(manager)
 
@@ -287,6 +295,8 @@ class TestWebSocketExamples:
         manager = RedisStreamWebSocketManager()
         # Use None to test direct broadcast mode
         manager.redis = None
+        # Mark as already attempted to prevent reconnection
+        manager._startup_attempted = True
 
         harness = WebSocketTestHarness(manager)
 

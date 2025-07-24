@@ -37,6 +37,7 @@ class TestRedisStreamWebSocketManager:
         mock.delete = AsyncMock(return_value=1)
         mock.xinfo_groups = AsyncMock(return_value=[])
         mock.xgroup_destroy = AsyncMock()
+        mock.xinfo_stream = AsyncMock(return_value={"length": 0})
         mock.close = AsyncMock()
 
         # Make the mock itself awaitable (for the 'await' in from_url)
@@ -259,16 +260,34 @@ class TestRedisStreamWebSocketManager:
         manager.redis = mock_redis
         manager.connections["user1:operation:operation1"] = {mock_websocket}
 
+        # Mock stream existence check
+        mock_redis.xinfo_stream = AsyncMock(return_value={"length": 1})
+        
+        # Mock consumer group creation (simulate it already exists)
+        mock_redis.xgroup_create = AsyncMock(side_effect=Exception("BUSYGROUP Consumer Group already exists"))
+
         # Mock stream messages
         test_message = {"timestamp": datetime.now(UTC).isoformat(), "type": "progress", "data": {"progress": 75}}
 
-        mock_redis.xreadgroup.return_value = [
-            ("operation-progress:operation1", [("msg-id-1", {"message": json.dumps(test_message)})])
-        ]
+        # Set up xreadgroup to return messages on first call, then empty
+        mock_redis.xreadgroup = AsyncMock(side_effect=[
+            [("operation-progress:operation1", [("msg-id-1", {"message": json.dumps(test_message)})])],
+            [],  # Second call returns empty
+        ])
+        
+        # Mock xack for message acknowledgment
+        mock_redis.xack = AsyncMock()
 
-        # Run consumer for one iteration
+        # Run consumer for a brief time
         consumer_task = asyncio.create_task(manager._consume_updates("operation1"))
-        await asyncio.sleep(0.1)
+        
+        # Wait for the consumer to process the message
+        # Keep checking until the message is sent or timeout
+        for _ in range(10):  # Try for up to 1 second
+            await asyncio.sleep(0.1)
+            if mock_websocket.send_json.called:
+                break
+        
         consumer_task.cancel()
 
         with contextlib.suppress(asyncio.CancelledError):

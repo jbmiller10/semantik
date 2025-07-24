@@ -233,41 +233,45 @@ class RedisStreamWebSocketManager:
     async def _consume_updates(self, operation_id: str) -> None:
         """Consume updates from Redis Stream for a specific operation."""
         stream_key = f"operation-progress:{operation_id}"
+        consumer_name = f"consumer-{operation_id}"
+        consumer_group_created = False
 
         try:
-            # Create consumer group
-            try:
-                if self.redis is None:
-                    raise RuntimeError("Redis connection not established")
-
-                # First check if the stream exists
-                try:
-                    stream_info = await self.redis.xinfo_stream(stream_key)
-                    logger.debug(f"Stream {stream_key} exists with {stream_info.get('length', 0)} messages")
-                except Exception:
-                    # Stream doesn't exist - this is normal for operations that haven't started yet
-                    logger.debug(f"Stream {stream_key} does not exist yet - waiting for worker to create it")
-                    # Wait a bit before trying to create consumer group
-                    await asyncio.sleep(2)
-                    return
-
-                await self.redis.xgroup_create(stream_key, self.consumer_group, id="0")
-                logger.info(f"Created consumer group {self.consumer_group} for stream {stream_key}")
-            except Exception as e:
-                # Group might already exist or stream doesn't exist
-                if "BUSYGROUP" in str(e):
-                    logger.debug(f"Consumer group already exists for {stream_key}")
-                else:
-                    logger.debug(f"Could not create consumer group: {e}")
-
-            consumer_name = f"consumer-{operation_id}"
-            last_id = ">"  # Start reading new messages
-
             while True:
                 try:
-                    # Read from stream with blocking
                     if self.redis is None:
                         raise RuntimeError("Redis connection not established")
+
+                    # Try to create consumer group if not already created
+                    if not consumer_group_created:
+                        try:
+                            # First check if the stream exists
+                            try:
+                                stream_info = await self.redis.xinfo_stream(stream_key)
+                                logger.debug(f"Stream {stream_key} exists with {stream_info.get('length', 0)} messages")
+                            except Exception:
+                                # Stream doesn't exist - this is normal for operations that haven't started yet
+                                logger.debug(f"Stream {stream_key} does not exist yet - waiting for worker to create it")
+                                # Wait a bit and continue the loop
+                                await asyncio.sleep(2)
+                                continue
+
+                            # Stream exists, try to create consumer group
+                            await self.redis.xgroup_create(stream_key, self.consumer_group, id="0")
+                            logger.info(f"Created consumer group {self.consumer_group} for stream {stream_key}")
+                            consumer_group_created = True
+                        except Exception as e:
+                            # Group might already exist
+                            if "BUSYGROUP" in str(e):
+                                logger.debug(f"Consumer group already exists for {stream_key}")
+                                consumer_group_created = True
+                            else:
+                                logger.debug(f"Could not create consumer group: {e}")
+                                await asyncio.sleep(2)
+                                continue
+
+                    # Read from stream with blocking
+                    last_id = ">"  # Start reading new messages
                     messages = await self.redis.xreadgroup(
                         self.consumer_group,
                         consumer_name,
@@ -296,8 +300,6 @@ class RedisStreamWebSocketManager:
                                         await self._close_connections(operation_id)
 
                                     # Acknowledge message
-                                    if self.redis is None:
-                                        raise RuntimeError("Redis connection not established")
                                     await self.redis.xack(stream_key, self.consumer_group, msg_id)
 
                                     logger.debug(f"Processed message {msg_id} for operation {operation_id}")
@@ -318,9 +320,14 @@ class RedisStreamWebSocketManager:
                 except Exception as e:
                     error_str = str(e)
                     if "NOGROUP" in error_str:
-                        # Stream doesn't exist yet - this is expected for operations that haven't started
+                        # Consumer group doesn't exist anymore, reset flag
+                        consumer_group_created = False
+                        logger.debug(f"Consumer group lost for {stream_key}, will recreate...")
+                        await asyncio.sleep(2)
+                    elif "Stream" in error_str and "does not exist" in error_str:
+                        # Stream doesn't exist yet
                         logger.debug(f"Stream {stream_key} not ready yet, waiting...")
-                        await asyncio.sleep(10)  # Wait longer before retry
+                        await asyncio.sleep(2)
                     else:
                         logger.error(f"Error in consumer loop for operation {operation_id}: {e}")
                         await asyncio.sleep(5)  # Wait before retry
