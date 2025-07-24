@@ -104,29 +104,33 @@ class WebSocketTestHarness:
         """Initialize test harness."""
         self.manager = manager
         self.clients: dict[str, MockWebSocketClient] = {}
-        # Store original methods
-        self._original_broadcast = manager._broadcast
+        # Store original method - get the underlying function
+        self._original_broadcast_func = manager._broadcast.__func__ if hasattr(manager._broadcast, '__func__') else manager._broadcast
         # Patch broadcast immediately to ensure all messages are captured
         self._patch_manager_broadcast()
 
     def _patch_manager_broadcast(self):
         """Patch the manager's _broadcast method to ensure message tracking."""
+        import types
+        
         harness = self
-        original_broadcast = self._original_broadcast
+        original_func = self._original_broadcast_func
 
-        async def patched_broadcast(operation_id: str, message: dict) -> None:
+        async def patched_broadcast(self_manager, operation_id: str, message: dict) -> None:
             # First, ensure all clients track the message directly
             for _, client in harness.clients.items():
                 # Check if this client is connected to this operation
                 for key, websockets in harness.manager.connections.items():
                     if f"operation:{operation_id}" in key and client.websocket in websockets:
                         # Directly add to received messages
-                        client.received_messages.append(message.copy() if isinstance(message, dict) else message)
+                        async with client._message_lock:
+                            client.received_messages.append(message.copy() if isinstance(message, dict) else message)
 
             # Then call the original broadcast
-            await original_broadcast(operation_id, message)
+            await original_func(self_manager, operation_id, message)
 
-        self.manager._broadcast = patched_broadcast
+        # Use types.MethodType to ensure proper method binding
+        self.manager._broadcast = types.MethodType(patched_broadcast, self.manager)
 
     async def create_client(self, client_id: str) -> MockWebSocketClient:
         """Create a new mock client."""
@@ -166,8 +170,9 @@ class WebSocketTestHarness:
 
     async def cleanup(self):
         """Clean up all connections and consumer tasks."""
-        # Restore original broadcast method
-        self.manager._broadcast = self._original_broadcast
+        # Restore original broadcast method with proper binding
+        import types
+        self.manager._broadcast = types.MethodType(self._original_broadcast_func, self.manager)
 
         # First, cancel all consumer tasks to prevent event loop errors
         for _, task in list(self.manager.consumer_tasks.items()):
