@@ -32,17 +32,17 @@ class MockWebSocketClient:
         self.received_messages: list[dict[str, Any]] = []
         self._message_lock = asyncio.Lock()
 
-        # Create a simple async mock that captures messages reliably
-        async def capture_send_json(data):
-            # Always capture the message with thread safety
-            async with self._message_lock:
-                self.received_messages.append(data.copy() if isinstance(data, dict) else data)
-            return
+        # Create a special mock for send_json that captures messages
+        client_ref = self
 
-        # Set up send_json with tracking
-        self.websocket.send_json = AsyncMock(side_effect=capture_send_json)
-        # Ensure mock is clean
-        self.websocket.send_json.reset_mock()
+        # Create an AsyncMock that captures messages
+        async def send_json_impl(data):
+            async with client_ref._message_lock:
+                client_ref.received_messages.append(data.copy() if isinstance(data, dict) else data)
+
+        # Replace send_json with an AsyncMock that has our implementation
+        self.websocket.send_json = AsyncMock()
+        self.websocket.send_json.side_effect = send_json_impl
 
     async def connect(self, manager, operation_id: str, user_id: str):
         """Connect to WebSocket manager."""
@@ -58,16 +58,9 @@ class MockWebSocketClient:
         # In real implementation, this would trigger manager handlers
 
     def _ensure_messages_tracked(self):
-        """Ensure messages are tracked, falling back to call args if side effect failed."""
-        if self.websocket.send_json.called:
-            # Always check call args to ensure we have all messages
-            for call in self.websocket.send_json.call_args_list:
-                if call.args:
-                    msg = call.args[0]
-                    # Avoid duplicates - compare by content, not identity
-                    already_exists = any(existing == msg for existing in self.received_messages)
-                    if not already_exists:
-                        self.received_messages.append(msg)
+        """Legacy method kept for compatibility."""
+        # Messages are now captured directly in send_json side effect
+        pass
 
     async def get_received_messages(self, message_type: str = None) -> list[dict[str, Any]]:
         """Get received messages, optionally filtered by type."""
@@ -104,33 +97,6 @@ class WebSocketTestHarness:
         """Initialize test harness."""
         self.manager = manager
         self.clients: dict[str, MockWebSocketClient] = {}
-        # Store original method - get the underlying function
-        self._original_broadcast_func = manager._broadcast.__func__ if hasattr(manager._broadcast, '__func__') else manager._broadcast
-        # Patch broadcast immediately to ensure all messages are captured
-        self._patch_manager_broadcast()
-
-    def _patch_manager_broadcast(self):
-        """Patch the manager's _broadcast method to ensure message tracking."""
-        import types
-        
-        harness = self
-        original_func = self._original_broadcast_func
-
-        async def patched_broadcast(self_manager, operation_id: str, message: dict) -> None:
-            # First, ensure all clients track the message directly
-            for _, client in harness.clients.items():
-                # Check if this client is connected to this operation
-                for key, websockets in harness.manager.connections.items():
-                    if f"operation:{operation_id}" in key and client.websocket in websockets:
-                        # Directly add to received messages
-                        async with client._message_lock:
-                            client.received_messages.append(message.copy() if isinstance(message, dict) else message)
-
-            # Then call the original broadcast
-            await original_func(self_manager, operation_id, message)
-
-        # Use types.MethodType to ensure proper method binding
-        self.manager._broadcast = types.MethodType(patched_broadcast, self.manager)
 
     async def create_client(self, client_id: str) -> MockWebSocketClient:
         """Create a new mock client."""
@@ -170,9 +136,6 @@ class WebSocketTestHarness:
 
     async def cleanup(self):
         """Clean up all connections and consumer tasks."""
-        # Restore original broadcast method with proper binding
-        import types
-        self.manager._broadcast = types.MethodType(self._original_broadcast_func, self.manager)
 
         # First, cancel all consumer tasks to prevent event loop errors
         for _, task in list(self.manager.consumer_tasks.items()):
