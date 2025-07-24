@@ -260,7 +260,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
                 self.dimension = getattr(self.model.config, "hidden_size", None)
             elif self.model is not None and hasattr(self.model, "get_sentence_embedding_dimension"):
                 # For sentence-transformers
-                self.dimension = self.model.get_sentence_embedding_dimension()  # type: ignore[operator]
+                self.dimension = self.model.get_sentence_embedding_dimension()
             else:
                 # Fallback: generate test embedding to determine dimension
                 test_embedding = await self._embed_single_internal("test")

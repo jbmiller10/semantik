@@ -157,7 +157,7 @@ async def check_postgres_connection() -> bool:
     try:
         async with pg_connection_manager.get_session() as session:
             result = await session.execute(text("SELECT 1"))
-            return result.scalar() == 1
+            return bool(result.scalar() == 1)
     except Exception as e:
         logger.error(f"PostgreSQL connection check failed: {e}")
         return False

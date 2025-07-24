@@ -83,7 +83,6 @@ class TestCurrentSystemBehavior:
 
         collection_data = response.json()
         collection_id = collection_data["id"]
-        initial_operation_id = collection_data.get("initial_operation_id")
 
         # Store collection_id for cleanup
         cleanup_job.append(collection_id)
@@ -111,14 +110,9 @@ class TestCurrentSystemBehavior:
         start_time = time.time()
         while time.time() - start_time < 300:  # 5-minute timeout
             # Get operation status
-            status_response = requests.get(
-                f"{self.API_BASE_URL}/api/v2/operations/{operation_id}",
-                headers=headers
-            )
+            status_response = requests.get(f"{self.API_BASE_URL}/api/v2/operations/{operation_id}", headers=headers)
             operation_status = status_response.json()
-            print(
-                f"Operation status at {time.time() - start_time:.1f}s: {operation_status['status']}"
-            )
+            print(f"Operation status at {time.time() - start_time:.1f}s: {operation_status['status']}")
 
             if operation_status["status"] == "completed":
                 break

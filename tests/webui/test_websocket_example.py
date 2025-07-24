@@ -28,9 +28,11 @@ class TestWebSocketExamples:
         harness = WebSocketTestHarness(manager)
 
         # Mock operation repository
-        with patch("shared.database.factory.create_operation_repository") as mock_create_repo, \
-             patch("shared.database.database.AsyncSessionLocal") as mock_session_local, \
-             patch("shared.database.repositories.operation_repository.OperationRepository") as mock_op_repo_class:
+        with (
+            patch("shared.database.factory.create_operation_repository") as mock_create_repo,
+            patch("shared.database.database.AsyncSessionLocal") as mock_session_local,
+            patch("shared.database.repositories.operation_repository.OperationRepository") as mock_op_repo_class,
+        ):
             from enum import Enum
             from unittest.mock import AsyncMock, MagicMock
 
@@ -95,9 +97,11 @@ class TestWebSocketExamples:
 
         harness = WebSocketTestHarness(manager)
 
-        with patch("shared.database.factory.create_operation_repository") as mock_create_repo, \
-             patch("shared.database.database.AsyncSessionLocal") as mock_session_local, \
-             patch("shared.database.repositories.operation_repository.OperationRepository") as mock_op_repo_class:
+        with (
+            patch("shared.database.factory.create_operation_repository") as mock_create_repo,
+            patch("shared.database.database.AsyncSessionLocal") as mock_session_local,
+            patch("shared.database.repositories.operation_repository.OperationRepository") as mock_op_repo_class,
+        ):
             from enum import Enum
             from unittest.mock import AsyncMock, MagicMock
 
@@ -154,9 +158,11 @@ class TestWebSocketExamples:
 
         harness = WebSocketTestHarness(manager)
 
-        with patch("shared.database.factory.create_operation_repository") as mock_create_repo, \
-             patch("shared.database.database.AsyncSessionLocal") as mock_session_local, \
-             patch("shared.database.repositories.operation_repository.OperationRepository") as mock_op_repo_class:
+        with (
+            patch("shared.database.factory.create_operation_repository") as mock_create_repo,
+            patch("shared.database.database.AsyncSessionLocal") as mock_session_local,
+            patch("shared.database.repositories.operation_repository.OperationRepository") as mock_op_repo_class,
+        ):
             from enum import Enum
             from unittest.mock import AsyncMock, MagicMock
 
@@ -242,9 +248,11 @@ class TestWebSocketExamples:
 
         harness = WebSocketTestHarness(manager)
 
-        with patch("shared.database.factory.create_operation_repository") as mock_create_repo, \
-             patch("shared.database.database.AsyncSessionLocal") as mock_session_local, \
-             patch("shared.database.repositories.operation_repository.OperationRepository") as mock_op_repo_class:
+        with (
+            patch("shared.database.factory.create_operation_repository") as mock_create_repo,
+            patch("shared.database.database.AsyncSessionLocal") as mock_session_local,
+            patch("shared.database.repositories.operation_repository.OperationRepository") as mock_op_repo_class,
+        ):
             from enum import Enum
             from unittest.mock import AsyncMock, MagicMock
 
@@ -318,9 +326,11 @@ class TestWebSocketExamples:
 
         harness = WebSocketTestHarness(manager)
 
-        with patch("shared.database.factory.create_operation_repository") as mock_create_repo, \
-             patch("shared.database.database.AsyncSessionLocal") as mock_session_local, \
-             patch("shared.database.repositories.operation_repository.OperationRepository") as mock_op_repo_class:
+        with (
+            patch("shared.database.factory.create_operation_repository") as mock_create_repo,
+            patch("shared.database.database.AsyncSessionLocal") as mock_session_local,
+            patch("shared.database.repositories.operation_repository.OperationRepository") as mock_op_repo_class,
+        ):
             from enum import Enum
             from unittest.mock import AsyncMock, MagicMock
 

@@ -31,13 +31,11 @@ class TestCleanupOldCollections:
 
         # Mock collections exist
         from collections import namedtuple
-        CollectionInfo = namedtuple('CollectionInfo', ['name'])
+
+        CollectionInfo = namedtuple("CollectionInfo", ["name"])
 
         mock_collections = MagicMock()
-        mock_collections.collections = [
-            CollectionInfo(name="col_old_1"),
-            CollectionInfo(name="col_old_2")
-        ]
+        mock_collections.collections = [CollectionInfo(name="col_old_1"), CollectionInfo(name="col_old_2")]
         mock_qdrant_client.get_collections.return_value = mock_collections
 
         # Run cleanup
@@ -129,7 +127,9 @@ class TestCleanupQdrantCollections:
         mock_conn_manager.get_client.return_value = mock_qdrant_client
 
         # Mock asyncio.run to return active collections for _get_active_collections
-        mock_asyncio_run.side_effect = lambda coro: {"col_active", "col_in_use"} if "_get_active_collections" in str(coro) else None
+        mock_asyncio_run.side_effect = lambda coro: (
+            {"col_active", "col_in_use"} if "_get_active_collections" in str(coro) else None
+        )
 
         # Run cleanup
         from packages.webui.tasks import cleanup_qdrant_collections
@@ -204,7 +204,7 @@ class TestCleanupQdrantCollections:
             coro_str = str(coro)
             if "_get_active_collections" in coro_str:
                 return set()
-            elif "_audit_collection_deletions_batch" in coro_str:
+            if "_audit_collection_deletions_batch" in coro_str:
                 return None
             return None
 

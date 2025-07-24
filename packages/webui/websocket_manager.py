@@ -124,7 +124,7 @@ class RedisStreamWebSocketManager:
             from packages.shared.database.database import AsyncSessionLocal
             from packages.shared.database.repositories.operation_repository import OperationRepository
 
-            async with AsyncSessionLocal() as session:
+            async with AsyncSessionLocal() as session:  # type: ignore[misc]
                 operation_repo = OperationRepository(session)
                 operation = await operation_repo.get_by_uuid(operation_id)
 
