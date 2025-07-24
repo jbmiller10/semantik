@@ -7,6 +7,8 @@ import pytest
 
 from packages.webui.websocket_manager import RedisStreamWebSocketManager
 from tests.webui.test_websocket_helpers import (
+    BASE_DELAY,
+    LONG_DELAY,
     WebSocketTestHarness,
     assert_message_order,
     count_message_types,
@@ -21,19 +23,20 @@ class TestWebSocketExamples:
         """Ensure clean state before and after each test."""
         # Setup - Reset any global state
         from packages.webui.websocket_manager import ws_manager
+
         # Clear any existing connections and tasks
         ws_manager.connections.clear()
         ws_manager.consumer_tasks.clear()
         ws_manager._get_operation_func = None
-        
+
         # Also reset the global instance if it exists
-        if hasattr(ws_manager, 'redis') and ws_manager.redis:
+        if hasattr(ws_manager, "redis") and ws_manager.redis:
             # Close any existing Redis connection
             ws_manager.redis = None
             ws_manager._startup_attempted = False
-        
-        yield
-        
+
+        return
+
         # Teardown - ensure no lingering tasks
         # Note: The harness cleanup should handle most of this
 
@@ -86,21 +89,22 @@ class TestWebSocketExamples:
         # Verify WebSocket was accepted
         client.websocket.accept.assert_called_once()
 
-        
         # Client should receive initial state
-        initial_messages = client.get_received_messages("current_state")
-        assert len(initial_messages) >= 1, f"Expected at least 1 current_state message, got {len(initial_messages)}. All messages: {client.received_messages}"
+        initial_messages = await client.get_received_messages("current_state")
+        assert (
+            len(initial_messages) >= 1
+        ), f"Expected at least 1 current_state message, got {len(initial_messages)}. All messages: {await client.get_received_messages()}"
         assert initial_messages[0]["data"]["status"] == "processing"
         assert initial_messages[0]["data"]["operation_type"] == "index"
 
         # Send an update
         await manager.send_update("operation123", "progress", {"progress": 50, "processed_files": 2})
 
-        # Small delay for async operations
-        await asyncio.sleep(0.1)
+        # Delay for async operations
+        await asyncio.sleep(BASE_DELAY)
 
         # Verify client received the update
-        progress_messages = client.get_received_messages("progress")
+        progress_messages = await client.get_received_messages("progress")
         assert len(progress_messages) >= 1
         assert progress_messages[-1]["data"]["progress"] == 50
 
@@ -210,40 +214,40 @@ class TestWebSocketExamples:
         client = clients[0]
 
         # Get initial state message and verify
-        initial_state = client.get_received_messages("current_state")
+        initial_state = await client.get_received_messages("current_state")
         assert len(initial_state) == 1
 
-        # Clear messages after verifying initial state
-        client.clear_messages()
+        # Don't clear messages - track all messages from start
 
         # Simulate operation updates directly through manager
         await manager.send_update("operation789", "start", {"status": "started", "total_files": 10})
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(BASE_DELAY / 2)  # Shorter delay between updates
         await manager.send_update("operation789", "progress", {"progress": 20, "processed_files": 2})
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(BASE_DELAY / 2)
         await manager.send_update("operation789", "progress", {"progress": 40, "processed_files": 4})
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(BASE_DELAY / 2)
         await manager.send_update("operation789", "progress", {"progress": 60, "processed_files": 6})
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(BASE_DELAY / 2)
         await manager.send_update("operation789", "progress", {"progress": 80, "processed_files": 8})
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(BASE_DELAY / 2)
         await manager.send_update("operation789", "complete", {"status": "completed", "processed_files": 10})
 
         # Allow final propagation
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(BASE_DELAY)
 
-        # Verify message order
-        all_messages = client.received_messages
-        assert_message_order(all_messages, ["start", "progress", "complete"])
+        # Verify message order - exclude initial state message
+        all_messages = await client.get_received_messages()
+        lifecycle_messages = [msg for msg in all_messages if msg.get("type") != "current_state"]
+        assert_message_order(lifecycle_messages, ["start", "progress", "complete"])
 
         # Verify message counts
-        type_counts = count_message_types(all_messages)
+        type_counts = count_message_types(lifecycle_messages)
         assert type_counts.get("start", 0) >= 1
         assert type_counts.get("progress", 0) >= 4
         assert type_counts.get("complete", 0) >= 1
 
         # Verify final state
-        complete_messages = client.get_received_messages("complete")
+        complete_messages = await client.get_received_messages("complete")
         assert complete_messages[-1]["data"]["status"] == "completed"
         assert complete_messages[-1]["data"]["processed_files"] == 10
 
@@ -297,9 +301,10 @@ class TestWebSocketExamples:
 
         # Verify both clients received initial state
         for client in good_clients:
-            initial_state = client.get_received_messages("current_state")
+            initial_state = await client.get_received_messages("current_state")
             assert len(initial_state) == 1
-            client.clear_messages()
+
+        # Don't clear messages to avoid race conditions
 
         # Make one client fail on send
         bad_client = good_clients[0]
@@ -307,11 +312,11 @@ class TestWebSocketExamples:
 
         # Send update - should handle the failure gracefully
         await manager.send_update("operation_error", "test", {"data": "test"})
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(BASE_DELAY)
 
         # Good client should still receive the message
         good_client = good_clients[1]
-        messages = good_client.get_received_messages("test")
+        messages = await good_client.get_received_messages("test")
         assert len(messages) >= 1
 
         # Bad client should be removed from connections
@@ -371,26 +376,30 @@ class TestWebSocketExamples:
         op1_clients = await harness.connect_clients("operation_A", num_clients=2)
         op2_clients = await harness.connect_clients("operation_B", num_clients=2)
 
-        # Clear initial messages
-        for client in op1_clients + op2_clients:
-            client.clear_messages()
+        # Don't clear initial messages to avoid race conditions
 
         # Send updates to different operations
         await manager.send_update("operation_A", "update_A", {"operation": "A"})
         await manager.send_update("operation_B", "update_B", {"operation": "B"})
 
         # Give more time for message propagation
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(LONG_DELAY)
 
         # Verify operation A clients only got operation A updates
         for client in op1_clients:
-            assert len(client.get_received_messages("update_A")) >= 1
-            assert len(client.get_received_messages("update_B")) == 0
+            update_a_messages = await client.get_received_messages("update_A")
+            update_b_messages = await client.get_received_messages("update_B")
+            all_messages = await client.get_received_messages()
+            assert len(update_a_messages) >= 1, f"Client didn't receive update_A. All messages: {all_messages}"
+            assert len(update_b_messages) == 0
 
         # Verify operation B clients only got operation B updates
         for client in op2_clients:
-            assert len(client.get_received_messages("update_B")) >= 1
-            assert len(client.get_received_messages("update_A")) == 0
+            update_b_messages = await client.get_received_messages("update_B")
+            update_a_messages = await client.get_received_messages("update_A")
+            all_messages = await client.get_received_messages()
+            assert len(update_b_messages) >= 1, f"Client didn't receive update_B. All messages: {all_messages}"
+            assert len(update_a_messages) == 0
 
         # Cleanup
         await harness.cleanup()

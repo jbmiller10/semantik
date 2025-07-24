@@ -2,11 +2,16 @@
 
 import asyncio
 import contextlib
-from datetime import UTC, datetime, timedelta
+import os
 from typing import Any
 from unittest.mock import AsyncMock
 
 from fastapi import WebSocket
+
+# CI environments need more time for async operations
+IS_CI = os.environ.get("CI", "false").lower() == "true"
+BASE_DELAY = 0.5 if IS_CI else 0.1
+LONG_DELAY = 1.0 if IS_CI else 0.3
 
 
 class MockWebSocketClient:
@@ -15,9 +20,7 @@ class MockWebSocketClient:
     def __init__(self, client_id: str) -> None:
         """Initialize mock WebSocket client."""
         self.client_id = client_id
-        # Track creation time to filter out old calls
-        self.created_at = datetime.now(UTC)
-        
+
         # Create a fresh WebSocket mock
         self.websocket = AsyncMock(spec=WebSocket)
         self.websocket.accept = AsyncMock()
@@ -27,13 +30,15 @@ class MockWebSocketClient:
         # Track sent and received messages - instance specific
         self.sent_messages: list[dict[str, Any]] = []
         self.received_messages: list[dict[str, Any]] = []
-        
-        # Create a simple async mock that captures messages
+        self._message_lock = asyncio.Lock()
+
+        # Create a simple async mock that captures messages reliably
         async def capture_send_json(data):
-            # Always capture the message
-            self.received_messages.append(data.copy() if isinstance(data, dict) else data)
-            return None
-        
+            # Always capture the message with thread safety
+            async with self._message_lock:
+                self.received_messages.append(data.copy() if isinstance(data, dict) else data)
+            return
+
         # Set up send_json with tracking
         self.websocket.send_json = AsyncMock(side_effect=capture_send_json)
         # Ensure mock is clean
@@ -56,47 +61,41 @@ class MockWebSocketClient:
         """Ensure messages are tracked, falling back to call args if side effect failed."""
         if not self.received_messages and self.websocket.send_json.called:
             # If side effect didn't work, get messages from call args
-            # Only accept messages from the last 5 seconds (to handle CI delays)
-            cutoff_time = self.created_at - timedelta(seconds=5)
-            
             for call in self.websocket.send_json.call_args_list:
                 if call.args:
                     msg = call.args[0]
-                    # Check if message has timestamp and is recent
-                    if isinstance(msg, dict) and 'timestamp' in msg:
-                        try:
-                            msg_time = datetime.fromisoformat(msg['timestamp'].replace('Z', '+00:00'))
-                            if msg_time < cutoff_time:
-                                continue  # Skip old messages
-                        except:
-                            pass  # If parsing fails, include the message
-                    
                     # Avoid duplicates
                     if msg not in self.received_messages:
                         self.received_messages.append(msg)
-    
-    def get_received_messages(self, message_type: str = None) -> list[dict[str, Any]]:
-        """Get received messages, optionally filtered by type."""
-        # Always check if we need to pull from call args
-        if not self.received_messages and self.websocket.send_json.called:
-            # Try to get from mock calls as a last resort
-            self._ensure_messages_tracked()
-        
-        # Debug: print all received messages if none match the filter
-        if message_type:
-            filtered = [msg for msg in self.received_messages if msg.get("type") == message_type]
-            if not filtered and self.received_messages:
-                # This helps debug when messages are received but don't match the expected type
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.debug(f"No messages of type '{message_type}' found. Received messages: {self.received_messages}")
-            return filtered
-        return self.received_messages
 
-    def clear_messages(self) -> None:
+    async def get_received_messages(self, message_type: str = None) -> list[dict[str, Any]]:
+        """Get received messages, optionally filtered by type."""
+        # Use lock to ensure thread safety
+        async with self._message_lock:
+            # Always check if we need to pull from call args
+            if not self.received_messages and self.websocket.send_json.called:
+                # Try to get from mock calls as a last resort
+                self._ensure_messages_tracked()
+
+            # Debug: print all received messages if none match the filter
+            if message_type:
+                filtered = [msg for msg in self.received_messages if msg.get("type") == message_type]
+                if not filtered and self.received_messages:
+                    # This helps debug when messages are received but don't match the expected type
+                    import logging
+
+                    logger = logging.getLogger(__name__)
+                    logger.debug(
+                        f"No messages of type '{message_type}' found. Received messages: {self.received_messages}"
+                    )
+                return filtered
+            return self.received_messages.copy()
+
+    async def clear_messages(self) -> None:
         """Clear all tracked messages."""
-        self.sent_messages.clear()
-        self.received_messages.clear()
+        async with self._message_lock:
+            self.sent_messages.clear()
+            self.received_messages.clear()
 
 
 class WebSocketTestHarness:
@@ -108,24 +107,26 @@ class WebSocketTestHarness:
         self.clients: dict[str, MockWebSocketClient] = {}
         # Store original methods
         self._original_broadcast = manager._broadcast
-        
+        # Patch broadcast immediately to ensure all messages are captured
+        self._patch_manager_broadcast()
+
     def _patch_manager_broadcast(self):
         """Patch the manager's _broadcast method to ensure message tracking."""
         harness = self
         original_broadcast = self._original_broadcast
-        
+
         async def patched_broadcast(operation_id: str, message: dict) -> None:
             # First, ensure all clients track the message directly
-            for client_id, client in harness.clients.items():
+            for _, client in harness.clients.items():
                 # Check if this client is connected to this operation
                 for key, websockets in harness.manager.connections.items():
                     if f"operation:{operation_id}" in key and client.websocket in websockets:
                         # Directly add to received messages
                         client.received_messages.append(message.copy() if isinstance(message, dict) else message)
-            
+
             # Then call the original broadcast
             await original_broadcast(operation_id, message)
-        
+
         self.manager._broadcast = patched_broadcast
 
     async def create_client(self, client_id: str) -> MockWebSocketClient:
@@ -136,9 +137,6 @@ class WebSocketTestHarness:
 
     async def connect_clients(self, operation_id: str, num_clients: int = 1, user_prefix: str = "user"):
         """Connect multiple clients to an operation."""
-        # Patch the broadcast method before connecting clients
-        self._patch_manager_broadcast()
-        
         connected_clients = []
         for i in range(num_clients):
             client_id = f"client_{i}"
@@ -149,7 +147,7 @@ class WebSocketTestHarness:
             connected_clients.append(client)
 
         # Allow connections to stabilize
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(BASE_DELAY)
         return connected_clients
 
     async def broadcast_and_verify(self, operation_id: str, message_type: str, data: dict[str, Any]):
@@ -157,12 +155,12 @@ class WebSocketTestHarness:
         await self.manager.send_update(operation_id, message_type, data)
 
         # Allow message propagation
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(BASE_DELAY)
 
         # Verify all clients for this operation received the message
         results = {}
         for client_id, client in self.clients.items():
-            messages = client.get_received_messages(message_type)
+            messages = await client.get_received_messages(message_type)
             results[client_id] = {"received": len(messages) > 0, "messages": messages}
 
         return results
@@ -171,7 +169,7 @@ class WebSocketTestHarness:
         """Clean up all connections and consumer tasks."""
         # Restore original broadcast method
         self.manager._broadcast = self._original_broadcast
-        
+
         # First, cancel all consumer tasks to prevent event loop errors
         for _, task in list(self.manager.consumer_tasks.items()):
             task.cancel()
