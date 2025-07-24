@@ -1392,7 +1392,7 @@ async def _process_append_operation(
         # Process registered documents to generate embeddings
         # Check for both new documents AND existing documents that haven't been processed
         # (This handles cases where documents were registered but never chunked/embedded)
-        
+
         # Get all documents from this source path
         all_docs, _ = await document_repo.list_by_collection(
             collection["id"],
@@ -1403,7 +1403,7 @@ async def _process_append_operation(
         # Filter documents by source path and check for unprocessed ones
         documents = [doc for doc in all_docs if doc.file_path.startswith(source_path)]
         unprocessed_documents = [doc for doc in documents if doc.chunk_count == 0]
-        
+
         if len(unprocessed_documents) > 0:
             await updater.send_update(
                 "processing_embeddings",
@@ -1475,7 +1475,7 @@ async def _process_append_operation(
                             continue
                         chunks = chunker.chunk_text(text, doc.id, metadata)
                         all_chunks.extend(chunks)
-                    
+
                     chunks = all_chunks
                     logger.info(f"Created {len(chunks)} chunks for {doc.file_path}")
 
@@ -1493,22 +1493,24 @@ async def _process_append_operation(
                     texts = [chunk["text"] for chunk in chunks]
 
                     # Call vecpipe API to generate embeddings
-                    vecpipe_url = f"http://vecpipe:8000/embed"
+                    vecpipe_url = "http://vecpipe:8000/embed"
                     embed_request = {
                         "texts": texts,
                         "model_name": embedding_model,
                         "quantization": quantization,
                         "instruction": instruction,
-                        "batch_size": batch_size
+                        "batch_size": batch_size,
                     }
 
                     async with httpx.AsyncClient(timeout=300.0) as client:
                         logger.info(f"Calling vecpipe /embed for {len(texts)} texts")
                         response = await client.post(vecpipe_url, json=embed_request)
-                        
+
                         if response.status_code != 200:
-                            raise Exception(f"Failed to generate embeddings via vecpipe: {response.status_code} - {response.text}")
-                        
+                            raise Exception(
+                                f"Failed to generate embeddings via vecpipe: {response.status_code} - {response.text}"
+                            )
+
                         embed_response = response.json()
                         embeddings_array = embed_response["embeddings"]
 
@@ -1542,24 +1544,22 @@ async def _process_append_operation(
                         # Convert PointStruct objects to dict format for API
                         points_data = []
                         for point in batch_points:
-                            points_data.append({
-                                "id": point.id,
-                                "vector": point.vector,
-                                "payload": point.payload
-                            })
+                            points_data.append({"id": point.id, "vector": point.vector, "payload": point.payload})
 
                         upsert_request = {
                             "collection_name": qdrant_collection_name,
                             "points": points_data,
-                            "wait": True
+                            "wait": True,
                         }
 
                         async with httpx.AsyncClient(timeout=60.0) as client:
-                            vecpipe_upsert_url = f"http://vecpipe:8000/upsert"
+                            vecpipe_upsert_url = "http://vecpipe:8000/upsert"
                             response = await client.post(vecpipe_upsert_url, json=upsert_request)
-                            
+
                             if response.status_code != 200:
-                                raise Exception(f"Failed to upsert vectors via vecpipe: {response.status_code} - {response.text}")
+                                raise Exception(
+                                    f"Failed to upsert vectors via vecpipe: {response.status_code} - {response.text}"
+                                )
 
                     # Update document status
                     await document_repo.update_status(
@@ -1595,13 +1595,13 @@ async def _process_append_operation(
             # Get current document stats from database
             doc_stats = await document_repo.get_stats_by_collection(collection["id"])
             current_doc_count = doc_stats.get("total_documents", 0)
-            
+
             # Get current vector count from Qdrant
             qdrant_client = qdrant_manager.get_client()
             qdrant_info = qdrant_client.get_collection(qdrant_collection_name)
             # Use points_count instead of vectors_count (which can be None)
             current_vector_count = qdrant_info.points_count if qdrant_info else 0
-            
+
             # Update collection stats
             await collection_repo.update_stats(
                 collection["id"],
@@ -1859,22 +1859,24 @@ async def _process_reindex_operation(
                         texts = [chunk["text"] for chunk in all_chunks]
 
                         # Call vecpipe API to generate embeddings
-                        vecpipe_url = f"http://vecpipe:8000/embed"
+                        vecpipe_url = "http://vecpipe:8000/embed"
                         embed_request = {
                             "texts": texts,
                             "model_name": model_name,
                             "quantization": quantization,
                             "instruction": instruction,
-                            "batch_size": batch_size
+                            "batch_size": batch_size,
                         }
 
                         async with httpx.AsyncClient(timeout=300.0) as client:
                             logger.info(f"Calling vecpipe /embed for {len(texts)} texts (reindex)")
                             response = await client.post(vecpipe_url, json=embed_request)
-                            
+
                             if response.status_code != 200:
-                                raise Exception(f"Failed to generate embeddings via vecpipe: {response.status_code} - {response.text}")
-                            
+                                raise Exception(
+                                    f"Failed to generate embeddings via vecpipe: {response.status_code} - {response.text}"
+                                )
+
                             embed_response = response.json()
                             embeddings_array = embed_response["embeddings"]
 
@@ -1926,24 +1928,22 @@ async def _process_reindex_operation(
                             # Convert PointStruct objects to dict format for API
                             points_data = []
                             for point in points:
-                                points_data.append({
-                                    "id": point.id,
-                                    "vector": point.vector,
-                                    "payload": point.payload
-                                })
+                                points_data.append({"id": point.id, "vector": point.vector, "payload": point.payload})
 
                             upsert_request = {
                                 "collection_name": staging_collection_name,
                                 "points": points_data,
-                                "wait": True
+                                "wait": True,
                             }
 
                             async with httpx.AsyncClient(timeout=60.0) as client:
-                                vecpipe_upsert_url = f"http://vecpipe:8000/upsert"
+                                vecpipe_upsert_url = "http://vecpipe:8000/upsert"
                                 response = await client.post(vecpipe_upsert_url, json=upsert_request)
-                                
+
                                 if response.status_code != 200:
-                                    raise Exception(f"Failed to upsert vectors via vecpipe: {response.status_code} - {response.text}")
+                                    raise Exception(
+                                        f"Failed to upsert vectors via vecpipe: {response.status_code} - {response.text}"
+                                    )
 
                         vector_count += len(points)
                         processed_count += 1
@@ -2017,8 +2017,6 @@ async def _process_reindex_operation(
         record_reindex_checkpoint(collection["id"], "atomic_switch_start")
 
         # Call internal API to perform atomic switch
-        import httpx
-
         # Use configurable host for containerized environments
         host = settings.WEBUI_INTERNAL_HOST
         port = settings.WEBUI_PORT

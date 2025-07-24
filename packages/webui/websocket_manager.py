@@ -34,7 +34,7 @@ class RedisStreamWebSocketManager:
             # Skip if already attempted or connected
             if self._startup_attempted and self.redis is not None:
                 return
-            
+
             self._startup_attempted = True
             logger.info(f"WebSocket manager startup initiated. Redis URL: {self.redis_url}")
             max_retries = 3
@@ -95,7 +95,7 @@ class RedisStreamWebSocketManager:
         if self.redis is None:
             logger.info("Redis not connected, attempting to reconnect...")
             await self.startup()
-        
+
         # Check connection limit for this user
         user_connections = sum(
             len(sockets) for key, sockets in self.connections.items() if key.startswith(f"{user_id}:")
@@ -220,7 +220,7 @@ class RedisStreamWebSocketManager:
             try:
                 if self.redis is None:
                     raise RuntimeError("Redis connection not established")
-                
+
                 # First check if the stream exists
                 try:
                     stream_info = await self.redis.xinfo_stream(stream_key)
@@ -231,7 +231,7 @@ class RedisStreamWebSocketManager:
                     # Wait a bit before trying to create consumer group
                     await asyncio.sleep(2)
                     return
-                
+
                 await self.redis.xgroup_create(stream_key, self.consumer_group, id="0")
                 logger.info(f"Created consumer group {self.consumer_group} for stream {stream_key}")
             except Exception as e:
