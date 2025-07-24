@@ -87,8 +87,7 @@ async def _check_database_health() -> dict[str, Any]:
         result = await asyncio.wait_for(check_postgres_connection(), timeout=HEALTH_CHECK_TIMEOUT)
         if result:
             return {"status": "healthy", "message": "Database connection successful"}
-        else:
-            return {"status": "unhealthy", "message": "Database connection failed"}
+        return {"status": "unhealthy", "message": "Database connection failed"}
     except TimeoutError:
         return {"status": "unhealthy", "message": "Database connection timeout"}
     except Exception as e:

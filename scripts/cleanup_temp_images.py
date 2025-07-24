@@ -14,7 +14,7 @@ TEMP_IMAGE_DIR = Path("/tmp/webui_temp_images")
 TTL_HOURS = 1  # Clean up directories older than this
 
 
-def cleanup_old_directories():
+def cleanup_old_directories() -> None:
     """Remove temporary image directories older than TTL"""
 
     if not TEMP_IMAGE_DIR.exists():
@@ -66,7 +66,7 @@ def cleanup_old_directories():
         print(f"  Errors encountered: {error_count}")
 
 
-def main():
+def main() -> None:
     """Main function"""
     print("Temporary Image Cleanup Script")
     print("==============================")

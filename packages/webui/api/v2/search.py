@@ -102,7 +102,7 @@ async def multi_collection_search(
                 if "error" not in cd
             ],
             search_type=search_request.search_type,
-            reranking_used=search_request.use_reranker or len(search_request.collection_uuids) > 1,
+            reranking_used=search_request.use_reranker,
             reranker_model=search_request.rerank_model,
             search_time_ms=metadata["processing_time"] * 1000,
             reranking_time_ms=None,  # Not available in new format

@@ -96,7 +96,7 @@ class OperationService:
         Returns:
             Tuple of (operations list, total count)
         """
-        return await self.operation_repo.list_for_user(
+        return await self.operation_repo.list_for_user(  # type: ignore[no-any-return]
             user_id=user_id,
             status_list=status_list,
             operation_type=operation_type,

@@ -128,7 +128,7 @@ class TestWebSocketReindexOperation:
             progress_messages = []
             status_updates = []
 
-            def on_message(_ws, message):
+            def on_message(_ws, message) -> None:
                 data = json.loads(message)
                 progress_messages.append(data)
                 print(f"Reindex WebSocket message: {data}")
@@ -141,10 +141,10 @@ class TestWebSocketReindexOperation:
                 elif "switch" in data.get("message", "").lower():
                     print("BLUE-GREEN: Switching to new index")
 
-            def on_error(_ws, error):
+            def on_error(_ws, error) -> None:
                 print(f"WebSocket error: {error}")
 
-            def on_close(_ws, close_status_code, close_msg):
+            def on_close(_ws, close_status_code, close_msg) -> None:
                 print(f"WebSocket closed: {close_status_code} - {close_msg}")
 
             ws = websocket.WebSocketApp(
@@ -325,7 +325,7 @@ class TestWebSocketReindexOperation:
             ws_url = f"{self.WS_BASE_URL}/ws/operations/{remove_operation_id}?token={token}"
             progress_messages = []
 
-            def on_message(_ws, message):
+            def on_message(_ws, message) -> None:
                 data = json.loads(message)
                 progress_messages.append(data)
                 print(f"Remove source WebSocket: {data}")

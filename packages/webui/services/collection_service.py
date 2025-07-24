@@ -4,7 +4,7 @@ import logging
 import uuid
 from typing import Any
 
-from shared.database.exceptions import AccessDeniedError, InvalidStateError
+from shared.database.exceptions import AccessDeniedError, EntityAlreadyExistsError, InvalidStateError
 from shared.database.models import Collection, CollectionStatus, OperationType
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
@@ -78,6 +78,9 @@ class CollectionService:
                 is_public=config.get("is_public", False) if config else False,
                 meta=config.get("metadata") if config else None,
             )
+        except EntityAlreadyExistsError:
+            # Re-raise EntityAlreadyExistsError to be handled by the API endpoint
+            raise
         except Exception as e:
             logger.error(f"Failed to create collection: {e}")
             raise
@@ -93,15 +96,15 @@ class CollectionService:
             },
         )
 
-        # Dispatch Celery task
+        # Commit the transaction BEFORE dispatching the task
+        await self.db_session.commit()
+
+        # Dispatch Celery task AFTER commit to avoid race condition
         celery_app.send_task(
             "webui.tasks.process_collection_operation",
             args=[operation.uuid],
             task_id=str(uuid.uuid4()),
         )
-
-        # Commit the transaction
-        await self.db_session.commit()
 
         # Convert ORM objects to dictionaries
         collection_dict = {
@@ -180,17 +183,13 @@ class CollectionService:
                 f"Collection must be in {CollectionStatus.PENDING}, {CollectionStatus.READY} or {CollectionStatus.DEGRADED} state."
             )
 
-        # Check if there's already an active operation (but allow APPEND after INDEX)
+        # Check if there's already an active operation
         active_operations = await self.operation_repo.get_active_operations(collection.id)
         if active_operations:
-            # Allow APPEND operations if the only active operation is INDEX
-            # INDEX just creates the empty collection and doesn't conflict with APPEND
-            non_index_ops = [op for op in active_operations if op.type != OperationType.INDEX]
-            if non_index_ops:
-                raise InvalidStateError(
-                    "Cannot add source while another operation is in progress. "
-                    "Please wait for the current operation to complete."
-                )
+            raise InvalidStateError(
+                "Cannot add source while another operation is in progress. "
+                "Please wait for the current operation to complete."
+            )
 
         # Create operation record
         operation = await self.operation_repo.create(
@@ -206,15 +205,15 @@ class CollectionService:
         # Update collection status to processing
         await self.collection_repo.update_status(collection.id, CollectionStatus.PROCESSING)
 
-        # Dispatch Celery task
+        # Commit the transaction BEFORE dispatching the task
+        await self.db_session.commit()
+
+        # Dispatch Celery task AFTER commit to avoid race condition
         celery_app.send_task(
             "webui.tasks.process_collection_operation",
             args=[operation.uuid],
             task_id=str(uuid.uuid4()),
         )
-
-        # Commit the transaction
-        await self.db_session.commit()
 
         # Convert ORM object to dictionary
         return {
@@ -308,15 +307,15 @@ class CollectionService:
         # Update collection status to processing
         await self.collection_repo.update_status(collection.id, CollectionStatus.PROCESSING)
 
-        # Dispatch Celery task
+        # Commit the transaction BEFORE dispatching the task
+        await self.db_session.commit()
+
+        # Dispatch Celery task AFTER commit to avoid race condition
         celery_app.send_task(
             "webui.tasks.process_collection_operation",
             args=[operation.uuid],
             task_id=str(uuid.uuid4()),
         )
-
-        # Commit the transaction
-        await self.db_session.commit()
 
         # Convert ORM object to dictionary
         return {
@@ -438,15 +437,15 @@ class CollectionService:
         # Update collection status
         await self.collection_repo.update_status(collection.id, CollectionStatus.PROCESSING)
 
-        # Dispatch Celery task
+        # Commit the transaction BEFORE dispatching the task
+        await self.db_session.commit()
+
+        # Dispatch Celery task AFTER commit to avoid race condition
         celery_app.send_task(
             "webui.tasks.process_collection_operation",
             args=[operation.uuid],
             task_id=str(uuid.uuid4()),
         )
-
-        # Commit the transaction
-        await self.db_session.commit()
 
         # Convert ORM object to dictionary
         return {
@@ -475,7 +474,7 @@ class CollectionService:
         Returns:
             Tuple of (collections list, total count)
         """
-        return await self.collection_repo.list_for_user(
+        return await self.collection_repo.list_for_user(  # type: ignore[no-any-return]
             user_id=user_id,
             offset=offset,
             limit=limit,
@@ -571,8 +570,9 @@ class CollectionService:
         )
 
         # Get operations for the collection
-        operations, total = await self.operation_repo.list_by_collection(
+        operations, total = await self.operation_repo.list_for_collection(
             collection_id=collection.id,
+            user_id=user_id,
             offset=offset,
             limit=limit,
         )

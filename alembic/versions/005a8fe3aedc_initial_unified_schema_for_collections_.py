@@ -1,7 +1,7 @@
 """Initial unified schema for collections, operations, and documents
 
 Revision ID: 005a8fe3aedc
-Revises: 
+Revises:
 Create Date: 2025-07-21 23:22:40.130363
 
 """

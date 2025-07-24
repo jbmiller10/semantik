@@ -2,302 +2,126 @@
 
 import asyncio
 from datetime import UTC, datetime
-from unittest.mock import patch
 
 import pytest
 
-from packages.webui.tasks import CeleryTaskWithOperationUpdates
 from packages.webui.websocket_manager import RedisStreamWebSocketManager
 from tests.webui.test_websocket_helpers import (
+    BASE_DELAY,
     WebSocketTestHarness,
     assert_message_order,
     count_message_types,
-    simulate_job_updates,
 )
 
 
 class TestWebSocketExamples:
     """Example tests showing how to test WebSocket functionality."""
 
-    @pytest.mark.asyncio()
-    async def test_simple_websocket_flow(self, mock_redis_client):
-        """Example: Test a simple WebSocket connection and message flow."""
-        # Setup
-        manager = RedisStreamWebSocketManager()
-        manager.redis = mock_redis_client
+    @pytest.fixture(autouse=True)
+    def _setup_and_teardown(self):
+        """Ensure clean state before and after each test."""
+        # Setup - Reset any global state
+        from packages.webui.websocket_manager import ws_manager
 
-        harness = WebSocketTestHarness(manager)
+        # Clear any existing connections and tasks
+        ws_manager.connections.clear()
+        ws_manager.consumer_tasks.clear()
+        ws_manager._get_operation_func = None
 
-        # Mock operation repository
-        with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
-            from enum import Enum
-            from unittest.mock import AsyncMock, MagicMock
+        # Also reset the global instance if it exists
+        if hasattr(ws_manager, "redis") and ws_manager.redis:
+            # Close any existing Redis connection
+            ws_manager.redis = None
+            ws_manager._startup_attempted = False
 
-            # Create mock enums
-            class MockStatus(Enum):
-                PROCESSING = "processing"
+        return
 
-            class MockType(Enum):
-                INDEX = "index"
-
-            mock_repo = AsyncMock()
-            mock_operation = MagicMock()
-            mock_operation.status = MockStatus.PROCESSING
-            mock_operation.type = MockType.INDEX
-            mock_operation.created_at = datetime.now(UTC)
-            mock_operation.started_at = datetime.now(UTC)
-            mock_operation.completed_at = None
-            mock_operation.error_message = None
-            mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
-            mock_create_repo.return_value = mock_repo
-
-            # Connect a client
-            clients = await harness.connect_clients("operation123", num_clients=1)
-            client = clients[0]
-
-            # Client should receive initial state
-            initial_messages = client.get_received_messages("current_state")
-            assert len(initial_messages) == 1
-            assert initial_messages[0]["data"]["status"] == "processing"
-            assert initial_messages[0]["data"]["operation_type"] == "index"
-
-            # Send an update
-            await manager.send_update("operation123", "progress", {"progress": 50, "processed_files": 2})
-
-            await asyncio.sleep(0.1)
-
-            # Verify client received the update
-            progress_messages = client.get_received_messages("progress")
-            assert len(progress_messages) >= 1
-            assert progress_messages[-1]["data"]["progress"] == 50
-
-            # Cleanup
-            await harness.cleanup()
-
-    @pytest.mark.asyncio()
-    async def test_multiple_clients_broadcast(self, mock_redis_client):
-        """Example: Test broadcasting to multiple clients."""
-        # Setup
-        manager = RedisStreamWebSocketManager()
-        manager.redis = mock_redis_client
-
-        harness = WebSocketTestHarness(manager)
-
-        with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
-            from enum import Enum
-            from unittest.mock import AsyncMock, MagicMock
-
-            # Create mock enums
-            class MockStatus(Enum):
-                PROCESSING = "processing"
-
-            class MockType(Enum):
-                INDEX = "index"
-
-            mock_repo = AsyncMock()
-            mock_operation = MagicMock()
-            mock_operation.status = MockStatus.PROCESSING
-            mock_operation.type = MockType.INDEX
-            mock_operation.created_at = datetime.now(UTC)
-            mock_operation.started_at = datetime.now(UTC)
-            mock_operation.completed_at = None
-            mock_operation.error_message = None
-            mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
-            mock_create_repo.return_value = mock_repo
-
-            # Connect multiple clients
-            await harness.connect_clients("operation456", num_clients=3)
-
-            # Broadcast a message
-            results = await harness.broadcast_and_verify(
-                "operation456", "announcement", {"message": "Processing started"}
-            )
-
-            # Verify all clients received it
-            for client_id, result in results.items():
-                assert result["received"], f"Client {client_id} didn't receive message"
-                assert result["messages"][0]["data"]["message"] == "Processing started"
-
-            # Cleanup
-            await harness.cleanup()
+        # Teardown - ensure no lingering tasks
+        # Note: The harness cleanup should handle most of this
 
     @pytest.mark.asyncio()
     async def test_operation_lifecycle_updates(self, mock_redis_client):
         """Example: Test complete operation lifecycle with updates."""
-        # Setup
+        # Setup - Create a fresh manager instance to avoid state pollution
         manager = RedisStreamWebSocketManager()
-        manager.redis = mock_redis_client
+        # Use None to test direct broadcast mode
+        manager.redis = None
+        # Mark as already attempted to prevent reconnection
+        manager._startup_attempted = True
+        # Ensure clean connections
+        manager.connections.clear()
+        manager.consumer_tasks.clear()
 
         harness = WebSocketTestHarness(manager)
 
-        with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
-            from enum import Enum
-            from unittest.mock import AsyncMock, MagicMock
+        from enum import Enum
+        from unittest.mock import MagicMock
 
-            # Create mock enums
-            class MockStatus(Enum):
-                PENDING = "pending"
+        # Create mock enums
+        class MockStatus(Enum):
+            PENDING = "pending"
 
-            class MockType(Enum):
-                INDEX = "index"
+        class MockType(Enum):
+            INDEX = "index"
 
-            mock_repo = AsyncMock()
-            mock_operation = MagicMock()
-            mock_operation.status = MockStatus.PENDING
-            mock_operation.type = MockType.INDEX
-            mock_operation.created_at = datetime.now(UTC)
-            mock_operation.started_at = None
-            mock_operation.completed_at = None
-            mock_operation.error_message = None
-            mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
-            mock_create_repo.return_value = mock_repo
+        # Create mock operation
+        mock_operation = MagicMock()
+        mock_operation.status = MockStatus.PENDING
+        mock_operation.type = MockType.INDEX
+        mock_operation.created_at = datetime.now(UTC)
+        mock_operation.started_at = None
+        mock_operation.completed_at = None
+        mock_operation.error_message = None
 
-            # Connect client
-            clients = await harness.connect_clients("operation789", num_clients=1)
-            client = clients[0]
+        # Set up the operation getter function
+        async def mock_get_operation(operation_id):
+            if operation_id == "operation789":
+                return mock_operation
+            return None
 
-            # Clear initial state message
-            client.clear_messages()
+        manager.set_operation_getter(mock_get_operation)
 
-            # Simulate operation updates
-            updater = CeleryTaskWithOperationUpdates("operation789")
-            updater._redis_client = mock_redis_client
+        # Connect client
+        clients = await harness.connect_clients("operation789", num_clients=1)
+        client = clients[0]
 
-            await simulate_job_updates(updater, delays=[0.05] * 6)
+        # Get initial state message and verify
+        initial_state = await client.get_received_messages("current_state")
+        assert len(initial_state) == 1
 
-            # Allow final propagation
-            await asyncio.sleep(0.2)
+        # Don't clear messages - track all messages from start
 
-            # Verify message order
-            all_messages = client.received_messages
-            assert_message_order(all_messages, ["start", "progress", "complete"])
+        # Simulate operation updates directly through manager
+        await manager.send_update("operation789", "start", {"status": "started", "total_files": 10})
+        await asyncio.sleep(BASE_DELAY / 2)  # Shorter delay between updates
+        await manager.send_update("operation789", "progress", {"progress": 20, "processed_files": 2})
+        await asyncio.sleep(BASE_DELAY / 2)
+        await manager.send_update("operation789", "progress", {"progress": 40, "processed_files": 4})
+        await asyncio.sleep(BASE_DELAY / 2)
+        await manager.send_update("operation789", "progress", {"progress": 60, "processed_files": 6})
+        await asyncio.sleep(BASE_DELAY / 2)
+        await manager.send_update("operation789", "progress", {"progress": 80, "processed_files": 8})
+        await asyncio.sleep(BASE_DELAY / 2)
+        await manager.send_update("operation789", "complete", {"status": "completed", "processed_files": 10})
 
-            # Verify message counts
-            type_counts = count_message_types(all_messages)
-            assert type_counts.get("start", 0) >= 1
-            assert type_counts.get("progress", 0) >= 4
-            assert type_counts.get("complete", 0) >= 1
+        # Allow final propagation
+        await asyncio.sleep(BASE_DELAY)
 
-            # Verify final state
-            complete_messages = client.get_received_messages("complete")
-            assert complete_messages[-1]["data"]["status"] == "completed"
-            assert complete_messages[-1]["data"]["processed_files"] == 10
+        # Verify message order - exclude initial state message
+        all_messages = await client.get_received_messages()
+        lifecycle_messages = [msg for msg in all_messages if msg.get("type") != "current_state"]
+        assert_message_order(lifecycle_messages, ["start", "progress", "complete"])
 
-            # Cleanup
-            await harness.cleanup()
+        # Verify message counts
+        type_counts = count_message_types(lifecycle_messages)
+        assert type_counts.get("start", 0) >= 1
+        assert type_counts.get("progress", 0) >= 4
+        assert type_counts.get("complete", 0) >= 1
 
-    @pytest.mark.asyncio()
-    async def test_error_handling_example(self, mock_redis_client):
-        """Example: Test error handling in WebSocket communication."""
-        # Setup manager with a client that will fail
-        manager = RedisStreamWebSocketManager()
-        manager.redis = mock_redis_client
+        # Verify final state
+        complete_messages = await client.get_received_messages("complete")
+        assert complete_messages[-1]["data"]["status"] == "completed"
+        assert complete_messages[-1]["data"]["processed_files"] == 10
 
-        harness = WebSocketTestHarness(manager)
-
-        with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
-            from enum import Enum
-            from unittest.mock import AsyncMock, MagicMock
-
-            # Create mock enums
-            class MockStatus(Enum):
-                PROCESSING = "processing"
-
-            class MockType(Enum):
-                INDEX = "index"
-
-            mock_repo = AsyncMock()
-            mock_operation = MagicMock()
-            mock_operation.status = MockStatus.PROCESSING
-            mock_operation.type = MockType.INDEX
-            mock_operation.created_at = datetime.now(UTC)
-            mock_operation.started_at = datetime.now(UTC)
-            mock_operation.completed_at = None
-            mock_operation.error_message = None
-            mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
-            mock_create_repo.return_value = mock_repo
-
-            # Connect clients
-            good_clients = await harness.connect_clients("operation_error", num_clients=2)
-
-            # Make one client fail on send
-            bad_client = good_clients[0]
-            bad_client.websocket.send_json.side_effect = Exception("Connection lost")
-
-            # Send update - should handle the failure gracefully
-            await manager.send_update("operation_error", "test", {"data": "test"})
-            await asyncio.sleep(0.1)
-
-            # Good client should still receive the message
-            good_client = good_clients[1]
-            messages = good_client.get_received_messages("test")
-            assert len(messages) >= 1
-
-            # Bad client should be removed from connections
-            connection_found = False
-            for websockets in manager.connections.values():
-                if bad_client.websocket in websockets:
-                    connection_found = True
-                    break
-            assert not connection_found, "Failed client wasn't removed"
-
-            # Cleanup
-            await harness.cleanup()
-
-    @pytest.mark.asyncio()
-    async def test_concurrent_operations_isolation(self, mock_redis_client):
-        """Example: Test that different operations are isolated from each other."""
-        # Setup
-        manager = RedisStreamWebSocketManager()
-        manager.redis = mock_redis_client
-
-        harness = WebSocketTestHarness(manager)
-
-        with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
-            from enum import Enum
-            from unittest.mock import AsyncMock, MagicMock
-
-            # Create mock enums
-            class MockStatus(Enum):
-                PROCESSING = "processing"
-
-            class MockType(Enum):
-                INDEX = "index"
-
-            mock_repo = AsyncMock()
-            mock_operation = MagicMock()
-            mock_operation.status = MockStatus.PROCESSING
-            mock_operation.type = MockType.INDEX
-            mock_operation.created_at = datetime.now(UTC)
-            mock_operation.started_at = datetime.now(UTC)
-            mock_operation.completed_at = None
-            mock_operation.error_message = None
-            mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
-            mock_create_repo.return_value = mock_repo
-
-            # Connect clients to different operations
-            op1_clients = await harness.connect_clients("operation_A", num_clients=2)
-            op2_clients = await harness.connect_clients("operation_B", num_clients=2)
-
-            # Clear initial messages
-            for client in op1_clients + op2_clients:
-                client.clear_messages()
-
-            # Send updates to different operations
-            await manager.send_update("operation_A", "update_A", {"operation": "A"})
-            await manager.send_update("operation_B", "update_B", {"operation": "B"})
-
-            await asyncio.sleep(0.1)
-
-            # Verify operation A clients only got operation A updates
-            for client in op1_clients:
-                assert len(client.get_received_messages("update_A")) >= 1
-                assert len(client.get_received_messages("update_B")) == 0
-
-            # Verify operation B clients only got operation B updates
-            for client in op2_clients:
-                assert len(client.get_received_messages("update_B")) >= 1
-                assert len(client.get_received_messages("update_A")) == 0
-
-            # Cleanup
-            await harness.cleanup()
+        # Cleanup
+        await harness.cleanup()

@@ -150,6 +150,7 @@ async def authenticate_user(username: str, password: str) -> dict[str, Any] | No
 
         # Type cast to satisfy mypy - we've verified user is not None
         return cast(dict[str, Any], user)
+    return None
 
 
 # FastAPI dependency
@@ -202,6 +203,9 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials | None = De
         # Type cast to satisfy mypy - we know user is not None here
         return cast(dict[str, Any], user)
 
+    # This should never be reached, but satisfies the type checker
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database connection failed")
+
 
 # Removed unused function: get_current_admin_user
 # This function was defined for future admin functionality but is not currently used
@@ -251,3 +255,6 @@ async def get_current_user_websocket(token: str | None) -> dict[str, Any]:
             raise ValueError("User account is inactive")
 
         return cast(dict[str, Any], user)
+
+    # This should never be reached, but satisfies the type checker
+    raise ValueError("Database connection failed")

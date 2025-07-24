@@ -33,6 +33,7 @@ Usage:
 """
 
 import asyncio
+import contextlib
 import gc
 import hashlib
 import json
@@ -43,12 +44,11 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
 import psutil
 import redis.asyncio as redis
 from qdrant_client.models import PointStruct
 from shared.config import settings
-from shared.embedding import embedding_service
-from shared.gpu_scheduler import gpu_task
 from shared.managers.qdrant_manager import QdrantManager
 from shared.metrics.collection_metrics import (
     OperationTimer,
@@ -728,62 +728,64 @@ async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id:
 async def _cleanup_staging_resources(collection_id: str, operation: dict) -> None:  # noqa: ARG001
     """Clean up staging resources for failed reindex operation."""
     try:
-        from shared.database.factory import create_collection_repository
+        from shared.database.database import AsyncSessionLocal
+        from shared.database.repositories.collection_repository import CollectionRepository
 
-        collection_repo = create_collection_repository()
-        collection = await collection_repo.get_by_id(collection_id)
+        async with AsyncSessionLocal() as session:
+            collection_repo = CollectionRepository(session)
+            collection = await collection_repo.get_by_uuid(collection_id)
 
-        if not collection:
-            logger.warning(f"Collection {collection_id} not found during staging cleanup")
-            return
-
-        # Get staging collections from collection record
-        staging_info = collection.get("qdrant_staging")
-        if not staging_info:
-            logger.info("No staging collections to clean up")
-            return
-
-        # Parse staging info if it's a string
-        if isinstance(staging_info, str):
-            import json
-
-            try:
-                staging_info = json.loads(staging_info)
-            except json.JSONDecodeError:
-                logger.error(f"Failed to parse staging info: {staging_info}")
+            if not collection:
+                logger.warning(f"Collection {collection_id} not found during staging cleanup")
                 return
 
-        # Extract staging collection names
-        staging_collections = []
-        if isinstance(staging_info, dict) and "collection_name" in staging_info:
-            staging_collections.append(staging_info["collection_name"])
-        elif isinstance(staging_info, list):
-            for item in staging_info:
-                if isinstance(item, dict) and "collection_name" in item:
-                    staging_collections.append(item["collection_name"])
+            # Get staging collections from collection record
+            staging_info = collection.qdrant_staging
+            if not staging_info:
+                logger.info("No staging collections to clean up")
+                return
 
-        if not staging_collections:
-            logger.info("No staging collection names found in staging info")
-            return
+            # Parse staging info if it's a string
+            if isinstance(staging_info, str):
+                import json
 
-        # Delete staging collections from Qdrant
-        qdrant_client = qdrant_manager.get_client()
-        for staging_collection in staging_collections:
-            try:
-                # Check if collection exists before deletion
-                collections = qdrant_client.get_collections()
-                if any(col.name == staging_collection for col in collections.collections):
-                    qdrant_client.delete_collection(staging_collection)
-                    logger.info(f"Deleted staging collection: {staging_collection}")
-                else:
-                    logger.warning(f"Staging collection {staging_collection} not found in Qdrant")
-            except Exception as e:
-                logger.error(f"Failed to delete staging collection {staging_collection}: {e}")
+                try:
+                    staging_info = json.loads(staging_info)
+                except json.JSONDecodeError:
+                    logger.error(f"Failed to parse staging info: {staging_info}")
+                    return
 
-        # Clear staging info from database
-        await collection_repo.update(collection_id, {"qdrant_staging": None})
+            # Extract staging collection names
+            staging_collections = []
+            if isinstance(staging_info, dict) and "collection_name" in staging_info:
+                staging_collections.append(staging_info["collection_name"])
+            elif isinstance(staging_info, list):
+                for item in staging_info:
+                    if isinstance(item, dict) and "collection_name" in item:
+                        staging_collections.append(item["collection_name"])
 
-        logger.info(f"Cleaned up {len(staging_collections)} staging collections for collection {collection_id}")
+            if not staging_collections:
+                logger.info("No staging collection names found in staging info")
+                return
+
+            # Delete staging collections from Qdrant
+            qdrant_client = qdrant_manager.get_client()
+            for staging_collection in staging_collections:
+                try:
+                    # Check if collection exists before deletion
+                    collections = qdrant_client.get_collections()
+                    if any(col.name == staging_collection for col in collections.collections):
+                        qdrant_client.delete_collection(staging_collection)
+                        logger.info(f"Deleted staging collection: {staging_collection}")
+                    else:
+                        logger.warning(f"Staging collection {staging_collection} not found in Qdrant")
+                except Exception as e:
+                    logger.error(f"Failed to delete staging collection {staging_collection}: {e}")
+
+            # Clear staging info from database
+            await collection_repo.update(collection_id, {"qdrant_staging": None})
+
+            logger.info(f"Cleaned up {len(staging_collections)} staging collections for collection {collection_id}")
 
     except Exception as e:
         logger.error(f"Failed to clean up staging resources for collection {collection_id}: {e}", exc_info=True)
@@ -811,8 +813,15 @@ def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]
     - Guaranteed status updates via try...finally
     """
     # Run the async function in an event loop
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+    except RuntimeError:
+        # No event loop in current thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
     try:
         return loop.run_until_complete(_process_collection_operation_async(operation_id, self))
@@ -823,8 +832,6 @@ def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]
             raise  # Don't retry on programming errors
         # Retry for other exceptions (network issues, temporary failures)
         raise self.retry(exc=exc, countdown=60) from exc
-    finally:
-        loop.close()
 
 
 async def _process_collection_operation_async(operation_id: str, celery_task: Any) -> dict[str, Any]:
@@ -841,11 +848,17 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
     # Store task ID immediately as FIRST action
     task_id = celery_task.request.id if hasattr(celery_task, "request") else str(uuid.uuid4())
 
-    # Import repository classes
+    # Import repository classes and ensure database is initialized
+    from shared.database import pg_connection_manager
     from shared.database.database import AsyncSessionLocal
     from shared.database.repositories.collection_repository import CollectionRepository
     from shared.database.repositories.document_repository import DocumentRepository
     from shared.database.repositories.operation_repository import OperationRepository
+
+    # Ensure database is initialized for this event loop
+    if not pg_connection_manager._sessionmaker:
+        await pg_connection_manager.initialize()
+        logger.info("Initialized database connection for this task")
 
     # Use async session for all database operations
     async with AsyncSessionLocal() as db:
@@ -997,6 +1010,9 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     },
                 )
 
+                # Commit all database changes
+                await db.commit()
+
                 return result
 
         except Exception as e:
@@ -1072,10 +1088,8 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
             except Exception as final_error:
                 logger.error(f"Failed to finalize operation status: {final_error}")
                 # Try to rollback if the finalization failed
-                try:
-                    await db.rollback()
-                except Exception:
-                    pass  # Best effort rollback
+                with contextlib.suppress(Exception):
+                    await db.rollback()  # Best effort rollback
 
             # Note: Redis connection cleanup is handled automatically by the context manager
 
@@ -1376,25 +1390,31 @@ async def _process_append_operation(
         )
 
         # Process registered documents to generate embeddings
-        if scan_stats["new_documents_registered"] > 0:
+        # Check for both new documents AND existing documents that haven't been processed
+        # (This handles cases where documents were registered but never chunked/embedded)
+
+        # Get all documents from this source path
+        all_docs, _ = await document_repo.list_by_collection(
+            collection["id"],
+            status=None,  # Get all statuses
+            limit=10000,  # High limit to get all docs
+        )
+
+        # Filter documents by source path and check for unprocessed ones
+        documents = [doc for doc in all_docs if doc.file_path.startswith(source_path)]
+        unprocessed_documents = [doc for doc in documents if doc.chunk_count == 0]
+
+        if len(unprocessed_documents) > 0:
             await updater.send_update(
                 "processing_embeddings",
                 {
                     "status": "generating_embeddings",
-                    "documents_to_process": scan_stats["new_documents_registered"],
+                    "documents_to_process": len(unprocessed_documents),
                 },
             )
 
-            # Get newly registered documents
-            # Note: We'll get all documents and filter by path since there's no source_filter
-            all_docs, _ = await document_repo.list_by_collection(
-                collection["id"],
-                status=None,  # Get all statuses
-                limit=10000,  # High limit to get all docs
-            )
-
-            # Filter documents by source path
-            documents = [doc for doc in all_docs if doc.file_path.startswith(source_path)]
+            # Use unprocessed documents for processing
+            documents = unprocessed_documents
 
             # Get collection configuration
             embedding_model = collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
@@ -1448,7 +1468,15 @@ async def _process_append_operation(
                         chunk_overlap=chunk_overlap,
                     )
 
-                    chunks = chunker.chunk_blocks(text_blocks, doc.id)
+                    # Process each text block
+                    all_chunks = []
+                    for text, metadata in text_blocks:
+                        if not text.strip():
+                            continue
+                        chunks = chunker.chunk_text(text, doc.id, metadata)
+                        all_chunks.extend(chunks)
+
+                    chunks = all_chunks
                     logger.info(f"Created {len(chunks)} chunks for {doc.file_path}")
 
                     if not chunks:
@@ -1464,33 +1492,32 @@ async def _process_append_operation(
                     # Generate embeddings
                     texts = [chunk["text"] for chunk in chunks]
 
-                    # Prepare task ID for GPU scheduling
-                    task_id = str(uuid.uuid4())
+                    # Call vecpipe API to generate embeddings
+                    vecpipe_url = "http://vecpipe:8000/embed"
+                    embed_request = {
+                        "texts": texts,
+                        "model_name": embedding_model,
+                        "quantization": quantization,
+                        "instruction": instruction,
+                        "batch_size": batch_size,
+                    }
 
-                    # Function to run in executor with GPU scheduling
-                    def generate_embeddings_with_gpu(task_id: str = task_id, texts: list[str] = texts) -> Any:
-                        with gpu_task(task_id) as gpu_id:
-                            if gpu_id is None:
-                                logger.warning(f"No GPU available for task {task_id}, proceeding with CPU")
-                            else:
-                                logger.info(f"Task {task_id} using GPU {gpu_id}")
+                    async with httpx.AsyncClient(timeout=300.0) as client:
+                        logger.info(f"Calling vecpipe /embed for {len(texts)} texts")
+                        response = await client.post(vecpipe_url, json=embed_request)
 
-                            return embedding_service.generate_embeddings(
-                                texts,
-                                embedding_model,
-                                quantization,
-                                batch_size,
-                                False,  # show_progress
-                                instruction,
+                        if response.status_code != 200:
+                            raise Exception(
+                                f"Failed to generate embeddings via vecpipe: {response.status_code} - {response.text}"
                             )
 
-                    # Run with GPU scheduling in thread pool
-                    embeddings_array = await loop.run_in_executor(executor, generate_embeddings_with_gpu)
+                        embed_response = response.json()
+                        embeddings_array = embed_response["embeddings"]
 
                     if embeddings_array is None:
                         raise Exception("Failed to generate embeddings")
 
-                    embeddings = embeddings_array.tolist()
+                    embeddings = embeddings_array  # Already a list from API response
 
                     # Prepare points for Qdrant
                     points = []
@@ -1509,15 +1536,30 @@ async def _process_append_operation(
                         )
                         points.append(point)
 
-                    # Upload to Qdrant in batches
+                    # Upload to Qdrant in batches via vecpipe API
                     for batch_start in range(0, len(points), VECTOR_UPLOAD_BATCH_SIZE):
                         batch_end = min(batch_start + VECTOR_UPLOAD_BATCH_SIZE, len(points))
                         batch_points = points[batch_start:batch_end]
 
-                        qdrant_client.upsert(
-                            collection_name=qdrant_collection_name,
-                            points=batch_points,
-                        )
+                        # Convert PointStruct objects to dict format for API
+                        points_data = []
+                        for point in batch_points:
+                            points_data.append({"id": point.id, "vector": point.vector, "payload": point.payload})
+
+                        upsert_request = {
+                            "collection_name": qdrant_collection_name,
+                            "points": points_data,
+                            "wait": True,
+                        }
+
+                        async with httpx.AsyncClient(timeout=60.0) as client:
+                            vecpipe_upsert_url = "http://vecpipe:8000/upsert"
+                            response = await client.post(vecpipe_upsert_url, json=upsert_request)
+
+                            if response.status_code != 200:
+                                raise Exception(
+                                    f"Failed to upsert vectors via vecpipe: {response.status_code} - {response.text}"
+                                )
 
                     # Update document status
                     await document_repo.update_status(
@@ -1549,16 +1591,29 @@ async def _process_append_operation(
                     )
                     failed_count += 1
 
-            # Update collection vector count
-            await collection_repo.update(
+            # Update collection statistics (document count and vector count)
+            # Get current document stats from database
+            doc_stats = await document_repo.get_stats_by_collection(collection["id"])
+            current_doc_count = doc_stats.get("total_documents", 0)
+
+            # Get current vector count from Qdrant
+            qdrant_client = qdrant_manager.get_client()
+            qdrant_info = qdrant_client.get_collection(qdrant_collection_name)
+            # Use points_count instead of vectors_count (which can be None)
+            current_vector_count = qdrant_info.points_count if qdrant_info else 0
+
+            # Update collection stats
+            await collection_repo.update_stats(
                 collection["id"],
-                {"vector_count": collection.get("vector_count", 0) + total_vectors_created},
+                document_count=current_doc_count,
+                vector_count=current_vector_count,
             )
 
             # Log final results
             logger.info(
                 f"Embedding generation complete: {processed_count} processed, "
-                f"{failed_count} failed, {total_vectors_created} vectors created"
+                f"{failed_count} failed, {total_vectors_created} vectors created, "
+                f"collection now has {current_doc_count} documents and {current_vector_count} vectors"
             )
 
             await updater.send_update(
@@ -1803,31 +1858,32 @@ async def _process_reindex_operation(
                         # Generate embeddings for chunks
                         texts = [chunk["text"] for chunk in all_chunks]
 
-                        # Generate embeddings with GPU scheduling
-                        task_id = f"reindex-{operation['id']}-{doc_id}"
+                        # Call vecpipe API to generate embeddings
+                        vecpipe_url = "http://vecpipe:8000/embed"
+                        embed_request = {
+                            "texts": texts,
+                            "model_name": model_name,
+                            "quantization": quantization,
+                            "instruction": instruction,
+                            "batch_size": batch_size,
+                        }
 
-                        def generate_embeddings_with_gpu(task_id: str = task_id, texts: list[str] = texts) -> Any:
-                            with gpu_task(task_id) as gpu_id:
-                                if gpu_id is None:
-                                    logger.warning(f"No GPU available for task {task_id}, proceeding with CPU")
-                                else:
-                                    logger.info(f"Task {task_id} using GPU {gpu_id}")
+                        async with httpx.AsyncClient(timeout=300.0) as client:
+                            logger.info(f"Calling vecpipe /embed for {len(texts)} texts (reindex)")
+                            response = await client.post(vecpipe_url, json=embed_request)
 
-                                return embedding_service.generate_embeddings(
-                                    texts,
-                                    model_name,
-                                    quantization,
-                                    batch_size,
-                                    False,  # show_progress
-                                    instruction,
+                            if response.status_code != 200:
+                                raise Exception(
+                                    f"Failed to generate embeddings via vecpipe: {response.status_code} - {response.text}"
                                 )
 
-                        embeddings_array = await loop.run_in_executor(executor, generate_embeddings_with_gpu)
+                            embed_response = response.json()
+                            embeddings_array = embed_response["embeddings"]
 
                         if embeddings_array is None:
                             raise Exception("Failed to generate embeddings")
 
-                        embeddings = embeddings_array.tolist()
+                        embeddings = embeddings_array  # Already a list from API response
 
                         # Handle dimension override if specified
                         if vector_dim and len(embeddings) > 0:
@@ -1867,9 +1923,27 @@ async def _process_reindex_operation(
                             )
                             points.append(point)
 
-                        # Upload to staging collection
+                        # Upload to staging collection via vecpipe API
                         with QdrantOperationTimer("upsert_staging_vectors"):
-                            qdrant_client.upsert(collection_name=staging_collection_name, points=points, wait=True)
+                            # Convert PointStruct objects to dict format for API
+                            points_data = []
+                            for point in points:
+                                points_data.append({"id": point.id, "vector": point.vector, "payload": point.payload})
+
+                            upsert_request = {
+                                "collection_name": staging_collection_name,
+                                "points": points_data,
+                                "wait": True,
+                            }
+
+                            async with httpx.AsyncClient(timeout=60.0) as client:
+                                vecpipe_upsert_url = "http://vecpipe:8000/upsert"
+                                response = await client.post(vecpipe_upsert_url, json=upsert_request)
+
+                                if response.status_code != 200:
+                                    raise Exception(
+                                        f"Failed to upsert vectors via vecpipe: {response.status_code} - {response.text}"
+                                    )
 
                         vector_count += len(points)
                         processed_count += 1
@@ -1943,8 +2017,6 @@ async def _process_reindex_operation(
         record_reindex_checkpoint(collection["id"], "atomic_switch_start")
 
         # Call internal API to perform atomic switch
-        import httpx
-
         # Use configurable host for containerized environments
         host = settings.WEBUI_INTERNAL_HOST
         port = settings.WEBUI_PORT

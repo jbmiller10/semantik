@@ -5,11 +5,12 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from qdrant_client import QdrantClient
-from shared.database.repositories.collection_repository import CollectionRepository
+
+from packages.shared.database.repositories.collection_repository import CollectionRepository
 
 
 @pytest.fixture()
-def mock_qdrant_client():
+def mock_qdrant_client() -> None:
     """Mock Qdrant client."""
     client = Mock(spec=QdrantClient)
     # Mock successful collection creation
@@ -28,11 +29,11 @@ def mock_qdrant_client():
 @pytest.mark.asyncio()
 async def test_collection_creation_persists_in_qdrant(mock_qdrant_client):
     """Test that collections created in tasks persist in Qdrant."""
-    from webui.tasks import _process_index_operation
-    from webui.utils.qdrant_manager import qdrant_manager
+    from packages.webui.tasks import _process_index_operation
 
     # Mock the qdrant manager to return our mock client
-    with patch.object(qdrant_manager, "get_client", return_value=mock_qdrant_client):
+    with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant_manager:
+        mock_qdrant_manager.get_client.return_value = mock_qdrant_client
         # Create a mock collection
         collection = Mock()
         collection.id = "test-collection-id"
@@ -48,6 +49,7 @@ async def test_collection_creation_persists_in_qdrant(mock_qdrant_client):
             "id": "test-operation-123",
             "collection_id": collection.id,
             "user_id": 1,
+            "type": "INDEX",  # Add operation type
         }
         collection_dict = {
             "id": collection.id,
@@ -84,11 +86,11 @@ async def test_collection_creation_persists_in_qdrant(mock_qdrant_client):
 @pytest.mark.asyncio()
 async def test_collection_creation_rollback_on_db_failure(mock_qdrant_client):
     """Test that Qdrant collection is deleted if database update fails."""
-    from webui.tasks import _process_index_operation
-    from webui.utils.qdrant_manager import qdrant_manager
+    from packages.webui.tasks import _process_index_operation
 
     # Mock the qdrant manager to return our mock client
-    with patch.object(qdrant_manager, "get_client", return_value=mock_qdrant_client):
+    with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant_manager:
+        mock_qdrant_manager.get_client.return_value = mock_qdrant_client
         # Create a mock collection
         collection = Mock()
         collection.id = "test-collection-id-2"
@@ -104,6 +106,7 @@ async def test_collection_creation_rollback_on_db_failure(mock_qdrant_client):
             "id": "test-operation-456",
             "collection_id": collection.id,
             "user_id": 1,
+            "type": "INDEX",  # Add operation type
         }
         collection_dict = {
             "id": collection.id,

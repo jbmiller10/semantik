@@ -78,7 +78,7 @@ async def create_collection(
             },
         )
 
-        # Convert to response model
+        # Convert to response model and add operation uuid
         return CollectionResponse(
             id=collection["id"],
             name=collection["name"],
@@ -97,6 +97,7 @@ async def create_collection(
             vector_count=collection.get("vector_count", 0),
             status=collection["status"],
             status_message=collection.get("status_message"),
+            initial_operation_id=operation["uuid"],  # Include the initial operation ID
         )
 
     except EntityAlreadyExistsError as e:
@@ -269,11 +270,14 @@ async def delete_collection(
     operations. This action cannot be undone. Only the collection owner can
     delete a collection.
     """
+    logger.info(f"User {current_user['id']} attempting to delete collection {collection_uuid}")
+
     try:
         await service.delete_collection(
             collection_id=collection_uuid,
             user_id=int(current_user["id"]),
         )
+        logger.info(f"Successfully deleted collection {collection_uuid}")
 
     except EntityNotFoundError as e:
         raise HTTPException(

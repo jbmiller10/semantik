@@ -16,14 +16,3 @@ services:
       # C compiler for bitsandbytes JIT compilation
       - CC=gcc
       - CXX=g++
-    
-  webui:
-    environment:
-      # Additional environment for bitsandbytes INT8 support
-      - LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}
-      - CUDA_HOME=/usr/local/cuda
-      # Suppress bitsandbytes welcome message
-      - BITSANDBYTES_NOWELCOME=1
-      # C compiler for bitsandbytes JIT compilation
-      - CC=gcc
-      - CXX=g++

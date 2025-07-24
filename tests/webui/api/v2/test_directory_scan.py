@@ -1,6 +1,5 @@
 """Integration tests for directory scan v2 API endpoints."""
 
-import os
 import tempfile
 import uuid
 from pathlib import Path
@@ -213,7 +212,7 @@ async def test_directory_scan_preview_file_instead_of_directory(
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "not a directory" in response.json()["detail"].lower()
     finally:
-        os.unlink(tmpfile_path)
+        Path(tmpfile_path).unlink()
 
 
 @pytest.mark.asyncio()
@@ -259,20 +258,27 @@ async def test_directory_scan_preview_relative_path(
 
 
 @pytest.mark.asyncio()
-async def test_directory_scan_preview_no_auth(async_client: AsyncClient) -> None:
+async def test_directory_scan_preview_no_auth(monkeypatch) -> None:
     """Test that authentication is required."""
-    scan_id = str(uuid.uuid4())
-    request_data = {
-        "path": "/tmp",
-        "scan_id": scan_id,
-    }
+    # Temporarily enable authentication
+    monkeypatch.setattr("packages.webui.auth.settings.DISABLE_AUTH", False)
 
-    response = await async_client.post(
-        "/api/v2/directory-scan/preview",
-        json=request_data,
-    )
+    from packages.webui.main import app
 
-    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    # Create a client without auth overrides
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        scan_id = str(uuid.uuid4())
+        request_data = {
+            "path": "/tmp",
+            "scan_id": scan_id,
+        }
+
+        response = await client.post(
+            "/api/v2/directory-scan/preview",
+            json=request_data,
+        )
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 @pytest.mark.asyncio()

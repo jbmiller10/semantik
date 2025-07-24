@@ -8,7 +8,8 @@ from shared.database.exceptions import (
     DatabaseOperationError,
     EntityAlreadyExistsError,
 )
-from sqlalchemy import func, insert
+from sqlalchemy import func, insert, select
+from sqlalchemy import update as sql_update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,31 +62,29 @@ class PostgreSQLBaseRepository:
                 stmt = pg_insert(self.model).values(records)
 
                 # Get primary key columns
-                pk_columns = [col.name for col in self.model.__table__.primary_key.columns]
+                pk_columns = [col.name for col in self.model.__table__.primary_key.columns]  # type: ignore[attr-defined]
 
                 # Update all non-primary key columns on conflict
                 update_columns = {col.name: col for col in stmt.excluded if col.name not in pk_columns}
 
-                stmt = stmt.on_conflict_do_update(index_elements=pk_columns, set_=update_columns).returning(self.model)
+                stmt = stmt.on_conflict_do_update(index_elements=pk_columns, set_=update_columns).returning(self.model)  # type: ignore[assignment]  # type: ignore[assignment]
 
                 result = await self.session.execute(stmt)
                 return list(result.scalars().all())
-            else:
-                # Regular bulk insert
-                stmt = insert(self.model).values(records).returning(self.model)
-                result = await self.session.execute(stmt)
-                return list(result.scalars().all())
+            # Regular bulk insert
+            stmt = insert(self.model).values(records).returning(self.model)  # type: ignore[assignment]
+            result = await self.session.execute(stmt)
+            return list(result.scalars().all())
 
         except IntegrityError as e:
             if isinstance(e.orig, UniqueViolationError):
                 logger.error(f"Unique constraint violation during bulk insert: {e}")
                 raise EntityAlreadyExistsError(self.model_name, "multiple records") from e
-            elif isinstance(e.orig, ForeignKeyViolationError):
+            if isinstance(e.orig, ForeignKeyViolationError):
                 logger.error(f"Foreign key violation during bulk insert: {e}")
                 raise DatabaseOperationError("bulk_insert", self.model_name, str(e)) from e
-            else:
-                logger.error(f"Integrity error during bulk insert: {e}")
-                raise DatabaseOperationError("bulk_insert", self.model_name, str(e)) from e
+            logger.error(f"Integrity error during bulk insert: {e}")
+            raise DatabaseOperationError("bulk_insert", self.model_name, str(e)) from e
         except Exception as e:
             logger.error(f"Failed to bulk insert {self.model_name} records: {e}")
             raise DatabaseOperationError("bulk_insert", self.model_name, str(e)) from e
@@ -106,15 +105,15 @@ class PostgreSQLBaseRepository:
             stmt = pg_insert(self.model).values(**kwargs)
 
             # Get primary key columns
-            pk_columns = [col.name for col in self.model.__table__.primary_key.columns]
+            pk_columns = [col.name for col in self.model.__table__.primary_key.columns]  # type: ignore[attr-defined]
 
             # Update all non-primary key columns on conflict
             update_columns = {col.name: col for col in stmt.excluded if col.name not in pk_columns}
 
-            stmt = stmt.on_conflict_do_update(index_elements=pk_columns, set_=update_columns).returning(self.model)
+            stmt = stmt.on_conflict_do_update(index_elements=pk_columns, set_=update_columns).returning(self.model)  # type: ignore[assignment]
 
             result = await self.session.execute(stmt)
-            return result.scalar_one()
+            return result.scalar_one()  # type: ignore[no-any-return]
 
         except Exception as e:
             logger.error(f"Failed to upsert {self.model_name}: {e}")
@@ -147,7 +146,7 @@ class PostgreSQLBaseRepository:
             updated_count = 0
             for update_data in updates:
                 key_value = update_data.pop(key_field)
-                stmt = update(self.model).where(getattr(self.model, key_field) == key_value).values(**update_data)
+                stmt = sql_update(self.model).where(getattr(self.model, key_field) == key_value).values(**update_data)
                 result = await self.session.execute(stmt)
                 updated_count += result.rowcount or 0
 
@@ -175,7 +174,7 @@ class PostgreSQLBaseRepository:
                 # Use the provided select statement but only count
                 count_query = filters.with_only_columns(func.count()).select_from(self.model)
             else:
-                count_query = self.session.query(func.count()).select_from(self.model)
+                count_query = select(func.count()).select_from(self.model)
 
             result = await self.session.scalar(count_query)
             return result or 0
@@ -218,11 +217,10 @@ class PostgreSQLBaseRepository:
             constraint_name = getattr(error.orig, "constraint_name", "unknown")
             logger.error(f"Unique constraint violation ({constraint_name}) during {operation}")
             raise EntityAlreadyExistsError(self.model_name, f"constraint: {constraint_name}") from error
-        elif isinstance(error.orig, ForeignKeyViolationError):
+        if isinstance(error.orig, ForeignKeyViolationError):
             # Extract foreign key info if available
             detail = getattr(error.orig, "detail", "unknown")
             logger.error(f"Foreign key violation during {operation}: {detail}")
             raise DatabaseOperationError(operation, self.model_name, f"Foreign key violation: {detail}") from error
-        else:
-            logger.error(f"Integrity error during {operation}: {error}")
-            raise DatabaseOperationError(operation, self.model_name, str(error)) from error
+        logger.error(f"Integrity error during {operation}: {error}")
+        raise DatabaseOperationError(operation, self.model_name, str(error)) from error

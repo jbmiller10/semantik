@@ -7,8 +7,8 @@ import os
 from typing import Any
 from urllib.parse import urlparse
 
-from pydantic import ConfigDict, Field, field_validator
-from pydantic_settings import BaseSettings
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +42,11 @@ class PostgresConfig(BaseSettings):
     DB_RETRY_LIMIT: int = Field(default=3, description="Number of connection retries")
     DB_RETRY_INTERVAL: float = Field(default=0.5, description="Retry interval in seconds")
 
-    model_config = ConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
-    def construct_database_url(cls, v: str | None, values: dict[str, Any]) -> str:
+    def construct_database_url(cls, v: str | None) -> str:
         """Construct DATABASE_URL from components if not provided."""
         if v:
             return v
@@ -72,12 +72,7 @@ class PostgresConfig(BaseSettings):
 
         # Parse the URL and replace scheme with async version
         parsed = urlparse(self.DATABASE_URL)
-        if parsed.scheme == "postgresql":
-            # Use asyncpg for async PostgreSQL
-            async_scheme = "postgresql+asyncpg"
-        else:
-            # Keep original scheme if not recognized
-            async_scheme = parsed.scheme
+        async_scheme = "postgresql+asyncpg" if parsed.scheme == "postgresql" else parsed.scheme
 
         # Reconstruct URL with async scheme
         return self.DATABASE_URL.replace(f"{parsed.scheme}://", f"{async_scheme}://", 1)
@@ -90,12 +85,7 @@ class PostgresConfig(BaseSettings):
 
         # Parse the URL and ensure it uses sync driver
         parsed = urlparse(self.DATABASE_URL)
-        if parsed.scheme == "postgresql":
-            # Use psycopg2 for sync PostgreSQL
-            sync_scheme = "postgresql+psycopg2"
-        else:
-            # Keep original scheme if not recognized
-            sync_scheme = parsed.scheme
+        sync_scheme = "postgresql+psycopg2" if parsed.scheme == "postgresql" else parsed.scheme
 
         # Reconstruct URL with sync scheme
         return self.DATABASE_URL.replace(f"{parsed.scheme}://", f"{sync_scheme}://", 1)
@@ -128,13 +118,12 @@ class PostgresConfig(BaseSettings):
 
             # For asyncpg driver, use 'timeout' instead of 'command_timeout'
             if "asyncpg" in parsed.scheme:
-                connect_args["timeout"] = self.DB_QUERY_TIMEOUT
+                connect_args["timeout"] = self.DB_QUERY_TIMEOUT  # type: ignore[assignment]
             else:
-                connect_args["command_timeout"] = self.DB_QUERY_TIMEOUT
+                connect_args["command_timeout"] = self.DB_QUERY_TIMEOUT  # type: ignore[assignment]
 
             return connect_args
-        else:
-            return {}
+        return {}
 
 
 # Create a singleton instance

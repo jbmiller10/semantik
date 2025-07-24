@@ -58,9 +58,18 @@ function SettingsPage() {
       
       // Redirect to home page
       navigate('/');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to reset database:', error);
-      alert('Failed to reset database. Check console for details.');
+      
+      // Extract error message from the response
+      let errorMessage = 'Failed to reset database.';
+      if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      alert(`Failed to reset database: ${errorMessage}`);
     } finally {
       setResetting(false);
     }

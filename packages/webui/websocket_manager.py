@@ -6,10 +6,12 @@ import json
 import logging
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 import redis.asyncio as redis
 from fastapi import WebSocket
-from shared.config import settings
+
+from packages.shared.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -25,39 +27,50 @@ class RedisStreamWebSocketManager:
         self.consumer_group = f"webui-{uuid.uuid4().hex[:8]}"
         self.redis_url = settings.REDIS_URL
         self.max_connections_per_user = 10  # Prevent DOS attacks
+        self._startup_lock = asyncio.Lock()
+        self._startup_attempted = False
+        self._get_operation_func = None  # Function to get operation by ID
 
     async def startup(self) -> None:
         """Initialize Redis connection on application startup with retry logic."""
-        max_retries = 3
-        retry_delay = 1.0  # Initial delay in seconds
-
-        for attempt in range(max_retries):
-            try:
-                self.redis = await redis.from_url(
-                    self.redis_url,
-                    decode_responses=True,
-                    health_check_interval=30,
-                    socket_keepalive=True,
-                    retry_on_timeout=True,
-                    socket_connect_timeout=5,
-                    socket_timeout=5,
-                )
-                # Test connection
-                await self.redis.ping()
-                logger.info(f"WebSocket manager connected to Redis at {self.redis_url}")
+        async with self._startup_lock:
+            # Skip if already attempted or connected
+            if self._startup_attempted and self.redis is not None:
                 return
-            except Exception as e:
-                if attempt < max_retries - 1:
-                    wait_time = retry_delay * (2**attempt)  # Exponential backoff
-                    logger.warning(
-                        f"Failed to connect to Redis (attempt {attempt + 1}/{max_retries}): {e}. "
-                        f"Retrying in {wait_time:.1f} seconds..."
+
+            self._startup_attempted = True
+            logger.info(f"WebSocket manager startup initiated. Redis URL: {self.redis_url}")
+            max_retries = 3
+            retry_delay = 1.0  # Initial delay in seconds
+
+            for attempt in range(max_retries):
+                try:
+                    logger.info(f"Attempting to connect to Redis (attempt {attempt + 1}/{max_retries})")
+                    self.redis = await redis.from_url(
+                        self.redis_url,
+                        decode_responses=True,
+                        health_check_interval=30,
+                        socket_keepalive=True,
+                        retry_on_timeout=True,
+                        socket_connect_timeout=5,
+                        socket_timeout=5,
                     )
-                    await asyncio.sleep(wait_time)
-                else:
-                    logger.error(f"Failed to connect to Redis after {max_retries} attempts: {e}")
-                    # Don't raise - allow graceful degradation
-                    self.redis = None
+                    # Test connection
+                    await self.redis.ping()
+                    logger.info(f"WebSocket manager connected to Redis at {self.redis_url}")
+                    return
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        wait_time = retry_delay * (2**attempt)  # Exponential backoff
+                        logger.warning(
+                            f"Failed to connect to Redis (attempt {attempt + 1}/{max_retries}): {e}. "
+                            f"Retrying in {wait_time:.1f} seconds..."
+                        )
+                        await asyncio.sleep(wait_time)
+                    else:
+                        logger.error(f"Failed to connect to Redis after {max_retries} attempts: {e}")
+                        # Don't raise - allow graceful degradation
+                        self.redis = None
 
     async def shutdown(self) -> None:
         """Clean up resources on application shutdown."""
@@ -79,9 +92,21 @@ class RedisStreamWebSocketManager:
             await self.redis.close()
             logger.info("WebSocket manager Redis connection closed")
 
+    def set_operation_getter(self, get_operation_func: Any) -> None:
+        """Set the function to get operation by ID.
+
+        This allows dependency injection for testing.
+        The function should be an async function that takes an operation_id
+        and returns an operation object or None.
+        """
+        self._get_operation_func = get_operation_func
+
     async def connect(self, websocket: WebSocket, operation_id: str, user_id: str) -> None:
         """Handle new WebSocket connection for operation updates with connection limit enforcement."""
-        from shared.database.factory import create_operation_repository
+        # Try to reconnect to Redis if not connected
+        if self.redis is None:
+            logger.info("Redis not connected, attempting to reconnect...")
+            await self.startup()
 
         # Check connection limit for this user
         user_connections = sum(
@@ -107,8 +132,19 @@ class RedisStreamWebSocketManager:
 
         # Get current operation state from database and send it
         try:
-            operation_repo = create_operation_repository()
-            operation = await operation_repo.get_by_uuid(operation_id)
+            operation = None
+
+            if self._get_operation_func:
+                # Use injected function (for testing)
+                operation = await self._get_operation_func(operation_id)
+            else:
+                # Use default implementation
+                from packages.shared.database.database import AsyncSessionLocal
+                from packages.shared.database.repositories.operation_repository import OperationRepository
+
+                async with AsyncSessionLocal() as session:  # type: ignore[misc]
+                    operation_repo = OperationRepository(session)
+                    operation = await operation_repo.get_by_uuid(operation_id)
 
             if operation:
                 # Send current state
@@ -197,26 +233,47 @@ class RedisStreamWebSocketManager:
     async def _consume_updates(self, operation_id: str) -> None:
         """Consume updates from Redis Stream for a specific operation."""
         stream_key = f"operation-progress:{operation_id}"
+        consumer_name = f"consumer-{operation_id}"
+        consumer_group_created = False
 
         try:
-            # Create consumer group
-            try:
-                if self.redis is None:
-                    raise RuntimeError("Redis connection not established")
-                await self.redis.xgroup_create(stream_key, self.consumer_group, id="0")
-                logger.info(f"Created consumer group {self.consumer_group} for stream {stream_key}")
-            except Exception as e:
-                # Group might already exist
-                logger.debug(f"Consumer group might already exist: {e}")
-
-            consumer_name = f"consumer-{operation_id}"
-            last_id = ">"  # Start reading new messages
-
             while True:
                 try:
-                    # Read from stream with blocking
                     if self.redis is None:
                         raise RuntimeError("Redis connection not established")
+
+                    # Try to create consumer group if not already created
+                    if not consumer_group_created:
+                        try:
+                            # First check if the stream exists
+                            try:
+                                stream_info = await self.redis.xinfo_stream(stream_key)
+                                logger.debug(f"Stream {stream_key} exists with {stream_info.get('length', 0)} messages")
+                            except Exception:
+                                # Stream doesn't exist - this is normal for operations that haven't started yet
+                                logger.debug(
+                                    f"Stream {stream_key} does not exist yet - waiting for worker to create it"
+                                )
+                                # Wait a bit and continue the loop
+                                await asyncio.sleep(2)
+                                continue
+
+                            # Stream exists, try to create consumer group
+                            await self.redis.xgroup_create(stream_key, self.consumer_group, id="0")
+                            logger.info(f"Created consumer group {self.consumer_group} for stream {stream_key}")
+                            consumer_group_created = True
+                        except Exception as e:
+                            # Group might already exist
+                            if "BUSYGROUP" in str(e):
+                                logger.debug(f"Consumer group already exists for {stream_key}")
+                                consumer_group_created = True
+                            else:
+                                logger.debug(f"Could not create consumer group: {e}")
+                                await asyncio.sleep(2)
+                                continue
+
+                    # Read from stream with blocking
+                    last_id = ">"  # Start reading new messages
                     messages = await self.redis.xreadgroup(
                         self.consumer_group,
                         consumer_name,
@@ -245,8 +302,6 @@ class RedisStreamWebSocketManager:
                                         await self._close_connections(operation_id)
 
                                     # Acknowledge message
-                                    if self.redis is None:
-                                        raise RuntimeError("Redis connection not established")
                                     await self.redis.xack(stream_key, self.consumer_group, msg_id)
 
                                     logger.debug(f"Processed message {msg_id} for operation {operation_id}")
@@ -265,12 +320,32 @@ class RedisStreamWebSocketManager:
                         pass
                     raise
                 except Exception as e:
-                    logger.error(f"Error in consumer loop for operation {operation_id}: {e}")
-                    await asyncio.sleep(5)  # Wait before retry
+                    error_str = str(e)
+                    if "NOGROUP" in error_str:
+                        # Consumer group doesn't exist anymore, reset flag
+                        consumer_group_created = False
+                        logger.debug(f"Consumer group lost for {stream_key}, will recreate...")
+                        await asyncio.sleep(2)
+                    elif "Stream" in error_str and "does not exist" in error_str:
+                        # Stream doesn't exist yet
+                        logger.debug(f"Stream {stream_key} not ready yet, waiting...")
+                        await asyncio.sleep(2)
+                    elif "no running event loop" in error_str.lower():
+                        # Event loop has been closed, exit gracefully
+                        logger.debug(f"Event loop closed for operation {operation_id}, exiting consumer")
+                        return
+                    else:
+                        logger.error(f"Error in consumer loop for operation {operation_id}: {e}")
+                        await asyncio.sleep(5)  # Wait before retry
 
         except asyncio.CancelledError:
             logger.info(f"Consumer task cancelled for operation {operation_id}")
             raise
+        except RuntimeError as e:
+            if "no running event loop" in str(e).lower():
+                logger.debug(f"Event loop closed for operation {operation_id}, exiting consumer")
+            else:
+                logger.error(f"Fatal runtime error in consumer for operation {operation_id}: {e}")
         except Exception as e:
             logger.error(f"Fatal error in consumer for operation {operation_id}: {e}")
 

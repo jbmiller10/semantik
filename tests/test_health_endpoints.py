@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture()
-def mock_embedding_service():
+def mock_embedding_service() -> None:
     """Create a mock embedding service"""
     service = Mock()
     service.is_initialized = True
@@ -25,19 +25,19 @@ def mock_embedding_service():
 class TestWebuiHealthEndpoints:
     """Test health endpoints in webui"""
 
-    def test_basic_health_check(self, test_client):
+    def test_basic_health_check(self, test_client) -> None:
         """Test basic health check endpoint"""
         response = test_client.get("/api/health/")
         assert response.status_code == 200
         assert response.json() == {"status": "healthy"}
 
-    def test_search_api_health_healthy(self, test_client):
+    def test_search_api_health_healthy(self, test_client) -> None:
         """Test search API health when service is healthy"""
 
         class MockResponse:
             status_code = 200
 
-            def json(self):
+            def json(self) -> None:
                 return {"status": "healthy"}
 
         async def mock_get(*_args, **_kwargs):
@@ -51,7 +51,7 @@ class TestWebuiHealthEndpoints:
             assert data["message"] == "Search API is ready"
             assert "api_response" in data
 
-    def test_search_api_health_unhealthy(self, test_client):
+    def test_search_api_health_unhealthy(self, test_client) -> None:
         """Test search API health when service is unhealthy"""
 
         class MockResponse:
@@ -69,7 +69,7 @@ class TestWebuiHealthEndpoints:
             assert "Search API returned status 503" in data["message"]
             assert data["details"] == "Service unavailable"
 
-    def test_search_api_health_connection_error(self, test_client):
+    def test_search_api_health_connection_error(self, test_client) -> None:
         """Test search API health when connection fails"""
 
         async def mock_get(*_args, **_kwargs):
@@ -84,7 +84,7 @@ class TestWebuiHealthEndpoints:
             assert "Failed to access Search API" in data["error"]
             assert "Connection failed" in data["details"]
 
-    def test_readiness_check_ready(self, test_client):
+    def test_readiness_check_ready(self, test_client) -> None:
         """Test readiness check when all services are ready"""
 
         # Mock Redis connection
@@ -99,7 +99,7 @@ class TestWebuiHealthEndpoints:
         class MockResponse:
             status_code = 200
 
-            def json(self):
+            def json(self) -> None:
                 return {"status": "healthy", "components": {}}
 
         async def mock_get(*_args, **_kwargs):
@@ -109,6 +109,17 @@ class TestWebuiHealthEndpoints:
         async def mock_check_embedding_service_health():
             return {"status": "unhealthy", "message": "Embedding service not initialized"}
 
+        # Mock database health check
+        async def mock_check_postgres():
+            return True
+
+        # Mock Qdrant connection
+        mock_qdrant_client = Mock()
+        mock_qdrant_client.get_collections = Mock(return_value=Mock(collections=[]))
+
+        mock_qdrant_manager = Mock()
+        mock_qdrant_manager.get_client = Mock(return_value=mock_qdrant_client)
+
         with (
             patch("packages.webui.api.health.ws_manager.redis", mock_redis),
             patch("httpx.AsyncClient.get", side_effect=mock_get),
@@ -116,13 +127,15 @@ class TestWebuiHealthEndpoints:
                 "packages.webui.api.health._check_embedding_service_health",
                 side_effect=mock_check_embedding_service_health,
             ),
+            patch("packages.webui.api.health.check_postgres_connection", side_effect=mock_check_postgres),
+            patch("packages.webui.api.health.qdrant_manager", mock_qdrant_manager),
         ):
             response = test_client.get("/api/health/readyz")
             assert response.status_code == 200
             data = response.json()
             assert data["ready"] is True
 
-    def test_readiness_check_not_ready(self, test_client):
+    def test_readiness_check_not_ready(self, test_client) -> None:
         """Test readiness check when search API is not ready"""
 
         # Mock Redis connection - make it healthy so we can test search API failure
@@ -137,7 +150,7 @@ class TestWebuiHealthEndpoints:
         class MockResponse:
             status_code = 503
 
-            def json(self):
+            def json(self) -> None:
                 return {"status": "unhealthy", "components": {}}
 
         async def mock_get(*_args, **_kwargs):
@@ -147,6 +160,17 @@ class TestWebuiHealthEndpoints:
         async def mock_check_embedding_service_health():
             return {"status": "unhealthy", "message": "Embedding service not initialized"}
 
+        # Mock database health check - make it fail
+        async def mock_check_postgres():
+            return False
+
+        # Mock Qdrant connection
+        mock_qdrant_client = Mock()
+        mock_qdrant_client.get_collections = Mock(return_value=Mock(collections=[]))
+
+        mock_qdrant_manager = Mock()
+        mock_qdrant_manager.get_client = Mock(return_value=mock_qdrant_client)
+
         with (
             patch("packages.webui.api.health.ws_manager.redis", mock_redis),
             patch("httpx.AsyncClient.get", side_effect=mock_get),
@@ -154,6 +178,8 @@ class TestWebuiHealthEndpoints:
                 "packages.webui.api.health._check_embedding_service_health",
                 side_effect=mock_check_embedding_service_health,
             ),
+            patch("packages.webui.api.health.check_postgres_connection", side_effect=mock_check_postgres),
+            patch("packages.webui.api.health.qdrant_manager", mock_qdrant_manager),
         ):
             response = test_client.get("/api/health/readyz")
             assert response.status_code == 503  # Should be 503 when not ready
@@ -165,13 +191,13 @@ class TestVecpipeHealthEndpoints:
     """Test health endpoints in vecpipe"""
 
     @pytest.fixture()
-    def vecpipe_app(self):
+    def vecpipe_app(self) -> None:
         """Create vecpipe app for testing"""
         from packages.vecpipe.search_api import app
 
         return TestClient(app)
 
-    def test_vecpipe_health_all_healthy(self, vecpipe_app):
+    def test_vecpipe_health_all_healthy(self, vecpipe_app) -> None:
         """Test vecpipe health when all components are healthy"""
         mock_qdrant = Mock()
 
@@ -199,7 +225,7 @@ class TestVecpipeHealthEndpoints:
             assert data["components"]["qdrant"]["status"] == "healthy"
             assert data["components"]["embedding"]["status"] == "healthy"
 
-    def test_vecpipe_health_qdrant_unhealthy(self, vecpipe_app):
+    def test_vecpipe_health_qdrant_unhealthy(self, vecpipe_app) -> None:
         """Test vecpipe health when Qdrant is unhealthy"""
         with patch("packages.vecpipe.search_api.qdrant_client", None):
             response = vecpipe_app.get("/health")
@@ -208,7 +234,7 @@ class TestVecpipeHealthEndpoints:
             assert data["status"] == "unhealthy"
             assert data["components"]["qdrant"]["status"] == "unhealthy"
 
-    def test_vecpipe_health_embedding_degraded(self, vecpipe_app):
+    def test_vecpipe_health_embedding_degraded(self, vecpipe_app) -> None:
         """Test vecpipe health when embedding service is degraded"""
         mock_qdrant = Mock()
 

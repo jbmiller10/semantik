@@ -6,13 +6,14 @@ import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from packages.shared.config.postgres import postgres_config
+from packages.shared.config.postgres import PostgresConfig, postgres_config
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 class PostgresConnectionManager:
     """Manages PostgreSQL database connections with retry logic."""
 
-    def __init__(self, config: postgres_config.__class__ | None = None):
+    def __init__(self, config: PostgresConfig | None = None):
         """Initialize connection manager with configuration."""
         self.config = config or postgres_config
         self._engine: AsyncEngine | None = None
@@ -106,6 +107,8 @@ class PostgresConnectionManager:
         if not self._sessionmaker:
             await self.initialize()
 
+        if self._sessionmaker is None:
+            raise RuntimeError("Database sessionmaker not initialized")
         async with self._sessionmaker() as session:
             try:
                 yield session
@@ -116,7 +119,7 @@ class PostgresConnectionManager:
             finally:
                 await session.close()
 
-    async def execute_with_retry(self, session: AsyncSession, query, *args, **kwargs):
+    async def execute_with_retry(self, session: AsyncSession, query: Any, *args: Any, **kwargs: Any) -> Any:
         """Execute a query with retry logic."""
         for attempt in range(self.config.DB_RETRY_LIMIT):
             try:
@@ -127,6 +130,7 @@ class PostgresConnectionManager:
                     await asyncio.sleep(self.config.DB_RETRY_INTERVAL)
                 else:
                     raise
+        return None
 
 
 # Global connection manager instance
@@ -153,7 +157,7 @@ async def check_postgres_connection() -> bool:
     try:
         async with pg_connection_manager.get_session() as session:
             result = await session.execute(text("SELECT 1"))
-            return result.scalar() == 1
+            return bool(result.scalar() == 1)
     except Exception as e:
         logger.error(f"PostgreSQL connection check failed: {e}")
         return False

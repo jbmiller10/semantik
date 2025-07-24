@@ -216,7 +216,7 @@ class QdrantMaintenanceService:
         # Update tracker to remove these files from tracking
         if not dry_run:
             for removed_file in removed_documents:
-                self.tracker.remove_file(removed_file["path"])
+                self.tracker.remove_document(removed_file["path"])
             self.tracker.save()
 
         # Log summary

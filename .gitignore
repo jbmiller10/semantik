@@ -116,6 +116,7 @@ dmypy.json
 *.swp
 *.swo
 *~
+.serena*
 
 # OS
 .DS_Store
@@ -131,6 +132,7 @@ Thumbs.db
 *.db
 logs/
 data/
+images/
 models/
 repopackpy-output.txt
 
@@ -178,3 +180,9 @@ dev-debug.log
 # Task files
 tasks.json
 tasks/ 
+TICKET*
+ticket_*
+CODEBASE_*
+images/*
+.serena/*
+*.pkl

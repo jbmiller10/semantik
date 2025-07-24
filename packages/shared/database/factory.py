@@ -5,13 +5,18 @@ All repositories now use PostgreSQL exclusively - SQLite support has been remove
 """
 
 import logging
-from collections.abc import Callable, Coroutine
-from typing import Any
+from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .base import ApiKeyRepository, AuthRepository, UserRepository
 from .database import AsyncSessionLocal
+
+if TYPE_CHECKING:
+    from .repositories.collection_repository import CollectionRepository
+    from .repositories.document_repository import DocumentRepository
+    from .repositories.operation_repository import OperationRepository
 
 logger = logging.getLogger(__name__)
 
@@ -58,145 +63,46 @@ def create_api_key_repository(session: AsyncSession) -> ApiKeyRepository:
     return PostgreSQLApiKeyRepository(session)
 
 
-def create_operation_repository() -> Any:
-    """Create an operation repository instance with session management.
+def create_operation_repository(session: AsyncSession) -> "OperationRepository":
+    """Create an operation repository instance.
 
-    This maintains compatibility with existing code that expects
-    a repository that manages its own session.
+    Args:
+        session: AsyncSession for database operations
 
     Returns:
-        Async wrapper around OperationRepository
+        OperationRepository instance
     """
     from .repositories.operation_repository import OperationRepository
 
-    class AsyncOperationRepositoryWrapper:
-        """Async wrapper that manages its own database session."""
-
-        def __init__(self) -> None:
-            self._session: Any | None = None  # AsyncSession
-            self._repo: Any | None = None  # OperationRepository
-
-        async def _ensure_initialized(self) -> None:
-            """Ensure repository is initialized with a session."""
-            if self._repo is None:
-                self._session = AsyncSessionLocal()
-                self._repo = OperationRepository(self._session)
-
-        async def __aenter__(self) -> "AsyncOperationRepositoryWrapper":
-            await self._ensure_initialized()
-            return self
-
-        async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-            if self._session:
-                await self._session.close()
-
-        def __getattr__(self, name: str) -> Callable[..., Coroutine[Any, Any, Any]]:
-            """Proxy all attribute access to the repository."""
-
-            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-                await self._ensure_initialized()
-                result = await getattr(self._repo, name)(*args, **kwargs)
-                if self._session:
-                    await self._session.commit()  # Auto-commit for compatibility
-                return result
-
-            return async_wrapper
-
-    return AsyncOperationRepositoryWrapper()
+    return OperationRepository(session)
 
 
-def create_document_repository() -> Any:
-    """Create a document repository instance with session management.
+def create_document_repository(session: AsyncSession) -> "DocumentRepository":
+    """Create a document repository instance.
 
-    This maintains compatibility with existing code that expects
-    a repository that manages its own session.
+    Args:
+        session: AsyncSession for database operations
 
     Returns:
-        Async wrapper around DocumentRepository
+        DocumentRepository instance
     """
     from .repositories.document_repository import DocumentRepository
 
-    class AsyncDocumentRepositoryWrapper:
-        """Async wrapper that manages its own database session."""
-
-        def __init__(self) -> None:
-            self._session: Any | None = None  # AsyncSession
-            self._repo: Any | None = None  # DocumentRepository
-
-        async def _ensure_initialized(self) -> None:
-            """Ensure repository is initialized with a session."""
-            if self._repo is None:
-                self._session = AsyncSessionLocal()
-                self._repo = DocumentRepository(self._session)
-
-        async def __aenter__(self) -> "AsyncDocumentRepositoryWrapper":
-            await self._ensure_initialized()
-            return self
-
-        async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-            if self._session:
-                await self._session.close()
-
-        def __getattr__(self, name: str) -> Callable[..., Coroutine[Any, Any, Any]]:
-            """Proxy all attribute access to the repository."""
-
-            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-                await self._ensure_initialized()
-                result = await getattr(self._repo, name)(*args, **kwargs)
-                if self._session:
-                    await self._session.commit()  # Auto-commit for compatibility
-                return result
-
-            return async_wrapper
-
-    return AsyncDocumentRepositoryWrapper()
+    return DocumentRepository(session)
 
 
-def create_collection_repository() -> Any:
+def create_collection_repository(session: AsyncSession) -> "CollectionRepository":
     """Create a collection repository instance.
 
-    Note: Use packages.shared.database.repositories.collection_repository.CollectionRepository
-    directly with an async session for new code.
+    Args:
+        session: AsyncSession for database operations
 
     Returns:
-        Async wrapper around CollectionRepository
+        CollectionRepository instance
     """
     from .repositories.collection_repository import CollectionRepository
 
-    class AsyncCollectionRepositoryWrapper:
-        """Async wrapper that manages its own database session."""
-
-        def __init__(self) -> None:
-            self._session: Any | None = None  # AsyncSession
-            self._repo: Any | None = None  # CollectionRepository
-
-        async def _ensure_initialized(self) -> None:
-            """Ensure repository is initialized with a session."""
-            if self._repo is None:
-                self._session = AsyncSessionLocal()
-                self._repo = CollectionRepository(self._session)
-
-        async def __aenter__(self) -> "AsyncCollectionRepositoryWrapper":
-            await self._ensure_initialized()
-            return self
-
-        async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-            if self._session:
-                await self._session.close()
-
-        def __getattr__(self, name: str) -> Callable[..., Coroutine[Any, Any, Any]]:
-            """Proxy all attribute access to the repository."""
-
-            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-                await self._ensure_initialized()
-                result = await getattr(self._repo, name)(*args, **kwargs)
-                if self._session:
-                    await self._session.commit()  # Auto-commit for compatibility
-                return result
-
-            return async_wrapper
-
-    return AsyncCollectionRepositoryWrapper()
+    return CollectionRepository(session)
 
 
 def create_all_repositories(session: AsyncSession) -> dict[str, object]:
@@ -212,20 +118,21 @@ def create_all_repositories(session: AsyncSession) -> dict[str, object]:
         "user": create_user_repository(session),
         "auth": create_auth_repository(session),
         "api_key": create_api_key_repository(session),
-        # Legacy repositories that manage their own sessions
-        "operation": create_operation_repository(),
-        "document": create_document_repository(),
-        "collection": create_collection_repository(),
+        "operation": create_operation_repository(session),
+        "document": create_document_repository(session),
+        "collection": create_collection_repository(session),
     }
 
 
 # Helper function for dependency injection in FastAPI
-async def get_db_session() -> AsyncSession:
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """Get a database session for dependency injection.
 
     Yields:
         AsyncSession instance
     """
+    if AsyncSessionLocal is None:
+        raise RuntimeError("Database not initialized")
     async with AsyncSessionLocal() as session:
         try:
             yield session

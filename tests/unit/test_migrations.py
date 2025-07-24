@@ -21,7 +21,7 @@ class TestMigrations:
     """Test database migration functionality."""
 
     @pytest.fixture()
-    def migration_db(self, tmp_path):
+    def migration_db(self, tmp_path) -> None:
         """Create a temporary database for migration testing."""
         db_path = tmp_path / "migration_test.db"
         return str(db_path)
@@ -31,7 +31,8 @@ class TestMigrations:
         project_root = Path(__file__).parent.parent.parent
         env = {
             "PYTHONPATH": str(project_root / "packages"),
-            "ALEMBIC_DATABASE_URL": f"sqlite:///{db_path}",
+            "DATABASE_URL": f"sqlite:///{db_path}",
+            "POSTGRES_PASSWORD": "test_password",  # Required by env.py
         }
 
         result = subprocess.run(
@@ -44,7 +45,7 @@ class TestMigrations:
 
         return result.returncode, result.stdout, result.stderr
 
-    def test_initial_migration_creates_all_tables(self, migration_db):
+    def test_initial_migration_creates_all_tables(self, migration_db) -> None:
         """Test that the initial migration creates all expected tables."""
         # Run upgrade to head
         returncode, stdout, stderr = self.run_alembic_command("upgrade head", migration_db)
@@ -76,7 +77,7 @@ class TestMigrations:
 
         conn.close()
 
-    def test_migration_is_idempotent(self, migration_db):
+    def test_migration_is_idempotent(self, migration_db) -> None:
         """Test that running the migration twice doesn't cause errors."""
         # First upgrade
         returncode1, _, stderr1 = self.run_alembic_command("upgrade head", migration_db)
@@ -87,7 +88,7 @@ class TestMigrations:
         assert returncode2 == 0, f"Second migration failed: {stderr2}"
         assert "Running upgrade" not in stdout2, "Migration ran again when it shouldn't have"
 
-    def test_downgrade_removes_all_tables(self, migration_db):
+    def test_downgrade_removes_all_tables(self, migration_db) -> None:
         """Test that downgrade properly removes all tables."""
         # First upgrade
         returncode, _, stderr = self.run_alembic_command("upgrade head", migration_db)
@@ -107,7 +108,7 @@ class TestMigrations:
 
         conn.close()
 
-    def test_migration_preserves_existing_data(self, migration_db):
+    def test_migration_preserves_existing_data(self, migration_db) -> None:
         """Test that migrations preserve existing data."""
         # Create initial schema and add data
         returncode, _, stderr = self.run_alembic_command("upgrade head", migration_db)
@@ -127,8 +128,9 @@ class TestMigrations:
         # Insert collection
         cursor.execute(
             """INSERT INTO collections (id, name, description, owner_id, vector_store_name,
-               embedding_model, quantization, chunk_size, chunk_overlap, is_public, created_at, updated_at, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               embedding_model, quantization, chunk_size, chunk_overlap, is_public, created_at, updated_at, status,
+               document_count, vector_count, total_size_bytes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 "coll1",
                 "Test Collection",
@@ -143,6 +145,9 @@ class TestMigrations:
                 "2023-01-01T00:00:00",
                 "2023-01-01T00:00:00",
                 "ready",
+                0,  # document_count
+                0,  # vector_count
+                0,  # total_size_bytes
             ),
         )
         conn.commit()
@@ -171,7 +176,7 @@ class TestMigrations:
 
         conn.close()
 
-    def test_schema_matches_models(self, migration_db):
+    def test_schema_matches_models(self, migration_db) -> None:
         """Test that the migrated schema matches the SQLAlchemy models."""
         # Run migration
         returncode, _, stderr = self.run_alembic_command("upgrade head", migration_db)

@@ -143,22 +143,21 @@ class SearchService:
 
         if status_code == 404:
             return (collection, None, f"Collection '{collection.name}' not found in vector store{retry_suffix}")
-        elif status_code == 403:
+        if status_code == 403:
             return (collection, None, f"Access denied to collection '{collection.name}'{retry_suffix}")
-        elif status_code == 429:
+        if status_code == 429:
             return (collection, None, f"Rate limit exceeded for collection '{collection.name}'{retry_suffix}")
-        elif status_code >= 500:
+        if status_code >= 500:
             return (
                 collection,
                 None,
                 f"Search service unavailable for collection '{collection.name}'{retry_suffix} (status: {status_code})",
             )
-        else:
-            return (
-                collection,
-                None,
-                f"Search failed for collection '{collection.name}'{retry_suffix} (status: {status_code})",
-            )
+        return (
+            collection,
+            None,
+            f"Search failed for collection '{collection.name}'{retry_suffix} (status: {status_code})",
+        )
 
     async def rerank_merged_results(
         self,
@@ -410,16 +409,16 @@ class SearchService:
                 response = await client.post(f"{settings.SEARCH_API_URL}/search", json=search_params)
                 response.raise_for_status()
 
-            return response.json()
+            result: dict[str, Any] = response.json()
+            return result
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 raise EntityNotFoundError(f"Collection '{collection.name}' not found in vector store") from e
-            elif e.response.status_code == 403:
+            if e.response.status_code == 403:
                 raise AccessDeniedError(f"Access denied to collection '{collection.name}'") from e
-            else:
-                logger.error(f"Search failed with status {e.response.status_code}: {e}")
-                raise
+            logger.error(f"Search failed with status {e.response.status_code}: {e}")
+            raise
 
         except Exception as e:
             logger.error(f"Search failed: {e}")

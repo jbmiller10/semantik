@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database import get_db
 from packages.shared.database.exceptions import EntityNotFoundError
-from packages.shared.database.models import Collection, Document
+from packages.shared.database.models import Collection
 from packages.webui.auth import get_current_user
 from packages.webui.dependencies import create_document_repository, get_collection_for_user
 
@@ -58,7 +58,9 @@ async def get_document_content(
         document_repo = create_document_repository(db)
 
         # Fetch the document
-        document: Document = await document_repo.get_by_id(document_uuid)
+        document = await document_repo.get_by_id(document_uuid)
+        if not document:
+            raise HTTPException(status_code=404, detail=f"Document {document_uuid} not found")
 
         # Verify document belongs to the specified collection
         if document.collection_id != collection_uuid:
@@ -77,32 +79,6 @@ async def get_document_content(
         try:
             # Convert to Path object and resolve to absolute path
             file_path = Path(document.file_path).resolve()
-
-            # Additional security check: ensure file exists and is a regular file
-            if not file_path.exists():
-                logger.error(f"Document file not found: {document.file_path}")
-                raise HTTPException(
-                    status_code=404,
-                    detail="Document file not found on disk",
-                )
-
-            if not file_path.is_file():
-                logger.error(f"Document path is not a file: {document.file_path}")
-                raise HTTPException(
-                    status_code=500,
-                    detail="Invalid document path",
-                )
-
-            # SECURITY: In a production environment, you would check that the file
-            # is within an allowed directory. For now, we'll serve any file that
-            # the document references, but this should be restricted based on
-            # your deployment configuration.
-            # Example check (uncomment and configure as needed):
-            # ALLOWED_DOCUMENT_ROOT = Path("/var/semantik/documents").resolve()
-            # if not str(file_path).startswith(str(ALLOWED_DOCUMENT_ROOT)):
-            #     logger.error(f"Path traversal attempt detected: {file_path}")
-            #     raise HTTPException(status_code=403, detail="Access denied")
-
         except Exception as e:
             logger.error(f"Error resolving document path: {e}")
             raise HTTPException(
@@ -110,21 +86,44 @@ async def get_document_content(
                 detail="Error accessing document",
             ) from e
 
+        # Additional security check: ensure file exists and is a regular file
+        if not file_path.exists():
+            logger.error(f"Document file not found: {document.file_path}")
+            raise HTTPException(
+                status_code=404,
+                detail="Document file not found on disk",
+            )
+
+        if not file_path.is_file():
+            logger.error(f"Document path is not a file: {document.file_path}")
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid document path",
+            )
+
+        # SECURITY: In a production environment, you would check that the file
+        # is within an allowed directory. For now, we'll serve any file that
+        # the document references, but this should be restricted based on
+        # your deployment configuration.
+        # Example check (uncomment and configure as needed):
+        # ALLOWED_DOCUMENT_ROOT = Path("/var/semantik/documents").resolve()
+        # if not str(file_path).startswith(str(ALLOWED_DOCUMENT_ROOT)):
+        #     logger.error(f"Path traversal attempt detected: {file_path}")
+        #     raise HTTPException(status_code=403, detail="Access denied")
+
         # Prepare response headers
         media_type = document.mime_type or "application/octet-stream"
 
         # Log successful document access for audit
-        logger.info(
-            f"User {current_user['id']} accessed document {document_uuid} from collection {collection_uuid}"
-        )
+        logger.info(f"User {current_user['id']} accessed document {document_uuid} from collection {collection_uuid}")
 
         # Return the file
         return FileResponse(
             path=str(file_path),
-            media_type=media_type,
-            filename=document.file_name,
+            media_type=str(media_type),
+            filename=str(document.file_name),
             headers={
-                "Content-Disposition": f'inline; filename="{document.file_name}"',
+                "Content-Disposition": f'inline; filename="{str(document.file_name)}"',
                 "Cache-Control": "private, max-age=3600",  # Cache for 1 hour
             },
         )

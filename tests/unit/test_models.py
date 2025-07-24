@@ -28,7 +28,7 @@ from packages.shared.database.models import (
 
 
 @pytest.fixture()
-def db_session():
+def db_session() -> None:
     """Create an in-memory SQLite database for testing."""
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -46,7 +46,7 @@ class TestDateTimeTimezoneAwareness:
     do support timezone-aware datetimes (PostgreSQL, MySQL, etc.).
     """
 
-    def test_user_datetime_fields_are_timezone_aware(self, db_session):
+    def test_user_datetime_fields_are_timezone_aware(self, db_session) -> None:
         """Test User model timezone-aware datetime fields."""
         # Create user with timezone-aware datetime
         user = User(
@@ -67,7 +67,7 @@ class TestDateTimeTimezoneAwareness:
         assert user.updated_at is not None
         assert user.last_login is not None
 
-    def test_collection_datetime_fields_are_timezone_aware(self, db_session):
+    def test_collection_datetime_fields_are_timezone_aware(self, db_session) -> None:
         """Test Collection model timezone-aware datetime fields."""
         # First create a user
         user = User(
@@ -100,7 +100,7 @@ class TestDateTimeTimezoneAwareness:
         assert collection.created_at is not None
         assert collection.updated_at is not None
 
-    def test_document_datetime_fields_are_timezone_aware(self, db_session):
+    def test_document_datetime_fields_are_timezone_aware(self, db_session) -> None:
         """Test Document model timezone-aware datetime fields."""
         # Create prerequisites
         user = User(username="testuser", email="test@example.com", hashed_password="hashed")
@@ -138,7 +138,7 @@ class TestDateTimeTimezoneAwareness:
         assert document.created_at is not None
         assert document.updated_at is not None
 
-    def test_api_key_datetime_fields_are_timezone_aware(self, db_session):
+    def test_api_key_datetime_fields_are_timezone_aware(self, db_session) -> None:
         """Test ApiKey model timezone-aware datetime fields."""
         # Create user
         user = User(username="testuser", email="test@example.com", hashed_password="hashed")
@@ -165,7 +165,7 @@ class TestDateTimeTimezoneAwareness:
         assert api_key.last_used_at is not None
         assert api_key.expires_at is not None
 
-    def test_refresh_token_datetime_fields_are_timezone_aware(self, db_session):
+    def test_refresh_token_datetime_fields_are_timezone_aware(self, db_session) -> None:
         """Test RefreshToken model timezone-aware datetime fields."""
         # Create user
         user = User(username="testuser", email="test@example.com", hashed_password="hashed")
@@ -188,7 +188,7 @@ class TestDateTimeTimezoneAwareness:
         assert token.created_at is not None
         assert token.expires_at is not None
 
-    def test_collection_source_datetime_fields_are_timezone_aware(self, db_session):
+    def test_collection_source_datetime_fields_are_timezone_aware(self, db_session) -> None:
         """Test CollectionSource model timezone-aware datetime fields."""
         # Create prerequisites
         user = User(username="testuser", email="test@example.com", hashed_password="hashed")
@@ -224,7 +224,7 @@ class TestDateTimeTimezoneAwareness:
         assert source.created_at is not None
         assert source.updated_at is not None
 
-    def test_operation_datetime_fields_are_timezone_aware(self, db_session):
+    def test_operation_datetime_fields_are_timezone_aware(self, db_session) -> None:
         """Test Operation model timezone-aware datetime fields."""
         # Create prerequisites
         user = User(username="testuser", email="test@example.com", hashed_password="hashed")
@@ -263,7 +263,7 @@ class TestDateTimeTimezoneAwareness:
         assert operation.started_at is not None
         assert operation.completed_at is not None
 
-    def test_default_created_at_is_timezone_aware(self, db_session):
+    def test_default_created_at_is_timezone_aware(self, db_session) -> None:
         """Test that default func.now() creates timezone-aware datetimes."""
         # Create user without specifying created_at
         user = User(
@@ -281,7 +281,7 @@ class TestDateTimeTimezoneAwareness:
         # Note: SQLite may not preserve timezone info by default,
         # but the field is configured correctly for databases that do
 
-    def test_operation_metrics_recorded_at_is_timezone_aware(self, db_session):
+    def test_operation_metrics_recorded_at_is_timezone_aware(self, db_session) -> None:
         """Test OperationMetrics model timezone-aware datetime fields."""
         # Create prerequisites
         user = User(username="testuser", email="test@example.com", hashed_password="hashed")
@@ -323,7 +323,7 @@ class TestDateTimeTimezoneAwareness:
         # Verify fields were set (SQLite may not preserve timezone info)
         assert metrics.recorded_at is not None
 
-    def test_collection_permission_datetime_fields_are_timezone_aware(self, db_session):
+    def test_collection_permission_datetime_fields_are_timezone_aware(self, db_session) -> None:
         """Test CollectionPermission model timezone-aware datetime fields."""
         # Create prerequisites
         user = User(username="testuser", email="test@example.com", hashed_password="hashed")
@@ -355,7 +355,7 @@ class TestDateTimeTimezoneAwareness:
         # Verify fields were set (SQLite may not preserve timezone info)
         assert permission.created_at is not None
 
-    def test_audit_log_datetime_fields_are_timezone_aware(self, db_session):
+    def test_audit_log_datetime_fields_are_timezone_aware(self, db_session) -> None:
         """Test CollectionAuditLog model timezone-aware datetime fields."""
         # Create prerequisites
         user = User(username="testuser", email="test@example.com", hashed_password="hashed")
@@ -387,7 +387,7 @@ class TestDateTimeTimezoneAwareness:
         # Verify fields were set (SQLite may not preserve timezone info)
         assert audit_log.created_at is not None
 
-    def test_resource_limits_datetime_fields_are_timezone_aware(self, db_session):
+    def test_resource_limits_datetime_fields_are_timezone_aware(self, db_session) -> None:
         """Test CollectionResourceLimits model timezone-aware datetime fields."""
         # Create prerequisites
         user = User(username="testuser", email="test@example.com", hashed_password="hashed")

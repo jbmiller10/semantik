@@ -201,10 +201,6 @@ services:
       - USE_MOCK_EMBEDDINGS=${USE_MOCK_EMBEDDINGS:-false}
       - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
       - DEFAULT_QUANTIZATION=${DEFAULT_QUANTIZATION:-float16}
-      # GPU-specific settings
-      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
-      - MODEL_MAX_MEMORY_GB=${MODEL_MAX_MEMORY_GB:-8}
-      - MONITOR_GPU_MEMORY=true
       # Service configuration
       - WEBUI_PORT=8080
       - WAIT_FOR_SEARCH_API=true
@@ -256,10 +252,6 @@ services:
           memory: 2G
         reservations:
           memory: 1G
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/health/readyz"]
@@ -295,10 +287,6 @@ services:
       - USE_MOCK_EMBEDDINGS=${USE_MOCK_EMBEDDINGS:-false}
       - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
       - DEFAULT_QUANTIZATION=${DEFAULT_QUANTIZATION:-float16}
-      # GPU-specific settings
-      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
-      - MODEL_MAX_MEMORY_GB=${MODEL_MAX_MEMORY_GB:-8}
-      - MONITOR_GPU_MEMORY=true
       # HuggingFace configuration
       - HF_HOME=/app/.cache/huggingface
       - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-false}
@@ -345,10 +333,6 @@ services:
           memory: 4G
         reservations:
           memory: 2G
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "celery", "-A", "webui.celery_app", "inspect", "ping", "-d", "celery@$$HOSTNAME"]

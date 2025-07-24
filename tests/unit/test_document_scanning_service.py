@@ -9,25 +9,26 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from shared.database.models import Document
-from webui.services.document_scanning_service import SUPPORTED_EXTENSIONS, DocumentScanningService
+
+from packages.shared.database.models import Document
+from packages.webui.services.document_scanning_service import SUPPORTED_EXTENSIONS, DocumentScanningService
 
 
 class TestDocumentScanningService:
     """Test cases for DocumentScanningService."""
 
     @pytest.fixture()
-    def mock_session(self):
+    def mock_session(self) -> None:
         """Create a mock async session."""
         return AsyncMock()
 
     @pytest.fixture()
-    def mock_document_repo(self):
+    def mock_document_repo(self) -> None:
         """Create a mock DocumentRepository."""
         mock = AsyncMock()
 
         # Default behavior - create returns a new document
-        def default_create(**kwargs):
+        def default_create(**kwargs) -> None:
             doc = Document(
                 id=str(uuid4()),
                 collection_id=kwargs.get("collection_id", str(uuid4())),
@@ -44,7 +45,7 @@ class TestDocumentScanningService:
         return mock
 
     @pytest.fixture()
-    def service(self, mock_session, mock_document_repo):
+    def service(self, mock_session, mock_document_repo) -> None:
         """Create a DocumentScanningService instance with mocked dependencies."""
         return DocumentScanningService(db_session=mock_session, document_repo=mock_document_repo)
 
@@ -79,9 +80,9 @@ class TestDocumentScanningService:
                 collection_id=str(uuid4()), source_path=temp_dir
             )
 
-            assert stats["total_files_found"] == 0
-            assert stats["new_files_registered"] == 0
-            assert stats["duplicate_files_skipped"] == 0
+            assert stats["total_documents_found"] == 0
+            assert stats["new_documents_registered"] == 0
+            assert stats["duplicate_documents_skipped"] == 0
             assert stats["errors"] == []
             assert stats["total_size_bytes"] == 0
 
@@ -91,7 +92,7 @@ class TestDocumentScanningService:
         collection_id = str(uuid4())
 
         # Setup mock to return documents with created_at timestamps
-        def create_mock_document(**kwargs):
+        def create_mock_document(**kwargs) -> None:
             doc = Document(
                 id=str(uuid4()),
                 collection_id=collection_id,
@@ -121,9 +122,9 @@ class TestDocumentScanningService:
             )
 
             # Verify results
-            assert stats["total_files_found"] == 3  # Only supported files
-            assert stats["new_files_registered"] == 3
-            assert stats["duplicate_files_skipped"] == 0
+            assert stats["total_documents_found"] == 3  # Only supported files
+            assert stats["new_documents_registered"] == 3
+            assert stats["duplicate_documents_skipped"] == 0
             assert len(stats["errors"]) == 0
             assert stats["total_size_bytes"] > 0
 
@@ -149,7 +150,7 @@ class TestDocumentScanningService:
 
         # Configure mock to return existing doc for first file,
         # and create a new doc dynamically for second file
-        def create_side_effect(**kwargs):
+        def create_side_effect(**kwargs) -> None:
             if kwargs.get("file_name") == "test1.txt":
                 return existing_doc
             # Create new document with current timestamp
@@ -179,9 +180,9 @@ class TestDocumentScanningService:
             )
 
             # Both files should be found
-            assert stats["total_files_found"] == 2
-            assert stats["new_files_registered"] == 1  # Only second file is new
-            assert stats["duplicate_files_skipped"] == 1  # First file is duplicate
+            assert stats["total_documents_found"] == 2
+            assert stats["new_documents_registered"] == 1  # Only second file is new
+            assert stats["duplicate_documents_skipped"] == 1  # First file is duplicate
             assert mock_document_repo.create.call_count == 2
 
     @pytest.mark.asyncio()
@@ -207,7 +208,7 @@ class TestDocumentScanningService:
                 collection_id=collection_id, source_path=temp_dir, recursive=True
             )
 
-            assert stats["total_files_found"] == 3
+            assert stats["total_documents_found"] == 3
             assert mock_document_repo.create.call_count == 3
 
     @pytest.mark.asyncio()
@@ -228,7 +229,7 @@ class TestDocumentScanningService:
                 collection_id=str(uuid4()), source_path=temp_dir, recursive=False
             )
 
-            assert stats["total_files_found"] == 1  # Only root file
+            assert stats["total_documents_found"] == 1  # Only root file
             assert mock_document_repo.create.call_count == 1
 
     @pytest.mark.asyncio()
@@ -245,11 +246,11 @@ class TestDocumentScanningService:
                 collection_id=str(uuid4()), source_path=temp_dir
             )
 
-            assert stats["total_files_found"] == 1
-            assert stats["new_files_registered"] == 0
-            assert stats["duplicate_files_skipped"] == 0
+            assert stats["total_documents_found"] == 1
+            assert stats["new_documents_registered"] == 0
+            assert stats["duplicate_documents_skipped"] == 0
             assert len(stats["errors"]) == 1
-            assert "test.txt" in stats["errors"][0]["file"]
+            assert "test.txt" in stats["errors"][0]["document"]
             assert "Database error" in stats["errors"][0]["error"]
 
     @pytest.mark.asyncio()
@@ -260,7 +261,7 @@ class TestDocumentScanningService:
             tmp_file.flush()
 
             try:
-                result = await service.scan_file(collection_id=str(uuid4()), file_path=tmp_file.name)
+                result = await service.scan_document(collection_id=str(uuid4()), file_path=tmp_file.name)
 
                 assert "document_id" in result
                 assert result["is_new"] is True
@@ -276,9 +277,9 @@ class TestDocumentScanningService:
         """Test scanning unsupported file type raises ValueError."""
         with (
             tempfile.NamedTemporaryFile(suffix=".jpg") as tmp_file,
-            pytest.raises(ValueError, match="Unsupported file type"),
+            pytest.raises(ValueError, match="Unsupported document type"),
         ):
-            await service.scan_file(collection_id=str(uuid4()), file_path=tmp_file.name)
+            await service.scan_document(collection_id=str(uuid4()), file_path=tmp_file.name)
 
     @pytest.mark.asyncio()
     async def test_calculate_file_hash(self, service):
@@ -302,7 +303,7 @@ class TestDocumentScanningService:
             finally:
                 Path(tmp_file.name).unlink()
 
-    def test_get_mime_type(self, service):
+    def test_get_mime_type(self, service) -> None:
         """Test MIME type detection."""
         # Test known extensions
         assert service._get_mime_type(Path("test.pdf")) == "application/pdf"
@@ -317,7 +318,7 @@ class TestDocumentScanningService:
         # Test case insensitive
         assert service._get_mime_type(Path("TEST.PDF")) == "application/pdf"
 
-    def test_supported_extensions(self):
+    def test_supported_extensions(self) -> None:
         """Test that all supported extensions are defined correctly."""
         # Verify expected extensions are supported
         expected_extensions = {".pdf", ".docx", ".doc", ".txt", ".text", ".pptx", ".eml", ".md", ".html"}
@@ -336,7 +337,7 @@ class TestDocumentScanningService:
                 with patch("pathlib.Path.stat") as mock_stat:
                     mock_stat.return_value = MagicMock(st_size=600 * 1024 * 1024)  # 600MB
 
-                    with pytest.raises(ValueError, match="File too large"):
+                    with pytest.raises(ValueError, match="Document too large"):
                         await service._register_file(collection_id=str(uuid4()), file_path=Path(tmp_file.name))
 
             finally:
@@ -348,7 +349,7 @@ class TestDocumentScanningService:
         collection_id = str(uuid4())
 
         # Setup mock to return documents with created_at
-        def create_mock_document(**kwargs):
+        def create_mock_document(**kwargs) -> None:
             doc = Document(
                 id=str(uuid4()),
                 collection_id=collection_id,
@@ -374,7 +375,7 @@ class TestDocumentScanningService:
                 collection_id=collection_id, source_path=temp_dir, batch_size=2
             )
 
-            assert stats["total_files_found"] == 5
+            assert stats["total_documents_found"] == 5
             # Session commit should be called 3 times (2 + 2 + 1)
             assert mock_session.commit.call_count == 3
 
@@ -385,7 +386,7 @@ class TestDocumentScanningService:
         progress_calls = []
 
         # Setup mock to return documents with created_at
-        def create_mock_document(**kwargs):
+        def create_mock_document(**kwargs) -> None:
             doc = Document(
                 id=str(uuid4()),
                 collection_id=collection_id,
@@ -413,7 +414,7 @@ class TestDocumentScanningService:
                 collection_id=collection_id, source_path=temp_dir, progress_callback=progress_callback
             )
 
-            assert stats["total_files_found"] == 3
+            assert stats["total_documents_found"] == 3
             # Progress callback should be called 3 times
             assert len(progress_calls) == 3
             # In non-recursive mode, total is updated incrementally

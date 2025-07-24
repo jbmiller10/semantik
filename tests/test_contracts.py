@@ -14,21 +14,21 @@ from shared.contracts.search import SearchRequest, SearchResult
 class TestSearchContracts:
     """Test search-related contracts."""
 
-    def test_search_request_with_k(self):
+    def test_search_request_with_k(self) -> None:
         """Test SearchRequest with canonical field 'k'."""
         req = SearchRequest(query="test query", k=5)
         assert req.query == "test query"
         assert req.k == 5
         assert req.search_type == "semantic"  # default
 
-    def test_search_request_with_top_k_alias(self):
+    def test_search_request_with_top_k_alias(self) -> None:
         """Test SearchRequest with alias field 'top_k'."""
         req_data = {"query": "test query", "top_k": 10}
         req = SearchRequest(**req_data)
         assert req.query == "test query"
         assert req.k == 10  # alias mapped to canonical field
 
-    def test_search_request_query_validation(self):
+    def test_search_request_query_validation(self) -> None:
         """Test query field validation."""
         # Empty query should fail
         with pytest.raises(ValidationError) as exc_info:
@@ -40,7 +40,7 @@ class TestSearchContracts:
             SearchRequest(query="x" * 1001)
         assert "at most 1000 characters" in str(exc_info.value)
 
-    def test_search_request_search_type_mapping(self):
+    def test_search_request_search_type_mapping(self) -> None:
         """Test search_type validation and mapping."""
         # 'vector' should be mapped to 'semantic'
         req = SearchRequest(query="test", search_type="vector")
@@ -51,7 +51,7 @@ class TestSearchContracts:
             SearchRequest(query="test", search_type="invalid")
         assert "Invalid search_type" in str(exc_info.value)
 
-    def test_search_result_optional_fields(self):
+    def test_search_result_optional_fields(self) -> None:
         """Test SearchResult with optional fields."""
         result = SearchResult(doc_id="doc123", chunk_id="chunk456", score=0.95, path="/data/test.txt")
         assert result.content is None
@@ -62,7 +62,7 @@ class TestSearchContracts:
 class TestErrorContracts:
     """Test error-related contracts."""
 
-    def test_basic_error_response(self):
+    def test_basic_error_response(self) -> None:
         """Test basic ErrorResponse."""
         error = ErrorResponse(error="TestError", message="Something went wrong", status_code=500)
         assert error.error == "TestError"
@@ -70,7 +70,7 @@ class TestErrorContracts:
         assert error.status_code == 500
         assert error.details is None
 
-    def test_create_validation_error(self):
+    def test_create_validation_error(self) -> None:
         """Test create_validation_error helper."""
         errors = [("field1", "Field 1 is required"), ("field2", "Field 2 must be positive")]
         error = create_validation_error(errors)
@@ -82,7 +82,7 @@ class TestErrorContracts:
         assert error.details[0].field == "field1"
         assert error.details[0].message == "Field 1 is required"
 
-    def test_create_not_found_error(self):
+    def test_create_not_found_error(self) -> None:
         """Test create_not_found_error helper."""
         error = create_not_found_error("Collection", "collection123")
 
@@ -92,7 +92,7 @@ class TestErrorContracts:
         assert error.resource_id == "collection123"
         assert error.status_code == 404
 
-    def test_create_insufficient_memory_error(self):
+    def test_create_insufficient_memory_error(self) -> None:
         """Test create_insufficient_memory_error helper."""
         error = create_insufficient_memory_error(
             required="4GB", available="2GB", suggestion="Try using a smaller model"
@@ -110,14 +110,14 @@ class TestErrorContracts:
 class TestSearchContractsExtended:
     """Extended tests for search contracts including edge cases."""
 
-    def test_search_result_required_doc_id(self):
+    def test_search_result_required_doc_id(self) -> None:
         """Test that doc_id is required in SearchResult."""
         # Should fail without doc_id
         with pytest.raises(ValidationError) as exc_info:
             SearchResult(chunk_id="chunk1", score=0.95, path="/test.txt")
         assert "doc_id" in str(exc_info.value)
 
-    def test_hybrid_search_result_required_doc_id(self):
+    def test_hybrid_search_result_required_doc_id(self) -> None:
         """Test that doc_id is required in HybridSearchResult."""
         from shared.contracts.search import HybridSearchResult
 
@@ -139,7 +139,7 @@ class TestSearchContractsExtended:
         assert result.doc_id == "doc123"
         assert result.matched_keywords == ["test", "keyword"]
 
-    def test_batch_search_request(self):
+    def test_batch_search_request(self) -> None:
         """Test BatchSearchRequest validation."""
         from shared.contracts.search import BatchSearchRequest
 
@@ -158,7 +158,7 @@ class TestSearchContractsExtended:
             BatchSearchRequest(queries=["q"] * 101)
         assert "at most 100 items" in str(exc_info.value)
 
-    def test_hybrid_search_request(self):
+    def test_hybrid_search_request(self) -> None:
         """Test HybridSearchRequest validation."""
         from shared.contracts.search import HybridSearchRequest
 
@@ -168,7 +168,7 @@ class TestSearchContractsExtended:
         assert req.mode == "rerank"
         assert req.keyword_mode == "all"
 
-    def test_preload_model_request_response(self):
+    def test_preload_model_request_response(self) -> None:
         """Test PreloadModelRequest and Response."""
         from shared.contracts.search import PreloadModelRequest, PreloadModelResponse
 
@@ -181,7 +181,7 @@ class TestSearchContractsExtended:
         resp = PreloadModelResponse(status="success", message="Model preloaded successfully")
         assert resp.status == "success"
 
-    def test_search_response(self):
+    def test_search_response(self) -> None:
         """Test SearchResponse model."""
         from shared.contracts.search import SearchResponse
 
@@ -204,7 +204,7 @@ class TestSearchContractsExtended:
         assert response.embedding_time_ms == 10.5
         assert response.reranking_used is True
 
-    def test_populate_by_name_behavior(self):
+    def test_populate_by_name_behavior(self) -> None:
         """Test that populate_by_name allows both field names."""
         from shared.contracts.search import SearchRequest
 
@@ -222,7 +222,7 @@ class TestSearchContractsExtended:
 class TestErrorContractsExtended:
     """Extended tests for error contracts."""
 
-    def test_validation_error_response(self):
+    def test_validation_error_response(self) -> None:
         """Test ValidationErrorResponse model."""
         from shared.contracts.errors import ErrorDetail, ValidationErrorResponse
 
@@ -238,7 +238,7 @@ class TestErrorContractsExtended:
         assert len(error.details) == 2
         assert error.details[0].field == "name"
 
-    def test_not_found_error_response(self):
+    def test_not_found_error_response(self) -> None:
         """Test NotFoundErrorResponse model."""
         from shared.contracts.errors import NotFoundErrorResponse
 
@@ -252,7 +252,7 @@ class TestErrorContractsExtended:
         assert error.resource_type == "Collection"
         assert error.resource_id == "collection123"
 
-    def test_insufficient_resources_error(self):
+    def test_insufficient_resources_error(self) -> None:
         """Test InsufficientResourcesErrorResponse model."""
         from shared.contracts.errors import InsufficientResourcesErrorResponse
 
@@ -272,7 +272,7 @@ class TestErrorContractsExtended:
 class TestStringLengthValidation:
     """Test max_length validation for string fields to prevent DoS attacks."""
 
-    def test_search_result_max_length_validation(self):
+    def test_search_result_max_length_validation(self) -> None:
         """Test that string fields in SearchResult respect max_length."""
         # Valid lengths
         result = SearchResult(
@@ -297,7 +297,7 @@ class TestStringLengthValidation:
             SearchResult(doc_id="doc1", chunk_id="chunk1", score=0.95, path="/" + "p" * 4096)  # 4097 chars, exceeds max
         assert "at most 4096 characters" in str(exc_info.value)
 
-    def test_batch_search_request_query_validation(self):
+    def test_batch_search_request_query_validation(self) -> None:
         """Test that each query in BatchSearchRequest respects max length."""
         from shared.contracts.search import BatchSearchRequest
 
@@ -310,7 +310,7 @@ class TestStringLengthValidation:
             BatchSearchRequest(queries=["valid query", "x" * 1001])  # Second query exceeds max
         assert "Each query must not exceed 1000 characters" in str(exc_info.value)
 
-    def test_error_response_max_length_validation(self):
+    def test_error_response_max_length_validation(self) -> None:
         """Test max_length validation for error response models."""
         # Valid lengths
         error = ErrorResponse(

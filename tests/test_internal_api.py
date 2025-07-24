@@ -5,23 +5,24 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from webui.api.internal import router, verify_internal_api_key
+
+from packages.webui.api.internal import router, verify_internal_api_key
 
 
 class TestInternalAPIAuth:
     """Test internal API authentication."""
 
-    def test_verify_internal_api_key_valid(self):
+    def test_verify_internal_api_key_valid(self) -> None:
         """Test successful API key verification."""
-        with patch("webui.api.internal.settings") as mock_settings:
+        with patch("packages.webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "valid-key"
 
             # Should not raise exception
             verify_internal_api_key("valid-key")
 
-    def test_verify_internal_api_key_invalid(self):
+    def test_verify_internal_api_key_invalid(self) -> None:
         """Test API key verification with invalid key."""
-        with patch("webui.api.internal.settings") as mock_settings:
+        with patch("packages.webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "valid-key"
 
             # Should raise HTTPException
@@ -31,9 +32,9 @@ class TestInternalAPIAuth:
             assert exc_info.value.status_code == 401
             assert "Invalid or missing internal API key" in str(exc_info.value.detail)
 
-    def test_verify_internal_api_key_missing(self):
+    def test_verify_internal_api_key_missing(self) -> None:
         """Test API key verification with missing key."""
-        with patch("webui.api.internal.settings") as mock_settings:
+        with patch("packages.webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "valid-key"
 
             # Should raise HTTPException
@@ -47,15 +48,24 @@ class TestInternalAPIEndpoints:
     """Test internal API endpoints."""
 
     @pytest.fixture()
-    def client_with_mocked_repos(self, mock_collection_repository):
+    def client_with_mocked_repos(self, mock_collection_repository) -> None:
         """Create test client with mocked repositories."""
+        from unittest.mock import AsyncMock
+
         from fastapi import FastAPI
-        from shared.database.factory import create_collection_repository
+
+        from packages.shared.database.factory import create_collection_repository
+        from packages.webui.dependencies import get_collection_repository, get_db
 
         app = FastAPI()
         app.include_router(router)
 
-        # Override repository factory
+        # Mock database session
+        mock_db = AsyncMock()
+
+        # Override dependencies
+        app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[get_collection_repository] = lambda: mock_collection_repository
         app.dependency_overrides[create_collection_repository] = lambda: mock_collection_repository
 
         client = TestClient(app)
@@ -63,7 +73,7 @@ class TestInternalAPIEndpoints:
 
         app.dependency_overrides.clear()
 
-    def test_get_all_vector_store_names_success(self, client_with_mocked_repos, mock_collection_repository):
+    def test_get_all_vector_store_names_success(self, client_with_mocked_repos, mock_collection_repository) -> None:
         """Test successful retrieval of all vector store names."""
         # Mock repository response
         from unittest.mock import AsyncMock, MagicMock
@@ -81,7 +91,7 @@ class TestInternalAPIEndpoints:
         )
 
         # Mock settings for API key
-        with patch("webui.api.internal.settings") as mock_settings:
+        with patch("packages.webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"
 
             response = client_with_mocked_repos.get(
@@ -92,9 +102,11 @@ class TestInternalAPIEndpoints:
             assert response.json() == ["collection_1", "collection_2"]
             mock_collection_repository.list_all.assert_called_once()
 
-    def test_get_all_vector_store_names_unauthorized(self, client_with_mocked_repos, mock_collection_repository):
+    def test_get_all_vector_store_names_unauthorized(
+        self, client_with_mocked_repos, mock_collection_repository
+    ) -> None:
         """Test unauthorized access to vector store names endpoint."""
-        with patch("webui.api.internal.settings") as mock_settings:
+        with patch("packages.webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"
 
             # Test without API key
@@ -111,14 +123,14 @@ class TestInternalAPIEndpoints:
             if hasattr(mock_collection_repository, "list_all"):
                 mock_collection_repository.list_all.assert_not_called()
 
-    def test_get_all_vector_store_names_empty_list(self, client_with_mocked_repos, mock_collection_repository):
+    def test_get_all_vector_store_names_empty_list(self, client_with_mocked_repos, mock_collection_repository) -> None:
         """Test retrieval when no collections exist."""
         # Mock repository response
         from unittest.mock import AsyncMock
 
         mock_collection_repository.list_all = AsyncMock(return_value=[])
 
-        with patch("webui.api.internal.settings") as mock_settings:
+        with patch("packages.webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"
 
             response = client_with_mocked_repos.get(
@@ -141,21 +153,10 @@ class TestInternalAPIIntegration:
         with patch("packages.vecpipe.maintenance.QdrantClient", return_value=MagicMock()):
             service = QdrantMaintenanceService(webui_host="test-server", webui_port=80)
 
-        # Mock successful API response
-        mock_response = MagicMock()
-        mock_response.json.return_value = ["job_1", "job_2"]
-        mock_response.raise_for_status = MagicMock()
-
-        with (
-            patch("packages.vecpipe.maintenance.httpx.get", return_value=mock_response) as mock_get,
-            patch("packages.vecpipe.maintenance.settings") as mock_settings,
-        ):
+        with patch("packages.vecpipe.maintenance.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"
             mock_settings.DEFAULT_COLLECTION = "work_docs"
-            result = service.get_job_collections()
+            result = service.get_operation_collections()
 
-            # Note: The maintenance service may need updating to use the new endpoint
-            # For now, we'll skip verifying the exact API call since it may be outdated
-            assert mock_get.called
-            # The result format may also need updating in the maintenance service
-            assert result == ["work_docs", "job_job_1", "job_job_2"]
+            # In the new architecture, this returns only the default collection
+            assert result == ["work_docs"]

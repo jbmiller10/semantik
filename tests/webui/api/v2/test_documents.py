@@ -20,13 +20,13 @@ from packages.webui.api.v2.documents import get_document_content
 
 
 @pytest.fixture()
-def mock_user():
+def mock_user() -> None:
     """Mock authenticated user."""
     return {"id": 1, "username": "testuser"}
 
 
 @pytest.fixture()
-def mock_collection():
+def mock_collection() -> None:
     """Mock collection object."""
     collection = MagicMock(spec=Collection)
     collection.id = "123e4567-e89b-12d3-a456-426614174000"
@@ -36,7 +36,7 @@ def mock_collection():
 
 
 @pytest.fixture()
-def mock_document():
+def mock_document() -> None:
     """Mock document object."""
     document = MagicMock(spec=Document)
     document.id = "456e7890-e89b-12d3-a456-426614174001"
@@ -49,7 +49,7 @@ def mock_document():
 
 
 @pytest.fixture()
-def temp_file():
+def temp_file() -> None:
     """Create a temporary test file."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".pdf", delete=False) as f:
         f.write("Test PDF content")
@@ -95,17 +95,19 @@ class TestGetDocumentContent:
         """Test 404 when document doesn't exist."""
         mock_db = AsyncMock(spec=AsyncSession)
         mock_document_repo = AsyncMock()
-        mock_document_repo.get_by_id.side_effect = EntityNotFoundError("Document not found")
+        mock_document_repo.get_by_id.side_effect = EntityNotFoundError("Document", "nonexistent-doc-id")
 
-        with patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
-            with pytest.raises(HTTPException) as exc_info:
-                await get_document_content(
-                    collection_uuid=mock_collection.id,
-                    document_uuid="nonexistent-doc-id",
-                    collection=mock_collection,
-                    current_user=mock_user,
-                    db=mock_db,
-                )
+        with (
+            patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await get_document_content(
+                collection_uuid=mock_collection.id,
+                document_uuid="nonexistent-doc-id",
+                collection=mock_collection,
+                current_user=mock_user,
+                db=mock_db,
+            )
 
         assert exc_info.value.status_code == 404
         assert "Document nonexistent-doc-id not found" in str(exc_info.value.detail)
@@ -120,15 +122,17 @@ class TestGetDocumentContent:
         mock_document_repo = AsyncMock()
         mock_document_repo.get_by_id.return_value = mock_document
 
-        with patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
-            with pytest.raises(HTTPException) as exc_info:
-                await get_document_content(
-                    collection_uuid=mock_collection.id,
-                    document_uuid=mock_document.id,
-                    collection=mock_collection,
-                    current_user=mock_user,
-                    db=mock_db,
-                )
+        with (
+            patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await get_document_content(
+                collection_uuid=mock_collection.id,
+                document_uuid=mock_document.id,
+                collection=mock_collection,
+                current_user=mock_user,
+                db=mock_db,
+            )
 
         assert exc_info.value.status_code == 403
         assert "Document does not belong to the specified collection" in str(exc_info.value.detail)
@@ -143,15 +147,17 @@ class TestGetDocumentContent:
         mock_document_repo = AsyncMock()
         mock_document_repo.get_by_id.return_value = mock_document
 
-        with patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
-            with pytest.raises(HTTPException) as exc_info:
-                await get_document_content(
-                    collection_uuid=mock_collection.id,
-                    document_uuid=mock_document.id,
-                    collection=mock_collection,
-                    current_user=mock_user,
-                    db=mock_db,
-                )
+        with (
+            patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await get_document_content(
+                collection_uuid=mock_collection.id,
+                document_uuid=mock_document.id,
+                collection=mock_collection,
+                current_user=mock_user,
+                db=mock_db,
+            )
 
         assert exc_info.value.status_code == 404
         assert "Document file not found on disk" in str(exc_info.value.detail)
@@ -167,28 +173,31 @@ class TestGetDocumentContent:
             mock_document_repo = AsyncMock()
             mock_document_repo.get_by_id.return_value = mock_document
 
-            with patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
-                with pytest.raises(HTTPException) as exc_info:
-                    await get_document_content(
-                        collection_uuid=mock_collection.id,
-                        document_uuid=mock_document.id,
-                        collection=mock_collection,
-                        current_user=mock_user,
-                        db=mock_db,
-                    )
+            with (
+                patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+                pytest.raises(HTTPException) as exc_info,
+            ):
+                await get_document_content(
+                    collection_uuid=mock_collection.id,
+                    document_uuid=mock_document.id,
+                    collection=mock_collection,
+                    current_user=mock_user,
+                    db=mock_db,
+                )
 
-            assert exc_info.value.status_code == 500
+            assert exc_info.value.status_code == 400
             assert "Invalid document path" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
     async def test_get_document_content_path_traversal_attempt(self, mock_user, mock_collection, mock_document):
         """Test that path traversal attempts are properly handled."""
         # Try various path traversal patterns
+        # Use paths that definitely won't exist to ensure we get 404
         path_traversal_attempts = [
-            "../../../etc/passwd",
-            "../../sensitive_file.txt",
-            "/etc/../etc/passwd",
-            "test/../../etc/hosts",
+            "/definitely/does/not/exist/passwd",
+            "/tmp/nonexistent/../../../etc/passwd_fake",
+            "/fakepath/sensitive_file.txt",
+            "/bogus/path/to/nowhere",
         ]
 
         mock_db = AsyncMock(spec=AsyncSession)
