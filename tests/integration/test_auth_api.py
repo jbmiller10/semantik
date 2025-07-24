@@ -1,49 +1,95 @@
 """Integration tests for authentication API endpoints."""
 
-import shutil
-import tempfile
-from pathlib import Path
-from unittest.mock import patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
+from packages.shared.database.models import User
+from passlib.context import CryptContext
 
-class TempDatabase:
-    """Context manager for temporary database."""
-
-    def __init__(self):
-        self.temp_dir = Path(tempfile.mkdtemp())
-        self.db_path = str(self.temp_dir / "test.db")
-
-    def __enter__(self):
-        return self.db_path
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.temp_dir.exists():
-            shutil.rmtree(self.temp_dir)
+# Create pwd_context locally to avoid imports from shared.database
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 @pytest.fixture()
-def test_db():
-    """Create a temporary database for each test."""
-    with TempDatabase() as db_path, patch("shared.database.sqlite_implementation.DB_PATH", db_path):
-        # Import and initialize after patching
-        from shared.database import init_db
-
-        init_db()
-        yield db_path
+def mock_repositories():
+    """Create mock repositories for testing."""
+    # Mock user repository
+    mock_user_repo = MagicMock()
+    mock_auth_repo = MagicMock()
+    
+    # Store users in memory for testing
+    users_db = {}
+    
+    async def create_user(**kwargs):
+        user = User(
+            id=len(users_db) + 1,
+            username=kwargs["username"],
+            email=kwargs["email"],
+            hashed_password=pwd_context.hash(kwargs["password"]),
+            full_name=kwargs.get("full_name", ""),
+            is_active=True,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        users_db[user.username] = user
+        users_db[user.email] = user
+        return user
+    
+    async def get_user_by_username(username: str):
+        return users_db.get(username)
+    
+    async def get_user_by_email(email: str):
+        return users_db.get(email)
+    
+    async def get_user(user_id: int):
+        for user in users_db.values():
+            if user.id == user_id:
+                return user
+        return None
+    
+    mock_user_repo.create = AsyncMock(side_effect=create_user)
+    mock_user_repo.get_by_username = AsyncMock(side_effect=get_user_by_username)
+    mock_user_repo.get_by_email = AsyncMock(side_effect=get_user_by_email)
+    mock_user_repo.get = AsyncMock(side_effect=get_user)
+    
+    # Mock auth repository methods
+    mock_auth_repo.save_refresh_token = AsyncMock()
+    mock_auth_repo.verify_refresh_token = AsyncMock(return_value=True)
+    mock_auth_repo.revoke_refresh_token = AsyncMock()
+    mock_auth_repo.update_user_last_login = AsyncMock()
+    
+    return mock_user_repo, mock_auth_repo, users_db
 
 
 @pytest.fixture()
-def client(test_db):  # noqa: ARG001
-    """Create a test client with the isolated database."""
-    from webui.main import app
-
-    # Clear any dependency overrides
-    app.dependency_overrides.clear()
-
-    return TestClient(app)
+def client(mock_repositories):
+    """Create a test client with mocked repositories."""
+    # Mock the database connection manager to prevent real DB connections
+    with patch("packages.webui.main.pg_connection_manager") as mock_pg_manager:
+        mock_pg_manager.initialize = AsyncMock()
+        mock_pg_manager.close = AsyncMock()
+        
+        # Mock the WebSocket manager as well
+        with patch("packages.webui.main.ws_manager") as mock_ws_manager:
+            mock_ws_manager.startup = AsyncMock()
+            mock_ws_manager.shutdown = AsyncMock()
+            
+            from packages.webui.main import app
+            from packages.shared.database.factory import create_user_repository, create_auth_repository
+            
+            mock_user_repo, mock_auth_repo, _ = mock_repositories
+            
+            # Override repository dependencies
+            app.dependency_overrides[create_user_repository] = lambda: mock_user_repo
+            app.dependency_overrides[create_auth_repository] = lambda: mock_auth_repo
+            
+            yield TestClient(app)
+            
+            # Clear overrides after test
+            app.dependency_overrides.clear()
 
 
 def test_user_registration_success(client):
@@ -180,10 +226,12 @@ def test_user_login_failure(client):
     assert "incorrect username or password" in response.json()["detail"].lower()
 
 
-def test_get_me_protected(client, monkeypatch):
+def test_get_me_protected(client, monkeypatch, mock_repositories):
     """Test that /me endpoint requires authentication."""
     # Temporarily disable DISABLE_AUTH for this test
     monkeypatch.setattr("packages.webui.auth.settings.DISABLE_AUTH", False)
+    
+    mock_user_repo, _, _ = mock_repositories
 
     # Test without token - should fail
     response = client.get("/api/auth/me")

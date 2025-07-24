@@ -40,8 +40,8 @@ class TestCeleryTaskWithOperationUpdates:
     @pytest.mark.asyncio()
     async def test_initialization(self, task_updater):
         """Test proper initialization of CeleryTaskWithOperationUpdates."""
-        assert task_updater.job_id == "test-job-123"
-        assert task_updater.stream_key == "job:updates:test-job-123"
+        assert task_updater.operation_id == "test-job-123"
+        assert task_updater.stream_key == "operation-progress:test-job-123"
         assert task_updater._redis_client is None
 
     @pytest.mark.asyncio()
@@ -73,7 +73,7 @@ class TestCeleryTaskWithOperationUpdates:
 
             # Verify stream key and maxlen
             call_args = mock_redis.xadd.call_args
-            assert call_args[0][0] == "job:updates:test-job-123"  # stream key
+            assert call_args[0][0] == "operation-progress:test-job-123"  # stream key
             assert "maxlen" in call_args[1]  # keyword argument
             assert call_args[1]["maxlen"] == 1000
 
@@ -95,7 +95,7 @@ class TestCeleryTaskWithOperationUpdates:
             await task_updater.send_update("start", {"status": "started"})
 
             # Verify expire was called with 24 hours (86400 seconds)
-            mock_redis.expire.assert_called_once_with("job:updates:test-job-123", 86400)
+            mock_redis.expire.assert_called_once_with("operation-progress:test-job-123", 86400)
 
     @pytest.mark.asyncio()
     async def test_send_update_handles_redis_error(self, task_updater, mock_redis, mock_redis_from_url):
@@ -214,7 +214,7 @@ class TestCeleryTaskWithOperationUpdates:
 
                 # Verify correct stream key used
                 call_args = mock_redis.xadd.call_args
-                expected_key = f"job:updates:{job_id}"
+                expected_key = f"operation-progress:{job_id}"
                 assert call_args[0][0] == expected_key
 
                 # Reset mock for next iteration

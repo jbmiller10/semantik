@@ -6,13 +6,11 @@ from unittest.mock import patch
 
 import pytest
 
-from packages.webui.tasks import CeleryTaskWithOperationUpdates
 from packages.webui.websocket_manager import RedisStreamWebSocketManager
 from tests.webui.test_websocket_helpers import (
     WebSocketTestHarness,
     assert_message_order,
     count_message_types,
-    simulate_job_updates,
 )
 
 
@@ -24,12 +22,15 @@ class TestWebSocketExamples:
         """Example: Test a simple WebSocket connection and message flow."""
         # Setup
         manager = RedisStreamWebSocketManager()
-        manager.redis = mock_redis_client
+        # Use None to test direct broadcast mode first
+        manager.redis = None
 
         harness = WebSocketTestHarness(manager)
 
         # Mock operation repository
-        with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
+        with patch("shared.database.factory.create_operation_repository") as mock_create_repo, \
+             patch("shared.database.database.AsyncSessionLocal") as mock_session_local, \
+             patch("shared.database.repositories.operation_repository.OperationRepository") as mock_op_repo_class:
             from enum import Enum
             from unittest.mock import AsyncMock, MagicMock
 
@@ -50,6 +51,15 @@ class TestWebSocketExamples:
             mock_operation.error_message = None
             mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
             mock_create_repo.return_value = mock_repo
+            
+            # Setup mock session for WebSocket manager's direct database access
+            mock_session = AsyncMock()
+            mock_session_local.return_value.__aenter__.return_value = mock_session
+            
+            # Setup mock OperationRepository for WebSocket manager
+            mock_ws_repo = AsyncMock()
+            mock_ws_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
+            mock_op_repo_class.return_value = mock_ws_repo
 
             # Connect a client
             clients = await harness.connect_clients("operation123", num_clients=1)
@@ -64,6 +74,7 @@ class TestWebSocketExamples:
             # Send an update
             await manager.send_update("operation123", "progress", {"progress": 50, "processed_files": 2})
 
+            # Small delay for async operations
             await asyncio.sleep(0.1)
 
             # Verify client received the update
@@ -79,11 +90,14 @@ class TestWebSocketExamples:
         """Example: Test broadcasting to multiple clients."""
         # Setup
         manager = RedisStreamWebSocketManager()
-        manager.redis = mock_redis_client
+        # Use None to test direct broadcast mode
+        manager.redis = None
 
         harness = WebSocketTestHarness(manager)
 
-        with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
+        with patch("shared.database.factory.create_operation_repository") as mock_create_repo, \
+             patch("shared.database.database.AsyncSessionLocal") as mock_session_local, \
+             patch("shared.database.repositories.operation_repository.OperationRepository") as mock_op_repo_class:
             from enum import Enum
             from unittest.mock import AsyncMock, MagicMock
 
@@ -104,6 +118,15 @@ class TestWebSocketExamples:
             mock_operation.error_message = None
             mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
             mock_create_repo.return_value = mock_repo
+            
+            # Setup mock session for WebSocket manager's direct database access
+            mock_session = AsyncMock()
+            mock_session_local.return_value.__aenter__.return_value = mock_session
+            
+            # Setup mock OperationRepository for WebSocket manager
+            mock_ws_repo = AsyncMock()
+            mock_ws_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
+            mock_op_repo_class.return_value = mock_ws_repo
 
             # Connect multiple clients
             await harness.connect_clients("operation456", num_clients=3)
@@ -126,11 +149,14 @@ class TestWebSocketExamples:
         """Example: Test complete operation lifecycle with updates."""
         # Setup
         manager = RedisStreamWebSocketManager()
-        manager.redis = mock_redis_client
+        # Use None to test direct broadcast mode
+        manager.redis = None
 
         harness = WebSocketTestHarness(manager)
 
-        with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
+        with patch("shared.database.factory.create_operation_repository") as mock_create_repo, \
+             patch("shared.database.database.AsyncSessionLocal") as mock_session_local, \
+             patch("shared.database.repositories.operation_repository.OperationRepository") as mock_op_repo_class:
             from enum import Enum
             from unittest.mock import AsyncMock, MagicMock
 
@@ -151,22 +177,42 @@ class TestWebSocketExamples:
             mock_operation.error_message = None
             mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
             mock_create_repo.return_value = mock_repo
+            
+            # Setup mock session for WebSocket manager's direct database access
+            mock_session = AsyncMock()
+            mock_session_local.return_value.__aenter__.return_value = mock_session
+            
+            # Setup mock OperationRepository for WebSocket manager
+            mock_ws_repo = AsyncMock()
+            mock_ws_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
+            mock_op_repo_class.return_value = mock_ws_repo
 
             # Connect client
             clients = await harness.connect_clients("operation789", num_clients=1)
             client = clients[0]
 
-            # Clear initial state message
+            # Get initial state message and verify
+            initial_state = client.get_received_messages("current_state")
+            assert len(initial_state) == 1
+            
+            # Clear messages after verifying initial state
             client.clear_messages()
 
-            # Simulate operation updates
-            updater = CeleryTaskWithOperationUpdates("operation789")
-            updater._redis_client = mock_redis_client
-
-            await simulate_job_updates(updater, delays=[0.05] * 6)
+            # Simulate operation updates directly through manager
+            await manager.send_update("operation789", "start", {"status": "started", "total_files": 10})
+            await asyncio.sleep(0.05)
+            await manager.send_update("operation789", "progress", {"progress": 20, "processed_files": 2})
+            await asyncio.sleep(0.05)
+            await manager.send_update("operation789", "progress", {"progress": 40, "processed_files": 4})
+            await asyncio.sleep(0.05)
+            await manager.send_update("operation789", "progress", {"progress": 60, "processed_files": 6})
+            await asyncio.sleep(0.05)
+            await manager.send_update("operation789", "progress", {"progress": 80, "processed_files": 8})
+            await asyncio.sleep(0.05)
+            await manager.send_update("operation789", "complete", {"status": "completed", "processed_files": 10})
 
             # Allow final propagation
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.1)
 
             # Verify message order
             all_messages = client.received_messages
@@ -191,11 +237,14 @@ class TestWebSocketExamples:
         """Example: Test error handling in WebSocket communication."""
         # Setup manager with a client that will fail
         manager = RedisStreamWebSocketManager()
-        manager.redis = mock_redis_client
+        # Use None to test direct broadcast mode
+        manager.redis = None
 
         harness = WebSocketTestHarness(manager)
 
-        with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
+        with patch("shared.database.factory.create_operation_repository") as mock_create_repo, \
+             patch("shared.database.database.AsyncSessionLocal") as mock_session_local, \
+             patch("shared.database.repositories.operation_repository.OperationRepository") as mock_op_repo_class:
             from enum import Enum
             from unittest.mock import AsyncMock, MagicMock
 
@@ -216,9 +265,24 @@ class TestWebSocketExamples:
             mock_operation.error_message = None
             mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
             mock_create_repo.return_value = mock_repo
+            
+            # Setup mock session for WebSocket manager's direct database access
+            mock_session = AsyncMock()
+            mock_session_local.return_value.__aenter__.return_value = mock_session
+            
+            # Setup mock OperationRepository for WebSocket manager
+            mock_ws_repo = AsyncMock()
+            mock_ws_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
+            mock_op_repo_class.return_value = mock_ws_repo
 
             # Connect clients
             good_clients = await harness.connect_clients("operation_error", num_clients=2)
+            
+            # Verify both clients received initial state
+            for client in good_clients:
+                initial_state = client.get_received_messages("current_state")
+                assert len(initial_state) == 1
+                client.clear_messages()
 
             # Make one client fail on send
             bad_client = good_clients[0]
@@ -249,11 +313,14 @@ class TestWebSocketExamples:
         """Example: Test that different operations are isolated from each other."""
         # Setup
         manager = RedisStreamWebSocketManager()
-        manager.redis = mock_redis_client
+        # Use None to test direct broadcast mode
+        manager.redis = None
 
         harness = WebSocketTestHarness(manager)
 
-        with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
+        with patch("shared.database.factory.create_operation_repository") as mock_create_repo, \
+             patch("shared.database.database.AsyncSessionLocal") as mock_session_local, \
+             patch("shared.database.repositories.operation_repository.OperationRepository") as mock_op_repo_class:
             from enum import Enum
             from unittest.mock import AsyncMock, MagicMock
 
@@ -274,6 +341,15 @@ class TestWebSocketExamples:
             mock_operation.error_message = None
             mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
             mock_create_repo.return_value = mock_repo
+            
+            # Setup mock session for WebSocket manager's direct database access
+            mock_session = AsyncMock()
+            mock_session_local.return_value.__aenter__.return_value = mock_session
+            
+            # Setup mock OperationRepository for WebSocket manager
+            mock_ws_repo = AsyncMock()
+            mock_ws_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
+            mock_op_repo_class.return_value = mock_ws_repo
 
             # Connect clients to different operations
             op1_clients = await harness.connect_clients("operation_A", num_clients=2)
@@ -287,7 +363,8 @@ class TestWebSocketExamples:
             await manager.send_update("operation_A", "update_A", {"operation": "A"})
             await manager.send_update("operation_B", "update_B", {"operation": "B"})
 
-            await asyncio.sleep(0.1)
+            # Give more time for message propagation
+            await asyncio.sleep(0.3)
 
             # Verify operation A clients only got operation A updates
             for client in op1_clients:

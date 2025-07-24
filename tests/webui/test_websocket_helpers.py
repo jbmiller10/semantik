@@ -29,13 +29,13 @@ class MockWebSocketClient:
 
         self.websocket.send_json.side_effect = track_send
 
-    async def connect(self, manager, job_id: str, user_id: str):
+    async def connect(self, manager, operation_id: str, user_id: str):
         """Connect to WebSocket manager."""
-        await manager.connect(self.websocket, job_id, user_id)
+        await manager.connect(self.websocket, operation_id, user_id)
 
-    async def disconnect(self, manager, job_id: str, user_id: str):
+    async def disconnect(self, manager, operation_id: str, user_id: str):
         """Disconnect from WebSocket manager."""
-        await manager.disconnect(self.websocket, job_id, user_id)
+        await manager.disconnect(self.websocket, operation_id, user_id)
 
     async def send_message(self, message: dict[str, Any]):
         """Send a message (simulate client sending)."""
@@ -68,29 +68,29 @@ class WebSocketTestHarness:
         self.clients[client_id] = client
         return client
 
-    async def connect_clients(self, job_id: str, num_clients: int = 1, user_prefix: str = "user"):
-        """Connect multiple clients to a job."""
+    async def connect_clients(self, operation_id: str, num_clients: int = 1, user_prefix: str = "user"):
+        """Connect multiple clients to an operation."""
         connected_clients = []
         for i in range(num_clients):
             client_id = f"client_{i}"
             user_id = f"{user_prefix}_{i}"
 
             client = await self.create_client(client_id)
-            await client.connect(self.manager, job_id, user_id)
+            await client.connect(self.manager, operation_id, user_id)
             connected_clients.append(client)
 
         # Allow connections to stabilize
         await asyncio.sleep(0.1)
         return connected_clients
 
-    async def broadcast_and_verify(self, job_id: str, message_type: str, data: dict[str, Any]):
+    async def broadcast_and_verify(self, operation_id: str, message_type: str, data: dict[str, Any]):
         """Broadcast a message and verify all clients received it."""
-        await self.manager.send_update(job_id, message_type, data)
+        await self.manager.send_update(operation_id, message_type, data)
 
         # Allow message propagation
         await asyncio.sleep(0.1)
 
-        # Verify all clients for this job received the message
+        # Verify all clients for this operation received the message
         results = {}
         for client_id, client in self.clients.items():
             messages = client.get_received_messages(message_type)
@@ -105,14 +105,17 @@ class WebSocketTestHarness:
             # Find the connection info from manager
             for key, websockets in list(self.manager.connections.items()):
                 if client.websocket in websockets:
-                    user_id, job_id = key.split(":", 1)
-                    await client.disconnect(self.manager, job_id, user_id)
+                    parts = key.split(":")
+                    if len(parts) == 3:  # user_id:operation:operation_id
+                        user_id = parts[0]
+                        operation_id = parts[2]
+                        await client.disconnect(self.manager, operation_id, user_id)
 
         self.clients.clear()
 
 
-async def simulate_job_updates(updater, delays: list[float] = None):
-    """Simulate a sequence of job updates with optional delays."""
+async def simulate_operation_updates(updater, delays: list[float] = None):
+    """Simulate a sequence of operation updates with optional delays."""
     if delays is None:
         delays = [0.1] * 6  # Default delays between updates
 
