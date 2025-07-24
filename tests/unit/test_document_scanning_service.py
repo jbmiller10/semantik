@@ -80,9 +80,9 @@ class TestDocumentScanningService:
                 collection_id=str(uuid4()), source_path=temp_dir
             )
 
-            assert stats["total_files_found"] == 0
-            assert stats["new_files_registered"] == 0
-            assert stats["duplicate_files_skipped"] == 0
+            assert stats["total_documents_found"] == 0
+            assert stats["new_documents_registered"] == 0
+            assert stats["duplicate_documents_skipped"] == 0
             assert stats["errors"] == []
             assert stats["total_size_bytes"] == 0
 
@@ -122,9 +122,9 @@ class TestDocumentScanningService:
             )
 
             # Verify results
-            assert stats["total_files_found"] == 3  # Only supported files
-            assert stats["new_files_registered"] == 3
-            assert stats["duplicate_files_skipped"] == 0
+            assert stats["total_documents_found"] == 3  # Only supported files
+            assert stats["new_documents_registered"] == 3
+            assert stats["duplicate_documents_skipped"] == 0
             assert len(stats["errors"]) == 0
             assert stats["total_size_bytes"] > 0
 
@@ -180,9 +180,9 @@ class TestDocumentScanningService:
             )
 
             # Both files should be found
-            assert stats["total_files_found"] == 2
-            assert stats["new_files_registered"] == 1  # Only second file is new
-            assert stats["duplicate_files_skipped"] == 1  # First file is duplicate
+            assert stats["total_documents_found"] == 2
+            assert stats["new_documents_registered"] == 1  # Only second file is new
+            assert stats["duplicate_documents_skipped"] == 1  # First file is duplicate
             assert mock_document_repo.create.call_count == 2
 
     @pytest.mark.asyncio()
@@ -208,7 +208,7 @@ class TestDocumentScanningService:
                 collection_id=collection_id, source_path=temp_dir, recursive=True
             )
 
-            assert stats["total_files_found"] == 3
+            assert stats["total_documents_found"] == 3
             assert mock_document_repo.create.call_count == 3
 
     @pytest.mark.asyncio()
@@ -229,7 +229,7 @@ class TestDocumentScanningService:
                 collection_id=str(uuid4()), source_path=temp_dir, recursive=False
             )
 
-            assert stats["total_files_found"] == 1  # Only root file
+            assert stats["total_documents_found"] == 1  # Only root file
             assert mock_document_repo.create.call_count == 1
 
     @pytest.mark.asyncio()
@@ -246,11 +246,11 @@ class TestDocumentScanningService:
                 collection_id=str(uuid4()), source_path=temp_dir
             )
 
-            assert stats["total_files_found"] == 1
-            assert stats["new_files_registered"] == 0
-            assert stats["duplicate_files_skipped"] == 0
+            assert stats["total_documents_found"] == 1
+            assert stats["new_documents_registered"] == 0
+            assert stats["duplicate_documents_skipped"] == 0
             assert len(stats["errors"]) == 1
-            assert "test.txt" in stats["errors"][0]["file"]
+            assert "test.txt" in stats["errors"][0]["document"]
             assert "Database error" in stats["errors"][0]["error"]
 
     @pytest.mark.asyncio()
@@ -261,7 +261,7 @@ class TestDocumentScanningService:
             tmp_file.flush()
 
             try:
-                result = await service.scan_file(collection_id=str(uuid4()), file_path=tmp_file.name)
+                result = await service.scan_document(collection_id=str(uuid4()), file_path=tmp_file.name)
 
                 assert "document_id" in result
                 assert result["is_new"] is True
@@ -277,9 +277,9 @@ class TestDocumentScanningService:
         """Test scanning unsupported file type raises ValueError."""
         with (
             tempfile.NamedTemporaryFile(suffix=".jpg") as tmp_file,
-            pytest.raises(ValueError, match="Unsupported file type"),
+            pytest.raises(ValueError, match="Unsupported document type"),
         ):
-            await service.scan_file(collection_id=str(uuid4()), file_path=tmp_file.name)
+            await service.scan_document(collection_id=str(uuid4()), file_path=tmp_file.name)
 
     @pytest.mark.asyncio()
     async def test_calculate_file_hash(self, service):
@@ -337,7 +337,7 @@ class TestDocumentScanningService:
                 with patch("pathlib.Path.stat") as mock_stat:
                     mock_stat.return_value = MagicMock(st_size=600 * 1024 * 1024)  # 600MB
 
-                    with pytest.raises(ValueError, match="File too large"):
+                    with pytest.raises(ValueError, match="Document too large"):
                         await service._register_file(collection_id=str(uuid4()), file_path=Path(tmp_file.name))
 
             finally:
@@ -375,7 +375,7 @@ class TestDocumentScanningService:
                 collection_id=collection_id, source_path=temp_dir, batch_size=2
             )
 
-            assert stats["total_files_found"] == 5
+            assert stats["total_documents_found"] == 5
             # Session commit should be called 3 times (2 + 2 + 1)
             assert mock_session.commit.call_count == 3
 
@@ -414,7 +414,7 @@ class TestDocumentScanningService:
                 collection_id=collection_id, source_path=temp_dir, progress_callback=progress_callback
             )
 
-            assert stats["total_files_found"] == 3
+            assert stats["total_documents_found"] == 3
             # Progress callback should be called 3 times
             assert len(progress_calls) == 3
             # In non-recursive mode, total is updated incrementally

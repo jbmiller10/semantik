@@ -35,13 +35,13 @@ class TestCeleryTaskWithOperationUpdates:
     @pytest.fixture()
     def task_updater(self):
         """Create a CeleryTaskWithOperationUpdates instance."""
-        return CeleryTaskWithOperationUpdates("test-job-123")
+        return CeleryTaskWithOperationUpdates("test-operation-123")
 
     @pytest.mark.asyncio()
     async def test_initialization(self, task_updater):
         """Test proper initialization of CeleryTaskWithOperationUpdates."""
-        assert task_updater.operation_id == "test-job-123"
-        assert task_updater.stream_key == "operation-progress:test-job-123"
+        assert task_updater.operation_id == "test-operation-123"
+        assert task_updater.stream_key == "operation-progress:test-operation-123"
         assert task_updater._redis_client is None
 
     @pytest.mark.asyncio()
@@ -73,7 +73,7 @@ class TestCeleryTaskWithOperationUpdates:
 
             # Verify stream key and maxlen
             call_args = mock_redis.xadd.call_args
-            assert call_args[0][0] == "operation-progress:test-job-123"  # stream key
+            assert call_args[0][0] == "operation-progress:test-operation-123"  # stream key
             assert "maxlen" in call_args[1]  # keyword argument
             assert call_args[1]["maxlen"] == 1000
 
@@ -95,7 +95,7 @@ class TestCeleryTaskWithOperationUpdates:
             await task_updater.send_update("start", {"status": "started"})
 
             # Verify expire was called with 24 hours (86400 seconds)
-            mock_redis.expire.assert_called_once_with("operation-progress:test-job-123", 86400)
+            mock_redis.expire.assert_called_once_with("operation-progress:test-operation-123", 86400)
 
     @pytest.mark.asyncio()
     async def test_send_update_handles_redis_error(self, task_updater, mock_redis, mock_redis_from_url):
@@ -167,7 +167,7 @@ class TestCeleryTaskWithOperationUpdates:
                 ("file_progress", {"file": "doc1.pdf", "chunks_processed": 5, "total_chunks": 20}),
                 ("file_complete", {"file": "doc1.pdf", "vectors_created": 15}),
                 ("file_error", {"file": "doc2.txt", "error": "Extraction failed"}),
-                ("job_error", {"error": "Model loading failed", "traceback": "..."}),
+                ("operation_error", {"error": "Model loading failed", "traceback": "..."}),
                 ("status", {"status": "completed", "summary": {"processed": 10, "failed": 1}}),
             ]
 
@@ -198,23 +198,23 @@ class TestCeleryTaskWithOperationUpdates:
 
     @pytest.mark.asyncio()
     async def test_stream_key_format(self, mock_redis, mock_redis_from_url):
-        """Test that stream keys are properly formatted for different job IDs."""
+        """Test that stream keys are properly formatted for different operation IDs."""
         with patch("redis.asyncio.from_url", side_effect=mock_redis_from_url):
-            # Test various job ID formats
-            job_ids = [
-                "simple-job",
-                "job_with_underscore",
-                "job-with-uuid-123e4567-e89b-12d3-a456-426614174000",
-                "JOB_UPPERCASE",
+            # Test various operation ID formats
+            operation_ids = [
+                "simple-operation",
+                "operation_with_underscore",
+                "operation-with-uuid-123e4567-e89b-12d3-a456-426614174000",
+                "OPERATION_UPPERCASE",
             ]
 
-            for job_id in job_ids:
-                updater = CeleryTaskWithOperationUpdates(job_id)
+            for operation_id in operation_ids:
+                updater = CeleryTaskWithOperationUpdates(operation_id)
                 await updater.send_update("test", {})
 
                 # Verify correct stream key used
                 call_args = mock_redis.xadd.call_args
-                expected_key = f"operation-progress:{job_id}"
+                expected_key = f"operation-progress:{operation_id}"
                 assert call_args[0][0] == expected_key
 
                 # Reset mock for next iteration

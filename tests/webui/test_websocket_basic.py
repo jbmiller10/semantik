@@ -43,7 +43,7 @@ class TestWebSocketBasic:
         assert sent_data["data"]["progress"] == 50
 
     @pytest.mark.asyncio()
-    async def test_broadcast_to_job(self):
+    async def test_broadcast_to_operation(self):
         """Test broadcasting to multiple WebSocket connections."""
         manager = RedisStreamWebSocketManager()
 

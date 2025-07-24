@@ -159,6 +159,11 @@ class TestWebSocketRedisIntegration:
             async def xgroup_destroy(self, stream_key, group_name):
                 if stream_key in self.consumer_groups:
                     self.consumer_groups[stream_key].pop(group_name, None)
+            
+            async def xinfo_stream(self, stream_key):
+                if stream_key not in self.streams:
+                    raise Exception(f"Stream {stream_key} does not exist")
+                return {"length": len(self.streams[stream_key])}
 
             async def close(self):
                 self.closed = True
@@ -187,7 +192,7 @@ class TestWebSocketRedisIntegration:
         return create_mock_websocket
 
     @pytest.mark.asyncio()
-    async def test_end_to_end_job_updates_flow(self, real_redis_mock, mock_websocket_factory):
+    async def test_end_to_end_operation_updates_flow(self, real_redis_mock, mock_websocket_factory):
         """Test complete flow from Celery task to WebSocket client."""
         # Setup
         manager = RedisStreamWebSocketManager()
@@ -215,7 +220,7 @@ class TestWebSocketRedisIntegration:
                     INDEX = "index"
 
                 mock_operation = MagicMock()
-                mock_operation.uuid = "job1"
+                mock_operation.uuid = "operation1"
                 mock_operation.status = MockStatus.PROCESSING
                 mock_operation.type = MockType.INDEX
                 mock_operation.collection_id = "collection1"
@@ -230,26 +235,29 @@ class TestWebSocketRedisIntegration:
 
                 # Set up the operation getter function
                 async def mock_get_operation(operation_id):
-                    if operation_id == "job1":
+                    if operation_id == "operation1":
                         return mock_operation
                     return None
 
+                # IMPORTANT: Set operation getter BEFORE connecting WebSocket
                 manager.set_operation_getter(mock_get_operation)
 
-                # Connect WebSocket client
-                await manager.connect(ws_client, "job1", "user1")
-
-                # Allow consumer task to start
-                await asyncio.sleep(0.1)
-
-                # Simulate Celery task sending updates
-                celery_updater = CeleryTaskWithOperationUpdates("job1")
+                # First create the stream by sending an initial update
+                # This ensures the stream exists before the consumer starts
+                celery_updater = CeleryTaskWithOperationUpdates("operation1")
                 celery_updater._redis_client = real_redis_mock
+                
+                # Send initial update to create the stream
+                await celery_updater.send_update("start", {"status": "started"})
+                await asyncio.sleep(0.1)  # Allow stream creation
+                
+                # Now connect WebSocket client - consumer will find existing stream
+                await manager.connect(ws_client, "operation1", "user1")
+                
+                # Allow consumer task to start and read initial message
+                await asyncio.sleep(0.2)
 
                 # Send various updates
-                await celery_updater.send_update("start", {"status": "started"})
-                await asyncio.sleep(0.1)  # Allow propagation
-
                 await celery_updater.send_update("progress", {"progress": 25, "current_file": "doc1.pdf"})
                 await asyncio.sleep(0.1)
 
@@ -268,7 +276,7 @@ class TestWebSocketRedisIntegration:
                     assert any(u["data"]["progress"] == 50 for u in progress_updates)
 
                 # Cleanup
-                await manager.disconnect(ws_client, "job1", "user1")
+                await manager.disconnect(ws_client, "operation1", "user1")
                 await manager.shutdown()
 
     @pytest.mark.asyncio()
@@ -293,7 +301,7 @@ class TestWebSocketRedisIntegration:
                     "MockOp",
                     (),
                     {
-                        "uuid": "job1",
+                        "uuid": "operation1",
                         "status": type("Status", (), {"value": "processing"}),
                         "type": type("Type", (), {"value": "index"}),
                         "collection_id": "collection1",
@@ -307,16 +315,16 @@ class TestWebSocketRedisIntegration:
                 mock_create_repo.return_value = mock_repo
 
                 # Set up operation getter for all clients
-                self._setup_operation_getter(manager, ["job1"])
+                self._setup_operation_getter(manager, ["operation1"])
 
                 # Connect all clients
                 for i, client in enumerate(clients):
-                    await manager.connect(client, "job1", f"user{i}")
+                    await manager.connect(client, "operation1", f"user{i}")
 
                 await asyncio.sleep(0.1)
 
                 # Send update via manager (simulating from API)
-                await manager.send_update("job1", "broadcast", {"message": "Update for all clients"})
+                await manager.send_update("operation1", "broadcast", {"message": "Update for all clients"})
 
                 await asyncio.sleep(0.1)
 
@@ -328,7 +336,7 @@ class TestWebSocketRedisIntegration:
 
                 # Cleanup
                 for i, client in enumerate(clients):
-                    await manager.disconnect(client, "job1", f"user{i}")
+                    await manager.disconnect(client, "operation1", f"user{i}")
 
             await manager.shutdown()
 
@@ -344,9 +352,9 @@ class TestWebSocketRedisIntegration:
             await manager.startup()
 
             # Send some updates before any client connects
-            await manager.send_update("job1", "update1", {"data": "first"})
-            await manager.send_update("job1", "update2", {"data": "second"})
-            await manager.send_update("job1", "update3", {"data": "third"})
+            await manager.send_update("operation1", "update1", {"data": "first"})
+            await manager.send_update("operation1", "update2", {"data": "second"})
+            await manager.send_update("operation1", "update3", {"data": "third"})
 
             # Now connect a client
             client = mock_websocket_factory("client1")
@@ -358,7 +366,7 @@ class TestWebSocketRedisIntegration:
                     "MockOp",
                     (),
                     {
-                        "uuid": "job1",
+                        "uuid": "operation1",
                         "status": type("Status", (), {"value": "processing"}),
                         "type": type("Type", (), {"value": "index"}),
                         "collection_id": "collection1",
@@ -372,9 +380,9 @@ class TestWebSocketRedisIntegration:
                 mock_create_repo.return_value = mock_repo
 
                 # Set up operation getter
-                self._setup_operation_getter(manager, ["job1"])
+                self._setup_operation_getter(manager, ["operation1"])
 
-                await manager.connect(client, "job1", "user1")
+                await manager.connect(client, "operation1", "user1")
                 await asyncio.sleep(0.1)
 
                 # Client should receive historical messages
@@ -391,7 +399,7 @@ class TestWebSocketRedisIntegration:
                 assert update_messages[1]["type"] == "update2"
                 assert update_messages[2]["type"] == "update3"
 
-                await manager.disconnect(client, "job1", "user1")
+                await manager.disconnect(client, "operation1", "user1")
 
             await manager.shutdown()
 
@@ -420,7 +428,7 @@ class TestWebSocketRedisIntegration:
                     "MockOp",
                     (),
                     {
-                        "uuid": "job1",
+                        "uuid": "operation1",
                         "status": type("Status", (), {"value": "processing"}),
                         "type": type("Type", (), {"value": "index"}),
                         "collection_id": "collection1",
@@ -434,13 +442,13 @@ class TestWebSocketRedisIntegration:
                 mock_create_repo.return_value = mock_repo
 
                 # Connect to different manager instances
-                await manager1.connect(client1, "job1", "user1")
-                await manager2.connect(client2, "job1", "user2")
+                await manager1.connect(client1, "operation1", "user1")
+                await manager2.connect(client2, "operation1", "user2")
 
                 await asyncio.sleep(0.1)
 
                 # Send update (could come from any instance)
-                await manager1.send_update("job1", "shared_update", {"message": "Update from manager1"})
+                await manager1.send_update("operation1", "shared_update", {"message": "Update from manager1"})
 
                 await asyncio.sleep(0.2)
 
@@ -453,15 +461,15 @@ class TestWebSocketRedisIntegration:
                 assert len(client1_updates) > 0 or len(client2_updates) > 0
 
                 # Cleanup
-                await manager1.disconnect(client1, "job1", "user1")
-                await manager2.disconnect(client2, "job1", "user2")
+                await manager1.disconnect(client1, "operation1", "user1")
+                await manager2.disconnect(client2, "operation1", "user2")
 
             await manager1.shutdown()
             await manager2.shutdown()
 
     @pytest.mark.asyncio()
-    async def test_stream_cleanup_after_job_completion(self, real_redis_mock):
-        """Test that Redis streams are cleaned up after job completion."""
+    async def test_stream_cleanup_after_operation_completion(self, real_redis_mock):
+        """Test that Redis streams are cleaned up after operation completion."""
         manager = RedisStreamWebSocketManager()
 
         async def async_from_url(*args, **kwargs):  # noqa: ARG001
@@ -471,17 +479,17 @@ class TestWebSocketRedisIntegration:
             await manager.startup()
 
             # Send some updates
-            await manager.send_update("job1", "progress", {"progress": 50})
-            await manager.send_update("job1", "complete", {"status": "completed"})
+            await manager.send_update("operation1", "progress", {"progress": 50})
+            await manager.send_update("operation1", "complete", {"status": "completed"})
 
             # Verify stream exists
-            assert "job:updates:job1" in real_redis_mock.streams
+            assert "operation-progress:operation1" in real_redis_mock.streams
 
             # Clean up the stream
-            await manager.cleanup_stream("job1")
+            await manager.cleanup_stream("operation1")
 
             # Verify stream is deleted
-            assert "job:updates:job1" not in real_redis_mock.streams
+            assert "operation-progress:operation1" not in real_redis_mock.streams
 
             await manager.shutdown()
 
@@ -509,7 +517,7 @@ class TestWebSocketRedisIntegration:
                 "MockOp",
                 (),
                 {
-                    "uuid": "job1",
+                    "uuid": "operation1",
                     "status": type("Status", (), {"value": "processing"}),
                     "type": type("Type", (), {"value": "index"}),
                     "collection_id": "collection1",
@@ -524,24 +532,24 @@ class TestWebSocketRedisIntegration:
             mock_create_repo.return_value = mock_repo
 
             # Set up operation getter
-            self._setup_operation_getter(manager, ["job1"])
+            self._setup_operation_getter(manager, ["operation1"])
 
             # Connect should still work
-            await manager.connect(client, "job1", "user1")
+            await manager.connect(client, "operation1", "user1")
 
             # Should receive initial state
             assert len(client.received_messages) == 1
             assert client.received_messages[0]["type"] == "current_state"
 
             # Direct updates should work
-            await manager.send_update("job1", "progress", {"progress": 75})
+            await manager.send_update("operation1", "progress", {"progress": 75})
 
             # Client should receive update via direct broadcast
             progress_updates = [msg for msg in client.received_messages if msg["type"] == "progress"]
             assert len(progress_updates) == 1
             assert progress_updates[0]["data"]["progress"] == 75
 
-            await manager.disconnect(client, "job1", "user1")
+            await manager.disconnect(client, "operation1", "user1")
 
         await manager.shutdown()
 
@@ -566,7 +574,7 @@ class TestWebSocketRedisIntegration:
                     "MockOp",
                     (),
                     {
-                        "uuid": "job1",
+                        "uuid": "operation1",
                         "status": type("Status", (), {"value": "processing"}),
                         "type": type("Type", (), {"value": "index"}),
                         "collection_id": "collection1",
@@ -580,25 +588,25 @@ class TestWebSocketRedisIntegration:
                 mock_create_repo.return_value = mock_repo
 
                 # Set up operation getter
-                self._setup_operation_getter(manager, ["job1"])
+                self._setup_operation_getter(manager, ["operation1"])
 
-                await manager.connect(client, "job1", "user1")
+                await manager.connect(client, "operation1", "user1")
 
                 # Simulate client disconnect by making send_json fail
                 client.send_json.side_effect = Exception("Connection lost")
 
                 # Send update - should handle the failed client
-                await manager.send_update("job1", "test", {"data": "test"})
+                await manager.send_update("operation1", "test", {"data": "test"})
                 await asyncio.sleep(0.1)
 
                 # Client should be automatically removed from connections
-                assert client not in manager.connections.get("user1:job1", set())
+                assert client not in manager.connections.get("user1:operation:operation1", set())
 
             await manager.shutdown()
 
     @pytest.mark.asyncio()
-    async def test_concurrent_job_processing(self, real_redis_mock, mock_websocket_factory):
-        """Test handling multiple jobs concurrently."""
+    async def test_concurrent_operation_processing(self, real_redis_mock, mock_websocket_factory):
+        """Test handling multiple operations concurrently."""
         manager = RedisStreamWebSocketManager()
 
         async def async_from_url(*args, **kwargs):  # noqa: ARG001
@@ -607,11 +615,11 @@ class TestWebSocketRedisIntegration:
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
-            # Create clients for different jobs
+            # Create clients for different operations
             clients = {
-                "job1": [mock_websocket_factory(f"job1_client{i}") for i in range(2)],
-                "job2": [mock_websocket_factory(f"job2_client{i}") for i in range(2)],
-                "job3": [mock_websocket_factory(f"job3_client{i}") for i in range(2)],
+                "operation1": [mock_websocket_factory(f"operation1_client{i}") for i in range(2)],
+                "operation2": [mock_websocket_factory(f"operation2_client{i}") for i in range(2)],
+                "operation3": [mock_websocket_factory(f"operation3_client{i}") for i in range(2)],
             }
 
             with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
@@ -621,7 +629,7 @@ class TestWebSocketRedisIntegration:
                     "MockOp",
                     (),
                     {
-                        "uuid": "job1",
+                        "uuid": "operation1",
                         "status": type("Status", (), {"value": "processing"}),
                         "type": type("Type", (), {"value": "index"}),
                         "collection_id": "collection1",
@@ -634,33 +642,33 @@ class TestWebSocketRedisIntegration:
                 mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
                 mock_create_repo.return_value = mock_repo
 
-                # Set up operation getter for both jobs
-                self._setup_operation_getter(manager, ["job1", "job2"])
+                # Set up operation getter for all operations
+                self._setup_operation_getter(manager, ["operation1", "operation2", "operation3"])
 
                 # Connect all clients
-                for job_id, job_clients in clients.items():
-                    for i, client in enumerate(job_clients):
-                        await manager.connect(client, job_id, f"user_{job_id}_{i}")
+                for operation_id, operation_clients in clients.items():
+                    for i, client in enumerate(operation_clients):
+                        await manager.connect(client, operation_id, f"user_{operation_id}_{i}")
 
                 await asyncio.sleep(0.1)
 
-                # Send updates to different jobs
-                await manager.send_update("job1", "update", {"job": "job1"})
-                await manager.send_update("job2", "update", {"job": "job2"})
-                await manager.send_update("job3", "update", {"job": "job3"})
+                # Send updates to different operations
+                await manager.send_update("operation1", "update", {"operation": "operation1"})
+                await manager.send_update("operation2", "update", {"operation": "operation2"})
+                await manager.send_update("operation3", "update", {"operation": "operation3"})
 
                 await asyncio.sleep(0.1)
 
-                # Verify each job's clients only received their updates
-                for job_id, job_clients in clients.items():
-                    for client in job_clients:
+                # Verify each operation's clients only received their updates
+                for operation_id, operation_clients in clients.items():
+                    for client in operation_clients:
                         updates = [msg for msg in client.received_messages if msg["type"] == "update"]
                         assert len(updates) >= 1
-                        assert all(u["data"]["job"] == job_id for u in updates)
+                        assert all(u["data"]["operation"] == operation_id for u in updates)
 
                 # Cleanup
-                for job_id, job_clients in clients.items():
-                    for i, client in enumerate(job_clients):
-                        await manager.disconnect(client, job_id, f"user_{job_id}_{i}")
+                for operation_id, operation_clients in clients.items():
+                    for i, client in enumerate(operation_clients):
+                        await manager.disconnect(client, operation_id, f"user_{operation_id}_{i}")
 
             await manager.shutdown()

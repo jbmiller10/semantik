@@ -113,7 +113,7 @@ class TestRedisStreamWebSocketManager:
         manager.redis = mock_redis
 
         # Add a connection and consumer task
-        manager.connections["user1:operation:job1"] = {mock_websocket}
+        manager.connections["user1:operation:operation1"] = {mock_websocket}
 
         # Create a real asyncio task that can be cancelled and awaited
         async def dummy_coro():
@@ -121,7 +121,7 @@ class TestRedisStreamWebSocketManager:
 
         mock_task = asyncio.create_task(dummy_coro())
 
-        manager.consumer_tasks["job1"] = mock_task
+        manager.consumer_tasks["operation1"] = mock_task
 
         await manager.shutdown()
 
@@ -148,7 +148,7 @@ class TestRedisStreamWebSocketManager:
             INDEX = "index"
 
         mock_operation = MagicMock()
-        mock_operation.uuid = "job1"
+        mock_operation.uuid = "operation1"
         mock_operation.status = MockStatus.PROCESSING
         mock_operation.type = MockType.INDEX
         mock_operation.collection_id = "collection1"
@@ -162,19 +162,19 @@ class TestRedisStreamWebSocketManager:
 
         # Set up the operation getter function
         async def mock_get_operation(operation_id):
-            if operation_id == "job1":
+            if operation_id == "operation1":
                 return mock_operation
             return None
 
         manager.set_operation_getter(mock_get_operation)
 
-        await manager.connect(mock_websocket, "job1", "user1")
+        await manager.connect(mock_websocket, "operation1", "user1")
 
         # Verify connection accepted
         mock_websocket.accept.assert_called_once()
 
         # Verify connection stored
-        assert mock_websocket in manager.connections["user1:operation:job1"]
+        assert mock_websocket in manager.connections["user1:operation:operation1"]
 
         # Verify current state sent
         mock_websocket.send_json.assert_called()
@@ -187,9 +187,9 @@ class TestRedisStreamWebSocketManager:
         """Test connection limit enforcement."""
         # Add max connections for user
         for i in range(manager.max_connections_per_user):
-            manager.connections[f"user1:operation:job{i}"] = {AsyncMock()}
+            manager.connections[f"user1:operation:operation{i}"] = {AsyncMock()}
 
-        await manager.connect(mock_websocket, "job_new", "user1")
+        await manager.connect(mock_websocket, "operation_new", "user1")
 
         # Verify connection rejected
         mock_websocket.close.assert_called_once_with(code=1008, reason="Connection limit exceeded")
@@ -198,7 +198,7 @@ class TestRedisStreamWebSocketManager:
     async def test_disconnect(self, manager, mock_websocket):
         """Test WebSocket disconnection handling."""
         # Add connection
-        manager.connections["user1:operation:job1"] = {mock_websocket}
+        manager.connections["user1:operation:operation1"] = {mock_websocket}
 
         # Add consumer task
         async def dummy_coro():
@@ -206,12 +206,12 @@ class TestRedisStreamWebSocketManager:
 
         mock_task = asyncio.create_task(dummy_coro())
 
-        manager.consumer_tasks["job1"] = mock_task
+        manager.consumer_tasks["operation1"] = mock_task
 
-        await manager.disconnect(mock_websocket, "job1", "user1")
+        await manager.disconnect(mock_websocket, "operation1", "user1")
 
         # Verify connection removed
-        assert "user1:operation:job1" not in manager.connections
+        assert "user1:operation:operation1" not in manager.connections
 
         # Verify consumer task cancelled
         assert mock_task.cancelled()
@@ -222,12 +222,12 @@ class TestRedisStreamWebSocketManager:
         manager.redis = mock_redis
 
         update_data = {"progress": 50, "current_file": "test.pdf"}
-        await manager.send_update("job1", "progress", update_data)
+        await manager.send_update("operation1", "progress", update_data)
 
         # Verify Redis operations
         mock_redis.xadd.assert_called_once()
         call_args = mock_redis.xadd.call_args
-        assert call_args[0][0] == "operation-progress:job1"  # stream key
+        assert call_args[0][0] == "operation-progress:operation1"  # stream key
         assert "maxlen" in call_args[1]  # keyword argument
         assert call_args[1]["maxlen"] == 1000
         message_data = call_args[0][1]
@@ -242,10 +242,10 @@ class TestRedisStreamWebSocketManager:
     async def test_send_operation_update_without_redis(self, manager, mock_websocket):
         """Test fallback to direct broadcast when Redis is unavailable."""
         manager.redis = None
-        manager.connections["user1:operation:job1"] = {mock_websocket}
+        manager.connections["user1:operation:operation1"] = {mock_websocket}
 
         update_data = {"status": "completed"}
-        await manager.send_update("job1", "status", update_data)
+        await manager.send_update("operation1", "status", update_data)
 
         # Verify direct broadcast
         mock_websocket.send_json.assert_called_once()
@@ -257,17 +257,17 @@ class TestRedisStreamWebSocketManager:
     async def test_consume_updates(self, manager, mock_redis, mock_websocket):
         """Test consuming updates from Redis stream."""
         manager.redis = mock_redis
-        manager.connections["user1:operation:job1"] = {mock_websocket}
+        manager.connections["user1:operation:operation1"] = {mock_websocket}
 
         # Mock stream messages
         test_message = {"timestamp": datetime.now(UTC).isoformat(), "type": "progress", "data": {"progress": 75}}
 
         mock_redis.xreadgroup.return_value = [
-            ("operation-progress:job1", [("msg-id-1", {"message": json.dumps(test_message)})])
+            ("operation-progress:operation1", [("msg-id-1", {"message": json.dumps(test_message)})])
         ]
 
         # Run consumer for one iteration
-        consumer_task = asyncio.create_task(manager._consume_updates("job1"))
+        consumer_task = asyncio.create_task(manager._consume_updates("operation1"))
         await asyncio.sleep(0.1)
         consumer_task.cancel()
 
@@ -281,7 +281,7 @@ class TestRedisStreamWebSocketManager:
         assert sent_data["data"]["progress"] == 75
 
         # Verify message acknowledged
-        mock_redis.xack.assert_called_with("operation-progress:job1", manager.consumer_group, "msg-id-1")
+        mock_redis.xack.assert_called_with("operation-progress:operation1", manager.consumer_group, "msg-id-1")
 
     @pytest.mark.asyncio()
     async def test_send_history(self, manager, mock_redis, mock_websocket):
@@ -310,28 +310,28 @@ class TestRedisStreamWebSocketManager:
 
         mock_redis.xrange.return_value = historical_messages
 
-        await manager._send_history(mock_websocket, "job1")
+        await manager._send_history(mock_websocket, "operation1")
 
         # Verify all historical messages sent
         assert mock_websocket.send_json.call_count == 2
 
         # Verify Redis query
-        mock_redis.xrange.assert_called_once_with("operation-progress:job1", min="-", max="+", count=100)
+        mock_redis.xrange.assert_called_once_with("operation-progress:operation1", min="-", max="+", count=100)
 
     @pytest.mark.asyncio()
     async def test_broadcast(self, manager):
-        """Test broadcasting message to all connections for a job."""
-        # Create multiple WebSocket connections for same job
+        """Test broadcasting message to all connections for an operation."""
+        # Create multiple WebSocket connections for same operation
         ws1 = AsyncMock(spec=WebSocket)
         ws2 = AsyncMock(spec=WebSocket)
         ws3 = AsyncMock(spec=WebSocket)
 
-        manager.connections["user1:operation:job1"] = {ws1, ws2}
-        manager.connections["user2:operation:job1"] = {ws3}
+        manager.connections["user1:operation:operation1"] = {ws1, ws2}
+        manager.connections["user2:operation:operation1"] = {ws3}
 
         test_message = {"timestamp": datetime.now(UTC).isoformat(), "type": "progress", "data": {"progress": 50}}
 
-        await manager._broadcast("job1", test_message)
+        await manager._broadcast("operation1", test_message)
 
         # Verify all connections received the message
         ws1.send_json.assert_called_once_with(test_message)
@@ -346,47 +346,47 @@ class TestRedisStreamWebSocketManager:
         ws_bad = AsyncMock(spec=WebSocket)
         ws_bad.send_json.side_effect = Exception("Connection closed")
 
-        manager.connections["user1:operation:job1"] = {ws_good, ws_bad}
+        manager.connections["user1:operation:operation1"] = {ws_good, ws_bad}
 
         test_message = {"type": "test", "data": {}}
 
-        await manager._broadcast("job1", test_message)
+        await manager._broadcast("operation1", test_message)
 
         # Verify good connection still works
         ws_good.send_json.assert_called_once()
 
         # Verify bad connection was removed
-        assert ws_bad not in manager.connections["user1:operation:job1"]
+        assert ws_bad not in manager.connections["user1:operation:operation1"]
 
     @pytest.mark.asyncio()
-    async def test_cleanup_job_stream(self, manager, mock_redis):
-        """Test cleaning up Redis stream for completed job."""
+    async def test_cleanup_operation_stream(self, manager, mock_redis):
+        """Test cleaning up Redis stream for completed operation."""
         manager.redis = mock_redis
 
         # Mock consumer groups
         mock_redis.xinfo_groups.return_value = [{"name": "group1"}, {"name": "group2"}]
 
-        await manager.cleanup_stream("job1")
+        await manager.cleanup_stream("operation1")
 
         # Verify stream deleted
-        mock_redis.delete.assert_called_once_with("operation-progress:job1")
+        mock_redis.delete.assert_called_once_with("operation-progress:operation1")
 
         # Verify consumer groups destroyed
         assert mock_redis.xgroup_destroy.call_count == 2
-        mock_redis.xgroup_destroy.assert_any_call("operation-progress:job1", "group1")
-        mock_redis.xgroup_destroy.assert_any_call("operation-progress:job1", "group2")
+        mock_redis.xgroup_destroy.assert_any_call("operation-progress:operation1", "group1")
+        mock_redis.xgroup_destroy.assert_any_call("operation-progress:operation1", "group2")
 
     @pytest.mark.asyncio()
-    async def test_cleanup_job_stream_without_redis(self, manager):
+    async def test_cleanup_operation_stream_without_redis(self, manager):
         """Test cleanup gracefully handles missing Redis."""
         manager.redis = None
 
         # Should not raise exception
-        await manager.cleanup_stream("job1")
+        await manager.cleanup_stream("operation1")
 
     @pytest.mark.asyncio()
     async def test_concurrent_connections(self, manager, mock_redis):
-        """Test handling multiple concurrent connections for same job."""
+        """Test handling multiple concurrent connections for same operation."""
         manager.redis = mock_redis
 
         # Create multiple WebSocket connections
@@ -400,7 +400,7 @@ class TestRedisStreamWebSocketManager:
             mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
             mock_create_repo.return_value = mock_repo
 
-            connect_tasks = [manager.connect(ws, "job1", f"user{i}") for i, ws in enumerate(websockets)]
+            connect_tasks = [manager.connect(ws, "operation1", f"user{i}") for i, ws in enumerate(websockets)]
             await asyncio.gather(*connect_tasks)
 
         # Verify all connections established
@@ -409,4 +409,4 @@ class TestRedisStreamWebSocketManager:
 
         # Verify only one consumer task created
         assert len(manager.consumer_tasks) == 1
-        assert "job1" in manager.consumer_tasks
+        assert "operation1" in manager.consumer_tasks

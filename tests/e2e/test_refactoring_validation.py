@@ -63,7 +63,7 @@ class TestCurrentSystemBehavior:
 
         raise Exception(f"Failed to authenticate: Login: {login_response.text}, Register: {register_response.text}")
 
-    def test_complete_embedding_pipeline(self, test_documents_fixture: Path, cleanup_job: list[str]) -> None:
+    def test_complete_embedding_pipeline(self, test_documents_fixture: Path, cleanup_operation: list[str]) -> None:
         """Test document ingestion through search."""
         # Get authentication headers
         headers = self._get_auth_headers()
@@ -85,7 +85,7 @@ class TestCurrentSystemBehavior:
         collection_id = collection_data["id"]
 
         # Store collection_id for cleanup
-        cleanup_job.append(collection_id)
+        cleanup_operation.append(collection_id)
 
         # 2. Add source to collection
         # Note: When running in Docker, we use a path accessible inside the container
@@ -150,7 +150,7 @@ def test_documents_fixture() -> Path:
 
 
 @pytest.fixture()
-def cleanup_job() -> Iterator[list[str]]:
+def cleanup_operation() -> Iterator[list[str]]:
     """Fixture to clean up collections after test completion."""
     collection_ids: list[str] = []
     yield collection_ids

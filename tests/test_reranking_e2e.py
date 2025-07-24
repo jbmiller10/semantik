@@ -28,16 +28,16 @@ class TestRerankingE2E:
     @pytest.mark.asyncio()
     async def test_webui_search_forwards_to_vecpipe(self):
         """Test that webui search.py forwards reranking params to vecpipe"""
-        from webui.api.search import SearchRequest
+        from packages.shared.contracts.search import SearchRequest
 
         # Create a request with reranking parameters
         request = SearchRequest(
             query="test query",
             collection="test_collection",
-            top_k=10,
+            k=10,
             use_reranker=True,
             rerank_model="cross-encoder/ms-marco-MiniLM-L-12-v2",
-            search_type="vector",
+            search_type="semantic",
             score_threshold=0.0,
         )
 

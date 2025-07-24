@@ -31,7 +31,8 @@ class TestMigrations:
         project_root = Path(__file__).parent.parent.parent
         env = {
             "PYTHONPATH": str(project_root / "packages"),
-            "ALEMBIC_DATABASE_URL": f"sqlite:///{db_path}",
+            "DATABASE_URL": f"sqlite:///{db_path}",
+            "POSTGRES_PASSWORD": "test_password",  # Required by env.py
         }
 
         result = subprocess.run(
@@ -127,8 +128,9 @@ class TestMigrations:
         # Insert collection
         cursor.execute(
             """INSERT INTO collections (id, name, description, owner_id, vector_store_name,
-               embedding_model, quantization, chunk_size, chunk_overlap, is_public, created_at, updated_at, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               embedding_model, quantization, chunk_size, chunk_overlap, is_public, created_at, updated_at, status,
+               document_count, vector_count, total_size_bytes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 "coll1",
                 "Test Collection",
@@ -143,6 +145,9 @@ class TestMigrations:
                 "2023-01-01T00:00:00",
                 "2023-01-01T00:00:00",
                 "ready",
+                0,  # document_count
+                0,  # vector_count
+                0,  # total_size_bytes
             ),
         )
         conn.commit()
