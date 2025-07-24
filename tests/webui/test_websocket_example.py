@@ -17,7 +17,7 @@ class TestWebSocketExamples:
     """Example tests showing how to test WebSocket functionality."""
 
     @pytest.fixture(autouse=True)
-    def setup_and_teardown(self):
+    def _setup_and_teardown(self):
         """Ensure clean state before and after each test."""
         # Setup - nothing needed before
         return

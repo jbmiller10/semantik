@@ -578,9 +578,6 @@ class TestWebSocketRedisIntegration:
             await asyncio.sleep(0.1)
 
             # Client should receive update via direct broadcast
-            # Count all messages received
-            total_before = len(client.received_messages)
-
             # Now check for the new progress message
             progress_messages = [
                 msg for msg in client.received_messages if msg["type"] == "progress" and msg["data"]["progress"] == 75

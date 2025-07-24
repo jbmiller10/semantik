@@ -1,6 +1,7 @@
 """Helper utilities for WebSocket testing."""
 
 import asyncio
+import contextlib
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -101,12 +102,10 @@ class WebSocketTestHarness:
     async def cleanup(self):
         """Clean up all connections and consumer tasks."""
         # First, cancel all consumer tasks to prevent event loop errors
-        for operation_id, task in list(self.manager.consumer_tasks.items()):
+        for _, task in list(self.manager.consumer_tasks.items()):
             task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
         self.manager.consumer_tasks.clear()
 
         # Disconnect all clients
