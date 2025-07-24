@@ -316,9 +316,7 @@ class TestOperationsWebSocket:
 
             # Mock receive_json to return ping message, then disconnect
             ping_message = {"type": "ping"}
-            mock_websocket_client.receive_json = AsyncMock(
-                side_effect=[ping_message, Exception("Client disconnected")]
-            )
+            mock_websocket_client.receive_json = AsyncMock(side_effect=[ping_message, Exception("Client disconnected")])
 
             # Test the WebSocket connection
             await operation_websocket(mock_websocket_client, "test-operation-id")
@@ -400,9 +398,7 @@ class TestOperationsWebSocket:
 
             # Simulate progress update from WebSocket manager
             if connected_ws:
-                await connected_ws.send_json(
-                    {"type": "progress", "data": {"progress": 25, "current_file": "doc1.pdf"}}
-                )
+                await connected_ws.send_json({"type": "progress", "data": {"progress": 25, "current_file": "doc1.pdf"}})
 
             await asyncio.sleep(0.1)
 
@@ -419,7 +415,4 @@ class TestOperationsWebSocket:
 
             # Verify Redis received the update
             assert len(mock_redis.published_messages) > 0
-            assert any(
-                msg["channel"] == f"operation-progress:{operation_id}"
-                for msg in mock_redis.published_messages
-            )
+            assert any(msg["channel"] == f"operation-progress:{operation_id}" for msg in mock_redis.published_messages)
