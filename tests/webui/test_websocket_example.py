@@ -26,6 +26,12 @@ class TestWebSocketExamples:
         ws_manager.consumer_tasks.clear()
         ws_manager._get_operation_func = None
         
+        # Also reset the global instance if it exists
+        if hasattr(ws_manager, 'redis') and ws_manager.redis:
+            # Close any existing Redis connection
+            ws_manager.redis = None
+            ws_manager._startup_attempted = False
+        
         yield
         
         # Teardown - ensure no lingering tasks
@@ -34,12 +40,15 @@ class TestWebSocketExamples:
     @pytest.mark.asyncio()
     async def test_simple_websocket_flow(self, mock_redis_client):
         """Example: Test a simple WebSocket connection and message flow."""
-        # Setup
+        # Setup - Create a fresh manager instance to avoid state pollution
         manager = RedisStreamWebSocketManager()
         # Use None to test direct broadcast mode first
         manager.redis = None
         # Mark as already attempted to prevent reconnection
         manager._startup_attempted = True
+        # Ensure clean connections
+        manager.connections.clear()
+        manager.consumer_tasks.clear()
 
         harness = WebSocketTestHarness(manager)
 
@@ -77,6 +86,7 @@ class TestWebSocketExamples:
         # Verify WebSocket was accepted
         client.websocket.accept.assert_called_once()
 
+        
         # Client should receive initial state
         initial_messages = client.get_received_messages("current_state")
         assert len(initial_messages) >= 1, f"Expected at least 1 current_state message, got {len(initial_messages)}. All messages: {client.received_messages}"
@@ -100,12 +110,15 @@ class TestWebSocketExamples:
     @pytest.mark.asyncio()
     async def test_multiple_clients_broadcast(self, mock_redis_client):
         """Example: Test broadcasting to multiple clients."""
-        # Setup
+        # Setup - Create a fresh manager instance to avoid state pollution
         manager = RedisStreamWebSocketManager()
         # Use None to test direct broadcast mode
         manager.redis = None
         # Mark as already attempted to prevent reconnection
         manager._startup_attempted = True
+        # Ensure clean connections
+        manager.connections.clear()
+        manager.consumer_tasks.clear()
 
         harness = WebSocketTestHarness(manager)
 
@@ -153,12 +166,15 @@ class TestWebSocketExamples:
     @pytest.mark.asyncio()
     async def test_operation_lifecycle_updates(self, mock_redis_client):
         """Example: Test complete operation lifecycle with updates."""
-        # Setup
+        # Setup - Create a fresh manager instance to avoid state pollution
         manager = RedisStreamWebSocketManager()
         # Use None to test direct broadcast mode
         manager.redis = None
         # Mark as already attempted to prevent reconnection
         manager._startup_attempted = True
+        # Ensure clean connections
+        manager.connections.clear()
+        manager.consumer_tasks.clear()
 
         harness = WebSocketTestHarness(manager)
 
@@ -243,6 +259,9 @@ class TestWebSocketExamples:
         manager.redis = None
         # Mark as already attempted to prevent reconnection
         manager._startup_attempted = True
+        # Ensure clean connections
+        manager.connections.clear()
+        manager.consumer_tasks.clear()
 
         harness = WebSocketTestHarness(manager)
 
@@ -309,12 +328,15 @@ class TestWebSocketExamples:
     @pytest.mark.asyncio()
     async def test_concurrent_operations_isolation(self, mock_redis_client):
         """Example: Test that different operations are isolated from each other."""
-        # Setup
+        # Setup - Create a fresh manager instance to avoid state pollution
         manager = RedisStreamWebSocketManager()
         # Use None to test direct broadcast mode
         manager.redis = None
         # Mark as already attempted to prevent reconnection
         manager._startup_attempted = True
+        # Ensure clean connections
+        manager.connections.clear()
+        manager.consumer_tasks.clear()
 
         harness = WebSocketTestHarness(manager)
 

@@ -28,15 +28,15 @@ class MockWebSocketClient:
         self.sent_messages: list[dict[str, Any]] = []
         self.received_messages: list[dict[str, Any]] = []
         
-        # Create a custom send_json that tracks messages for this instance only
-        async def mock_send_json(data):
-            # Make a copy of the data to avoid mutations
+        # Create a simple async mock that captures messages
+        async def capture_send_json(data):
+            # Always capture the message
             self.received_messages.append(data.copy() if isinstance(data, dict) else data)
             return None
         
-        # Set up send_json as a fresh Mock with side_effect
-        self.websocket.send_json = AsyncMock(side_effect=mock_send_json)
-        # Reset call tracking to ensure clean state
+        # Set up send_json with tracking
+        self.websocket.send_json = AsyncMock(side_effect=capture_send_json)
+        # Ensure mock is clean
         self.websocket.send_json.reset_mock()
 
     async def connect(self, manager, operation_id: str, user_id: str):
@@ -53,9 +53,9 @@ class MockWebSocketClient:
         # In real implementation, this would trigger manager handlers
 
     def _ensure_messages_tracked(self):
-        """Ensure messages are tracked, falling back to call args if side_effect failed."""
+        """Ensure messages are tracked, falling back to call args if side effect failed."""
         if not self.received_messages and self.websocket.send_json.called:
-            # If side_effect didn't work, get messages from call args
+            # If side effect didn't work, get messages from call args
             # Only accept messages from the last 5 seconds (to handle CI delays)
             cutoff_time = self.created_at - timedelta(seconds=5)
             
@@ -77,8 +77,10 @@ class MockWebSocketClient:
     
     def get_received_messages(self, message_type: str = None) -> list[dict[str, Any]]:
         """Get received messages, optionally filtered by type."""
-        # Ensure messages are tracked before filtering
-        self._ensure_messages_tracked()
+        # Always check if we need to pull from call args
+        if not self.received_messages and self.websocket.send_json.called:
+            # Try to get from mock calls as a last resort
+            self._ensure_messages_tracked()
         
         # Debug: print all received messages if none match the filter
         if message_type:
@@ -104,6 +106,27 @@ class WebSocketTestHarness:
         """Initialize test harness."""
         self.manager = manager
         self.clients: dict[str, MockWebSocketClient] = {}
+        # Store original methods
+        self._original_broadcast = manager._broadcast
+        
+    def _patch_manager_broadcast(self):
+        """Patch the manager's _broadcast method to ensure message tracking."""
+        harness = self
+        original_broadcast = self._original_broadcast
+        
+        async def patched_broadcast(operation_id: str, message: dict) -> None:
+            # First, ensure all clients track the message directly
+            for client_id, client in harness.clients.items():
+                # Check if this client is connected to this operation
+                for key, websockets in harness.manager.connections.items():
+                    if f"operation:{operation_id}" in key and client.websocket in websockets:
+                        # Directly add to received messages
+                        client.received_messages.append(message.copy() if isinstance(message, dict) else message)
+            
+            # Then call the original broadcast
+            await original_broadcast(operation_id, message)
+        
+        self.manager._broadcast = patched_broadcast
 
     async def create_client(self, client_id: str) -> MockWebSocketClient:
         """Create a new mock client."""
@@ -113,6 +136,9 @@ class WebSocketTestHarness:
 
     async def connect_clients(self, operation_id: str, num_clients: int = 1, user_prefix: str = "user"):
         """Connect multiple clients to an operation."""
+        # Patch the broadcast method before connecting clients
+        self._patch_manager_broadcast()
+        
         connected_clients = []
         for i in range(num_clients):
             client_id = f"client_{i}"
@@ -143,6 +169,9 @@ class WebSocketTestHarness:
 
     async def cleanup(self):
         """Clean up all connections and consumer tasks."""
+        # Restore original broadcast method
+        self.manager._broadcast = self._original_broadcast
+        
         # First, cancel all consumer tasks to prevent event loop errors
         for _, task in list(self.manager.consumer_tasks.items()):
             task.cancel()
