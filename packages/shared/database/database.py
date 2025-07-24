@@ -3,6 +3,7 @@ Async database session management using PostgreSQL.
 """
 
 import logging
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -35,7 +36,7 @@ get_db = get_postgres_db
 class AsyncSessionLocalWrapper:
     """Wrapper to handle direct AsyncSessionLocal usage."""
 
-    def __new__(cls) -> AsyncSession:
+    def __new__(cls) -> Any:
         """Create a new session using the PostgreSQL sessionmaker."""
         import asyncio
 
@@ -55,7 +56,7 @@ class AsyncSessionLocalWrapper:
 
     def __call__(self) -> AsyncSession:
         """Support callable syntax."""
-        return self.__new__(self.__class__)
+        return self.__new__(self.__class__)  # type: ignore[no-any-return]
 
 
 # Replace the module-level AsyncSessionLocal with our wrapper

@@ -8,7 +8,8 @@ from shared.database.exceptions import (
     DatabaseOperationError,
     EntityAlreadyExistsError,
 )
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func, insert, select
+from sqlalchemy import update as sql_update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -145,7 +146,7 @@ class PostgreSQLBaseRepository:
             updated_count = 0
             for update_data in updates:
                 key_value = update_data.pop(key_field)
-                stmt = update(self.model).where(getattr(self.model, key_field) == key_value).values(**update_data)
+                stmt = sql_update(self.model).where(getattr(self.model, key_field) == key_value).values(**update_data)
                 result = await self.session.execute(stmt)
                 updated_count += result.rowcount or 0
 

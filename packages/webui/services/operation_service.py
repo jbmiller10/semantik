@@ -96,14 +96,13 @@ class OperationService:
         Returns:
             Tuple of (operations list, total count)
         """
-        result = await self.operation_repo.list_for_user(
+        return await self.operation_repo.list_for_user(  # type: ignore[no-any-return]
             user_id=user_id,
             status_list=status_list,
             operation_type=operation_type,
             offset=offset,
             limit=limit,
         )
-        return result
 
     async def verify_websocket_access(self, operation_uuid: str, user_id: int) -> Operation:
         """Verify user has access to operation for WebSocket connection.

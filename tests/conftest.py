@@ -4,7 +4,7 @@ import os
 import sys
 from datetime import UTC
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -218,7 +218,6 @@ def mock_auth_repository():
 @pytest.fixture()
 def mock_redis_client():
     """Create a mock Redis client for testing WebSocket functionality."""
-    from unittest.mock import AsyncMock
 
     import redis.asyncio as redis
 
@@ -324,7 +323,6 @@ def mock_redis_client():
 @pytest.fixture()
 def mock_websocket():
     """Create a mock WebSocket connection."""
-    from unittest.mock import AsyncMock
 
     from fastapi import WebSocket
 

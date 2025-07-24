@@ -105,7 +105,7 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
 
             logger.error(f"Full traceback:\n{traceback.format_exc()}")
             raise DatabaseOperationError("create", "user", str(e)) from e
-        
+
         # This should never be reached due to exceptions, but mypy needs it
         raise RuntimeError("Unexpected code path in create_user")
 
@@ -172,7 +172,7 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
         except Exception as e:
             logger.error(f"Failed to get user by username {username}: {e}")
             raise DatabaseOperationError("get", "user", str(e)) from e
-        
+
         # This should never be reached due to exceptions, but mypy needs it
         raise RuntimeError("Unexpected code path in get_user_by_username")
 
@@ -232,6 +232,9 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
         except Exception as e:
             logger.error(f"Failed to update user {user_id}: {e}")
             raise DatabaseOperationError("update", "user", str(e)) from e
+
+        # This should never be reached due to exceptions, but mypy needs it
+        raise RuntimeError("Unexpected code path in update_user")
 
     async def delete_user(self, user_id: str) -> bool:
         """Delete a user.
@@ -401,11 +404,11 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
             return None
 
         # Helper function to safely convert datetime to string
-        def datetime_to_str(dt):
+        def datetime_to_str(dt: Any) -> str | None:
             if dt is None:
                 return None
             if hasattr(dt, "isoformat"):
-                return dt.isoformat()
+                return dt.isoformat()  # type: ignore[no-any-return]
             # If it's already a string, return it
             return str(dt)
 

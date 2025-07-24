@@ -131,6 +131,8 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     Yields:
         AsyncSession instance
     """
+    if AsyncSessionLocal is None:
+        raise RuntimeError("Database not initialized")
     async with AsyncSessionLocal() as session:
         try:
             yield session

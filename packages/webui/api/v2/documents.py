@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database import get_db
 from packages.shared.database.exceptions import EntityNotFoundError
-from packages.shared.database.models import Collection, Document
+from packages.shared.database.models import Collection
 from packages.webui.auth import get_current_user
 from packages.webui.dependencies import create_document_repository, get_collection_for_user
 

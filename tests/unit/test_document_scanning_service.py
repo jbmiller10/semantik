@@ -9,8 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from shared.database.models import Document
-from webui.services.document_scanning_service import SUPPORTED_EXTENSIONS, DocumentScanningService
+
+from packages.shared.database.models import Document
+from packages.webui.services.document_scanning_service import SUPPORTED_EXTENSIONS, DocumentScanningService
 
 
 class TestDocumentScanningService:

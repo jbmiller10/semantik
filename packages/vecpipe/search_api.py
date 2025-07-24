@@ -1413,7 +1413,9 @@ async def upsert_points(request: UpsertRequest = Body(...)) -> UpsertResponse:
             qdrant_points.append(qdrant_point)
 
         # Prepare upsert request
-        upsert_request: dict[str, Any] = {"points": [{"id": p.id, "vector": p.vector, "payload": p.payload} for p in qdrant_points]}
+        upsert_request: dict[str, Any] = {
+            "points": [{"id": p.id, "vector": p.vector, "payload": p.payload} for p in qdrant_points]
+        }
 
         if request.wait:
             upsert_request["wait"] = True

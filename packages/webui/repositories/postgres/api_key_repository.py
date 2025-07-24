@@ -102,6 +102,9 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             logger.error(f"Failed to create API key: {e}")
             raise DatabaseOperationError("create", "api_key", str(e)) from e
 
+        # This should never be reached due to exceptions, but mypy needs it
+        raise RuntimeError("Unexpected code path in create_api_key")
+
     async def get_api_key(self, api_key_id: str) -> dict[str, Any] | None:
         """Get an API key by ID.
 
@@ -168,7 +171,7 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             )
             api_keys = result.scalars().all()
 
-            return [self._api_key_to_dict(key) for key in api_keys]
+            return [d for d in (self._api_key_to_dict(key) for key in api_keys) if d is not None]
 
         except InvalidUserIdError:
             raise
@@ -363,11 +366,11 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             return None
 
         # Helper function to safely convert datetime to string
-        def datetime_to_str(dt):
+        def datetime_to_str(dt: Any) -> str | None:
             if dt is None:
                 return None
             if hasattr(dt, "isoformat"):
-                return dt.isoformat()
+                return dt.isoformat()  # type: ignore[no-any-return]
             # If it's already a string, return it
             return str(dt)
 

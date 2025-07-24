@@ -471,13 +471,12 @@ class CollectionService:
         Returns:
             Tuple of (collections list, total count)
         """
-        result = await self.collection_repo.list_for_user(
+        return await self.collection_repo.list_for_user(  # type: ignore[no-any-return]
             user_id=user_id,
             offset=offset,
             limit=limit,
             include_public=include_public,
         )
-        return result
 
     async def update(self, collection_id: str, user_id: int, updates: dict[str, Any]) -> Collection:
         """Update collection metadata.

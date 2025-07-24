@@ -171,7 +171,7 @@ class TestWebSocketRedisIntegration:
             ws_client = mock_websocket_factory("client1")
 
             # Mock operation repository
-            with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
+            with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
                 from datetime import UTC, datetime
                 from enum import Enum
                 from unittest.mock import MagicMock
@@ -247,7 +247,7 @@ class TestWebSocketRedisIntegration:
             clients = [mock_websocket_factory(f"client{i}") for i in range(3)]
 
             # Mock job repository
-            with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
+            with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 # Create simple mock operation
                 mock_operation = type(
@@ -309,7 +309,7 @@ class TestWebSocketRedisIntegration:
             # Now connect a client
             client = mock_websocket_factory("client1")
 
-            with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
+            with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 # Create simple mock operation
                 mock_operation = type(
@@ -368,7 +368,7 @@ class TestWebSocketRedisIntegration:
             client1 = mock_websocket_factory("client1")
             client2 = mock_websocket_factory("client2")
 
-            with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
+            with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 # Create simple mock operation
                 mock_operation = type(
@@ -511,7 +511,7 @@ class TestWebSocketRedisIntegration:
             # Create a client that will disconnect
             client = mock_websocket_factory("client1")
 
-            with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
+            with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 # Create simple mock operation
                 mock_operation = type(
@@ -563,7 +563,7 @@ class TestWebSocketRedisIntegration:
                 "job3": [mock_websocket_factory(f"job3_client{i}") for i in range(2)],
             }
 
-            with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
+            with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 # Create simple mock operation
                 mock_operation = type(

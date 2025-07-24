@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import redis.asyncio as redis
-from webui.tasks import CeleryTaskWithOperationUpdates
+
+from packages.webui.tasks import CeleryTaskWithOperationUpdates
 
 
 class TestCeleryTaskWithOperationUpdates:
