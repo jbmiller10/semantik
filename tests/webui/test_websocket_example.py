@@ -39,8 +39,6 @@ class TestWebSocketExamples:
         # Teardown - ensure no lingering tasks
         # Note: The harness cleanup should handle most of this
 
-
-
     @pytest.mark.asyncio()
     async def test_operation_lifecycle_updates(self, mock_redis_client):
         """Example: Test complete operation lifecycle with updates."""
@@ -127,5 +125,3 @@ class TestWebSocketExamples:
 
         # Cleanup
         await harness.cleanup()
-
-
