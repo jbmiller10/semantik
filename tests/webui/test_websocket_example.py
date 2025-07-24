@@ -20,7 +20,7 @@ class TestWebSocketExamples:
     def setup_and_teardown(self):
         """Ensure clean state before and after each test."""
         # Setup - nothing needed before
-        yield
+        return
         # Teardown - ensure no lingering tasks
         # Note: We don't need async teardown here since the harness cleanup handles it
 

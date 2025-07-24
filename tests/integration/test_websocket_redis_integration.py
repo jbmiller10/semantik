@@ -173,7 +173,7 @@ class TestWebSocketRedisIntegration:
     @pytest.fixture()
     def mock_websocket_factory(self) -> None:
         """Factory to create mock WebSocket connections."""
-        
+
         def create_mock_websocket(client_id) -> None:
             # Create fresh AsyncMock instance
             mock = AsyncMock(spec=WebSocket)
@@ -181,7 +181,7 @@ class TestWebSocketRedisIntegration:
             mock.send_json = AsyncMock()
             mock.close = AsyncMock()
             mock.client_id = client_id  # For tracking in tests
-            
+
             # Initialize fresh message list
             received_messages = []
             mock.received_messages = received_messages
@@ -191,7 +191,7 @@ class TestWebSocketRedisIntegration:
                 received_messages.append(data)
 
             mock.send_json.side_effect = track_send_json
-            
+
             return mock
 
         return create_mock_websocket
@@ -527,7 +527,7 @@ class TestWebSocketRedisIntegration:
             await manager.startup()
 
         assert manager.redis is None  # Redis not available
-        
+
         # Mark startup as already attempted to prevent reconnection attempts
         manager._startup_attempted = True
 
@@ -560,31 +560,39 @@ class TestWebSocketRedisIntegration:
 
             # Clear any previous messages before connecting
             client.received_messages.clear()
-            
+
             # Connect should still work
             await manager.connect(client, "operation1", "user1")
 
             # Should receive initial state only
             state_messages = [msg for msg in client.received_messages if msg["type"] == "current_state"]
-            assert len(state_messages) == 1, f"Expected 1 current_state message but got {len(state_messages)}: {state_messages}"
+            assert (
+                len(state_messages) == 1
+            ), f"Expected 1 current_state message but got {len(state_messages)}: {state_messages}"
             assert state_messages[0]["data"]["status"] == "processing"
 
             # Direct updates should work
             await manager.send_update("operation1", "progress", {"progress": 75})
-            
+
             # Allow time for direct broadcast
             await asyncio.sleep(0.1)
 
             # Client should receive update via direct broadcast
             # Count all messages received
             total_before = len(client.received_messages)
-            
+
             # Now check for the new progress message
-            progress_messages = [msg for msg in client.received_messages if msg["type"] == "progress" and msg["data"]["progress"] == 75]
-            assert len(progress_messages) >= 1, f"Expected at least 1 progress message with value 75 but got {len(progress_messages)}"
-            
+            progress_messages = [
+                msg for msg in client.received_messages if msg["type"] == "progress" and msg["data"]["progress"] == 75
+            ]
+            assert (
+                len(progress_messages) >= 1
+            ), f"Expected at least 1 progress message with value 75 but got {len(progress_messages)}"
+
             # Verify we got at least 2 messages total (initial state + progress)
-            assert len(client.received_messages) >= 2, f"Expected at least 2 messages but got {len(client.received_messages)}"
+            assert (
+                len(client.received_messages) >= 2
+            ), f"Expected at least 2 messages but got {len(client.received_messages)}"
 
             await manager.disconnect(client, "operation1", "user1")
 

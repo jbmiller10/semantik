@@ -262,7 +262,7 @@ class TestRedisStreamWebSocketManager:
 
         # Mock stream existence check
         mock_redis.xinfo_stream = AsyncMock(return_value={"length": 1})
-        
+
         # Mock consumer group creation (simulate it already exists)
         mock_redis.xgroup_create = AsyncMock(side_effect=Exception("BUSYGROUP Consumer Group already exists"))
 
@@ -270,24 +270,26 @@ class TestRedisStreamWebSocketManager:
         test_message = {"timestamp": datetime.now(UTC).isoformat(), "type": "progress", "data": {"progress": 75}}
 
         # Set up xreadgroup to return messages on first call, then empty
-        mock_redis.xreadgroup = AsyncMock(side_effect=[
-            [("operation-progress:operation1", [("msg-id-1", {"message": json.dumps(test_message)})])],
-            [],  # Second call returns empty
-        ])
-        
+        mock_redis.xreadgroup = AsyncMock(
+            side_effect=[
+                [("operation-progress:operation1", [("msg-id-1", {"message": json.dumps(test_message)})])],
+                [],  # Second call returns empty
+            ]
+        )
+
         # Mock xack for message acknowledgment
         mock_redis.xack = AsyncMock()
 
         # Run consumer for a brief time
         consumer_task = asyncio.create_task(manager._consume_updates("operation1"))
-        
+
         # Wait for the consumer to process the message
         # Keep checking until the message is sent or timeout
         for _ in range(10):  # Try for up to 1 second
             await asyncio.sleep(0.1)
             if mock_websocket.send_json.called:
                 break
-        
+
         consumer_task.cancel()
 
         with contextlib.suppress(asyncio.CancelledError):

@@ -477,7 +477,9 @@ class TestEdgeCases:
 
     @patch("torch.stack")
     @patch("torch.nn.functional.softmax")
-    def test_very_long_documents(self, mock_softmax, mock_stack, reranker_loaded, mock_transformers, mock_model_output) -> None:
+    def test_very_long_documents(
+        self, mock_softmax, mock_stack, reranker_loaded, mock_transformers, mock_model_output
+    ) -> None:
         """Test handling of documents exceeding max_length"""
         _, _, mock_model, mock_tokenizer = mock_transformers
         query = "test"

@@ -108,7 +108,7 @@ class WebSocketTestHarness:
             except asyncio.CancelledError:
                 pass
         self.manager.consumer_tasks.clear()
-        
+
         # Disconnect all clients
         for client in self.clients.values():
             # Find the connection info from manager
@@ -121,7 +121,7 @@ class WebSocketTestHarness:
                         await client.disconnect(self.manager, operation_id, user_id)
 
         self.clients.clear()
-        
+
         # Clear all remaining connections
         self.manager.connections.clear()
 

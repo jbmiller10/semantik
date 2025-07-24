@@ -102,7 +102,9 @@ class TestInternalAPIEndpoints:
             assert response.json() == ["collection_1", "collection_2"]
             mock_collection_repository.list_all.assert_called_once()
 
-    def test_get_all_vector_store_names_unauthorized(self, client_with_mocked_repos, mock_collection_repository) -> None:
+    def test_get_all_vector_store_names_unauthorized(
+        self, client_with_mocked_repos, mock_collection_repository
+    ) -> None:
         """Test unauthorized access to vector store names endpoint."""
         with patch("packages.webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"

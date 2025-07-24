@@ -251,7 +251,9 @@ class RedisStreamWebSocketManager:
                                 logger.debug(f"Stream {stream_key} exists with {stream_info.get('length', 0)} messages")
                             except Exception:
                                 # Stream doesn't exist - this is normal for operations that haven't started yet
-                                logger.debug(f"Stream {stream_key} does not exist yet - waiting for worker to create it")
+                                logger.debug(
+                                    f"Stream {stream_key} does not exist yet - waiting for worker to create it"
+                                )
                                 # Wait a bit and continue the loop
                                 await asyncio.sleep(2)
                                 continue
