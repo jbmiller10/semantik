@@ -60,7 +60,6 @@ class MockWebSocketClient:
     def _ensure_messages_tracked(self):
         """Legacy method kept for compatibility."""
         # Messages are now captured directly in send_json side effect
-        pass
 
     async def get_received_messages(self, message_type: str = None) -> list[dict[str, Any]]:
         """Get received messages, optionally filtered by type."""
