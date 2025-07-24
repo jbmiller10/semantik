@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock
 
 import pytest
+
 from packages.webui.websocket_manager import RedisStreamWebSocketManager
 
 

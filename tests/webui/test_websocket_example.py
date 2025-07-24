@@ -51,11 +51,11 @@ class TestWebSocketExamples:
             mock_operation.error_message = None
             mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
             mock_create_repo.return_value = mock_repo
-            
+
             # Setup mock session for WebSocket manager's direct database access
             mock_session = AsyncMock()
             mock_session_local.return_value.__aenter__.return_value = mock_session
-            
+
             # Setup mock OperationRepository for WebSocket manager
             mock_ws_repo = AsyncMock()
             mock_ws_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
@@ -118,11 +118,11 @@ class TestWebSocketExamples:
             mock_operation.error_message = None
             mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
             mock_create_repo.return_value = mock_repo
-            
+
             # Setup mock session for WebSocket manager's direct database access
             mock_session = AsyncMock()
             mock_session_local.return_value.__aenter__.return_value = mock_session
-            
+
             # Setup mock OperationRepository for WebSocket manager
             mock_ws_repo = AsyncMock()
             mock_ws_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
@@ -177,11 +177,11 @@ class TestWebSocketExamples:
             mock_operation.error_message = None
             mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
             mock_create_repo.return_value = mock_repo
-            
+
             # Setup mock session for WebSocket manager's direct database access
             mock_session = AsyncMock()
             mock_session_local.return_value.__aenter__.return_value = mock_session
-            
+
             # Setup mock OperationRepository for WebSocket manager
             mock_ws_repo = AsyncMock()
             mock_ws_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
@@ -194,7 +194,7 @@ class TestWebSocketExamples:
             # Get initial state message and verify
             initial_state = client.get_received_messages("current_state")
             assert len(initial_state) == 1
-            
+
             # Clear messages after verifying initial state
             client.clear_messages()
 
@@ -265,11 +265,11 @@ class TestWebSocketExamples:
             mock_operation.error_message = None
             mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
             mock_create_repo.return_value = mock_repo
-            
+
             # Setup mock session for WebSocket manager's direct database access
             mock_session = AsyncMock()
             mock_session_local.return_value.__aenter__.return_value = mock_session
-            
+
             # Setup mock OperationRepository for WebSocket manager
             mock_ws_repo = AsyncMock()
             mock_ws_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
@@ -277,7 +277,7 @@ class TestWebSocketExamples:
 
             # Connect clients
             good_clients = await harness.connect_clients("operation_error", num_clients=2)
-            
+
             # Verify both clients received initial state
             for client in good_clients:
                 initial_state = client.get_received_messages("current_state")
@@ -341,11 +341,11 @@ class TestWebSocketExamples:
             mock_operation.error_message = None
             mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
             mock_create_repo.return_value = mock_repo
-            
+
             # Setup mock session for WebSocket manager's direct database access
             mock_session = AsyncMock()
             mock_session_local.return_value.__aenter__.return_value = mock_session
-            
+
             # Setup mock OperationRepository for WebSocket manager
             mock_ws_repo = AsyncMock()
             mock_ws_repo.get_by_uuid = AsyncMock(return_value=mock_operation)

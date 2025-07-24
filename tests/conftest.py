@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
 
@@ -61,12 +62,11 @@ def test_client_with_mocks(
     mock_auth_repository,
 ):
     """Create a test client with mocked repositories and auth."""
-    from shared.database.factory import (
+    from packages.shared.database.factory import (
         create_auth_repository,
         create_collection_repository,
         create_user_repository,
     )
-
     from packages.webui.auth import get_current_user
     from packages.webui.main import app
 
@@ -127,7 +127,7 @@ def test_user_headers(auth_headers):
     return auth_headers
 
 
-@pytest.fixture()
+@pytest_asyncio.fixture
 async def async_client(test_user):
     """Create an async test client for the FastAPI app with auth mocked."""
     from packages.webui.auth import get_current_user

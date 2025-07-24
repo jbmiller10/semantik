@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 import redis.asyncio as redis
 from fastapi import WebSocket
+
 from packages.shared.config import settings
 
 logger = logging.getLogger(__name__)
@@ -120,8 +121,8 @@ class RedisStreamWebSocketManager:
 
         # Get current operation state from database and send it
         try:
-            from shared.database.database import AsyncSessionLocal
-            from shared.database.repositories.operation_repository import OperationRepository
+            from packages.shared.database.database import AsyncSessionLocal
+            from packages.shared.database.repositories.operation_repository import OperationRepository
 
             async with AsyncSessionLocal() as session:
                 operation_repo = OperationRepository(session)

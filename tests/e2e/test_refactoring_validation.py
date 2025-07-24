@@ -68,52 +68,71 @@ class TestCurrentSystemBehavior:
         # Get authentication headers
         headers = self._get_auth_headers()
 
-        # 1. Create job
+        # 1. Create collection
+        response = requests.post(
+            f"{self.API_BASE_URL}/api/v2/collections",
+            json={
+                "name": "E2E Test Collection",
+                "description": "End-to-end test for refactoring validation",
+            },
+            headers=headers,
+        )
+        if response.status_code != 201:
+            print(f"Failed to create collection: {response.status_code} - {response.text}")
+        assert response.status_code == 201
+
+        collection_data = response.json()
+        collection_id = collection_data["id"]
+        initial_operation_id = collection_data.get("initial_operation_id")
+
+        # Store collection_id for cleanup
+        cleanup_job.append(collection_id)
+
+        # 2. Add source to collection
         # Note: When running in Docker, we use a path accessible inside the container
         # For local development, use test_documents_fixture
         docker_path = "/mnt/docs"  # Use the mounted documents directory in Docker
 
         response = requests.post(
-            f"{self.API_BASE_URL}/api/jobs",
+            f"{self.API_BASE_URL}/api/v2/collections/{collection_id}/sources",
             json={
-                "name": "E2E Test Job",
-                "directory_path": docker_path,
-                "description": "End-to-end test for refactoring validation",
+                "source_path": docker_path,
             },
             headers=headers,
         )
-        if response.status_code != 200:
-            print(f"Failed to create job: {response.status_code} - {response.text}")
-        assert response.status_code == 200
+        if response.status_code != 202:
+            print(f"Failed to add source: {response.status_code} - {response.text}")
+        assert response.status_code == 202
 
-        job_data = response.json()
-        job_id = job_data["id"]
+        operation_data = response.json()
+        operation_id = operation_data["id"]
 
-        # Store job_id for cleanup
-        cleanup_job.append(job_id)
-
-        # 2. Wait for completion (with a timeout)
+        # 3. Wait for completion (with a timeout)
         start_time = time.time()
         while time.time() - start_time < 300:  # 5-minute timeout
-            status_response = requests.get(f"{self.API_BASE_URL}/api/jobs/{job_id}", headers=headers)
-            job_status = status_response.json()
+            # Get operation status
+            status_response = requests.get(
+                f"{self.API_BASE_URL}/api/v2/operations/{operation_id}",
+                headers=headers
+            )
+            operation_status = status_response.json()
             print(
-                f"Job status at {time.time() - start_time:.1f}s: {job_status['status']}, processed: {job_status.get('processed_files', 0)}/{job_status.get('total_files', 0)}"
+                f"Operation status at {time.time() - start_time:.1f}s: {operation_status['status']}"
             )
 
-            if job_status["status"] == "completed":
+            if operation_status["status"] == "completed":
                 break
-            if job_status["status"] == "failed":
-                pytest.fail(f"Job failed with error: {job_status.get('error', 'Unknown error')}")
+            if operation_status["status"] == "failed":
+                pytest.fail(f"Operation failed with error: {operation_status.get('error_message', 'Unknown error')}")
 
-            time.sleep(5)  # Check every 5 seconds instead of 2
+            time.sleep(5)  # Check every 5 seconds
         else:
-            pytest.fail(f"Job did not complete within timeout. Final status: {job_status}")
+            pytest.fail(f"Operation did not complete within timeout. Final status: {operation_status}")
 
-        # 3. Verify embeddings by performing a search
+        # 4. Verify embeddings by performing a search
         search_response = requests.post(
-            f"{self.API_BASE_URL}/api/search",
-            json={"query": "communication process", "top_k": 1, "collection": f"job_{job_id}"},
+            f"{self.API_BASE_URL}/api/v2/search/single",
+            json={"query": "communication process", "k": 1, "collection_id": collection_id},
             headers=headers,
         )
         assert search_response.status_code == 200
@@ -138,9 +157,9 @@ def test_documents_fixture() -> Path:
 
 @pytest.fixture()
 def cleanup_job() -> Iterator[list[str]]:
-    """Fixture to clean up jobs after test completion."""
-    job_ids: list[str] = []
-    yield job_ids
+    """Fixture to clean up collections after test completion."""
+    collection_ids: list[str] = []
+    yield collection_ids
 
     # Cleanup after test
     api_base_url = os.getenv("API_BASE_URL", "http://localhost:8080")
@@ -159,15 +178,15 @@ def cleanup_job() -> Iterator[list[str]]:
     except Exception:
         headers = {}
 
-    for job_id in job_ids:
+    for collection_id in collection_ids:
         try:
-            # Delete the job
-            response = requests.delete(f"{api_base_url}/api/jobs/{job_id}", headers=headers)
-            if response.status_code != 200:
-                print(f"Warning: Failed to delete job {job_id}: {response.status_code}")
+            # Delete the collection
+            response = requests.delete(f"{api_base_url}/api/v2/collections/{collection_id}", headers=headers)
+            if response.status_code not in (200, 204):
+                print(f"Warning: Failed to delete collection {collection_id}: {response.status_code}")
 
             # Also try to delete the Qdrant collection
             # Note: This assumes the Qdrant API is accessible
             # In the future, this could be done through the webui API
         except Exception as e:
-            print(f"Warning: Error during cleanup of job {job_id}: {e}")
+            print(f"Warning: Error during cleanup of collection {collection_id}: {e}")

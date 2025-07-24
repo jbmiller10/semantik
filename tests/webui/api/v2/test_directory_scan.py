@@ -258,20 +258,24 @@ async def test_directory_scan_preview_relative_path(
 
 
 @pytest.mark.asyncio()
-async def test_directory_scan_preview_no_auth(async_client: AsyncClient) -> None:
+async def test_directory_scan_preview_no_auth() -> None:
     """Test that authentication is required."""
-    scan_id = str(uuid.uuid4())
-    request_data = {
-        "path": "/tmp",
-        "scan_id": scan_id,
-    }
+    from packages.webui.main import app
 
-    response = await async_client.post(
-        "/api/v2/directory-scan/preview",
-        json=request_data,
-    )
+    # Create a client without auth overrides
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        scan_id = str(uuid.uuid4())
+        request_data = {
+            "path": "/tmp",
+            "scan_id": scan_id,
+        }
 
-    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        response = await client.post(
+            "/api/v2/directory-scan/preview",
+            json=request_data,
+        )
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 @pytest.mark.asyncio()

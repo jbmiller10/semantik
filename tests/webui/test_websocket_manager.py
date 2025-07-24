@@ -67,7 +67,7 @@ class TestRedisStreamWebSocketManager:
         async def async_from_url(*_, **__):
             return mock_redis
 
-        with patch("webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
             assert manager.redis is not None
@@ -88,7 +88,7 @@ class TestRedisStreamWebSocketManager:
             return mock_redis
 
         with (
-            patch("webui.websocket_manager.redis.from_url", side_effect=mock_from_url),
+            patch("packages.webui.websocket_manager.redis.from_url", side_effect=mock_from_url),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             await manager.startup()
@@ -100,7 +100,7 @@ class TestRedisStreamWebSocketManager:
     async def test_startup_graceful_degradation(self, manager):
         """Test graceful degradation when Redis is completely unavailable."""
         with (
-            patch("webui.websocket_manager.redis.from_url", side_effect=Exception("Connection failed")),
+            patch("packages.webui.websocket_manager.redis.from_url", side_effect=Exception("Connection failed")),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             await manager.startup()
@@ -161,7 +161,7 @@ class TestRedisStreamWebSocketManager:
         mock_operation.error_message = None
 
         # Need to patch where it's imported from
-        with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
+        with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
             mock_repo = AsyncMock()
             mock_repo.get_by_uuid = AsyncMock(return_value=mock_operation)
             mock_create_repo.return_value = mock_repo
@@ -391,7 +391,7 @@ class TestRedisStreamWebSocketManager:
         websockets = [AsyncMock(spec=WebSocket) for _ in range(5)]
 
         # Connect all websockets concurrently
-        with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
+        with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
             mock_repo = AsyncMock()
             mock_operation = MagicMock()
             mock_operation.status = "processing"

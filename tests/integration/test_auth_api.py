@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from passlib.context import CryptContext
 
 from packages.shared.database.models import User
-from passlib.context import CryptContext
 
 # Create pwd_context locally to avoid imports from shared.database
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -19,10 +19,10 @@ def mock_repositories():
     # Mock user repository
     mock_user_repo = MagicMock()
     mock_auth_repo = MagicMock()
-    
+
     # Store users in memory for testing
     users_db = {}
-    
+
     async def create_user(**kwargs):
         user = User(
             id=len(users_db) + 1,
@@ -37,30 +37,30 @@ def mock_repositories():
         users_db[user.username] = user
         users_db[user.email] = user
         return user
-    
+
     async def get_user_by_username(username: str):
         return users_db.get(username)
-    
+
     async def get_user_by_email(email: str):
         return users_db.get(email)
-    
+
     async def get_user(user_id: int):
         for user in users_db.values():
             if user.id == user_id:
                 return user
         return None
-    
+
     mock_user_repo.create = AsyncMock(side_effect=create_user)
     mock_user_repo.get_by_username = AsyncMock(side_effect=get_user_by_username)
     mock_user_repo.get_by_email = AsyncMock(side_effect=get_user_by_email)
     mock_user_repo.get = AsyncMock(side_effect=get_user)
-    
+
     # Mock auth repository methods
     mock_auth_repo.save_refresh_token = AsyncMock()
     mock_auth_repo.verify_refresh_token = AsyncMock(return_value=True)
     mock_auth_repo.revoke_refresh_token = AsyncMock()
     mock_auth_repo.update_user_last_login = AsyncMock()
-    
+
     return mock_user_repo, mock_auth_repo, users_db
 
 
@@ -71,23 +71,23 @@ def client(mock_repositories):
     with patch("packages.webui.main.pg_connection_manager") as mock_pg_manager:
         mock_pg_manager.initialize = AsyncMock()
         mock_pg_manager.close = AsyncMock()
-        
+
         # Mock the WebSocket manager as well
         with patch("packages.webui.main.ws_manager") as mock_ws_manager:
             mock_ws_manager.startup = AsyncMock()
             mock_ws_manager.shutdown = AsyncMock()
-            
+
+            from packages.shared.database.factory import create_auth_repository, create_user_repository
             from packages.webui.main import app
-            from packages.shared.database.factory import create_user_repository, create_auth_repository
-            
+
             mock_user_repo, mock_auth_repo, _ = mock_repositories
-            
+
             # Override repository dependencies
             app.dependency_overrides[create_user_repository] = lambda: mock_user_repo
             app.dependency_overrides[create_auth_repository] = lambda: mock_auth_repo
-            
+
             yield TestClient(app)
-            
+
             # Clear overrides after test
             app.dependency_overrides.clear()
 
@@ -230,7 +230,7 @@ def test_get_me_protected(client, monkeypatch, mock_repositories):
     """Test that /me endpoint requires authentication."""
     # Temporarily disable DISABLE_AUTH for this test
     monkeypatch.setattr("packages.webui.auth.settings.DISABLE_AUTH", False)
-    
+
     mock_user_repo, _, _ = mock_repositories
 
     # Test without token - should fail

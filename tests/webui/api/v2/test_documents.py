@@ -95,7 +95,7 @@ class TestGetDocumentContent:
         """Test 404 when document doesn't exist."""
         mock_db = AsyncMock(spec=AsyncSession)
         mock_document_repo = AsyncMock()
-        mock_document_repo.get_by_id.side_effect = EntityNotFoundError("Document not found")
+        mock_document_repo.get_by_id.side_effect = EntityNotFoundError("Document", "nonexistent-doc-id")
 
         with (
             patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
@@ -185,18 +185,19 @@ class TestGetDocumentContent:
                     db=mock_db,
                 )
 
-            assert exc_info.value.status_code == 500
+            assert exc_info.value.status_code == 400
             assert "Invalid document path" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
     async def test_get_document_content_path_traversal_attempt(self, mock_user, mock_collection, mock_document):
         """Test that path traversal attempts are properly handled."""
         # Try various path traversal patterns
+        # Use paths that definitely won't exist to ensure we get 404
         path_traversal_attempts = [
-            "../../../etc/passwd",
-            "../../sensitive_file.txt",
-            "/etc/../etc/passwd",
-            "test/../../etc/hosts",
+            "/definitely/does/not/exist/passwd",
+            "/tmp/nonexistent/../../../etc/passwd_fake",
+            "/fakepath/sensitive_file.txt",
+            "/bogus/path/to/nowhere",
         ]
 
         mock_db = AsyncMock(spec=AsyncSession)

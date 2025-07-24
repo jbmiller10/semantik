@@ -32,7 +32,7 @@ class TestCleanupOldCollections:
         # Mock collections exist
         from collections import namedtuple
         CollectionInfo = namedtuple('CollectionInfo', ['name'])
-        
+
         mock_collections = MagicMock()
         mock_collections.collections = [
             CollectionInfo(name="col_old_1"),
@@ -89,7 +89,7 @@ class TestCleanupQdrantCollections:
         mock_qdrant_manager.client = mock_qdrant_client
         mock_qdrant_manager_class.return_value = mock_qdrant_manager
         mock_conn_manager.get_client.return_value = mock_qdrant_client
-        
+
         # Mock asyncio.run to return empty set for _get_active_collections
         mock_asyncio_run.side_effect = lambda coro: set() if "_get_active_collections" in str(coro) else None
 
@@ -127,7 +127,7 @@ class TestCleanupQdrantCollections:
         mock_qdrant_manager.client = mock_qdrant_client
         mock_qdrant_manager_class.return_value = mock_qdrant_manager
         mock_conn_manager.get_client.return_value = mock_qdrant_client
-        
+
         # Mock asyncio.run to return active collections for _get_active_collections
         mock_asyncio_run.side_effect = lambda coro: {"col_active", "col_in_use"} if "_get_active_collections" in str(coro) else None
 
@@ -160,7 +160,7 @@ class TestCleanupQdrantCollections:
         mock_qdrant_manager.client = mock_qdrant_client
         mock_qdrant_manager_class.return_value = mock_qdrant_manager
         mock_conn_manager.get_client.return_value = mock_qdrant_client
-        
+
         # Mock asyncio.run to return empty set for _get_active_collections
         mock_asyncio_run.side_effect = lambda coro: set() if "_get_active_collections" in str(coro) else None
 
@@ -198,7 +198,7 @@ class TestCleanupQdrantCollections:
         mock_qdrant_manager.client = mock_qdrant_client
         mock_qdrant_manager_class.return_value = mock_qdrant_manager
         mock_conn_manager.get_client.return_value = mock_qdrant_client
-        
+
         # Mock asyncio.run to return empty set for _get_active_collections, None for audit
         def mock_run_side_effect(coro):
             coro_str = str(coro)
@@ -207,7 +207,7 @@ class TestCleanupQdrantCollections:
             elif "_audit_collection_deletions_batch" in coro_str:
                 return None
             return None
-        
+
         mock_asyncio_run.side_effect = mock_run_side_effect
 
         # Mock collection exists and is old
