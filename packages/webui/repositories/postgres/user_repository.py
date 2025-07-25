@@ -65,8 +65,7 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
             if existing:
                 if existing.username == username:
                     raise EntityAlreadyExistsError("user", f"username: {username}")
-                else:
-                    raise EntityAlreadyExistsError("user", f"email: {email}")
+                raise EntityAlreadyExistsError("user", f"email: {email}")
 
             # Create user with PostgreSQL RETURNING clause
             user = User(
@@ -91,7 +90,9 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
             logger.info(f"Created user {user.id} with username '{username}'")
 
             # Return user as dictionary
-            return self._user_to_dict(user)
+            result = self._user_to_dict(user)
+            assert result is not None  # User was just created, can't be None
+            return result
 
         except EntityAlreadyExistsError:
             raise
@@ -104,6 +105,9 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
 
             logger.error(f"Full traceback:\n{traceback.format_exc()}")
             raise DatabaseOperationError("create", "user", str(e)) from e
+
+        # This should never be reached due to exceptions, but mypy needs it
+        raise RuntimeError("Unexpected code path in create_user")
 
     async def get_user(self, user_id: str) -> dict[str, Any] | None:
         """Get a user by ID.
@@ -136,8 +140,8 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
             # Validate and convert user_id
             try:
                 user_id_int = int(user_id)
-            except ValueError:
-                raise InvalidUserIdError(user_id)
+            except ValueError as e:
+                raise InvalidUserIdError(user_id) from e
 
             result = await self.session.execute(select(User).where(User.id == user_id_int))
             user = result.scalar_one_or_none()
@@ -169,6 +173,9 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
             logger.error(f"Failed to get user by username {username}: {e}")
             raise DatabaseOperationError("get", "user", str(e)) from e
 
+        # This should never be reached due to exceptions, but mypy needs it
+        raise RuntimeError("Unexpected code path in get_user_by_username")
+
     async def update_user(self, user_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
         """Update a user.
 
@@ -187,8 +194,8 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
             # Validate and convert user_id
             try:
                 user_id_int = int(user_id)
-            except ValueError:
-                raise InvalidUserIdError(user_id)
+            except ValueError as e:
+                raise InvalidUserIdError(user_id) from e
 
             # Check if user exists
             user = await self.session.get(User, user_id_int)
@@ -226,6 +233,9 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
             logger.error(f"Failed to update user {user_id}: {e}")
             raise DatabaseOperationError("update", "user", str(e)) from e
 
+        # This should never be reached due to exceptions, but mypy needs it
+        raise RuntimeError("Unexpected code path in update_user")
+
     async def delete_user(self, user_id: str) -> bool:
         """Delete a user.
 
@@ -242,8 +252,8 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
             # Validate and convert user_id
             try:
                 user_id_int = int(user_id)
-            except ValueError:
-                raise InvalidUserIdError(user_id)
+            except ValueError as e:
+                raise InvalidUserIdError(user_id) from e
 
             # Use PostgreSQL's DELETE ... RETURNING for efficiency
             result = await self.session.execute(delete(User).where(User.id == user_id_int).returning(User.id))
@@ -284,7 +294,7 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
             result = await self.session.execute(query)
             users = result.scalars().all()
 
-            return [self._user_to_dict(user) for user in users]
+            return [d for d in (self._user_to_dict(user) for user in users) if d is not None]
 
         except Exception as e:
             logger.error(f"Failed to list users: {e}")
@@ -326,8 +336,8 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
             # Validate and convert user_id
             try:
                 user_id_int = int(user_id)
-            except ValueError:
-                raise InvalidUserIdError(user_id)
+            except ValueError as e:
+                raise InvalidUserIdError(user_id) from e
 
             # Use PostgreSQL's UPDATE ... RETURNING for efficiency
             await self.session.execute(update(User).where(User.id == user_id_int).values(last_login=datetime.now(UTC)))
@@ -394,11 +404,11 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
             return None
 
         # Helper function to safely convert datetime to string
-        def datetime_to_str(dt):
+        def datetime_to_str(dt: Any) -> str | None:
             if dt is None:
                 return None
             if hasattr(dt, "isoformat"):
-                return dt.isoformat()
+                return dt.isoformat()  # type: ignore[no-any-return]
             # If it's already a string, return it
             return str(dt)
 

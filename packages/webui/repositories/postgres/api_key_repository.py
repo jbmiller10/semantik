@@ -57,8 +57,8 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             # Validate and convert user_id
             try:
                 user_id_int = int(user_id)
-            except ValueError:
-                raise InvalidUserIdError(user_id)
+            except ValueError as e:
+                raise InvalidUserIdError(user_id) from e
 
             # Verify user exists
             user_exists = await self.session.scalar(select(User.id).where(User.id == user_id_int))
@@ -90,6 +90,7 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
 
             # Return data including the actual key (only time it's available)
             result = self._api_key_to_dict(api_key_record)
+            assert result is not None  # API key was just created, can't be None
             result["api_key"] = api_key  # Include actual key only on creation
             return result
 
@@ -100,6 +101,9 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
         except Exception as e:
             logger.error(f"Failed to create API key: {e}")
             raise DatabaseOperationError("create", "api_key", str(e)) from e
+
+        # This should never be reached due to exceptions, but mypy needs it
+        raise RuntimeError("Unexpected code path in create_api_key")
 
     async def get_api_key(self, api_key_id: str) -> dict[str, Any] | None:
         """Get an API key by ID.
@@ -159,15 +163,15 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             # Validate and convert user_id
             try:
                 user_id_int = int(user_id)
-            except ValueError:
-                raise InvalidUserIdError(user_id)
+            except ValueError as e:
+                raise InvalidUserIdError(user_id) from e
 
             result = await self.session.execute(
                 select(ApiKey).where(ApiKey.user_id == user_id_int).order_by(ApiKey.created_at.desc())
             )
             api_keys = result.scalars().all()
 
-            return [self._api_key_to_dict(key) for key in api_keys]
+            return [d for d in (self._api_key_to_dict(key) for key in api_keys) if d is not None]
 
         except InvalidUserIdError:
             raise
@@ -245,7 +249,7 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             # Look up by hash
             result = await self.session.execute(
                 select(ApiKey)
-                .where((ApiKey.key_hash == key_hash) & (ApiKey.is_active == True))
+                .where((ApiKey.key_hash == key_hash) & (ApiKey.is_active))
                 .options(selectinload(ApiKey.user))
             )
             api_key_record = result.scalar_one_or_none()
@@ -362,11 +366,11 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             return None
 
         # Helper function to safely convert datetime to string
-        def datetime_to_str(dt):
+        def datetime_to_str(dt: Any) -> str | None:
             if dt is None:
                 return None
             if hasattr(dt, "isoformat"):
-                return dt.isoformat()
+                return dt.isoformat()  # type: ignore[no-any-return]
             # If it's already a string, return it
             return str(dt)
 
