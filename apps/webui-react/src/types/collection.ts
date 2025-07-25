@@ -42,6 +42,7 @@ export interface Collection {
   // Frontend-specific fields
   isProcessing?: boolean;          // Optimistic UI state
   activeOperation?: Operation;     // Current operation
+  initial_operation_id?: string;   // Initial INDEX operation ID when collection is created
 }
 
 export interface Operation {
