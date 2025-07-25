@@ -46,20 +46,18 @@ export interface DocumentListResponse {
 
 export interface SearchRequest {
   query: string;
-  collection_ids?: string[];
-  top_k?: number;
+  collection_uuids: string[];
+  k?: number;
+  search_type?: 'semantic' | 'question' | 'code' | 'hybrid';
+  use_reranker?: boolean;
+  rerank_model?: string | null;
   score_threshold?: number;
-  search_type?: 'vector' | 'hybrid';
-  hybrid_config?: {
-    alpha?: number;
-    mode?: 'rerank' | 'filter';
-    keyword_mode?: 'any' | 'all';
-  };
-  rerank_config?: {
-    model?: string;
-    quantization?: string;
-    enabled?: boolean;
-  };
+  metadata_filter?: Record<string, any> | null;
+  include_content?: boolean;
+  // Hybrid search parameters
+  hybrid_alpha?: number;
+  hybrid_mode?: 'rerank' | 'filter';
+  keyword_mode?: 'any' | 'all';
 }
 
 export interface SearchResult {
