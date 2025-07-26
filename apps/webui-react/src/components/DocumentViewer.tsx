@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { documentsV2Api } from '../services/api/v2';
+import { getErrorMessage } from '../utils/errorUtils';
 
 // Declare global types for external libraries
 declare global {
@@ -90,7 +91,7 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
         setLoading(false);
       } catch (err) {
         console.error('Failed to load document:', err);
-        setError('Failed to load document. Please try again.');
+        setError(getErrorMessage(err));
         setLoading(false);
       }
     };

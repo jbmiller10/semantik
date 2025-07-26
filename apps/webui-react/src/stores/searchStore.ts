@@ -1,4 +1,11 @@
 import { create } from 'zustand';
+import { 
+  ValidationError, 
+  validateSearchParams, 
+  sanitizeQuery,
+  clampValue,
+  DEFAULT_VALIDATION_RULES 
+} from '../utils/searchValidation';
 
 export interface SearchResult {
   doc_id: string;
@@ -46,6 +53,9 @@ interface SearchState {
     rerankerModel?: string;
     rerankingTimeMs?: number;
   } | null;
+  validationErrors: ValidationError[];
+  rerankingAvailable: boolean;
+  rerankingModelsLoading: boolean;
   setResults: (results: SearchResult[]) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -55,9 +65,15 @@ interface SearchState {
   setPartialFailure: (partialFailure: boolean) => void;
   clearResults: () => void;
   setRerankingMetrics: (metrics: SearchState['rerankingMetrics']) => void;
+  validateAndUpdateSearchParams: (params: Partial<SearchParams>) => void;
+  clearValidationErrors: () => void;
+  hasValidationErrors: () => boolean;
+  getValidationError: (field: string) => string | undefined;
+  setRerankingAvailable: (available: boolean) => void;
+  setRerankingModelsLoading: (loading: boolean) => void;
 }
 
-export const useSearchStore = create<SearchState>((set) => ({
+export const useSearchStore = create<SearchState>((set, get) => ({
   results: [],
   loading: false,
   error: null,
@@ -68,6 +84,7 @@ export const useSearchStore = create<SearchState>((set) => ({
     scoreThreshold: 0.0,
     searchType: 'semantic',
     useReranker: false,
+    hybridAlpha: 0.7,
     hybridMode: 'reciprocal_rank',
     keywordMode: 'bm25',
   },
@@ -75,6 +92,9 @@ export const useSearchStore = create<SearchState>((set) => ({
   failedCollections: [],
   partialFailure: false,
   rerankingMetrics: null,
+  validationErrors: [],
+  rerankingAvailable: true,
+  rerankingModelsLoading: false,
   setResults: (results) => set({ results }),
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
@@ -87,4 +107,91 @@ export const useSearchStore = create<SearchState>((set) => ({
   setPartialFailure: (partialFailure) => set({ partialFailure }),
   clearResults: () => set({ results: [], error: null, rerankingMetrics: null, failedCollections: [], partialFailure: false }),
   setRerankingMetrics: (metrics) => set({ rerankingMetrics: metrics }),
+  
+  validateAndUpdateSearchParams: (params) => {
+    const currentParams = get().searchParams;
+    const updatedParams = { ...currentParams };
+    
+    // Sanitize and validate query if provided
+    if (params.query !== undefined) {
+      updatedParams.query = sanitizeQuery(params.query);
+    }
+    
+    // Clamp numeric values to valid ranges
+    if (params.topK !== undefined) {
+      updatedParams.topK = clampValue(
+        params.topK, 
+        DEFAULT_VALIDATION_RULES.topK.min, 
+        DEFAULT_VALIDATION_RULES.topK.max
+      );
+    }
+    
+    if (params.scoreThreshold !== undefined) {
+      updatedParams.scoreThreshold = clampValue(
+        params.scoreThreshold,
+        DEFAULT_VALIDATION_RULES.scoreThreshold.min,
+        DEFAULT_VALIDATION_RULES.scoreThreshold.max
+      );
+    }
+    
+    if (params.hybridAlpha !== undefined) {
+      updatedParams.hybridAlpha = clampValue(
+        params.hybridAlpha,
+        DEFAULT_VALIDATION_RULES.hybridAlpha.min,
+        DEFAULT_VALIDATION_RULES.hybridAlpha.max
+      );
+    }
+    
+    // Update other params without validation
+    if (params.selectedCollections !== undefined) {
+      updatedParams.selectedCollections = params.selectedCollections;
+    }
+    if (params.searchType !== undefined) {
+      updatedParams.searchType = params.searchType;
+    }
+    if (params.rerankModel !== undefined) {
+      updatedParams.rerankModel = params.rerankModel;
+    }
+    if (params.rerankQuantization !== undefined) {
+      updatedParams.rerankQuantization = params.rerankQuantization;
+    }
+    if (params.useReranker !== undefined) {
+      updatedParams.useReranker = params.useReranker;
+    }
+    if (params.hybridMode !== undefined) {
+      updatedParams.hybridMode = params.hybridMode;
+    }
+    if (params.keywordMode !== undefined) {
+      updatedParams.keywordMode = params.keywordMode;
+    }
+    
+    // Validate all params
+    const errors = validateSearchParams({
+      query: updatedParams.query,
+      topK: updatedParams.topK,
+      scoreThreshold: updatedParams.scoreThreshold,
+      hybridAlpha: updatedParams.hybridAlpha,
+      selectedCollections: updatedParams.selectedCollections,
+      searchType: updatedParams.searchType,
+    });
+    
+    set({
+      searchParams: updatedParams,
+      validationErrors: errors,
+    });
+  },
+  
+  clearValidationErrors: () => set({ validationErrors: [] }),
+  
+  hasValidationErrors: () => get().validationErrors.length > 0,
+  
+  getValidationError: (field) => {
+    const errors = get().validationErrors;
+    const error = errors.find(e => e.field === field);
+    return error?.message;
+  },
+  
+  setRerankingAvailable: (available) => set({ rerankingAvailable: available }),
+  
+  setRerankingModelsLoading: (loading) => set({ rerankingModelsLoading: loading }),
 }));

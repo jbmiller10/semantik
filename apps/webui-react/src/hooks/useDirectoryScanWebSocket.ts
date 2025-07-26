@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { directoryScanV2Api, generateScanId } from '../services/api/v2/directoryScan';
 import type { DirectoryScanProgress } from '../services/api/v2/types';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface ScanResult {
   files: string[];
@@ -143,8 +144,8 @@ export function useDirectoryScanWebSocket(scanId?: string) {
             severity: 'low',
           })),
         });
-      } catch (err: any) {
-        setError(err.response?.data?.detail || 'Failed to scan directory');
+      } catch (err) {
+        setError(getErrorMessage(err));
         setScanResult(null);
       } finally {
         setScanning(false);
@@ -197,9 +198,9 @@ export function useDirectoryScanWebSocket(scanId?: string) {
           });
         }
         // Otherwise, WebSocket updates will handle the progress
-      } catch (err: any) {
+      } catch (err) {
         setScanning(false);
-        setError(err.response?.data?.detail || 'Failed to scan directory');
+        setError(getErrorMessage(err));
         setScanResult(null);
       }
     },

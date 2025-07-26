@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { AxiosError } from 'axios';
 import SearchInterface from '../SearchInterface';
 import { useSearchStore } from '../../stores/searchStore';
 import { useUIStore } from '../../stores/uiStore';
@@ -22,12 +23,16 @@ vi.mock('../../hooks/useCollections', () => ({
         name: 'Test Collection 1',
         status: 'ready',
         embedding_model: 'Qwen/Qwen3-Embedding-0.6B',
+        vector_count: 100,
+        document_count: 10,
       },
       {
         id: '456e7890-e89b-12d3-a456-426614174001',
         name: 'Test Collection 2',
         status: 'ready',
         embedding_model: 'BAAI/bge-small-en-v1.5',
+        vector_count: 200,
+        document_count: 20,
       },
     ],
     refetch: vi.fn(),
@@ -63,6 +68,9 @@ describe('SearchInterface Reranking Tests', () => {
         useReranker: false,
         rerankModel: undefined,
         rerankQuantization: undefined,
+        hybridAlpha: 0.7,
+        hybridMode: 'reciprocal_rank',
+        keywordMode: 'bm25',
       },
       results: [],
       loading: false,
@@ -109,7 +117,7 @@ describe('SearchInterface Reranking Tests', () => {
     fireEvent.change(queryInput, { target: { value: 'test query' } });
 
     // Select a collection
-    const collectionSelect = screen.getByPlaceholderText('Select collections to search...');
+    const collectionSelect = screen.getByText('Select collections to search...');
     fireEvent.click(collectionSelect);
     
     // Wait for dropdown to appear and select first collection
@@ -190,7 +198,7 @@ describe('SearchInterface Reranking Tests', () => {
     fireEvent.change(queryInput, { target: { value: 'test query' } });
 
     // Select a collection
-    const collectionSelect = screen.getByPlaceholderText('Select collections to search...');
+    const collectionSelect = screen.getByText('Select collections to search...');
     fireEvent.click(collectionSelect);
     
     await waitFor(() => {
@@ -243,9 +251,14 @@ describe('SearchInterface Reranking Tests', () => {
   });
 
   it('should handle insufficient memory error for reranking', async () => {
-    const mockError = {
-      response: {
+    const mockError = new AxiosError(
+      'Request failed with status code 507',
+      'ERR_BAD_RESPONSE',
+      undefined,
+      undefined,
+      {
         status: 507,
+        statusText: 'Insufficient Storage',
         data: {
           detail: {
             error: 'insufficient_memory',
@@ -253,8 +266,10 @@ describe('SearchInterface Reranking Tests', () => {
             suggestion: 'Try using a smaller model or different quantization',
           },
         },
-      },
-    };
+        headers: {},
+        config: {} as any,
+      }
+    );
 
     (searchV2Api.search as any).mockRejectedValueOnce(mockError);
 
@@ -265,7 +280,7 @@ describe('SearchInterface Reranking Tests', () => {
     fireEvent.change(queryInput, { target: { value: 'test query' } });
 
     // Select a collection
-    const collectionSelect = screen.getByPlaceholderText('Select collections to search...');
+    const collectionSelect = screen.getByText('Select collections to search...');
     fireEvent.click(collectionSelect);
     
     await waitFor(() => {
@@ -333,7 +348,7 @@ describe('SearchInterface Reranking Tests', () => {
     fireEvent.change(queryInput, { target: { value: 'test query' } });
 
     // Select a collection
-    const collectionSelect = screen.getByPlaceholderText('Select collections to search...');
+    const collectionSelect = screen.getByText('Select collections to search...');
     fireEvent.click(collectionSelect);
     
     await waitFor(() => {

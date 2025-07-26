@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { settingsApi } from '../services/api/v2';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface DatabaseStats {
   collection_count: number;
@@ -58,16 +59,10 @@ function SettingsPage() {
       
       // Redirect to home page
       navigate('/');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to reset database:', error);
       
-      // Extract error message from the response
-      let errorMessage = 'Failed to reset database.';
-      if (error.response?.data?.detail) {
-        errorMessage = error.response.data.detail;
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
+      const errorMessage = getErrorMessage(error);
       
       alert(`Failed to reset database: ${errorMessage}`);
     } finally {

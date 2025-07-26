@@ -22,10 +22,23 @@ class SearchService:
         self,
         db_session: AsyncSession,
         collection_repo: CollectionRepository,
+        default_timeout: httpx.Timeout | None = None,
+        retry_timeout_multiplier: float = 4.0,
     ):
-        """Initialize the search service."""
+        """Initialize the search service.
+        
+        Args:
+            db_session: Database session for transactions
+            collection_repo: Repository for collection data access
+            default_timeout: Default timeout configuration for HTTP requests. 
+                            Defaults to Timeout(timeout=30.0, connect=5.0, read=30.0, write=5.0)
+            retry_timeout_multiplier: Multiplier applied to timeout values when retrying failed requests.
+                                    Defaults to 4.0
+        """
         self.db_session = db_session
         self.collection_repo = collection_repo
+        self.default_timeout = default_timeout or httpx.Timeout(timeout=30.0, connect=5.0, read=30.0, write=5.0)
+        self.retry_timeout_multiplier = retry_timeout_multiplier
 
     async def validate_collection_access(self, collection_uuids: list[str], user_id: int) -> list[Collection]:
         """Validate user has access to all requested collections.
@@ -81,7 +94,7 @@ class SearchService:
 
         # Use default timeout if not provided
         if timeout is None:
-            timeout = httpx.Timeout(timeout=30.0, connect=5.0, read=30.0, write=5.0)
+            timeout = self.default_timeout
 
         # Build search request for this collection
         collection_search_params = {
@@ -105,7 +118,13 @@ class SearchService:
         except httpx.ReadTimeout:
             # Retry with longer timeout
             logger.warning(f"Search timeout for collection {collection.name}, retrying...")
-            extended_timeout = httpx.Timeout(timeout=120.0, connect=5.0, read=120.0, write=5.0)
+            # Calculate extended timeout by multiplying current timeout values
+            extended_timeout = httpx.Timeout(
+                timeout=timeout.timeout * self.retry_timeout_multiplier if timeout.timeout else 120.0,
+                connect=timeout.connect * self.retry_timeout_multiplier if timeout.connect else 20.0,
+                read=timeout.read * self.retry_timeout_multiplier if timeout.read else 120.0,
+                write=timeout.write * self.retry_timeout_multiplier if timeout.write else 20.0,
+            )
 
             try:
                 async with httpx.AsyncClient(timeout=extended_timeout) as client:
@@ -136,7 +155,18 @@ class SearchService:
     def _handle_http_error(
         self, error: httpx.HTTPStatusError, collection: Collection, retry: bool
     ) -> tuple[Collection, None, str]:
-        """Handle HTTP status errors during search."""
+        """Handle HTTP status errors during search operations.
+        
+        Maps HTTP status codes to appropriate error messages for user feedback.
+        
+        Args:
+            error: The HTTP status error that occurred
+            collection: The collection that was being searched
+            retry: Whether this error occurred during a retry attempt
+            
+        Returns:
+            Tuple of (collection, None for results, error message)
+        """
         retry_suffix = " after retry" if retry else ""
         status_code = error.response.status_code
 
@@ -215,7 +245,7 @@ class SearchService:
             )
 
         # Create timeout for searches
-        timeout = httpx.Timeout(timeout=30.0, connect=5.0, read=30.0, write=5.0)
+        timeout = self.default_timeout
 
         # Execute searches in parallel
         search_tasks = [
@@ -340,7 +370,13 @@ class SearchService:
             )
 
         try:
-            timeout = httpx.Timeout(timeout=60.0, connect=5.0, read=60.0, write=5.0)
+            # Use a longer timeout for single collection searches
+            timeout = httpx.Timeout(
+                timeout=self.default_timeout.timeout * 2 if self.default_timeout.timeout else 60.0,
+                connect=self.default_timeout.connect if self.default_timeout.connect else 5.0,
+                read=self.default_timeout.read * 2 if self.default_timeout.read else 60.0,
+                write=self.default_timeout.write if self.default_timeout.write else 5.0,
+            )
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(f"{settings.SEARCH_API_URL}/search", json=search_params)
                 response.raise_for_status()

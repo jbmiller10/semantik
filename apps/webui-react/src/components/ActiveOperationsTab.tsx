@@ -5,6 +5,13 @@ import type { Operation } from '../types/collection';
 import { RefreshCw, Activity, Clock, AlertCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
+// Helper to safely get source_path from config
+function getSourcePath(config: Record<string, unknown> | undefined): string | null {
+  if (!config || !('source_path' in config)) return null;
+  const sourcePath = config.source_path;
+  return typeof sourcePath === 'string' ? sourcePath : null;
+}
+
 function ActiveOperationsTab() {
 
   // Fetch active operations across all collections
@@ -186,11 +193,14 @@ function OperationListItem({ operation, collectionName, onNavigateToCollection }
                     Started {formatDistanceToNow(new Date(operation.created_at), { addSuffix: true })}
                   </span>
                 </span>
-                {operation.config?.source_path && (
-                  <span className="truncate max-w-xs" title={String(operation.config.source_path)}>
-                    {String(operation.config.source_path)}
-                  </span>
-                )}
+                {(() => {
+                  const sourcePath = getSourcePath(operation.config);
+                  return sourcePath ? (
+                    <span className="truncate max-w-xs" title={sourcePath}>
+                      {sourcePath}
+                    </span>
+                  ) : null;
+                })()}
               </div>
             </div>
           </div>
