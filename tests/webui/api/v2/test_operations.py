@@ -117,7 +117,7 @@ class TestGetOperation:
         # Setup
         operation_uuid = "non-existent-uuid"
         mock_operation_service.get_operation.side_effect = EntityNotFoundError(
-            "Operation not found"
+            "Operation", operation_uuid
         )
 
         # Execute & Verify
@@ -141,7 +141,7 @@ class TestGetOperation:
         # Setup
         operation_uuid = "550e8400-e29b-41d4-a716-446655440000"
         mock_operation_service.get_operation.side_effect = AccessDeniedError(
-            "Access denied"
+            str(mock_user["id"]), "operation", operation_uuid
         )
 
         # Execute & Verify
@@ -248,7 +248,7 @@ class TestCancelOperation:
         # Setup
         operation_uuid = "non-existent-uuid"
         mock_operation_service.cancel_operation.side_effect = EntityNotFoundError(
-            "Operation not found"
+            "Operation", operation_uuid
         )
 
         # Execute & Verify
@@ -272,7 +272,7 @@ class TestCancelOperation:
         # Setup
         operation_uuid = "550e8400-e29b-41d4-a716-446655440000"
         mock_operation_service.cancel_operation.side_effect = AccessDeniedError(
-            "Access denied"
+            str(mock_user["id"]), "operation", operation_uuid
         )
 
         # Execute & Verify
@@ -751,7 +751,7 @@ class TestOperationWebSocket:
             mock_service = AsyncMock()
             mock_service_class.return_value = mock_service
             mock_service.verify_websocket_access.side_effect = EntityNotFoundError(
-                "Operation not found"
+                "Operation", "non-existent-op"
             )
             
             # Execute
@@ -788,7 +788,7 @@ class TestOperationWebSocket:
             mock_service = AsyncMock()
             mock_service_class.return_value = mock_service
             mock_service.verify_websocket_access.side_effect = AccessDeniedError(
-                "Access denied"
+                str(mock_user["id"]), "operation", "op-123"
             )
             
             # Execute

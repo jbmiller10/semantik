@@ -690,14 +690,15 @@ class TestSingleCollectionSearch:
         )
 
         # Mock service raising EntityNotFoundError
-        mock_search_service.single_collection_search.side_effect = EntityNotFoundError("Collection not found")
+        mock_search_service.single_collection_search.side_effect = EntityNotFoundError("Collection", search_request.collection_id)
 
         with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
             with pytest.raises(HTTPException) as exc_info:
                 await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert exc_info.value.status_code == 404
-        assert "Collection not found" in str(exc_info.value.detail)
+        assert "Collection" in str(exc_info.value.detail)
+        assert search_request.collection_id in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
     async def test_single_collection_search_access_denied(self, mock_user):
@@ -718,14 +719,14 @@ class TestSingleCollectionSearch:
         )
 
         # Mock service raising AccessDeniedError
-        mock_search_service.single_collection_search.side_effect = AccessDeniedError("Access denied to collection")
+        mock_search_service.single_collection_search.side_effect = AccessDeniedError(str(mock_user["id"]), "Collection", search_request.collection_id)
 
         with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
             with pytest.raises(HTTPException) as exc_info:
                 await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert exc_info.value.status_code == 403
-        assert "Access denied" in str(exc_info.value.detail)
+        assert "does not have access" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
     async def test_single_collection_search_general_error(self, mock_user):
@@ -989,14 +990,14 @@ class TestMultiCollectionSearchEdgeCases:
         )
 
         # Mock service raising AccessDeniedError
-        mock_search_service.multi_collection_search.side_effect = AccessDeniedError("Access denied to collections")
+        mock_search_service.multi_collection_search.side_effect = AccessDeniedError(str(mock_user["id"]), "Collections", ",".join(search_request.collection_uuids))
 
         with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
             with pytest.raises(HTTPException) as exc_info:
                 await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert exc_info.value.status_code == 403
-        assert "Access denied" in str(exc_info.value.detail)
+        assert "does not have access" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
     async def test_multi_collection_search_general_error(self, mock_user, mock_collections):
