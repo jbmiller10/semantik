@@ -18,6 +18,7 @@ from packages.webui.api.v2.search import (
     multi_collection_search,
     single_collection_search,
 )
+from packages.webui.services.search_service import SearchService
 
 
 @pytest.fixture()
@@ -304,6 +305,307 @@ class TestMultiCollectionSearch:
         # Results should be sorted by score
         assert response.results[0].score == 0.9
         assert response.results[1].score == 0.8
+
+
+class TestSearchReranking:
+    """Test search reranking functionality."""
+
+    @pytest.mark.asyncio()
+    async def test_search_with_reranking_disabled(self, mock_user, mock_collections):
+        """Test that search works correctly with reranking disabled."""
+        # Create a proper Request object
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+
+        search_request = CollectionSearchRequest(
+            collection_uuids=[mock_collections[0].id],
+            query="test query",
+            k=10,
+            use_reranker=False,  # Explicitly disable reranking
+            rerank_model=None,
+            metadata_filter=None,
+        )
+
+        # Mock the service response without reranking
+        mock_search_service.multi_collection_search.return_value = {
+            "results": [
+                {
+                    "doc_id": "doc_1",
+                    "chunk_id": "chunk_1",
+                    "score": 0.85,
+                    "content": "Test content without reranking",
+                    "path": "/test.txt",
+                    "metadata": {},
+                    "collection_id": mock_collections[0].id,
+                    "collection_name": mock_collections[0].name,
+                    "embedding_model": mock_collections[0].embedding_model,
+                },
+            ],
+            "metadata": {
+                "total_results": 1,
+                "processing_time": 0.05,
+                "collection_details": [
+                    {
+                        "collection_id": mock_collections[0].id,
+                        "collection_name": mock_collections[0].name,
+                        "result_count": 1,
+                    },
+                ],
+            },
+        }
+
+        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        # Verify the service was called with correct reranking parameters
+        mock_search_service.multi_collection_search.assert_called_once_with(
+            user_id=mock_user["id"],
+            collection_uuids=[mock_collections[0].id],
+            query="test query",
+            k=10,
+            search_type="semantic",
+            score_threshold=0.0,
+            metadata_filter=None,
+            use_reranker=False,
+            rerank_model=None,
+            hybrid_alpha=0.7,
+            hybrid_search_mode="rerank",
+        )
+
+        assert response.reranking_used is False
+        assert response.reranker_model is None
+        assert len(response.results) == 1
+        assert response.results[0].score == 0.85
+        assert response.results[0].reranked_score is None
+
+    @pytest.mark.asyncio()
+    async def test_search_with_reranking_enabled(self, mock_user, mock_collections):
+        """Test that search works correctly with reranking enabled."""
+        # Create a proper Request object
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+
+        search_request = CollectionSearchRequest(
+            collection_uuids=[mock_collections[0].id],
+            query="test query",
+            k=10,
+            use_reranker=True,  # Enable reranking
+            rerank_model="Qwen/Qwen3-Reranker-0.6B",
+            metadata_filter=None,
+        )
+
+        # Mock the service response with reranking
+        mock_search_service.multi_collection_search.return_value = {
+            "results": [
+                {
+                    "doc_id": "doc_1",
+                    "chunk_id": "chunk_1",
+                    "score": 0.95,  # Higher score after reranking
+                    "reranked_score": 0.95,
+                    "content": "Test content with reranking",
+                    "path": "/test.txt",
+                    "metadata": {},
+                    "collection_id": mock_collections[0].id,
+                    "collection_name": mock_collections[0].name,
+                    "embedding_model": mock_collections[0].embedding_model,
+                },
+                {
+                    "doc_id": "doc_2",
+                    "chunk_id": "chunk_2",
+                    "score": 0.92,
+                    "reranked_score": 0.92,
+                    "content": "Another test content",
+                    "path": "/test2.txt",
+                    "metadata": {},
+                    "collection_id": mock_collections[0].id,
+                    "collection_name": mock_collections[0].name,
+                    "embedding_model": mock_collections[0].embedding_model,
+                },
+            ],
+            "metadata": {
+                "total_results": 2,
+                "processing_time": 0.15,  # Longer processing time with reranking
+                "collection_details": [
+                    {
+                        "collection_id": mock_collections[0].id,
+                        "collection_name": mock_collections[0].name,
+                        "result_count": 2,
+                    },
+                ],
+            },
+        }
+
+        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        # Verify the service was called with correct reranking parameters
+        mock_search_service.multi_collection_search.assert_called_once_with(
+            user_id=mock_user["id"],
+            collection_uuids=[mock_collections[0].id],
+            query="test query",
+            k=10,
+            search_type="semantic",
+            score_threshold=0.0,
+            metadata_filter=None,
+            use_reranker=True,
+            rerank_model="Qwen/Qwen3-Reranker-0.6B",
+            hybrid_alpha=0.7,
+            hybrid_search_mode="rerank",
+        )
+
+        assert response.reranking_used is True
+        assert response.reranker_model == "Qwen/Qwen3-Reranker-0.6B"
+        assert len(response.results) == 2
+        assert response.results[0].score == 0.95
+        assert response.results[0].reranked_score == 0.95
+        assert response.results[1].score == 0.92
+        assert response.results[1].reranked_score == 0.92
+
+    @pytest.mark.asyncio()
+    async def test_search_reranking_different_scores(self, mock_user, mock_collections):
+        """Test that reranking produces different scores from original scores."""
+        # Create a proper Request object
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+
+        search_request = CollectionSearchRequest(
+            collection_uuids=[mock_collections[0].id, mock_collections[1].id],
+            query="complex query",
+            k=5,
+            use_reranker=True,
+            rerank_model=None,  # Use default model
+            metadata_filter=None,
+        )
+
+        # Mock the service response with different original and reranked scores
+        mock_search_service.multi_collection_search.return_value = {
+            "results": [
+                {
+                    "doc_id": "doc_1",
+                    "chunk_id": "chunk_1",
+                    "score": 0.98,  # Reranked score (was originally lower)
+                    "reranked_score": 0.98,
+                    "content": "Highly relevant after reranking",
+                    "path": "/doc1.txt",
+                    "metadata": {},
+                    "collection_id": mock_collections[0].id,
+                    "collection_name": mock_collections[0].name,
+                    "embedding_model": mock_collections[0].embedding_model,
+                },
+                {
+                    "doc_id": "doc_2",
+                    "chunk_id": "chunk_2",
+                    "score": 0.85,  # Reranked score (was originally higher)
+                    "reranked_score": 0.85,
+                    "content": "Less relevant after reranking",
+                    "path": "/doc2.txt",
+                    "metadata": {},
+                    "collection_id": mock_collections[1].id,
+                    "collection_name": mock_collections[1].name,
+                    "embedding_model": mock_collections[1].embedding_model,
+                },
+            ],
+            "metadata": {
+                "total_results": 2,
+                "processing_time": 0.2,
+                "collection_details": [
+                    {
+                        "collection_id": mock_collections[0].id,
+                        "collection_name": mock_collections[0].name,
+                        "result_count": 1,
+                    },
+                    {
+                        "collection_id": mock_collections[1].id,
+                        "collection_name": mock_collections[1].name,
+                        "result_count": 1,
+                    },
+                ],
+            },
+        }
+
+        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        assert response.reranking_used is True
+        assert len(response.results) == 2
+        # Results should be ordered by reranked score
+        assert response.results[0].score == 0.98
+        assert response.results[1].score == 0.85
+
+    @pytest.mark.asyncio()
+    async def test_single_collection_search_with_reranking(self, mock_user):
+        """Test single collection search with reranking enabled."""
+        # Create a proper Request object
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search/single",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+
+        search_request = SingleCollectionSearchRequest(
+            collection_id="123e4567-e89b-12d3-a456-426614174000",
+            query="test query",
+            k=5,
+            use_reranker=True,
+            metadata_filter=None,
+        )
+
+        # Mock the service response with reranking
+        mock_search_service.single_collection_search.return_value = {
+            "results": [
+                {
+                    "doc_id": "doc_1",
+                    "chunk_id": "chunk_1",
+                    "score": 0.95,
+                    "reranked_score": 0.95,
+                    "content": "Reranked result",
+                    "path": "/test/doc.txt",
+                    "metadata": {"section": "intro"},
+                },
+            ],
+            "processing_time_ms": 150,
+        }
+
+        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            response = await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        # Verify service was called with reranking enabled
+        mock_search_service.single_collection_search.assert_called_once_with(
+            user_id=mock_user["id"],
+            collection_uuid=search_request.collection_id,
+            query=search_request.query,
+            k=search_request.k,
+            search_type=search_request.search_type,
+            score_threshold=search_request.score_threshold,
+            metadata_filter=search_request.metadata_filter,
+            use_reranker=True,
+            include_content=search_request.include_content,
+        )
+
+        assert response.reranking_used is True
+        assert len(response.results) == 1
+        assert response.results[0].reranked_score == 0.95
 
 
 class TestSingleCollectionSearch:

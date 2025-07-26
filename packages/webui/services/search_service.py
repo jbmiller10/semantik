@@ -87,12 +87,11 @@ class SearchService:
         collection_search_params = {
             **search_params,
             "query": query,
-            "k": k * settings.SEARCH_CANDIDATE_MULTIPLIER,  # Get more candidates for re-ranking
+            "k": k,  # Request exactly k results (vecpipe will handle candidate multiplier if reranking)
             "collection": collection.vector_store_name,
             "model_name": collection.embedding_model,
             "quantization": collection.quantization,
             "include_content": True,
-            "use_reranker": False,  # We'll do re-ranking after merging
         }
 
         try:
@@ -159,68 +158,6 @@ class SearchService:
             f"Search failed for collection '{collection.name}'{retry_suffix} (status: {status_code})",
         )
 
-    async def rerank_merged_results(
-        self,
-        query: str,
-        results: list[tuple[Collection, dict[str, Any]]],
-        rerank_model: str | None = None,
-        k: int = 10,
-    ) -> list[tuple[Collection, dict[str, Any], float]]:
-        """Re-rank merged results from multiple collections.
-
-        Args:
-            query: Original search query
-            results: List of (collection, result) tuples
-            rerank_model: Optional reranker model name
-            k: Number of top results to return
-
-        Returns:
-            List of (collection, result, reranked_score) tuples
-        """
-        if not results:
-            return []
-
-        # Prepare documents for re-ranking
-        documents = []
-        for _, result in results:
-            # Use content if available, otherwise use metadata
-            content = result.get("content", "")
-            if not content and result.get("metadata"):
-                content = str(result.get("metadata", {}))
-            documents.append(content)
-
-        # Build re-ranking request
-        rerank_params = {
-            "query": query,
-            "documents": documents,
-            "model_name": rerank_model or "Qwen/Qwen3-Reranker",
-            "k": min(k, len(documents)),
-        }
-
-        try:
-            timeout = httpx.Timeout(timeout=60.0, connect=5.0, read=60.0, write=5.0)
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(f"{settings.SEARCH_API_URL}/rerank", json=rerank_params)
-                response.raise_for_status()
-
-            rerank_result = response.json()
-            reranked_indices = rerank_result.get("results", [])
-
-            # Build reranked results with new scores
-            reranked_results = []
-            for idx, score in reranked_indices:
-                if 0 <= idx < len(results):
-                    collection, result = results[idx]
-                    reranked_results.append((collection, result, score))
-
-            return reranked_results[:k]
-
-        except Exception as e:
-            logger.error(f"Re-ranking failed: {e}")
-            # Fall back to original scores
-            scored_results = [(collection, result, result.get("score", 0.0)) for collection, result in results]
-            scored_results.sort(key=lambda x: x[2], reverse=True)
-            return scored_results[:k]
 
     async def multi_collection_search(
         self,
@@ -231,6 +168,7 @@ class SearchService:
         search_type: str = "semantic",
         score_threshold: float | None = None,
         metadata_filter: dict[str, Any] | None = None,
+        use_reranker: bool = True,
         rerank_model: str | None = None,
         hybrid_alpha: float = 0.7,
         hybrid_search_mode: str = "weighted",
@@ -245,6 +183,7 @@ class SearchService:
             search_type: Type of search (semantic, hybrid, etc.)
             score_threshold: Minimum score threshold for results
             metadata_filter: Optional metadata filters
+            use_reranker: Whether to use reranking
             rerank_model: Optional reranker model
             hybrid_alpha: Weight for hybrid search
             hybrid_search_mode: Mode for hybrid search
@@ -262,6 +201,8 @@ class SearchService:
             "search_type": search_type,
             "score_threshold": score_threshold,
             "filters": metadata_filter,
+            "use_reranker": use_reranker,
+            "rerank_model": rerank_model,
         }
 
         # Add hybrid search parameters if applicable
@@ -303,7 +244,11 @@ class SearchService:
                 if results:
                     # Add collection info to each result
                     for result in results:
-                        all_results.append((collection, result))
+                        all_results.append({
+                            "collection_id": collection.id,
+                            "collection_name": collection.name,
+                            **result,
+                        })
 
                 collection_results.append(
                     {
@@ -313,20 +258,11 @@ class SearchService:
                     }
                 )
 
-        # Re-rank merged results
-        reranked_results = await self.rerank_merged_results(query, all_results, rerank_model, k)
-
-        # Format final results
-        final_results = []
-        for collection, result, score in reranked_results:
-            final_results.append(
-                {
-                    "collection_id": collection.id,
-                    "collection_name": collection.name,
-                    **result,
-                    "reranked_score": score,
-                }
-            )
+        # Sort merged results by score (results are already reranked by vecpipe if reranking was enabled)
+        all_results.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+        
+        # Limit to requested k results
+        final_results = all_results[:k]
 
         processing_time = time.time() - start_time
 
