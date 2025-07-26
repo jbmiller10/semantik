@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import pytest_asyncio
 import redis.asyncio as redis
 from fastapi import WebSocket
 
@@ -55,7 +56,7 @@ class TestRedisStreamWebSocketManager:
         mock.close = AsyncMock()
         return mock
 
-    @pytest.fixture()
+    @pytest_asyncio.fixture
     async def manager(self):
         """Create a WebSocket manager instance."""
         manager = RedisStreamWebSocketManager()
@@ -917,7 +918,7 @@ class TestRedisStreamWebSocketManager:
 class TestWebSocketManagerSingleton:
     """Test the global ws_manager singleton."""
 
-    @pytest.fixture(autouse=True)
+    @pytest_asyncio.fixture(autouse=True)
     async def cleanup_singleton(self):
         """Clean up any background tasks from the singleton."""
         # Import here to avoid issues

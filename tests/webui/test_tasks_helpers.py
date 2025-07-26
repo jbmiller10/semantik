@@ -25,10 +25,16 @@ from packages.webui.tasks import (
     _record_operation_metrics,
     _sanitize_audit_details,
     _update_collection_metrics,
+    calculate_cleanup_delay,
     cleanup_old_results,
     extract_and_serialize_thread_safe,
     test_task,
 )
+
+# Import shared models and repositories that are used in the tests
+from shared.database.database import AsyncSessionLocal
+from shared.database.models import CollectionAuditLog, OperationMetrics
+from shared.database.repositories.collection_repository import CollectionRepository
 
 
 class TestTaskHelperFunctions:
@@ -113,120 +119,120 @@ class TestAuditLogging:
     """Test audit logging functionality."""
 
     @pytest.mark.asyncio
-    @patch("shared.database.database.AsyncSessionLocal")
-    @patch("shared.database.models.CollectionAuditLog")
-    async def test_audit_log_operation_success(self, mock_audit_log_class, mock_session_local):
+    async def test_audit_log_operation_success(self):
         """Test successful audit log creation."""
-        # Setup mocks
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.add = Mock()
-        mock_session.commit = AsyncMock()
-        mock_session_local.return_value = mock_session
-        
-        mock_audit_log = Mock()
-        mock_audit_log_class.return_value = mock_audit_log
-        
-        # Create audit log
-        await _audit_log_operation(
-            collection_id="col-123",
-            operation_id=456,
-            user_id=1,
-            action="test_action",
-            details={"key": "value", "password": "secret"}
-        )
-        
-        # Verify audit log was created
-        mock_audit_log_class.assert_called_once()
-        call_args = mock_audit_log_class.call_args[1]
-        assert call_args["collection_id"] == "col-123"
-        assert call_args["operation_id"] == 456
-        assert call_args["user_id"] == 1
-        assert call_args["action"] == "test_action"
-        
-        # Details should be sanitized
-        assert "password" not in call_args["details"]
-        assert call_args["details"]["key"] == "value"
-        
-        # Verify session operations
-        mock_session.add.assert_called_once_with(mock_audit_log)
-        mock_session.commit.assert_called_once()
+        with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
+            with patch("shared.database.models.CollectionAuditLog") as mock_audit_log_class:
+                # Setup mocks
+                mock_session = AsyncMock()
+                mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+                mock_session.__aexit__ = AsyncMock(return_value=None)
+                mock_session.add = Mock()
+                mock_session.commit = AsyncMock()
+                mock_session_local.return_value = mock_session
+                
+                mock_audit_log = Mock()
+                mock_audit_log_class.return_value = mock_audit_log
+                
+                # Create audit log
+                await _audit_log_operation(
+                    collection_id="col-123",
+                    operation_id=456,
+                    user_id=1,
+                    action="test_action",
+                    details={"key": "value", "password": "secret"}
+                )
+                
+                # Verify audit log was created
+                mock_audit_log_class.assert_called_once()
+                call_args = mock_audit_log_class.call_args[1]
+                assert call_args["collection_id"] == "col-123"
+                assert call_args["operation_id"] == 456
+                assert call_args["user_id"] == 1
+                assert call_args["action"] == "test_action"
+                
+                # Details should be sanitized
+                assert "password" not in call_args["details"]
+                assert call_args["details"]["key"] == "value"
+                
+                # Verify session operations
+                mock_session.add.assert_called_once_with(mock_audit_log)
+                mock_session.commit.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("shared.database.database.AsyncSessionLocal")
-    async def test_audit_log_operation_failure(self, mock_session_local):
+    async def test_audit_log_operation_failure(self):
         """Test audit log creation handles failures gracefully."""
-        # Setup session to fail
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.commit = AsyncMock(side_effect=Exception("Database error"))
-        mock_session_local.return_value = mock_session
-        
-        # Should not raise exception
-        await _audit_log_operation(
-            collection_id="col-123",
-            operation_id=456,
-            user_id=1,
-            action="test_action"
-        )
-        
-        # Function should complete without raising
+        with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
+            # Setup session to fail
+            mock_session = AsyncMock()
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=None)
+            mock_session.commit = AsyncMock(side_effect=Exception("Database error"))
+            mock_session_local.return_value = mock_session
+            
+            # Should not raise exception
+            await _audit_log_operation(
+                collection_id="col-123",
+                operation_id=456,
+                user_id=1,
+                action="test_action"
+            )
+            
+            # Function should complete without raising
 
     @pytest.mark.asyncio
-    @patch("shared.database.database.AsyncSessionLocal")
-    @patch("shared.database.models.CollectionAuditLog")
-    async def test_audit_collection_deletion(self, mock_audit_log_class, mock_session_local):
+    async def test_audit_collection_deletion(self):
         """Test audit logging for collection deletion."""
-        # Setup mocks
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.add = Mock()
-        mock_session.commit = AsyncMock()
-        mock_session_local.return_value = mock_session
-        
-        # Create deletion audit log
-        await _audit_collection_deletion("test_collection", 5000)
-        
-        # Verify audit log creation
-        mock_audit_log_class.assert_called_once()
-        call_args = mock_audit_log_class.call_args[1]
-        assert call_args["collection_id"] is None  # System operation
-        assert call_args["operation_id"] is None
-        assert call_args["user_id"] is None
-        assert call_args["action"] == "qdrant_collection_deleted"
-        assert call_args["details"]["collection_name"] == "test_collection"
-        assert call_args["details"]["vector_count"] == 5000
-        assert "deleted_at" in call_args["details"]
+        with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
+            with patch("shared.database.models.CollectionAuditLog") as mock_audit_log_class:
+                # Setup mocks
+                mock_session = AsyncMock()
+                mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+                mock_session.__aexit__ = AsyncMock(return_value=None)
+                mock_session.add = Mock()
+                mock_session.commit = AsyncMock()
+                mock_session_local.return_value = mock_session
+                
+                # Create deletion audit log
+                await _audit_collection_deletion("test_collection", 5000)
+                
+                # Verify audit log creation
+                mock_audit_log_class.assert_called_once()
+                call_args = mock_audit_log_class.call_args[1]
+                assert call_args["collection_id"] is None  # System operation
+                assert call_args["operation_id"] is None
+                assert call_args["user_id"] is None
+                assert call_args["action"] == "qdrant_collection_deleted"
+                assert call_args["details"]["collection_name"] == "test_collection"
+                assert call_args["details"]["vector_count"] == 5000
+                assert "deleted_at" in call_args["details"]
 
     @pytest.mark.asyncio
-    @patch("shared.database.database.AsyncSessionLocal")
-    @patch("shared.database.models.CollectionAuditLog")
-    async def test_audit_collection_deletions_batch(self, mock_audit_log_class, mock_session_local):
+    async def test_audit_collection_deletions_batch(self):
         """Test batch audit logging for multiple collection deletions."""
-        # Setup mocks
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.add = Mock()
-        mock_session.commit = AsyncMock()
-        mock_session_local.return_value = mock_session
-        
-        # Create batch deletion audit logs
-        deletions = [
-            ("collection_1", 1000),
-            ("collection_2", 2000),
-            ("collection_3", 3000)
-        ]
-        
-        await _audit_collection_deletions_batch(deletions)
-        
-        # Verify multiple audit logs created
-        assert mock_audit_log_class.call_count == 3
-        assert mock_session.add.call_count == 3
-        assert mock_session.commit.call_count == 1  # Single commit for batch
+        with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
+            with patch("shared.database.models.CollectionAuditLog") as mock_audit_log_class:
+                # Setup mocks
+                mock_session = AsyncMock()
+                mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+                mock_session.__aexit__ = AsyncMock(return_value=None)
+                mock_session.add = Mock()
+                mock_session.commit = AsyncMock()
+                mock_session_local.return_value = mock_session
+                
+                # Create batch deletion audit logs
+                deletions = [
+                    ("collection_1", 1000),
+                    ("collection_2", 2000),
+                    ("collection_3", 3000)
+                ]
+                
+                await _audit_collection_deletions_batch(deletions)
+                
+                # Verify multiple audit logs created
+                assert mock_audit_log_class.call_count == 3
+                assert mock_session.add.call_count == 3
+                assert mock_session.commit.call_count == 1  # Single commit for batch
 
     @pytest.mark.asyncio
     async def test_audit_collection_deletions_batch_empty(self):
@@ -240,41 +246,41 @@ class TestMetricsRecording:
     """Test metrics recording functionality."""
 
     @pytest.mark.asyncio
-    @patch("shared.database.database.AsyncSessionLocal")
-    @patch("shared.database.models.OperationMetrics")
-    async def test_record_operation_metrics_success(self, mock_metrics_class, mock_session_local):
+    async def test_record_operation_metrics_success(self):
         """Test successful operation metrics recording."""
-        # Setup mocks
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.add = Mock()
-        mock_session.commit = AsyncMock()
-        mock_session_local.return_value = mock_session
-        
-        # Mock operation repository
-        operation_repo = AsyncMock()
-        operation = Mock()
-        operation.id = 123
-        operation_repo.get_by_uuid.return_value = operation
-        
-        # Record metrics
-        metrics = {
-            "duration_seconds": 45.5,
-            "cpu_seconds": 40.2,
-            "memory_peak_bytes": 1024000,
-            "documents_processed": 100,
-            "success": True
-        }
-        
-        await _record_operation_metrics(operation_repo, "op-123", metrics)
-        
-        # Verify metrics were created
-        assert mock_metrics_class.call_count == 4  # Numeric metrics only
-        
-        # Verify session operations
-        assert mock_session.add.call_count == 4
-        mock_session.commit.assert_called_once()
+        with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
+            with patch("shared.database.models.OperationMetrics") as mock_metrics_class:
+                # Setup mocks
+                mock_session = AsyncMock()
+                mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+                mock_session.__aexit__ = AsyncMock(return_value=None)
+                mock_session.add = Mock()
+                mock_session.commit = AsyncMock()
+                mock_session_local.return_value = mock_session
+                
+                # Mock operation repository
+                operation_repo = AsyncMock()
+                operation = Mock()
+                operation.id = 123
+                operation_repo.get_by_uuid.return_value = operation
+                
+                # Record metrics
+                metrics = {
+                    "duration_seconds": 45.5,
+                    "cpu_seconds": 40.2,
+                    "memory_peak_bytes": 1024000,
+                    "documents_processed": 100,
+                    "success": True
+                }
+                
+                await _record_operation_metrics(operation_repo, "op-123", metrics)
+                
+                # Verify metrics were created
+                assert mock_metrics_class.call_count == 4  # Numeric metrics only
+                
+                # Verify session operations
+                assert mock_session.add.call_count == 4
+                mock_session.commit.assert_called_once()
 
     @pytest.mark.asyncio
     @patch("packages.webui.tasks.update_collection_stats")
@@ -298,195 +304,181 @@ class TestActiveCollections:
     """Test active collections retrieval."""
 
     @pytest.mark.asyncio
-    @patch("shared.database.database.AsyncSessionLocal")
-    @patch("shared.database.repositories.collection_repository.CollectionRepository")
-    async def test_get_active_collections(self, mock_repo_class, mock_session_local):
+    async def test_get_active_collections(self):
         """Test getting active collections from database."""
-        # Setup mocks
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session_local.return_value = mock_session
-        
-        mock_repo = AsyncMock()
-        mock_collections = [
-            {
-                "id": "col1",
-                "vector_store_name": "vec_col_1",
-                "qdrant_collections": ["col_1_v1", "col_1_v2"],
-                "qdrant_staging": None
-            },
-            {
-                "id": "col2",
-                "vector_store_name": "vec_col_2",
-                "qdrant_collections": None,
-                "qdrant_staging": {"collection_name": "staging_col_2"}
-            },
-            {
-                "id": "col3",
-                "vector_store_name": None,
-                "qdrant_collections": [],
-                "qdrant_staging": None
-            }
-        ]
-        mock_repo.list_all.return_value = mock_collections
-        mock_repo_class.return_value = mock_repo
-        
-        # Get active collections
-        active = await _get_active_collections()
-        
-        # Verify results
-        assert isinstance(active, set)
-        assert "vec_col_1" in active
-        assert "col_1_v1" in active
-        assert "col_1_v2" in active
-        assert "vec_col_2" in active
-        assert "staging_col_2" in active
-        # col3 has no vector store name, so nothing from it
+        with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
+            with patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_repo_class:
+                # Setup mocks
+                mock_session = AsyncMock()
+                mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+                mock_session.__aexit__ = AsyncMock(return_value=None)
+                mock_session_local.return_value = mock_session
+                
+                mock_repo = AsyncMock()
+                mock_collections = [
+                    {
+                        "id": "col1",
+                        "vector_store_name": "vec_col_1",
+                        "qdrant_collections": ["col_1_v1", "col_1_v2"],
+                        "qdrant_staging": None
+                    },
+                    {
+                        "id": "col2",
+                        "vector_store_name": "vec_col_2",
+                        "qdrant_collections": None,
+                        "qdrant_staging": {"collection_name": "staging_col_2"}
+                    },
+                    {
+                        "id": "col3",
+                        "vector_store_name": None,
+                        "qdrant_collections": [],
+                        "qdrant_staging": None
+                    }
+                ]
+                mock_repo.list_all.return_value = mock_collections
+                mock_repo_class.return_value = mock_repo
+                
+                # Get active collections
+                active = await _get_active_collections()
+                
+                # Verify results
+                assert isinstance(active, set)
+                assert "vec_col_1" in active
+                assert "col_1_v1" in active
+                assert "col_1_v2" in active
+                assert "vec_col_2" in active
+                assert "staging_col_2" in active
+                # col3 has no vector store name, so nothing from it
 
     @pytest.mark.asyncio
-    @patch("shared.database.database.AsyncSessionLocal")
-    @patch("shared.database.repositories.collection_repository.CollectionRepository")
-    async def test_get_active_collections_with_string_staging(self, mock_repo_class, mock_session_local):
+    async def test_get_active_collections_with_string_staging(self):
         """Test handling of staging info as JSON string."""
-        # Setup mocks
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session_local.return_value = mock_session
-        
-        mock_repo = AsyncMock()
-        mock_collections = [
-            {
-                "id": "col1",
-                "vector_store_name": "vec_col_1",
-                "qdrant_collections": None,
-                "qdrant_staging": '{"collection_name": "staging_from_json"}'
-            }
-        ]
-        mock_repo.list_all.return_value = mock_collections
-        mock_repo_class.return_value = mock_repo
-        
-        # Get active collections
-        active = await _get_active_collections()
-        
-        # Verify JSON string was parsed
-        assert "staging_from_json" in active
+        with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
+            with patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_repo_class:
+                # Setup mocks
+                mock_session = AsyncMock()
+                mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+                mock_session.__aexit__ = AsyncMock(return_value=None)
+                mock_session_local.return_value = mock_session
+                
+                mock_repo = AsyncMock()
+                mock_collections = [
+                    {
+                        "id": "col1",
+                        "vector_store_name": "vec_col_1",
+                        "qdrant_collections": None,
+                        "qdrant_staging": '{"collection_name": "staging_from_json"}'
+                    }
+                ]
+                mock_repo.list_all.return_value = mock_collections
+                mock_repo_class.return_value = mock_repo
+                
+                # Get active collections
+                active = await _get_active_collections()
+                
+                # Verify JSON string was parsed
+                assert "staging_from_json" in active
 
 
 class TestStagingCleanup:
     """Test staging resource cleanup."""
 
     @pytest.mark.asyncio
-    @patch("packages.webui.tasks.qdrant_manager")
-    @patch("shared.database.database.AsyncSessionLocal")
-    @patch("shared.database.repositories.collection_repository.CollectionRepository")
-    async def test_cleanup_staging_resources_success(
-        self,
-        mock_repo_class,
-        mock_session_local,
-        mock_qdrant_manager
-    ):
+    async def test_cleanup_staging_resources_success(self):
         """Test successful staging cleanup."""
-        # Setup mocks
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session_local.return_value = mock_session
-        
-        mock_repo = AsyncMock()
-        collection = Mock()
-        collection.qdrant_staging = {
-            "collection_name": "staging_test_123"
-        }
-        mock_repo.get_by_uuid.return_value = collection
-        mock_repo.update = AsyncMock()
-        mock_repo_class.return_value = mock_repo
-        
-        # Mock Qdrant
-        client = Mock()
-        collections_response = Mock()
-        CollectionInfo = type("CollectionInfo", (), {"name": "staging_test_123"})
-        collections_response.collections = [CollectionInfo]
-        client.get_collections.return_value = collections_response
-        client.delete_collection = Mock()
-        mock_qdrant_manager.get_client.return_value = client
-        
-        # Clean up staging
-        operation = {"type": "REINDEX"}
-        await _cleanup_staging_resources("col-123", operation)
-        
-        # Verify deletion
-        client.delete_collection.assert_called_once_with("staging_test_123")
-        
-        # Verify database update
-        mock_repo.update.assert_called_once_with("col-123", {"qdrant_staging": None})
+        with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant_manager:
+            with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
+                with patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_repo_class:
+                    # Setup mocks
+                    mock_session = AsyncMock()
+                    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+                    mock_session.__aexit__ = AsyncMock(return_value=None)
+                    mock_session_local.return_value = mock_session
+                    
+                    mock_repo = AsyncMock()
+                    collection = Mock()
+                    collection.qdrant_staging = {
+                        "collection_name": "staging_test_123"
+                    }
+                    mock_repo.get_by_uuid.return_value = collection
+                    mock_repo.update = AsyncMock()
+                    mock_repo_class.return_value = mock_repo
+                    
+                    # Mock Qdrant
+                    client = Mock()
+                    collections_response = Mock()
+                    CollectionInfo = type("CollectionInfo", (), {"name": "staging_test_123"})
+                    collections_response.collections = [CollectionInfo]
+                    client.get_collections.return_value = collections_response
+                    client.delete_collection = Mock()
+                    mock_qdrant_manager.get_client.return_value = client
+                    
+                    # Clean up staging
+                    operation = {"type": "REINDEX"}
+                    await _cleanup_staging_resources("col-123", operation)
+                    
+                    # Verify deletion
+                    client.delete_collection.assert_called_once_with("staging_test_123")
+                    
+                    # Verify database update
+                    mock_repo.update.assert_called_once_with("col-123", {"qdrant_staging": None})
 
     @pytest.mark.asyncio
-    @patch("shared.database.database.AsyncSessionLocal")
-    @patch("shared.database.repositories.collection_repository.CollectionRepository")
-    async def test_cleanup_staging_resources_no_staging(
-        self,
-        mock_repo_class,
-        mock_session_local
-    ):
+    async def test_cleanup_staging_resources_no_staging(self):
         """Test cleanup when no staging exists."""
-        # Setup mocks
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session_local.return_value = mock_session
-        
-        mock_repo = AsyncMock()
-        collection = Mock()
-        collection.qdrant_staging = None
-        mock_repo.get_by_uuid.return_value = collection
-        mock_repo_class.return_value = mock_repo
-        
-        # Clean up staging (should handle gracefully)
-        operation = {"type": "REINDEX"}
-        await _cleanup_staging_resources("col-123", operation)
-        
-        # No update should be called
-        mock_repo.update.assert_not_called()
+        with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
+            with patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_repo_class:
+                # Setup mocks
+                mock_session = AsyncMock()
+                mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+                mock_session.__aexit__ = AsyncMock(return_value=None)
+                mock_session_local.return_value = mock_session
+                
+                mock_repo = AsyncMock()
+                collection = Mock()
+                collection.qdrant_staging = None
+                mock_repo.get_by_uuid.return_value = collection
+                mock_repo_class.return_value = mock_repo
+                
+                # Clean up staging (should handle gracefully)
+                operation = {"type": "REINDEX"}
+                await _cleanup_staging_resources("col-123", operation)
+                
+                # No update should be called
+                mock_repo.update.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch("packages.webui.tasks.qdrant_manager")
-    @patch("shared.database.database.AsyncSessionLocal")
-    @patch("shared.database.repositories.collection_repository.CollectionRepository")
-    async def test_cleanup_staging_resources_qdrant_failure(
-        self,
-        mock_repo_class,
-        mock_session_local,
-        mock_qdrant_manager
-    ):
+    async def test_cleanup_staging_resources_qdrant_failure(self):
         """Test cleanup continues despite Qdrant failures."""
-        # Setup mocks
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session_local.return_value = mock_session
-        
-        mock_repo = AsyncMock()
-        collection = Mock()
-        collection.qdrant_staging = {
-            "collection_name": "staging_test_123"
-        }
-        mock_repo.get_by_uuid.return_value = collection
-        mock_repo.update = AsyncMock()
-        mock_repo_class.return_value = mock_repo
-        
-        # Mock Qdrant to fail
-        client = Mock()
-        client.get_collections.side_effect = Exception("Qdrant error")
-        mock_qdrant_manager.get_client.return_value = client
-        
-        # Clean up staging (should not raise)
-        operation = {"type": "REINDEX"}
-        await _cleanup_staging_resources("col-123", operation)
-        
-        # Database should still be updated
-        mock_repo.update.assert_called_once_with("col-123", {"qdrant_staging": None})
+        with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant_manager:
+            with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
+                with patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_repo_class:
+                    # Setup mocks
+                    mock_session = AsyncMock()
+                    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+                    mock_session.__aexit__ = AsyncMock(return_value=None)
+                    mock_session_local.return_value = mock_session
+                    
+                    mock_repo = AsyncMock()
+                    collection = Mock()
+                    collection.qdrant_staging = {
+                        "collection_name": "staging_test_123"
+                    }
+                    mock_repo.get_by_uuid.return_value = collection
+                    mock_repo.update = AsyncMock()
+                    mock_repo_class.return_value = mock_repo
+                    
+                    # Mock Qdrant to fail
+                    client = Mock()
+                    client.get_collections.side_effect = Exception("Qdrant error")
+                    mock_qdrant_manager.get_client.return_value = client
+                    
+                    # Clean up staging (should not raise)
+                    operation = {"type": "REINDEX"}
+                    await _cleanup_staging_resources("col-123", operation)
+                    
+                    # Database should still be updated
+                    mock_repo.update.assert_called_once_with("col-123", {"qdrant_staging": None})
 
 
 class TestCleanupOldResults:
@@ -610,32 +602,32 @@ class TestEdgeCases:
         assert calculate_cleanup_delay(10**9) == CLEANUP_DELAY_MAX_SECONDS
 
     @pytest.mark.asyncio
-    @patch("shared.database.database.AsyncSessionLocal")
-    async def test_audit_log_with_circular_reference(self, mock_session_local):
+    async def test_audit_log_with_circular_reference(self):
         """Test audit logging handles circular references in details."""
-        # Setup mocks
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.add = Mock()
-        mock_session.commit = AsyncMock()
-        mock_session_local.return_value = mock_session
-        
-        # Create circular reference
-        details = {"a": {"b": None}}
-        details["a"]["b"] = details["a"]  # Circular ref
-        
-        # Should handle without infinite recursion
-        await _audit_log_operation(
-            collection_id="col-123",
-            operation_id=456,
-            user_id=1,
-            action="test_circular",
-            details=details
-        )
-        
-        # Should complete without error
-        mock_session.commit.assert_called_once()
+        with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
+            # Setup mocks
+            mock_session = AsyncMock()
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=None)
+            mock_session.add = Mock()
+            mock_session.commit = AsyncMock()
+            mock_session_local.return_value = mock_session
+            
+            # Create circular reference
+            details = {"a": {"b": None}}
+            details["a"]["b"] = details["a"]  # Circular ref
+            
+            # Should handle without infinite recursion
+            await _audit_log_operation(
+                collection_id="col-123",
+                operation_id=456,
+                user_id=1,
+                action="test_circular",
+                details=details
+            )
+            
+            # Should complete without error
+            mock_session.commit.assert_called_once()
 
 
 # Performance and stress tests

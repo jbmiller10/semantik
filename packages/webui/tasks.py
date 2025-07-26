@@ -177,14 +177,17 @@ def calculate_cleanup_delay(vector_count: int) -> int:
     Returns:
         Delay in seconds
     """
-    additional_delay = (vector_count // 10000) * CLEANUP_DELAY_PER_10K_VECTORS
+    # Handle negative vector count by using 0
+    safe_vector_count = max(0, vector_count)
+    
+    additional_delay = (safe_vector_count // 10000) * CLEANUP_DELAY_PER_10K_VECTORS
     total_delay = CLEANUP_DELAY_MIN_SECONDS + additional_delay
 
     # Cap at maximum delay
     cleanup_delay = min(total_delay, CLEANUP_DELAY_MAX_SECONDS)
 
     logger.info(
-        f"Calculated cleanup delay: {cleanup_delay}s for {vector_count} vectors "
+        f"Calculated cleanup delay: {cleanup_delay}s for {safe_vector_count} vectors "
         f"(base: {CLEANUP_DELAY_MIN_SECONDS}s, additional: {additional_delay}s)"
     )
 
