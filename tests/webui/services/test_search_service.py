@@ -72,7 +72,7 @@ def mock_collections() -> list[MagicMock]:
     collection3.vector_store_name = "qdrant_collection_3"
     collection3.embedding_model = "model-3"
     collection3.quantization = "binary"
-    collection3.status = CollectionStatus.INDEXING  # Not ready
+    collection3.status = CollectionStatus.PROCESSING  # Not ready
 
     return [collection1, collection2, collection3]
 
@@ -86,7 +86,10 @@ class TestSearchServiceInit:
         
         assert service.db_session == mock_db_session
         assert service.collection_repo == mock_collection_repo
-        assert service.default_timeout.timeout == 30.0
+        # httpx.Timeout object doesn't have direct attribute access
+        # Check that it's an httpx.Timeout instance with correct values
+        import httpx
+        assert isinstance(service.default_timeout, httpx.Timeout)
         assert service.default_timeout.connect == 5.0
         assert service.default_timeout.read == 30.0
         assert service.default_timeout.write == 5.0
@@ -130,7 +133,7 @@ class TestValidateCollectionAccess:
         self, search_service: SearchService, mock_collection_repo: AsyncMock
     ) -> None:
         """Test validation when collection is not found."""
-        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = EntityNotFoundError("Collection not found")
+        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = EntityNotFoundError("Collection", "invalid-uuid")
         
         with pytest.raises(AccessDeniedError) as exc_info:
             await search_service.validate_collection_access(["invalid-uuid"], user_id=1)
@@ -142,7 +145,7 @@ class TestValidateCollectionAccess:
         self, search_service: SearchService, mock_collection_repo: AsyncMock
     ) -> None:
         """Test validation when access is denied."""
-        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError("Access denied")
+        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError("1", "Collection", "some-uuid")
         
         with pytest.raises(AccessDeniedError) as exc_info:
             await search_service.validate_collection_access(["some-uuid"], user_id=1)
@@ -156,7 +159,7 @@ class TestValidateCollectionAccess:
         """Test validation with mixed permissions (some allowed, some denied)."""
         mock_collection_repo.get_by_uuid_with_permission_check.side_effect = [
             mock_collections[0],
-            AccessDeniedError("Access denied")
+            AccessDeniedError("1", "Collection", "denied-uuid")
         ]
         
         with pytest.raises(AccessDeniedError) as exc_info:
@@ -224,7 +227,7 @@ class TestSearchSingleCollection:
         self, search_service: SearchService, mock_collection: MagicMock
     ) -> None:
         """Test search when collection is not ready."""
-        mock_collection.status = CollectionStatus.INDEXING
+        mock_collection.status = CollectionStatus.PROCESSING
         
         result = await search_service.search_single_collection(
             collection=mock_collection,
@@ -272,7 +275,8 @@ class TestSearchSingleCollection:
             # Verify retry used extended timeout
             retry_call = mock_client_class.call_args_list[1]
             retry_timeout = retry_call[1]["timeout"]
-            assert retry_timeout.timeout == 120.0  # 30.0 * 4.0
+            # httpx.Timeout doesn't have .timeout attribute
+            # The overall timeout is increased but individual components are also multiplied
             assert retry_timeout.connect == 20.0   # 5.0 * 4.0
             assert retry_timeout.read == 120.0     # 30.0 * 4.0
             assert retry_timeout.write == 20.0     # 5.0 * 4.0
@@ -697,7 +701,7 @@ class TestMultiCollectionSearch:
         self, search_service: SearchService, mock_collection_repo: AsyncMock
     ) -> None:
         """Test multi-collection search when access is denied."""
-        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError("Access denied")
+        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError("1", "Collection", "some-uuid")
 
         with pytest.raises(AccessDeniedError):
             await search_service.multi_collection_search(
@@ -889,7 +893,7 @@ class TestSingleCollectionSearch:
         self, search_service: SearchService, mock_collection_repo: AsyncMock
     ) -> None:
         """Test that single collection search validates access."""
-        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError("No access")
+        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError("1", "Collection", "some-uuid")
 
         with pytest.raises(AccessDeniedError):
             await search_service.single_collection_search(
@@ -931,7 +935,8 @@ class TestSearchServiceEdgeCases:
             # Verify retry used default values when original was None
             retry_call = mock_client_class.call_args_list[1]
             retry_timeout = retry_call[1]["timeout"]
-            assert retry_timeout.timeout == 120.0  # Default when None
+            # httpx.Timeout doesn't have .timeout attribute
+            # Check that timeout values are multiplied correctly
             assert retry_timeout.connect == 20.0   # Default when None
             assert retry_timeout.read == 120.0     # Default when None
             assert retry_timeout.write == 20.0     # Default when None
@@ -941,7 +946,7 @@ class TestSearchServiceEdgeCases:
         self, search_service: SearchService, mock_collection_repo: AsyncMock, mock_collections: list[MagicMock]
     ) -> None:
         """Test multi-collection search with collections in different statuses."""
-        # Collection 3 is not ready (INDEXING status)
+        # Collection 3 is not ready (PROCESSING status)
         all_collections = mock_collections[:3]
         mock_collection_repo.get_by_uuid_with_permission_check.side_effect = all_collections
 

@@ -280,7 +280,7 @@ class TestCreateCollection:
         mock_collection_repo: AsyncMock,
     ) -> None:
         """Test collection creation when name already exists."""
-        mock_collection_repo.create.side_effect = EntityAlreadyExistsError("Collection already exists")
+        mock_collection_repo.create.side_effect = EntityAlreadyExistsError("Collection", "Existing Collection")
 
         with pytest.raises(EntityAlreadyExistsError):
             await collection_service.create_collection(
@@ -415,7 +415,7 @@ class TestAddSource:
     ) -> None:
         """Test adding source to non-existent collection."""
         mock_collection_repo.get_by_uuid_with_permission_check.side_effect = EntityNotFoundError(
-            "Collection not found"
+            "Collection", "nonexistent-uuid"
         )
 
         with pytest.raises(EntityNotFoundError):
@@ -433,7 +433,7 @@ class TestAddSource:
     ) -> None:
         """Test adding source without permission."""
         mock_collection_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError(
-            "Access denied"
+            "2", "Collection", "some-uuid"
         )
 
         with pytest.raises(AccessDeniedError):
@@ -1045,7 +1045,7 @@ class TestUpdate:
     ) -> None:
         """Test updating non-existent collection."""
         mock_collection_repo.get_by_uuid_with_permission_check.side_effect = EntityNotFoundError(
-            "Collection not found"
+            "Collection", "nonexistent-uuid"
         )
 
         with pytest.raises(EntityNotFoundError):
@@ -1064,7 +1064,7 @@ class TestUpdate:
     ) -> None:
         """Test updating collection with name that already exists."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
-        mock_collection_repo.update.side_effect = EntityAlreadyExistsError("Name already exists")
+        mock_collection_repo.update.side_effect = EntityAlreadyExistsError("Collection", "Existing Name")
 
         with pytest.raises(EntityAlreadyExistsError):
             await collection_service.update(
@@ -1150,7 +1150,7 @@ class TestListDocuments:
     ) -> None:
         """Test listing documents without permission."""
         mock_collection_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError(
-            "Access denied"
+            "2", "Collection", "some-uuid"
         )
 
         with pytest.raises(AccessDeniedError):
@@ -1238,7 +1238,7 @@ class TestListOperations:
     ) -> None:
         """Test listing operations for non-existent collection."""
         mock_collection_repo.get_by_uuid_with_permission_check.side_effect = EntityNotFoundError(
-            "Collection not found"
+            "Collection", "nonexistent-uuid"
         )
 
         with pytest.raises(EntityNotFoundError):
