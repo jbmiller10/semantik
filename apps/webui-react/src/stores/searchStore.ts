@@ -18,13 +18,13 @@ export interface SearchParams {
   selectedCollections: string[];
   topK: number;
   scoreThreshold: number;
-  searchType: 'vector' | 'hybrid';
+  searchType: 'semantic' | 'question' | 'code' | 'hybrid';
   rerankModel?: string;
   rerankQuantization?: string;
   useReranker: boolean;
   hybridAlpha?: number;
-  hybridMode?: 'rerank' | 'filter';
-  keywordMode?: 'any' | 'all';
+  hybridMode?: 'reciprocal_rank' | 'relative_score';
+  keywordMode?: 'bm25';
 }
 
 interface FailedCollection {
@@ -66,10 +66,10 @@ export const useSearchStore = create<SearchState>((set) => ({
     selectedCollections: [],
     topK: 10,
     scoreThreshold: 0.0,
-    searchType: 'vector',
+    searchType: 'semantic',
     useReranker: false,
-    hybridMode: 'rerank',
-    keywordMode: 'any',
+    hybridMode: 'reciprocal_rank',
+    keywordMode: 'bm25',
   },
   collections: [],
   failedCollections: [],

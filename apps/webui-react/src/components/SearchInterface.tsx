@@ -68,20 +68,15 @@ function SearchInterface() {
       // Use v2 search API with multiple collections
       const response = await searchV2Api.search({
         query: searchParams.query,
-        collection_ids: searchParams.selectedCollections,
-        top_k: searchParams.topK,
+        collection_uuids: searchParams.selectedCollections,
+        k: searchParams.topK,
         score_threshold: searchParams.scoreThreshold,
         search_type: searchParams.searchType,
-        hybrid_config: searchParams.searchType === 'hybrid' ? {
-          alpha: searchParams.hybridAlpha,
-          mode: searchParams.hybridMode,
-          keyword_mode: searchParams.keywordMode,
-        } : undefined,
-        rerank_config: searchParams.useReranker ? {
-          model: searchParams.rerankModel,
-          quantization: searchParams.rerankQuantization,
-          enabled: true,
-        } : undefined,
+        use_reranker: searchParams.useReranker,
+        rerank_model: searchParams.useReranker ? searchParams.rerankModel : null,
+        hybrid_alpha: searchParams.searchType === 'hybrid' ? searchParams.hybridAlpha : undefined,
+        hybrid_mode: searchParams.searchType === 'hybrid' ? searchParams.hybridMode : undefined,
+        keyword_mode: searchParams.searchType === 'hybrid' ? searchParams.keywordMode : undefined,
       });
 
       // Map results to match the search store's SearchResult type
@@ -227,7 +222,7 @@ function SearchInterface() {
                   type="checkbox"
                   id="use-hybrid-search"
                   checked={searchParams.searchType === 'hybrid'}
-                  onChange={(e) => updateSearchParams({ searchType: e.target.checked ? 'hybrid' : 'vector' })}
+                  onChange={(e) => updateSearchParams({ searchType: e.target.checked ? 'hybrid' : 'semantic' })}
                   className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
                 />
                 <span className="text-sm text-gray-700">
@@ -247,12 +242,12 @@ function SearchInterface() {
                     </label>
                     <select
                       id="hybrid-mode"
-                      value={searchParams.hybridMode || 'rerank'}
-                      onChange={(e) => updateSearchParams({ hybridMode: e.target.value as 'rerank' | 'filter' })}
+                      value={searchParams.hybridMode || 'reciprocal_rank'}
+                      onChange={(e) => updateSearchParams({ hybridMode: e.target.value as 'reciprocal_rank' | 'relative_score' })}
                       className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                     >
-                      <option value="rerank">Rerank (More Accurate)</option>
-                      <option value="filter">Filter (Faster)</option>
+                      <option value="reciprocal_rank">Reciprocal Rank Fusion</option>
+                      <option value="relative_score">Relative Score Fusion</option>
                     </select>
                   </div>
 
@@ -263,12 +258,11 @@ function SearchInterface() {
                     </label>
                     <select
                       id="keyword-mode"
-                      value={searchParams.keywordMode || 'any'}
-                      onChange={(e) => updateSearchParams({ keywordMode: e.target.value as 'any' | 'all' })}
+                      value={searchParams.keywordMode || 'bm25'}
+                      onChange={(e) => updateSearchParams({ keywordMode: e.target.value as 'bm25' })}
                       className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                     >
-                      <option value="any">Any Keywords</option>
-                      <option value="all">All Keywords</option>
+                      <option value="bm25">BM25 Ranking</option>
                     </select>
                   </div>
                 </div>
