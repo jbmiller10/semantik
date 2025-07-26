@@ -7,14 +7,12 @@ import {
   collectionErrorHandlers,
   searchErrorHandlers,
   authErrorHandlers,
-  combineErrorHandlers,
   createSlowResponseHandler
 } from '../mocks/errorHandlers'
 import { handlers } from '../mocks/handlers'
 import { 
   simulateOffline,
   simulateOnline,
-  removeAuthToken,
   mockWebSocket
 } from '../utils/errorTestUtils'
 import { render } from '@testing-library/react'

@@ -26,7 +26,7 @@ describe('Search Store Reranking Tests', () => {
   });
 
   it('should update reranking parameters correctly', () => {
-    const { updateSearchParams, searchParams } = useSearchStore.getState();
+    const { updateSearchParams } = useSearchStore.getState();
 
     // Enable reranking
     updateSearchParams({ useReranker: true });

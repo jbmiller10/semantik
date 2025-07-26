@@ -60,7 +60,7 @@ def create_vecpipe_response(
     """Create a mock vecpipe service response."""
     if error:
         return {"error": error, "detail": error}
-    
+
     return {
         "results": results,
         "processing_time_ms": processing_time_ms,

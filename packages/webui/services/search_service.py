@@ -260,7 +260,7 @@ class SearchService:
 
         # Sort merged results by score (results are already reranked by vecpipe if reranking was enabled)
         all_results.sort(key=lambda x: x.get("score", 0.0), reverse=True)
-        
+
         # Limit to requested k results
         final_results = all_results[:k]
 

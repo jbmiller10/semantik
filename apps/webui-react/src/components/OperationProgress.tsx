@@ -137,7 +137,7 @@ function OperationProgress({
           {operation.config.source_path && (
             <div className="flex items-start">
               <span className="text-gray-500 mr-2">Source:</span>
-              <span className="font-mono break-all">{operation.config.source_path}</span>
+              <span className="font-mono break-all">{String(operation.config.source_path)}</span>
             </div>
           )}
           

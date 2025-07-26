@@ -74,13 +74,11 @@ describe('collectionStore', () => {
       ];
 
       vi.mocked(collectionsV2Api.list).mockResolvedValue({
-        data: {
-          items: mockCollections,
-          total: 2,
-          page: 1,
-          limit: 10,
-        },
-      } as any);
+        collections: mockCollections,
+        total: 2,
+        page: 1,
+        per_page: 10,
+      });
 
       const { result } = renderHook(() => useCollectionStore());
 
@@ -139,9 +137,7 @@ describe('collectionStore', () => {
         updated_at: '2024-01-03T00:00:00Z',
       };
 
-      vi.mocked(collectionsV2Api.create).mockResolvedValue({
-        data: createdCollection,
-      } as any);
+      vi.mocked(collectionsV2Api.create).mockResolvedValue(createdCollection);
 
       const { result } = renderHook(() => useCollectionStore());
 
@@ -189,10 +185,8 @@ describe('collectionStore', () => {
         updated_at: '2024-01-03T00:00:00Z',
       };
 
-      vi.mocked(collectionsV2Api.update).mockResolvedValue({} as any);
-      vi.mocked(collectionsV2Api.get).mockResolvedValue({
-        data: updatedCollection,
-      } as any);
+      vi.mocked(collectionsV2Api.update).mockResolvedValue(updatedCollection);
+      vi.mocked(collectionsV2Api.get).mockResolvedValue(updatedCollection);
 
       const { result } = renderHook(() => useCollectionStore());
 
@@ -223,9 +217,7 @@ describe('collectionStore', () => {
         created_at: '2024-01-03T00:00:00Z',
       };
 
-      vi.mocked(collectionsV2Api.addSource).mockResolvedValue({
-        data: realOperation,
-      } as any);
+      vi.mocked(collectionsV2Api.addSource).mockResolvedValue(realOperation);
 
       const { result } = renderHook(() => useCollectionStore());
 

@@ -5,18 +5,14 @@ These tests verify the complete flow from API endpoint through service layer
 with proper mocking to avoid external dependencies.
 """
 
-import asyncio
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
-import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database.models import Collection, CollectionStatus
-from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.webui.api.v2 import search as search_api
 from packages.webui.auth import get_current_user
 from packages.webui.services.factory import get_search_service
@@ -64,7 +60,7 @@ def client(app: FastAPI, mock_user: dict[str, Any]) -> TestClient:
     """Create test client with mocked dependencies."""
     # Override authentication dependency
     app.dependency_overrides[get_current_user] = lambda: mock_user
-    
+
     return TestClient(app)
 
 
@@ -77,9 +73,9 @@ class TestSearchRerankingIntegration:
         """Test search API with reranking disabled."""
         # Mock the search service
         mock_search_service = MagicMock(spec=SearchService)
-        
+
         # Create async mock for the method
-        async def mock_multi_search(*args, **kwargs):
+        async def mock_multi_search(*args: Any, **kwargs: Any) -> dict[str, Any]:  # noqa: ARG001
             return {
                 "results": [
                     {
@@ -106,9 +102,9 @@ class TestSearchRerankingIntegration:
                     ],
                 },
             }
-        
+
         mock_search_service.multi_collection_search = mock_multi_search
-        
+
         # Override the service factory
         client.app.dependency_overrides[get_search_service] = lambda: mock_search_service
 
@@ -125,7 +121,7 @@ class TestSearchRerankingIntegration:
 
         assert response.status_code == 200
         data = response.json()
-        
+
         # Verify response structure
         assert data["query"] == "test query"
         assert data["reranking_used"] is False
@@ -140,13 +136,13 @@ class TestSearchRerankingIntegration:
         """Test search API with reranking enabled."""
         # Mock the search service
         mock_search_service = MagicMock(spec=SearchService)
-        
+
         # Create async mock for the method
-        async def mock_multi_search(*args, **kwargs):
+        async def mock_multi_search(*args: Any, **kwargs: Any) -> dict[str, Any]:  # noqa: ARG001
             # Verify reranking parameters were passed
             assert kwargs["use_reranker"] is True
             assert kwargs["rerank_model"] == "Qwen/Qwen3-Reranker-0.6B"
-            
+
             return {
                 "results": [
                     {
@@ -174,9 +170,9 @@ class TestSearchRerankingIntegration:
                     ],
                 },
             }
-        
+
         mock_search_service.multi_collection_search = mock_multi_search
-        
+
         # Override the service factory
         client.app.dependency_overrides[get_search_service] = lambda: mock_search_service
 
@@ -194,7 +190,7 @@ class TestSearchRerankingIntegration:
 
         assert response.status_code == 200
         data = response.json()
-        
+
         # Verify response structure
         assert data["query"] == "test query"
         assert data["reranking_used"] is True
@@ -209,9 +205,9 @@ class TestSearchRerankingIntegration:
         """Test search API with reranking across multiple collections."""
         # Mock the search service
         mock_search_service = MagicMock(spec=SearchService)
-        
+
         # Create async mock for the method
-        async def mock_multi_search(*args, **kwargs):
+        async def mock_multi_search(*args: Any, **kwargs: Any) -> dict[str, Any]:  # noqa: ARG001
             return {
                 "results": [
                     {
@@ -256,9 +252,9 @@ class TestSearchRerankingIntegration:
                     ],
                 },
             }
-        
+
         mock_search_service.multi_collection_search = mock_multi_search
-        
+
         # Override the service factory
         client.app.dependency_overrides[get_search_service] = lambda: mock_search_service
 
@@ -275,14 +271,14 @@ class TestSearchRerankingIntegration:
 
         assert response.status_code == 200
         data = response.json()
-        
+
         # Verify results from multiple collections
         assert len(data["results"]) == 2
         assert len(data["collections_searched"]) == 2
-        
+
         # Results should be sorted by score
         assert data["results"][0]["score"] > data["results"][1]["score"]
-        
+
         # Each result should have collection info
         assert data["results"][0]["collection_id"] == str(mock_collections[0].id)
         assert data["results"][1]["collection_id"] == str(mock_collections[1].id)
@@ -293,15 +289,15 @@ class TestSearchRerankingIntegration:
         """Test search API with reranking and hybrid search."""
         # Mock the search service
         mock_search_service = MagicMock(spec=SearchService)
-        
+
         # Create async mock for the method
-        async def mock_multi_search(*args, **kwargs):
+        async def mock_multi_search(*args: Any, **kwargs: Any) -> dict[str, Any]:  # noqa: ARG001
             # Verify hybrid search parameters
             assert kwargs["search_type"] == "hybrid"
             assert kwargs["hybrid_alpha"] == 0.5
             assert kwargs["hybrid_search_mode"] == "weighted"
             assert kwargs["use_reranker"] is True
-            
+
             return {
                 "results": [
                     {
@@ -329,9 +325,9 @@ class TestSearchRerankingIntegration:
                     ],
                 },
             }
-        
+
         mock_search_service.multi_collection_search = mock_multi_search
-        
+
         # Override the service factory
         client.app.dependency_overrides[get_search_service] = lambda: mock_search_service
 
@@ -351,7 +347,7 @@ class TestSearchRerankingIntegration:
 
         assert response.status_code == 200
         data = response.json()
-        
+
         assert data["search_type"] == "hybrid"
         assert data["reranking_used"] is True
         assert len(data["results"]) == 1
@@ -362,11 +358,11 @@ class TestSearchRerankingIntegration:
         """Test single collection search endpoint with reranking."""
         # Mock the search service
         mock_search_service = MagicMock(spec=SearchService)
-        
+
         # Create async mock for the method
-        async def mock_single_search(*args, **kwargs):
+        async def mock_single_search(*args: Any, **kwargs: Any) -> dict[str, Any]:  # noqa: ARG001
             assert kwargs["use_reranker"] is True
-            
+
             return {
                 "results": [
                     {
@@ -381,9 +377,9 @@ class TestSearchRerankingIntegration:
                 ],
                 "processing_time_ms": 120,
             }
-        
+
         mock_search_service.single_collection_search = mock_single_search
-        
+
         # Override the service factory
         client.app.dependency_overrides[get_search_service] = lambda: mock_search_service
 
@@ -400,7 +396,7 @@ class TestSearchRerankingIntegration:
 
         assert response.status_code == 200
         data = response.json()
-        
+
         assert data["query"] == "test query"
         assert data["reranking_used"] is True
         assert len(data["results"]) == 1

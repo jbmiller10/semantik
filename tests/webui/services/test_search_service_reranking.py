@@ -2,15 +2,12 @@
 Tests for SearchService reranking functionality.
 """
 
-import asyncio
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from packages.shared.database.models import Collection, CollectionStatus
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.webui.services.search_service import SearchService
@@ -105,7 +102,7 @@ class TestSearchServiceReranking:
             mock_client.post.assert_called_once()
             call_args = mock_client.post.call_args
             assert call_args[0][0].endswith("/search")
-            
+
             request_data = call_args[1]["json"]
             assert request_data["query"] == "test query"
             assert request_data["k"] == 10
@@ -157,7 +154,7 @@ class TestSearchServiceReranking:
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value.__aenter__.return_value = mock_client
-            
+
             # Setup different responses for each call
             response_objs = []
             for mock_resp in mock_responses:
@@ -165,7 +162,7 @@ class TestSearchServiceReranking:
                 resp_obj.json.return_value = mock_resp
                 resp_obj.raise_for_status = MagicMock()
                 response_objs.append(resp_obj)
-            
+
             mock_client.post.side_effect = response_objs
 
             result = await search_service.multi_collection_search(
@@ -179,13 +176,13 @@ class TestSearchServiceReranking:
 
             # Verify both collections were searched with reranking
             assert mock_client.post.call_count == 2
-            
+
             # Check first call
             first_call = mock_client.post.call_args_list[0]
             first_request = first_call[1]["json"]
             assert first_request["use_reranker"] is True
             assert first_request["rerank_model"] == "Qwen/Qwen3-Reranker-0.6B"
-            
+
             # Check second call
             second_call = mock_client.post.call_args_list[1]
             second_request = second_call[1]["json"]
@@ -276,7 +273,7 @@ class TestSearchServiceReranking:
             mock_response_obj.raise_for_status = MagicMock()
             mock_client.post.return_value = mock_response_obj
 
-            result = await search_service.single_collection_search(
+            await search_service.single_collection_search(
                 user_id=1,
                 collection_uuid=mock_collections[0].id,
                 query="test query",
@@ -305,7 +302,7 @@ class TestSearchServiceReranking:
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value.__aenter__.return_value = mock_client
-            
+
             # Simulate insufficient memory error
             mock_error_response = MagicMock()
             mock_error_response.status_code = 507
@@ -358,16 +355,16 @@ class TestSearchServiceReranking:
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value.__aenter__.return_value = mock_client
-            
+
             # First call succeeds
             success_resp_obj = MagicMock()
             success_resp_obj.json.return_value = success_response
             success_resp_obj.raise_for_status = MagicMock()
-            
+
             # Second call fails
             error_resp_obj = MagicMock()
             error_resp_obj.status_code = 507
-            
+
             mock_client.post.side_effect = [
                 success_resp_obj,
                 httpx.HTTPStatusError(
@@ -388,11 +385,11 @@ class TestSearchServiceReranking:
             # Should still return results from successful collection
             assert len(result["results"]) == 1
             assert result["results"][0]["doc_id"] == "doc_1"
-            
+
             # Should indicate partial failure
             assert result["metadata"]["errors"] is not None
             assert len(result["metadata"]["errors"]) == 1
-            
+
             # Should have details for both collections
             collection_details = result["metadata"]["collection_details"]
             assert len(collection_details) == 2

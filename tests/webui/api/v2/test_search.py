@@ -18,7 +18,6 @@ from packages.webui.api.v2.search import (
     multi_collection_search,
     single_collection_search,
 )
-from packages.webui.services.search_service import SearchService
 
 
 @pytest.fixture()

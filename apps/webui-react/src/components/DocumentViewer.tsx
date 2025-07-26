@@ -4,13 +4,37 @@ import { documentsV2Api } from '../services/api/v2';
 // Declare global types for external libraries
 declare global {
   interface Window {
-    pdfjsLib: any;
-    mammoth: any;
-    marked: any;
-    DOMPurify: any;
-    Mark: any;
-    emlformat: any;
+    pdfjsLib: {
+      getDocument: (url: string) => { promise: Promise<PDFDocumentProxy> };
+    };
+    mammoth: {
+      convertToHtml: (options: { arrayBuffer: ArrayBuffer }) => Promise<{ value: string }>;
+    };
+    marked: {
+      parse: (markdown: string) => string;
+    };
+    DOMPurify: {
+      sanitize: (dirty: string) => string;
+    };
+    Mark: new (element: HTMLElement) => {
+      mark: (term: string, options?: Record<string, unknown>) => void;
+      unmark: () => void;
+    };
+    emlformat: {
+      parse: (emlContent: string) => { html: string; headers: Record<string, string> };
+    };
   }
+}
+
+interface PDFDocumentProxy {
+  numPages: number;
+  getPage: (pageNumber: number) => Promise<PDFPageProxy>;
+  destroy: () => void;
+}
+
+interface PDFPageProxy {
+  getViewport: (options: { scale: number }) => { width: number; height: number };
+  render: (params: { canvasContext: CanvasRenderingContext2D; viewport: unknown }) => { promise: Promise<void> };
 }
 
 interface DocumentViewerProps {
@@ -25,8 +49,8 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
   const [error, setError] = useState<string | null>(null);
 
   const contentRef = useRef<HTMLDivElement>(null);
-  const markInstanceRef = useRef<any>(null);
-  const pdfDocRef = useRef<any>(null);
+  const markInstanceRef = useRef<InstanceType<typeof window.Mark> | null>(null);
+  const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
 
   // Load document content
   useEffect(() => {
@@ -115,11 +139,14 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
   // Cleanup
   useEffect(() => {
     return () => {
-      if (markInstanceRef.current) {
-        markInstanceRef.current.unmark();
+      const markInstance = markInstanceRef.current;
+      const pdfDoc = pdfDocRef.current;
+      
+      if (markInstance) {
+        markInstance.unmark();
       }
-      if (pdfDocRef.current) {
-        pdfDocRef.current.destroy();
+      if (pdfDoc) {
+        pdfDoc.destroy();
       }
     };
   }, []);

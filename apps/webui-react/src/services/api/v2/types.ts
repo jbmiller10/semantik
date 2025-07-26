@@ -32,7 +32,7 @@ export interface DocumentResponse {
   source_path: string;
   file_path: string;
   chunk_count: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -71,7 +71,7 @@ export interface SearchResult {
   file_name: string;
   file_path: string;
   embedding_model: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   highlights?: string[];
 }
 

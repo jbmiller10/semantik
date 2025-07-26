@@ -187,8 +187,8 @@ function OperationListItem({ operation, collectionName, onNavigateToCollection }
                   </span>
                 </span>
                 {operation.config?.source_path && (
-                  <span className="truncate max-w-xs" title={operation.config.source_path}>
-                    {operation.config.source_path}
+                  <span className="truncate max-w-xs" title={String(operation.config.source_path)}>
+                    {String(operation.config.source_path)}
                   </span>
                 )}
               </div>

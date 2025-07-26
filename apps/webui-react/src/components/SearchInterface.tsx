@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { AxiosError } from 'axios';
 import { useSearchStore } from '../stores/searchStore';
 import { useUIStore } from '../stores/uiStore';
 import { useCollections } from '../hooks/useCollections';
@@ -88,7 +89,7 @@ function SearchInterface() {
         file_path: result.file_path,
         file_name: result.file_name,
         chunk_index: result.chunk_index,
-        total_chunks: result.metadata?.total_chunks || 1,
+        total_chunks: (typeof result.metadata?.total_chunks === 'number' ? result.metadata.total_chunks : 1),
         collection_id: result.collection_id,
         collection_name: result.collection_name,
       }));
@@ -118,24 +119,36 @@ function SearchInterface() {
       } else {
         setRerankingMetrics(null);
       }
-    } catch (error: any) {
-      const errorDetail = error.response?.data?.detail;
-      
-      // Handle insufficient memory error specifically
-      if (error.response?.status === 507 && typeof errorDetail === 'object' && errorDetail.error === 'insufficient_memory') {
-        const errorMessage = errorDetail.message || 'Insufficient GPU memory for reranking';
-        const suggestion = errorDetail.suggestion || 'Try using a smaller model or different quantization';
+    } catch (error) {
+      if (error instanceof AxiosError) {
+        const errorDetail = error.response?.data?.detail;
         
-        setError(`${errorMessage}\n\n${suggestion}`);
-        addToast({ 
-          type: 'error', 
-          message: 'Insufficient GPU memory for reranking. Check the error message for suggestions.' 
-        });
+        // Handle insufficient memory error specifically
+        if (error.response?.status === 507 && 
+            typeof errorDetail === 'object' && 
+            errorDetail && 
+            'error' in errorDetail && 
+            (errorDetail as { error: string }).error === 'insufficient_memory') {
+          const memoryError = errorDetail as { error: string; message?: string; suggestion?: string };
+          const errorMessage = memoryError.message || 'Insufficient GPU memory for reranking';
+          const suggestion = memoryError.suggestion || 'Try using a smaller model or different quantization';
+          
+          setError(`${errorMessage}\n\n${suggestion}`);
+          addToast({ 
+            type: 'error', 
+            message: 'Insufficient GPU memory for reranking. Check the error message for suggestions.' 
+          });
+        } else {
+          // Handle other errors
+          const errorMessage = typeof errorDetail === 'string' ? errorDetail : 
+                             (typeof errorDetail === 'object' && errorDetail && 'message' in errorDetail) 
+                               ? (errorDetail as { message: string }).message 
+                               : 'Search failed';
+          setError(errorMessage);
+          addToast({ type: 'error', message: 'Search failed' });
+        }
       } else {
-        // Handle other errors
-        const errorMessage = typeof errorDetail === 'string' ? errorDetail : 
-                           errorDetail?.message || 'Search failed';
-        setError(errorMessage);
+        setError('An unexpected error occurred');
         addToast({ type: 'error', message: 'Search failed' });
       }
     } finally {
