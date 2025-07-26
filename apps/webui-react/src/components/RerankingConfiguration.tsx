@@ -1,5 +1,6 @@
 import { useSearchStore } from '../stores/searchStore';
-import { useEffect } from 'react';
+import { useCallback } from 'react';
+import { systemApi } from '../services/api/v2/system';
 
 /**
  * Props for the RerankingConfiguration component
@@ -42,7 +43,12 @@ export function RerankingConfiguration({
   quantization,
   onChange
 }: RerankingConfigurationProps) {
-  const { rerankingAvailable, rerankingModelsLoading } = useSearchStore();
+  const { 
+    rerankingAvailable, 
+    rerankingModelsLoading,
+    setRerankingAvailable,
+    setRerankingModelsLoading
+  } = useSearchStore();
 
   const handleEnabledChange = (checked: boolean) => {
     onChange({ useReranker: checked });
@@ -55,6 +61,18 @@ export function RerankingConfiguration({
   const handleQuantizationChange = (value: string) => {
     onChange({ rerankQuantization: value === 'auto' ? undefined : value });
   };
+  
+  const handleRefreshAvailability = useCallback(async () => {
+    setRerankingModelsLoading(true);
+    try {
+      const status = await systemApi.getStatus();
+      setRerankingAvailable(status.reranking_available);
+    } catch (error) {
+      console.error('Failed to refresh reranking availability:', error);
+    } finally {
+      setRerankingModelsLoading(false);
+    }
+  }, [setRerankingAvailable, setRerankingModelsLoading]);
 
   return (
     <div className="mb-4">
@@ -86,9 +104,18 @@ export function RerankingConfiguration({
         
         {!rerankingAvailable && !rerankingModelsLoading && (
           <div className="mt-3 ml-6">
-            <p className="text-xs text-red-600">
-              Reranking is not available. GPU acceleration may be required.
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-red-600">
+                Reranking is not available. GPU acceleration may be required.
+              </p>
+              <button
+                onClick={handleRefreshAvailability}
+                className="text-xs text-blue-600 hover:text-blue-800 underline"
+                type="button"
+              >
+                Check again
+              </button>
+            </div>
           </div>
         )}
         

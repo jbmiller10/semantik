@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useSearchStore } from '../stores/searchStore';
 import { systemApi } from '../services/api/v2/system';
 
@@ -17,18 +17,35 @@ export function useRerankingAvailability() {
     error,
     searchParams
   } = useSearchStore();
+  
+  // Track if we've already detected unavailability
+  const unavailabilityDetected = useRef(false);
 
   useEffect(() => {
     const checkAvailability = async () => {
+      // Don't check if we already know it's unavailable
+      if (unavailabilityDetected.current) {
+        return;
+      }
+      
       setRerankingModelsLoading(true);
       
       try {
         const status = await systemApi.getStatus();
         setRerankingAvailable(status.reranking_available);
-      } catch (error) {
-        console.error('Failed to check reranking availability:', error);
-        // Default to available unless we know otherwise
-        setRerankingAvailable(true);
+        if (!status.reranking_available) {
+          unavailabilityDetected.current = true;
+        }
+      } catch (error: any) {
+        console.warn('System status endpoint not available, assuming reranking is available');
+        // If it's a 404, the endpoint doesn't exist yet - assume available
+        if (error?.response?.status === 404) {
+          setRerankingAvailable(true);
+        } else {
+          // For other errors, be conservative
+          console.error('Failed to check reranking availability:', error);
+          setRerankingAvailable(true);
+        }
       } finally {
         setRerankingModelsLoading(false);
       }

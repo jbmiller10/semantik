@@ -8,7 +8,7 @@ import { CollectionMultiSelect } from './CollectionMultiSelect';
 import { isAxiosError, getErrorMessage, getInsufficientMemoryErrorDetails } from '../utils/errorUtils';
 import { RerankingConfiguration } from './RerankingConfiguration';
 import { DEFAULT_VALIDATION_RULES } from '../utils/searchValidation';
-import { GPUMemoryError } from './GPUMemoryError';
+import { useRerankingAvailability } from '../hooks/useRerankingAvailability';
 
 function SearchInterface() {
   const {
@@ -23,12 +23,14 @@ function SearchInterface() {
     setPartialFailure,
     hasValidationErrors,
     getValidationError,
-    clearValidationErrors,
   } = useSearchStore();
   const addToast = useUIStore((state) => state.addToast);
   
   // Use React Query hook to fetch collections
   const { data: collections = [], refetch: refetchCollections } = useCollections();
+  
+  // Check reranking availability
+  useRerankingAvailability();
 
   const statusUpdateIntervalRef = useRef<number | null>(null);
 
@@ -230,7 +232,6 @@ function SearchInterface() {
               }`}
               placeholder="Enter your search query..."
               aria-label="Search query"
-              aria-describedby="query-tips"
               aria-required="true"
               aria-invalid={!!getValidationError('query')}
               aria-describedby={getValidationError('query') ? 'query-error' : 'query-tips'}

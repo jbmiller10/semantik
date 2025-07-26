@@ -1,6 +1,6 @@
 import { create } from 'zustand';
+import type { ValidationError } from '../utils/searchValidation';
 import { 
-  ValidationError, 
   validateSearchParams, 
   sanitizeQuery,
   clampValue,
