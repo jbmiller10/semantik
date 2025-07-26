@@ -102,7 +102,11 @@ class TestCeleryTaskWithOperationUpdates:
 
     async def test_context_manager_lifecycle(self, updater, mock_redis):
         """Test context manager properly manages Redis connection."""
-        with patch("redis.asyncio.from_url", return_value=mock_redis):
+        # Create an async function that returns the mock_redis
+        async def async_from_url(*args, **kwargs):
+            return mock_redis
+        
+        with patch("redis.asyncio.from_url", side_effect=async_from_url):
             async with updater as u:
                 assert u == updater
                 mock_redis.ping.assert_called_once()
@@ -112,7 +116,11 @@ class TestCeleryTaskWithOperationUpdates:
 
     async def test_send_update_formats_message(self, updater, mock_redis):
         """Test update message formatting."""
-        with patch("redis.asyncio.from_url", return_value=mock_redis):
+        # Create an async function that returns the mock_redis
+        async def async_from_url(*args, **kwargs):
+            return mock_redis
+        
+        with patch("redis.asyncio.from_url", side_effect=async_from_url):
             await updater.send_update("test_type", {"key": "value"})
 
             # Verify xadd was called with correct format
@@ -131,7 +139,11 @@ class TestCeleryTaskWithOperationUpdates:
         """Test graceful error handling in send_update."""
         mock_redis.xadd.side_effect = Exception("Redis error")
         
-        with patch("redis.asyncio.from_url", return_value=mock_redis):
+        # Create an async function that returns the mock_redis
+        async def async_from_url(*args, **kwargs):
+            return mock_redis
+        
+        with patch("redis.asyncio.from_url", side_effect=async_from_url):
             # Should not raise exception
             await updater.send_update("error_test", {})
             
@@ -299,11 +311,11 @@ class TestProcessCollectionOperation:
         with patch("packages.webui.tasks._process_collection_operation_async") as mock_async:
             mock_async.return_value = {"success": True}
             
-            # Call sync wrapper
+            # Call sync wrapper - self is the first parameter for bound tasks
             result = process_collection_operation(mock_celery_task, "op-123")
             
-            # Verify async function was called
-            mock_async.assert_called_once()
+            # Verify async function was called with correct parameters
+            mock_async.assert_called_once_with("op-123", mock_celery_task)
             assert result == {"success": True}
 
     def test_process_collection_operation_retry_on_network_error(self, mock_celery_task):
@@ -311,12 +323,16 @@ class TestProcessCollectionOperation:
         with patch("packages.webui.tasks._process_collection_operation_async") as mock_async:
             mock_async.side_effect = Exception("Network error")
             
-            # Call sync wrapper - should retry
+            # Call sync wrapper - should retry (self is the first parameter for bound tasks)
             with pytest.raises(Exception, match="Retry called"):
                 process_collection_operation(mock_celery_task, "op-123")
             
-            # Verify retry was called
+            # Verify retry was called with the exception
             mock_celery_task.retry.assert_called_once()
+            retry_call = mock_celery_task.retry.call_args
+            assert "exc" in retry_call[1]
+            assert "countdown" in retry_call[1]
+            assert retry_call[1]["countdown"] == 60
 
 
 class TestIndexOperation:

@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from packages.webui.tasks import (
+    CeleryTaskWithOperationUpdates,
     _audit_collection_deletion,
     _audit_collection_deletions_batch,
     _audit_log_operation,
@@ -112,8 +113,8 @@ class TestAuditLogging:
     """Test audit logging functionality."""
 
     @pytest.mark.asyncio
-    @patch("packages.webui.tasks.AsyncSessionLocal")
-    @patch("packages.webui.tasks.CollectionAuditLog")
+    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("shared.database.models.CollectionAuditLog")
     async def test_audit_log_operation_success(self, mock_audit_log_class, mock_session_local):
         """Test successful audit log creation."""
         # Setup mocks
@@ -153,7 +154,7 @@ class TestAuditLogging:
         mock_session.commit.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("packages.webui.tasks.AsyncSessionLocal")
+    @patch("shared.database.database.AsyncSessionLocal")
     async def test_audit_log_operation_failure(self, mock_session_local):
         """Test audit log creation handles failures gracefully."""
         # Setup session to fail
@@ -174,8 +175,8 @@ class TestAuditLogging:
         # Function should complete without raising
 
     @pytest.mark.asyncio
-    @patch("packages.webui.tasks.AsyncSessionLocal")
-    @patch("packages.webui.tasks.CollectionAuditLog")
+    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("shared.database.models.CollectionAuditLog")
     async def test_audit_collection_deletion(self, mock_audit_log_class, mock_session_local):
         """Test audit logging for collection deletion."""
         # Setup mocks
@@ -201,8 +202,8 @@ class TestAuditLogging:
         assert "deleted_at" in call_args["details"]
 
     @pytest.mark.asyncio
-    @patch("packages.webui.tasks.AsyncSessionLocal")
-    @patch("packages.webui.tasks.CollectionAuditLog")
+    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("shared.database.models.CollectionAuditLog")
     async def test_audit_collection_deletions_batch(self, mock_audit_log_class, mock_session_local):
         """Test batch audit logging for multiple collection deletions."""
         # Setup mocks
@@ -239,8 +240,8 @@ class TestMetricsRecording:
     """Test metrics recording functionality."""
 
     @pytest.mark.asyncio
-    @patch("packages.webui.tasks.AsyncSessionLocal")
-    @patch("packages.webui.tasks.OperationMetrics")
+    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("shared.database.models.OperationMetrics")
     async def test_record_operation_metrics_success(self, mock_metrics_class, mock_session_local):
         """Test successful operation metrics recording."""
         # Setup mocks
@@ -297,8 +298,8 @@ class TestActiveCollections:
     """Test active collections retrieval."""
 
     @pytest.mark.asyncio
-    @patch("packages.webui.tasks.AsyncSessionLocal")
-    @patch("packages.webui.tasks.CollectionRepository")
+    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("shared.database.repositories.collection_repository.CollectionRepository")
     async def test_get_active_collections(self, mock_repo_class, mock_session_local):
         """Test getting active collections from database."""
         # Setup mocks
@@ -344,8 +345,8 @@ class TestActiveCollections:
         # col3 has no vector store name, so nothing from it
 
     @pytest.mark.asyncio
-    @patch("packages.webui.tasks.AsyncSessionLocal")
-    @patch("packages.webui.tasks.CollectionRepository")
+    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("shared.database.repositories.collection_repository.CollectionRepository")
     async def test_get_active_collections_with_string_staging(self, mock_repo_class, mock_session_local):
         """Test handling of staging info as JSON string."""
         # Setup mocks
@@ -378,8 +379,8 @@ class TestStagingCleanup:
 
     @pytest.mark.asyncio
     @patch("packages.webui.tasks.qdrant_manager")
-    @patch("packages.webui.tasks.AsyncSessionLocal")
-    @patch("packages.webui.tasks.CollectionRepository")
+    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("shared.database.repositories.collection_repository.CollectionRepository")
     async def test_cleanup_staging_resources_success(
         self,
         mock_repo_class,
@@ -422,8 +423,8 @@ class TestStagingCleanup:
         mock_repo.update.assert_called_once_with("col-123", {"qdrant_staging": None})
 
     @pytest.mark.asyncio
-    @patch("packages.webui.tasks.AsyncSessionLocal")
-    @patch("packages.webui.tasks.CollectionRepository")
+    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("shared.database.repositories.collection_repository.CollectionRepository")
     async def test_cleanup_staging_resources_no_staging(
         self,
         mock_repo_class,
@@ -451,8 +452,8 @@ class TestStagingCleanup:
 
     @pytest.mark.asyncio
     @patch("packages.webui.tasks.qdrant_manager")
-    @patch("packages.webui.tasks.AsyncSessionLocal")
-    @patch("packages.webui.tasks.CollectionRepository")
+    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("shared.database.repositories.collection_repository.CollectionRepository")
     async def test_cleanup_staging_resources_qdrant_failure(
         self,
         mock_repo_class,
@@ -609,7 +610,7 @@ class TestEdgeCases:
         assert calculate_cleanup_delay(10**9) == CLEANUP_DELAY_MAX_SECONDS
 
     @pytest.mark.asyncio
-    @patch("packages.webui.tasks.AsyncSessionLocal")
+    @patch("shared.database.database.AsyncSessionLocal")
     async def test_audit_log_with_circular_reference(self, mock_session_local):
         """Test audit logging handles circular references in details."""
         # Setup mocks

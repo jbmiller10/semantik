@@ -1138,7 +1138,7 @@ def _sanitize_error_message(error_msg: str) -> str:
     # Replace user home paths
     sanitized = re.sub(r"/home/[^/]+", "/home/~", error_msg)
     sanitized = re.sub(r"/Users/[^/]+", "/Users/~", sanitized)
-    sanitized = re.sub(r"C:\\Users\\[^\\]+", "C:\\Users\\~", sanitized)
+    sanitized = re.sub(r"C:\\Users\\[^\\]+", r"C:\\Users\\~", sanitized)
 
     # Redact email addresses
     sanitized = re.sub(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", "[email]", sanitized)
