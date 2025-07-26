@@ -56,9 +56,29 @@ class TestRedisStreamWebSocketManager:
         return mock
 
     @pytest.fixture()
-    def manager(self) -> None:
+    async def manager(self):
         """Create a WebSocket manager instance."""
-        return RedisStreamWebSocketManager()
+        manager = RedisStreamWebSocketManager()
+        yield manager
+        
+        # Clean up any remaining tasks
+        for task_id, task in list(manager.consumer_tasks.items()):
+            if not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+        manager.consumer_tasks.clear()
+        
+        # Close any remaining connections
+        manager.connections.clear()
+        
+        # Ensure Redis is cleaned up
+        if manager.redis:
+            try:
+                await manager.redis.close()
+            except Exception:
+                pass
+            manager.redis = None
 
     @pytest.mark.asyncio()
     async def test_startup_success(self, manager, mock_redis):
@@ -647,17 +667,30 @@ class TestRedisStreamWebSocketManager:
         """Test consumer handles non-existent stream gracefully."""
         manager.redis = mock_redis
         
-        # Mock stream doesn't exist
-        mock_redis.xinfo_stream = AsyncMock(side_effect=Exception("Stream does not exist"))
+        # Mock stream doesn't exist for a few calls, then exists
+        call_count = 0
+        async def xinfo_side_effect(*args):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise Exception("Stream does not exist")
+            return {"length": 0}
+        
+        mock_redis.xinfo_stream = AsyncMock(side_effect=xinfo_side_effect)
+        mock_redis.xgroup_create = AsyncMock()
+        mock_redis.xreadgroup = AsyncMock(return_value=[])
         
         # Run consumer briefly
         consumer_task = asyncio.create_task(manager._consume_updates("operation1"))
         
-        # Let it run for a moment
-        await asyncio.sleep(0.3)
+        # Let it run for a moment - it should retry a few times
+        await asyncio.sleep(5)  # Enough time for 2 retries
         
         # Should still be running (not crashed)
         assert not consumer_task.done()
+        
+        # Verify it tried to check stream info multiple times
+        assert mock_redis.xinfo_stream.call_count >= 2
         
         consumer_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -848,17 +881,21 @@ class TestRedisStreamWebSocketManager:
         # First group creation succeeds, then we get NOGROUP error, then recreation succeeds
         mock_redis.xgroup_create = AsyncMock(side_effect=[None, None])
         
-        # First read gets NOGROUP, second read works
-        mock_redis.xreadgroup = AsyncMock(
-            side_effect=[
-                Exception("NOGROUP No such consumer group"),
-                [],  # Empty result after recreation
-            ]
-        )
+        # Track read calls
+        read_call_count = 0
+        async def xreadgroup_side_effect(*args, **kwargs):
+            nonlocal read_call_count
+            read_call_count += 1
+            if read_call_count == 1:
+                raise Exception("NOGROUP No such consumer group")
+            # Return empty messages after that
+            return []
+        
+        mock_redis.xreadgroup = AsyncMock(side_effect=xreadgroup_side_effect)
         
         # Run consumer briefly
         consumer_task = asyncio.create_task(manager._consume_updates("operation1"))
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(2)  # Give it time to retry
         
         # Should have attempted group creation twice
         assert mock_redis.xgroup_create.call_count >= 2
@@ -879,6 +916,29 @@ class TestRedisStreamWebSocketManager:
 
 class TestWebSocketManagerSingleton:
     """Test the global ws_manager singleton."""
+
+    @pytest.fixture(autouse=True)
+    async def cleanup_singleton(self):
+        """Clean up any background tasks from the singleton."""
+        # Import here to avoid issues
+        from packages.webui.websocket_manager import ws_manager
+        
+        # Store original state
+        original_tasks = ws_manager.consumer_tasks.copy()
+        original_redis = ws_manager.redis
+        
+        yield
+        
+        # Cancel any tasks that were created
+        for task_id, task in ws_manager.consumer_tasks.items():
+            if task_id not in original_tasks and not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+        
+        # Restore original state
+        ws_manager.consumer_tasks = original_tasks
+        ws_manager.redis = original_redis
 
     def test_ws_manager_singleton_exists(self):
         """Test that the global ws_manager singleton is properly initialized."""

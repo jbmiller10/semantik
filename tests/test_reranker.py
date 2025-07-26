@@ -711,3 +711,265 @@ class TestUtilities:
         assert encode_fn("yes") == [100]
         assert encode_fn("no") == [200]
         assert encode_fn("other") == [1, 2, 3]
+
+
+class TestAdditionalCoverage:
+    """Additional tests to achieve 100% coverage"""
+
+    def test_flash_attention_detection(self, reranker_unloaded, mock_transformers) -> None:
+        """Test flash attention detection logic"""
+        import importlib.util
+
+        # Test when flash_attn is available
+        with patch.object(importlib.util, "find_spec") as mock_find_spec:
+            mock_find_spec.return_value = MagicMock()  # Non-None means package found
+            reranker_unloaded.load_model()
+            mock_find_spec.assert_called_once_with("flash_attn")
+
+        # Clean up for next test
+        reranker_unloaded.unload_model()
+
+        # Test when flash_attn is not available
+        with patch.object(importlib.util, "find_spec") as mock_find_spec:
+            mock_find_spec.return_value = None  # Package not found
+            reranker_unloaded.load_model()
+            mock_find_spec.assert_called_once_with("flash_attn")
+
+    def test_device_map_configuration(self, mock_transformers) -> None:
+        """Test device_map parameter based on device type"""
+        model_class, _, _, _ = mock_transformers
+
+        # Test CUDA device with device_map='auto'
+        with patch("torch.cuda.is_available", return_value=True):
+            reranker = CrossEncoderReranker(device="cuda")
+            reranker.load_model()
+
+            # Verify device_map='auto' was used
+            call_kwargs = model_class.from_pretrained.call_args[1]
+            assert call_kwargs["device_map"] == "auto"
+
+        model_class.from_pretrained.reset_mock()
+
+        # Test CPU device with device_map=None
+        reranker_cpu = CrossEncoderReranker(device="cpu")
+        reranker_cpu.load_model()
+
+        # Verify device_map=None was used
+        call_kwargs = model_class.from_pretrained.call_args[1]
+        assert call_kwargs["device_map"] is None
+
+    def test_model_to_device_logic(self, mock_transformers) -> None:
+        """Test conditional model.to(device) logic"""
+        model_class, _, mock_model, _ = mock_transformers
+
+        # Test CPU device - should call to(device)
+        reranker_cpu = CrossEncoderReranker(device="cpu", quantization="float16")
+        reranker_cpu.load_model()
+        mock_model.to.assert_called_once_with("cpu")
+
+        mock_model.reset_mock()
+
+        # Test int8 quantization - should NOT call to(device)
+        with patch("transformers.BitsAndBytesConfig"):
+            reranker_int8 = CrossEncoderReranker(device="cuda", quantization="int8")
+            reranker_int8.load_model()
+            mock_model.to.assert_not_called()
+
+    def test_model_eval_mode(self, mock_transformers) -> None:
+        """Test that model is set to eval mode after loading"""
+        _, _, mock_model, _ = mock_transformers
+
+        reranker = CrossEncoderReranker()
+        reranker.load_model()
+
+        # Verify eval() was called
+        mock_model.eval.assert_called_once()
+
+    def test_bfloat16_quantization(self, mock_transformers) -> None:
+        """Test bfloat16 quantization type"""
+        model_class, _, _, _ = mock_transformers
+
+        reranker = CrossEncoderReranker(quantization="bfloat16")
+        reranker.load_model()
+
+        # Verify correct torch dtype was used
+        call_kwargs = model_class.from_pretrained.call_args[1]
+        assert call_kwargs["torch_dtype"] == torch.bfloat16
+
+    def test_quantization_config_removes_torch_dtype(self, mock_transformers) -> None:
+        """Test that torch_dtype is removed when using quantization_config"""
+        model_class, _, _, _ = mock_transformers
+
+        with patch("transformers.BitsAndBytesConfig") as mock_bnb:
+            mock_bnb.return_value = MagicMock()
+            reranker = CrossEncoderReranker(quantization="int8")
+            reranker.load_model()
+
+            # Verify torch_dtype is NOT in the kwargs when using quantization
+            call_kwargs = model_class.from_pretrained.call_args[1]
+            assert "torch_dtype" not in call_kwargs
+            assert "quantization_config" in call_kwargs
+
+    def test_token_encoding_error(self, reranker_loaded, mock_transformers) -> None:
+        """Test ValueError when yes/no tokens can't be encoded to single tokens"""
+        _, _, mock_model, mock_tokenizer = mock_transformers
+
+        # Configure tokenizer to return multiple tokens for all variants
+        def bad_encode(text, add_special_tokens=True) -> None:  # noqa: ARG001
+            # Always return multiple tokens
+            return [1, 2, 3]
+
+        mock_tokenizer.encode.side_effect = bad_encode
+
+        # Configure model output
+        mock_model.return_value = MagicMock(logits=torch.randn(1, 10, 10000))
+        mock_tokenizer.return_value = MagicMock(input_ids=torch.randint(0, 1000, (1, 10)))
+
+        # Should raise ValueError
+        with pytest.raises(ValueError, match="Yes/No tokens must encode to single tokens"):
+            reranker_loaded.compute_relevance_scores("query", ["document"])
+
+    def test_model_info_calculations(self, reranker_loaded, mock_transformers) -> None:
+        """Test model info parameter calculations"""
+        _, _, mock_model, _ = mock_transformers
+
+        # Create mock parameters with known sizes
+        param1 = MagicMock()
+        param1.numel.return_value = 1000000  # 1M parameters
+        param2 = MagicMock()
+        param2.numel.return_value = 500000  # 0.5M parameters
+
+        mock_model.parameters.return_value = [param1, param2]
+
+        info = reranker_loaded.get_model_info()
+
+        # Verify calculations
+        assert info["param_count"] == 1500000  # 1.5M total
+        # For float16: 1.5M * 4 / 1024^3 / 2 = ~0.0028 GB
+        assert info["estimated_size_gb"] == 0.0
+        assert info["batch_size"] == 128  # float16 on 0.6B model
+        assert info["max_length"] == 512
+
+    def test_custom_batch_size_parameter(self, reranker_loaded, mock_transformers) -> None:
+        """Test compute_relevance_scores with custom batch_size"""
+        _, _, mock_model, mock_tokenizer = mock_transformers
+
+        # Create many documents
+        documents = [f"Document {i}" for i in range(100)]
+        custom_batch_size = 10
+
+        # Track batch sizes
+        batch_sizes_seen = []
+
+        def tokenizer_side_effect(inputs, **kwargs) -> None:  # noqa: ARG001
+            batch_sizes_seen.append(len(inputs))
+            return MagicMock(input_ids=torch.randint(0, 1000, (len(inputs), 10)))
+
+        mock_tokenizer.side_effect = tokenizer_side_effect
+
+        # Configure model to return appropriate outputs
+        def model_side_effect(**kwargs) -> None:
+            batch_size = kwargs["input_ids"].shape[0]
+            output = MagicMock()
+            output.logits = torch.randn(batch_size, 10, 10000)
+            # Set yes/no token logits
+            output.logits[:, -1, YES_TOKEN_ID] = 1.0
+            output.logits[:, -1, NO_TOKEN_ID] = -1.0
+            return output
+
+        mock_model.side_effect = model_side_effect
+
+        # Mock tensor operations
+        with (
+            patch("torch.stack") as mock_stack,
+            patch("torch.nn.functional.softmax") as mock_softmax,
+        ):
+            # Configure mocks
+            mock_stack.return_value = torch.rand(custom_batch_size, 2)
+
+            # Create mock probabilities
+            mock_probs = MagicMock()
+            mock_yes_probs = MagicMock()
+            scores_to_return = [0.5] * len(documents)
+
+            # Create iterator for returning scores in batches
+            score_index = 0
+
+            def get_batch_scores() -> None:
+                nonlocal score_index
+                batch_size = batch_sizes_seen[-1] if batch_sizes_seen else custom_batch_size
+                batch_scores = scores_to_return[score_index : score_index + batch_size]
+                score_index += batch_size
+                return batch_scores
+
+            mock_yes_probs.cpu.return_value.tolist.side_effect = get_batch_scores
+            mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())
+            mock_softmax.return_value = mock_probs
+
+            # Run with custom batch size
+            scores = reranker_loaded.compute_relevance_scores("query", documents, batch_size=custom_batch_size)
+
+            # Verify batching
+            assert len(scores) == len(documents)
+            # Should have 10 batches of size 10
+            assert len(batch_sizes_seen) == 10
+            assert all(size == custom_batch_size for size in batch_sizes_seen)
+
+    def test_gpu_cache_clearing_conditions(self) -> None:
+        """Test the exact conditions for GPU cache clearing"""
+        # Test 1: CUDA device and CUDA available - should clear cache
+        with (
+            patch("torch.cuda.is_available", return_value=True),
+            patch("torch.cuda.empty_cache") as mock_empty_cache,
+            patch("vecpipe.reranker.AutoModelForCausalLM"),
+            patch("vecpipe.reranker.AutoTokenizer"),
+        ):
+            reranker = CrossEncoderReranker(device="cuda")
+            reranker.load_model()
+            reranker.unload_model()
+            mock_empty_cache.assert_called_once()
+
+        # Test 2: CPU device but CUDA available - should NOT clear cache
+        with (
+            patch("torch.cuda.is_available", return_value=True),
+            patch("torch.cuda.empty_cache") as mock_empty_cache,
+            patch("vecpipe.reranker.AutoModelForCausalLM"),
+            patch("vecpipe.reranker.AutoTokenizer"),
+        ):
+            reranker = CrossEncoderReranker(device="cpu")
+            reranker.load_model()
+            reranker.unload_model()
+            mock_empty_cache.assert_not_called()
+
+        # Test 3: CUDA device but CUDA not available - should NOT clear cache
+        with (
+            patch("torch.cuda.is_available", return_value=False),
+            patch("torch.cuda.empty_cache") as mock_empty_cache,
+            patch("vecpipe.reranker.AutoModelForCausalLM"),
+            patch("vecpipe.reranker.AutoTokenizer"),
+        ):
+            reranker = CrossEncoderReranker(device="cuda")  # Will fallback to CPU
+            reranker.load_model()
+            reranker.unload_model()
+            mock_empty_cache.assert_not_called()
+
+    def test_rerank_with_whitespace_query(self, reranker_loaded) -> None:
+        """Test reranking with whitespace-only query"""
+        # This should raise ValueError from compute_relevance_scores
+        with pytest.raises(ValueError, match="Query cannot be empty"):
+            reranker_loaded.rerank("   ", ["doc1", "doc2"], top_k=1)
+
+    def test_default_quantization_parameter(self) -> None:
+        """Test default float32 quantization when not specified in quantization types"""
+        # Create reranker with unsupported quantization to test default
+        reranker = CrossEncoderReranker(quantization="float32")
+        assert reranker.quantization == "float32"
+
+        # Test that it defaults to float32 torch dtype
+        with (
+            patch("vecpipe.reranker.AutoModelForCausalLM") as mock_model_class,
+            patch("vecpipe.reranker.AutoTokenizer"),
+        ):
+            reranker.load_model()
+            call_kwargs = mock_model_class.from_pretrained.call_args[1]
+            assert call_kwargs["torch_dtype"] == torch.float32
