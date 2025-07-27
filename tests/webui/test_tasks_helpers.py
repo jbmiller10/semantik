@@ -345,7 +345,7 @@ class TestMetricsRecording:
         assert mock_metrics_class.call_count == 5
 
         # Verify session operations
-        assert mock_session.add.call_count == 4
+        assert mock_session.add.call_count == 5
         mock_session.commit.assert_called_once()
 
     @patch("packages.webui.tasks.update_collection_stats")
@@ -419,7 +419,7 @@ class TestActiveCollections:
     @patch("shared.database.repositories.collection_repository.CollectionRepository")
     @patch("shared.database.database.AsyncSessionLocal")
     async def test_get_active_collections_with_string_staging(self, mock_session_local, mock_repo_class):
-        """Test handling of staging info as JSON string."""
+        """Test handling of staging info as dict."""
         # Create a proper async session mock
         mock_session = AsyncMock()
         mock_session.add = MagicMock()
@@ -440,7 +440,7 @@ class TestActiveCollections:
                 "id": "col1",
                 "vector_store_name": "vec_col_1",
                 "qdrant_collections": None,
-                "qdrant_staging": '{"collection_name": "staging_from_json"}',
+                "qdrant_staging": {"collection_name": "staging_from_json"},
             }
         ]
         mock_repo.list_all.return_value = mock_collections
@@ -449,8 +449,9 @@ class TestActiveCollections:
         # Get active collections
         active = await _get_active_collections()
 
-        # Verify JSON string was parsed
+        # Verify dict staging info was parsed
         assert "staging_from_json" in active
+        assert "vec_col_1" in active
 
 
 class TestStagingCleanup:

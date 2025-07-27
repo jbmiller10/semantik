@@ -133,9 +133,18 @@ class TestAuditLogging:
     @patch("shared.database.database.AsyncSessionLocal")
     async def test_audit_log_operation_success(self, mock_session_local, mock_audit_log_class):
         """Test successful audit log creation."""
-        # Use helper to create proper async session mock
-        session_maker, mock_session = create_async_session_mock()
-        mock_session_local.side_effect = session_maker
+        # Create a proper async session mock
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        
+        # Create an async context manager factory
+        @asynccontextmanager
+        async def session_context():
+            yield mock_session
+        
+        # Make AsyncSessionLocal return our context manager when called
+        mock_session_local.return_value = session_context()
         
         # Mock audit log instance
         mock_audit_log = MagicMock()
@@ -147,7 +156,7 @@ class TestAuditLogging:
             operation_id=456,
             user_id=1,
             action="test_action",
-            details={"key": "value", "password": "secret"}
+            details={"field": "value", "password": "secret", "api_key": "hidden"}
         )
         
         # Verify audit log was created with correct parameters
@@ -157,9 +166,10 @@ class TestAuditLogging:
         assert call_kwargs["operation_id"] == 456
         assert call_kwargs["user_id"] == 1
         assert call_kwargs["action"] == "test_action"
-        # Details should be sanitized
+        # Details should be sanitized - password and api_key removed, field kept
         assert "password" not in call_kwargs["details"]
-        assert call_kwargs["details"]["key"] == "value"
+        assert "api_key" not in call_kwargs["details"]
+        assert call_kwargs["details"]["field"] == "value"
         
         # Verify session operations
         mock_session.add.assert_called_once_with(mock_audit_log)
