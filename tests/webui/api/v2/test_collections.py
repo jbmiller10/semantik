@@ -424,16 +424,16 @@ class TestUpdateCollection:
         client: TestClient,
         mock_collection_service: AsyncMock,
     ) -> None:
-        """Test 400 error for validation failures."""
+        """Test 422 error for pydantic validation failures."""
         collection_uuid = str(uuid.uuid4())
         update_request = {"name": "Invalid/Name"}
 
-        mock_collection_service.update.side_effect = ValidationError("Invalid name format")
-
+        # No need to mock service - Pydantic validation happens first
         response = client.put(f"/api/v2/collections/{collection_uuid}", json=update_request)
 
-        assert response.status_code == 400
-        assert "Invalid name format" in response.json()["detail"]
+        assert response.status_code == 422
+        # Pydantic validation errors have a specific structure
+        assert "string_pattern_mismatch" in str(response.json())
 
 
 class TestDeleteCollection:
