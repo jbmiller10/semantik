@@ -692,41 +692,49 @@ class TestRedisStreamWebSocketManager:
     @pytest.mark.asyncio()
     async def test_consume_updates_stream_not_exist(self, manager, mock_redis):
         """Test consumer handles non-existent stream gracefully."""
-        manager.redis = mock_redis
-        
-        # Mock stream doesn't exist for a few calls, then exists
-        call_count = 0
-        async def xinfo_side_effect(*args):
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                raise Exception("Stream does not exist")
-            return {"length": 0}
-        
-        mock_redis.xinfo_stream = AsyncMock(side_effect=xinfo_side_effect)
-        mock_redis.xgroup_create = AsyncMock()
-        mock_redis.xreadgroup = AsyncMock(return_value=[])
-        
-        # Run consumer briefly
-        consumer_task = asyncio.create_task(manager._consume_updates("operation1"))
-        
-        try:
-            # Let it run for a moment - it should retry a few times
-            # Use a shorter sleep to avoid test timeouts
-            await asyncio.sleep(1.5)  # Reduced from 5 seconds
+        # Wrap the entire test in a timeout
+        async def run_test():
+            manager.redis = mock_redis
             
-            # Should still be running (not crashed)
-            assert not consumer_task.done()
+            # Mock stream doesn't exist for a few calls, then exists
+            call_count = 0
+            async def xinfo_side_effect(*args):
+                nonlocal call_count
+                call_count += 1
+                if call_count < 3:
+                    raise Exception("Stream does not exist")
+                return {"length": 0}
             
-            # Verify it tried to check stream info multiple times
-            assert mock_redis.xinfo_stream.call_count >= 2
-        finally:
-            # Always cancel and clean up the task
-            consumer_task.cancel()
+            mock_redis.xinfo_stream = AsyncMock(side_effect=xinfo_side_effect)
+            mock_redis.xgroup_create = AsyncMock()
+            # Mock xreadgroup to return empty messages and not block
+            mock_redis.xreadgroup = AsyncMock(return_value=[])
+            # Also mock xgroup_delconsumer for cleanup
+            mock_redis.xgroup_delconsumer = AsyncMock()
+            
+            # Run consumer briefly
+            consumer_task = asyncio.create_task(manager._consume_updates("operation1"))
+            
             try:
-                await asyncio.wait_for(consumer_task, timeout=0.5)
-            except (asyncio.CancelledError, asyncio.TimeoutError):
-                pass
+                # Let it run for a moment - it should retry a few times
+                # Use a shorter sleep to avoid test timeouts
+                await asyncio.sleep(1.5)  # Reduced from 5 seconds
+                
+                # Should still be running (not crashed)
+                assert not consumer_task.done()
+                
+                # Verify it tried to check stream info multiple times
+                assert mock_redis.xinfo_stream.call_count >= 2
+            finally:
+                # Always cancel and clean up the task
+                consumer_task.cancel()
+                try:
+                    await asyncio.wait_for(consumer_task, timeout=0.5)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+        
+        # Run with overall timeout
+        await asyncio.wait_for(run_test(), timeout=10.0)
 
     @pytest.mark.asyncio()
     async def test_consume_updates_redis_none(self, manager):
@@ -960,21 +968,39 @@ class TestWebSocketManagerSingleton:
         original_redis = ws_manager.redis
         original_connections = ws_manager.connections.copy()
         
+        # Cancel ALL existing tasks before the test to ensure clean state
+        for task_id, task in list(ws_manager.consumer_tasks.items()):
+            if not task.done():
+                task.cancel()
+        
+        # Wait for all tasks to be cancelled
+        if ws_manager.consumer_tasks:
+            tasks = list(ws_manager.consumer_tasks.values())
+            for task in tasks:
+                try:
+                    await asyncio.wait_for(task, timeout=0.1)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+        
+        # Clear everything
+        ws_manager.consumer_tasks.clear()
+        ws_manager.connections.clear()
+        
         yield
         
         # Async cleanup after test
         # Cancel any tasks that were created during the test
         tasks_to_cancel = []
         for task_id, task in list(ws_manager.consumer_tasks.items()):
-            if task_id not in original_tasks and not task.done():
+            if not task.done():
                 task.cancel()
                 tasks_to_cancel.append(task)
         
         # Wait for all tasks to complete with a timeout
-        if tasks_to_cancel:
+        for task in tasks_to_cancel:
             try:
-                await asyncio.wait(tasks_to_cancel, timeout=0.5, return_when=asyncio.ALL_COMPLETED)
-            except Exception:
+                await asyncio.wait_for(task, timeout=0.1)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
         
         # Clear connections and tasks
