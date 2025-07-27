@@ -1070,20 +1070,15 @@ class TestSearchAPI:
         """Test generate_embedding_async error handling."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
         
-        import packages.vecpipe.search_api as search_api_module
-        
-        # Temporarily set the mock
-        original_manager = search_api_module.model_manager
-        search_api_module.model_manager = mock_model_manager
-        mock_model_manager.generate_embedding_async.return_value = None
-        
-        try:
+        # Mock the generate_embedding_async function to return None
+        with patch("packages.vecpipe.search_api.model_manager", mock_model_manager):
+            mock_model_manager.generate_embedding_async.return_value = None
+            
+            import packages.vecpipe.search_api as search_api_module
+            
             with pytest.raises(RuntimeError) as exc_info:
                 await search_api_module.generate_embedding_async("test text")
             assert "Failed to generate embedding" in str(exc_info.value)
-        finally:
-            # Restore original
-            search_api_module.model_manager = original_manager
 
     def test_reranking_memory_error(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
         """Test reranking with insufficient memory."""
