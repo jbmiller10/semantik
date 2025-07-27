@@ -281,7 +281,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
         """Synchronously load the model (runs in thread pool)."""
         if self.is_qwen_model:
             # Load Qwen model using transformers
-            self.tokenizer = AutoTokenizer.from_pretrained(
+            self.tokenizer = AutoTokenizer.from_pretrained(  # type: ignore[no-untyped-call]
                 model_name, padding_side="left", trust_remote_code=kwargs.get("trust_remote_code", False)
             )
 

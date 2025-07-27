@@ -4,13 +4,13 @@ Configuration for webui tests.
 
 import asyncio
 import contextlib
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import pytest
 
 
 @pytest.fixture(autouse=True)
-async def cleanup_pending_tasks() -> AsyncGenerator[None, None]:
+async def _cleanup_pending_tasks() -> AsyncGenerator[None, None]:
     """
     Cleanup any pending asyncio tasks after each test to prevent hanging.
     """

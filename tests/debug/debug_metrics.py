@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import psutil
-
 from prometheus_client import generate_latest
 
 from packages.shared.metrics.prometheus import (

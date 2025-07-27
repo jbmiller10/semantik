@@ -1,5 +1,7 @@
 """Unit tests for shared API contracts."""
 
+from typing import Any, Dict
+
 import pytest
 from pydantic import ValidationError
 
@@ -24,7 +26,7 @@ class TestSearchContracts:
 
     def test_search_request_with_top_k_alias(self) -> None:
         """Test SearchRequest with alias field 'top_k'."""
-        req_data = {"query": "test query", "top_k": 10}
+        req_data: Dict[str, Any] = {"query": "test query", "top_k": 10}
         req = SearchRequest(**req_data)
         assert req.query == "test query"
         assert req.k == 10  # alias mapped to canonical field
@@ -115,7 +117,7 @@ class TestSearchContractsExtended:
         """Test that doc_id is required in SearchResult."""
         # Should fail without doc_id
         with pytest.raises(ValidationError) as exc_info:
-            SearchResult(chunk_id="chunk1", score=0.95, path="/test.txt")
+            SearchResult(chunk_id="chunk1", score=0.95, path="/test.txt")  # type: ignore[call-arg]
         assert "doc_id" in str(exc_info.value)
 
     def test_hybrid_search_result_required_doc_id(self) -> None:
@@ -124,7 +126,7 @@ class TestSearchContractsExtended:
 
         # Should fail without doc_id
         with pytest.raises(ValidationError) as exc_info:
-            HybridSearchResult(path="/test.txt", chunk_id="chunk1", score=0.95)
+            HybridSearchResult(path="/test.txt", chunk_id="chunk1", score=0.95)  # type: ignore[call-arg]
         assert "doc_id" in str(exc_info.value)
 
         # Should succeed with doc_id

@@ -286,10 +286,10 @@ class TestGetActiveCollections:
             yield mock_session
 
         # Patch both AsyncSessionLocal and CollectionRepository at their source
-        with patch("shared.database.database.AsyncSessionLocal", mock_session_maker):
-            with patch(
-                "shared.database.repositories.collection_repository.CollectionRepository", return_value=mock_repo
-            ):
+        with (
+            patch("shared.database.database.AsyncSessionLocal", mock_session_maker),
+            patch("shared.database.repositories.collection_repository.CollectionRepository", return_value=mock_repo),
+        ):
                 from packages.webui.tasks import _get_active_collections
 
                 # Run function
@@ -324,8 +324,10 @@ class TestAuditCollectionDeletion:
         mock_audit_log_class = MagicMock()
 
         # Patch both AsyncSessionLocal and CollectionAuditLog at their source
-        with patch("shared.database.database.AsyncSessionLocal", mock_session_maker):
-            with patch("shared.database.models.CollectionAuditLog", mock_audit_log_class):
+        with (
+            patch("shared.database.database.AsyncSessionLocal", mock_session_maker),
+            patch("shared.database.models.CollectionAuditLog", mock_audit_log_class),
+        ):
                 from packages.webui.tasks import _audit_collection_deletions_batch
 
                 # Run function

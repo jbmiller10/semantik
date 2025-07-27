@@ -3,8 +3,8 @@
 import asyncio
 import functools
 import logging
-from collections.abc import Callable, Coroutine
-from typing import Any, ParamSpec, TypeVar, overload
+from collections.abc import Callable
+from typing import Any, ParamSpec, TypeVar, cast
 
 from sqlalchemy.exc import OperationalError
 
@@ -19,7 +19,7 @@ def with_db_retry(
     delay: float = 1.0,
     backoff: float = 2.0,
     max_delay: float = 30.0,
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+) -> Callable[[Callable[P, T]], Callable[P, T]]:
     """
     Decorator to retry database operations on lock errors.
 
@@ -30,15 +30,15 @@ def with_db_retry(
         max_delay: Maximum delay between retries
     """
 
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+    def decorator(func: Callable[P, T]) -> Callable[P, T]:
         @functools.wraps(func)
-        async def async_wrapper(*args: Any, **kwargs: Any) -> T:
+        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             current_delay = delay
             last_exception = None
 
             for attempt in range(retries + 1):
                 try:
-                    return await func(*args, **kwargs)  # type: ignore[no-any-return, misc]
+                    return await func(*args, **kwargs)
                 except OperationalError as e:
                     if "database is locked" not in str(e) or attempt == retries:
                         raise
@@ -58,7 +58,7 @@ def with_db_retry(
             raise RuntimeError("Unexpected retry loop exit")
 
         @functools.wraps(func)
-        def sync_wrapper(*args: Any, **kwargs: Any) -> T:
+        def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             current_delay = delay
             last_exception = None
 
@@ -87,7 +87,7 @@ def with_db_retry(
 
         # Return appropriate wrapper based on function type
         if asyncio.iscoroutinefunction(func):
-            return async_wrapper
-        return sync_wrapper
+            return cast(Callable[P, T], async_wrapper)
+        return cast(Callable[P, T], sync_wrapper)
 
     return decorator

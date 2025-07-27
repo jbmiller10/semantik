@@ -14,25 +14,6 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-
-# Helper function to create a proper async session mock
-def create_async_session_mock():
-    """Create a mock that behaves like AsyncSessionLocal."""
-    mock_session = AsyncMock()
-    mock_session.add = MagicMock()
-    mock_session.commit = AsyncMock()
-    mock_session.rollback = AsyncMock()
-    mock_session.close = AsyncMock()
-
-    @asynccontextmanager
-    async def session_maker():
-        yield mock_session
-
-    return session_maker, mock_session
-
-
-# Import shared models that are used in the tests for type reference
-
 from packages.webui.tasks import (
     CeleryTaskWithOperationUpdates,
     _audit_collection_deletion,
@@ -444,8 +425,8 @@ class TestStagingCleanup:
         # Mock Qdrant
         client = Mock()
         collections_response = Mock()
-        CollectionInfo = type("CollectionInfo", (), {"name": "staging_test_123"})
-        collections_response.collections = [CollectionInfo]
+        collection_info = type("CollectionInfo", (), {"name": "staging_test_123"})
+        collections_response.collections = [collection_info]
         client.get_collections.return_value = collections_response
         client.delete_collection = Mock()
         mock_qdrant_manager.get_client.return_value = client
@@ -570,7 +551,7 @@ class TestConcurrentOperations:
             mock_redis.ping = AsyncMock(return_value=True)
 
             # Make from_url return a coroutine that returns the mock redis
-            async def return_mock_redis(*args, **kwargs):
+            async def return_mock_redis(*_args, **_kwargs):
                 return mock_redis
 
             mock_from_url.side_effect = return_mock_redis
@@ -685,7 +666,7 @@ class TestPerformance:
             mock_redis.ping = AsyncMock(return_value=True)
 
             # Make from_url return a coroutine that returns the mock redis
-            async def return_mock_redis(*args, **kwargs):
+            async def return_mock_redis(*_args, **_kwargs):
                 return mock_redis
 
             mock_from_url.side_effect = return_mock_redis

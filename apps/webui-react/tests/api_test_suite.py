@@ -114,9 +114,8 @@ class APITestSuite:
                         if job_id is not None:
                             self.log_test("Job Creation", True, f"Created job {job_id}", data)
                             return str(job_id)
-                        else:
-                            self.log_test("Job Creation", False, "No job_id in response", data)
-                            return None
+                        self.log_test("Job Creation", False, "No job_id in response", data)
+                        return None
                     text = await resp.text()
                     self.log_test("Job Creation", False, f"HTTP {resp.status}", {"response": text})
             except Exception as e:

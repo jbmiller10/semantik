@@ -232,8 +232,10 @@ class TestDirectoryScanService:
         mock_ws_manager: AsyncMock,
     ) -> None:
         """Test scanning directory with permission denied."""
-        with patch("os.listdir", side_effect=PermissionError("Access denied")):
-            with pytest.raises(PermissionError, match="Access denied to directory"):
+        with (
+            patch("os.listdir", side_effect=PermissionError("Access denied")),
+            pytest.raises(PermissionError, match="Access denied to directory"),
+        ):
                 await directory_scan_service.scan_directory_preview(
                     path=str(temp_scan_directory),
                     scan_id="test-scan-perm",
