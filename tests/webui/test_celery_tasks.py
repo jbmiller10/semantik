@@ -334,14 +334,17 @@ class TestProcessCollectionOperation:
     def test_process_collection_operation_sync_wrapper(self, mock_async_func, mock_celery_task):
         """Test the synchronous wrapper handles async execution."""
         # Mock the async function result
-        mock_async_func.return_value = asyncio.coroutine(lambda: {"success": True})()
+        async def mock_coro():
+            return {"success": True}
+        mock_async_func.return_value = mock_coro()
         
         # Import and call the task directly
         from packages.webui.tasks import process_collection_operation
         
         # The task decorator internally will call the underlying function
         # We test by mocking the async function it calls
-        result = process_collection_operation.run(mock_celery_task, "op-123")
+        # Since it's a bound task, self is the first parameter
+        result = process_collection_operation.__wrapped__(mock_celery_task, "op-123")
         
         # Verify async function was called with correct args
         mock_async_func.assert_called_once_with("op-123", mock_celery_task)
@@ -360,7 +363,7 @@ class TestProcessCollectionOperation:
         
         # Call the task - should trigger retry
         with pytest.raises(Exception, match="Retry called"):
-            process_collection_operation.run(mock_celery_task, "op-123")
+            process_collection_operation.__wrapped__(mock_celery_task, "op-123")
         
         # Verify retry was called with the exception
         mock_celery_task.retry.assert_called_once()
@@ -501,6 +504,7 @@ class TestAppendOperation:
             docs.append(doc)
         return docs
 
+    @patch("os.path.exists", return_value=True)
     @patch("packages.webui.services.document_scanning_service.DocumentScanningService")
     @patch("packages.webui.tasks.executor")
     @patch("packages.webui.tasks.httpx.AsyncClient")
@@ -511,6 +515,7 @@ class TestAppendOperation:
         mock_httpx,
         mock_executor,
         mock_scanner_class,
+        mock_path_exists,
         mock_document_scanner,
         mock_documents,
         mock_updater,
@@ -922,14 +927,28 @@ class TestReindexValidation:
         """Create mock Qdrant client."""
         client = Mock()
 
-        # Mock collection info
+        # Mock collection info with proper structure
         old_info = Mock()
         old_info.points_count = 1000
-        old_info.config.params.vectors.size = 1536
+        # Create nested structure for config
+        old_vectors = Mock()
+        old_vectors.size = 1536
+        old_params = Mock()
+        old_params.vectors = old_vectors
+        old_config = Mock()
+        old_config.params = old_params
+        old_info.config = old_config
 
         new_info = Mock()
         new_info.points_count = 1050
-        new_info.config.params.vectors.size = 1536
+        # Create nested structure for config
+        new_vectors = Mock()
+        new_vectors.size = 1536
+        new_params = Mock()
+        new_params.vectors = new_vectors
+        new_config = Mock()
+        new_config.params = new_params
+        new_info.config = new_config
 
         client.get_collection.side_effect = lambda name: old_info if name == "old" else new_info
 

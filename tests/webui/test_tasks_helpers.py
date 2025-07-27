@@ -163,24 +163,22 @@ class TestAuditLogging:
             operation_id=456,
             user_id=1,
             action="test_action",
-            details={"key": "value", "password": "secret"},
+            details={"field": "value", "password": "secret", "api_key": "hidden"},
         )
 
         # Verify audit log was created with correct parameters
         mock_audit_log_class.assert_called_once()
-        
-        # Check how the mock was called - print for debugging
-        print("Call args:", mock_audit_log_class.call_args)
-        print("Kwargs:", mock_audit_log_class.call_args.kwargs)
         
         call_kwargs = mock_audit_log_class.call_args.kwargs
         assert call_kwargs["collection_id"] == "col-123"
         assert call_kwargs["operation_id"] == 456
         assert call_kwargs["user_id"] == 1
         assert call_kwargs["action"] == "test_action"
-        # Details should be sanitized
+        # Details should be sanitized - password and api_key removed, field kept
+        assert isinstance(call_kwargs["details"], dict)
         assert "password" not in call_kwargs["details"]
-        assert call_kwargs["details"]["key"] == "value"
+        assert "api_key" not in call_kwargs["details"]
+        assert call_kwargs["details"]["field"] == "value"
 
         # Verify session operations
         mock_session.add.assert_called_once_with(mock_audit_log)
@@ -211,9 +209,18 @@ class TestAuditLogging:
     @patch("packages.shared.database.database.AsyncSessionLocal")
     async def test_audit_collection_deletion(self, mock_session_local, mock_audit_log_class):
         """Test audit logging for collection deletion."""
-        # Create and use proper async session mock
-        session_maker, mock_session = create_async_session_mock()
-        mock_session_local.side_effect = create_mock_async_session_local(mock_session)
+        # Create a proper async session mock
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        
+        # Create an async context manager factory
+        @asynccontextmanager
+        async def session_context():
+            yield mock_session
+        
+        # Make AsyncSessionLocal return our context manager when called
+        mock_session_local.return_value = session_context()
 
         # Mock audit log
         mock_audit_log = MagicMock()
@@ -224,7 +231,7 @@ class TestAuditLogging:
 
         # Verify audit log creation
         mock_audit_log_class.assert_called_once()
-        call_kwargs = mock_audit_log_class.call_args[1]
+        call_kwargs = mock_audit_log_class.call_args.kwargs
         assert call_kwargs["collection_id"] is None  # System operation
         assert call_kwargs["operation_id"] is None
         assert call_kwargs["user_id"] is None
@@ -241,9 +248,18 @@ class TestAuditLogging:
     @patch("packages.shared.database.database.AsyncSessionLocal")
     async def test_audit_collection_deletions_batch(self, mock_session_local, mock_audit_log_class):
         """Test batch audit logging for multiple collection deletions."""
-        # Create and use proper async session mock
-        session_maker, mock_session = create_async_session_mock()
-        mock_session_local.side_effect = create_mock_async_session_local(mock_session)
+        # Create a proper async session mock
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        
+        # Create an async context manager factory
+        @asynccontextmanager
+        async def session_context():
+            yield mock_session
+        
+        # Make AsyncSessionLocal return our context manager when called
+        mock_session_local.return_value = session_context()
 
         # Mock audit log
         mock_audit_logs = []
@@ -281,9 +297,18 @@ class TestMetricsRecording:
     @patch("packages.shared.database.database.AsyncSessionLocal")
     async def test_record_operation_metrics_success(self, mock_session_local, mock_metrics_class):
         """Test successful operation metrics recording."""
-        # Create and use proper async session mock
-        session_maker, mock_session = create_async_session_mock()
-        mock_session_local.side_effect = create_mock_async_session_local(mock_session)
+        # Create a proper async session mock
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        
+        # Create an async context manager factory
+        @asynccontextmanager
+        async def session_context():
+            yield mock_session
+        
+        # Make AsyncSessionLocal return our context manager when called
+        mock_session_local.return_value = session_context()
 
         # Mock operation repository
         operation_repo = AsyncMock()
@@ -344,9 +369,18 @@ class TestActiveCollections:
     @patch("packages.shared.database.database.AsyncSessionLocal")
     async def test_get_active_collections(self, mock_session_local, mock_repo_class):
         """Test getting active collections from database."""
-        # Create and use proper async session mock
-        session_maker, mock_session = create_async_session_mock()
-        mock_session_local.side_effect = create_mock_async_session_local(mock_session)
+        # Create a proper async session mock
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        
+        # Create an async context manager factory
+        @asynccontextmanager
+        async def session_context():
+            yield mock_session
+        
+        # Make AsyncSessionLocal return our context manager when called
+        mock_session_local.return_value = session_context()
 
         # Mock repository
         mock_repo = AsyncMock()
@@ -384,9 +418,18 @@ class TestActiveCollections:
     @patch("packages.shared.database.database.AsyncSessionLocal")
     async def test_get_active_collections_with_string_staging(self, mock_session_local, mock_repo_class):
         """Test handling of staging info as JSON string."""
-        # Create and use proper async session mock
-        session_maker, mock_session = create_async_session_mock()
-        mock_session_local.side_effect = create_mock_async_session_local(mock_session)
+        # Create a proper async session mock
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        
+        # Create an async context manager factory
+        @asynccontextmanager
+        async def session_context():
+            yield mock_session
+        
+        # Make AsyncSessionLocal return our context manager when called
+        mock_session_local.return_value = session_context()
 
         # Mock repository
         mock_repo = AsyncMock()
@@ -416,9 +459,18 @@ class TestStagingCleanup:
     @patch("packages.webui.tasks.qdrant_manager")
     async def test_cleanup_staging_resources_success(self, mock_qdrant_manager, mock_session_local, mock_repo_class):
         """Test successful staging cleanup."""
-        # Create and use proper async session mock
-        session_maker, mock_session = create_async_session_mock()
-        mock_session_local.side_effect = create_mock_async_session_local(mock_session)
+        # Create a proper async session mock
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        
+        # Create an async context manager factory
+        @asynccontextmanager
+        async def session_context():
+            yield mock_session
+        
+        # Make AsyncSessionLocal return our context manager when called
+        mock_session_local.return_value = session_context()
 
         # Mock repository
         mock_repo = AsyncMock()
@@ -451,9 +503,18 @@ class TestStagingCleanup:
     @patch("packages.shared.database.database.AsyncSessionLocal")
     async def test_cleanup_staging_resources_no_staging(self, mock_session_local, mock_repo_class):
         """Test cleanup when no staging exists."""
-        # Create and use proper async session mock
-        session_maker, mock_session = create_async_session_mock()
-        mock_session_local.side_effect = create_mock_async_session_local(mock_session)
+        # Create a proper async session mock
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        
+        # Create an async context manager factory
+        @asynccontextmanager
+        async def session_context():
+            yield mock_session
+        
+        # Make AsyncSessionLocal return our context manager when called
+        mock_session_local.return_value = session_context()
 
         # Mock repository
         mock_repo = AsyncMock()
@@ -476,9 +537,18 @@ class TestStagingCleanup:
         self, mock_qdrant_manager, mock_session_local, mock_repo_class
     ):
         """Test cleanup continues despite Qdrant failures."""
-        # Create and use proper async session mock
-        session_maker, mock_session = create_async_session_mock()
-        mock_session_local.side_effect = create_mock_async_session_local(mock_session)
+        # Create a proper async session mock
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        
+        # Create an async context manager factory
+        @asynccontextmanager
+        async def session_context():
+            yield mock_session
+        
+        # Make AsyncSessionLocal return our context manager when called
+        mock_session_local.return_value = session_context()
 
         # Mock repository
         mock_repo = AsyncMock()
@@ -621,9 +691,18 @@ class TestEdgeCases:
     @patch("packages.shared.database.database.AsyncSessionLocal")
     async def test_audit_log_with_circular_reference(self, mock_session_local, mock_audit_log_class):
         """Test audit logging handles circular references in details."""
-        # Create and use proper async session mock
-        session_maker, mock_session = create_async_session_mock()
-        mock_session_local.side_effect = create_mock_async_session_local(mock_session)
+        # Create a proper async session mock
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        
+        # Create an async context manager factory
+        @asynccontextmanager
+        async def session_context():
+            yield mock_session
+        
+        # Make AsyncSessionLocal return our context manager when called
+        mock_session_local.return_value = session_context()
 
         # Mock audit log
         mock_audit_log = MagicMock()

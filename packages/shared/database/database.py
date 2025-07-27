@@ -38,10 +38,6 @@ class AsyncSessionLocalWrapper:
 
     def __new__(cls) -> Any:
         """Create a new session using the PostgreSQL sessionmaker."""
-        # Check if we're in test mode
-        if _test_session_maker is not None:
-            return _test_session_maker()
-            
         import asyncio
 
         # Ensure connection manager is initialized
@@ -65,16 +61,3 @@ class AsyncSessionLocalWrapper:
 
 # Replace the module-level AsyncSessionLocal with our wrapper
 AsyncSessionLocal = AsyncSessionLocalWrapper  # type: ignore[assignment]
-
-# For testing: Allow bypassing the wrapper
-_test_session_maker = None
-
-def set_test_session_maker(session_maker):
-    """Set a test session maker to bypass the wrapper."""
-    global _test_session_maker
-    _test_session_maker = session_maker
-
-def clear_test_session_maker():
-    """Clear the test session maker."""
-    global _test_session_maker
-    _test_session_maker = None
