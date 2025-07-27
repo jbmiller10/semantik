@@ -5,10 +5,9 @@ Comprehensive test coverage for all operation management endpoints including
 get, list, cancel operations and WebSocket connections.
 """
 
-import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-UTC = timezone.utc
+UTC = UTC
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -27,7 +26,6 @@ from packages.shared.database.models import (
     OperationType,
 )
 from packages.webui.api.schemas import (
-    ErrorResponse,
     OperationResponse,
 )
 from packages.webui.api.v2.operations import (
@@ -116,9 +114,7 @@ class TestGetOperation:
         """Test operation not found error."""
         # Setup
         operation_uuid = "non-existent-uuid"
-        mock_operation_service.get_operation.side_effect = EntityNotFoundError(
-            "Operation", operation_uuid
-        )
+        mock_operation_service.get_operation.side_effect = EntityNotFoundError("Operation", operation_uuid)
 
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
@@ -189,9 +185,7 @@ class TestGetOperation:
     ) -> None:
         """Test generic error handling."""
         # Setup
-        mock_operation_service.get_operation.side_effect = Exception(
-            "Database connection error"
-        )
+        mock_operation_service.get_operation.side_effect = Exception("Database connection error")
 
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
@@ -247,9 +241,7 @@ class TestCancelOperation:
         """Test cancelling non-existent operation."""
         # Setup
         operation_uuid = "non-existent-uuid"
-        mock_operation_service.cancel_operation.side_effect = EntityNotFoundError(
-            "Operation", operation_uuid
-        )
+        mock_operation_service.cancel_operation.side_effect = EntityNotFoundError("Operation", operation_uuid)
 
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
@@ -284,9 +276,7 @@ class TestCancelOperation:
             )
 
         assert exc_info.value.status_code == 403
-        assert "You don't have permission to cancel this operation" in str(
-            exc_info.value.detail
-        )
+        assert "You don't have permission to cancel this operation" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
     async def test_cancel_operation_validation_error(
@@ -309,9 +299,7 @@ class TestCancelOperation:
             )
 
         assert exc_info.value.status_code == 400
-        assert "Operation is already completed and cannot be cancelled" in str(
-            exc_info.value.detail
-        )
+        assert "Operation is already completed and cannot be cancelled" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
     async def test_cancel_operation_generic_error(
@@ -321,9 +309,7 @@ class TestCancelOperation:
     ) -> None:
         """Test generic error handling during cancellation."""
         # Setup
-        mock_operation_service.cancel_operation.side_effect = Exception(
-            "Celery connection error"
-        )
+        mock_operation_service.cancel_operation.side_effect = Exception("Celery connection error")
 
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
@@ -366,6 +352,10 @@ class TestListOperations:
 
         # Execute
         result = await list_operations(
+            status=None,
+            operation_type=None,
+            page=1,
+            per_page=50,
             current_user=mock_user,
             service=mock_operation_service,
         )
@@ -411,6 +401,9 @@ class TestListOperations:
         # Execute
         result = await list_operations(
             status="processing,pending",
+            operation_type=None,
+            page=1,
+            per_page=50,
             current_user=mock_user,
             service=mock_operation_service,
         )
@@ -452,7 +445,10 @@ class TestListOperations:
 
         # Execute
         result = await list_operations(
+            status=None,
             operation_type="reindex",
+            page=1,
+            per_page=50,
             current_user=mock_user,
             service=mock_operation_service,
         )
@@ -496,6 +492,8 @@ class TestListOperations:
 
         # Execute
         result = await list_operations(
+            status=None,
+            operation_type=None,
             page=2,
             per_page=10,
             current_user=mock_user,
@@ -526,6 +524,9 @@ class TestListOperations:
         with pytest.raises(HTTPException) as exc_info:
             await list_operations(
                 status="invalid_status",
+                operation_type=None,
+                page=1,
+                per_page=50,
                 current_user=mock_user,
                 service=mock_operation_service,
             )
@@ -544,7 +545,10 @@ class TestListOperations:
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
             await list_operations(
+                status=None,
                 operation_type="invalid_type",
+                page=1,
+                per_page=50,
                 current_user=mock_user,
                 service=mock_operation_service,
             )
@@ -562,7 +566,7 @@ class TestListOperations:
         """Test listing operations including failed ones with error messages."""
         # Setup
         operations = []
-        
+
         # Successful operation
         op1 = MagicMock(spec=Operation)
         op1.uuid = "op-1"
@@ -575,7 +579,7 @@ class TestListOperations:
         op1.started_at = datetime.now(UTC)
         op1.completed_at = datetime.now(UTC)
         operations.append(op1)
-        
+
         # Failed operation
         op2 = MagicMock(spec=Operation)
         op2.uuid = "op-2"
@@ -593,6 +597,10 @@ class TestListOperations:
 
         # Execute
         result = await list_operations(
+            status=None,
+            operation_type=None,
+            page=1,
+            per_page=50,
             current_user=mock_user,
             service=mock_operation_service,
         )
@@ -612,13 +620,15 @@ class TestListOperations:
     ) -> None:
         """Test generic error handling when listing operations."""
         # Setup
-        mock_operation_service.list_operations.side_effect = Exception(
-            "Database connection error"
-        )
+        mock_operation_service.list_operations.side_effect = Exception("Database connection error")
 
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
             await list_operations(
+                status=None,
+                operation_type=None,
+                page=1,
+                per_page=50,
                 current_user=mock_user,
                 service=mock_operation_service,
             )
@@ -637,31 +647,33 @@ class TestOperationWebSocket:
         mock_websocket = AsyncMock(spec=WebSocket)
         mock_websocket.query_params = {"token": "valid-jwt-token"}
         mock_user = {"id": 1, "username": "testuser"}
-        
-        with patch("packages.webui.api.v2.operations.get_current_user_websocket") as mock_get_user, \
-             patch("packages.webui.api.v2.operations.get_db") as mock_get_db, \
-             patch("packages.webui.api.v2.operations.OperationRepository") as mock_repo_class, \
-             patch("packages.webui.api.v2.operations.OperationService") as mock_service_class, \
-             patch("packages.webui.api.v2.operations.ws_manager") as mock_ws_manager:
-            
+
+        with (
+            patch("packages.webui.api.v2.operations.get_current_user_websocket") as mock_get_user,
+            patch("packages.webui.api.v2.operations.get_db") as mock_get_db,
+            patch("packages.webui.api.v2.operations.OperationRepository") as mock_repo_class,
+            patch("packages.webui.api.v2.operations.OperationService") as mock_service_class,
+            patch("packages.webui.api.v2.operations.ws_manager") as mock_ws_manager,
+        ):
+
             # Mock authentication
             mock_get_user.return_value = mock_user
-            
+
             # Mock database session
             mock_db = AsyncMock()
             mock_get_db.return_value.__aiter__.return_value = [mock_db]
-            
+
             # Mock repository and service
             mock_repo = AsyncMock()
             mock_repo_class.return_value = mock_repo
             mock_service = AsyncMock()
             mock_service_class.return_value = mock_service
             mock_service.verify_websocket_access.return_value = None
-            
+
             # Mock WebSocket manager
             mock_ws_manager.connect = AsyncMock()
             mock_ws_manager.disconnect = AsyncMock()
-            
+
             # Mock WebSocket receive to simulate ping/pong and then disconnect
             mock_websocket.receive_json = AsyncMock()
             mock_websocket.receive_json.side_effect = [
@@ -669,23 +681,19 @@ class TestOperationWebSocket:
                 WebSocketDisconnect(),
             ]
             mock_websocket.send_json = AsyncMock()
-            
+
             # Execute
             await operation_websocket(mock_websocket, "op-123")
-            
+
             # Verify
             mock_get_user.assert_awaited_once_with("valid-jwt-token")
             mock_service.verify_websocket_access.assert_awaited_once_with(
                 operation_uuid="op-123",
                 user_id=1,
             )
-            mock_ws_manager.connect.assert_awaited_once_with(
-                mock_websocket, "op-123", "1"
-            )
+            mock_ws_manager.connect.assert_awaited_once_with(mock_websocket, "op-123", "1")
             mock_websocket.send_json.assert_awaited_once_with({"type": "pong"})
-            mock_ws_manager.disconnect.assert_awaited_once_with(
-                mock_websocket, "op-123", "1"
-            )
+            mock_ws_manager.disconnect.assert_awaited_once_with(mock_websocket, "op-123", "1")
 
     @pytest.mark.asyncio()
     async def test_websocket_authentication_failure(self) -> None:
@@ -693,18 +701,16 @@ class TestOperationWebSocket:
         # Setup
         mock_websocket = AsyncMock(spec=WebSocket)
         mock_websocket.query_params = {"token": "invalid-jwt-token"}
-        
+
         with patch("packages.webui.api.v2.operations.get_current_user_websocket") as mock_get_user:
             # Mock authentication failure
             mock_get_user.side_effect = ValueError("Invalid token")
-            
+
             # Execute
             await operation_websocket(mock_websocket, "op-123")
-            
+
             # Verify
-            mock_websocket.close.assert_awaited_once_with(
-                code=1008, reason="Invalid token"
-            )
+            mock_websocket.close.assert_awaited_once_with(code=1008, reason="Invalid token")
 
     @pytest.mark.asyncio()
     async def test_websocket_no_token(self) -> None:
@@ -712,18 +718,16 @@ class TestOperationWebSocket:
         # Setup
         mock_websocket = AsyncMock(spec=WebSocket)
         mock_websocket.query_params = {}
-        
+
         with patch("packages.webui.api.v2.operations.get_current_user_websocket") as mock_get_user:
             # Mock authentication with None token
             mock_get_user.side_effect = ValueError("No token provided")
-            
+
             # Execute
             await operation_websocket(mock_websocket, "op-123")
-            
+
             # Verify
-            mock_websocket.close.assert_awaited_once_with(
-                code=1008, reason="No token provided"
-            )
+            mock_websocket.close.assert_awaited_once_with(code=1008, reason="No token provided")
 
     @pytest.mark.asyncio()
     async def test_websocket_operation_not_found(self) -> None:
@@ -732,35 +736,33 @@ class TestOperationWebSocket:
         mock_websocket = AsyncMock(spec=WebSocket)
         mock_websocket.query_params = {"token": "valid-jwt-token"}
         mock_user = {"id": 1, "username": "testuser"}
-        
-        with patch("packages.webui.api.v2.operations.get_current_user_websocket") as mock_get_user, \
-             patch("packages.webui.api.v2.operations.get_db") as mock_get_db, \
-             patch("packages.webui.api.v2.operations.OperationRepository") as mock_repo_class, \
-             patch("packages.webui.api.v2.operations.OperationService") as mock_service_class:
-            
+
+        with (
+            patch("packages.webui.api.v2.operations.get_current_user_websocket") as mock_get_user,
+            patch("packages.webui.api.v2.operations.get_db") as mock_get_db,
+            patch("packages.webui.api.v2.operations.OperationRepository") as mock_repo_class,
+            patch("packages.webui.api.v2.operations.OperationService") as mock_service_class,
+        ):
+
             # Mock authentication
             mock_get_user.return_value = mock_user
-            
+
             # Mock database session
             mock_db = AsyncMock()
             mock_get_db.return_value.__aiter__.return_value = [mock_db]
-            
+
             # Mock repository and service
             mock_repo = AsyncMock()
             mock_repo_class.return_value = mock_repo
             mock_service = AsyncMock()
             mock_service_class.return_value = mock_service
-            mock_service.verify_websocket_access.side_effect = EntityNotFoundError(
-                "Operation", "non-existent-op"
-            )
-            
+            mock_service.verify_websocket_access.side_effect = EntityNotFoundError("Operation", "non-existent-op")
+
             # Execute
             await operation_websocket(mock_websocket, "non-existent-op")
-            
+
             # Verify
-            mock_websocket.close.assert_awaited_once_with(
-                code=1008, reason="Operation 'non-existent-op' not found"
-            )
+            mock_websocket.close.assert_awaited_once_with(code=1008, reason="Operation 'non-existent-op' not found")
 
     @pytest.mark.asyncio()
     async def test_websocket_access_denied(self) -> None:
@@ -769,19 +771,21 @@ class TestOperationWebSocket:
         mock_websocket = AsyncMock(spec=WebSocket)
         mock_websocket.query_params = {"token": "valid-jwt-token"}
         mock_user = {"id": 2, "username": "otheruser"}
-        
-        with patch("packages.webui.api.v2.operations.get_current_user_websocket") as mock_get_user, \
-             patch("packages.webui.api.v2.operations.get_db") as mock_get_db, \
-             patch("packages.webui.api.v2.operations.OperationRepository") as mock_repo_class, \
-             patch("packages.webui.api.v2.operations.OperationService") as mock_service_class:
-            
+
+        with (
+            patch("packages.webui.api.v2.operations.get_current_user_websocket") as mock_get_user,
+            patch("packages.webui.api.v2.operations.get_db") as mock_get_db,
+            patch("packages.webui.api.v2.operations.OperationRepository") as mock_repo_class,
+            patch("packages.webui.api.v2.operations.OperationService") as mock_service_class,
+        ):
+
             # Mock authentication
             mock_get_user.return_value = mock_user
-            
+
             # Mock database session
             mock_db = AsyncMock()
             mock_get_db.return_value.__aiter__.return_value = [mock_db]
-            
+
             # Mock repository and service
             mock_repo = AsyncMock()
             mock_repo_class.return_value = mock_repo
@@ -790,14 +794,12 @@ class TestOperationWebSocket:
             mock_service.verify_websocket_access.side_effect = AccessDeniedError(
                 str(mock_user["id"]), "operation", "op-123"
             )
-            
+
             # Execute
             await operation_websocket(mock_websocket, "op-123")
-            
+
             # Verify
-            mock_websocket.close.assert_awaited_once_with(
-                code=1008, reason="You don't have access to this operation"
-            )
+            mock_websocket.close.assert_awaited_once_with(code=1008, reason="You don't have access to this operation")
 
     @pytest.mark.asyncio()
     async def test_websocket_unexpected_error(self) -> None:
@@ -805,18 +807,16 @@ class TestOperationWebSocket:
         # Setup
         mock_websocket = AsyncMock(spec=WebSocket)
         mock_websocket.query_params = {"token": "valid-jwt-token"}
-        
+
         with patch("packages.webui.api.v2.operations.get_current_user_websocket") as mock_get_user:
             # Mock unexpected error during authentication
             mock_get_user.side_effect = Exception("Unexpected error")
-            
+
             # Execute
             await operation_websocket(mock_websocket, "op-123")
-            
+
             # Verify
-            mock_websocket.close.assert_awaited_once_with(
-                code=1011, reason="Internal server error"
-            )
+            mock_websocket.close.assert_awaited_once_with(code=1011, reason="Internal server error")
 
     @pytest.mark.asyncio()
     async def test_websocket_client_disconnect(self) -> None:
@@ -825,45 +825,43 @@ class TestOperationWebSocket:
         mock_websocket = AsyncMock(spec=WebSocket)
         mock_websocket.query_params = {"token": "valid-jwt-token"}
         mock_user = {"id": 1, "username": "testuser"}
-        
-        with patch("packages.webui.api.v2.operations.get_current_user_websocket") as mock_get_user, \
-             patch("packages.webui.api.v2.operations.get_db") as mock_get_db, \
-             patch("packages.webui.api.v2.operations.OperationRepository") as mock_repo_class, \
-             patch("packages.webui.api.v2.operations.OperationService") as mock_service_class, \
-             patch("packages.webui.api.v2.operations.ws_manager") as mock_ws_manager:
-            
+
+        with (
+            patch("packages.webui.api.v2.operations.get_current_user_websocket") as mock_get_user,
+            patch("packages.webui.api.v2.operations.get_db") as mock_get_db,
+            patch("packages.webui.api.v2.operations.OperationRepository") as mock_repo_class,
+            patch("packages.webui.api.v2.operations.OperationService") as mock_service_class,
+            patch("packages.webui.api.v2.operations.ws_manager") as mock_ws_manager,
+        ):
+
             # Mock authentication
             mock_get_user.return_value = mock_user
-            
+
             # Mock database session
             mock_db = AsyncMock()
             mock_get_db.return_value.__aiter__.return_value = [mock_db]
-            
+
             # Mock repository and service
             mock_repo = AsyncMock()
             mock_repo_class.return_value = mock_repo
             mock_service = AsyncMock()
             mock_service_class.return_value = mock_service
             mock_service.verify_websocket_access.return_value = None
-            
+
             # Mock WebSocket manager
             mock_ws_manager.connect = AsyncMock()
             mock_ws_manager.disconnect = AsyncMock()
-            
+
             # Mock WebSocket receive to simulate immediate disconnect
             mock_websocket.receive_json = AsyncMock()
             mock_websocket.receive_json.side_effect = WebSocketDisconnect()
-            
+
             # Execute
             await operation_websocket(mock_websocket, "op-123")
-            
+
             # Verify
-            mock_ws_manager.connect.assert_awaited_once_with(
-                mock_websocket, "op-123", "1"
-            )
-            mock_ws_manager.disconnect.assert_awaited_once_with(
-                mock_websocket, "op-123", "1"
-            )
+            mock_ws_manager.connect.assert_awaited_once_with(mock_websocket, "op-123", "1")
+            mock_ws_manager.disconnect.assert_awaited_once_with(mock_websocket, "op-123", "1")
 
     @pytest.mark.asyncio()
     async def test_websocket_multiple_messages(self) -> None:
@@ -872,31 +870,33 @@ class TestOperationWebSocket:
         mock_websocket = AsyncMock(spec=WebSocket)
         mock_websocket.query_params = {"token": "valid-jwt-token"}
         mock_user = {"id": 1, "username": "testuser"}
-        
-        with patch("packages.webui.api.v2.operations.get_current_user_websocket") as mock_get_user, \
-             patch("packages.webui.api.v2.operations.get_db") as mock_get_db, \
-             patch("packages.webui.api.v2.operations.OperationRepository") as mock_repo_class, \
-             patch("packages.webui.api.v2.operations.OperationService") as mock_service_class, \
-             patch("packages.webui.api.v2.operations.ws_manager") as mock_ws_manager:
-            
+
+        with (
+            patch("packages.webui.api.v2.operations.get_current_user_websocket") as mock_get_user,
+            patch("packages.webui.api.v2.operations.get_db") as mock_get_db,
+            patch("packages.webui.api.v2.operations.OperationRepository") as mock_repo_class,
+            patch("packages.webui.api.v2.operations.OperationService") as mock_service_class,
+            patch("packages.webui.api.v2.operations.ws_manager") as mock_ws_manager,
+        ):
+
             # Mock authentication
             mock_get_user.return_value = mock_user
-            
+
             # Mock database session
             mock_db = AsyncMock()
             mock_get_db.return_value.__aiter__.return_value = [mock_db]
-            
+
             # Mock repository and service
             mock_repo = AsyncMock()
             mock_repo_class.return_value = mock_repo
             mock_service = AsyncMock()
             mock_service_class.return_value = mock_service
             mock_service.verify_websocket_access.return_value = None
-            
+
             # Mock WebSocket manager
             mock_ws_manager.connect = AsyncMock()
             mock_ws_manager.disconnect = AsyncMock()
-            
+
             # Mock WebSocket receive to simulate multiple ping/pong exchanges
             mock_websocket.receive_json = AsyncMock()
             mock_websocket.receive_json.side_effect = [
@@ -906,13 +906,11 @@ class TestOperationWebSocket:
                 WebSocketDisconnect(),
             ]
             mock_websocket.send_json = AsyncMock()
-            
+
             # Execute
             await operation_websocket(mock_websocket, "op-123")
-            
+
             # Verify
             assert mock_websocket.send_json.await_count == 2  # Only ping messages get pong responses
             mock_websocket.send_json.assert_any_await({"type": "pong"})
-            mock_ws_manager.disconnect.assert_awaited_once_with(
-                mock_websocket, "op-123", "1"
-            )
+            mock_ws_manager.disconnect.assert_awaited_once_with(mock_websocket, "op-123", "1")

@@ -111,6 +111,7 @@ def benchmark_memory_usage() -> dict[str, Any]:
     import os
 
     import psutil
+
     from packages.shared.embedding import EmbeddingService
 
     process = psutil.Process(os.getpid())

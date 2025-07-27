@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Simple test to verify our async fixes are working"""
 
+
 # Test the async mode is configured
 def test_asyncio_mode_configured():
     """Test that asyncio_mode is set to auto in pytest config"""
-    with open('pyproject.toml', 'r') as f:
+    with open("pyproject.toml") as f:
         content = f.read()
-    
+
     if 'asyncio_mode = "auto"' in content:
         print("✓ asyncio_mode is configured correctly in pyproject.toml")
         return True
@@ -14,41 +15,43 @@ def test_asyncio_mode_configured():
         print("✗ asyncio_mode NOT found in pyproject.toml")
         return False
 
+
 def test_exception_classes():
     """Check if exception classes are defined properly"""
     try:
         # Read the exceptions file
-        with open('packages/shared/database/__init__.py', 'r') as f:
+        with open("packages/shared/database/__init__.py") as f:
             content = f.read()
-        
+
         # Check for the corrected exception definitions
-        if 'class EntityNotFoundError' in content:
+        if "class EntityNotFoundError" in content:
             print("✓ EntityNotFoundError class found")
-            if 'def __init__(self, entity_type: str, entity_id: str):' in content:
+            if "def __init__(self, entity_type: str, entity_id: str):" in content:
                 print("  ✓ Constructor accepts entity_type and entity_id parameters")
             else:
                 print("  ✗ Constructor parameters may need checking")
-        
-        if 'class AccessDeniedError' in content:
+
+        if "class AccessDeniedError" in content:
             print("✓ AccessDeniedError class found")
-            if 'def __init__(self, user_id: str, entity_type: str, entity_id: str):' in content:
+            if "def __init__(self, user_id: str, entity_type: str, entity_id: str):" in content:
                 print("  ✓ Constructor accepts user_id, entity_type and entity_id parameters")
             else:
                 print("  ✗ Constructor parameters may need checking")
-                
+
         return True
     except Exception as e:
         print(f"✗ Error checking exception classes: {e}")
         return False
 
+
 def main():
     print("Verifying async and exception fixes...\n")
-    
+
     results = []
     results.append(test_asyncio_mode_configured())
     results.append(test_exception_classes())
-    
-    print("\n" + "="*50)
+
+    print("\n" + "=" * 50)
     if all(results):
         print("✅ All basic verifications passed!")
         print("\nKey fixes verified:")
@@ -57,6 +60,7 @@ def main():
         print("\nNote: Full test suite requires all dependencies installed.")
     else:
         print("❌ Some verifications failed. Please check the output above.")
-    
+
+
 if __name__ == "__main__":
     main()

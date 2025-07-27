@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import CollectionInfo, Distance
+
 from packages.shared.managers.qdrant_manager import QdrantManager
 
 

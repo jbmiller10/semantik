@@ -4,15 +4,13 @@ Comprehensive tests for SearchService covering all methods and edge cases.
 
 import asyncio
 from typing import Any
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from packages.shared.database.models import Collection, CollectionStatus
-from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.webui.services.search_service import SearchService
 
 # Database and repository fixtures are now imported from conftest.py
@@ -73,12 +71,13 @@ class TestSearchServiceInit:
     def test_init_with_default_timeout(self, mock_db_session: AsyncMock, mock_collection_repo: AsyncMock) -> None:
         """Test service initialization with default timeout."""
         service = SearchService(db_session=mock_db_session, collection_repo=mock_collection_repo)
-        
+
         assert service.db_session == mock_db_session
         assert service.collection_repo == mock_collection_repo
         # httpx.Timeout object doesn't have direct attribute access
         # Check that it's an httpx.Timeout instance with correct values
         import httpx
+
         assert isinstance(service.default_timeout, httpx.Timeout)
         assert service.default_timeout.connect == 5.0
         assert service.default_timeout.read == 30.0
@@ -92,9 +91,9 @@ class TestSearchServiceInit:
             db_session=mock_db_session,
             collection_repo=mock_collection_repo,
             default_timeout=custom_timeout,
-            retry_timeout_multiplier=2.0
+            retry_timeout_multiplier=2.0,
         )
-        
+
         assert service.default_timeout == custom_timeout
         assert service.retry_timeout_multiplier == 2.0
 
@@ -108,11 +107,11 @@ class TestValidateCollectionAccess:
     ) -> None:
         """Test successful validation of collection access."""
         mock_collection_repo.get_by_uuid_with_permission_check.side_effect = mock_collections[:2]
-        
+
         result = await search_service.validate_collection_access(
             [mock_collections[0].id, mock_collections[1].id], user_id=1
         )
-        
+
         assert len(result) == 2
         assert result[0] == mock_collections[0]
         assert result[1] == mock_collections[1]
@@ -123,11 +122,13 @@ class TestValidateCollectionAccess:
         self, search_service: SearchService, mock_collection_repo: AsyncMock
     ) -> None:
         """Test validation when collection is not found."""
-        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = EntityNotFoundError("Collection", "invalid-uuid")
-        
+        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = EntityNotFoundError(
+            "Collection", "invalid-uuid"
+        )
+
         with pytest.raises(AccessDeniedError) as exc_info:
             await search_service.validate_collection_access(["invalid-uuid"], user_id=1)
-        
+
         assert "Access denied or collection not found: invalid-uuid" in str(exc_info.value)
 
     @pytest.mark.asyncio()
@@ -135,11 +136,13 @@ class TestValidateCollectionAccess:
         self, search_service: SearchService, mock_collection_repo: AsyncMock
     ) -> None:
         """Test validation when access is denied."""
-        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError("1", "Collection", "some-uuid")
-        
+        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError(
+            "1", "Collection", "some-uuid"
+        )
+
         with pytest.raises(AccessDeniedError) as exc_info:
             await search_service.validate_collection_access(["some-uuid"], user_id=1)
-        
+
         assert "Access denied or collection not found: some-uuid" in str(exc_info.value)
 
     @pytest.mark.asyncio()
@@ -149,14 +152,12 @@ class TestValidateCollectionAccess:
         """Test validation with mixed permissions (some allowed, some denied)."""
         mock_collection_repo.get_by_uuid_with_permission_check.side_effect = [
             mock_collections[0],
-            AccessDeniedError("1", "Collection", "denied-uuid")
+            AccessDeniedError("1", "Collection", "denied-uuid"),
         ]
-        
+
         with pytest.raises(AccessDeniedError) as exc_info:
-            await search_service.validate_collection_access(
-                [mock_collections[0].id, "denied-uuid"], user_id=1
-            )
-        
+            await search_service.validate_collection_access([mock_collections[0].id, "denied-uuid"], user_id=1)
+
         assert "Access denied or collection not found: denied-uuid" in str(exc_info.value)
 
 
@@ -218,14 +219,14 @@ class TestSearchSingleCollection:
     ) -> None:
         """Test search when collection is not ready."""
         mock_collection.status = CollectionStatus.PROCESSING
-        
+
         result = await search_service.search_single_collection(
             collection=mock_collection,
             query="test query",
             k=10,
             search_params={},
         )
-        
+
         assert result[0] == mock_collection
         assert result[1] is None
         assert f"Collection {mock_collection.name} is not ready for search" in result[2]
@@ -242,12 +243,12 @@ class TestSearchSingleCollection:
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value.__aenter__.return_value = mock_client
-            
+
             # First call times out
             mock_client.post.side_effect = [
                 httpx.ReadTimeout("Request timed out"),
                 # Second call (retry) succeeds
-                MagicMock(json=lambda: mock_response, raise_for_status=lambda: None)
+                MagicMock(json=lambda: mock_response, raise_for_status=lambda: None),
             ]
 
             result = await search_service.search_single_collection(
@@ -267,9 +268,9 @@ class TestSearchSingleCollection:
             retry_timeout = retry_call[1]["timeout"]
             # httpx.Timeout doesn't have .timeout attribute
             # The overall timeout is increased but individual components are also multiplied
-            assert retry_timeout.connect == 20.0   # 5.0 * 4.0
-            assert retry_timeout.read == 120.0     # 30.0 * 4.0
-            assert retry_timeout.write == 20.0     # 5.0 * 4.0
+            assert retry_timeout.connect == 20.0  # 5.0 * 4.0
+            assert retry_timeout.read == 120.0  # 30.0 * 4.0
+            assert retry_timeout.write == 20.0  # 5.0 * 4.0
 
     @pytest.mark.asyncio()
     async def test_search_single_collection_timeout_retry_fails(
@@ -279,11 +280,11 @@ class TestSearchSingleCollection:
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value.__aenter__.return_value = mock_client
-            
+
             # Both calls timeout
             mock_client.post.side_effect = [
                 httpx.ReadTimeout("Request timed out"),
-                httpx.ReadTimeout("Request timed out again")
+                httpx.ReadTimeout("Request timed out again"),
             ]
 
             result = await search_service.search_single_collection(
@@ -315,13 +316,11 @@ class TestSearchSingleCollection:
             with patch("httpx.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
                 mock_client_class.return_value.__aenter__.return_value = mock_client
-                
+
                 mock_response = MagicMock()
                 mock_response.status_code = status_code
                 mock_client.post.side_effect = httpx.HTTPStatusError(
-                    message=f"HTTP {status_code}",
-                    request=MagicMock(),
-                    response=mock_response
+                    message=f"HTTP {status_code}", request=MagicMock(), response=mock_response
                 )
 
                 result = await search_service.search_single_collection(
@@ -404,7 +403,7 @@ class TestSearchSingleCollection:
     ) -> None:
         """Test search with custom timeout parameter."""
         custom_timeout = httpx.Timeout(timeout=60.0, connect=10.0, read=60.0, write=10.0)
-        
+
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value.__aenter__.return_value = mock_client
@@ -447,11 +446,7 @@ class TestHandleHttpError:
         for status_code, retry, expected_message in test_cases:
             mock_response = MagicMock()
             mock_response.status_code = status_code
-            error = httpx.HTTPStatusError(
-                message=f"HTTP {status_code}",
-                request=MagicMock(),
-                response=mock_response
-            )
+            error = httpx.HTTPStatusError(message=f"HTTP {status_code}", request=MagicMock(), response=mock_response)
 
             result = search_service._handle_http_error(error, mock_collection, retry)
 
@@ -490,14 +485,14 @@ class TestMultiCollectionSearch:
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value.__aenter__.return_value = mock_client
-            
+
             response_objs = []
             for resp in search_responses:
                 resp_obj = MagicMock()
                 resp_obj.json.return_value = resp
                 resp_obj.raise_for_status = MagicMock()
                 response_objs.append(resp_obj)
-            
+
             mock_client.post.side_effect = response_objs
 
             result = await search_service.multi_collection_search(
@@ -577,18 +572,16 @@ class TestMultiCollectionSearch:
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value.__aenter__.return_value = mock_client
-            
+
             # First collection succeeds
             success_resp = MagicMock()
-            success_resp.json.return_value = {
-                "results": [{"doc_id": "doc_1", "score": 0.9}]
-            }
+            success_resp.json.return_value = {"results": [{"doc_id": "doc_1", "score": 0.9}]}
             success_resp.raise_for_status = MagicMock()
-            
+
             # Second collection fails with 404
             error_resp = MagicMock()
             error_resp.status_code = 404
-            
+
             # Third collection times out
             mock_client.post.side_effect = [
                 success_resp,
@@ -634,18 +627,18 @@ class TestMultiCollectionSearch:
 
         # Create many results
         many_results = [{"doc_id": f"doc_{i}", "score": 0.9 - i * 0.01} for i in range(10)]
-        
+
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value.__aenter__.return_value = mock_client
-            
+
             response_objs = []
             for _ in range(2):
                 resp_obj = MagicMock()
                 resp_obj.json.return_value = {"results": many_results[:5]}  # 5 results each
                 resp_obj.raise_for_status = MagicMock()
                 response_objs.append(resp_obj)
-            
+
             mock_client.post.side_effect = response_objs
 
             result = await search_service.multi_collection_search(
@@ -658,7 +651,7 @@ class TestMultiCollectionSearch:
             # Should only return k results
             assert len(result["results"]) == 3
             # Should be the highest scoring results
-            assert all(result["results"][i]["score"] >= result["results"][i+1]["score"] for i in range(2))
+            assert all(result["results"][i]["score"] >= result["results"][i + 1]["score"] for i in range(2))
 
     @pytest.mark.asyncio()
     async def test_multi_collection_search_empty_results(
@@ -691,7 +684,9 @@ class TestMultiCollectionSearch:
         self, search_service: SearchService, mock_collection_repo: AsyncMock
     ) -> None:
         """Test multi-collection search when access is denied."""
-        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError("1", "Collection", "some-uuid")
+        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError(
+            "1", "Collection", "some-uuid"
+        )
 
         with pytest.raises(AccessDeniedError):
             await search_service.multi_collection_search(
@@ -712,9 +707,7 @@ class TestSingleCollectionSearch:
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
 
         mock_response = {
-            "results": [
-                {"doc_id": "doc_1", "score": 0.95, "content": "Test content"}
-            ],
+            "results": [{"doc_id": "doc_1", "score": 0.95, "content": "Test content"}],
             "processing_time_ms": 100,
         }
 
@@ -759,7 +752,7 @@ class TestSingleCollectionSearch:
             # Verify timeout was doubled
             timeout_used = mock_client_class.call_args[1]["timeout"]
             # httpx.Timeout doesn't have .timeout attribute, only .connect, .read, .write
-            assert timeout_used.read == 60.0     # 30.0 * 2
+            assert timeout_used.read == 60.0  # 30.0 * 2
 
     @pytest.mark.asyncio()
     async def test_single_collection_search_with_hybrid(
@@ -805,9 +798,7 @@ class TestSingleCollectionSearch:
             mock_response = MagicMock()
             mock_response.status_code = 404
             mock_client.post.side_effect = httpx.HTTPStatusError(
-                message="404 Not Found",
-                request=MagicMock(),
-                response=mock_response
+                message="404 Not Found", request=MagicMock(), response=mock_response
             )
 
             with pytest.raises(EntityNotFoundError) as exc_info:
@@ -816,7 +807,7 @@ class TestSingleCollectionSearch:
                     collection_uuid=mock_collection.id,
                     query="test query",
                 )
-            
+
             assert f"Collection '{mock_collection.name}' not found in vector store" in str(exc_info.value)
 
         # Test 403 error
@@ -826,9 +817,7 @@ class TestSingleCollectionSearch:
             mock_response = MagicMock()
             mock_response.status_code = 403
             mock_client.post.side_effect = httpx.HTTPStatusError(
-                message="403 Forbidden",
-                request=MagicMock(),
-                response=mock_response
+                message="403 Forbidden", request=MagicMock(), response=mock_response
             )
 
             with pytest.raises(AccessDeniedError) as exc_info:
@@ -837,7 +826,7 @@ class TestSingleCollectionSearch:
                     collection_uuid=mock_collection.id,
                     query="test query",
                 )
-            
+
             assert f"Access denied to collection '{mock_collection.name}'" in str(exc_info.value)
 
         # Test other HTTP errors
@@ -847,9 +836,7 @@ class TestSingleCollectionSearch:
             mock_response = MagicMock()
             mock_response.status_code = 500
             mock_client.post.side_effect = httpx.HTTPStatusError(
-                message="500 Server Error",
-                request=MagicMock(),
-                response=mock_response
+                message="500 Server Error", request=MagicMock(), response=mock_response
             )
 
             with pytest.raises(httpx.HTTPStatusError):
@@ -883,7 +870,9 @@ class TestSingleCollectionSearch:
         self, search_service: SearchService, mock_collection_repo: AsyncMock
     ) -> None:
         """Test that single collection search validates access."""
-        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError("1", "Collection", "some-uuid")
+        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError(
+            "1", "Collection", "some-uuid"
+        )
 
         with pytest.raises(AccessDeniedError):
             await search_service.single_collection_search(
@@ -903,15 +892,15 @@ class TestSearchServiceEdgeCases:
         """Test retry logic when timeout has None values."""
         # Create a timeout with None values
         partial_timeout = httpx.Timeout(timeout=None, connect=None, read=None, write=None)
-        
+
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value.__aenter__.return_value = mock_client
-            
+
             # First call times out
             mock_client.post.side_effect = [
                 httpx.ReadTimeout("Request timed out"),
-                MagicMock(json=lambda: {"results": []}, raise_for_status=lambda: None)
+                MagicMock(json=lambda: {"results": []}, raise_for_status=lambda: None),
             ]
 
             result = await search_service.search_single_collection(
@@ -927,9 +916,9 @@ class TestSearchServiceEdgeCases:
             retry_timeout = retry_call[1]["timeout"]
             # httpx.Timeout doesn't have .timeout attribute
             # Check that timeout values are multiplied correctly
-            assert retry_timeout.connect == 20.0   # Default when None
-            assert retry_timeout.read == 120.0     # Default when None
-            assert retry_timeout.write == 20.0     # Default when None
+            assert retry_timeout.connect == 20.0  # Default when None
+            assert retry_timeout.read == 120.0  # Default when None
+            assert retry_timeout.write == 20.0  # Default when None
 
     @pytest.mark.asyncio()
     async def test_multi_collection_search_mixed_statuses(
@@ -943,17 +932,15 @@ class TestSearchServiceEdgeCases:
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value.__aenter__.return_value = mock_client
-            
+
             # Only ready collections should be searched
             response_objs = []
             for i in range(2):  # Only 2 ready collections
                 resp_obj = MagicMock()
-                resp_obj.json.return_value = {
-                    "results": [{"doc_id": f"doc_{i}", "score": 0.9}]
-                }
+                resp_obj.json.return_value = {"results": [{"doc_id": f"doc_{i}", "score": 0.9}]}
                 resp_obj.raise_for_status = MagicMock()
                 response_objs.append(resp_obj)
-            
+
             mock_client.post.side_effect = response_objs
 
             result = await search_service.multi_collection_search(
@@ -964,16 +951,16 @@ class TestSearchServiceEdgeCases:
 
             # Should only search 2 ready collections
             assert mock_client.post.call_count == 2
-            
+
             # Should have results from ready collections
             assert len(result["results"]) == 2
-            
+
             # Should have error for non-ready collection
             errors = result["metadata"]["errors"]
             assert errors is not None
             assert len(errors) == 1
             assert "not ready for search" in errors[0]
-            
+
             # Collection details should show all 3
             collection_details = result["metadata"]["collection_details"]
             assert len(collection_details) == 3
@@ -988,14 +975,14 @@ class TestSearchServiceEdgeCases:
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value.__aenter__.return_value = mock_client
-            
+
             # First call times out
             # Second call (retry) gets HTTP error
             mock_response = MagicMock()
             mock_response.status_code = 429
             mock_client.post.side_effect = [
                 httpx.ReadTimeout("Request timed out"),
-                httpx.HTTPStatusError("429 Too Many Requests", request=MagicMock(), response=mock_response)
+                httpx.HTTPStatusError("429 Too Many Requests", request=MagicMock(), response=mock_response),
             ]
 
             result = await search_service.search_single_collection(
@@ -1026,7 +1013,7 @@ class TestSearchServiceEdgeCases:
             call_order.append(f"start_{collection_name}")
             await asyncio.sleep(search_delays.pop(0))
             call_order.append(f"end_{collection_name}")
-            
+
             resp = MagicMock()
             resp.json.return_value = {"results": []}
             resp.raise_for_status = MagicMock()
@@ -1038,19 +1025,20 @@ class TestSearchServiceEdgeCases:
             mock_client.post.side_effect = mock_post
 
             import time
+
             start_time = time.time()
-            
+
             await search_service.multi_collection_search(
                 user_id=1,
                 collection_uuids=[c.id for c in ready_collections],
                 query="test query",
             )
-            
+
             elapsed_time = time.time() - start_time
 
             # If executed in parallel, should take ~100ms, not 200ms
             assert elapsed_time < 0.15  # Allow some overhead
-            
+
             # Verify interleaved execution
             assert call_order[0].startswith("start_")
             assert call_order[1].startswith("start_")

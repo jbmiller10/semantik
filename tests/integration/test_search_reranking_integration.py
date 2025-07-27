@@ -67,9 +67,7 @@ def client(app: FastAPI, mock_user: dict[str, Any]) -> TestClient:
 class TestSearchRerankingIntegration:
     """Integration tests for search reranking."""
 
-    def test_search_api_with_reranking_disabled(
-        self, client: TestClient, mock_collections: list[MagicMock]
-    ) -> None:
+    def test_search_api_with_reranking_disabled(self, client: TestClient, mock_collections: list[MagicMock]) -> None:
         """Test search API with reranking disabled."""
         # Mock the search service
         mock_search_service = MagicMock(spec=SearchService)
@@ -130,9 +128,7 @@ class TestSearchRerankingIntegration:
         assert data["results"][0]["score"] == 0.85
         assert data["results"][0]["reranked_score"] is None
 
-    def test_search_api_with_reranking_enabled(
-        self, client: TestClient, mock_collections: list[MagicMock]
-    ) -> None:
+    def test_search_api_with_reranking_enabled(self, client: TestClient, mock_collections: list[MagicMock]) -> None:
         """Test search API with reranking enabled."""
         # Mock the search service
         mock_search_service = MagicMock(spec=SearchService)

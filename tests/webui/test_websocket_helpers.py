@@ -1,7 +1,6 @@
 """Helper utilities for WebSocket testing."""
 
 import asyncio
-import contextlib
 import os
 from typing import Any
 from unittest.mock import AsyncMock
@@ -136,6 +135,7 @@ class WebSocketTestHarness:
     async def cleanup(self):
         """Clean up all connections and consumer tasks."""
         try:
+
             async def perform_cleanup():
                 # First, cancel all consumer tasks to prevent event loop errors
                 for task_id, task in list(self.manager.consumer_tasks.items()):
@@ -143,12 +143,13 @@ class WebSocketTestHarness:
                     try:
                         # Short timeout to prevent infinite hanging
                         await asyncio.wait_for(task, timeout=0.1)
-                    except (asyncio.CancelledError, asyncio.TimeoutError):
+                    except (TimeoutError, asyncio.CancelledError):
                         # Expected - task was cancelled or timed out
                         pass
                     except Exception as e:
                         # Log but don't fail
                         import logging
+
                         logger = logging.getLogger(__name__)
                         logger.warning(f"Error cancelling task {task_id} in helper cleanup: {e}")
                 self.manager.consumer_tasks.clear()
@@ -164,20 +165,19 @@ class WebSocketTestHarness:
                                 operation_id = parts[2]
                                 try:
                                     await asyncio.wait_for(
-                                        client.disconnect(self.manager, operation_id, user_id),
-                                        timeout=0.5
+                                        client.disconnect(self.manager, operation_id, user_id), timeout=0.5
                                     )
-                                except asyncio.TimeoutError:
+                                except TimeoutError:
                                     pass
 
                 self.clients.clear()
 
                 # Clear all remaining connections
                 self.manager.connections.clear()
-            
+
             # Apply overall timeout to cleanup
             await asyncio.wait_for(perform_cleanup(), timeout=2.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Force cleanup on timeout
             self.manager.consumer_tasks.clear()
             self.manager.connections.clear()

@@ -1,5 +1,6 @@
 """Factory functions for creating service instances with dependencies."""
 
+import httpx
 from fastapi import Depends
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
@@ -13,8 +14,6 @@ from .directory_scan_service import DirectoryScanService
 from .document_scanning_service import DocumentScanningService
 from .operation_service import OperationService
 from .resource_manager import ResourceManager
-import httpx
-
 from .search_service import SearchService
 
 

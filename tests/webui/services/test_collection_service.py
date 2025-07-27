@@ -3,11 +3,9 @@ Comprehensive tests for CollectionService covering all methods and edge cases.
 """
 
 import uuid
-from typing import Any
-from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database.exceptions import (
     AccessDeniedError,
@@ -15,10 +13,7 @@ from packages.shared.database.exceptions import (
     EntityNotFoundError,
     InvalidStateError,
 )
-from packages.shared.database.models import Collection, CollectionStatus, Operation, OperationType
-from packages.shared.database.repositories.collection_repository import CollectionRepository
-from packages.shared.database.repositories.document_repository import DocumentRepository
-from packages.shared.database.repositories.operation_repository import OperationRepository
+from packages.shared.database.models import CollectionStatus, OperationType
 from packages.webui.services.collection_service import CollectionService
 
 # Fixtures are now imported from conftest.py
@@ -293,9 +288,7 @@ class TestAddSource:
         )
 
         # Verify status update
-        mock_collection_repo.update_status.assert_called_once_with(
-            mock_collection.id, CollectionStatus.PROCESSING
-        )
+        mock_collection_repo.update_status.assert_called_once_with(mock_collection.id, CollectionStatus.PROCESSING)
 
         # Verify commit and task dispatch
         mock_db_session.commit.assert_called_once()
@@ -489,9 +482,7 @@ class TestReindexCollection:
         )
 
         # Verify status update
-        mock_collection_repo.update_status.assert_called_once_with(
-            mock_collection.id, CollectionStatus.PROCESSING
-        )
+        mock_collection_repo.update_status.assert_called_once_with(mock_collection.id, CollectionStatus.PROCESSING)
 
         # Verify commit and task dispatch
         mock_db_session.commit.assert_called_once()
@@ -775,9 +766,7 @@ class TestRemoveSource:
         )
 
         # Verify status update
-        mock_collection_repo.update_status.assert_called_once_with(
-            mock_collection.id, CollectionStatus.PROCESSING
-        )
+        mock_collection_repo.update_status.assert_called_once_with(mock_collection.id, CollectionStatus.PROCESSING)
 
         # Verify commit and task dispatch
         mock_db_session.commit.assert_called_once()
@@ -1313,10 +1302,13 @@ class TestCollectionServiceEdgeCases:
 
         task_ids = []
         with patch("packages.webui.celery_app.celery_app.send_task") as mock_send_task:
-            with patch("uuid.uuid4", side_effect=[
-                uuid.UUID("11111111-1111-1111-1111-111111111111"),
-                uuid.UUID("22222222-2222-2222-2222-222222222222"),
-            ]):
+            with patch(
+                "uuid.uuid4",
+                side_effect=[
+                    uuid.UUID("11111111-1111-1111-1111-111111111111"),
+                    uuid.UUID("22222222-2222-2222-2222-222222222222"),
+                ],
+            ):
                 await collection_service.create_collection(
                     user_id=1,
                     name="Collection 1",

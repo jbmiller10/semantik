@@ -631,7 +631,7 @@ class TestPerformance:
         # The reranker_loaded fixture creates a reranker with device="cuda"
         # We need to ensure CUDA is available during the unload_model call
         assert reranker_loaded.device == "cuda"  # Verify the device is actually CUDA
-        
+
         reranker_loaded.unload_model()
 
         # Should call empty_cache since device is CUDA and CUDA is available
@@ -775,7 +775,7 @@ class TestAdditionalCoverage:
         # Reset all mocks for next test
         mock_model.reset_mock()
         model_class.from_pretrained.reset_mock()
-        
+
         # Create a new mock model instance for the second test
         mock_model_int8 = MagicMock()
         model_class.from_pretrained.return_value = mock_model_int8
@@ -789,7 +789,7 @@ class TestAdditionalCoverage:
     def test_model_eval_mode(self, mock_transformers) -> None:
         """Test that model is set to eval mode after loading"""
         _, _, mock_model, _ = mock_transformers
-        
+
         # Configure the mock to return itself from .to() to maintain the same object
         mock_model.to.return_value = mock_model
 

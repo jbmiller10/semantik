@@ -136,7 +136,7 @@ class TestDocumentRepository:
         """Test that get_by_id executes the correct query."""
         # Setup
         doc_id = str(uuid4())
-        
+
         # Mock the execute to return a result that has scalar_one_or_none method
         mock_result = AsyncMock()
         mock_result.scalar_one_or_none.return_value = None

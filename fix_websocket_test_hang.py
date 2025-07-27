@@ -4,7 +4,7 @@ Debug script to identify what's causing the test hang in websocket_manager tests
 """
 
 import asyncio
-import sys
+
 
 async def check_running_tasks():
     """Check for any running asyncio tasks."""
@@ -13,11 +13,12 @@ async def check_running_tasks():
     for task in tasks:
         print(f"  Task: {task}")
         print(f"    Done: {task.done()}")
-        if hasattr(task, 'get_coro'):
+        if hasattr(task, "get_coro"):
             coro = task.get_coro()
-            if hasattr(coro, '__name__'):
+            if hasattr(coro, "__name__"):
                 print(f"    Coroutine: {coro.__name__}")
         print()
+
 
 if __name__ == "__main__":
     # Run a basic check
@@ -25,5 +26,5 @@ if __name__ == "__main__":
     asyncio.set_event_loop(loop)
     loop.run_until_complete(check_running_tasks())
     loop.close()
-    
+
     print("Script completed successfully.")

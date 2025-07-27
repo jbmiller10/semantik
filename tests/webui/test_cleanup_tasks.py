@@ -2,8 +2,6 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 
 class TestCleanupOldCollections:
     """Test suite for cleanup_old_collections task."""

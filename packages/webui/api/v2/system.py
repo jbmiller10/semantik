@@ -24,7 +24,7 @@ async def get_system_status(
 ) -> dict[str, Any]:
     """
     Get system status including GPU availability and reranking capabilities.
-    
+
     Returns information about:
     - GPU availability
     - Reranking model support
@@ -32,7 +32,7 @@ async def get_system_status(
     """
     try:
         gpu_available = torch.cuda.is_available()
-        
+
         # List of supported reranking models
         available_reranking_models = []
         if gpu_available:
@@ -41,7 +41,7 @@ async def get_system_status(
                 "Qwen/Qwen3-Reranker-4B",
                 "Qwen/Qwen3-Reranker-8B",
             ]
-        
+
         return {
             "gpu_available": gpu_available,
             "reranking_available": gpu_available,  # Reranking requires GPU

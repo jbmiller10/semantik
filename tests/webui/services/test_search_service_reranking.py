@@ -2,16 +2,13 @@
 Tests for SearchService reranking functionality.
 """
 
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database.models import Collection, CollectionStatus
-from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.webui.services.search_service import SearchService
-
 
 # Database and repository fixtures are now imported from conftest.py
 
@@ -301,13 +298,11 @@ class TestSearchServiceReranking:
                 "detail": {
                     "error": "insufficient_memory",
                     "message": "Insufficient GPU memory for reranking",
-                    "suggestion": "Try using a smaller model or different quantization"
+                    "suggestion": "Try using a smaller model or different quantization",
                 }
             }
             mock_client.post.side_effect = httpx.HTTPStatusError(
-                message="507 Insufficient Storage",
-                request=MagicMock(),
-                response=mock_error_response
+                message="507 Insufficient Storage", request=MagicMock(), response=mock_error_response
             )
 
             # The service should propagate the error
@@ -358,11 +353,7 @@ class TestSearchServiceReranking:
 
             mock_client.post.side_effect = [
                 success_resp_obj,
-                httpx.HTTPStatusError(
-                    message="507 Insufficient Storage",
-                    request=MagicMock(),
-                    response=error_resp_obj
-                )
+                httpx.HTTPStatusError(message="507 Insufficient Storage", request=MagicMock(), response=error_resp_obj),
             ]
 
             result = await search_service.multi_collection_search(

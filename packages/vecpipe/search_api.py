@@ -184,8 +184,7 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     logger.info(f"Metrics server started on port {METRICS_PORT}")
 
     qdrant_client = httpx.AsyncClient(
-        base_url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}", 
-        timeout=httpx.Timeout(60.0)
+        base_url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}", timeout=httpx.Timeout(60.0)
     )
     logger.info(f"Connected to Qdrant at {settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
 
@@ -259,10 +258,12 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
                     # If it fails, try the other way
                     if model_name is None and quantization is None:
                         # Already tried without parameters, must need them
-                        return cast(dict[str, Any], self._service.get_model_info(
-                            self.current_model_name or "unknown",
-                            self.current_quantization or "float32"
-                        ))
+                        return cast(
+                            dict[str, Any],
+                            self._service.get_model_info(
+                                self.current_model_name or "unknown", self.current_quantization or "float32"
+                            ),
+                        )
                     else:
                         # Already tried with parameters, must not need them
                         return cast(dict[str, Any], self._service.get_model_info())

@@ -2,7 +2,7 @@
 """Fix all indentation issues in test_search_api.py"""
 
 # Read the file
-with open("tests/unit/test_search_api.py", "r") as f:
+with open("tests/unit/test_search_api.py") as f:
     lines = f.readlines()
 
 # Fix lines with excessive indentation (16 spaces where there should be 8)
@@ -24,6 +24,7 @@ print("\nFixed all indentation issues")
 
 # Verify it's syntactically correct
 import py_compile
+
 try:
     py_compile.compile("tests/unit/test_search_api.py", doraise=True)
     print("✓ test_search_api.py is now syntactically valid!")

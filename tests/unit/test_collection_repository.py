@@ -343,7 +343,7 @@ class TestCollectionRepository:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
-        
+
         # Test negative document count
         with pytest.raises(DatabaseOperationError) as exc_info:
             await repository.update_stats("test-id", document_count=-1)

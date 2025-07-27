@@ -6,11 +6,12 @@ import time
 from typing import Any
 
 import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from packages.shared.config import settings
 from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from packages.shared.database.models import Collection, CollectionStatus
 from packages.shared.database.repositories.collection_repository import CollectionRepository
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +27,11 @@ class SearchService:
         retry_timeout_multiplier: float = 4.0,
     ):
         """Initialize the search service.
-        
+
         Args:
             db_session: Database session for transactions
             collection_repo: Repository for collection data access
-            default_timeout: Default timeout configuration for HTTP requests. 
+            default_timeout: Default timeout configuration for HTTP requests.
                             Defaults to Timeout(timeout=30.0, connect=5.0, read=30.0, write=5.0)
             retry_timeout_multiplier: Multiplier applied to timeout values when retrying failed requests.
                                     Defaults to 4.0
@@ -155,14 +156,14 @@ class SearchService:
         self, error: httpx.HTTPStatusError, collection: Collection, retry: bool
     ) -> tuple[Collection, None, str]:
         """Handle HTTP status errors during search operations.
-        
+
         Maps HTTP status codes to appropriate error messages for user feedback.
-        
+
         Args:
             error: The HTTP status error that occurred
             collection: The collection that was being searched
             retry: Whether this error occurred during a retry attempt
-            
+
         Returns:
             Tuple of (collection, None for results, error message)
         """
@@ -186,7 +187,6 @@ class SearchService:
             None,
             f"Search failed for collection '{collection.name}'{retry_suffix} (status: {status_code})",
         )
-
 
     async def multi_collection_search(
         self,
@@ -273,11 +273,13 @@ class SearchService:
                 if results:
                     # Add collection info to each result
                     for result in results:
-                        all_results.append({
-                            "collection_id": collection.id,
-                            "collection_name": collection.name,
-                            **result,
-                        })
+                        all_results.append(
+                            {
+                                "collection_id": collection.id,
+                                "collection_name": collection.name,
+                                **result,
+                            }
+                        )
 
                 collection_results.append(
                     {

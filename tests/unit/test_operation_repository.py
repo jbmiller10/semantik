@@ -1,7 +1,6 @@
 """Unit tests for OperationRepository."""
 
 from datetime import UTC, datetime
-from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -502,7 +501,10 @@ class TestOperationRepository:
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
             await repository.cancel(sample_operation.uuid, sample_operation.user_id)
-        assert str(exc_info.value) == "Validation error on field 'status': Cannot cancel operation in OperationStatus.COMPLETED status"
+        assert (
+            str(exc_info.value)
+            == "Validation error on field 'status': Cannot cancel operation in OperationStatus.COMPLETED status"
+        )
 
     @pytest.mark.asyncio()
     async def test_get_active_operations_count(self, repository, mock_session):

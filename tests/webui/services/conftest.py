@@ -1,13 +1,14 @@
 """Shared fixtures for service tests."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from packages.shared.database.models import Collection, CollectionStatus, Operation, OperationType
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.database.repositories.operation_repository import OperationRepository
-from packages.shared.database.models import Collection, CollectionStatus, Operation, OperationType
 
 
 @pytest.fixture()
@@ -27,7 +28,7 @@ def mock_db_session() -> AsyncMock:
 def mock_collection_repo() -> AsyncMock:
     """Mock collection repository with all async methods properly configured."""
     mock = AsyncMock(spec=CollectionRepository)
-    
+
     # Configure all async methods with AsyncMock
     mock.create = AsyncMock()
     mock.get_by_id = AsyncMock()
@@ -40,7 +41,7 @@ def mock_collection_repo() -> AsyncMock:
     mock.get_by_name = AsyncMock()
     mock.list_ready_collections = AsyncMock()
     mock.get_accessible_collections = AsyncMock()
-    
+
     return mock
 
 
@@ -48,7 +49,7 @@ def mock_collection_repo() -> AsyncMock:
 def mock_operation_repo() -> AsyncMock:
     """Mock operation repository with all async methods properly configured."""
     mock = AsyncMock(spec=OperationRepository)
-    
+
     # Configure all async methods with AsyncMock
     mock.create = AsyncMock()
     mock.get_by_id = AsyncMock()
@@ -59,7 +60,7 @@ def mock_operation_repo() -> AsyncMock:
     mock.get_active_operations = AsyncMock()
     mock.get_active_operations_count = AsyncMock()
     mock.cancel_operation = AsyncMock()
-    
+
     return mock
 
 
@@ -67,7 +68,7 @@ def mock_operation_repo() -> AsyncMock:
 def mock_document_repo() -> AsyncMock:
     """Mock document repository with all async methods properly configured."""
     mock = AsyncMock(spec=DocumentRepository)
-    
+
     # Configure all async methods with AsyncMock
     mock.create = AsyncMock()
     mock.create_many = AsyncMock()
@@ -82,7 +83,7 @@ def mock_document_repo() -> AsyncMock:
     mock.count_for_collection = AsyncMock()
     mock.exists_by_hash = AsyncMock()
     mock.get_by_file_path = AsyncMock()
-    
+
     return mock
 
 
@@ -105,7 +106,7 @@ def mock_collection() -> MagicMock:
     collection.status = CollectionStatus.READY
     collection.created_at = MagicMock()
     collection.updated_at = MagicMock()
-    
+
     # Add to_dict method
     def collection_to_dict():
         return {
@@ -125,8 +126,9 @@ def mock_collection() -> MagicMock:
             "created_at": "2024-01-01T00:00:00",
             "updated_at": "2024-01-01T00:00:00",
         }
+
     collection.to_dict = MagicMock(side_effect=collection_to_dict)
-    
+
     return collection
 
 
@@ -145,7 +147,7 @@ def mock_operation() -> MagicMock:
     operation.completed_at = None
     operation.error_message = None
     operation.created_by = 1
-    
+
     # Add to_dict method
     def operation_to_dict():
         return {
@@ -161,6 +163,7 @@ def mock_operation() -> MagicMock:
             "error_message": operation.error_message,
             "created_by": operation.created_by,
         }
+
     operation.to_dict = MagicMock(side_effect=operation_to_dict)
-    
+
     return operation

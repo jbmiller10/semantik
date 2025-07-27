@@ -2,7 +2,7 @@
 """Fix indentation issue in test_celery_tasks.py at line 745"""
 
 # Read the file
-with open("tests/webui/test_celery_tasks.py", "r") as f:
+with open("tests/webui/test_celery_tasks.py") as f:
     lines = f.readlines()
 
 # Fix the indentation issue at line 744-750
@@ -22,6 +22,7 @@ print("\nFixed indentation in test_celery_tasks.py")
 
 # Verify it's syntactically correct
 import py_compile
+
 try:
     py_compile.compile("tests/webui/test_celery_tasks.py", doraise=True)
     print("✓ File is now syntactically valid!")

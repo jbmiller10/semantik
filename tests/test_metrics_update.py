@@ -4,6 +4,7 @@ import time
 
 import psutil
 import requests
+
 from packages.shared.metrics.prometheus import metrics_collector
 
 print("Testing metrics update...")

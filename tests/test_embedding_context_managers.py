@@ -4,8 +4,13 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
 from packages.shared.embedding.base import BaseEmbeddingService
-from packages.shared.embedding.context import ManagedEmbeddingService, embedding_service_context, temporary_embedding_service
+from packages.shared.embedding.context import (
+    ManagedEmbeddingService,
+    embedding_service_context,
+    temporary_embedding_service,
+)
 
 
 class MockEmbeddingService(BaseEmbeddingService):

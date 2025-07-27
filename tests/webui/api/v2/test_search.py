@@ -690,7 +690,9 @@ class TestSingleCollectionSearch:
         )
 
         # Mock service raising EntityNotFoundError
-        mock_search_service.single_collection_search.side_effect = EntityNotFoundError("Collection", search_request.collection_id)
+        mock_search_service.single_collection_search.side_effect = EntityNotFoundError(
+            "Collection", search_request.collection_id
+        )
 
         with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
             with pytest.raises(HTTPException) as exc_info:
@@ -719,7 +721,9 @@ class TestSingleCollectionSearch:
         )
 
         # Mock service raising AccessDeniedError
-        mock_search_service.single_collection_search.side_effect = AccessDeniedError(str(mock_user["id"]), "Collection", search_request.collection_id)
+        mock_search_service.single_collection_search.side_effect = AccessDeniedError(
+            str(mock_user["id"]), "Collection", search_request.collection_id
+        )
 
         with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
             with pytest.raises(HTTPException) as exc_info:
@@ -990,7 +994,9 @@ class TestMultiCollectionSearchEdgeCases:
         )
 
         # Mock service raising AccessDeniedError
-        mock_search_service.multi_collection_search.side_effect = AccessDeniedError(str(mock_user["id"]), "Collections", ",".join(search_request.collection_uuids))
+        mock_search_service.multi_collection_search.side_effect = AccessDeniedError(
+            str(mock_user["id"]), "Collections", ",".join(search_request.collection_uuids)
+        )
 
         with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
             with pytest.raises(HTTPException) as exc_info:
@@ -1170,10 +1176,10 @@ class TestSearchValidation:
     def test_too_many_collections_validation(self):
         """Test that too many collections are rejected."""
         import uuid
-        
+
         # Generate 11 valid UUIDs (exceeds max of 10)
         uuids = [str(uuid.uuid4()) for _ in range(11)]
-        
+
         with pytest.raises(ValueError):
             CollectionSearchRequest(
                 collection_uuids=uuids,
@@ -1184,9 +1190,9 @@ class TestSearchValidation:
     def test_query_length_validation(self):
         """Test query length limits."""
         import uuid
-        
+
         valid_uuid = str(uuid.uuid4())
-        
+
         # Test empty query
         with pytest.raises(ValueError):
             CollectionSearchRequest(
@@ -1194,7 +1200,7 @@ class TestSearchValidation:
                 query="",
                 k=10,
             )
-        
+
         # Test query that's too long
         with pytest.raises(ValueError):
             CollectionSearchRequest(
@@ -1206,9 +1212,9 @@ class TestSearchValidation:
     def test_k_parameter_validation(self):
         """Test k parameter limits."""
         import uuid
-        
+
         valid_uuid = str(uuid.uuid4())
-        
+
         # Test k = 0
         with pytest.raises(ValueError):
             CollectionSearchRequest(
@@ -1216,7 +1222,7 @@ class TestSearchValidation:
                 query="test",
                 k=0,
             )
-        
+
         # Test k > 100
         with pytest.raises(ValueError):
             CollectionSearchRequest(
@@ -1228,9 +1234,9 @@ class TestSearchValidation:
     def test_score_threshold_validation(self):
         """Test score threshold limits."""
         import uuid
-        
+
         valid_uuid = str(uuid.uuid4())
-        
+
         # Test negative score threshold
         with pytest.raises(ValueError):
             CollectionSearchRequest(
@@ -1239,7 +1245,7 @@ class TestSearchValidation:
                 k=10,
                 score_threshold=-0.1,
             )
-        
+
         # Test score threshold > 1.0
         with pytest.raises(ValueError):
             CollectionSearchRequest(
@@ -1252,9 +1258,9 @@ class TestSearchValidation:
     def test_hybrid_alpha_validation(self):
         """Test hybrid alpha parameter limits."""
         import uuid
-        
+
         valid_uuid = str(uuid.uuid4())
-        
+
         # Test negative alpha
         with pytest.raises(ValueError):
             CollectionSearchRequest(
@@ -1263,7 +1269,7 @@ class TestSearchValidation:
                 k=10,
                 hybrid_alpha=-0.1,
             )
-        
+
         # Test alpha > 1.0
         with pytest.raises(ValueError):
             CollectionSearchRequest(
@@ -1391,11 +1397,11 @@ class TestSearchResultFormatting:
         # Check file name extraction
         assert response.results[0].file_name == "file.txt"
         assert response.results[0].file_path == "/path/to/document/file.txt"
-        
+
         # Check empty path handling
         assert response.results[1].file_name == "Unknown"
         assert response.results[1].file_path == ""
-        
+
         # Check missing path handling
         assert response.results[2].file_name == "Unknown"
         assert response.results[2].file_path == ""

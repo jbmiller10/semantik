@@ -179,7 +179,7 @@ def calculate_cleanup_delay(vector_count: int) -> int:
     """
     # Handle negative vector count by using 0
     safe_vector_count = max(0, vector_count)
-    
+
     additional_delay = (safe_vector_count // 10000) * CLEANUP_DELAY_PER_10K_VECTORS
     total_delay = CLEANUP_DELAY_MIN_SECONDS + additional_delay
 

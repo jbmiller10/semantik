@@ -6,12 +6,13 @@ CRUD operations, source management, and reindexing functionality.
 """
 
 import uuid
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database.exceptions import (
@@ -100,41 +101,86 @@ def mock_request() -> MagicMock:
     return request
 
 
+@pytest.fixture()
+def mock_rate_limiter() -> MagicMock:
+    """Mock the rate limiter decorator to bypass rate limiting in tests."""
+
+    # Create a mock that acts as a pass-through decorator
+    def mock_limit(rate: str):
+        def decorator(func):
+            # Return the original function without modification
+            return func
+
+        return decorator
+
+    mock_limiter = MagicMock()
+    mock_limiter.limit = MagicMock(side_effect=mock_limit)
+    return mock_limiter
+
+
+@pytest.fixture(autouse=True)
+def patch_rate_limiter(mock_rate_limiter) -> None:
+    """Automatically patch the rate limiter for all tests in this module."""
+    with patch("packages.webui.api.v2.collections.limiter", mock_rate_limiter):
+        yield
+
+
+@pytest.fixture()
+def test_app(mock_user: dict[str, Any], mock_collection_service: AsyncMock) -> FastAPI:
+    """Create a test FastAPI app with dependencies overridden."""
+    from packages.webui.auth import get_current_user
+    from packages.webui.main import app
+    from packages.webui.services.factory import get_collection_service
+
+    # Override dependencies
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_collection_service] = lambda: mock_collection_service
+
+    yield app
+
+    # Clean up
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def client(test_app: FastAPI) -> TestClient:
+    """Create a test client for the FastAPI app."""
+    return TestClient(test_app)
+
+
 class TestCreateCollection:
     """Test create_collection endpoint."""
 
-    @pytest.mark.asyncio()
-    async def test_create_collection_success(
+    def test_create_collection_success(
         self,
-        mock_user: dict[str, Any],
+        client: TestClient,
         mock_collection_service: AsyncMock,
-        mock_request: MagicMock,
     ) -> None:
         """Test successful collection creation."""
         # Setup
-        create_request = CollectionCreate(
-            name="New Collection",
-            description="Test description",
-            embedding_model="Qwen/Qwen3-Embedding-0.6B",
-            quantization="float16",
-            chunk_size=1000,
-            chunk_overlap=200,
-            is_public=False,
-            metadata={"test": "value"},
-        )
+        create_request = {
+            "name": "New Collection",
+            "description": "Test description",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "chunk_size": 1000,
+            "chunk_overlap": 200,
+            "is_public": False,
+            "metadata": {"test": "value"},
+        }
 
         collection_data = {
             "id": str(uuid.uuid4()),
-            "name": create_request.name,
-            "description": create_request.description,
-            "owner_id": mock_user["id"],
+            "name": create_request["name"],
+            "description": create_request["description"],
+            "owner_id": 1,
             "vector_store_name": "qdrant_collection_name",
-            "embedding_model": create_request.embedding_model,
-            "quantization": create_request.quantization,
-            "chunk_size": create_request.chunk_size,
-            "chunk_overlap": create_request.chunk_overlap,
-            "is_public": create_request.is_public,
-            "metadata": create_request.metadata,
+            "embedding_model": create_request["embedding_model"],
+            "quantization": create_request["quantization"],
+            "chunk_size": create_request["chunk_size"],
+            "chunk_overlap": create_request["chunk_overlap"],
+            "is_public": create_request["is_public"],
+            "metadata": create_request["metadata"],
             "created_at": datetime.now(UTC),
             "updated_at": datetime.now(UTC),
             "document_count": 0,
@@ -155,104 +201,76 @@ class TestCreateCollection:
         mock_collection_service.create_collection.return_value = (collection_data, operation_data)
 
         # Execute
-        result = await create_collection(
-            request=mock_request,
-            create_request=create_request,
-            current_user=mock_user,
-            service=mock_collection_service,
-        )
+        response = client.post("/api/v2/collections", json=create_request)
 
         # Verify
-        assert isinstance(result, CollectionResponse)
-        assert result.name == create_request.name
-        assert result.description == create_request.description
-        assert result.embedding_model == create_request.embedding_model
-        assert result.initial_operation_id == operation_data["uuid"]
+        assert response.status_code == 201
+        result = response.json()
+        assert result["name"] == create_request["name"]
+        assert result["description"] == create_request["description"]
+        assert result["embedding_model"] == create_request["embedding_model"]
+        assert result["initial_operation_id"] == operation_data["uuid"]
 
         mock_collection_service.create_collection.assert_called_once_with(
-            user_id=mock_user["id"],
-            name=create_request.name,
-            description=create_request.description,
+            user_id=1,
+            name=create_request["name"],
+            description=create_request["description"],
             config={
-                "embedding_model": create_request.embedding_model,
-                "quantization": create_request.quantization,
-                "chunk_size": create_request.chunk_size,
-                "chunk_overlap": create_request.chunk_overlap,
-                "is_public": create_request.is_public,
-                "metadata": create_request.metadata,
+                "embedding_model": create_request["embedding_model"],
+                "quantization": create_request["quantization"],
+                "chunk_size": create_request["chunk_size"],
+                "chunk_overlap": create_request["chunk_overlap"],
+                "is_public": create_request["is_public"],
+                "metadata": create_request["metadata"],
             },
         )
 
-    @pytest.mark.asyncio()
-    async def test_create_collection_duplicate_name(
+    def test_create_collection_duplicate_name(
         self,
-        mock_user: dict[str, Any],
+        client: TestClient,
         mock_collection_service: AsyncMock,
-        mock_request: MagicMock,
     ) -> None:
         """Test 409 error when collection name already exists."""
-        create_request = CollectionCreate(name="Existing Collection")
+        create_request = {"name": "Existing Collection"}
 
         mock_collection_service.create_collection.side_effect = EntityAlreadyExistsError(
             "Collection", "Existing Collection"
         )
 
-        with pytest.raises(HTTPException) as exc_info:
-            await create_collection(
-                request=mock_request,
-                create_request=create_request,
-                current_user=mock_user,
-                service=mock_collection_service,
-            )
+        response = client.post("/api/v2/collections", json=create_request)
 
-        assert exc_info.value.status_code == 409
-        assert "already exists" in str(exc_info.value.detail)
+        assert response.status_code == 409
+        assert "already exists" in response.json()["detail"]
 
-    @pytest.mark.asyncio()
-    async def test_create_collection_invalid_data(
+    def test_create_collection_invalid_data(
         self,
-        mock_user: dict[str, Any],
+        client: TestClient,
         mock_collection_service: AsyncMock,
-        mock_request: MagicMock,
     ) -> None:
         """Test 400 error for invalid collection data."""
-        create_request = CollectionCreate(name="Invalid Collection", chunk_size=10000)
+        create_request = {"name": "Invalid Collection", "chunk_size": 10000}
 
         mock_collection_service.create_collection.side_effect = ValueError("Invalid chunk size")
 
-        with pytest.raises(HTTPException) as exc_info:
-            await create_collection(
-                request=mock_request,
-                create_request=create_request,
-                current_user=mock_user,
-                service=mock_collection_service,
-            )
+        response = client.post("/api/v2/collections", json=create_request)
 
-        assert exc_info.value.status_code == 400
-        assert "Invalid chunk size" in str(exc_info.value.detail)
+        assert response.status_code == 400
+        assert "Invalid chunk size" in response.json()["detail"]
 
-    @pytest.mark.asyncio()
-    async def test_create_collection_service_error(
+    def test_create_collection_service_error(
         self,
-        mock_user: dict[str, Any],
+        client: TestClient,
         mock_collection_service: AsyncMock,
-        mock_request: MagicMock,
     ) -> None:
         """Test 500 error for service failures."""
-        create_request = CollectionCreate(name="Test Collection")
+        create_request = {"name": "Test Collection"}
 
         mock_collection_service.create_collection.side_effect = Exception("Database error")
 
-        with pytest.raises(HTTPException) as exc_info:
-            await create_collection(
-                request=mock_request,
-                create_request=create_request,
-                current_user=mock_user,
-                service=mock_collection_service,
-            )
+        response = client.post("/api/v2/collections", json=create_request)
 
-        assert exc_info.value.status_code == 500
-        assert "Failed to create collection" in str(exc_info.value.detail)
+        assert response.status_code == 500
+        assert "Failed to create collection" in response.json()["detail"]
 
 
 class TestListCollections:
@@ -328,6 +346,9 @@ class TestListCollections:
 
         with pytest.raises(HTTPException) as exc_info:
             await list_collections(
+                page=1,
+                per_page=50,
+                include_public=True,
                 current_user=mock_user,
                 service=mock_collection_service,
             )
@@ -339,15 +360,26 @@ class TestListCollections:
 class TestGetCollection:
     """Test get_collection endpoint."""
 
-    @pytest.mark.asyncio()
-    async def test_get_collection_success(self, mock_collection: MagicMock) -> None:
+    def test_get_collection_success(
+        self,
+        client: TestClient,
+        mock_collection: MagicMock,
+        test_app: FastAPI,
+    ) -> None:
         """Test successful collection retrieval."""
-        result = await get_collection(collection=mock_collection)
-
-        assert isinstance(result, CollectionResponse)
-        assert result.id == mock_collection.id
-        assert result.name == mock_collection.name
-        assert result.description == mock_collection.description
+        # We need to override the get_collection_for_user dependency
+        from packages.webui.dependencies import get_collection_for_user
+        
+        test_app.dependency_overrides[get_collection_for_user] = lambda: mock_collection
+        
+        collection_uuid = mock_collection.id
+        response = client.get(f"/api/v2/collections/{collection_uuid}")
+        
+        assert response.status_code == 200
+        result = response.json()
+        assert result["id"] == mock_collection.id
+        assert result["name"] == mock_collection.name
+        assert result["description"] == mock_collection.description
 
 
 class TestUpdateCollection:
@@ -379,7 +411,7 @@ class TestUpdateCollection:
         )
 
         assert isinstance(result, CollectionResponse)
-        
+
         mock_collection_service.update.assert_called_once_with(
             collection_id=collection_uuid,
             user_id=mock_user["id"],
@@ -451,7 +483,9 @@ class TestUpdateCollection:
         collection_uuid = str(uuid.uuid4())
         update_request = CollectionUpdate(name="Updated Name")
 
-        mock_collection_service.update.side_effect = AccessDeniedError(str(mock_user["id"]), "Collection", collection_uuid)
+        mock_collection_service.update.side_effect = AccessDeniedError(
+            str(mock_user["id"]), "Collection", collection_uuid
+        )
 
         with pytest.raises(HTTPException) as exc_info:
             await update_collection(
@@ -494,12 +528,22 @@ class TestUpdateCollection:
         mock_collection_service: AsyncMock,
     ) -> None:
         """Test 400 error for validation failures."""
+        from pydantic import ValidationError as PydanticValidationError
+
         collection_uuid = str(uuid.uuid4())
-        update_request = CollectionUpdate(name="Invalid/Name")
 
-        mock_collection_service.update.side_effect = ValidationError("Invalid name format")
+        # Test that invalid names are rejected at the Pydantic model level
+        with pytest.raises(PydanticValidationError) as exc_info:
+            CollectionUpdate(name="Invalid/Name")
 
-        with pytest.raises(HTTPException) as exc_info:
+        # Verify the validation error contains information about the invalid pattern
+        assert "pattern" in str(exc_info.value) or "string does not match regex" in str(exc_info.value)
+
+        # Also test service-level validation errors
+        update_request = CollectionUpdate(name="ValidName")
+        mock_collection_service.update.side_effect = ValidationError("Service validation failed")
+
+        with pytest.raises(HTTPException) as http_exc_info:
             await update_collection(
                 collection_uuid=collection_uuid,
                 request=update_request,
@@ -507,8 +551,8 @@ class TestUpdateCollection:
                 service=mock_collection_service,
             )
 
-        assert exc_info.value.status_code == 400
-        assert "Invalid name format" in str(exc_info.value.detail)
+        assert http_exc_info.value.status_code == 400
+        assert "Service validation failed" in str(http_exc_info.value.detail)
 
 
 class TestDeleteCollection:
@@ -572,7 +616,9 @@ class TestDeleteCollection:
         """Test 403 error when user lacks permission."""
         collection_uuid = str(uuid.uuid4())
 
-        mock_collection_service.delete_collection.side_effect = AccessDeniedError(str(mock_user["id"]), "Collection", collection_uuid)
+        mock_collection_service.delete_collection.side_effect = AccessDeniedError(
+            str(mock_user["id"]), "Collection", collection_uuid
+        )
 
         with pytest.raises(HTTPException) as exc_info:
             await delete_collection(
@@ -614,19 +660,17 @@ class TestDeleteCollection:
 class TestAddSource:
     """Test add_source endpoint."""
 
-    @pytest.mark.asyncio()
-    async def test_add_source_success(
+    def test_add_source_success(
         self,
-        mock_user: dict[str, Any],
+        client: TestClient,
         mock_collection_service: AsyncMock,
-        mock_request: MagicMock,
     ) -> None:
         """Test successful source addition."""
         collection_uuid = str(uuid.uuid4())
-        add_source_request = AddSourceRequest(
-            source_path="/data/documents",
-            config={"recursive": True},
-        )
+        add_source_request = {
+            "source_path": "/data/documents",
+            "config": {"recursive": True},
+        }
 
         operation_data = {
             "uuid": str(uuid.uuid4()),
@@ -634,31 +678,29 @@ class TestAddSource:
             "type": "add_source",
             "status": "pending",
             "config": {
-                "source_path": add_source_request.source_path,
-                **add_source_request.config,
+                "source_path": add_source_request["source_path"],
+                **add_source_request["config"],
             },
             "created_at": datetime.now(UTC),
         }
 
         mock_collection_service.add_source.return_value = operation_data
 
-        result = await add_source(
-            request=mock_request,
-            collection_uuid=collection_uuid,
-            add_source_request=add_source_request,
-            current_user=mock_user,
-            service=mock_collection_service,
+        response = client.post(
+            f"/api/v2/collections/{collection_uuid}/sources",
+            json=add_source_request
         )
-
-        assert isinstance(result, OperationResponse)
-        assert result.id == operation_data["uuid"]
-        assert result.type == "add_source"
+        
+        assert response.status_code == 202
+        result = response.json()
+        assert result["id"] == operation_data["uuid"]
+        assert result["type"] == "add_source"
 
         mock_collection_service.add_source.assert_called_once_with(
             collection_id=collection_uuid,
-            user_id=mock_user["id"],
-            source_path=add_source_request.source_path,
-            source_config=add_source_request.config,
+            user_id=1,
+            source_path=add_source_request["source_path"],
+            source_config=add_source_request["config"],
         )
 
     @pytest.mark.asyncio()
@@ -697,9 +739,7 @@ class TestAddSource:
         collection_uuid = str(uuid.uuid4())
         add_source_request = AddSourceRequest(source_path="/data/documents")
 
-        mock_collection_service.add_source.side_effect = InvalidStateError(
-            "Collection is currently being reindexed"
-        )
+        mock_collection_service.add_source.side_effect = InvalidStateError("Collection is currently being reindexed")
 
         with pytest.raises(HTTPException) as exc_info:
             await add_source(
@@ -899,6 +939,7 @@ class TestListCollectionOperations:
         # Create operations with different statuses and types
         operation1 = MagicMock(spec=Operation)
         operation1.uuid = str(uuid.uuid4())
+        operation1.collection_id = collection_uuid  # Fix: Add proper string value
         operation1.type = OperationType.INDEX
         operation1.status = OperationStatus.COMPLETED
         operation1.config = {}
@@ -909,6 +950,7 @@ class TestListCollectionOperations:
 
         operation2 = MagicMock(spec=Operation)
         operation2.uuid = str(uuid.uuid4())
+        operation2.collection_id = collection_uuid  # Fix: Add proper string value
         operation2.type = OperationType.REINDEX
         operation2.status = OperationStatus.PROCESSING
         operation2.config = {}
@@ -1155,7 +1197,9 @@ class TestListCollectionDocuments:
         """Test 403 error when user lacks access."""
         collection_uuid = str(uuid.uuid4())
 
-        mock_collection_service.list_documents.side_effect = AccessDeniedError(str(mock_user["id"]), "Collection", collection_uuid)
+        mock_collection_service.list_documents.side_effect = AccessDeniedError(
+            str(mock_user["id"]), "Collection", collection_uuid
+        )
 
         with pytest.raises(HTTPException) as exc_info:
             await list_collection_documents(

@@ -13,16 +13,17 @@ and error handling with proper mocking of external dependencies.
 
 import asyncio
 import json
-import time
-import uuid
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from celery import states
-from celery.exceptions import SoftTimeLimitExceeded
-from qdrant_client.models import PointStruct
 
+from packages.shared.database.models import (
+    CollectionStatus,
+    DocumentStatus,
+    OperationStatus,
+    OperationType,
+)
 from packages.webui.tasks import (
     CeleryTaskWithOperationUpdates,
     _handle_task_failure,
@@ -38,15 +39,9 @@ from packages.webui.tasks import (
     cleanup_qdrant_collections,
     process_collection_operation,
 )
-from packages.shared.database.models import (
-    CollectionStatus,
-    DocumentStatus,
-    OperationStatus,
-    OperationType,
-)
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_updater():
     """Create mock operation updater."""
     updater = AsyncMock()
@@ -92,7 +87,7 @@ class TestCeleryTaskHelpers:
 class TestCeleryTaskWithOperationUpdates:
     """Test the operation updates helper class."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_redis(self):
         """Create a mock Redis client."""
         mock = AsyncMock()
@@ -102,7 +97,7 @@ class TestCeleryTaskWithOperationUpdates:
         mock.ping = AsyncMock()
         return mock
 
-    @pytest.fixture
+    @pytest.fixture()
     def updater(self):
         """Create an updater instance."""
         return CeleryTaskWithOperationUpdates("test-op-123")
@@ -141,14 +136,14 @@ class TestCeleryTaskWithOperationUpdates:
     async def test_send_update_handles_errors(self, updater, mock_redis):
         """Test graceful error handling in send_update."""
         mock_redis.xadd.side_effect = Exception("Redis error")
-        
+
         # Patch redis.asyncio.from_url to return the mock directly
         with patch("redis.asyncio.from_url", return_value=mock_redis):
             # Need to use the context manager to initialize the connection
             async with updater:
                 # Should not raise exception
                 await updater.send_update("error_test", {})
-                
+
                 # Error was attempted
                 mock_redis.xadd.assert_called_once()
 
@@ -156,7 +151,7 @@ class TestCeleryTaskWithOperationUpdates:
 class TestProcessCollectionOperation:
     """Test the main process_collection_operation task."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_celery_task(self):
         """Create a mock Celery task instance."""
         task = Mock()
@@ -164,7 +159,7 @@ class TestProcessCollectionOperation:
         task.retry = Mock(side_effect=Exception("Retry called"))
         return task
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_repositories(self):
         """Create mock repository instances."""
         # Operation repository
@@ -196,14 +191,10 @@ class TestProcessCollectionOperation:
         document_repo.get_stats_by_collection.return_value = {
             "total_documents": 10,
             "total_chunks": 100,
-            "total_size_bytes": 1024000
+            "total_size_bytes": 1024000,
         }
 
-        return {
-            "operation": operation_repo,
-            "collection": collection_repo,
-            "document": document_repo
-        }
+        return {"operation": operation_repo, "collection": collection_repo, "document": document_repo}
 
     @patch("packages.webui.tasks.pg_connection_manager")
     @patch("packages.webui.tasks.AsyncSessionLocal")
@@ -220,7 +211,7 @@ class TestProcessCollectionOperation:
         mock_session_local,
         mock_pg_manager,
         mock_repositories,
-        mock_celery_task
+        mock_celery_task,
     ):
         """Test successful INDEX operation processing."""
         # Setup psutil mock
@@ -231,7 +222,7 @@ class TestProcessCollectionOperation:
         mock_process_instance.cpu_times.return_value = mock_cpu_times
         mock_process_instance.memory_info.return_value = Mock(rss=1024000)
         mock_process.return_value = mock_process_instance
-        
+
         # Setup mocks
         mock_session = AsyncMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -249,16 +240,14 @@ class TestProcessCollectionOperation:
             mock_process_index.return_value = {
                 "success": True,
                 "qdrant_collection": "test_collection_vec",
-                "vector_dim": 1024
+                "vector_dim": 1024,
             }
 
             # Run the task
             result = await _process_collection_operation_async("op-123", mock_celery_task)
 
             # Verify task ID was set immediately
-            mock_repositories["operation"].set_task_id.assert_called_once_with(
-                "op-123", "celery-task-123"
-            )
+            mock_repositories["operation"].set_task_id.assert_called_once_with("op-123", "celery-task-123")
 
             # Verify operation status updates
             status_calls = mock_repositories["operation"].update_status.call_args_list
@@ -267,9 +256,7 @@ class TestProcessCollectionOperation:
             assert status_calls[-1][0] == ("op-123", OperationStatus.COMPLETED)
 
             # Verify collection status was updated
-            mock_repositories["collection"].update_status.assert_called_with(
-                "col-123", CollectionStatus.READY
-            )
+            mock_repositories["collection"].update_status.assert_called_with("col-123", CollectionStatus.READY)
 
             # Verify result
             assert result["success"] is True
@@ -290,7 +277,7 @@ class TestProcessCollectionOperation:
         mock_session_local,
         mock_pg_manager,
         mock_repositories,
-        mock_celery_task
+        mock_celery_task,
     ):
         """Test failure handling in process_collection_operation."""
         # Setup psutil mock
@@ -301,7 +288,7 @@ class TestProcessCollectionOperation:
         mock_process_instance.cpu_times.return_value = mock_cpu_times
         mock_process_instance.memory_info.return_value = Mock(rss=1024000)
         mock_process.return_value = mock_process_instance
-        
+
         # Setup mocks
         mock_session = AsyncMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -336,14 +323,14 @@ class TestProcessCollectionOperation:
         mock_loop = Mock()
         mock_loop.is_closed.return_value = False
         mock_loop.run_until_complete.return_value = {"success": True}
-        
+
         with patch("packages.webui.tasks.asyncio.get_event_loop", return_value=mock_loop):
             # Import the actual function to test
             from packages.webui.tasks import process_collection_operation
-            
+
             # Call sync wrapper - self is the first parameter for bound tasks
             result = process_collection_operation(mock_celery_task, "op-123")
-            
+
             # Verify async function was called via run_until_complete
             mock_loop.run_until_complete.assert_called_once()
             # Get the coroutine that was passed to run_until_complete
@@ -358,15 +345,15 @@ class TestProcessCollectionOperation:
         mock_loop = Mock()
         mock_loop.is_closed.return_value = False
         mock_loop.run_until_complete.side_effect = Exception("Network error")
-        
+
         with patch("packages.webui.tasks.asyncio.get_event_loop", return_value=mock_loop):
             # Import the actual function to test
             from packages.webui.tasks import process_collection_operation
-            
+
             # Call sync wrapper - should retry (self is the first parameter for bound tasks)
             with pytest.raises(Exception, match="Retry called"):
                 process_collection_operation(mock_celery_task, "op-123")
-            
+
             # Verify retry was called with the exception
             mock_celery_task.retry.assert_called_once()
             retry_call = mock_celery_task.retry.call_args
@@ -378,124 +365,109 @@ class TestProcessCollectionOperation:
 class TestIndexOperation:
     """Test INDEX operation processing."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_qdrant_manager(self):
         """Create mock Qdrant manager."""
         manager = Mock()
         client = Mock()
         manager.get_client.return_value = client
-        
+
         # Mock successful collection creation
         client.create_collection = Mock()
         collection_info = Mock()
         collection_info.vectors_count = 0
         client.get_collection.return_value = collection_info
-        
+
         return manager
 
     @patch("packages.webui.tasks.qdrant_manager")
     @patch("packages.webui.tasks.get_model_config")
     async def test_process_index_operation_success(
-        self,
-        mock_get_model_config,
-        mock_qdrant_global,
-        mock_qdrant_manager,
-        mock_updater
+        self, mock_get_model_config, mock_qdrant_global, mock_qdrant_manager, mock_updater
     ):
         """Test successful INDEX operation."""
         # Setup mocks
         mock_qdrant_global.get_client.return_value = mock_qdrant_manager.get_client()
         mock_get_model_config.return_value = Mock(dimension=1536)
-        
+
         operation = {
             "id": "op-123",
             "collection_id": "col-123",
             "type": OperationType.INDEX,
             "config": {},
-            "user_id": 1
+            "user_id": 1,
         }
-        
+
         collection = {
             "id": "col-123",
             "uuid": "col-123",
             "name": "Test Collection",
             "vector_store_name": "col_test_123",
             "config": {"vector_dim": 1536},
-            "embedding_model": "test-model"
+            "embedding_model": "test-model",
         }
-        
+
         collection_repo = AsyncMock()
         collection_repo.update = AsyncMock()
-        
+
         document_repo = AsyncMock()
-        
+
         # Run operation
-        result = await _process_index_operation(
-            operation, collection, collection_repo, document_repo, mock_updater
-        )
-        
+        result = await _process_index_operation(operation, collection, collection_repo, document_repo, mock_updater)
+
         # Verify collection was created in Qdrant
         client = mock_qdrant_manager.get_client()
         client.create_collection.assert_called_once()
         call_args = client.create_collection.call_args
         assert call_args[1]["collection_name"] == "col_test_123"
-        
+
         # Verify collection was updated in database
-        collection_repo.update.assert_called_once_with(
-            "col-123", {"vector_store_name": "col_test_123"}
-        )
-        
+        collection_repo.update.assert_called_once_with("col-123", {"vector_store_name": "col_test_123"})
+
         # Verify success response
         assert result["success"] is True
         assert result["qdrant_collection"] == "col_test_123"
         assert result["vector_dim"] == 1536
-        
+
         # Verify updates were sent
         mock_updater.send_update.assert_called()
 
     @patch("packages.webui.tasks.qdrant_manager")
-    async def test_process_index_operation_qdrant_failure(
-        self,
-        mock_qdrant_global,
-        mock_qdrant_manager,
-        mock_updater
-    ):
+    async def test_process_index_operation_qdrant_failure(self, mock_qdrant_global, mock_qdrant_manager, mock_updater):
         """Test INDEX operation when Qdrant fails."""
         # Setup mocks
         client = mock_qdrant_manager.get_client()
         client.create_collection.side_effect = Exception("Qdrant unavailable")
         mock_qdrant_global.get_client.return_value = client
-        
+
         operation = {
             "id": "op-123",
             "collection_id": "col-123",
             "type": OperationType.INDEX,
             "config": {},
-            "user_id": 1
+            "user_id": 1,
         }
-        
+
         collection = {
             "id": "col-123",
             "uuid": "col-123",
             "name": "Test Collection",
             "vector_store_name": None,
-            "config": {}
+            "config": {},
         }
-        
+
         collection_repo = AsyncMock()
         document_repo = AsyncMock()
-        
+
         # Run operation and expect failure
         with pytest.raises(Exception, match="Qdrant unavailable"):
-            await _process_index_operation(
-                operation, collection, collection_repo, document_repo, mock_updater
-            )
+            await _process_index_operation(operation, collection, collection_repo, document_repo, mock_updater)
 
 
 class TestAppendOperation:
     """Test APPEND operation processing."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_document_scanner(self):
         """Create mock document scanner."""
         scanner = AsyncMock()
@@ -504,11 +476,11 @@ class TestAppendOperation:
             "new_documents_registered": 8,
             "duplicate_documents_skipped": 2,
             "total_size_bytes": 1024000,
-            "errors": []
+            "errors": [],
         }
         return scanner
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_documents(self):
         """Create mock documents."""
         docs = []
@@ -533,17 +505,18 @@ class TestAppendOperation:
         mock_scanner_class,
         mock_document_scanner,
         mock_documents,
-        mock_updater
+        mock_updater,
     ):
         """Test successful APPEND operation."""
         # Setup mocks
         mock_scanner_class.return_value = mock_document_scanner
-        
+
         # Mock executor for text extraction
         async def mock_extract_result():
             return [("This is test content", {"page": 1})]
+
         mock_executor.submit.return_value.result.return_value = [("This is test content", {"page": 1})]
-        
+
         # Mock httpx client for vecpipe API
         mock_client = AsyncMock()
         mock_response = Mock()
@@ -551,22 +524,22 @@ class TestAppendOperation:
         mock_response.json.return_value = {"embeddings": [[0.1] * 1024]}
         mock_client.post.return_value = mock_response
         mock_httpx.return_value.__aenter__.return_value = mock_client
-        
+
         # Mock Qdrant
         qdrant_client = Mock()
         collection_info = Mock()
         collection_info.points_count = 100
         qdrant_client.get_collection.return_value = collection_info
         mock_qdrant_global.get_client.return_value = qdrant_client
-        
+
         operation = {
             "id": "op-123",
             "collection_id": "col-123",
             "type": OperationType.APPEND,
             "config": {"source_path": "/test/documents"},
-            "user_id": 1
+            "user_id": 1,
         }
-        
+
         collection = {
             "id": "col-123",
             "uuid": "col-123",
@@ -575,12 +548,12 @@ class TestAppendOperation:
             "embedding_model": "test-model",
             "quantization": "float32",
             "chunk_size": 1000,
-            "chunk_overlap": 200
+            "chunk_overlap": 200,
         }
-        
+
         collection_repo = AsyncMock()
         collection_repo.update_stats = AsyncMock()
-        
+
         document_repo = AsyncMock()
         document_repo.session = AsyncMock()
         document_repo.list_by_collection.return_value = (mock_documents, 3)
@@ -588,63 +561,55 @@ class TestAppendOperation:
         document_repo.get_stats_by_collection.return_value = {
             "total_documents": 10,
             "total_chunks": 100,
-            "total_size_bytes": 1024000
+            "total_size_bytes": 1024000,
         }
-        
+
         # Run operation
-        result = await _process_append_operation(
-            operation, collection, collection_repo, document_repo, mock_updater
-        )
-        
+        result = await _process_append_operation(operation, collection, collection_repo, document_repo, mock_updater)
+
         # Verify document scanning
         mock_document_scanner.scan_directory_and_register_documents.assert_called_once()
         scan_args = mock_document_scanner.scan_directory_and_register_documents.call_args
         assert scan_args[1]["collection_id"] == "col-123"
         assert scan_args[1]["source_path"] == "/test/documents"
-        
+
         # Verify embeddings were generated
         assert mock_client.post.call_count >= 1
         embed_call = mock_client.post.call_args_list[0]
         assert "http://vecpipe:8000/embed" in embed_call[0][0]
-        
+
         # Verify success response
         assert result["success"] is True
         assert result["documents_added"] == 8
         assert result["source_path"] == "/test/documents"
-        
+
         # Verify progress updates
         mock_updater.send_update.assert_called()
 
     @patch("webui.services.document_scanning_service.DocumentScanningService")
-    async def test_process_append_operation_no_source_path(
-        self,
-        mock_scanner_class,
-        mock_updater
-    ):
+    async def test_process_append_operation_no_source_path(self, mock_scanner_class, mock_updater):
         """Test APPEND operation without source_path."""
         operation = {
             "id": "op-123",
             "collection_id": "col-123",
             "type": OperationType.APPEND,
             "config": {},  # Missing source_path
-            "user_id": 1
+            "user_id": 1,
         }
-        
+
         collection = {"id": "col-123"}
         collection_repo = AsyncMock()
         document_repo = AsyncMock()
-        
+
         # Should raise ValueError
         with pytest.raises(ValueError, match="source_path is required"):
-            await _process_append_operation(
-                operation, collection, collection_repo, document_repo, mock_updater
-            )
+            await _process_append_operation(operation, collection, collection_repo, document_repo, mock_updater)
 
 
 class TestReindexOperation:
     """Test REINDEX operation processing."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_qdrant_manager_instance(self):
         """Create mock QdrantManager instance."""
         manager = Mock()
@@ -668,23 +633,23 @@ class TestReindexOperation:
         mock_qdrant_global,
         mock_qdrant_manager_class,
         mock_qdrant_manager_instance,
-        mock_updater
+        mock_updater,
     ):
         """Test successful REINDEX operation."""
         # Setup mocks
         mock_qdrant_manager_class.return_value = mock_qdrant_manager_instance
         qdrant_client = Mock()
         mock_qdrant_global.get_client.return_value = qdrant_client
-        
+
         # Mock reindex handler by patching the actual function call
         with patch("packages.webui.tasks.reindex_handler") as mock_reindex_handler:
             mock_reindex_handler.return_value = {
                 "collection_name": "staging_col_123_20240115_120000",
                 "created_at": datetime.now(UTC).isoformat(),
                 "vector_dim": 1536,
-                "base_collection": "col_test_123"
+                "base_collection": "col_test_123",
             }
-        
+
         # Mock validation
         mock_validate.return_value = {
             "passed": True,
@@ -692,9 +657,9 @@ class TestReindexOperation:
             "warnings": [],
             "sample_size": 10,
             "old_count": 1000,
-            "new_count": 1050
+            "new_count": 1050,
         }
-        
+
         # Mock internal API call for atomic switch
         mock_client = AsyncMock()
         mock_response = Mock()
@@ -702,21 +667,21 @@ class TestReindexOperation:
         mock_response.json.return_value = {"old_collection_names": ["col_test_123_old"]}
         mock_client.post.return_value = mock_response
         mock_httpx.return_value.__aenter__.return_value = mock_client
-        
+
         # Mock text extraction
         mock_executor.submit.return_value.result.return_value = [("Test content", {"page": 1})]
-        
+
         # Mock cleanup task
         mock_cleanup_task.apply_async.return_value = Mock(id="cleanup-task-123")
-        
+
         operation = {
             "id": "op-123",
             "collection_id": "col-123",
             "type": OperationType.REINDEX,
             "config": {"new_config": {"chunk_size": 800}},
-            "user_id": 1
+            "user_id": 1,
         }
-        
+
         collection = {
             "id": "col-123",
             "uuid": "col-123",
@@ -727,12 +692,12 @@ class TestReindexOperation:
             "vector_count": 1000,
             "embedding_model": "test-model",
             "quantization": "float32",
-            "chunk_overlap": 200
+            "chunk_overlap": 200,
         }
-        
+
         collection_repo = AsyncMock()
         collection_repo.update = AsyncMock()
-        
+
         document_repo = AsyncMock()
         document_repo.get_stats_by_collection.return_value = {"total_documents": 10}
         # list_by_collection returns a tuple of (documents, count)
@@ -741,29 +706,26 @@ class TestReindexOperation:
         mock_doc.file_path = "/test/doc1.txt"
         mock_doc.status = DocumentStatus.COMPLETED
         document_repo.list_by_collection.return_value = ([mock_doc], 1)
-        
+
         # Run operation
-        result = await _process_reindex_operation(
-            operation, collection, collection_repo, document_repo, mock_updater
-        )
-        
+        result = await _process_reindex_operation(operation, collection, collection_repo, document_repo, mock_updater)
+
         # Verify staging collection was created
         mock_reindex_handler.assert_called_once()
-        
+
         # Verify validation was performed
         mock_validate.assert_called_once()
         validate_args = mock_validate.call_args[0]
         assert validate_args[1] == "col_test_123"
         assert validate_args[2] == "staging_col_123_20240115_120000"
-        
+
         # Verify atomic switch was called
-        api_calls = [call for call in mock_client.post.call_args_list 
-                     if "internal/complete-reindex" in str(call)]
+        api_calls = [call for call in mock_client.post.call_args_list if "internal/complete-reindex" in str(call)]
         assert len(api_calls) == 1
-        
+
         # Verify cleanup was scheduled
         mock_cleanup_task.apply_async.assert_called_once()
-        
+
         # Verify success response
         assert result["success"] is True
         assert result["new_collection"] == "staging_col_123_20240115_120000"
@@ -772,11 +734,7 @@ class TestReindexOperation:
     @patch("packages.webui.tasks.QdrantManager")
     @patch("packages.webui.tasks.qdrant_manager")
     async def test_process_reindex_operation_validation_failure(
-        self,
-        mock_qdrant_global,
-        mock_qdrant_manager_class,
-        mock_qdrant_manager_instance,
-        mock_updater
+        self, mock_qdrant_global, mock_qdrant_manager_class, mock_qdrant_manager_instance, mock_updater
     ):
         """Test REINDEX operation with validation failure."""
         # Setup mocks
@@ -784,28 +742,25 @@ class TestReindexOperation:
         qdrant_client = Mock()
         qdrant_client.delete_collection = Mock()
         mock_qdrant_global.get_client.return_value = qdrant_client
-        
+
         with patch("packages.webui.tasks.reindex_handler") as mock_handler:
-            mock_handler.return_value = {
-                "collection_name": "staging_col_123",
-                "vector_dim": 1536
-            }
-            
+            mock_handler.return_value = {"collection_name": "staging_col_123", "vector_dim": 1536}
+
             with patch("packages.webui.tasks._validate_reindex") as mock_validate:
                 mock_validate.return_value = {
                     "passed": False,
                     "issues": ["Vector count mismatch: 1000 -> 500"],
-                    "sample_size": 10
+                    "sample_size": 10,
                 }
-                
+
                 operation = {
                     "id": "op-123",
                     "collection_id": "col-123",
                     "type": OperationType.REINDEX,
                     "config": {},
-                    "user_id": 1
+                    "user_id": 1,
                 }
-                
+
                 collection = {
                     "id": "col-123",
                     "uuid": "col-123",
@@ -814,23 +769,23 @@ class TestReindexOperation:
                     "config": {"chunk_size": 1000},
                     "embedding_model": "test-model",
                     "quantization": "float32",
-                    "chunk_overlap": 200
+                    "chunk_overlap": 200,
                 }
-                
+
                 collection_repo = AsyncMock()
                 collection_repo.update = AsyncMock()
-                
+
                 document_repo = AsyncMock()
                 document_repo.get_stats_by_collection.return_value = {"total_documents": 10}
                 # list_by_collection returns a tuple of (documents, count)
                 document_repo.list_by_collection.return_value = ([], 0)
-                
+
                 # Should raise validation error
                 with pytest.raises(ValueError, match="Reindex validation failed"):
                     await _process_reindex_operation(
                         operation, collection, collection_repo, document_repo, mock_updater
                     )
-                
+
                 # Verify staging collection was cleaned up
                 qdrant_client.delete_collection.assert_called_with("staging_col_123")
                 collection_repo.update.assert_called_with("col-123", {"qdrant_staging": None})
@@ -840,11 +795,7 @@ class TestRemoveSourceOperation:
     """Test REMOVE_SOURCE operation processing."""
 
     @patch("packages.webui.tasks.AsyncSessionLocal")
-    async def test_process_remove_source_operation_success(
-        self,
-        mock_session_local,
-        mock_updater
-    ):
+    async def test_process_remove_source_operation_success(self, mock_session_local, mock_updater):
         """Test successful REMOVE_SOURCE operation."""
         # Setup mocks
         mock_session = AsyncMock()
@@ -854,25 +805,25 @@ class TestRemoveSourceOperation:
         mock_session.begin.return_value.__aenter__ = AsyncMock()
         mock_session.begin.return_value.__aexit__ = AsyncMock()
         mock_session_local.return_value = mock_session
-        
+
         operation = {
             "id": "op-123",
             "collection_id": "col-123",
             "type": OperationType.REMOVE_SOURCE,
             "config": {"source_path": "/test/old_docs"},
-            "user_id": 1
+            "user_id": 1,
         }
-        
+
         collection = {
             "id": "col-123",
             "uuid": "col-123",
             "name": "Test Collection",
             "vector_store_name": "col_test_123",
-            "vector_count": 1000
+            "vector_count": 1000,
         }
-        
+
         collection_repo = AsyncMock()
-        
+
         document_repo = AsyncMock()
         # Create mock document objects
         doc1 = Mock()
@@ -887,9 +838,9 @@ class TestRemoveSourceOperation:
         document_repo.get_stats_by_collection.return_value = {
             "total_documents": 8,
             "total_chunks": 80,
-            "total_size_bytes": 800000
+            "total_size_bytes": 800000,
         }
-        
+
         # Mock the document and collection repos created in transaction
         with patch("packages.webui.tasks.DocumentRepository") as mock_doc_repo_class:
             with patch("packages.webui.tasks.CollectionRepository") as mock_col_repo_class:
@@ -898,56 +849,51 @@ class TestRemoveSourceOperation:
                 mock_doc_repo_tx.get_stats_by_collection.return_value = {
                     "total_documents": 8,
                     "total_chunks": 80,
-                    "total_size_bytes": 800000
+                    "total_size_bytes": 800000,
                 }
                 mock_doc_repo_class.return_value = mock_doc_repo_tx
-                
+
                 mock_col_repo_tx = AsyncMock()
                 mock_col_repo_tx.update_stats = AsyncMock()
                 mock_col_repo_class.return_value = mock_col_repo_tx
-                
+
                 # Run operation
                 result = await _process_remove_source_operation(
                     operation, collection, collection_repo, document_repo, mock_updater
                 )
-        
+
         # Verify documents were marked as deleted
-        mock_doc_repo_tx.bulk_update_status.assert_called_once_with(
-            ["doc1", "doc2"], DocumentStatus.DELETED
-        )
-        
+        mock_doc_repo_tx.bulk_update_status.assert_called_once_with(["doc1", "doc2"], DocumentStatus.DELETED)
+
         # Verify collection stats were updated
         mock_col_repo_tx.update_stats.assert_called_once()
-        
+
         # Verify success response
         assert result["success"] is True
         assert result["documents_removed"] == 2
         assert result["source_path"] == "/test/old_docs"
 
-    async def test_process_remove_source_operation_no_documents(
-        self,
-        mock_updater
-    ):
+    async def test_process_remove_source_operation_no_documents(self, mock_updater):
         """Test REMOVE_SOURCE operation with no documents found."""
         operation = {
             "id": "op-123",
             "collection_id": "col-123",
             "type": OperationType.REMOVE_SOURCE,
             "config": {"source_path": "/test/empty"},
-            "user_id": 1
+            "user_id": 1,
         }
-        
+
         collection = {"id": "col-123"}
         collection_repo = AsyncMock()
-        
+
         document_repo = AsyncMock()
         document_repo.list_by_collection_and_source.return_value = []
-        
+
         # Run operation
         result = await _process_remove_source_operation(
             operation, collection, collection_repo, document_repo, mock_updater
         )
-        
+
         # Verify response for empty source
         assert result["success"] is True
         assert result["documents_removed"] == 0
@@ -957,38 +903,38 @@ class TestRemoveSourceOperation:
 class TestReindexValidation:
     """Test reindex validation logic."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_qdrant_client(self):
         """Create mock Qdrant client."""
         client = Mock()
-        
+
         # Mock collection info
         old_info = Mock()
         old_info.points_count = 1000
         old_info.config.params.vectors.size = 1536
-        
+
         new_info = Mock()
         new_info.points_count = 1050
         new_info.config.params.vectors.size = 1536
-        
+
         client.get_collection.side_effect = lambda name: old_info if name == "old" else new_info
-        
+
         # Mock scroll for sampling
         sample_points = [Mock(id=f"p{i}", vector=[0.1] * 1536) for i in range(10)]
         for point in sample_points:
             point.payload = {"doc_id": f"doc{i}" for i in range(10)}
         client.scroll.return_value = (sample_points, None)
-        
+
         # Mock search results
         search_results = [Mock(score=0.95, payload={"doc_id": "doc1"}) for _ in range(5)]
         client.search.return_value = search_results
-        
+
         return client
 
     async def test_validate_reindex_success(self, mock_qdrant_client):
         """Test successful reindex validation."""
         result = await _validate_reindex(mock_qdrant_client, "old", "new", sample_size=10)
-        
+
         assert result["passed"] is True
         assert result["issues"] == []
         assert result["old_count"] == 1000
@@ -1001,14 +947,13 @@ class TestReindexValidation:
         new_info = Mock()
         new_info.points_count = 500  # 50% loss
         new_info.config.params.vectors.size = 1536
-        
+
         mock_qdrant_client.get_collection.side_effect = lambda name: (
-            Mock(points_count=1000, config=Mock(params=Mock(vectors=Mock(size=1536)))) 
-            if name == "old" else new_info
+            Mock(points_count=1000, config=Mock(params=Mock(vectors=Mock(size=1536)))) if name == "old" else new_info
         )
-        
+
         result = await _validate_reindex(mock_qdrant_client, "old", "new")
-        
+
         assert result["passed"] is False
         assert any("Vector count mismatch" in issue for issue in result["issues"])
 
@@ -1017,13 +962,13 @@ class TestReindexValidation:
         # Mock empty new collection
         new_info = Mock()
         new_info.points_count = 0
-        
+
         mock_qdrant_client.get_collection.side_effect = lambda name: (
             Mock(points_count=1000) if name == "old" else new_info
         )
-        
+
         result = await _validate_reindex(mock_qdrant_client, "old", "new")
-        
+
         assert result["passed"] is False
         assert any("no vectors" in issue for issue in result["issues"])
 
@@ -1034,12 +979,13 @@ class TestTaskFailureHandling:
     @patch("packages.webui.tasks.asyncio.run")
     def test_handle_task_failure_index_operation(self, mock_asyncio_run):
         """Test failure handling for INDEX operation."""
+
         # Mock the async handler
         async def mock_handler(op_id, exc, task_id):
             pass
-        
+
         mock_asyncio_run.side_effect = lambda coro: None
-        
+
         # Create mock Celery context
         self_mock = Mock()
         exc = Exception("Database connection failed")
@@ -1047,32 +993,27 @@ class TestTaskFailureHandling:
         args = (self_mock, "op-123")
         kwargs = {}
         einfo = None
-        
+
         # Call failure handler
         _handle_task_failure(self_mock, exc, task_id, args, kwargs, einfo)
-        
+
         # Verify async handler was called
         mock_asyncio_run.assert_called_once()
 
     @patch("packages.webui.tasks.AsyncSessionLocal")
     @patch("packages.webui.tasks.OperationRepository")
     @patch("packages.webui.tasks.CollectionRepository")
-    async def test_handle_task_failure_async_index(
-        self,
-        mock_col_repo_class,
-        mock_op_repo_class,
-        mock_session_local
-    ):
+    async def test_handle_task_failure_async_index(self, mock_col_repo_class, mock_op_repo_class, mock_session_local):
         """Test async failure handling for INDEX operation."""
         from packages.webui.tasks import _handle_task_failure_async
-        
+
         # Setup mocks
         mock_session = AsyncMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_session.commit = AsyncMock()
         mock_session_local.return_value = mock_session
-        
+
         # Mock repositories
         operation_repo = AsyncMock()
         operation_obj = Mock()
@@ -1082,7 +1023,7 @@ class TestTaskFailureHandling:
         operation_repo.get_by_uuid.return_value = operation_obj
         operation_repo.update_status = AsyncMock()
         mock_op_repo_class.return_value = operation_repo
-        
+
         collection_repo = AsyncMock()
         collection_obj = Mock()
         collection_obj.id = "col-123"
@@ -1091,23 +1032,19 @@ class TestTaskFailureHandling:
         collection_repo.get_by_uuid.return_value = collection_obj
         collection_repo.update_status = AsyncMock()
         mock_col_repo_class.return_value = collection_repo
-        
+
         # Run failure handler
         exc = Exception("Qdrant initialization failed")
         await _handle_task_failure_async("op-123", exc, "task-123")
-        
+
         # Verify operation status updated to failed
         operation_repo.update_status.assert_called_with(
-            "op-123",
-            OperationStatus.FAILED,
-            error_message=pytest.StringContaining("Qdrant initialization failed")
+            "op-123", OperationStatus.FAILED, error_message=pytest.StringContaining("Qdrant initialization failed")
         )
-        
+
         # Verify collection status updated to error (for INDEX operation)
         collection_repo.update_status.assert_called_with(
-            "col-123",
-            CollectionStatus.ERROR,
-            status_message=pytest.StringContaining("Initial indexing failed")
+            "col-123", CollectionStatus.ERROR, status_message=pytest.StringContaining("Initial indexing failed")
         )
 
     @patch("packages.webui.tasks.AsyncSessionLocal")
@@ -1115,22 +1052,18 @@ class TestTaskFailureHandling:
     @patch("packages.webui.tasks.CollectionRepository")
     @patch("packages.webui.tasks._cleanup_staging_resources")
     async def test_handle_task_failure_async_reindex(
-        self,
-        mock_cleanup_staging,
-        mock_col_repo_class,
-        mock_op_repo_class,
-        mock_session_local
+        self, mock_cleanup_staging, mock_col_repo_class, mock_op_repo_class, mock_session_local
     ):
         """Test async failure handling for REINDEX operation."""
         from packages.webui.tasks import _handle_task_failure_async
-        
+
         # Setup mocks similar to above but for REINDEX
         mock_session = AsyncMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_session.commit = AsyncMock()
         mock_session_local.return_value = mock_session
-        
+
         operation_repo = AsyncMock()
         operation_obj = Mock()
         operation_obj.uuid = "op-123"
@@ -1139,7 +1072,7 @@ class TestTaskFailureHandling:
         operation_repo.get_by_uuid.return_value = operation_obj
         operation_repo.update_status = AsyncMock()
         mock_op_repo_class.return_value = operation_repo
-        
+
         collection_repo = AsyncMock()
         collection_obj = Mock()
         collection_obj.id = "col-123"
@@ -1148,18 +1081,16 @@ class TestTaskFailureHandling:
         collection_repo.get_by_uuid.return_value = collection_obj
         collection_repo.update_status = AsyncMock()
         mock_col_repo_class.return_value = collection_repo
-        
+
         # Run failure handler
         exc = Exception("Validation failed")
         await _handle_task_failure_async("op-123", exc, "task-123")
-        
+
         # Verify collection status updated to degraded (for REINDEX)
         collection_repo.update_status.assert_called_with(
-            "col-123",
-            CollectionStatus.DEGRADED,
-            status_message=pytest.StringContaining("Re-indexing failed")
+            "col-123", CollectionStatus.DEGRADED, status_message=pytest.StringContaining("Re-indexing failed")
         )
-        
+
         # Verify staging cleanup was called
         mock_cleanup_staging.assert_called_once()
 
@@ -1173,21 +1104,19 @@ class TestCleanupTasks:
             # Setup mocks
             client = Mock()
             mock_qdrant_manager.get_client.return_value = client
-            
+
             # Mock collections exist
             from collections import namedtuple
+
             CollectionInfo = namedtuple("CollectionInfo", ["name"])
             collections_response = Mock()
-            collections_response.collections = [
-                CollectionInfo(name="col_old_1"),
-                CollectionInfo(name="col_old_2")
-            ]
+            collections_response.collections = [CollectionInfo(name="col_old_1"), CollectionInfo(name="col_old_2")]
             client.get_collections.return_value = collections_response
             client.delete_collection = Mock()
-            
+
             # Run cleanup
             result = cleanup_old_collections(["col_old_1", "col_old_2"], "col-123")
-            
+
             # Verify results
             assert result["collections_deleted"] == 2
             assert result["collections_failed"] == 0
@@ -1199,23 +1128,21 @@ class TestCleanupTasks:
             # Setup mocks
             client = Mock()
             mock_qdrant_manager.get_client.return_value = client
-            
+
             # Mock collections exist
             from collections import namedtuple
+
             CollectionInfo = namedtuple("CollectionInfo", ["name"])
             collections_response = Mock()
-            collections_response.collections = [
-                CollectionInfo(name="col_old_1"),
-                CollectionInfo(name="col_old_2")
-            ]
+            collections_response.collections = [CollectionInfo(name="col_old_1"), CollectionInfo(name="col_old_2")]
             client.get_collections.return_value = collections_response
-            
+
             # First deletion succeeds, second fails
             client.delete_collection.side_effect = [None, Exception("Permission denied")]
-            
+
             # Run cleanup
             result = cleanup_old_collections(["col_old_1", "col_old_2"], "col-123")
-            
+
             # Verify partial success
             assert result["collections_deleted"] == 1
             assert result["collections_failed"] == 1
@@ -1226,35 +1153,32 @@ class TestCleanupTasks:
     @patch("packages.webui.tasks.qdrant_manager")
     @patch("packages.webui.tasks.QdrantManager")
     def test_cleanup_qdrant_collections_with_safety_checks(
-        self,
-        mock_qdrant_manager_class,
-        mock_qdrant_global,
-        mock_asyncio_run
+        self, mock_qdrant_manager_class, mock_qdrant_global, mock_asyncio_run
     ):
         """Test enhanced cleanup with safety checks."""
         # Setup mocks
         client = Mock()
         mock_qdrant_global.get_client.return_value = client
-        
+
         manager = Mock()
         manager.collection_exists.side_effect = [True, True, False]  # Third doesn't exist
         manager.get_collection_info.return_value = Mock(vectors_count=1000)
         manager._is_staging_collection_old.return_value = True
         mock_qdrant_manager_class.return_value = manager
-        
+
         # Mock active collections check
-        mock_asyncio_run.side_effect = lambda coro: (
-            {"active_col"} if "_get_active_collections" in str(coro) else None
-        )
-        
+        mock_asyncio_run.side_effect = lambda coro: ({"active_col"} if "_get_active_collections" in str(coro) else None)
+
         # Run cleanup
-        result = cleanup_qdrant_collections([
-            "_system",  # System collection
-            "active_col",  # Active collection
-            "old_col",  # Should be deleted
-            "missing_col"  # Doesn't exist
-        ])
-        
+        result = cleanup_qdrant_collections(
+            [
+                "_system",  # System collection
+                "active_col",  # Active collection
+                "old_col",  # Should be deleted
+                "missing_col",  # Doesn't exist
+            ]
+        )
+
         # Verify safety checks
         assert result["collections_skipped"] >= 3  # system, active, missing
         assert result["collections_deleted"] <= 1  # only old_col
@@ -1264,7 +1188,7 @@ class TestCleanupTasks:
 
 
 # Integration test for full task flow
-@pytest.mark.integration
+@pytest.mark.integration()
 class TestTaskIntegration:
     """Integration tests for complete task flows."""
 
@@ -1275,10 +1199,10 @@ class TestTaskIntegration:
         mock_result = Mock()
         mock_result.id = "task-123"
         mock_apply_async.return_value = mock_result
-        
+
         # Schedule a task
         result = process_collection_operation.apply_async(args=["op-123"])
-        
+
         # Verify scheduling
         assert result.id == "task-123"
         mock_apply_async.assert_called_once_with(args=["op-123"])

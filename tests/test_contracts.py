@@ -2,6 +2,7 @@
 
 import pytest
 from pydantic import ValidationError
+
 from packages.shared.contracts.errors import (
     ErrorResponse,
     create_insufficient_memory_error,
