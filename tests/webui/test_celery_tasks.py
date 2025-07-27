@@ -510,7 +510,8 @@ class TestAppendOperation:
             docs.append(doc)
         return docs
 
-    @patch("packages.webui.tasks.os.path.exists", return_value=True)
+    @patch("pathlib.Path.exists", return_value=True)
+    @patch("pathlib.Path.is_dir", return_value=True)
     @patch("packages.webui.services.document_scanning_service.DocumentScanningService")
     @patch("packages.webui.tasks.executor")
     @patch("packages.webui.tasks.httpx.AsyncClient")
@@ -521,6 +522,7 @@ class TestAppendOperation:
         mock_httpx,
         mock_executor,
         mock_scanner_class,
+        mock_path_is_dir,
         mock_path_exists,
         mock_document_scanner,
         mock_documents,
