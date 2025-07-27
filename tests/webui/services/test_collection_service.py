@@ -593,10 +593,12 @@ class TestDeleteCollection:
             mock_qdrant_client = MagicMock()
             mock_get_client.return_value = mock_qdrant_client
             mock_collections = MagicMock()
-            mock_collections.collections = [
-                MagicMock(name=mock_collection.vector_store_name),
-                MagicMock(name="other_collection"),
-            ]
+            # Create collection mocks with proper name attribute
+            collection1 = MagicMock()
+            collection1.name = mock_collection.vector_store_name
+            collection2 = MagicMock()
+            collection2.name = "other_collection"
+            mock_collections.collections = [collection1, collection2]
             mock_qdrant_client.get_collections.return_value = mock_collections
 
             await collection_service.delete_collection(

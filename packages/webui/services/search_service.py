@@ -397,9 +397,9 @@ class SearchService:
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
-                raise EntityNotFoundError(f"Collection '{collection.name}' not found in vector store") from e
+                raise EntityNotFoundError("collection", collection_uuid) from e
             if e.response.status_code == 403:
-                raise AccessDeniedError(f"Access denied to collection '{collection.name}'") from e
+                raise AccessDeniedError(str(user_id), "collection", collection_uuid) from e
             logger.error(f"Search failed with status {e.response.status_code}: {e}")
             raise
 

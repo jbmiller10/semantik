@@ -129,7 +129,7 @@ class TestValidateCollectionAccess:
         with pytest.raises(AccessDeniedError) as exc_info:
             await search_service.validate_collection_access(["invalid-uuid"], user_id=1)
 
-        assert "Access denied or collection not found: invalid-uuid" in str(exc_info.value)
+        assert "User '1' does not have access to collection 'invalid-uuid'" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_validate_collection_access_denied(
@@ -143,7 +143,7 @@ class TestValidateCollectionAccess:
         with pytest.raises(AccessDeniedError) as exc_info:
             await search_service.validate_collection_access(["some-uuid"], user_id=1)
 
-        assert "Access denied or collection not found: some-uuid" in str(exc_info.value)
+        assert "User '1' does not have access to collection 'some-uuid'" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_validate_collection_access_mixed_permissions(
@@ -158,7 +158,7 @@ class TestValidateCollectionAccess:
         with pytest.raises(AccessDeniedError) as exc_info:
             await search_service.validate_collection_access([mock_collections[0].id, "denied-uuid"], user_id=1)
 
-        assert "Access denied or collection not found: denied-uuid" in str(exc_info.value)
+        assert "User '1' does not have access to collection 'denied-uuid'" in str(exc_info.value)
 
 
 class TestSearchSingleCollection:
@@ -808,7 +808,7 @@ class TestSingleCollectionSearch:
                     query="test query",
                 )
 
-            assert f"Collection '{mock_collection.name}' not found in vector store" in str(exc_info.value)
+            assert f"collection with ID '{mock_collection.id}' not found" in str(exc_info.value)
 
         # Test 403 error
         with patch("httpx.AsyncClient") as mock_client_class:
@@ -827,7 +827,7 @@ class TestSingleCollectionSearch:
                     query="test query",
                 )
 
-            assert f"Access denied to collection '{mock_collection.name}'" in str(exc_info.value)
+            assert f"User '1' does not have access to collection '{mock_collection.id}'" in str(exc_info.value)
 
         # Test other HTTP errors
         with patch("httpx.AsyncClient") as mock_client_class:

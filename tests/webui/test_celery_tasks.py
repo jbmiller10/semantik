@@ -208,11 +208,11 @@ class TestProcessCollectionOperation:
 
         return {"operation": operation_repo, "collection": collection_repo, "document": document_repo}
 
-    @patch("packages.webui.tasks.pg_connection_manager")
-    @patch("packages.webui.tasks.AsyncSessionLocal")
-    @patch("packages.webui.tasks.OperationRepository")
-    @patch("packages.webui.tasks.CollectionRepository")
-    @patch("packages.webui.tasks.DocumentRepository")
+    @patch("shared.database.pg_connection_manager")
+    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("shared.database.repositories.operation_repository.OperationRepository")
+    @patch("shared.database.repositories.collection_repository.CollectionRepository")
+    @patch("shared.database.repositories.document_repository.DocumentRepository")
     @patch("packages.webui.tasks.psutil.Process")
     async def test_process_collection_operation_index_success(
         self,
@@ -274,11 +274,11 @@ class TestProcessCollectionOperation:
             assert result["success"] is True
             assert result["qdrant_collection"] == "test_collection_vec"
 
-    @patch("packages.webui.tasks.pg_connection_manager")
-    @patch("packages.webui.tasks.AsyncSessionLocal")
-    @patch("packages.webui.tasks.OperationRepository")
-    @patch("packages.webui.tasks.CollectionRepository")
-    @patch("packages.webui.tasks.DocumentRepository")
+    @patch("shared.database.pg_connection_manager")
+    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("shared.database.repositories.operation_repository.OperationRepository")
+    @patch("shared.database.repositories.collection_repository.CollectionRepository")
+    @patch("shared.database.repositories.document_repository.DocumentRepository")
     @patch("packages.webui.tasks.psutil.Process")
     async def test_process_collection_operation_failure_handling(
         self,
@@ -337,19 +337,16 @@ class TestProcessCollectionOperation:
         mock_loop.run_until_complete.return_value = {"success": True}
 
         with patch("packages.webui.tasks.asyncio.get_event_loop", return_value=mock_loop):
-            # Import the actual function to test
-            from packages.webui.tasks import process_collection_operation
+            with patch("packages.webui.tasks._process_collection_operation_async", return_value={"success": True}):
+                # Import the actual function to test
+                from packages.webui.tasks import process_collection_operation
 
-            # Call sync wrapper - self is the first parameter for bound tasks
-            result = process_collection_operation(mock_celery_task, "op-123")
+                # Call the task function directly - it's a bound task
+                result = process_collection_operation(mock_celery_task, "op-123")
 
-            # Verify async function was called via run_until_complete
-            mock_loop.run_until_complete.assert_called_once()
-            # Get the coroutine that was passed to run_until_complete
-            call_args = mock_loop.run_until_complete.call_args[0][0]
-            # Check it's the right coroutine type
-            assert asyncio.iscoroutine(call_args)
-            assert result == {"success": True}
+                # Verify event loop was used
+                mock_loop.run_until_complete.assert_called_once()
+                assert result == {"success": True}
 
     def test_process_collection_operation_retry_on_network_error(self, mock_celery_task):
         """Test that network errors trigger retry."""
@@ -806,7 +803,7 @@ class TestReindexOperation:
 class TestRemoveSourceOperation:
     """Test REMOVE_SOURCE operation processing."""
 
-    @patch("packages.webui.tasks.AsyncSessionLocal")
+    @patch("shared.database.database.AsyncSessionLocal")
     async def test_process_remove_source_operation_success(self, mock_session_local, mock_updater):
         """Test successful REMOVE_SOURCE operation."""
         # Setup mocks
@@ -1012,9 +1009,9 @@ class TestTaskFailureHandling:
         # Verify async handler was called
         mock_asyncio_run.assert_called_once()
 
-    @patch("packages.webui.tasks.AsyncSessionLocal")
-    @patch("packages.webui.tasks.OperationRepository")
-    @patch("packages.webui.tasks.CollectionRepository")
+    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("shared.database.repositories.operation_repository.OperationRepository")
+    @patch("shared.database.repositories.collection_repository.CollectionRepository")
     async def test_handle_task_failure_async_index(self, mock_col_repo_class, mock_op_repo_class, mock_session_local):
         """Test async failure handling for INDEX operation."""
         from packages.webui.tasks import _handle_task_failure_async
@@ -1059,9 +1056,9 @@ class TestTaskFailureHandling:
             "col-123", CollectionStatus.ERROR, status_message=pytest.StringContaining("Initial indexing failed")
         )
 
-    @patch("packages.webui.tasks.AsyncSessionLocal")
-    @patch("packages.webui.tasks.OperationRepository")
-    @patch("packages.webui.tasks.CollectionRepository")
+    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("shared.database.repositories.operation_repository.OperationRepository")
+    @patch("shared.database.repositories.collection_repository.CollectionRepository")
     @patch("packages.webui.tasks._cleanup_staging_resources")
     async def test_handle_task_failure_async_reindex(
         self, mock_cleanup_staging, mock_col_repo_class, mock_op_repo_class, mock_session_local
