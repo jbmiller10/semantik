@@ -521,7 +521,6 @@ class TestAppendOperation:
 
     @patch("pathlib.Path.exists", return_value=True)
     @patch("pathlib.Path.is_dir", return_value=True)
-    @patch("webui.services.document_scanning_service.DocumentScanningService")
     @patch("packages.webui.tasks.executor")
     @patch("packages.webui.tasks.httpx.AsyncClient")
     @patch("packages.webui.tasks.qdrant_manager")
@@ -530,7 +529,6 @@ class TestAppendOperation:
         mock_qdrant_global,      # from @patch qdrant_manager (bottom)
         mock_httpx,              # from @patch httpx.AsyncClient
         mock_executor,           # from @patch executor
-        mock_scanner_class,      # from @patch DocumentScanningService
         mock_path_is_dir,        # from @patch Path.is_dir
         mock_path_exists,        # from @patch Path.exists (top)
         mock_document_scanner,   # from @pytest.fixture
@@ -545,80 +543,80 @@ class TestAppendOperation:
         async def mock_extract_result():
             return [("This is test content", {"page": 1})]
 
-            mock_executor.submit.return_value.result.return_value = [("This is test content", {"page": 1})]
+        mock_executor.submit.return_value.result.return_value = [("This is test content", {"page": 1})]
 
-            # Mock httpx client for vecpipe API
-            mock_client = AsyncMock()
-            mock_response = Mock()
-            mock_response.status_code = 200
-            mock_response.json.return_value = {"embeddings": [[0.1] * 1024]}
-            mock_client.post.return_value = mock_response
-            mock_httpx.return_value.__aenter__.return_value = mock_client
+        # Mock httpx client for vecpipe API
+        mock_client = AsyncMock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"embeddings": [[0.1] * 1024]}
+        mock_client.post.return_value = mock_response
+        mock_httpx.return_value.__aenter__.return_value = mock_client
 
-            # Mock Qdrant
-            qdrant_client = Mock()
-            collection_info = Mock()
-            collection_info.points_count = 100
-            qdrant_client.get_collection.return_value = collection_info
-            mock_qdrant_global.get_client.return_value = qdrant_client
+        # Mock Qdrant
+        qdrant_client = Mock()
+        collection_info = Mock()
+        collection_info.points_count = 100
+        qdrant_client.get_collection.return_value = collection_info
+        mock_qdrant_global.get_client.return_value = qdrant_client
 
-            operation = {
-                "id": "op-123",
-                "collection_id": "col-123",
-                "type": OperationType.APPEND,
-                "config": {"source_path": "/test/documents"},
-                "user_id": 1,
-            }
+        operation = {
+            "id": "op-123",
+            "collection_id": "col-123",
+            "type": OperationType.APPEND,
+            "config": {"source_path": "/test/documents"},
+            "user_id": 1,
+        }
 
-            collection = {
-                "id": "col-123",
-                "uuid": "col-123",
-                "name": "Test Collection",
-                "vector_store_name": "col_test_123",
-                "embedding_model": "test-model",
-                "quantization": "float32",
-                "chunk_size": 1000,
-                "chunk_overlap": 200,
-            }
+        collection = {
+            "id": "col-123",
+            "uuid": "col-123",
+            "name": "Test Collection",
+            "vector_store_name": "col_test_123",
+            "embedding_model": "test-model",
+            "quantization": "float32",
+            "chunk_size": 1000,
+            "chunk_overlap": 200,
+        }
 
-            collection_repo = AsyncMock()
-            collection_repo.update_stats = AsyncMock()
+        collection_repo = AsyncMock()
+        collection_repo.update_stats = AsyncMock()
 
-            document_repo = AsyncMock()
-            document_repo.session = AsyncMock()
-            document_repo.list_by_collection.return_value = (mock_documents, 3)
-            document_repo.update_status = AsyncMock()
-            document_repo.get_stats_by_collection.return_value = {
-                "total_documents": 10,
-                "total_chunks": 100,
-                "total_size_bytes": 1024000,
-            }
+        document_repo = AsyncMock()
+        document_repo.session = AsyncMock()
+        document_repo.list_by_collection.return_value = (mock_documents, 3)
+        document_repo.update_status = AsyncMock()
+        document_repo.get_stats_by_collection.return_value = {
+            "total_documents": 10,
+            "total_chunks": 100,
+            "total_size_bytes": 1024000,
+        }
 
-            # Run operation
-            result = await _process_append_operation(operation, collection, collection_repo, document_repo, mock_updater)
+        # Run operation
+        result = await _process_append_operation(operation, collection, collection_repo, document_repo, mock_updater)
 
-            # Verify document scanning
-            mock_document_scanner.scan_directory_and_register_documents.assert_called_once()
-            scan_args = mock_document_scanner.scan_directory_and_register_documents.call_args
-            # Check that it was called with keyword arguments
-            assert scan_args.kwargs["collection_id"] == "col-123"
-            assert scan_args.kwargs["source_path"] == "/test/documents"
-            assert scan_args.kwargs["recursive"] is True
+        # Verify document scanning
+        mock_document_scanner.scan_directory_and_register_documents.assert_called_once()
+        scan_args = mock_document_scanner.scan_directory_and_register_documents.call_args
+        # Check keyword arguments
+        assert scan_args[1]["collection_id"] == "col-123"
+        assert scan_args[1]["source_path"] == "/test/documents"
+        assert scan_args[1]["recursive"] is True
 
-            # Verify embeddings were generated
-            assert mock_client.post.call_count >= 1
-            embed_call = mock_client.post.call_args_list[0]
-            assert "http://vecpipe:8000/embed" in embed_call[0][0]
+        # Verify embeddings were generated
+        assert mock_client.post.call_count >= 1
+        embed_call = mock_client.post.call_args_list[0]
+        assert "http://vecpipe:8000/embed" in embed_call[0][0]
 
-            # Verify success response
-            assert result["success"] is True
-            assert result["documents_added"] == 8
-            assert result["source_path"] == "/test/documents"
+        # Verify success response
+        assert result["success"] is True
+        assert result["documents_added"] == 8
+        assert result["source_path"] == "/test/documents"
 
-            # Verify progress updates
-            mock_updater.send_update.assert_called()
+        # Verify progress updates
+        mock_updater.send_update.assert_called()
 
-    @patch("packages.webui.services.document_scanning_service.DocumentScanningService")
+    @patch("webui.services.document_scanning_service.DocumentScanningService")
     async def test_process_append_operation_no_source_path(self, mock_scanner_class, mock_updater):
         """Test APPEND operation without source_path."""
         operation = {
@@ -732,15 +730,14 @@ class TestReindexOperation:
 
         document_repo = AsyncMock()
         document_repo.get_stats_by_collection.return_value = {"total_documents": 10}
-        # list_by_collection returns a tuple of (documents, count)
-        # Create documents as dictionaries to match the actual return type
-        mock_doc = {
-            "id": "doc1",
-            "file_path": "/test/doc1.txt",
-            "status": DocumentStatus.COMPLETED,
-            "chunk_count": 10  # Add chunk_count to avoid triggering extraction
-        }
-        document_repo.list_by_collection.return_value = ([mock_doc], 1)
+        # list_by_collection returns just a list of documents
+        mock_doc = Mock()
+        mock_doc.id = "doc1"
+        mock_doc.file_path = "/test/doc1.txt"
+        mock_doc.status = DocumentStatus.COMPLETED
+        mock_doc.chunk_count = 10  # Add chunk_count to avoid triggering extraction
+        mock_doc.get = Mock(side_effect=lambda key, default=None: getattr(mock_doc, key, default))
+        document_repo.list_by_collection.return_value = [mock_doc]
 
         # Run operation
         result = await _process_reindex_operation(operation, collection, collection_repo, document_repo, mock_updater)
