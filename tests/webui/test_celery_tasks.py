@@ -13,6 +13,7 @@ and error handling with proper mocking of external dependencies.
 
 import asyncio
 import json
+import unittest.mock
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -500,7 +501,7 @@ class TestAppendOperation:
             docs.append(doc)
         return docs
 
-    @patch("webui.services.document_scanning_service.DocumentScanningService")
+    @patch("packages.webui.services.document_scanning_service.DocumentScanningService")
     @patch("packages.webui.tasks.executor")
     @patch("packages.webui.tasks.httpx.AsyncClient")
     @patch("packages.webui.tasks.qdrant_manager")
@@ -593,7 +594,7 @@ class TestAppendOperation:
         # Verify progress updates
         mock_updater.send_update.assert_called()
 
-    @patch("webui.services.document_scanning_service.DocumentScanningService")
+    @patch("packages.webui.services.document_scanning_service.DocumentScanningService")
     async def test_process_append_operation_no_source_path(self, mock_scanner_class, mock_updater):
         """Test APPEND operation without source_path."""
         operation = {
@@ -1046,13 +1047,19 @@ class TestTaskFailureHandling:
 
         # Verify operation status updated to failed
         operation_repo.update_status.assert_called_with(
-            "op-123", OperationStatus.FAILED, error_message=pytest.StringContaining("Qdrant initialization failed")
+            "op-123", OperationStatus.FAILED, error_message=unittest.mock.ANY
         )
+        # Check the error message contains expected text
+        call_args = operation_repo.update_status.call_args
+        assert "Qdrant initialization failed" in call_args[1]["error_message"]
 
         # Verify collection status updated to error (for INDEX operation)
         collection_repo.update_status.assert_called_with(
-            "col-123", CollectionStatus.ERROR, status_message=pytest.StringContaining("Initial indexing failed")
+            "col-123", CollectionStatus.ERROR, status_message=unittest.mock.ANY
         )
+        # Check the status message contains expected text
+        call_args = collection_repo.update_status.call_args
+        assert "Initial indexing failed" in call_args[1]["status_message"]
 
     @patch("shared.database.database.AsyncSessionLocal")
     @patch("shared.database.repositories.operation_repository.OperationRepository")
@@ -1095,8 +1102,11 @@ class TestTaskFailureHandling:
 
         # Verify collection status updated to degraded (for REINDEX)
         collection_repo.update_status.assert_called_with(
-            "col-123", CollectionStatus.DEGRADED, status_message=pytest.StringContaining("Re-indexing failed")
+            "col-123", CollectionStatus.DEGRADED, status_message=unittest.mock.ANY
         )
+        # Check the status message contains expected text
+        call_args = collection_repo.update_status.call_args
+        assert "Re-indexing failed" in call_args[1]["status_message"]
 
         # Verify staging cleanup was called
         mock_cleanup_staging.assert_called_once()
