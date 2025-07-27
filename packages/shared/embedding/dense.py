@@ -7,7 +7,7 @@ import logging
 import os
 import threading
 from collections.abc import Coroutine
-from typing import Any, Protocol, TypeVar, Union
+from typing import Any, Protocol, TypeVar, Union, cast
 
 import numpy as np
 import torch
@@ -16,7 +16,8 @@ from numpy.typing import NDArray
 from sentence_transformers import SentenceTransformer
 from shared.config.vecpipe import VecpipeConfig
 from torch import Tensor
-from transformers import AutoModel, AutoTokenizer, PreTrainedModel
+from transformers import AutoModel, AutoTokenizer
+from transformers.modeling_utils import PreTrainedModel
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from .base import BaseEmbeddingService
@@ -262,7 +263,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
                 self.dimension = getattr(self.model.config, "hidden_size", None)
             elif self.model is not None and hasattr(self.model, "get_sentence_embedding_dimension"):
                 # For sentence-transformers
-                self.dimension = self.model.get_sentence_embedding_dimension()  # type: ignore
+                self.dimension = self.model.get_sentence_embedding_dimension()
             else:
                 # Fallback: generate test embedding to determine dimension
                 test_embedding = await self._embed_single_internal("test")
@@ -384,12 +385,14 @@ class DenseEmbeddingService(BaseEmbeddingService):
             # Generate embeddings
             if self.model is None:
                 raise RuntimeError("Model not initialized")
+            # Type assertion: For Qwen models, self.model is an AutoModel instance
+            assert isinstance(self.model, PreTrainedModel)
             with torch.no_grad():
                 if self.dtype == torch.float16:
                     with torch.cuda.amp.autocast(dtype=torch.float16):
-                        outputs = self.model(**batch_dict)
+                        outputs = cast(Any, self.model)(**batch_dict)
                 else:
-                    outputs = self.model(**batch_dict)
+                    outputs = cast(Any, self.model)(**batch_dict)
 
                 embeddings = last_token_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
 

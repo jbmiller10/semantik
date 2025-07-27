@@ -4,7 +4,7 @@ import asyncio
 import functools
 import logging
 from collections.abc import Callable, Coroutine
-from typing import Any, ParamSpec, TypeVar
+from typing import Any, ParamSpec, TypeVar, overload
 
 from sqlalchemy.exc import OperationalError
 
@@ -30,7 +30,7 @@ def with_db_retry(
         max_delay: Maximum delay between retries
     """
 
-    def decorator(func: Callable[..., T]) -> Callable[..., T] | Callable[..., Coroutine[Any, Any, T]]:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> T:
             current_delay = delay

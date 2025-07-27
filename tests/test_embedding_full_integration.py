@@ -4,6 +4,7 @@ Full integration tests for embedding service across packages
 """
 import sys
 import unittest
+from typing import Any
 from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
@@ -116,15 +117,15 @@ class TestWebuiIntegration(unittest.TestCase):
         mock_service.load_model("test-model", quantization="float32")
 
         # 2. Process file chunks
-        file_chunks = [
+        file_chunks: list[dict[str, Any]] = [
             {"text": "Chunk 1 content", "metadata": {"page": 1}},
             {"text": "Chunk 2 content", "metadata": {"page": 2}},
             {"text": "Chunk 3 content", "metadata": {"page": 3}},
         ]
 
-        texts = [chunk["text"] for chunk in file_chunks]
+        texts: list[str] = [chunk["text"] for chunk in file_chunks]
         embeddings = mock_service.generate_embeddings(
-            texts=texts, model_name="test-model", batch_size=32, show_progress=True  # Jobs API shows progress
+            texts, "test-model", batch_size=32, show_progress=True  # Jobs API shows progress
         )
 
         assert embeddings is not None

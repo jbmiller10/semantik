@@ -8,6 +8,7 @@ import asyncio
 import sys
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 # Add the packages directory to the Python path
 sys.path.insert(0, "/home/dockertest/semantik/packages")
@@ -23,7 +24,7 @@ from shared.text_extraction.text_extractor import extract_text_and_serialize
 from sqlalchemy import select
 
 
-async def process_document(document, collection, session):
+async def process_document(document: Document, collection: Collection, session: Any) -> bool:
     """Process a single document and generate embeddings."""
     print(f"\nProcessing: {document.file_path}")
     print("-" * 50)
@@ -172,7 +173,7 @@ async def process_document(document, collection, session):
         return False
 
 
-async def process_collection(collection_name_or_id):
+async def process_collection(collection_name_or_id: str) -> None:
     """Process all documents in a collection."""
     await pg_connection_manager.initialize()
 
@@ -211,7 +212,7 @@ async def process_collection(collection_name_or_id):
         print(f"\nFound {len(documents)} documents")
 
         # Group by status
-        status_counts = {}
+        status_counts: dict[str, int] = {}
         for doc in documents:
             status = doc.status.value if doc.status else "None"
             status_counts[status] = status_counts.get(status, 0) + 1
@@ -264,7 +265,7 @@ async def process_collection(collection_name_or_id):
                 print(f"\n⚠️  Could not update vector count: {e}")
 
 
-async def main():
+async def main() -> None:
     """Main entry point."""
     if len(sys.argv) < 2:
         print("Usage: python manual_embed_collection.py <collection_name_or_id>")

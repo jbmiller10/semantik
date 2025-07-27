@@ -1,7 +1,11 @@
 """Tests for embedding service context managers."""
 
 import asyncio
+from typing import Any
 from unittest.mock import AsyncMock, patch
+
+import numpy as np
+from numpy.typing import NDArray
 
 import pytest
 
@@ -16,34 +20,34 @@ from packages.shared.embedding.context import (
 class MockEmbeddingService(BaseEmbeddingService):
     """Mock embedding service for testing."""
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         self._initialized = False
         self.cleanup_called = False
         self.initialize_called = False
-        self.model_name = None
+        self.model_name: str | None = None
 
     @property
     def is_initialized(self) -> bool:
         return self._initialized
 
-    async def initialize(self, model_name: str, **kwargs):
+    async def initialize(self, model_name: str, **kwargs: Any) -> None:
         self.initialize_called = True
         self.model_name = model_name
         self._initialized = True
 
-    async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs):
-        return [[0.1] * 384 for _ in texts]
+    async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> NDArray[np.float32]:
+        return np.array([[0.1] * 384 for _ in texts], dtype=np.float32)
 
-    async def embed_single(self, text: str, **kwargs):
-        return [0.1] * 384
+    async def embed_single(self, text: str, **kwargs: Any) -> NDArray[np.float32]:
+        return np.array([0.1] * 384, dtype=np.float32)
 
     def get_dimension(self) -> int:
         return 384
 
-    def get_model_info(self) -> dict:
+    def get_model_info(self) -> dict[str, Any]:
         return {"model_name": self.model_name, "dimension": 384, "device": "cpu", "max_sequence_length": 512}
 
-    async def cleanup(self):
+    async def cleanup(self) -> None:
         self.cleanup_called = True
         self._initialized = False
 
@@ -52,7 +56,7 @@ class TestEmbeddingServiceContext:
     """Test embedding_service_context function."""
 
     @pytest.mark.asyncio()
-    async def test_context_manager_basic_usage(self):
+    async def test_context_manager_basic_usage(self) -> None:
         """Test basic context manager usage."""
         mock_service = MockEmbeddingService()
 
