@@ -741,13 +741,13 @@ class TestReindexOperation:
         mock_doc.status = DocumentStatus.COMPLETED
         document_repo.list_by_collection.return_value = ([mock_doc], 1)
         
-            # Run operation
-            result = await _process_reindex_operation(
-                operation, collection, collection_repo, document_repo, mock_updater
-            )
-            
-            # Verify staging collection was created
-            mock_reindex_handler.assert_called_once()
+        # Run operation
+        result = await _process_reindex_operation(
+            operation, collection, collection_repo, document_repo, mock_updater
+        )
+        
+        # Verify staging collection was created
+        mock_reindex_handler.assert_called_once()
         
         # Verify validation was performed
         mock_validate.assert_called_once()

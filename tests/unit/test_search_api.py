@@ -96,25 +96,25 @@ def mock_hybrid_engine():
         engine.extract_keywords = Mock(return_value=["test", "query"])
         engine.hybrid_search = Mock(return_value=[
             {
-                "score": 0.95,
-                "payload": {
+        "score": 0.95,
+        "payload": {
                     "path": "/test/file1.txt",
                     "chunk_id": "chunk-1",
                     "doc_id": "doc-1"
-                },
-                "matched_keywords": ["test"],
-                "keyword_score": 0.8,
-                "combined_score": 0.875
+        },
+        "matched_keywords": ["test"],
+        "keyword_score": 0.8,
+        "combined_score": 0.875
             }
         ])
         engine.search_by_keywords = Mock(return_value=[
             {
-                "payload": {
+        "payload": {
                     "path": "/test/file1.txt",
                     "chunk_id": "chunk-1",
                     "doc_id": "doc-1"
-                },
-                "matched_keywords": ["test", "query"]
+        },
+        "matched_keywords": ["test", "query"]
             }
         ])
         engine.close = Mock()
@@ -266,36 +266,36 @@ class TestSearchAPI:
 
     def test_root_endpoint(self, mock_settings, mock_qdrant_client, mock_embedding_service, test_client_for_search_api):
         """Test root health check endpoint."""
-                # Mock successful response
-                mock_qdrant_client.get.return_value.json.return_value = {
-                    "result": {
-                        "points_count": 100,
-                        "config": {
-                            "params": {
-                                "vectors": {
-                                    "size": 1024
-                                }
-                            }
+        # Mock successful response
+        mock_qdrant_client.get.return_value.json.return_value = {
+            "result": {
+        "points_count": 100,
+        "config": {
+                    "params": {
+                        "vectors": {
+                            "size": 1024
                         }
                     }
-                }
-                mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
-                
-                response = test_client_for_search_api.get("/")
-                assert response.status_code == 200
-                result = response.json()
-                assert result["status"] == "healthy"
-                assert result["collection"]["points_count"] == 100
-                assert result["collection"]["vector_size"] == 1024
-                assert result["embedding_mode"] == "real"
-                assert "embedding_service" in result
-                
+        }
+            }
+        }
+        mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
+        
+        response = test_client_for_search_api.get("/")
+        assert response.status_code == 200
+        result = response.json()
+        assert result["status"] == "healthy"
+        assert result["collection"]["points_count"] == 100
+        assert result["collection"]["vector_size"] == 1024
+        assert result["embedding_mode"] == "real"
+        assert "embedding_service" in result
+        
         # Test with mock embeddings
         mock_settings.USE_MOCK_EMBEDDINGS = True
         response = test_client_for_search_api.get("/")
         assert response.status_code == 200
         assert response.json()["embedding_mode"] == "mock"
-                
+        
         # Test error handling - need to patch the global variable in the module
         import packages.vecpipe.search_api as search_api_module
         original_client = search_api_module.qdrant_client
@@ -309,25 +309,25 @@ class TestSearchAPI:
 
     def test_health_endpoint(self, mock_qdrant_client, mock_embedding_service, test_client_for_search_api):
         """Test /health endpoint."""
-                # Mock successful Qdrant response
-                mock_qdrant_client.get.return_value.status_code = 200
-                mock_qdrant_client.get.return_value.json.return_value = {
+        # Mock successful Qdrant response
+        mock_qdrant_client.get.return_value.status_code = 200
+        mock_qdrant_client.get.return_value.json.return_value = {
                     "result": {
                         "collections": [
                             {"name": "col1"},
                             {"name": "col2"}
                         ]
                     }
-                }
-                
-                response = test_client_for_search_api.get("/health")
-                assert response.status_code == 200
-                result = response.json()
-                assert result["status"] == "healthy"
-                assert result["components"]["qdrant"]["status"] == "healthy"
-                assert result["components"]["qdrant"]["collections_count"] == 2
-                assert result["components"]["embedding"]["status"] == "healthy"
-                
+        }
+        
+        response = test_client_for_search_api.get("/health")
+        assert response.status_code == 200
+        result = response.json()
+        assert result["status"] == "healthy"
+        assert result["components"]["qdrant"]["status"] == "healthy"
+        assert result["components"]["qdrant"]["collections_count"] == 2
+        assert result["components"]["embedding"]["status"] == "healthy"
+        
         # Test with uninitialized embedding service
         mock_embedding_service.is_initialized = False
         response = test_client_for_search_api.get("/health")
@@ -335,7 +335,7 @@ class TestSearchAPI:
         result = response.json()
         assert result["status"] == "degraded"
         assert result["components"]["embedding"]["status"] == "unhealthy"
-                
+        
         # Test with Qdrant error
         mock_qdrant_client.get.side_effect = Exception("Connection error")
         import packages.vecpipe.search_api as search_api_module
@@ -350,8 +350,8 @@ class TestSearchAPI:
     def test_search_post_endpoint(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
         """Test POST /search endpoint."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
-                # Mock collection info
-                mock_qdrant_client.get.return_value.json.return_value = {
+        # Mock collection info
+        mock_qdrant_client.get.return_value.json.return_value = {
                     "result": {
                         "config": {
                             "params": {
@@ -359,11 +359,11 @@ class TestSearchAPI:
                             }
                         }
                     }
-                }
-                mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
-                
-                # Mock search results
-                mock_qdrant_client.post.return_value.json.return_value = {
+        }
+        mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
+        
+        # Mock search results
+        mock_qdrant_client.post.return_value.json.return_value = {
                     "result": [
                         {
                             "id": "1",
@@ -376,25 +376,25 @@ class TestSearchAPI:
                             }
                         }
                     ]
-                }
-                mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
-                
-                response = test_client_for_search_api.post(
+        }
+        mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
+        
+        response = test_client_for_search_api.post(
                     "/search",
                     json={
                         "query": "test query",
                         "k": 5,
                         "search_type": "semantic"
                     }
-                )
-                
-                assert response.status_code == 200
-                result = response.json()
-                assert result["query"] == "test query"
-                assert len(result["results"]) == 1
-                assert result["results"][0]["score"] == 0.95
-                assert result["model_used"] == "test-model/float32"
-                
+        )
+        
+        assert response.status_code == 200
+        result = response.json()
+        assert result["query"] == "test query"
+        assert len(result["results"]) == 1
+        assert result["results"][0]["score"] == 0.95
+        assert result["model_used"] == "test-model/float32"
+        
     def test_search_with_reranking(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
         """Test search with reranking enabled."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
@@ -404,19 +404,19 @@ class TestSearchAPI:
             
             # Mock collection info
             mock_qdrant_client.get.return_value.json.return_value = {
-                "result": {
+        "result": {
                     "config": {
                         "params": {
                             "vectors": {"size": 1024}
                         }
                     }
-                }
+        }
             }
             mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
             
             # Mock search results with more candidates for reranking
             mock_qdrant_client.post.return_value.json.return_value = {
-                "result": [
+        "result": [
                     {
                         "id": "1",
                         "score": 0.85,
@@ -437,18 +437,18 @@ class TestSearchAPI:
                             "content": "Content 2"
                         }
                     }
-                ]
+        ]
             }
             mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
             
             response = test_client_for_search_api.post(
-                "/search",
-                json={
+        "/search",
+        json={
                     "query": "test query",
                     "k": 2,
                     "use_reranker": True,
                     "include_content": True
-                }
+        }
             )
             
             assert response.status_code == 200
@@ -467,7 +467,7 @@ class TestSearchAPI:
         # Mock filtered search results
         mock_qdrant_client.post.return_value.json.return_value = {
             "result": [
-                {
+        {
                     "id": "1",
                     "score": 0.90,
                     "payload": {
@@ -475,7 +475,7 @@ class TestSearchAPI:
                         "chunk_id": "chunk-1",
                         "doc_id": "doc-1"
                     }
-                }
+        }
             ]
         }
         mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
@@ -483,9 +483,9 @@ class TestSearchAPI:
         response = test_client_for_search_api.post(
             "/search",
             json={
-                "query": "test query",
-                "k": 5,
-                "filters": {"must": [{"key": "type", "match": {"value": "document"}}]}
+        "query": "test query",
+        "k": 5,
+        "filters": {"must": [{"key": "type", "match": {"value": "document"}}]}
             }
         )
         
@@ -538,11 +538,11 @@ class TestSearchAPI:
         # Mock collection info
         mock_qdrant_client.get.return_value.json.return_value = {
             "result": {
-                "config": {
+        "config": {
                     "params": {
                         "vectors": {"size": 768}
                     }
-                }
+        }
             }
         }
         mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
@@ -550,10 +550,10 @@ class TestSearchAPI:
         response = test_client_for_search_api.get(
             "/hybrid_search",
             params={
-                "q": "test query",
-                "k": 10,
-                "mode": "filter",
-                "keyword_mode": "any"
+        "q": "test query",
+        "k": 10,
+        "mode": "filter",
+        "keyword_mode": "any"
             }
         )
         
@@ -572,23 +572,23 @@ class TestSearchAPI:
         with patch("packages.vecpipe.search_api.search_qdrant") as mock_search:
             # Mock search results for each query
             mock_search.return_value = [
-                {
+        {
                     "score": 0.9,
                     "payload": {
                         "path": "/test/batch.txt",
                         "chunk_id": "chunk-1",
                         "doc_id": "doc-1"
                     }
-                }
+        }
             ]
             
             response = test_client_for_search_api.post(
-                "/search/batch",
-                json={
+        "/search/batch",
+        json={
                     "queries": ["query1", "query2", "query3"],
                     "k": 5,
                     "search_type": "semantic"
-                }
+        }
             )
             
             assert response.status_code == 200
@@ -605,9 +605,9 @@ class TestSearchAPI:
         response = test_client_for_search_api.get(
             "/keyword_search",
             params={
-                "q": "test keywords",
-                "k": 20,
-                "mode": "all"
+        "q": "test keywords",
+        "k": 20,
+        "mode": "all"
             }
         )
         
@@ -623,9 +623,9 @@ class TestSearchAPI:
         """Test /collection/info endpoint."""
         mock_qdrant_client.get.return_value.json.return_value = {
             "result": {
-                "name": "test_collection",
-                "points_count": 1000,
-                "indexed_vectors_count": 1000
+        "name": "test_collection",
+        "points_count": 1000,
+        "indexed_vectors_count": 1000
             }
         }
         mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
@@ -641,11 +641,11 @@ class TestSearchAPI:
         """Test /models endpoint."""
         with patch("packages.shared.embedding.QUANTIZED_MODEL_INFO", {
             "test-model": {
-                "description": "Test embedding model",
-                "dimension": 768,
-                "supports_quantization": True,
-                "recommended_quantization": "float16",
-                "memory_estimate": {"float32": 1024, "float16": 512}
+        "description": "Test embedding model",
+        "dimension": 768,
+        "supports_quantization": True,
+        "recommended_quantization": "float16",
+        "memory_estimate": {"float32": 1024, "float16": 512}
             }
         }):
             mock_embedding_service.current_model_name = "test-model"
@@ -664,10 +664,10 @@ class TestSearchAPI:
         response = test_client_for_search_api.post(
             "/embed",
             json={
-                "texts": ["text1", "text2", "text3"],
-                "model_name": "test-model",
-                "quantization": "float32",
-                "batch_size": 2
+        "texts": ["text1", "text2", "text3"],
+        "model_name": "test-model",
+        "quantization": "float32",
+        "batch_size": 2
             }
         )
         
@@ -689,9 +689,9 @@ class TestSearchAPI:
         response = test_client_for_search_api.post(
             "/embed",
             json={
-                "texts": ["text1"],
-                "model_name": "large-model",
-                "quantization": "float32"
+        "texts": ["text1"],
+        "model_name": "large-model",
+        "quantization": "float32"
             }
         )
         
@@ -705,8 +705,8 @@ class TestSearchAPI:
         response = test_client_for_search_api.post(
             "/upsert",
             json={
-                "collection_name": "test_collection",
-                "points": [
+        "collection_name": "test_collection",
+        "points": [
                     {
                         "id": "point-1",
                         "vector": [0.1] * 768,
@@ -718,8 +718,8 @@ class TestSearchAPI:
                             "metadata": {"type": "document"}
                         }
                     }
-                ],
-                "wait": True
+        ],
+        "wait": True
             }
         )
         
@@ -743,21 +743,21 @@ class TestSearchAPI:
             # Mock Qdrant error response
             error_response = Mock()
             error_response.json.return_value = {
-                "status": {
+        "status": {
                     "error": "Collection not found"
-                }
+        }
             }
             mock_qdrant_client.put.side_effect = httpx.HTTPStatusError(
-                "Not found",
-                request=Mock(),
-                response=error_response
+        "Not found",
+        request=Mock(),
+        response=error_response
             )
             
             from packages.vecpipe.search_api import upsert_points, UpsertPoint, PointPayload
             
             request = UpsertRequest(
-                collection_name="nonexistent",
-                points=[
+        collection_name="nonexistent",
+        points=[
                     UpsertPoint(
                         id="point-1",
                         vector=[0.1] * 768,
@@ -767,7 +767,7 @@ class TestSearchAPI:
                             path="/test/file.txt"
                         )
                     )
-                ]
+        ]
             )
             
             with pytest.raises(HTTPException) as exc_info:
@@ -787,7 +787,7 @@ class TestSearchAPI:
                     "reranker_model": "reranker-model",
                     "reranker_quantization": "int8",
                     "notes": ["GPU detected with sufficient memory"]
-                }
+                        }
                 mock_model_manager.current_model_key = "current-model"
                 mock_model_manager.current_reranker_key = None
                 
@@ -897,12 +897,12 @@ class TestSearchAPI:
         response = test_client_for_search_api.get(
             "/search",
             params={
-                "q": "test query",
-                "k": 10,
-                "collection": "custom_collection",
-                "search_type": "question",
-                "model_name": "custom-model",
-                "quantization": "int8"
+        "q": "test query",
+        "k": 10,
+        "collection": "custom_collection",
+        "search_type": "question",
+        "model_name": "custom-model",
+        "quantization": "int8"
             }
         )
         
@@ -922,8 +922,8 @@ class TestSearchAPI:
         response = test_client_for_search_api.post(
             "/models/load",
             json={
-                "model_name": "test-model",
-                "quantization": "float32"
+        "model_name": "test-model",
+        "quantization": "float32"
             }
         )
         
@@ -976,19 +976,19 @@ class TestSearchAPI:
             
             # Mock collection info
             mock_qdrant_client.get.return_value.json.return_value = {
-                "result": {
+        "result": {
                     "config": {
                         "params": {
                             "vectors": {"size": 1024}
                         }
                     }
-                }
+        }
             }
             mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
             
             # Mock search results
             mock_qdrant_client.post.return_value.json.return_value = {
-                "result": [
+        "result": [
                     {
                         "id": "1",
                         "score": 0.85,
@@ -999,22 +999,22 @@ class TestSearchAPI:
                             "content": "Content"
                         }
                     }
-                ]
+        ]
             }
             mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
             
             # Mock reranking to raise memory error
             mock_model_manager.rerank_async.side_effect = InsufficientMemoryError(
-                "Not enough GPU memory for reranking"
+        "Not enough GPU memory for reranking"
             )
             
             response = test_client_for_search_api.post(
-                "/search",
-                json={
+        "/search",
+        json={
                     "query": "test query",
                     "k": 1,
                     "use_reranker": True
-                }
+        }
             )
             
             assert response.status_code == 507
