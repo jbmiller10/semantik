@@ -104,8 +104,12 @@ class TestCeleryTaskWithOperationUpdates:
 
     async def test_context_manager_lifecycle(self, updater, mock_redis):
         """Test context manager properly manages Redis connection."""
-        # Patch redis.asyncio.from_url to return the mock directly
-        with patch("redis.asyncio.from_url", return_value=mock_redis):
+        # Create async function that returns the mock
+        async def async_from_url(*_, **__):
+            return mock_redis
+        
+        # Patch redis.asyncio.from_url with the async function
+        with patch("redis.asyncio.from_url", side_effect=async_from_url):
             async with updater as u:
                 assert u == updater
                 mock_redis.ping.assert_called_once()
@@ -115,8 +119,12 @@ class TestCeleryTaskWithOperationUpdates:
 
     async def test_send_update_formats_message(self, updater, mock_redis):
         """Test update message formatting."""
-        # Patch redis.asyncio.from_url to return the mock directly
-        with patch("redis.asyncio.from_url", return_value=mock_redis):
+        # Create async function that returns the mock
+        async def async_from_url(*_, **__):
+            return mock_redis
+        
+        # Patch redis.asyncio.from_url with the async function
+        with patch("redis.asyncio.from_url", side_effect=async_from_url):
             # Need to use the context manager to initialize the connection
             async with updater:
                 await updater.send_update("test_type", {"key": "value"})
@@ -137,8 +145,12 @@ class TestCeleryTaskWithOperationUpdates:
         """Test graceful error handling in send_update."""
         mock_redis.xadd.side_effect = Exception("Redis error")
 
-        # Patch redis.asyncio.from_url to return the mock directly
-        with patch("redis.asyncio.from_url", return_value=mock_redis):
+        # Create async function that returns the mock
+        async def async_from_url(*_, **__):
+            return mock_redis
+        
+        # Patch redis.asyncio.from_url with the async function
+        with patch("redis.asyncio.from_url", side_effect=async_from_url):
             # Need to use the context manager to initialize the connection
             async with updater:
                 # Should not raise exception
@@ -381,7 +393,7 @@ class TestIndexOperation:
         return manager
 
     @patch("packages.webui.tasks.qdrant_manager")
-    @patch("packages.webui.tasks.get_model_config")
+    @patch("shared.embedding.models.get_model_config")
     async def test_process_index_operation_success(
         self, mock_get_model_config, mock_qdrant_global, mock_qdrant_manager, mock_updater
     ):
@@ -842,8 +854,8 @@ class TestRemoveSourceOperation:
         }
 
         # Mock the document and collection repos created in transaction
-        with patch("packages.webui.tasks.DocumentRepository") as mock_doc_repo_class:
-            with patch("packages.webui.tasks.CollectionRepository") as mock_col_repo_class:
+        with patch("shared.database.repositories.document_repository.DocumentRepository") as mock_doc_repo_class:
+            with patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_col_repo_class:
                 mock_doc_repo_tx = AsyncMock()
                 mock_doc_repo_tx.bulk_update_status = AsyncMock()
                 mock_doc_repo_tx.get_stats_by_collection.return_value = {

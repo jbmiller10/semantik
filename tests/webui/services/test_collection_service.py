@@ -589,7 +589,7 @@ class TestDeleteCollection:
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 0
 
-        with patch("packages.webui.utils.qdrant_manager.qdrant_manager.get_client") as mock_get_client:
+        with patch("packages.webui.services.collection_service.qdrant_manager.get_client") as mock_get_client:
             mock_qdrant_client = MagicMock()
             mock_get_client.return_value = mock_qdrant_client
             mock_collections = MagicMock()
@@ -661,7 +661,7 @@ class TestDeleteCollection:
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 0
 
-        with patch("packages.webui.utils.qdrant_manager.qdrant_manager.get_client") as mock_get_client:
+        with patch("packages.webui.services.collection_service.qdrant_manager.get_client") as mock_get_client:
             mock_qdrant_client = MagicMock()
             mock_get_client.return_value = mock_qdrant_client
             mock_collections = MagicMock()
@@ -691,7 +691,7 @@ class TestDeleteCollection:
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 0
 
-        with patch("packages.webui.utils.qdrant_manager.qdrant_manager.get_client") as mock_get_client:
+        with patch("packages.webui.services.collection_service.qdrant_manager.get_client") as mock_get_client:
             mock_qdrant_client = MagicMock()
             mock_get_client.return_value = mock_qdrant_client
             mock_qdrant_client.get_collections.side_effect = Exception("Qdrant error")
@@ -717,7 +717,7 @@ class TestDeleteCollection:
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 0
 
-        with patch("packages.webui.utils.qdrant_manager.qdrant_manager.get_client") as mock_get_client:
+        with patch("packages.webui.services.collection_service.qdrant_manager.get_client") as mock_get_client:
             await collection_service.delete_collection(
                 collection_id=str(mock_collection.uuid),
                 user_id=mock_collection.owner_id,

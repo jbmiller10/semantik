@@ -1,6 +1,7 @@
 """Test suite for Qdrant collection cleanup tasks."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 
 class TestCleanupOldCollections:
@@ -237,17 +238,12 @@ class TestCleanupQdrantCollections:
 class TestGetActiveCollections:
     """Test suite for _get_active_collections helper function."""
 
-    @patch("packages.shared.database.database.AsyncSessionLocal")
-    @patch("packages.shared.database.repositories.collection_repository.CollectionRepository")
-    async def test_get_active_collections(self, mock_repo_class, mock_session_local):
+    async def test_get_active_collections(self):
         """Test getting active collections from database."""
-        from packages.webui.tasks import _get_active_collections
-
-        # Setup mocks
+        # Create a mock session and repository
         mock_session = AsyncMock()
-        mock_session_local.return_value.__aenter__.return_value = mock_session
-
         mock_repo = AsyncMock()
+        
         mock_collections = [
             {
                 "id": "col1",
@@ -263,49 +259,71 @@ class TestGetActiveCollections:
             },
         ]
         mock_repo.list_all.return_value = mock_collections
-        mock_repo_class.return_value = mock_repo
+        
+        # Create a context manager that returns our mock session
+        @asynccontextmanager
+        async def mock_session_maker():
+            yield mock_session
+            
+        # Patch both AsyncSessionLocal and CollectionRepository at their source
+        with patch("shared.database.database.AsyncSessionLocal", mock_session_maker):
+            with patch("shared.database.repositories.collection_repository.CollectionRepository", return_value=mock_repo):
+                from packages.webui.tasks import _get_active_collections
+                
+                # Run function
+                active_collections = await _get_active_collections()
 
-        # Run function
-        active_collections = await _get_active_collections()
-
-        # Verify results
-        assert isinstance(active_collections, set)
-        assert "qdrant_col_1" in active_collections
-        assert "qdrant_col_2" in active_collections
-        assert "col_1_active" in active_collections
-        assert "col_2_active" in active_collections
-        assert "col_2_backup" in active_collections
-        assert "staging_col_2_20240115_120000" in active_collections
+                # Verify results
+                assert isinstance(active_collections, set)
+                assert "qdrant_col_1" in active_collections
+                assert "qdrant_col_2" in active_collections
+                assert "col_1_active" in active_collections
+                assert "col_2_active" in active_collections
+                assert "col_2_backup" in active_collections
+                assert "staging_col_2_20240115_120000" in active_collections
 
 
 class TestAuditCollectionDeletion:
     """Test suite for _audit_collection_deletions_batch helper function."""
 
-    @patch("packages.shared.database.database.AsyncSessionLocal")
-    @patch("packages.shared.database.models.CollectionAuditLog")
-    async def test_audit_collection_deletions_batch_success(self, mock_audit_log_class, mock_session_local):
+    async def test_audit_collection_deletions_batch_success(self):
         """Test successful batch audit log creation."""
-        from packages.webui.tasks import _audit_collection_deletions_batch
-
-        # Setup mocks
+        # Create a mock session
         mock_session = AsyncMock()
-        mock_session_local.return_value.__aenter__.return_value = mock_session
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        
+        # Create a context manager that returns our mock session
+        @asynccontextmanager
+        async def mock_session_maker():
+            yield mock_session
+            
+        # Mock the audit log class
+        mock_audit_log_class = MagicMock()
+        
+        # Patch both AsyncSessionLocal and CollectionAuditLog at their source
+        with patch("shared.database.database.AsyncSessionLocal", mock_session_maker):
+            with patch("shared.database.models.CollectionAuditLog", mock_audit_log_class):
+                from packages.webui.tasks import _audit_collection_deletions_batch
 
-        # Run function
-        deletions = [("test_collection_1", 1000), ("test_collection_2", 2000)]
-        await _audit_collection_deletions_batch(deletions)
+                # Run function
+                deletions = [("test_collection_1", 1000), ("test_collection_2", 2000)]
+                await _audit_collection_deletions_batch(deletions)
+                
+                # Verify audit logs were created
+                assert mock_session.add.call_count == 2
+                assert mock_session.commit.call_count == 1
 
-        # Verify audit logs were created
-        assert mock_session.add.call_count == 2
-        assert mock_session.commit.call_count == 1
-
-    @patch("packages.shared.database.database.AsyncSessionLocal")
-    async def test_audit_collection_deletions_batch_empty(self, mock_session_local):
+    async def test_audit_collection_deletions_batch_empty(self):
         """Test batch audit with empty list."""
-        from packages.webui.tasks import _audit_collection_deletions_batch
-
-        # Run function with empty list
-        await _audit_collection_deletions_batch([])
-
-        # Verify no session created
-        mock_session_local.assert_not_called()
+        # Create a mock that should not be called
+        mock_session_maker = MagicMock()
+        
+        with patch("shared.database.database.AsyncSessionLocal", mock_session_maker):
+            from packages.webui.tasks import _audit_collection_deletions_batch
+            
+            # Run function with empty list
+            await _audit_collection_deletions_batch([])
+            
+            # Verify no session created
+            mock_session_maker.assert_not_called()

@@ -65,7 +65,7 @@ class SearchService:
                 collections.append(collection)
             except (EntityNotFoundError, AccessDeniedError) as e:
                 logger.error(f"Error accessing collection {uuid}: {e}")
-                raise AccessDeniedError(f"Access denied or collection not found: {uuid}") from e
+                raise AccessDeniedError(str(user_id), "collection", uuid) from e
 
         return collections
 
@@ -120,7 +120,15 @@ class SearchService:
             # Retry with longer timeout
             logger.warning(f"Search timeout for collection {collection.name}, retrying...")
             # Calculate extended timeout by multiplying current timeout values
+            # Calculate a general timeout based on the maximum of individual timeouts
+            max_timeout = max(
+                timeout.connect or 0,
+                timeout.read or 0,
+                timeout.write or 0,
+                timeout.pool or 0
+            ) * self.retry_timeout_multiplier
             extended_timeout = httpx.Timeout(
+                timeout=max_timeout if max_timeout > 0 else 120.0,
                 connect=timeout.connect * self.retry_timeout_multiplier if timeout.connect else 20.0,
                 read=timeout.read * self.retry_timeout_multiplier if timeout.read else 120.0,
                 write=timeout.write * self.retry_timeout_multiplier if timeout.write else 20.0,
@@ -372,7 +380,10 @@ class SearchService:
 
         try:
             # Use a longer timeout for single collection searches
+            # Calculate timeout based on the read timeout (usually the longest operation)
+            general_timeout = (self.default_timeout.read * 2 if self.default_timeout.read else 60.0)
             timeout = httpx.Timeout(
+                timeout=general_timeout,
                 connect=self.default_timeout.connect if self.default_timeout.connect else 5.0,
                 read=self.default_timeout.read * 2 if self.default_timeout.read else 60.0,
                 write=self.default_timeout.write if self.default_timeout.write else 5.0,

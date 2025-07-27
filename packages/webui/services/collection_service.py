@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration constants
 QDRANT_COLLECTION_PREFIX = "collection_"
+DEFAULT_VECTOR_DIMENSION = 1536  # Default vector dimension for embeddings
 
 
 class CollectionService:

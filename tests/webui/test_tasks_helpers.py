@@ -537,14 +537,18 @@ class TestConcurrentOperations:
         # Create multiple updaters
         updaters = [CeleryTaskWithOperationUpdates(operation_id) for _ in range(3)]
 
-        with patch("redis.asyncio.from_url") as mock_from_url:
-            # Create a proper mock redis client that works with async context
-            mock_redis = MagicMock()
-            mock_redis.xadd = AsyncMock(return_value="1234567890-0")
-            mock_redis.expire = AsyncMock(return_value=True)
-            mock_redis.close = AsyncMock()
-            mock_redis.ping = AsyncMock(return_value=True)
-            mock_from_url.return_value = mock_redis
+        # Create a mock redis client to track calls
+        mock_redis = MagicMock()
+        mock_redis.xadd = AsyncMock(return_value="1234567890-0")
+        mock_redis.expire = AsyncMock(return_value=True)
+        mock_redis.close = AsyncMock()
+        mock_redis.ping = AsyncMock(return_value=True)
+        
+        # Create async function that returns the mock
+        async def async_from_url(*_, **__):
+            return mock_redis
+        
+        with patch("redis.asyncio.from_url", side_effect=async_from_url) as mock_from_url:
 
             # Send updates sequentially
             updates_sent = 0
@@ -647,14 +651,18 @@ class TestPerformance:
         """Test sending many updates in quick succession."""
         updater = CeleryTaskWithOperationUpdates("perf-test-op")
 
-        with patch("redis.asyncio.from_url") as mock_from_url:
-            # Create a proper mock redis client
-            mock_redis = MagicMock()
-            mock_redis.xadd = AsyncMock(return_value="1234567890-0")
-            mock_redis.expire = AsyncMock(return_value=True)
-            mock_redis.close = AsyncMock()
-            mock_redis.ping = AsyncMock(return_value=True)
-            mock_from_url.return_value = mock_redis
+        # Create a mock redis client to track calls
+        mock_redis = MagicMock()
+        mock_redis.xadd = AsyncMock(return_value="1234567890-0")
+        mock_redis.expire = AsyncMock(return_value=True)
+        mock_redis.close = AsyncMock()
+        mock_redis.ping = AsyncMock(return_value=True)
+        
+        # Create async function that returns the mock
+        async def async_from_url(*_, **__):
+            return mock_redis
+        
+        with patch("redis.asyncio.from_url", side_effect=async_from_url) as mock_from_url:
 
             # Send many updates
             async with updater:
