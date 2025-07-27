@@ -350,10 +350,9 @@ class CollectionService:
         # Only owner can delete
         if collection.owner_id != user_id:
             raise AccessDeniedError(
-                entity_id=str(user_id),
-                entity_type="user",
-                resource_id=collection_id,
-                message="Only the collection owner can delete it",
+                user_id=str(user_id),
+                resource_type="Collection",
+                resource_id=collection_id
             )
 
         # Check if there's an active operation
@@ -504,7 +503,11 @@ class CollectionService:
 
         # Only the owner can update the collection
         if collection.owner_id != user_id:
-            raise AccessDeniedError("Only the collection owner can update it")
+            raise AccessDeniedError(
+                user_id=str(user_id),
+                resource_type="Collection",
+                resource_id=collection_id
+            )
 
         # Perform the update
         updated_collection = await self.collection_repo.update(str(collection.id), updates)

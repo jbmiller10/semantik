@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { AxiosError } from 'axios';
 import { collectionsV2Api } from '../services/api/v2/collections';
 import { useUIStore } from '../stores/uiStore';
 
@@ -30,8 +31,13 @@ function RenameCollectionModal({
     onSuccess: () => {
       onSuccess(newName);
     },
-    onError: (error: any) => {
-      const message = error.response?.data?.detail || error.message || 'Failed to rename collection';
+    onError: (error: Error | AxiosError) => {
+      let message = 'Failed to rename collection';
+      if (error instanceof AxiosError && error.response?.data?.detail) {
+        message = error.response.data.detail;
+      } else if (error instanceof Error) {
+        message = error.message;
+      }
       setError(message);
       addToast({ type: 'error', message });
     },

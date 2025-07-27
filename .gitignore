@@ -186,3 +186,18 @@ CODEBASE_*
 images/*
 .serena/*
 *.pkl
+
+# Temporary development files
+*_TEST_REPORT.md
+*_investigation_notes.md
+*_DIAGNOSTICS.md
+*_DEBUG.md
+*_ANALYSIS.md
+*_SUMMARY.md
+*.backup
+test_*.png
+*.tmp
+page_content.html
+screenshot*.png
+login*.png
+collections*.png

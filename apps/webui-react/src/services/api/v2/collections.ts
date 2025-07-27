@@ -81,11 +81,14 @@ export const searchV2Api = {
 };
 
 // Helper function to handle API errors
-export function handleApiError(error: any): string {
-  if (error.response?.data?.detail) {
-    return error.response.data.detail;
+export function handleApiError(error: unknown): string {
+  if (error instanceof Error && 'response' in error) {
+    const axiosError = error as { response?: { data?: { detail?: string } } };
+    if (axiosError.response?.data?.detail) {
+      return axiosError.response.data.detail;
+    }
   }
-  if (error.message) {
+  if (error instanceof Error && error.message) {
     return error.message;
   }
   return 'An unexpected error occurred';

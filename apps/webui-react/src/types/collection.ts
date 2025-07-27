@@ -32,7 +32,7 @@ export interface Collection {
   is_public: boolean;
   status: CollectionStatus;
   status_message?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   document_count: number;
   vector_count: number;
   total_size_bytes?: number;
@@ -50,7 +50,7 @@ export interface Operation {
   collection_id: string;
   type: OperationType;
   status: OperationStatus;
-  config: Record<string, any>;     // Operation-specific configuration
+  config: Record<string, unknown>;     // Operation-specific configuration
   error_message?: string;
   created_at: string;              // ISO 8601 string
   started_at?: string;             // ISO 8601 string
@@ -70,14 +70,14 @@ export interface CreateCollectionRequest {
   chunk_size?: number;
   chunk_overlap?: number;
   is_public?: boolean;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface UpdateCollectionRequest {
   name?: string;
   description?: string;
   is_public?: boolean;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AddSourceRequest {
@@ -85,7 +85,7 @@ export interface AddSourceRequest {
   config?: {
     chunk_size?: number;
     chunk_overlap?: number;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   };
 }
 
@@ -129,7 +129,7 @@ export interface OperationProgressMessage {
   progress?: number;
   message?: string;
   error?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CollectionStatusMessage {

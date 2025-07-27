@@ -32,7 +32,7 @@ export interface DocumentResponse {
   source_path: string;
   file_path: string;
   chunk_count: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -46,20 +46,15 @@ export interface DocumentListResponse {
 
 export interface SearchRequest {
   query: string;
-  collection_ids?: string[];
-  top_k?: number;
+  collection_uuids?: string[];
+  k?: number;
   score_threshold?: number;
-  search_type?: 'vector' | 'hybrid';
-  hybrid_config?: {
-    alpha?: number;
-    mode?: 'rerank' | 'filter';
-    keyword_mode?: 'any' | 'all';
-  };
-  rerank_config?: {
-    model?: string;
-    quantization?: string;
-    enabled?: boolean;
-  };
+  search_type?: 'semantic' | 'question' | 'code' | 'hybrid';
+  use_reranker?: boolean;
+  rerank_model?: string | null;
+  hybrid_alpha?: number;
+  hybrid_mode?: 'reciprocal_rank' | 'relative_score';
+  keyword_mode?: 'bm25';
 }
 
 export interface SearchResult {
@@ -76,7 +71,7 @@ export interface SearchResult {
   file_name: string;
   file_path: string;
   embedding_model: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   highlights?: string[];
 }
 

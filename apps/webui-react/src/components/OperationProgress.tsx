@@ -1,6 +1,13 @@
 import { useOperationProgress } from '../hooks/useOperationProgress';
 import type { Operation } from '../types/collection';
 
+// Helper to safely get source_path from config
+function getSourcePath(config: Record<string, unknown> | undefined): string | null {
+  if (!config || !('source_path' in config)) return null;
+  const sourcePath = config.source_path;
+  return typeof sourcePath === 'string' ? sourcePath : null;
+}
+
 interface OperationProgressProps {
   operation: Operation;
   className?: string;
@@ -134,12 +141,15 @@ function OperationProgress({
       {showDetails && (
         <div className="text-xs text-gray-600 space-y-1">
           {/* Source path from config */}
-          {operation.config.source_path && (
-            <div className="flex items-start">
-              <span className="text-gray-500 mr-2">Source:</span>
-              <span className="font-mono break-all">{operation.config.source_path}</span>
-            </div>
-          )}
+          {(() => {
+            const sourcePath = getSourcePath(operation.config);
+            return sourcePath ? (
+              <div className="flex items-start">
+                <span className="text-gray-500 mr-2">Source:</span>
+                <span className="font-mono break-all">{sourcePath}</span>
+              </div>
+            ) : null;
+          })()}
           
           {/* Error message for failed operations */}
           {operation.status === 'failed' && operation.error_message && (

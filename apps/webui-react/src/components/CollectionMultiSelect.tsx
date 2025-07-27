@@ -78,8 +78,12 @@ export const CollectionMultiSelect: React.FC<CollectionMultiSelectProps> = ({
           }
           ${isOpen ? 'ring-2 ring-blue-500 border-blue-500' : 'border-gray-300'}
         `}
+        aria-label="Select collections"
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+        aria-describedby="selected-collections-count"
       >
-        <span className="truncate">
+        <span className="truncate" id="selected-collections-count">
           {selectedCount === 0
             ? placeholder
             : selectedCount === 1
@@ -94,7 +98,7 @@ export const CollectionMultiSelect: React.FC<CollectionMultiSelectProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg">
+        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg" role="listbox" aria-label="Available collections">
           {/* Search input */}
           <div className="p-2 border-b border-gray-200">
             <div className="relative">
@@ -106,6 +110,7 @@ export const CollectionMultiSelect: React.FC<CollectionMultiSelectProps> = ({
                 placeholder="Search collections..."
                 className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 onClick={(e) => e.stopPropagation()}
+                aria-label="Search through collections"
               />
             </div>
           </div>
@@ -116,6 +121,7 @@ export const CollectionMultiSelect: React.FC<CollectionMultiSelectProps> = ({
               type="button"
               onClick={handleSelectAll}
               className="px-3 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded"
+              aria-label="Select all filtered collections"
             >
               Select All
             </button>
@@ -123,13 +129,14 @@ export const CollectionMultiSelect: React.FC<CollectionMultiSelectProps> = ({
               type="button"
               onClick={handleClearAll}
               className="px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 rounded"
+              aria-label="Clear all selections"
             >
               Clear All
             </button>
           </div>
 
           {/* Collections list */}
-          <div className="max-h-64 overflow-y-auto">
+          <div className="max-h-64 overflow-y-auto" role="group" aria-label="Collection list">
             {filteredCollections.length === 0 ? (
               <div className="px-3 py-4 text-sm text-gray-500 text-center">
                 {searchTerm
@@ -143,12 +150,15 @@ export const CollectionMultiSelect: React.FC<CollectionMultiSelectProps> = ({
                 <label
                   key={collection.id}
                   className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                  role="option"
+                  aria-selected={selectedCollections.includes(collection.id)}
                 >
                   <input
                     type="checkbox"
                     checked={selectedCollections.includes(collection.id)}
                     onChange={() => handleToggle(collection.id)}
                     className="mr-3 text-blue-600 rounded focus:ring-blue-500"
+                    aria-label={`Select ${collection.name}`}
                   />
                   <div className="flex-1">
                     <div className="text-sm font-medium">{collection.name}</div>
@@ -169,7 +179,7 @@ export const CollectionMultiSelect: React.FC<CollectionMultiSelectProps> = ({
 
           {/* Info about non-ready collections */}
           {collections.some((col) => col.status !== 'ready' || col.vector_count === 0) && (
-            <div className="px-3 py-2 text-xs text-gray-500 bg-gray-50 border-t border-gray-200">
+            <div className="px-3 py-2 text-xs text-gray-500 bg-gray-50 border-t border-gray-200" role="note">
               Only showing collections that are ready with indexed vectors
             </div>
           )}

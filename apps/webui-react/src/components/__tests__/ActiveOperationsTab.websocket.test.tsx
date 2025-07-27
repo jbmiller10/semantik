@@ -1,16 +1,14 @@
 import React from 'react'
 import { screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { ActiveOperationsTab } from '../ActiveOperationsTab'
 import { useOperationProgress } from '../../hooks/useOperationProgress'
 import { useCollectionStore } from '../../stores/collectionStore'
 import { 
   renderWithErrorHandlers,
-  mockWebSocket,
-  MockWebSocket
+  mockWebSocket
 } from '../../tests/utils/errorTestUtils'
-import { operationsV2Api } from '../../services/api/v2/collections'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, UseQueryResult } from '@tanstack/react-query'
+import type { Operation } from '../../types/collection'
 
 // Mock the hooks and APIs
 vi.mock('../../hooks/useOperationProgress')
@@ -68,8 +66,10 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
     vi.mocked(useCollectionStore).mockReturnValue({
       updateOperationProgress: mockUpdateOperationProgress,
       collections: mockCollections,
-      getCollectionOperations: vi.fn().mockReturnValue(mockActiveOperations)
-    } as any)
+      getCollectionOperations: vi.fn().mockReturnValue(mockActiveOperations),
+      activeOperations: [],
+      lastUpdateTime: null
+    } as ReturnType<typeof useCollectionStore>)
   })
 
   afterEach(() => {
@@ -98,7 +98,7 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
         error: null,
         isLoading: false,
         refetch: vi.fn()
-      } as any)
+      } as unknown as UseQueryResult<Operation[]>)
       
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
       
@@ -149,7 +149,7 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
     })
 
     it('should handle rapid operation status changes with WebSocket errors', async () => {
-      let operationStatus = 'processing'
+      const operationStatus = 'processing'
       
       vi.mocked(useOperationProgress).mockImplementation(({ operationId, onProgress, onComplete, onError }) => {
         if (operationId === 'op-1') {
@@ -175,7 +175,7 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
         error: null,
         isLoading: false,
         refetch: vi.fn()
-      } as any)
+      } as unknown as UseQueryResult<Operation[]>)
       
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
       
@@ -216,7 +216,7 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
         error: null,
         isLoading: false,
         refetch: vi.fn()
-      } as any)
+      } as unknown as UseQueryResult<Operation[]>)
       
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
       

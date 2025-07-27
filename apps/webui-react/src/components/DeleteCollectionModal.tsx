@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { AxiosError } from 'axios';
 import { collectionsV2Api } from '../services/api/v2/collections';
 import { useUIStore } from '../stores/uiStore';
 
@@ -40,7 +41,7 @@ function DeleteCollectionModal({
       });
       onSuccess();
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail: string }>) => {
       const message = error.response?.data?.detail || 'Failed to delete collection';
       addToast({ type: 'error', message });
     },

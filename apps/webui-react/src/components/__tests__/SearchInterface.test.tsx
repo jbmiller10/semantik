@@ -43,7 +43,7 @@ describe('SearchInterface', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     
-    ;(useSearchStore as any).mockReturnValue({
+    vi.mocked(useSearchStore).mockReturnValue({
       searchParams: defaultSearchParams,
       updateSearchParams: mockUpdateSearchParams,
       setResults: mockSetResults,
@@ -56,7 +56,7 @@ describe('SearchInterface', () => {
       setPartialFailure: vi.fn(),
     })
     
-    ;(useCollectionStore as any).mockReturnValue({
+    vi.mocked(useCollectionStore).mockReturnValue({
       collections: new Map([
         ['test-collection', {
           id: 'test-collection',
@@ -82,7 +82,7 @@ describe('SearchInterface', () => {
       }]),
     })
     
-    ;(useUIStore as any).mockReturnValue({
+    vi.mocked(useUIStore).mockReturnValue({
       addToast: mockAddToast,
     })
   })
@@ -115,7 +115,7 @@ describe('SearchInterface', () => {
 
   it('validates collection selection', async () => {
     
-    ;(useSearchStore as any).mockReturnValue({
+    vi.mocked(useSearchStore).mockReturnValue({
       searchParams: { ...defaultSearchParams, query: 'test query', selectedCollections: ['test-collection'] },
       updateSearchParams: mockUpdateSearchParams,
       setResults: mockSetResults,
@@ -148,7 +148,7 @@ describe('SearchInterface', () => {
   })
 
   it('shows hybrid search options when enabled', async () => {
-    ;(useSearchStore as any).mockReturnValue({
+    vi.mocked(useSearchStore).mockReturnValue({
       searchParams: { ...defaultSearchParams, searchType: 'hybrid' },
       updateSearchParams: mockUpdateSearchParams,
       setResults: mockSetResults,
@@ -183,7 +183,7 @@ describe('SearchInterface', () => {
   })
 
   it('shows reranking options when enabled', async () => {
-    ;(useSearchStore as any).mockReturnValue({
+    vi.mocked(useSearchStore).mockReturnValue({
       searchParams: { ...defaultSearchParams, useReranker: true },
       updateSearchParams: mockUpdateSearchParams,
       setResults: mockSetResults,
@@ -221,7 +221,7 @@ describe('SearchInterface', () => {
   })
 
   it('enables search button when collection is selected', () => {
-    ;(useSearchStore as any).mockReturnValue({
+    vi.mocked(useSearchStore).mockReturnValue({
       searchParams: { ...defaultSearchParams, selectedCollections: ['test-collection'] },
       updateSearchParams: mockUpdateSearchParams,
       setResults: mockSetResults,
@@ -243,7 +243,7 @@ describe('SearchInterface', () => {
   it('changes reranker model selection', async () => {
     const user = userEvent.setup()
     
-    ;(useSearchStore as any).mockReturnValue({
+    vi.mocked(useSearchStore).mockReturnValue({
       searchParams: { ...defaultSearchParams, useReranker: true },
       updateSearchParams: mockUpdateSearchParams,
       setResults: mockSetResults,
@@ -274,7 +274,7 @@ describe('SearchInterface', () => {
   it('changes quantization selection', async () => {
     const user = userEvent.setup()
     
-    ;(useSearchStore as any).mockReturnValue({
+    vi.mocked(useSearchStore).mockReturnValue({
       searchParams: { ...defaultSearchParams, useReranker: true },
       updateSearchParams: mockUpdateSearchParams,
       setResults: mockSetResults,

@@ -9,7 +9,7 @@ export interface APICall {
   method: string;
   url: string;
   headers?: Record<string, string>;
-  body?: any;
+  body?: BodyInit | null;
   timestamp: number;
 }
 
@@ -44,9 +44,9 @@ export class APIMonitor {
 
     // Also intercept XMLHttpRequest for WebSocket upgrade requests
     const originalXHROpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function(method: string, url: string) {
+    XMLHttpRequest.prototype.open = function(method: string, url: string, ...args: unknown[]) {
       console.log('XHR:', method, url);
-      return originalXHROpen.apply(this, arguments as any);
+      return originalXHROpen.apply(this, [method, url, ...args] as Parameters<typeof originalXHROpen>);
     };
   }
 
@@ -94,7 +94,7 @@ export class APIMonitor {
     };
   }
 
-  compareWithVanilla(vanillaData: any) {
+  compareWithVanilla(vanillaData: { summary: { uniqueEndpoints: string[] } }) {
     const vanillaEndpoints = new Set<string>(vanillaData.summary.uniqueEndpoints);
     const reactEndpoints = new Set(this.getSummary().uniqueEndpoints);
 

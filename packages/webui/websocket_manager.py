@@ -197,7 +197,8 @@ class RedisStreamWebSocketManager:
             self.consumer_tasks[operation_id].cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self.consumer_tasks[operation_id]
-            del self.consumer_tasks[operation_id]
+            if operation_id in self.consumer_tasks:
+                del self.consumer_tasks[operation_id]
 
     async def send_update(self, operation_id: str, update_type: str, data: dict) -> None:
         """Send an update to Redis Stream for a specific operation.

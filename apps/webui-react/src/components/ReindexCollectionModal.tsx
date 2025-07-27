@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AxiosError } from 'axios';
 import { useUIStore } from '../stores/uiStore';
 import { useReindexCollection } from '../hooks/useCollectionOperations';
 import { useNavigate } from 'react-router-dom';
@@ -60,7 +61,7 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
       // Toast is already shown by the mutation
       
       onSuccess();
-    } catch (error: any) {
+    } catch (error) {
       // Error handling is already done by the mutation
       // This catch block is for any unexpected errors
       if (!reindexCollectionMutation.isError) {
@@ -69,15 +70,19 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
         // Provide specific error messages based on error type
         let errorMessage = 'Failed to start re-indexing. Please try again.';
         
-        if (error.response?.status === 403) {
-          errorMessage = 'You do not have permission to re-index this collection.';
-        } else if (error.response?.status === 404) {
-          errorMessage = 'Collection not found. It may have been deleted.';
-        } else if (error.response?.status === 409) {
-          errorMessage = 'Another operation is already in progress for this collection.';
-        } else if (error.response?.data?.detail) {
-          errorMessage = error.response.data.detail;
-        } else if (error.message) {
+        if (error instanceof AxiosError) {
+          if (error.response?.status === 403) {
+            errorMessage = 'You do not have permission to re-index this collection.';
+          } else if (error.response?.status === 404) {
+            errorMessage = 'Collection not found. It may have been deleted.';
+          } else if (error.response?.status === 409) {
+            errorMessage = 'Another operation is already in progress for this collection.';
+          } else if (error.response?.data?.detail) {
+            errorMessage = error.response.data.detail;
+          } else if (error.message) {
+            errorMessage = `Re-indexing failed: ${error.message}`;
+          }
+        } else if (error instanceof Error) {
           errorMessage = `Re-indexing failed: ${error.message}`;
         }
         

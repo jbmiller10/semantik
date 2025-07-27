@@ -1,24 +1,8 @@
-import React, { ReactElement } from 'react'
+import { ReactElement } from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import { RequestHandler } from 'msw'
 import { server } from '../mocks/server'
-import { BrowserRouter } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: { retry: false },
-    mutations: { retry: false }
-  }
-})
-
-const TestWrapper = ({ children }: { children: React.ReactNode }) => (
-  <QueryClientProvider client={queryClient}>
-    <BrowserRouter>
-      {children}
-    </BrowserRouter>
-  </QueryClientProvider>
-)
+import { TestWrapper } from './TestWrapper'
 
 /**
  * Render a component with specific error handlers
@@ -264,7 +248,7 @@ export class MockWebSocket {
   }
 
   // Test helper to simulate incoming messages
-  simulateMessage(data: any) {
+  simulateMessage(data: unknown) {
     const message = new MessageEvent('message', { 
       data: typeof data === 'string' ? data : JSON.stringify(data) 
     })
@@ -290,7 +274,7 @@ export class MockWebSocket {
 // Replace global WebSocket with mock for tests
 export const mockWebSocket = () => {
   const originalWebSocket = global.WebSocket
-  global.WebSocket = MockWebSocket as any
+  global.WebSocket = MockWebSocket as unknown as typeof WebSocket
   
   return {
     restore: () => {

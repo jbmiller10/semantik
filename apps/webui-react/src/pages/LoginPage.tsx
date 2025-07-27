@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useUIStore } from '../stores/uiStore';
 import { authApi } from '../services/api/v2';
+import { getErrorMessage } from '../utils/errorUtils';
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -72,10 +73,10 @@ function LoginPage() {
           // Keep username filled for convenience
         }
       }
-    } catch (error: any) {
+    } catch (error) {
       addToast({
         type: 'error',
-        message: error.response?.data?.detail || 'Authentication failed',
+        message: getErrorMessage(error),
       });
     } finally {
       setLoading(false);

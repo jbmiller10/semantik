@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { directoryScanV2Api, generateScanId } from '../services/api/v2/directoryScan';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface ScanResult {
   files: string[];
@@ -42,8 +43,8 @@ export function useDirectoryScan(scanId?: string) {
         if (response.warnings.length > 0 && response.warnings[0] !== 'Scan in progress - connect to WebSocket for real-time updates') {
           setError(response.warnings[0]);
         }
-      } catch (err: any) {
-        setError(err.response?.data?.detail || 'Failed to scan directory');
+      } catch (err) {
+        setError(getErrorMessage(err));
         setScanResult(null);
       } finally {
         setScanning(false);

@@ -275,7 +275,7 @@ export function useReindexCollection() {
         collection_id: collectionId,
         type: 'reindex',
         status: 'pending',
-        config: config || {},
+        config: config ? { ...config } : {},
         created_at: new Date().toISOString(),
       };
 

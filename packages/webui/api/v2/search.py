@@ -62,6 +62,7 @@ async def multi_collection_search(
             search_type=search_request.search_type,
             score_threshold=search_request.score_threshold,
             metadata_filter=search_request.metadata_filter,
+            use_reranker=search_request.use_reranker,
             rerank_model=search_request.rerank_model,
             hybrid_alpha=search_request.hybrid_alpha,
             hybrid_search_mode=search_request.hybrid_mode,

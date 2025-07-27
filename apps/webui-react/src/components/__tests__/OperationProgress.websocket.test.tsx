@@ -52,7 +52,7 @@ describe('OperationProgress - WebSocket Error Handling', () => {
 
   describe('Connection Failures', () => {
     it('should handle initial connection failure', async () => {
-      let wsInstance: MockWebSocket | null = null
+      const wsInstance: MockWebSocket | null = null
       
       vi.mocked(useOperationProgress).mockImplementation(({ operationId, onError }) => {
         // Simulate connection failure
