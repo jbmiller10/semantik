@@ -1123,7 +1123,7 @@ class TestCleanupTasks:
 
     def test_cleanup_old_collections_success(self):
         """Test successful cleanup of old collections."""
-        with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant_manager:
+        with patch("webui.utils.qdrant_manager.qdrant_manager") as mock_qdrant_manager:
             # Setup mocks
             client = Mock()
             mock_qdrant_manager.get_client.return_value = client
@@ -1147,7 +1147,7 @@ class TestCleanupTasks:
 
     def test_cleanup_old_collections_partial_failure(self):
         """Test cleanup with some failures."""
-        with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant_manager:
+        with patch("webui.utils.qdrant_manager.qdrant_manager") as mock_qdrant_manager:
             # Setup mocks
             client = Mock()
             mock_qdrant_manager.get_client.return_value = client
