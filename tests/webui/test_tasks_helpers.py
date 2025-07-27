@@ -128,9 +128,18 @@ class TestAuditLogging:
     @patch("packages.shared.database.database.AsyncSessionLocal")
     async def test_audit_log_operation_success(self, mock_session_local, mock_audit_log_class):
         """Test successful audit log creation."""
-        # Use helper to create proper async session mock
-        session_maker, mock_session = create_async_session_mock()
-        mock_session_local.side_effect = session_maker
+        # Create a proper async session mock
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        
+        # Make AsyncSessionLocal callable and return our async context manager
+        @asynccontextmanager
+        async def session_context():
+            yield mock_session
+            
+        # Mock the AsyncSessionLocal to return our context manager when called
+        mock_session_local.return_value = session_context()
 
         # Mock audit log instance
         mock_audit_log = MagicMock()
@@ -163,10 +172,18 @@ class TestAuditLogging:
     @patch("packages.shared.database.database.AsyncSessionLocal")
     async def test_audit_log_operation_failure(self, mock_session_local):
         """Test audit log creation handles failures gracefully."""
-        # Use helper to create proper async session mock with failing commit
-        session_maker, mock_session = create_async_session_mock()
+        # Create a mock session that fails on commit
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
         mock_session.commit = AsyncMock(side_effect=Exception("Database error"))
-        mock_session_local.side_effect = session_maker
+        
+        # Make AsyncSessionLocal callable and return our async context manager
+        @asynccontextmanager
+        async def session_context():
+            yield mock_session
+            
+        # Mock the AsyncSessionLocal to return our context manager when called
+        mock_session_local.return_value = session_context()
 
         # Should not raise exception
         await _audit_log_operation(collection_id="col-123", operation_id=456, user_id=1, action="test_action")

@@ -329,46 +329,44 @@ class TestProcessCollectionOperation:
             assert final_status_call[0][1] == OperationStatus.FAILED
             assert "Qdrant connection failed" in str(final_status_call[1].get("error_message", ""))
 
-    def test_process_collection_operation_sync_wrapper(self, mock_celery_task):
+    @patch("packages.webui.tasks._process_collection_operation_async")
+    def test_process_collection_operation_sync_wrapper(self, mock_async_func, mock_celery_task):
         """Test the synchronous wrapper handles async execution."""
-        # Mock the event loop and its run_until_complete method
-        mock_loop = Mock()
-        mock_loop.is_closed.return_value = False
-        mock_loop.run_until_complete.return_value = {"success": True}
+        # Mock the async function result
+        mock_async_func.return_value = asyncio.coroutine(lambda: {"success": True})()
+        
+        # Import and call the task directly
+        from packages.webui.tasks import process_collection_operation
+        
+        # The task decorator internally will call the underlying function
+        # We test by mocking the async function it calls
+        result = process_collection_operation.run(mock_celery_task, "op-123")
+        
+        # Verify async function was called with correct args
+        mock_async_func.assert_called_once_with("op-123", mock_celery_task)
+        
+        # Verify result
+        assert result == {"success": True}
 
-        with patch("packages.webui.tasks.asyncio.get_event_loop", return_value=mock_loop):
-            with patch("packages.webui.tasks._process_collection_operation_async", return_value={"success": True}):
-                # Import the actual function to test
-                from packages.webui.tasks import process_collection_operation
-
-                # Call the task function directly - it's a bound task
-                result = process_collection_operation(mock_celery_task, "op-123")
-
-                # Verify event loop was used
-                mock_loop.run_until_complete.assert_called_once()
-                assert result == {"success": True}
-
-    def test_process_collection_operation_retry_on_network_error(self, mock_celery_task):
+    @patch("packages.webui.tasks._process_collection_operation_async")
+    def test_process_collection_operation_retry_on_network_error(self, mock_async_func, mock_celery_task):
         """Test that network errors trigger retry."""
-        # Mock the event loop and make run_until_complete raise the exception
-        mock_loop = Mock()
-        mock_loop.is_closed.return_value = False
-        mock_loop.run_until_complete.side_effect = Exception("Network error")
-
-        with patch("packages.webui.tasks.asyncio.get_event_loop", return_value=mock_loop):
-            # Import the actual function to test
-            from packages.webui.tasks import process_collection_operation
-
-            # Call sync wrapper - should retry (self is the first parameter for bound tasks)
-            with pytest.raises(Exception, match="Retry called"):
-                process_collection_operation(mock_celery_task, "op-123")
-
-            # Verify retry was called with the exception
-            mock_celery_task.retry.assert_called_once()
-            retry_call = mock_celery_task.retry.call_args
-            assert "exc" in retry_call[1]
-            assert "countdown" in retry_call[1]
-            assert retry_call[1]["countdown"] == 60
+        # Mock the async function to raise an exception
+        mock_async_func.side_effect = Exception("Network error")
+        
+        # Import the task
+        from packages.webui.tasks import process_collection_operation
+        
+        # Call the task - should trigger retry
+        with pytest.raises(Exception, match="Retry called"):
+            process_collection_operation.run(mock_celery_task, "op-123")
+        
+        # Verify retry was called with the exception
+        mock_celery_task.retry.assert_called_once()
+        retry_call = mock_celery_task.retry.call_args
+        assert "exc" in retry_call[1]
+        assert "countdown" in retry_call[1]
+        assert retry_call[1]["countdown"] == 60
 
 
 class TestIndexOperation:
