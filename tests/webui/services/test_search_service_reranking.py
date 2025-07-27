@@ -2,7 +2,7 @@
 Tests for SearchService reranking functionality.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import httpx
 import pytest

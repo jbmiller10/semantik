@@ -103,11 +103,8 @@ class TestCeleryTaskWithOperationUpdates:
     @pytest.mark.asyncio
     async def test_context_manager_lifecycle(self, updater, mock_redis):
         """Test context manager properly manages Redis connection."""
-        # Create an async function that returns the mock_redis
-        async def async_from_url(*args, **kwargs):
-            return mock_redis
-        
-        with patch("redis.asyncio.from_url", side_effect=async_from_url):
+        # Patch redis.asyncio.from_url to return the mock directly
+        with patch("redis.asyncio.from_url", return_value=mock_redis):
             async with updater as u:
                 assert u == updater
                 mock_redis.ping.assert_called_once()
@@ -118,12 +115,11 @@ class TestCeleryTaskWithOperationUpdates:
     @pytest.mark.asyncio
     async def test_send_update_formats_message(self, updater, mock_redis):
         """Test update message formatting."""
-        # Create an async function that returns the mock_redis
-        async def async_from_url(*args, **kwargs):
-            return mock_redis
-        
-        with patch("redis.asyncio.from_url", side_effect=async_from_url):
-            await updater.send_update("test_type", {"key": "value"})
+        # Patch redis.asyncio.from_url to return the mock directly
+        with patch("redis.asyncio.from_url", return_value=mock_redis):
+            # Need to use the context manager to initialize the connection
+            async with updater:
+                await updater.send_update("test_type", {"key": "value"})
 
             # Verify xadd was called with correct format
             mock_redis.xadd.assert_called_once()
@@ -142,18 +138,18 @@ class TestCeleryTaskWithOperationUpdates:
         """Test graceful error handling in send_update."""
         mock_redis.xadd.side_effect = Exception("Redis error")
         
-        # Create an async function that returns the mock_redis
-        async def async_from_url(*args, **kwargs):
-            return mock_redis
-        
-        with patch("redis.asyncio.from_url", side_effect=async_from_url):
-            # Should not raise exception
-            await updater.send_update("error_test", {})
-            
-            # Error was attempted
-            mock_redis.xadd.assert_called_once()
+        # Patch redis.asyncio.from_url to return the mock directly
+        with patch("redis.asyncio.from_url", return_value=mock_redis):
+            # Need to use the context manager to initialize the connection
+            async with updater:
+                # Should not raise exception
+                await updater.send_update("error_test", {})
+                
+                # Error was attempted
+                mock_redis.xadd.assert_called_once()
 
 
+@pytest.mark.asyncio
 class TestProcessCollectionOperation:
     """Test the main process_collection_operation task."""
 
@@ -340,6 +336,7 @@ class TestProcessCollectionOperation:
             assert retry_call[1]["countdown"] == 60
 
 
+@pytest.mark.asyncio
 class TestIndexOperation:
     """Test INDEX operation processing."""
 
@@ -466,6 +463,7 @@ class TestIndexOperation:
             )
 
 
+@pytest.mark.asyncio
 class TestAppendOperation:
     """Test APPEND operation processing."""
 
@@ -613,6 +611,7 @@ class TestAppendOperation:
             )
 
 
+@pytest.mark.asyncio
 class TestReindexOperation:
     """Test REINDEX operation processing."""
 
@@ -800,6 +799,7 @@ class TestReindexOperation:
                 collection_repo.update.assert_called_with("col-123", {"qdrant_staging": None})
 
 
+@pytest.mark.asyncio
 class TestRemoveSourceOperation:
     """Test REMOVE_SOURCE operation processing."""
 

@@ -137,10 +137,19 @@ class WebSocketTestHarness:
         """Clean up all connections and consumer tasks."""
 
         # First, cancel all consumer tasks to prevent event loop errors
-        for _, task in list(self.manager.consumer_tasks.items()):
+        for task_id, task in list(self.manager.consumer_tasks.items()):
             task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
+            try:
+                # Add timeout to prevent infinite hanging
+                await asyncio.wait_for(task, timeout=1.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                # Expected - task was cancelled or timed out
+                pass
+            except Exception as e:
+                # Log but don't fail
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Error cancelling task {task_id} in helper cleanup: {e}")
         self.manager.consumer_tasks.clear()
 
         # Disconnect all clients

@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import httpx
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
 from packages.vecpipe.search_api import (
     SearchRequest,
@@ -19,11 +20,136 @@ from packages.vecpipe.search_api import (
 )
 
 
+@pytest.fixture(scope="function")
+def mock_settings():
+    """Mock settings for testing."""
+    with patch("packages.vecpipe.search_api.settings") as mock:
+        mock.QDRANT_HOST = "localhost"
+        mock.QDRANT_PORT = 6333
+        mock.DEFAULT_COLLECTION = "test_collection"
+        mock.USE_MOCK_EMBEDDINGS = False
+        mock.DEFAULT_EMBEDDING_MODEL = "test-model"
+        mock.DEFAULT_QUANTIZATION = "float32"
+        mock.MODEL_UNLOAD_AFTER_SECONDS = 300
+        mock.SEARCH_API_PORT = 8088
+        mock.METRICS_PORT = 9090
+        yield mock
+
+
+@pytest.fixture(scope="function")
+def mock_qdrant_client():
+    """Mock Qdrant client."""
+    client = AsyncMock()
+    client.get = AsyncMock()
+    client.post = AsyncMock()
+    client.put = AsyncMock()
+    client.aclose = AsyncMock()
+    return client
+
+
+@pytest.fixture(scope="function")
+def mock_model_manager():
+    """Mock model manager."""
+    manager = Mock()
+    manager.generate_embedding_async = AsyncMock(return_value=[0.1] * 1024)
+    manager.rerank_async = AsyncMock(return_value=[(0, 0.95), (1, 0.90)])
+    manager.get_status = Mock(return_value={"loaded_models": [], "memory_usage": {}})
+    manager.shutdown = Mock()
+    manager.current_model_key = "test-model"
+    manager.current_reranker_key = None
+    return manager
+
+
+@pytest.fixture(scope="function")
+def mock_embedding_service():
+    """Mock embedding service."""
+    service = Mock()
+    service.is_initialized = True
+    service.current_model_name = "test-model"
+    service.current_quantization = "float32"
+    service.device = "cpu"
+    service.mock_mode = False
+    service.allow_quantization_fallback = True
+    service.get_model_info = Mock(return_value={
+        "model_name": "test-model",
+        "dimension": 1024,
+        "description": "Test model"
+    })
+    return service
+
+
+@pytest.fixture(scope="function")
+def mock_hybrid_engine():
+    """Mock hybrid search engine."""
+    with patch("packages.vecpipe.search_api.HybridSearchEngine") as mock_class:
+        engine = Mock()
+        engine.extract_keywords = Mock(return_value=["test", "query"])
+        engine.hybrid_search = Mock(return_value=[
+            {
+                "score": 0.95,
+                "payload": {
+                    "path": "/test/file1.txt",
+                    "chunk_id": "chunk-1",
+                    "doc_id": "doc-1"
+                },
+                "matched_keywords": ["test"],
+                "keyword_score": 0.8,
+                "combined_score": 0.875
+            }
+        ])
+        engine.search_by_keywords = Mock(return_value=[
+            {
+                "payload": {
+                    "path": "/test/file1.txt",
+                    "chunk_id": "chunk-1",
+                    "doc_id": "doc-1"
+                },
+                "matched_keywords": ["test", "query"]
+            }
+        ])
+        engine.close = Mock()
+        mock_class.return_value = engine
+        yield engine
+
+
+@pytest.fixture(scope="function")
+def test_client_for_search_api(mock_settings, mock_qdrant_client, mock_model_manager, mock_embedding_service):
+    """Create a test client for the search API with mocked dependencies."""
+    import packages.vecpipe.search_api as search_api_module
+    from packages.vecpipe.search_api import app
+    
+    # Temporarily store original values
+    original_qdrant = search_api_module.qdrant_client
+    original_model_manager = search_api_module.model_manager
+    original_embedding_service = search_api_module.embedding_service
+    
+    # Set mocked values
+    search_api_module.qdrant_client = mock_qdrant_client
+    search_api_module.model_manager = mock_model_manager
+    search_api_module.embedding_service = mock_embedding_service
+    
+    # Clear any existing dependency overrides
+    app.dependency_overrides.clear()
+    
+    # Create test client
+    client = TestClient(app)
+    
+    yield client
+    
+    # Restore original values
+    search_api_module.qdrant_client = original_qdrant
+    search_api_module.model_manager = original_model_manager
+    search_api_module.embedding_service = original_embedding_service
+    
+    # Clean up
+    app.dependency_overrides.clear()
+
+
 class TestSearchAPIEdgeCases:
     """Test edge cases and complex scenarios in search_api."""
 
     @pytest.mark.asyncio
-    async def test_search_without_content_then_rerank(self, mock_settings, mock_qdrant_client, mock_model_manager):
+    async def test_search_without_content_then_rerank(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
         """Test reranking when initial results don't have content."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
         
@@ -97,20 +223,24 @@ class TestSearchAPIEdgeCases:
                     ]
                     mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
                     
-                    request = SearchRequest(
-                        query="test query",
-                        k=2,
-                        use_reranker=True,
-                        include_content=False  # Don't request content initially
+                    response = test_client_for_search_api.post(
+                        "/search",
+                        json={
+                            "query": "test query",
+                            "k": 2,
+                            "use_reranker": True,
+                            "include_content": False  # Don't request content initially
+                        }
                     )
                     
-                    result = await search_post(request)
+                    assert response.status_code == 200
+                    result = response.json()
                     
                     # Verify content was fetched for reranking
                     assert mock_qdrant_client.post.call_count == 2
                     second_call = mock_qdrant_client.post.call_args_list[1]
                     assert "filter" in second_call[1]["json"]
-                    assert result.reranking_used is True
+                    assert result["reranking_used"] is True
 
     @pytest.mark.asyncio
     async def test_search_with_missing_content_during_rerank(self, mock_settings, mock_qdrant_client, mock_model_manager):
@@ -525,10 +655,19 @@ class TestSearchAPIEdgeCases:
         """Test generate_embedding_async when model manager is not initialized."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
         
-        with patch("packages.vecpipe.search_api.model_manager", None):
+        import packages.vecpipe.search_api as search_api_module
+        
+        # Temporarily set model_manager to None
+        original_manager = search_api_module.model_manager
+        search_api_module.model_manager = None
+        
+        try:
             with pytest.raises(RuntimeError) as exc_info:
-                await generate_embedding_async("test text")
+                await search_api_module.generate_embedding_async("test text")
             assert "Model manager not initialized" in str(exc_info.value)
+        finally:
+            # Restore original
+            search_api_module.model_manager = original_manager
 
     @pytest.mark.asyncio
     async def test_search_faiss_fallback(self, mock_settings, mock_qdrant_client, mock_model_manager):
@@ -562,29 +701,37 @@ class TestSearchAPIEdgeCases:
         # Verify cleanup was called
         mock_hybrid_engine.close.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_collection_info_error(self, mock_qdrant_client):
+    def test_collection_info_error(self, mock_qdrant_client, test_client_for_search_api):
         """Test collection info endpoint error handling."""
         with patch("packages.vecpipe.search_api.qdrant_client", None):
-            from packages.vecpipe.search_api import collection_info
-            
-            with pytest.raises(HTTPException) as exc_info:
-                await collection_info()
-            assert exc_info.value.status_code == 503
-            assert "Qdrant client not initialized" in str(exc_info.value.detail)
+            response = test_client_for_search_api.get("/collection/info")
+            assert response.status_code == 503
+            assert "Qdrant client not initialized" in response.json()["detail"]
 
     @pytest.mark.asyncio
-    async def test_models_load_error(self, mock_settings, mock_embedding_service):
+    async def test_models_load_error(self, mock_settings, mock_embedding_service, test_client_for_search_api):
         """Test /models/load endpoint error handling."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
         
-        with patch("packages.vecpipe.search_api.embedding_service", None):
-            from packages.vecpipe.search_api import load_model
-            
-            with pytest.raises(HTTPException) as exc_info:
-                await load_model(model_name="test-model", quantization="float32")
-            assert exc_info.value.status_code == 503
-            assert "Embedding service not initialized" in str(exc_info.value.detail)
+        import packages.vecpipe.search_api as search_api_module
+        
+        # Temporarily set embedding_service to None
+        original_service = search_api_module.embedding_service
+        search_api_module.embedding_service = None
+        
+        try:
+            response = test_client_for_search_api.post(
+                "/models/load",
+                json={
+                    "model_name": "test-model",
+                    "quantization": "float32"
+                }
+            )
+            assert response.status_code == 503
+            assert "Embedding service not initialized" in response.json()["detail"]
+        finally:
+            # Restore original
+            search_api_module.embedding_service = original_service
 
     @pytest.mark.asyncio
     async def test_search_with_score_threshold(self, mock_settings, mock_qdrant_client, mock_model_manager):

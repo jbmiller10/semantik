@@ -535,11 +535,11 @@ class TestConcurrentOperations:
             mock_from_url.return_value = mock_redis
             
             # Send updates concurrently
-            tasks = []
-            for i, updater in enumerate(updaters):
+            async def send_update_with_updater(updater, i):
                 async with updater:
-                    tasks.append(updater.send_update(f"update_{i}", {"index": i}))
+                    await updater.send_update(f"update_{i}", {"index": i})
             
+            tasks = [send_update_with_updater(updater, i) for i, updater in enumerate(updaters)]
             await asyncio.gather(*tasks)
             
             # All updates should be sent

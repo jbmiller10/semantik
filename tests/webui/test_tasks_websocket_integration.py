@@ -54,55 +54,61 @@ class TestWebSocketMessageFlow:
         """Test WebSocket messages during INDEX operation."""
         with patch("redis.asyncio.from_url", return_value=mock_redis_client):
             with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant:
-                # Setup Qdrant mock
-                client = Mock()
-                client.create_collection = Mock()
-                client.get_collection = Mock(return_value=Mock(vectors_count=0))
-                mock_qdrant.get_client.return_value = client
-                
-                # Setup operation and collection
-                operation = {
-                    "id": "op-123",
-                    "collection_id": "col-123",
-                    "type": OperationType.INDEX,
-                    "config": {},
-                    "user_id": 1
-                }
-                
-                collection = {
-                    "id": "col-123",
-                    "uuid": "col-123",
-                    "name": "Test Collection",
-                    "vector_store_name": "test_vec",
-                    "config": {"vector_dim": 1024}
-                }
-                
-                collection_repo = AsyncMock()
-                document_repo = AsyncMock()
-                
-                # Run operation
-                async with CeleryTaskWithOperationUpdates("op-123") as updater:
-                    await _process_index_operation(
-                        operation, collection, collection_repo, document_repo, updater
+                with patch("packages.webui.tasks.get_model_config") as mock_get_model_config:
+                    # Setup Qdrant mock
+                    client = Mock()
+                    client.create_collection = Mock()
+                    client.get_collection = Mock(return_value=Mock(vectors_count=0))
+                    mock_qdrant.get_client.return_value = client
+                    
+                    # Mock model config
+                    mock_get_model_config.return_value = Mock(dimension=1024)
+                    
+                    # Setup operation and collection
+                    operation = {
+                        "id": "op-123",
+                        "collection_id": "col-123",
+                        "type": OperationType.INDEX,
+                        "config": {},
+                        "user_id": 1
+                    }
+                    
+                    collection = {
+                        "id": "col-123",
+                        "uuid": "col-123",
+                        "name": "Test Collection",
+                        "vector_store_name": "test_vec",
+                        "config": {"vector_dim": 1024},
+                        "embedding_model": "test-model"
+                    }
+                    
+                    collection_repo = AsyncMock()
+                    collection_repo.update = AsyncMock()
+                    document_repo = AsyncMock()
+                    
+                    # Run operation
+                    async with CeleryTaskWithOperationUpdates("op-123") as updater:
+                        await _process_index_operation(
+                            operation, collection, collection_repo, document_repo, updater
+                        )
+                    
+                    # Verify message sequence
+                    messages = mock_redis_client.messages
+                    assert len(messages) >= 2
+                    
+                    # Check message types
+                    message_types = [msg["message"]["type"] for msg in messages]
+                    assert "index_completed" in message_types
+                    
+                    # Verify stream key format
+                    assert all(msg["stream"] == "operation-progress:op-123" for msg in messages)
+                    
+                    # Verify message content
+                    index_complete_msg = next(
+                        msg for msg in messages if msg["message"]["type"] == "index_completed"
                     )
-                
-                # Verify message sequence
-                messages = mock_redis_client.messages
-                assert len(messages) >= 2
-                
-                # Check message types
-                message_types = [msg["message"]["type"] for msg in messages]
-                assert "index_completed" in message_types
-                
-                # Verify stream key format
-                assert all(msg["stream"] == "operation-progress:op-123" for msg in messages)
-                
-                # Verify message content
-                index_complete_msg = next(
-                    msg for msg in messages if msg["message"]["type"] == "index_completed"
-                )
-                assert index_complete_msg["message"]["data"]["qdrant_collection"] == "test_vec"
-                assert index_complete_msg["message"]["data"]["vector_dim"] == 1024
+                    assert index_complete_msg["message"]["data"]["qdrant_collection"] == "test_vec"
+                    assert index_complete_msg["message"]["data"]["vector_dim"] == 1024
 
     @pytest.mark.asyncio
     async def test_append_operation_progress_messages(self, mock_redis_client):
@@ -247,46 +253,52 @@ class TestWebSocketMessageFlow:
         """Test error messages are properly sent through WebSocket."""
         with patch("redis.asyncio.from_url", return_value=mock_redis_client):
             with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant:
-                # Setup Qdrant to fail
-                client = Mock()
-                client.create_collection.side_effect = Exception("Qdrant connection failed")
-                mock_qdrant.get_client.return_value = client
-                
-                operation = {
-                    "id": "op-error",
-                    "collection_id": "col-error",
-                    "type": OperationType.INDEX,
-                    "config": {},
-                    "user_id": 1
-                }
-                
-                collection = {
-                    "id": "col-error",
-                    "uuid": "col-error",
-                    "name": "Test Collection",
-                    "vector_store_name": None,
-                    "config": {}
-                }
-                
-                collection_repo = AsyncMock()
-                document_repo = AsyncMock()
-                
-                # Run operation expecting failure
-                async with CeleryTaskWithOperationUpdates("op-error") as updater:
-                    with pytest.raises(Exception, match="Qdrant connection failed"):
-                        await _process_index_operation(
-                            operation, collection, collection_repo, document_repo, updater
-                        )
-                
-                # Even with error, some messages should be sent
-                messages = mock_redis_client.messages
-                assert len(messages) >= 0  # At least the connection test
+                with patch("packages.webui.tasks.get_model_config") as mock_get_model_config:
+                    # Setup Qdrant to fail
+                    client = Mock()
+                    client.create_collection.side_effect = Exception("Qdrant connection failed")
+                    mock_qdrant.get_client.return_value = client
+                    
+                    # Mock model config
+                    mock_get_model_config.return_value = Mock(dimension=1024)
+                    
+                    operation = {
+                        "id": "op-error",
+                        "collection_id": "col-error",
+                        "type": OperationType.INDEX,
+                        "config": {},
+                        "user_id": 1
+                    }
+                    
+                    collection = {
+                        "id": "col-error",
+                        "uuid": "col-error",
+                        "name": "Test Collection",
+                        "vector_store_name": None,
+                        "config": {},
+                        "embedding_model": "test-model"
+                    }
+                    
+                    collection_repo = AsyncMock()
+                    collection_repo.update = AsyncMock()
+                    document_repo = AsyncMock()
+                    
+                    # Run operation expecting failure
+                    async with CeleryTaskWithOperationUpdates("op-error") as updater:
+                        with pytest.raises(Exception, match="Qdrant connection failed"):
+                            await _process_index_operation(
+                                operation, collection, collection_repo, document_repo, updater
+                            )
+                    
+                    # Even with error, some messages should be sent
+                    messages = mock_redis_client.messages
+                    assert len(messages) >= 0  # At least the connection test
 
     @pytest.mark.asyncio
     async def test_concurrent_updates_ordering(self, mock_redis_client):
         """Test that concurrent updates maintain order."""
-        async with CeleryTaskWithOperationUpdates("op-concurrent") as updater:
-            with patch("redis.asyncio.from_url", return_value=mock_redis_client):
+        with patch("redis.asyncio.from_url", return_value=mock_redis_client):
+            async with CeleryTaskWithOperationUpdates("op-concurrent") as updater:
                 # Send updates concurrently
                 tasks = []
                 for i in range(10):

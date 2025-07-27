@@ -60,7 +60,8 @@ def mock_transformers() -> None:
 def reranker_unloaded(mock_transformers) -> None:
     """Create reranker instance without loading model"""
     _, _, _, _ = mock_transformers
-    return CrossEncoderReranker(model_name=TEST_MODEL_NAME, device="cuda", quantization="float16")
+    with patch("torch.cuda.is_available", return_value=True):
+        return CrossEncoderReranker(model_name=TEST_MODEL_NAME, device="cuda", quantization="float16")
 
 
 @pytest.fixture()
@@ -611,9 +612,8 @@ class TestPerformance:
         assert "loaded" in info
         assert info["loaded"] is True
         assert info["model_name"] == TEST_MODEL_NAME
-        # Device should be cuda if available, otherwise cpu
-        expected_device = "cuda" if torch.cuda.is_available() else "cpu"
-        assert info["device"] == expected_device
+        # reranker_loaded fixture creates reranker with device="cuda" and mocked CUDA available
+        assert info["device"] == "cuda"
         assert info["quantization"] == "float16"
 
     def test_model_info_unloaded(self, reranker_unloaded) -> None:
@@ -767,13 +767,19 @@ class TestAdditionalCoverage:
         reranker_cpu.load_model()
         mock_model.to.assert_called_once_with("cpu")
 
+        # Reset all mocks for next test
         mock_model.reset_mock()
+        model_class.from_pretrained.reset_mock()
+        
+        # Create a new mock model instance for the second test
+        mock_model_int8 = MagicMock()
+        model_class.from_pretrained.return_value = mock_model_int8
 
         # Test int8 quantization - should NOT call to(device)
-        with patch("transformers.BitsAndBytesConfig"):
+        with patch("transformers.BitsAndBytesConfig"), patch("torch.cuda.is_available", return_value=True):
             reranker_int8 = CrossEncoderReranker(device="cuda", quantization="int8")
             reranker_int8.load_model()
-            mock_model.to.assert_not_called()
+            mock_model_int8.to.assert_not_called()
 
     def test_model_eval_mode(self, mock_transformers) -> None:
         """Test that model is set to eval mode after loading"""
@@ -839,7 +845,8 @@ class TestAdditionalCoverage:
         param2 = MagicMock()
         param2.numel.return_value = 500000  # 0.5M parameters
 
-        mock_model.parameters.return_value = [param1, param2]
+        # Set up parameters on the actual loaded model instance
+        reranker_loaded.model.parameters.return_value = [param1, param2]
 
         info = reranker_loaded.get_model_info()
 

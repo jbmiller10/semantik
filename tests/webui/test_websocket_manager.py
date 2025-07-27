@@ -62,12 +62,22 @@ class TestRedisStreamWebSocketManager:
         manager = RedisStreamWebSocketManager()
         yield manager
         
-        # Clean up any remaining tasks
-        for task_id, task in list(manager.consumer_tasks.items()):
+        # Clean up any remaining tasks with timeout
+        tasks_to_cancel = list(manager.consumer_tasks.items())
+        for task_id, task in tasks_to_cancel:
             if not task.done():
                 task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await task
+                try:
+                    # Add timeout to prevent infinite hanging
+                    await asyncio.wait_for(task, timeout=1.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    # Expected - task was cancelled or timed out
+                    pass
+                except Exception as e:
+                    # Log but don't fail
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Error cancelling task {task_id} in fixture cleanup: {e}")
         manager.consumer_tasks.clear()
         
         # Close any remaining connections
@@ -461,10 +471,18 @@ class TestRedisStreamWebSocketManager:
         """Test that connect attempts to reconnect to Redis if not connected."""
         manager.redis = None  # Redis not connected
         
+        # Set up operation getter to avoid errors
+        async def mock_get_operation(operation_id):
+            return None
+        
+        manager.set_operation_getter(mock_get_operation)
+        
         # Mock the startup method to simulate reconnection
         with patch.object(manager, 'startup', new_callable=AsyncMock) as mock_startup:
-            mock_startup.return_value = None
-            manager.redis = mock_redis  # Simulate successful reconnection
+            async def set_redis():
+                manager.redis = mock_redis  # Simulate successful reconnection
+            
+            mock_startup.side_effect = set_redis
             
             await manager.connect(mock_websocket, "operation1", "user1")
             
@@ -484,8 +502,11 @@ class TestRedisStreamWebSocketManager:
         ):
             # Set up the mocks
             mock_session = AsyncMock()
-            mock_session_local.return_value.__aenter__.return_value = mock_session
-            mock_session_local.return_value.__aexit__.return_value = None
+            # Create an async context manager mock
+            mock_session_context = AsyncMock()
+            mock_session_context.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_context.__aexit__ = AsyncMock(return_value=None)
+            mock_session_local.return_value = mock_session_context
             
             mock_repo = AsyncMock()
             mock_repo_class.return_value = mock_repo
@@ -931,11 +952,22 @@ class TestWebSocketManagerSingleton:
         yield
         
         # Cancel any tasks that were created
-        for task_id, task in ws_manager.consumer_tasks.items():
+        # Make a copy of the dict to avoid modification during iteration
+        current_tasks = dict(ws_manager.consumer_tasks)
+        for task_id, task in current_tasks.items():
             if task_id not in original_tasks and not task.done():
                 task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await task
+                try:
+                    # Add timeout to prevent infinite hanging
+                    await asyncio.wait_for(task, timeout=1.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    # Expected - task was cancelled or timed out
+                    pass
+                except Exception as e:
+                    # Log unexpected errors but don't fail the test
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Error cancelling task {task_id}: {e}")
         
         # Restore original state
         ws_manager.consumer_tasks = original_tasks

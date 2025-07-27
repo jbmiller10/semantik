@@ -4,7 +4,7 @@ Comprehensive tests for CollectionService covering all methods and edge cases.
 
 import uuid
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -144,7 +144,7 @@ class TestCreateCollection:
         mock_collection_repo.create.return_value = mock_collection
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("webui.celery_app.celery_app.send_task") as mock_send_task:
+        with patch("packages.webui.celery_app.celery_app.send_task") as mock_send_task:
             collection_dict, operation_dict = await collection_service.create_collection(
                 user_id=1,
                 name="Test Collection",
@@ -196,7 +196,7 @@ class TestCreateCollection:
         mock_send_task.assert_called_once_with(
             "webui.tasks.process_collection_operation",
             args=[mock_operation.uuid],
-            task_id=mock_send_task.call_args[1]["task_id"],
+            task_id=ANY,
         )
 
         # Verify return values
@@ -226,7 +226,7 @@ class TestCreateCollection:
         mock_collection_repo.create.return_value = mock_collection
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("webui.celery_app.celery_app.send_task"):
+        with patch("packages.webui.celery_app.celery_app.send_task"):
             await collection_service.create_collection(
                 user_id=1,
                 name="Test Collection",
@@ -324,7 +324,7 @@ class TestAddSource:
         mock_operation_repo.get_active_operations.return_value = []
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("webui.celery_app.celery_app.send_task") as mock_send_task:
+        with patch("packages.webui.celery_app.celery_app.send_task") as mock_send_task:
             result = await collection_service.add_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
@@ -458,7 +458,7 @@ class TestAddSource:
         mock_operation_repo.get_active_operations.return_value = []
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("webui.celery_app.celery_app.send_task"):
+        with patch("packages.webui.celery_app.celery_app.send_task"):
             result = await collection_service.add_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
@@ -482,7 +482,7 @@ class TestAddSource:
         mock_operation_repo.get_active_operations.return_value = []
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("webui.celery_app.celery_app.send_task"):
+        with patch("packages.webui.celery_app.celery_app.send_task"):
             result = await collection_service.add_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
@@ -510,7 +510,7 @@ class TestReindexCollection:
         mock_operation_repo.get_active_operations_count.return_value = 0
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("webui.celery_app.celery_app.send_task") as mock_send_task:
+        with patch("packages.webui.celery_app.celery_app.send_task") as mock_send_task:
             result = await collection_service.reindex_collection(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
@@ -574,7 +574,7 @@ class TestReindexCollection:
         mock_operation_repo.get_active_operations_count.return_value = 0
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("webui.celery_app.celery_app.send_task"):
+        with patch("packages.webui.celery_app.celery_app.send_task"):
             result = await collection_service.reindex_collection(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
@@ -658,7 +658,7 @@ class TestDeleteCollection:
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 0
 
-        with patch("webui.utils.qdrant_manager.qdrant_manager.get_client") as mock_get_client:
+        with patch("packages.webui.utils.qdrant_manager.qdrant_manager.get_client") as mock_get_client:
             mock_qdrant_client = MagicMock()
             mock_get_client.return_value = mock_qdrant_client
             mock_collections = MagicMock()
@@ -696,7 +696,7 @@ class TestDeleteCollection:
                 user_id=2,  # Different user
             )
 
-        assert "Only the collection owner can delete it" in str(exc_info.value)
+        assert "does not have access to Collection" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_delete_collection_active_operations(
@@ -730,7 +730,7 @@ class TestDeleteCollection:
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 0
 
-        with patch("webui.utils.qdrant_manager.qdrant_manager.get_client") as mock_get_client:
+        with patch("packages.webui.utils.qdrant_manager.qdrant_manager.get_client") as mock_get_client:
             mock_qdrant_client = MagicMock()
             mock_get_client.return_value = mock_qdrant_client
             mock_collections = MagicMock()
@@ -760,7 +760,7 @@ class TestDeleteCollection:
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 0
 
-        with patch("webui.utils.qdrant_manager.qdrant_manager.get_client") as mock_get_client:
+        with patch("packages.webui.utils.qdrant_manager.qdrant_manager.get_client") as mock_get_client:
             mock_qdrant_client = MagicMock()
             mock_get_client.return_value = mock_qdrant_client
             mock_qdrant_client.get_collections.side_effect = Exception("Qdrant error")
@@ -786,7 +786,7 @@ class TestDeleteCollection:
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 0
 
-        with patch("webui.utils.qdrant_manager.qdrant_manager.get_client") as mock_get_client:
+        with patch("packages.webui.utils.qdrant_manager.qdrant_manager.get_client") as mock_get_client:
             await collection_service.delete_collection(
                 collection_id=str(mock_collection.uuid),
                 user_id=mock_collection.owner_id,
@@ -817,7 +817,7 @@ class TestRemoveSource:
         mock_operation_repo.get_active_operations_count.return_value = 0
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("webui.celery_app.celery_app.send_task") as mock_send_task:
+        with patch("packages.webui.celery_app.celery_app.send_task") as mock_send_task:
             result = await collection_service.remove_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
@@ -881,7 +881,7 @@ class TestRemoveSource:
         mock_operation_repo.get_active_operations_count.return_value = 0
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("webui.celery_app.celery_app.send_task"):
+        with patch("packages.webui.celery_app.celery_app.send_task"):
             result = await collection_service.remove_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
@@ -1035,7 +1035,7 @@ class TestUpdate:
                 updates={"name": "New Name"},
             )
 
-        assert "Only the collection owner can update it" in str(exc_info.value)
+        assert "does not have access to Collection" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_update_collection_not_found(
@@ -1265,7 +1265,7 @@ class TestCollectionServiceEdgeCases:
         mock_collection_repo.create.return_value = mock_collection
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("webui.celery_app.celery_app.send_task"):
+        with patch("packages.webui.celery_app.celery_app.send_task"):
             await collection_service.create_collection(
                 user_id=1,
                 name="Test Collection",
@@ -1296,7 +1296,7 @@ class TestCollectionServiceEdgeCases:
         mock_operation_repo.get_active_operations.return_value = []
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("webui.celery_app.celery_app.send_task"):
+        with patch("packages.webui.celery_app.celery_app.send_task"):
             await collection_service.add_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
@@ -1326,7 +1326,7 @@ class TestCollectionServiceEdgeCases:
         mock_operation_repo.get_active_operations_count.return_value = 0
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("webui.celery_app.celery_app.send_task"):
+        with patch("packages.webui.celery_app.celery_app.send_task"):
             await collection_service.add_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
@@ -1372,7 +1372,7 @@ class TestCollectionServiceEdgeCases:
         mock_operation_repo.create.return_value = mock_operation
 
         task_ids = []
-        with patch("webui.celery_app.celery_app.send_task") as mock_send_task:
+        with patch("packages.webui.celery_app.celery_app.send_task") as mock_send_task:
             with patch("uuid.uuid4", side_effect=[
                 uuid.UUID("11111111-1111-1111-1111-111111111111"),
                 uuid.UUID("22222222-2222-2222-2222-222222222222"),

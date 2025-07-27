@@ -4,7 +4,7 @@ Comprehensive tests for SearchService covering all methods and edge cases.
 
 import asyncio
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
