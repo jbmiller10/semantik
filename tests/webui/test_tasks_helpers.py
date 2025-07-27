@@ -136,24 +136,22 @@ class TestTaskHelperFunctions:
 class TestAuditLogging:
     """Test audit logging functionality."""
 
-    @patch("packages.shared.database.models.CollectionAuditLog")
-    async def test_audit_log_operation_success(self, mock_audit_log_class):
+    @patch("shared.database.models.CollectionAuditLog")
+    @patch("shared.database.database.AsyncSessionLocal")
+    async def test_audit_log_operation_success(self, mock_async_session_local, mock_audit_log_class):
         """Test successful audit log creation."""
         # Create a proper async session mock
         mock_session = AsyncMock()
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
         
-        # Create session maker function
-        def session_maker():
-            @asynccontextmanager
-            async def session_context():
-                yield mock_session
-            return session_context()
+        # Create an async context manager factory
+        @asynccontextmanager
+        async def session_context():
+            yield mock_session
         
-        # Use the test session maker
-        from packages.shared.database import database
-        database.set_test_session_maker(session_maker)
+        # Make AsyncSessionLocal return our context manager when called
+        mock_async_session_local.return_value = session_context()
 
         # Mock audit log instance
         mock_audit_log = MagicMock()
@@ -182,9 +180,6 @@ class TestAuditLogging:
         # Verify session operations
         mock_session.add.assert_called_once_with(mock_audit_log)
         mock_session.commit.assert_called_once()
-        
-        # Clean up
-        database.clear_test_session_maker()
 
     async def test_audit_log_operation_failure(self):
         """Test audit log creation handles failures gracefully."""
@@ -208,9 +203,6 @@ class TestAuditLogging:
         await _audit_log_operation(collection_id="col-123", operation_id=456, user_id=1, action="test_action")
 
         # Function should complete without raising
-        
-        # Clean up
-        database.clear_test_session_maker()
 
     @patch("packages.shared.database.models.CollectionAuditLog")
     @patch("packages.shared.database.database.AsyncSessionLocal")

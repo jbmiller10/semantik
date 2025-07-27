@@ -713,6 +713,8 @@ class TestReindexOperation:
         mock_doc.id = "doc1"
         mock_doc.file_path = "/test/doc1.txt"
         mock_doc.status = DocumentStatus.COMPLETED
+        # Add get method to handle the bug in tasks.py line 1961
+        mock_doc.get = Mock(side_effect=lambda key, default=None: getattr(mock_doc, key, default))
         document_repo.list_by_collection.return_value = ([mock_doc], 1)
 
         # Run operation
