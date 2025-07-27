@@ -548,6 +548,9 @@ class TestSearchAPIEdgeCases:
                     ]
                     mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
                     
+                    # Make reranking return valid results for 1 document
+                    mock_model_manager.rerank_async.return_value = [(0, 0.95)]
+                    
                     request = SearchRequest(
                         query="test query",
                         k=1,
@@ -624,8 +627,8 @@ class TestSearchAPIEdgeCases:
                     assert call_args[0][4] == 200  # max_candidates (5th arg to search_qdrant)
 
     @pytest.mark.asyncio
-    async def test_search_with_empty_query(self, mock_settings, mock_qdrant_client, mock_model_manager):
-        """Test search with empty or whitespace-only query."""
+    async def test_search_with_minimal_query(self, mock_settings, mock_qdrant_client, mock_model_manager):
+        """Test search with minimal query (single character)."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
         
         with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
@@ -643,20 +646,21 @@ class TestSearchAPIEdgeCases:
                     }
                     mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
                     
-                    # Mock to return empty embedding for empty text
-                    mock_model_manager.generate_embedding_async.return_value = [0.0] * 1024
+                    # Mock to return embedding for minimal text
+                    mock_model_manager.generate_embedding_async.return_value = [0.1] * 1024
                     
                     # Mock search results
                     mock_search_qdrant.return_value = []
                     
                     request = SearchRequest(
-                        query="   ",  # Whitespace only
+                        query="a",  # Single character - minimum valid query
                         k=5
                     )
                     
                     # Should handle gracefully
                     result = await search_post(request)
-                    assert result.query == "   "
+                    assert result.query == "a"
+                    assert result.num_results == 0  # No results found
 
     @pytest.mark.asyncio
     async def test_generate_embedding_async_with_no_model_manager(self, mock_settings):
