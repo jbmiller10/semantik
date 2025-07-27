@@ -539,7 +539,7 @@ async def list_collection_operations(
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid status: {status}",
+                detail=f"Invalid status: {status}. Valid values are: {[st.value for st in OperationStatus]}",
             ) from None
 
     if operation_type:
@@ -548,7 +548,7 @@ async def list_collection_operations(
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid operation type: {operation_type}",
+                detail=f"Invalid operation type: {operation_type}. Valid values are: {[t.value for t in OperationType]}",
             ) from None
 
     try:
@@ -640,7 +640,7 @@ async def list_collection_documents(
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid status: {status}",
+                detail=f"Invalid status: {status}. Valid values are: {[st.value for st in DocumentStatus]}",
             ) from None
 
     try:
