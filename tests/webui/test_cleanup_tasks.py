@@ -290,19 +290,19 @@ class TestGetActiveCollections:
             patch("shared.database.database.AsyncSessionLocal", mock_session_maker),
             patch("shared.database.repositories.collection_repository.CollectionRepository", return_value=mock_repo),
         ):
-                from packages.webui.tasks import _get_active_collections
+            from packages.webui.tasks import _get_active_collections
 
-                # Run function
-                active_collections = await _get_active_collections()
+            # Run function
+            active_collections = await _get_active_collections()
 
-                # Verify results
-                assert isinstance(active_collections, set)
-                assert "qdrant_col_1" in active_collections
-                assert "qdrant_col_2" in active_collections
-                assert "col_1_active" in active_collections
-                assert "col_2_active" in active_collections
-                assert "col_2_backup" in active_collections
-                assert "staging_col_2_20240115_120000" in active_collections
+            # Verify results
+            assert isinstance(active_collections, set)
+            assert "qdrant_col_1" in active_collections
+            assert "qdrant_col_2" in active_collections
+            assert "col_1_active" in active_collections
+            assert "col_2_active" in active_collections
+            assert "col_2_backup" in active_collections
+            assert "staging_col_2_20240115_120000" in active_collections
 
 
 class TestAuditCollectionDeletion:
@@ -328,15 +328,15 @@ class TestAuditCollectionDeletion:
             patch("shared.database.database.AsyncSessionLocal", mock_session_maker),
             patch("shared.database.models.CollectionAuditLog", mock_audit_log_class),
         ):
-                from packages.webui.tasks import _audit_collection_deletions_batch
+            from packages.webui.tasks import _audit_collection_deletions_batch
 
-                # Run function
-                deletions = [("test_collection_1", 1000), ("test_collection_2", 2000)]
-                await _audit_collection_deletions_batch(deletions)
+            # Run function
+            deletions = [("test_collection_1", 1000), ("test_collection_2", 2000)]
+            await _audit_collection_deletions_batch(deletions)
 
-                # Verify audit logs were created
-                assert mock_session.add.call_count == 2
-                assert mock_session.commit.call_count == 1
+            # Verify audit logs were created
+            assert mock_session.add.call_count == 2
+            assert mock_session.commit.call_count == 1
 
     async def test_audit_collection_deletions_batch_empty(self):
         """Test batch audit with empty list."""
