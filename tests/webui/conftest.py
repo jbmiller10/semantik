@@ -14,14 +14,26 @@ async def cleanup_pending_tasks():
     yield
     
     # Get all pending tasks
-    pending = asyncio.all_tasks(asyncio.get_event_loop())
+    try:
+        # Python 3.9+
+        pending = asyncio.all_tasks(asyncio.get_event_loop())
+    except AttributeError:
+        # Python 3.7-3.8
+        pending = asyncio.Task.all_tasks(asyncio.get_event_loop())
+    
     current_task = asyncio.current_task()
     
     # Cancel all tasks except the current one
+    tasks_to_cancel = []
     for task in pending:
         if task != current_task and not task.done():
             task.cancel()
+            tasks_to_cancel.append(task)
     
-    # Wait briefly for cancellation
-    if pending:
-        await asyncio.sleep(0.1)
+    # Wait for all tasks to be cancelled
+    if tasks_to_cancel:
+        for task in tasks_to_cancel:
+            try:
+                await asyncio.wait_for(task, timeout=0.1)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass

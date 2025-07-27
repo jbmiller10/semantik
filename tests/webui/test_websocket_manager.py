@@ -13,9 +13,41 @@ from fastapi import WebSocket
 
 from packages.webui.websocket_manager import RedisStreamWebSocketManager
 
+# Clean up the global singleton before tests start to prevent interference
+try:
+    from packages.webui.websocket_manager import ws_manager as _global_ws_manager
+    # Force cleanup of any existing state
+    for task_id, task in list(_global_ws_manager.consumer_tasks.items()):
+        if not task.done():
+            task.cancel()
+    _global_ws_manager.consumer_tasks.clear()
+    _global_ws_manager.connections.clear()
+except Exception:
+    pass
+
 
 class TestRedisStreamWebSocketManager:
     """Test suite for RedisStreamWebSocketManager."""
+    
+    @classmethod
+    def teardown_class(cls):
+        """Clean up any remaining tasks after all tests in this class."""
+        # Force cleanup of any lingering tasks
+        try:
+            loop = asyncio.get_event_loop()
+            # Get all pending tasks
+            try:
+                pending = asyncio.all_tasks(loop)
+            except AttributeError:
+                pending = asyncio.Task.all_tasks(loop)
+            
+            # Cancel all tasks
+            for task in pending:
+                if not task.done():
+                    task.cancel()
+                    # Don't wait - just cancel
+        except Exception:
+            pass
 
     @pytest.fixture()
     def mock_redis(self):
@@ -739,11 +771,36 @@ class TestRedisStreamWebSocketManager:
     @pytest.mark.asyncio()
     async def test_consume_updates_redis_none(self, manager):
         """Test consumer exits gracefully when Redis is None."""
-        manager.redis = None
+        # Ensure clean state
+        print(f"DEBUG: Starting test_consume_updates_redis_none")
+        print(f"DEBUG: Manager has {len(manager.consumer_tasks)} consumer tasks")
         
-        # Should raise RuntimeError and exit
-        with pytest.raises(RuntimeError, match="Redis connection not established"):
-            await manager._consume_updates("operation1")
+        # Force cleanup of any existing tasks
+        for task_id, task in list(manager.consumer_tasks.items()):
+            print(f"DEBUG: Cancelling task {task_id}")
+            if not task.done():
+                task.cancel()
+        manager.consumer_tasks.clear()
+        manager.connections.clear()
+        
+        # Ensure Redis is None
+        manager.redis = None
+        print(f"DEBUG: Set manager.redis to None")
+        
+        # Should raise RuntimeError and exit immediately
+        # Add timeout to prevent hanging
+        async def run_test():
+            print(f"DEBUG: About to call _consume_updates")
+            with pytest.raises(RuntimeError, match="Redis connection not established"):
+                await manager._consume_updates("operation1")
+            print(f"DEBUG: RuntimeError was raised as expected")
+        
+        try:
+            await asyncio.wait_for(run_test(), timeout=5.0)
+            print(f"DEBUG: Test completed successfully")
+        except asyncio.TimeoutError:
+            print(f"DEBUG: Test timed out!")
+            raise
 
     @pytest.mark.asyncio()
     async def test_consume_updates_message_processing_error(self, manager, mock_redis, mock_websocket):
