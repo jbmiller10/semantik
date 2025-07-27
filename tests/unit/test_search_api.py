@@ -31,17 +31,17 @@ from packages.vecpipe.search_api import (
 @pytest.fixture(scope="function")
 def mock_settings():
     """Mock settings for testing."""
-    with patch("packages.vecpipe.search_api.settings") as mock:
-        mock.QDRANT_HOST = "localhost"
-        mock.QDRANT_PORT = 6333
-        mock.DEFAULT_COLLECTION = "test_collection"
-        mock.USE_MOCK_EMBEDDINGS = False
-        mock.DEFAULT_EMBEDDING_MODEL = "test-model"
-        mock.DEFAULT_QUANTIZATION = "float32"
-        mock.MODEL_UNLOAD_AFTER_SECONDS = 300
-        mock.SEARCH_API_PORT = 8088
-        mock.METRICS_PORT = 9090
-        yield mock
+    mock = Mock()
+    mock.QDRANT_HOST = "localhost"
+    mock.QDRANT_PORT = 6333
+    mock.DEFAULT_COLLECTION = "test_collection"
+    mock.USE_MOCK_EMBEDDINGS = False
+    mock.DEFAULT_EMBEDDING_MODEL = "test-model"
+    mock.DEFAULT_QUANTIZATION = "float32"
+    mock.MODEL_UNLOAD_AFTER_SECONDS = 300
+    mock.SEARCH_API_PORT = 8088
+    mock.METRICS_PORT = 9090
+    return mock
 
 
 @pytest.fixture(scope="function")
@@ -78,11 +78,13 @@ def mock_embedding_service():
     service.device = "cpu"
     service.mock_mode = False
     service.allow_quantization_fallback = True
-    service.get_model_info = Mock(return_value={
-        "model_name": "test-model",
-        "dimension": 1024,
-        "description": "Test model"
-    })
+    def mock_get_model_info(*args, **kwargs):
+        return {
+            "model_name": "test-model",
+            "dimension": 1024,
+            "description": "Test model"
+        }
+    service.get_model_info = Mock(side_effect=mock_get_model_info)
     return service
 
 
@@ -123,34 +125,30 @@ def mock_hybrid_engine():
 @pytest.fixture(scope="function")
 def test_client_for_search_api(mock_settings, mock_qdrant_client, mock_model_manager, mock_embedding_service):
     """Create a test client for the search API with mocked dependencies."""
-    import packages.vecpipe.search_api as search_api_module
+    # Import the app and set up mocks
     from packages.vecpipe.search_api import app
+    import packages.vecpipe.search_api as search_api_module
     
-    # Temporarily store original values
+    # Store originals
     original_qdrant = search_api_module.qdrant_client
     original_model_manager = search_api_module.model_manager
     original_embedding_service = search_api_module.embedding_service
     
-    # Set mocked values
+    # Set mocks
     search_api_module.qdrant_client = mock_qdrant_client
     search_api_module.model_manager = mock_model_manager
     search_api_module.embedding_service = mock_embedding_service
     
-    # Clear any existing dependency overrides
-    app.dependency_overrides.clear()
+    # Patch settings during test
+    with patch("packages.vecpipe.search_api.settings", mock_settings):
+        # Create test client
+        client = TestClient(app)
+        yield client
     
-    # Create test client
-    client = TestClient(app)
-    
-    yield client
-    
-    # Restore original values
+    # Restore originals
     search_api_module.qdrant_client = original_qdrant
     search_api_module.model_manager = original_model_manager
     search_api_module.embedding_service = original_embedding_service
-    
-    # Clean up
-    app.dependency_overrides.clear()
 
 
 class TestSearchAPI:
@@ -212,48 +210,62 @@ class TestSearchAPI:
     @pytest.mark.asyncio
     async def test_lifespan(self, mock_settings, mock_qdrant_client, mock_model_manager):
         """Test application lifespan management."""
-        with patch("packages.vecpipe.search_api.httpx.AsyncClient") as mock_httpx:
-            mock_httpx.return_value = mock_qdrant_client
-            
-            with patch("packages.vecpipe.search_api.start_metrics_server"):
-                with patch("packages.vecpipe.search_api.get_embedding_service") as mock_get_service:
-                    mock_service = AsyncMock()
-                    mock_service.initialize = AsyncMock()
-                    mock_get_service.return_value = mock_service
-                    
-                    with patch("packages.vecpipe.search_api.ModelManager") as mock_mm_class:
-                        mock_mm_class.return_value = mock_model_manager
+        # Since the test_app fixture already handles the mocking, we need a different approach
+        # We'll test the lifespan function directly with proper mocks
+        with patch("packages.vecpipe.search_api.settings", mock_settings):
+            with patch("packages.vecpipe.search_api.httpx.AsyncClient") as mock_httpx:
+                mock_httpx.return_value = mock_qdrant_client
+                
+                with patch("packages.vecpipe.search_api.start_metrics_server") as mock_start_metrics:
+                    with patch("packages.vecpipe.search_api.get_embedding_service") as mock_get_service:
+                        mock_service = AsyncMock()
+                        mock_service.initialize = AsyncMock()
+                        mock_get_service.return_value = mock_service
                         
-                        # Test startup and shutdown
-                        from packages.vecpipe.search_api import app, lifespan
-                        
-                        async with lifespan(app):
-                            # Verify initialization
-                            mock_get_service.assert_called_once()
-                            mock_service.initialize.assert_called_once()
-                            mock_mm_class.assert_called_once()
-                        
-                        # Verify cleanup
-                        mock_qdrant_client.aclose.assert_called_once()
-                        mock_model_manager.shutdown.assert_called_once()
+                        with patch("packages.vecpipe.search_api.ModelManager") as mock_mm_class:
+                            mock_mm_class.return_value = mock_model_manager
+                            
+                            # Import fresh to get the patched version
+                            import importlib
+                            import packages.vecpipe.search_api
+                            importlib.reload(packages.vecpipe.search_api)
+                            
+                            # Test startup and shutdown
+                            from packages.vecpipe.search_api import lifespan
+                            from fastapi import FastAPI
+                            test_app = FastAPI()
+                            
+                            async with lifespan(test_app):
+                                # Verify initialization
+                                mock_start_metrics.assert_called_once_with(mock_settings.METRICS_PORT)
+                                mock_httpx.assert_called_once()
+                                mock_get_service.assert_called_once()
+                                mock_service.initialize.assert_called()
+                                mock_mm_class.assert_called_once()
+                            
+                            # Verify cleanup
+                            mock_qdrant_client.aclose.assert_called_once()
+                            mock_model_manager.shutdown.assert_called_once()
 
     def test_model_status(self, mock_model_manager, test_client_for_search_api):
         """Test /model/status endpoint."""
-        with patch("packages.vecpipe.search_api.model_manager", mock_model_manager):
-            response = test_client_for_search_api.get("/model/status")
-            assert response.status_code == 200
-            assert response.json() == {"loaded_models": [], "memory_usage": {}}
+        response = test_client_for_search_api.get("/model/status")
+        assert response.status_code == 200
+        assert response.json() == {"loaded_models": [], "memory_usage": {}}
             
         # Test when model manager is not initialized
-        with patch("packages.vecpipe.search_api.model_manager", None):
+        import packages.vecpipe.search_api as search_api_module
+        original_manager = search_api_module.model_manager
+        try:
+            search_api_module.model_manager = None
             response = test_client_for_search_api.get("/model/status")
             assert response.status_code == 200
             assert response.json() == {"error": "Model manager not initialized"}
+        finally:
+            search_api_module.model_manager = original_manager
 
     def test_root_endpoint(self, mock_settings, mock_qdrant_client, mock_embedding_service, test_client_for_search_api):
         """Test root health check endpoint."""
-        with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
-            with patch("packages.vecpipe.search_api.embedding_service", mock_embedding_service):
                 # Mock successful response
                 mock_qdrant_client.get.return_value.json.return_value = {
                     "result": {
@@ -280,22 +292,23 @@ class TestSearchAPI:
                 
         # Test with mock embeddings
         mock_settings.USE_MOCK_EMBEDDINGS = True
-        with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
-            with patch("packages.vecpipe.search_api.embedding_service", mock_embedding_service):
-                response = test_client_for_search_api.get("/")
-                assert response.status_code == 200
-                assert response.json()["embedding_mode"] == "mock"
+        response = test_client_for_search_api.get("/")
+        assert response.status_code == 200
+        assert response.json()["embedding_mode"] == "mock"
                 
-        # Test error handling
-        with patch("packages.vecpipe.search_api.qdrant_client", None):
+        # Test error handling - need to patch the global variable in the module
+        import packages.vecpipe.search_api as search_api_module
+        original_client = search_api_module.qdrant_client
+        try:
+            search_api_module.qdrant_client = None
             response = test_client_for_search_api.get("/")
             assert response.status_code == 503
             assert "Qdrant client not initialized" in response.json()["detail"]
+        finally:
+            search_api_module.qdrant_client = original_client
 
     def test_health_endpoint(self, mock_qdrant_client, mock_embedding_service, test_client_for_search_api):
         """Test /health endpoint."""
-        with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
-            with patch("packages.vecpipe.search_api.embedding_service", mock_embedding_service):
                 # Mock successful Qdrant response
                 mock_qdrant_client.get.return_value.status_code = 200
                 mock_qdrant_client.get.return_value.json.return_value = {
@@ -317,27 +330,26 @@ class TestSearchAPI:
                 
         # Test with uninitialized embedding service
         mock_embedding_service.is_initialized = False
-        with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
-            with patch("packages.vecpipe.search_api.embedding_service", mock_embedding_service):
-                response = test_client_for_search_api.get("/health")
-                assert response.status_code == 200
-                result = response.json()
-                assert result["status"] == "degraded"
-                assert result["components"]["embedding"]["status"] == "unhealthy"
+        response = test_client_for_search_api.get("/health")
+        assert response.status_code == 200
+        result = response.json()
+        assert result["status"] == "degraded"
+        assert result["components"]["embedding"]["status"] == "unhealthy"
                 
         # Test with Qdrant error
         mock_qdrant_client.get.side_effect = Exception("Connection error")
-        with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
-            with patch("packages.vecpipe.search_api.embedding_service", None):
-                response = test_client_for_search_api.get("/health")
-                assert response.status_code == 503
+        import packages.vecpipe.search_api as search_api_module
+        original_service = search_api_module.embedding_service
+        try:
+            search_api_module.embedding_service = None
+            response = test_client_for_search_api.get("/health")
+            assert response.status_code == 503
+        finally:
+            search_api_module.embedding_service = original_service
 
     def test_search_post_endpoint(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
         """Test POST /search endpoint."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
-        
-        with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
-            with patch("packages.vecpipe.search_api.model_manager", mock_model_manager):
                 # Mock collection info
                 mock_qdrant_client.get.return_value.json.return_value = {
                     "result": {
@@ -627,7 +639,7 @@ class TestSearchAPI:
 
     def test_list_models_endpoint(self, test_client_for_search_api, mock_embedding_service):
         """Test /models endpoint."""
-        with patch("shared.embedding.QUANTIZED_MODEL_INFO", {
+        with patch("packages.shared.embedding.QUANTIZED_MODEL_INFO", {
             "test-model": {
                 "description": "Test embedding model",
                 "dimension": 768,
@@ -636,17 +648,16 @@ class TestSearchAPI:
                 "memory_estimate": {"float32": 1024, "float16": 512}
             }
         }):
-            with patch("packages.vecpipe.search_api.embedding_service", mock_embedding_service):
-                mock_embedding_service.current_model_name = "test-model"
-                mock_embedding_service.current_quantization = "float32"
-                
-                response = test_client_for_search_api.get("/models")
-                assert response.status_code == 200
-                result = response.json()
-                assert len(result["models"]) == 1
-                assert result["models"][0]["name"] == "test-model"
-                assert result["models"][0]["dimension"] == 768
-                assert result["current_model"] == "test-model"
+            mock_embedding_service.current_model_name = "test-model"
+            mock_embedding_service.current_quantization = "float32"
+            
+            response = test_client_for_search_api.get("/models")
+            assert response.status_code == 200
+            result = response.json()
+            assert len(result["models"]) == 1
+            assert result["models"][0]["name"] == "test-model"
+            assert result["models"][0]["dimension"] == 768
+            assert result["current_model"] == "test-model"
 
     def test_embed_endpoint(self, mock_model_manager, test_client_for_search_api):
         """Test /embed endpoint."""
@@ -904,15 +915,11 @@ class TestSearchAPI:
         assert call_args[0][1] == "custom-model"  # model_name
         assert call_args[0][2] == "int8"  # quantization
 
-    def test_load_model_endpoint_mock_mode(self, mock_settings):
+    def test_load_model_endpoint_mock_mode(self, mock_settings, test_client_for_search_api):
         """Test /models/load endpoint in mock mode."""
         mock_settings.USE_MOCK_EMBEDDINGS = True
         
-        from packages.vecpipe.search_api import app
-        
-        client = TestClient(app)
-        
-        response = client.post(
+        response = test_client_for_search_api.post(
             "/models/load",
             json={
                 "model_name": "test-model",

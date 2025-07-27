@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import CollectionInfo, Distance
-from shared.managers.qdrant_manager import QdrantManager
+from packages.shared.managers.qdrant_manager import QdrantManager
 
 
 class TestQdrantManager:
@@ -44,7 +44,7 @@ class TestQdrantManager:
         mock_collection_info.vectors_count = 0
         mock_qdrant_client.get_collection.return_value = mock_collection_info
 
-        with patch("shared.managers.qdrant_manager.datetime") as mock_datetime:
+        with patch("packages.shared.managers.qdrant_manager.datetime") as mock_datetime:
             mock_datetime.now.return_value = datetime(2024, 1, 15, 10, 30, 45, tzinfo=UTC)
 
             result = qdrant_manager.create_staging_collection(
@@ -120,7 +120,7 @@ class TestQdrantManager:
         active_collections = ["collection_active1", "collection_active2"]
 
         # Patch time.sleep to speed up test
-        with patch("shared.managers.qdrant_manager.time.sleep"):
+        with patch("packages.shared.managers.qdrant_manager.time.sleep"):
             # Run cleanup
             deleted = qdrant_manager.cleanup_orphaned_collections(active_collections)
 
@@ -152,7 +152,7 @@ class TestQdrantManager:
         mock_qdrant_client.get_collection.return_value = mock_info
 
         # Patch time.sleep to speed up test
-        with patch("shared.managers.qdrant_manager.time.sleep"):
+        with patch("packages.shared.managers.qdrant_manager.time.sleep"):
             # Run cleanup in dry run mode
             deleted = qdrant_manager.cleanup_orphaned_collections(
                 active_collections=["collection_active"], dry_run=True
@@ -189,7 +189,7 @@ class TestQdrantManager:
         mock_qdrant_client.get_collection.return_value = mock_info
 
         # Patch time.sleep to speed up test
-        with patch("shared.managers.qdrant_manager.time.sleep"):
+        with patch("packages.shared.managers.qdrant_manager.time.sleep"):
             # Run cleanup
             deleted = qdrant_manager.cleanup_orphaned_collections(active_collections=[])
 
@@ -225,7 +225,7 @@ class TestQdrantManager:
         ]
 
         # Patch time.sleep to speed up test
-        with patch("shared.managers.qdrant_manager.time.sleep"):
+        with patch("packages.shared.managers.qdrant_manager.time.sleep"):
             # Run cleanup
             deleted = qdrant_manager.cleanup_orphaned_collections(active_collections=[])
 
@@ -406,7 +406,7 @@ class TestQdrantManager:
         mock_info.vectors_count = 10
         mock_qdrant_client.get_collection.return_value = mock_info
 
-        with patch("shared.managers.qdrant_manager.time.sleep") as mock_sleep:
+        with patch("packages.shared.managers.qdrant_manager.time.sleep") as mock_sleep:
             qdrant_manager.cleanup_orphaned_collections(active_collections=[])
 
             # Should have small delays between deletions

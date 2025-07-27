@@ -22,7 +22,7 @@ from packages.webui.tasks import (
     _process_reindex_operation,
     _process_remove_source_operation,
 )
-from shared.database.models import OperationType
+from packages.shared.database.models import OperationType
 
 
 class TestWebSocketMessageFlow:
@@ -86,7 +86,8 @@ class TestWebSocketMessageFlow:
                     document_repo = AsyncMock()
                     
                     # Run operation
-                    async with CeleryTaskWithOperationUpdates("op-123") as updater:
+                    updater = CeleryTaskWithOperationUpdates("op-123")
+                    async with updater:
                         await _process_index_operation(
                             operation, collection, collection_repo, document_repo, updater
                         )
@@ -146,7 +147,8 @@ class TestWebSocketMessageFlow:
                 document_repo.list_by_collection.return_value = ([], 0)
                 
                 # Run operation
-                async with CeleryTaskWithOperationUpdates("op-456") as updater:
+                updater = CeleryTaskWithOperationUpdates("op-456")
+                async with updater:
                     await _process_append_operation(
                         operation, collection, collection_repo, document_repo, updater
                     )
@@ -230,7 +232,8 @@ class TestWebSocketMessageFlow:
                                     document_repo.list_by_collection.return_value = []
                                     
                                     # Run operation
-                                    async with CeleryTaskWithOperationUpdates("op-789") as updater:
+                                    updater = CeleryTaskWithOperationUpdates("op-789")
+                                    async with updater:
                                         await _process_reindex_operation(
                                             operation, collection, collection_repo, document_repo, updater
                                         )
@@ -280,7 +283,8 @@ class TestWebSocketMessageFlow:
                     document_repo = AsyncMock()
                     
                     # Run operation expecting failure
-                    async with CeleryTaskWithOperationUpdates("op-error") as updater:
+                    updater = CeleryTaskWithOperationUpdates("op-error")
+                    async with updater:
                         with pytest.raises(Exception, match="Qdrant connection failed"):
                             await _process_index_operation(
                                 operation, collection, collection_repo, document_repo, updater
@@ -293,7 +297,8 @@ class TestWebSocketMessageFlow:
     async def test_concurrent_updates_ordering(self, mock_redis_client):
         """Test that concurrent updates maintain order."""
         with patch("redis.asyncio.from_url", return_value=mock_redis_client):
-            async with CeleryTaskWithOperationUpdates("op-concurrent") as updater:
+            updater = CeleryTaskWithOperationUpdates("op-concurrent")
+            async with updater:
                 # Send updates concurrently
                 tasks = []
                 for i in range(10):
@@ -314,12 +319,16 @@ class TestWebSocketMessageFormats:
     """Test specific WebSocket message formats for frontend compatibility."""
 
     @pytest.fixture
-    def updater(self):
+    async def updater(self):
         """Create an updater instance."""
-        return CeleryTaskWithOperationUpdates("test-op")
+        updater = CeleryTaskWithOperationUpdates("test-op")
+        yield updater
+        await updater.close()
 
-    async def test_progress_message_format(self, updater):
+    async def test_progress_message_format(self):
         """Test progress message format matches frontend expectations."""
+        updater = CeleryTaskWithOperationUpdates("test-op")
+        
         with patch("redis.asyncio.from_url") as mock_from_url:
             mock_redis = AsyncMock()
             captured_messages = []
@@ -333,28 +342,36 @@ class TestWebSocketMessageFormats:
             mock_redis.ping = AsyncMock()
             mock_from_url.return_value = mock_redis
             
-            # Send various progress updates
-            await updater.send_update("document_processed", {
-                "processed": 5,
-                "failed": 1,
-                "total": 10,
-                "current_document": "/path/to/doc.pdf"
-            })
-            
-            # Verify message structure
-            msg = captured_messages[0]
-            assert msg["type"] == "document_processed"
-            assert "timestamp" in msg
-            assert isinstance(msg["data"], dict)
-            assert msg["data"]["processed"] == 5
-            assert msg["data"]["total"] == 10
-            
-            # Verify timestamp is ISO format with timezone
-            timestamp = datetime.fromisoformat(msg["timestamp"].replace("Z", "+00:00"))
-            assert timestamp.tzinfo is not None
+            try:
+                # Initialize the updater within the patched context
+                async with updater:
+                    # Send various progress updates
+                    await updater.send_update("document_processed", {
+                        "processed": 5,
+                        "failed": 1,
+                        "total": 10,
+                        "current_document": "/path/to/doc.pdf"
+                    })
+                    
+                    # Verify message structure
+                    msg = captured_messages[0]
+                    assert msg["type"] == "document_processed"
+                    assert "timestamp" in msg
+                    assert isinstance(msg["data"], dict)
+                    assert msg["data"]["processed"] == 5
+                    assert msg["data"]["total"] == 10
+                    
+                    # Verify timestamp is ISO format with timezone
+                    timestamp = datetime.fromisoformat(msg["timestamp"].replace("Z", "+00:00"))
+                    assert timestamp.tzinfo is not None
+            finally:
+                # Ensure cleanup
+                await updater.close()
 
-    async def test_completion_message_format(self, updater):
+    async def test_completion_message_format(self):
         """Test completion message includes all required fields."""
+        updater = CeleryTaskWithOperationUpdates("test-op")
+        
         with patch("redis.asyncio.from_url") as mock_from_url:
             mock_redis = AsyncMock()
             captured_messages = []
@@ -368,26 +385,32 @@ class TestWebSocketMessageFormats:
             mock_redis.ping = AsyncMock()
             mock_from_url.return_value = mock_redis
             
-            # Send completion update
-            await updater.send_update("operation_completed", {
-                "status": "completed",
-                "result": {
-                    "success": True,
-                    "documents_processed": 100,
-                    "vectors_created": 1500,
-                    "duration": 45.2
-                }
-            })
-            
-            # Verify completion message
-            msg = captured_messages[0]
-            assert msg["type"] == "operation_completed"
-            assert msg["data"]["status"] == "completed"
-            assert msg["data"]["result"]["success"] is True
-            assert msg["data"]["result"]["documents_processed"] == 100
+            try:
+                async with updater:
+                    # Send completion update
+                    await updater.send_update("operation_completed", {
+                        "status": "completed",
+                        "result": {
+                            "success": True,
+                            "documents_processed": 100,
+                            "vectors_created": 1500,
+                            "duration": 45.2
+                        }
+                    })
+                    
+                    # Verify completion message
+                    msg = captured_messages[0]
+                    assert msg["type"] == "operation_completed"
+                    assert msg["data"]["status"] == "completed"
+                    assert msg["data"]["result"]["success"] is True
+                    assert msg["data"]["result"]["documents_processed"] == 100
+            finally:
+                await updater.close()
 
-    async def test_error_message_sanitization(self, updater):
+    async def test_error_message_sanitization(self):
         """Test error messages are sanitized before sending."""
+        updater = CeleryTaskWithOperationUpdates("test-op")
+        
         with patch("redis.asyncio.from_url") as mock_from_url:
             mock_redis = AsyncMock()
             captured_messages = []
@@ -401,19 +424,23 @@ class TestWebSocketMessageFormats:
             mock_redis.ping = AsyncMock()
             mock_from_url.return_value = mock_redis
             
-            # Send error with sensitive information
-            await updater.send_update("operation_error", {
-                "error": "Failed to process /home/username/private/data.txt",
-                "details": {
-                    "user_email": "user@example.com",
-                    "api_key": "secret-key-123"
-                }
-            })
-            
-            # Message should be sent as-is (sanitization happens at higher level)
-            msg = captured_messages[0]
-            assert msg["type"] == "operation_error"
-            # The updater itself doesn't sanitize - that's done by the task
+            try:
+                async with updater:
+                    # Send error with sensitive information
+                    await updater.send_update("operation_error", {
+                        "error": "Failed to process /home/username/private/data.txt",
+                        "details": {
+                            "user_email": "user@example.com",
+                            "api_key": "secret-key-123"
+                        }
+                    })
+                    
+                    # Message should be sent as-is (sanitization happens at higher level)
+                    msg = captured_messages[0]
+                    assert msg["type"] == "operation_error"
+                    # The updater itself doesn't sanitize - that's done by the task
+            finally:
+                await updater.close()
 
 
 class TestRedisStreamBehavior:
@@ -431,20 +458,24 @@ class TestRedisStreamBehavior:
             mock_redis.ping = AsyncMock()
             mock_from_url.return_value = mock_redis
             
-            # Send first message
-            await updater.send_update("start", {"status": "started"})
-            
-            # TTL should be set
-            mock_redis.expire.assert_called_once_with(
-                "operation-progress:test-ttl",
-                86400  # 24 hours
-            )
-            
-            # Send second message
-            await updater.send_update("progress", {"percent": 50})
-            
-            # TTL should still only be called once
-            assert mock_redis.expire.call_count == 1
+            try:
+                async with updater:
+                    # Send first message
+                    await updater.send_update("start", {"status": "started"})
+                    
+                    # TTL should be set
+                    mock_redis.expire.assert_called_once_with(
+                        "operation-progress:test-ttl",
+                        86400  # 24 hours
+                    )
+                    
+                    # Send second message
+                    await updater.send_update("progress", {"percent": 50})
+                    
+                    # TTL should still only be called once
+                    assert mock_redis.expire.call_count == 1
+            finally:
+                await updater.close()
 
     async def test_stream_maxlen_enforcement(self):
         """Test that stream length is limited."""
@@ -458,13 +489,17 @@ class TestRedisStreamBehavior:
             mock_redis.ping = AsyncMock()
             mock_from_url.return_value = mock_redis
             
-            # Send message
-            await updater.send_update("test", {})
-            
-            # Verify maxlen was set
-            call_args = mock_redis.xadd.call_args
-            assert "maxlen" in call_args[1]
-            assert call_args[1]["maxlen"] == 1000
+            try:
+                async with updater:
+                    # Send message
+                    await updater.send_update("test", {})
+                    
+                    # Verify maxlen was set
+                    call_args = mock_redis.xadd.call_args
+                    assert "maxlen" in call_args[1]
+                    assert call_args[1]["maxlen"] == 1000
+            finally:
+                await updater.close()
 
     async def test_redis_connection_pooling(self):
         """Test that Redis connections are reused within updater."""
@@ -478,17 +513,21 @@ class TestRedisStreamBehavior:
             mock_redis.ping = AsyncMock()
             mock_from_url.return_value = mock_redis
             
-            # Get Redis client multiple times
-            client1 = await updater._get_redis()
-            client2 = await updater._get_redis()
-            client3 = await updater._get_redis()
-            
-            # Should be the same instance
-            assert client1 is client2
-            assert client2 is client3
-            
-            # from_url should only be called once
-            mock_from_url.assert_called_once()
+            try:
+                async with updater:
+                    # Get Redis client multiple times
+                    client1 = await updater._get_redis()
+                    client2 = await updater._get_redis()
+                    client3 = await updater._get_redis()
+                    
+                    # Should be the same instance
+                    assert client1 is client2
+                    assert client2 is client3
+                    
+                    # from_url should only be called once
+                    mock_from_url.assert_called_once()
+            finally:
+                await updater.close()
 
 
 class TestWebSocketIntegrationScenarios:
@@ -519,7 +558,8 @@ class TestWebSocketIntegrationScenarios:
             mock_from_url.return_value = mock_redis
             
             # Simulate a complete operation flow
-            async with CeleryTaskWithOperationUpdates(operation_id) as updater:
+            updater = CeleryTaskWithOperationUpdates(operation_id)
+            async with updater:
                 # Operation started
                 await updater.send_update("operation_started", {
                     "status": "processing",
@@ -593,7 +633,8 @@ class TestWebSocketIntegrationScenarios:
             mock_from_url.return_value = mock_redis
             
             # Simulate operation that fails partway
-            async with CeleryTaskWithOperationUpdates(operation_id) as updater:
+            updater = CeleryTaskWithOperationUpdates(operation_id)
+            async with updater:
                 await updater.send_update("operation_started", {"status": "processing"})
                 await updater.send_update("scanning_documents", {"status": "scanning"})
                 

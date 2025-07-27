@@ -2,7 +2,7 @@
 """Test metrics directly from the registry"""
 import time
 
-from shared.metrics.prometheus import (
+from packages.shared.metrics.prometheus import (
     cpu_utilization,
     generate_latest,
     memory_total,

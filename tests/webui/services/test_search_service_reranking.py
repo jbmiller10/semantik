@@ -13,16 +13,7 @@ from packages.shared.database.repositories.collection_repository import Collecti
 from packages.webui.services.search_service import SearchService
 
 
-@pytest.fixture()
-def mock_db_session() -> AsyncMock:
-    """Mock database session."""
-    return AsyncMock(spec=AsyncSession)
-
-
-@pytest.fixture()
-def mock_collection_repo() -> AsyncMock:
-    """Mock collection repository."""
-    return AsyncMock(spec=CollectionRepository)
+# Database and repository fixtures are now imported from conftest.py
 
 
 @pytest.fixture()

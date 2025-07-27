@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from shared.database.exceptions import AccessDeniedError, DatabaseOperationError, EntityNotFoundError, ValidationError
-from shared.database.models import Collection, Operation, OperationStatus, OperationType
-from shared.database.repositories.operation_repository import OperationRepository
+from packages.shared.database.exceptions import AccessDeniedError, DatabaseOperationError, EntityNotFoundError, ValidationError
+from packages.shared.database.models import Collection, Operation, OperationStatus, OperationType
+from packages.shared.database.repositories.operation_repository import OperationRepository
 
 
 class TestOperationRepository:
@@ -75,7 +75,7 @@ class TestOperationRepository:
         mock_session.execute.return_value = collection_result
 
         # Mock UUID generation
-        with patch("shared.database.repositories.operation_repository.uuid4") as mock_uuid:
+        with patch("packages.shared.database.repositories.operation_repository.uuid4") as mock_uuid:
             mock_uuid.return_value = "test-operation-uuid"
 
             # Act

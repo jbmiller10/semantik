@@ -14,7 +14,7 @@ os.environ["WEBUI_METRICS_PORT"] = "9092"
 
 # Import after setting environment variables
 import prometheus_client  # noqa: E402
-from shared.metrics.prometheus import (  # noqa: E402
+from packages.shared.metrics.prometheus import (  # noqa: E402
     record_chunks_created,
     record_embeddings_generated,
     record_file_failed,

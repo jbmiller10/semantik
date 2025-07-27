@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 # Mock metrics before importing
-sys.modules["shared.metrics.prometheus"] = MagicMock()
+sys.modules["packages.shared.metrics.prometheus"] = MagicMock()
 
 
 class TestEmbeddingIntegration(unittest.TestCase):
@@ -20,8 +20,8 @@ class TestEmbeddingIntegration(unittest.TestCase):
         """Test that sync wrapper properly calls async implementation"""
         mock_cuda.return_value = False
 
-        from shared.embedding import EmbeddingService
-        from shared.embedding.dense import DenseEmbeddingService
+        from packages.shared.embedding import EmbeddingService
+        from packages.shared.embedding.dense import DenseEmbeddingService
 
         # Create service
         service = EmbeddingService()
@@ -39,7 +39,7 @@ class TestEmbeddingIntegration(unittest.TestCase):
     def test_concurrent_embedding_requests(self) -> None:
         """Test handling concurrent embedding requests"""
         # This tests thread safety of the sync wrapper
-        from shared.embedding import get_embedding_service_sync
+        from packages.shared.embedding import get_embedding_service_sync
 
         def make_request(i) -> None:
             try:
@@ -62,7 +62,7 @@ class TestEmbeddingIntegration(unittest.TestCase):
 
     def test_performance_baseline(self) -> None:
         """Establish performance baseline for embedding generation"""
-        from shared.embedding import EmbeddingService
+        from packages.shared.embedding import EmbeddingService
 
         service = EmbeddingService(mock_mode=True)
 
@@ -87,7 +87,7 @@ class TestEmbeddingIntegration(unittest.TestCase):
         import asyncio
 
         async def async_test():
-            from shared.embedding import cleanup, get_embedding_service
+            from packages.shared.embedding import cleanup, get_embedding_service
 
             # Get service
             service1 = await get_embedding_service()
@@ -108,7 +108,7 @@ class TestEmbeddingIntegration(unittest.TestCase):
 
     def test_backwards_compatibility(self) -> None:
         """Test that old API still works"""
-        from shared.embedding import embedding_service, enhanced_embedding_service
+        from packages.shared.embedding import embedding_service, enhanced_embedding_service
 
         # These should exist for backwards compatibility
         assert embedding_service is not None

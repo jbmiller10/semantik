@@ -2,13 +2,13 @@
 
 import pytest
 from pydantic import ValidationError
-from shared.contracts.errors import (
+from packages.shared.contracts.errors import (
     ErrorResponse,
     create_insufficient_memory_error,
     create_not_found_error,
     create_validation_error,
 )
-from shared.contracts.search import SearchRequest, SearchResult
+from packages.shared.contracts.search import SearchRequest, SearchResult
 
 
 class TestSearchContracts:
@@ -119,7 +119,7 @@ class TestSearchContractsExtended:
 
     def test_hybrid_search_result_required_doc_id(self) -> None:
         """Test that doc_id is required in HybridSearchResult."""
-        from shared.contracts.search import HybridSearchResult
+        from packages.shared.contracts.search import HybridSearchResult
 
         # Should fail without doc_id
         with pytest.raises(ValidationError) as exc_info:
@@ -141,7 +141,7 @@ class TestSearchContractsExtended:
 
     def test_batch_search_request(self) -> None:
         """Test BatchSearchRequest validation."""
-        from shared.contracts.search import BatchSearchRequest
+        from packages.shared.contracts.search import BatchSearchRequest
 
         # Valid batch request
         batch = BatchSearchRequest(queries=["query1", "query2", "query3"], k=5, search_type="semantic")
@@ -160,7 +160,7 @@ class TestSearchContractsExtended:
 
     def test_hybrid_search_request(self) -> None:
         """Test HybridSearchRequest validation."""
-        from shared.contracts.search import HybridSearchRequest
+        from packages.shared.contracts.search import HybridSearchRequest
 
         req = HybridSearchRequest(query="test query", k=15, mode="rerank", keyword_mode="all", score_threshold=0.7)
         assert req.query == "test query"
@@ -170,7 +170,7 @@ class TestSearchContractsExtended:
 
     def test_preload_model_request_response(self) -> None:
         """Test PreloadModelRequest and Response."""
-        from shared.contracts.search import PreloadModelRequest, PreloadModelResponse
+        from packages.shared.contracts.search import PreloadModelRequest, PreloadModelResponse
 
         # Request
         req = PreloadModelRequest(model_name="sentence-transformers/all-MiniLM-L6-v2", quantization="float16")
@@ -183,7 +183,7 @@ class TestSearchContractsExtended:
 
     def test_search_response(self) -> None:
         """Test SearchResponse model."""
-        from shared.contracts.search import SearchResponse
+        from packages.shared.contracts.search import SearchResponse
 
         response = SearchResponse(
             query="test query",
@@ -206,7 +206,7 @@ class TestSearchContractsExtended:
 
     def test_populate_by_name_behavior(self) -> None:
         """Test that populate_by_name allows both field names."""
-        from shared.contracts.search import SearchRequest
+        from packages.shared.contracts.search import SearchRequest
 
         # Should accept both 'k' and 'top_k'
         req1 = SearchRequest.model_validate({"query": "test", "k": 5})
@@ -224,7 +224,7 @@ class TestErrorContractsExtended:
 
     def test_validation_error_response(self) -> None:
         """Test ValidationErrorResponse model."""
-        from shared.contracts.errors import ErrorDetail, ValidationErrorResponse
+        from packages.shared.contracts.errors import ErrorDetail, ValidationErrorResponse
 
         error = ValidationErrorResponse(
             error="ValidationError",
@@ -240,7 +240,7 @@ class TestErrorContractsExtended:
 
     def test_not_found_error_response(self) -> None:
         """Test NotFoundErrorResponse model."""
-        from shared.contracts.errors import NotFoundErrorResponse
+        from packages.shared.contracts.errors import NotFoundErrorResponse
 
         error = NotFoundErrorResponse(
             error="NotFoundError",
@@ -254,7 +254,7 @@ class TestErrorContractsExtended:
 
     def test_insufficient_resources_error(self) -> None:
         """Test InsufficientResourcesErrorResponse model."""
-        from shared.contracts.errors import InsufficientResourcesErrorResponse
+        from packages.shared.contracts.errors import InsufficientResourcesErrorResponse
 
         error = InsufficientResourcesErrorResponse(
             error="InsufficientResourcesError",
@@ -299,7 +299,7 @@ class TestStringLengthValidation:
 
     def test_batch_search_request_query_validation(self) -> None:
         """Test that each query in BatchSearchRequest respects max length."""
-        from shared.contracts.search import BatchSearchRequest
+        from packages.shared.contracts.search import BatchSearchRequest
 
         # Valid queries
         batch = BatchSearchRequest(queries=["q" * 1000, "short query", "x" * 500])

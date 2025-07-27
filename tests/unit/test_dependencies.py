@@ -68,7 +68,7 @@ class TestGetCollectionForUser:
         with patch("packages.webui.dependencies.CollectionRepository") as mock_repo:
             mock_repo_instance = mock_repo.return_value
             mock_repo_instance.get_by_uuid_with_permission_check = AsyncMock(
-                side_effect=EntityNotFoundError("collection", "nonexistent-uuid")
+                side_effect=EntityNotFoundError("Collection", "nonexistent-uuid")
             )
 
             # Act & Assert
@@ -84,7 +84,7 @@ class TestGetCollectionForUser:
         with patch("packages.webui.dependencies.CollectionRepository") as mock_repo:
             mock_repo_instance = mock_repo.return_value
             mock_repo_instance.get_by_uuid_with_permission_check = AsyncMock(
-                side_effect=AccessDeniedError("123", "collection", "private-collection")
+                side_effect=AccessDeniedError("123", "Collection", "private-collection")
             )
 
             # Act & Assert

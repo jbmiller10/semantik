@@ -19,7 +19,7 @@ class TestCleanupOldCollections:
         assert result["errors"] == []
         assert result["collection_id"] == "collection-123"
 
-    @patch("shared.metrics.collection_metrics.QdrantOperationTimer")
+    @patch("packages.shared.metrics.collection_metrics.QdrantOperationTimer")
     @patch("webui.utils.qdrant_manager.qdrant_manager")
     def test_cleanup_old_collections_success(self, mock_conn_manager, mock_timer) -> None:
         """Test successful cleanup of collections."""
@@ -67,11 +67,11 @@ class TestCleanupQdrantCollections:
         assert result["errors"] == []
         assert "timestamp" in result
 
-    @patch("shared.metrics.collection_metrics.QdrantOperationTimer")
+    @patch("packages.shared.metrics.collection_metrics.QdrantOperationTimer")
     @patch("packages.webui.tasks._audit_collection_deletions_batch")
     @patch("packages.webui.tasks.asyncio.run")
     @patch("packages.webui.utils.qdrant_manager.qdrant_manager")
-    @patch("shared.managers.qdrant_manager.QdrantManager")
+    @patch("packages.shared.managers.qdrant_manager.QdrantManager")
     def test_cleanup_qdrant_collections_skip_system(
         self,
         mock_qdrant_manager_class,
@@ -105,11 +105,11 @@ class TestCleanupQdrantCollections:
         mock_qdrant_manager.collection_exists.assert_not_called()
         mock_qdrant_client.delete_collection.assert_not_called()
 
-    @patch("shared.metrics.collection_metrics.QdrantOperationTimer")
+    @patch("packages.shared.metrics.collection_metrics.QdrantOperationTimer")
     @patch("packages.webui.tasks._audit_collection_deletions_batch")
     @patch("packages.webui.tasks.asyncio.run")
     @patch("packages.webui.utils.qdrant_manager.qdrant_manager")
-    @patch("shared.managers.qdrant_manager.QdrantManager")
+    @patch("packages.shared.managers.qdrant_manager.QdrantManager")
     def test_cleanup_qdrant_collections_skip_active(
         self,
         mock_qdrant_manager_class,
@@ -140,11 +140,11 @@ class TestCleanupQdrantCollections:
         assert result["collections_skipped"] >= 1
         assert result["safety_checks"]["col_active"] == "active_collection"
 
-    @patch("shared.metrics.collection_metrics.QdrantOperationTimer")
+    @patch("packages.shared.metrics.collection_metrics.QdrantOperationTimer")
     @patch("packages.webui.tasks._audit_collection_deletions_batch")
     @patch("packages.webui.tasks.asyncio.run")
     @patch("packages.webui.utils.qdrant_manager.qdrant_manager")
-    @patch("shared.managers.qdrant_manager.QdrantManager")
+    @patch("packages.shared.managers.qdrant_manager.QdrantManager")
     def test_cleanup_qdrant_collections_skip_recent_staging(
         self,
         mock_qdrant_manager_class,
@@ -178,11 +178,11 @@ class TestCleanupQdrantCollections:
         assert result["collections_skipped"] == 1
         assert result["safety_checks"]["staging_col_123_20240115_120000"] == "staging_too_recent"
 
-    @patch("shared.metrics.collection_metrics.QdrantOperationTimer")
+    @patch("packages.shared.metrics.collection_metrics.QdrantOperationTimer")
     @patch("packages.webui.tasks._audit_collection_deletions_batch")
     @patch("packages.webui.tasks.asyncio.run")
     @patch("packages.webui.utils.qdrant_manager.qdrant_manager")
-    @patch("shared.managers.qdrant_manager.QdrantManager")
+    @patch("packages.shared.managers.qdrant_manager.QdrantManager")
     def test_cleanup_qdrant_collections_successful_deletion(
         self,
         mock_qdrant_manager_class,
@@ -239,8 +239,8 @@ class TestCleanupQdrantCollections:
 class TestGetActiveCollections:
     """Test suite for _get_active_collections helper function."""
 
-    @patch("shared.database.database.AsyncSessionLocal")
-    @patch("shared.database.repositories.collection_repository.CollectionRepository")
+    @patch("packages.shared.database.database.AsyncSessionLocal")
+    @patch("packages.shared.database.repositories.collection_repository.CollectionRepository")
     async def test_get_active_collections(self, mock_repo_class, mock_session_local):
         """Test getting active collections from database."""
         from packages.webui.tasks import _get_active_collections
@@ -283,8 +283,8 @@ class TestGetActiveCollections:
 class TestAuditCollectionDeletion:
     """Test suite for _audit_collection_deletions_batch helper function."""
 
-    @patch("shared.database.database.AsyncSessionLocal")
-    @patch("shared.database.models.CollectionAuditLog")
+    @patch("packages.shared.database.database.AsyncSessionLocal")
+    @patch("packages.shared.database.models.CollectionAuditLog")
     async def test_audit_collection_deletions_batch_success(self, mock_audit_log_class, mock_session_local):
         """Test successful batch audit log creation."""
         from packages.webui.tasks import _audit_collection_deletions_batch
@@ -301,7 +301,7 @@ class TestAuditCollectionDeletion:
         assert mock_session.add.call_count == 2
         assert mock_session.commit.call_count == 1
 
-    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("packages.shared.database.database.AsyncSessionLocal")
     async def test_audit_collection_deletions_batch_empty(self, mock_session_local):
         """Test batch audit with empty list."""
         from packages.webui.tasks import _audit_collection_deletions_batch

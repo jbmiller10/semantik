@@ -32,9 +32,9 @@ from packages.webui.tasks import (
 )
 
 # Import shared models and repositories that are used in the tests
-from shared.database.database import AsyncSessionLocal
-from shared.database.models import CollectionAuditLog, OperationMetrics
-from shared.database.repositories.collection_repository import CollectionRepository
+from packages.shared.database.database import AsyncSessionLocal
+from packages.shared.database.models import CollectionAuditLog, OperationMetrics
+from packages.shared.database.repositories.collection_repository import CollectionRepository
 
 
 class TestTaskHelperFunctions:
@@ -106,7 +106,7 @@ class TestTaskHelperFunctions:
     def test_extract_and_serialize_thread_safe(self, mock_executor):
         """Test thread-safe text extraction wrapper."""
         # Mock the extraction function
-        with patch("shared.text_processing.extraction.extract_and_serialize") as mock_extract:
+        with patch("packages.shared.text_processing.extraction.extract_and_serialize") as mock_extract:
             mock_extract.return_value = [("Test content", {"page": 1})]
             
             result = extract_and_serialize_thread_safe("/test/file.pdf")
@@ -120,8 +120,8 @@ class TestAuditLogging:
 
     async def test_audit_log_operation_success(self):
         """Test successful audit log creation."""
-        with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
-            with patch("shared.database.models.CollectionAuditLog") as mock_audit_log_class:
+        with patch("packages.shared.database.database.AsyncSessionLocal") as mock_session_local:
+            with patch("packages.shared.database.models.CollectionAuditLog") as mock_audit_log_class:
                 # Setup mocks
                 mock_session = AsyncMock()
                 mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -160,7 +160,7 @@ class TestAuditLogging:
 
     async def test_audit_log_operation_failure(self):
         """Test audit log creation handles failures gracefully."""
-        with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
+        with patch("packages.shared.database.database.AsyncSessionLocal") as mock_session_local:
             # Setup session to fail
             mock_session = AsyncMock()
             mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -180,8 +180,8 @@ class TestAuditLogging:
 
     async def test_audit_collection_deletion(self):
         """Test audit logging for collection deletion."""
-        with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
-            with patch("shared.database.models.CollectionAuditLog") as mock_audit_log_class:
+        with patch("packages.shared.database.database.AsyncSessionLocal") as mock_session_local:
+            with patch("packages.shared.database.models.CollectionAuditLog") as mock_audit_log_class:
                 # Setup mocks
                 mock_session = AsyncMock()
                 mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -206,8 +206,8 @@ class TestAuditLogging:
 
     async def test_audit_collection_deletions_batch(self):
         """Test batch audit logging for multiple collection deletions."""
-        with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
-            with patch("shared.database.models.CollectionAuditLog") as mock_audit_log_class:
+        with patch("packages.shared.database.database.AsyncSessionLocal") as mock_session_local:
+            with patch("packages.shared.database.models.CollectionAuditLog") as mock_audit_log_class:
                 # Setup mocks
                 mock_session = AsyncMock()
                 mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -242,8 +242,8 @@ class TestMetricsRecording:
 
     async def test_record_operation_metrics_success(self):
         """Test successful operation metrics recording."""
-        with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
-            with patch("shared.database.models.OperationMetrics") as mock_metrics_class:
+        with patch("packages.shared.database.database.AsyncSessionLocal") as mock_session_local:
+            with patch("packages.shared.database.models.OperationMetrics") as mock_metrics_class:
                 # Setup mocks
                 mock_session = AsyncMock()
                 mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -297,8 +297,8 @@ class TestActiveCollections:
 
     async def test_get_active_collections(self):
         """Test getting active collections from database."""
-        with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
-            with patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_repo_class:
+        with patch("packages.shared.database.database.AsyncSessionLocal") as mock_session_local:
+            with patch("packages.shared.database.repositories.collection_repository.CollectionRepository") as mock_repo_class:
                 # Setup mocks
                 mock_session = AsyncMock()
                 mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -343,8 +343,8 @@ class TestActiveCollections:
 
     async def test_get_active_collections_with_string_staging(self):
         """Test handling of staging info as JSON string."""
-        with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
-            with patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_repo_class:
+        with patch("packages.shared.database.database.AsyncSessionLocal") as mock_session_local:
+            with patch("packages.shared.database.repositories.collection_repository.CollectionRepository") as mock_repo_class:
                 # Setup mocks
                 mock_session = AsyncMock()
                 mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -376,8 +376,8 @@ class TestStagingCleanup:
     async def test_cleanup_staging_resources_success(self):
         """Test successful staging cleanup."""
         with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant_manager:
-            with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
-                with patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_repo_class:
+            with patch("packages.shared.database.database.AsyncSessionLocal") as mock_session_local:
+                with patch("packages.shared.database.repositories.collection_repository.CollectionRepository") as mock_repo_class:
                     # Setup mocks
                     mock_session = AsyncMock()
                     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -414,8 +414,8 @@ class TestStagingCleanup:
 
     async def test_cleanup_staging_resources_no_staging(self):
         """Test cleanup when no staging exists."""
-        with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
-            with patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_repo_class:
+        with patch("packages.shared.database.database.AsyncSessionLocal") as mock_session_local:
+            with patch("packages.shared.database.repositories.collection_repository.CollectionRepository") as mock_repo_class:
                 # Setup mocks
                 mock_session = AsyncMock()
                 mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -438,8 +438,8 @@ class TestStagingCleanup:
     async def test_cleanup_staging_resources_qdrant_failure(self):
         """Test cleanup continues despite Qdrant failures."""
         with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant_manager:
-            with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
-                with patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_repo_class:
+            with patch("packages.shared.database.database.AsyncSessionLocal") as mock_session_local:
+                with patch("packages.shared.database.repositories.collection_repository.CollectionRepository") as mock_repo_class:
                     # Setup mocks
                     mock_session = AsyncMock()
                     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -587,7 +587,7 @@ class TestEdgeCases:
 
     async def test_audit_log_with_circular_reference(self):
         """Test audit logging handles circular references in details."""
-        with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
+        with patch("packages.shared.database.database.AsyncSessionLocal") as mock_session_local:
             # Setup mocks
             mock_session = AsyncMock()
             mock_session.__aenter__ = AsyncMock(return_value=mock_session)

@@ -21,31 +21,7 @@ from packages.shared.database.repositories.document_repository import DocumentRe
 from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.webui.services.collection_service import CollectionService
 
-
-@pytest.fixture()
-def mock_db_session() -> AsyncMock:
-    """Mock database session."""
-    mock = AsyncMock(spec=AsyncSession)
-    mock.commit = AsyncMock()
-    return mock
-
-
-@pytest.fixture()
-def mock_collection_repo() -> AsyncMock:
-    """Mock collection repository."""
-    return AsyncMock(spec=CollectionRepository)
-
-
-@pytest.fixture()
-def mock_operation_repo() -> AsyncMock:
-    """Mock operation repository."""
-    return AsyncMock(spec=OperationRepository)
-
-
-@pytest.fixture()
-def mock_document_repo() -> AsyncMock:
-    """Mock document repository."""
-    return AsyncMock(spec=DocumentRepository)
+# Fixtures are now imported from conftest.py
 
 
 @pytest.fixture()
@@ -64,43 +40,7 @@ def collection_service(
     )
 
 
-@pytest.fixture()
-def mock_collection() -> MagicMock:
-    """Mock a collection object."""
-    collection = MagicMock(spec=Collection)
-    collection.id = 1
-    collection.uuid = "123e4567-e89b-12d3-a456-426614174000"
-    collection.name = "Test Collection"
-    collection.description = "Test description"
-    collection.owner_id = 1
-    collection.vector_store_name = "collection_1"
-    collection.embedding_model = "Qwen/Qwen3-Embedding-0.6B"
-    collection.quantization = "float16"
-    collection.chunk_size = 1000
-    collection.chunk_overlap = 200
-    collection.is_public = False
-    collection.meta = {"key": "value"}
-    collection.status = CollectionStatus.READY
-    collection.created_at = MagicMock()
-    collection.updated_at = MagicMock()
-    return collection
-
-
-@pytest.fixture()
-def mock_operation() -> MagicMock:
-    """Mock an operation object."""
-    operation = MagicMock(spec=Operation)
-    operation.id = 1
-    operation.uuid = "456e7890-e89b-12d3-a456-426614174001"
-    operation.collection_id = 1
-    operation.type = OperationType.INDEX
-    operation.status = MagicMock(value="pending")
-    operation.config = {}
-    operation.created_at = MagicMock()
-    operation.started_at = None
-    operation.completed_at = None
-    operation.error_message = None
-    return operation
+# Collection and operation fixtures are now imported from conftest.py
 
 
 class TestCollectionServiceInit:

@@ -18,15 +18,12 @@ class TestRedisStreamWebSocketManager:
     """Test suite for RedisStreamWebSocketManager."""
 
     @pytest.fixture()
-    def mock_redis(self) -> None:
+    def mock_redis(self):
         """Create a mock Redis client."""
-        # Create a proper async mock that can be awaited
-        mock = MagicMock(spec=redis.Redis)
+        # Create a proper async mock
+        mock = AsyncMock(spec=redis.Redis)
 
-        # Create async mock methods
-        async def async_return(value=None):
-            return value
-
+        # Set up all required async methods
         mock.ping = AsyncMock(return_value=True)
         mock.xadd = AsyncMock()
         mock.expire = AsyncMock()
@@ -41,14 +38,14 @@ class TestRedisStreamWebSocketManager:
         mock.xinfo_stream = AsyncMock(return_value={"length": 0})
         mock.close = AsyncMock()
 
-        # Make the mock itself awaitable (for the 'await' in from_url)
+        # Make the mock itself work as an async context manager
         mock.__aenter__ = AsyncMock(return_value=mock)
         mock.__aexit__ = AsyncMock(return_value=None)
 
         return mock
 
     @pytest.fixture()
-    def mock_websocket(self) -> None:
+    def mock_websocket(self):
         """Create a mock WebSocket connection."""
         mock = AsyncMock(spec=WebSocket)
         mock.accept = AsyncMock()
@@ -64,40 +61,37 @@ class TestRedisStreamWebSocketManager:
         
         # Clean up with overall timeout to prevent hanging
         try:
-            async def cleanup_manager():
-                # Cancel any remaining tasks
-                tasks_to_cancel = list(manager.consumer_tasks.items())
-                for task_id, task in tasks_to_cancel:
-                    if not task.done():
-                        task.cancel()
-                        try:
-                            # Short timeout for each task
-                            await asyncio.wait_for(task, timeout=0.1)
-                        except (asyncio.CancelledError, asyncio.TimeoutError):
-                            # Expected - task was cancelled or timed out
-                            pass
-                        except Exception as e:
-                            # Log but don't fail
-                            import logging
-                            logger = logging.getLogger(__name__)
-                            logger.warning(f"Error cancelling task {task_id} in fixture cleanup: {e}")
-                
-                # Clear tasks and connections
-                manager.consumer_tasks.clear()
-                manager.connections.clear()
-                
-                # Ensure Redis is cleaned up
-                if manager.redis:
-                    try:
-                        await asyncio.wait_for(manager.redis.close(), timeout=0.5)
-                    except Exception:
-                        pass
-                    manager.redis = None
+            # Cancel any remaining tasks first
+            tasks_to_cancel = []
+            for task_id, task in list(manager.consumer_tasks.items()):
+                if not task.done():
+                    task.cancel()
+                    tasks_to_cancel.append((task_id, task))
             
-            # Apply overall timeout to entire cleanup
-            await asyncio.wait_for(cleanup_manager(), timeout=2.0)
-        except asyncio.TimeoutError:
-            # Force cleanup if timeout occurs
+            # Wait for all tasks to be cancelled with a short timeout
+            if tasks_to_cancel:
+                await asyncio.wait(
+                    [task for _, task in tasks_to_cancel],
+                    timeout=0.5,
+                    return_when=asyncio.ALL_COMPLETED
+                )
+            
+            # Clear tasks and connections
+            manager.consumer_tasks.clear()
+            manager.connections.clear()
+            
+            # Ensure Redis is cleaned up
+            if manager.redis:
+                try:
+                    await asyncio.wait_for(manager.redis.close(), timeout=0.5)
+                except Exception:
+                    pass
+                manager.redis = None
+        except Exception as e:
+            # Force cleanup if any error occurs
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Error during manager cleanup: {e}")
             manager.consumer_tasks.clear()
             manager.connections.clear()
             manager.redis = None
@@ -955,8 +949,8 @@ class TestRedisStreamWebSocketManager:
 class TestWebSocketManagerSingleton:
     """Test the global ws_manager singleton."""
 
-    @pytest.fixture(autouse=True)
-    def cleanup_singleton(self):
+    @pytest_asyncio.fixture(autouse=True)
+    async def cleanup_singleton(self):
         """Clean up any background tasks from the singleton."""
         # Import here to avoid issues
         from packages.webui.websocket_manager import ws_manager
@@ -968,48 +962,29 @@ class TestWebSocketManagerSingleton:
         
         yield
         
-        # Synchronous cleanup after test
+        # Async cleanup after test
         # Cancel any tasks that were created during the test
         tasks_to_cancel = []
-        for task_id, task in ws_manager.consumer_tasks.items():
+        for task_id, task in list(ws_manager.consumer_tasks.items()):
             if task_id not in original_tasks and not task.done():
                 task.cancel()
-                tasks_to_cancel.append((task_id, task))
+                tasks_to_cancel.append(task)
         
-        # Clear connections immediately
+        # Wait for all tasks to complete with a timeout
+        if tasks_to_cancel:
+            try:
+                await asyncio.wait(tasks_to_cancel, timeout=0.5, return_when=asyncio.ALL_COMPLETED)
+            except Exception:
+                pass
+        
+        # Clear connections and tasks
         ws_manager.connections.clear()
         ws_manager.connections.update(original_connections)
-        
-        # Clear consumer tasks immediately
         ws_manager.consumer_tasks.clear()
         ws_manager.consumer_tasks.update(original_tasks)
         
         # Restore Redis state
         ws_manager.redis = original_redis
-        
-        # Handle task cancellation in a separate async context if needed
-        if tasks_to_cancel:
-            async def cancel_tasks():
-                for task_id, task in tasks_to_cancel:
-                    try:
-                        await asyncio.wait_for(asyncio.shield(task), timeout=0.1)
-                    except (asyncio.CancelledError, asyncio.TimeoutError):
-                        pass
-                    except Exception:
-                        pass
-            
-            # Run task cancellation in a new event loop if needed
-            try:
-                loop = asyncio.get_running_loop()
-                # If we're in an async context, create a task
-                loop.create_task(cancel_tasks())
-            except RuntimeError:
-                # No running loop, create a new one
-                loop = asyncio.new_event_loop()
-                try:
-                    loop.run_until_complete(cancel_tasks())
-                finally:
-                    loop.close()
 
     def test_ws_manager_singleton_exists(self):
         """Test that the global ws_manager singleton is properly initialized."""

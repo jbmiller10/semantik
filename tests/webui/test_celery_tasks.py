@@ -38,7 +38,7 @@ from packages.webui.tasks import (
     cleanup_qdrant_collections,
     process_collection_operation,
 )
-from shared.database.models import (
+from packages.shared.database.models import (
     CollectionStatus,
     DocumentStatus,
     OperationStatus,
@@ -202,8 +202,10 @@ class TestProcessCollectionOperation:
     @patch("packages.webui.tasks.OperationRepository")
     @patch("packages.webui.tasks.CollectionRepository")
     @patch("packages.webui.tasks.DocumentRepository")
+    @patch("packages.webui.tasks.psutil.Process")
     async def test_process_collection_operation_index_success(
         self,
+        mock_process,
         mock_doc_repo_class,
         mock_col_repo_class,
         mock_op_repo_class,
@@ -213,6 +215,15 @@ class TestProcessCollectionOperation:
         mock_celery_task
     ):
         """Test successful INDEX operation processing."""
+        # Setup psutil mock
+        mock_cpu_times = Mock()
+        mock_cpu_times.user = 10.0
+        mock_cpu_times.system = 5.0
+        mock_process_instance = Mock()
+        mock_process_instance.cpu_times.return_value = mock_cpu_times
+        mock_process_instance.memory_info.return_value = Mock(rss=1024000)
+        mock_process.return_value = mock_process_instance
+        
         # Setup mocks
         mock_session = AsyncMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -261,8 +272,10 @@ class TestProcessCollectionOperation:
     @patch("packages.webui.tasks.OperationRepository")
     @patch("packages.webui.tasks.CollectionRepository")
     @patch("packages.webui.tasks.DocumentRepository")
+    @patch("packages.webui.tasks.psutil.Process")
     async def test_process_collection_operation_failure_handling(
         self,
+        mock_process,
         mock_doc_repo_class,
         mock_col_repo_class,
         mock_op_repo_class,
@@ -272,6 +285,15 @@ class TestProcessCollectionOperation:
         mock_celery_task
     ):
         """Test failure handling in process_collection_operation."""
+        # Setup psutil mock
+        mock_cpu_times = Mock()
+        mock_cpu_times.user = 10.0
+        mock_cpu_times.system = 5.0
+        mock_process_instance = Mock()
+        mock_process_instance.cpu_times.return_value = mock_cpu_times
+        mock_process_instance.memory_info.return_value = Mock(rss=1024000)
+        mock_process.return_value = mock_process_instance
+        
         # Setup mocks
         mock_session = AsyncMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -302,20 +324,36 @@ class TestProcessCollectionOperation:
 
     def test_process_collection_operation_sync_wrapper(self, mock_celery_task):
         """Test the synchronous wrapper handles async execution."""
-        with patch("packages.webui.tasks._process_collection_operation_async") as mock_async:
-            mock_async.return_value = {"success": True}
+        # Mock the event loop and its run_until_complete method
+        mock_loop = Mock()
+        mock_loop.is_closed.return_value = False
+        mock_loop.run_until_complete.return_value = {"success": True}
+        
+        with patch("packages.webui.tasks.asyncio.get_event_loop", return_value=mock_loop):
+            # Import the actual function to test
+            from packages.webui.tasks import process_collection_operation
             
             # Call sync wrapper - self is the first parameter for bound tasks
             result = process_collection_operation(mock_celery_task, "op-123")
             
-            # Verify async function was called with correct parameters
-            mock_async.assert_called_once_with("op-123", mock_celery_task)
+            # Verify async function was called via run_until_complete
+            mock_loop.run_until_complete.assert_called_once()
+            # Get the coroutine that was passed to run_until_complete
+            call_args = mock_loop.run_until_complete.call_args[0][0]
+            # Check it's the right coroutine type
+            assert asyncio.iscoroutine(call_args)
             assert result == {"success": True}
 
     def test_process_collection_operation_retry_on_network_error(self, mock_celery_task):
         """Test that network errors trigger retry."""
-        with patch("packages.webui.tasks._process_collection_operation_async") as mock_async:
-            mock_async.side_effect = Exception("Network error")
+        # Mock the event loop and make run_until_complete raise the exception
+        mock_loop = Mock()
+        mock_loop.is_closed.return_value = False
+        mock_loop.run_until_complete.side_effect = Exception("Network error")
+        
+        with patch("packages.webui.tasks.asyncio.get_event_loop", return_value=mock_loop):
+            # Import the actual function to test
+            from packages.webui.tasks import process_collection_operation
             
             # Call sync wrapper - should retry (self is the first parameter for bound tasks)
             with pytest.raises(Exception, match="Retry called"):
@@ -483,14 +521,14 @@ class TestAppendOperation:
         return docs
 
     @patch("packages.webui.tasks.DocumentScanningService")
-    @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
+    @patch("packages.webui.tasks.executor")
     @patch("packages.webui.tasks.httpx.AsyncClient")
     @patch("packages.webui.tasks.qdrant_manager")
     async def test_process_append_operation_success(
         self,
         mock_qdrant_global,
         mock_httpx,
-        mock_extract,
+        mock_executor,
         mock_scanner_class,
         mock_document_scanner,
         mock_documents,
@@ -499,7 +537,11 @@ class TestAppendOperation:
         """Test successful APPEND operation."""
         # Setup mocks
         mock_scanner_class.return_value = mock_document_scanner
-        mock_extract.return_value = [("This is test content", {"page": 1})]
+        
+        # Mock executor for text extraction
+        async def mock_extract_result():
+            return [("This is test content", {"page": 1})]
+        mock_executor.submit.return_value.result.return_value = [("This is test content", {"page": 1})]
         
         # Mock httpx client for vecpipe API
         mock_client = AsyncMock()
@@ -562,7 +604,7 @@ class TestAppendOperation:
         # Verify embeddings were generated
         assert mock_client.post.call_count >= 1
         embed_call = mock_client.post.call_args_list[0]
-        assert "vecpipe:8000/embed" in embed_call[0][0]
+        assert "http://vecpipe:8000/embed" in embed_call[0][0]
         
         # Verify success response
         assert result["success"] is True
@@ -612,18 +654,16 @@ class TestReindexOperation:
 
     @patch("packages.webui.tasks.QdrantManager")
     @patch("packages.webui.tasks.qdrant_manager")
-    @patch("packages.webui.tasks.reindex_handler")
     @patch("packages.webui.tasks._validate_reindex")
     @patch("packages.webui.tasks.httpx.AsyncClient")
-    @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
+    @patch("packages.webui.tasks.executor")
     @patch("packages.webui.tasks.cleanup_old_collections")
     async def test_process_reindex_operation_success(
         self,
         mock_cleanup_task,
-        mock_extract,
+        mock_executor,
         mock_httpx,
         mock_validate,
-        mock_reindex_handler,
         mock_qdrant_global,
         mock_qdrant_manager_class,
         mock_qdrant_manager_instance,
@@ -635,13 +675,14 @@ class TestReindexOperation:
         qdrant_client = Mock()
         mock_qdrant_global.get_client.return_value = qdrant_client
         
-        # Mock reindex handler
-        mock_reindex_handler.return_value = {
-            "collection_name": "staging_col_123_20240115_120000",
-            "created_at": datetime.now(UTC).isoformat(),
-            "vector_dim": 1536,
-            "base_collection": "col_test_123"
-        }
+        # Mock reindex handler by patching the actual function call
+        with patch("packages.webui.tasks.reindex_handler") as mock_reindex_handler:
+            mock_reindex_handler.return_value = {
+                "collection_name": "staging_col_123_20240115_120000",
+                "created_at": datetime.now(UTC).isoformat(),
+                "vector_dim": 1536,
+                "base_collection": "col_test_123"
+            }
         
         # Mock validation
         mock_validate.return_value = {
@@ -662,7 +703,7 @@ class TestReindexOperation:
         mock_httpx.return_value.__aenter__.return_value = mock_client
         
         # Mock text extraction
-        mock_extract.return_value = [("Test content", {"page": 1})]
+        mock_executor.submit.return_value.result.return_value = [("Test content", {"page": 1})]
         
         # Mock cleanup task
         mock_cleanup_task.apply_async.return_value = Mock(id="cleanup-task-123")
@@ -682,7 +723,10 @@ class TestReindexOperation:
             "vector_store_name": "col_test_123",
             "status": CollectionStatus.READY,
             "config": {"chunk_size": 1000},
-            "vector_count": 1000
+            "vector_count": 1000,
+            "embedding_model": "test-model",
+            "quantization": "float32",
+            "chunk_overlap": 200
         }
         
         collection_repo = AsyncMock()
@@ -690,17 +734,20 @@ class TestReindexOperation:
         
         document_repo = AsyncMock()
         document_repo.get_stats_by_collection.return_value = {"total_documents": 10}
-        document_repo.list_by_collection.return_value = [
-            {"id": "doc1", "file_path": "/test/doc1.txt", "status": DocumentStatus.COMPLETED}
-        ]
+        # list_by_collection returns a tuple of (documents, count)
+        mock_doc = Mock()
+        mock_doc.id = "doc1"
+        mock_doc.file_path = "/test/doc1.txt"
+        mock_doc.status = DocumentStatus.COMPLETED
+        document_repo.list_by_collection.return_value = ([mock_doc], 1)
         
-        # Run operation
-        result = await _process_reindex_operation(
-            operation, collection, collection_repo, document_repo, mock_updater
-        )
-        
-        # Verify staging collection was created
-        mock_reindex_handler.assert_called_once()
+            # Run operation
+            result = await _process_reindex_operation(
+                operation, collection, collection_repo, document_repo, mock_updater
+            )
+            
+            # Verify staging collection was created
+            mock_reindex_handler.assert_called_once()
         
         # Verify validation was performed
         mock_validate.assert_called_once()
@@ -762,7 +809,11 @@ class TestReindexOperation:
                     "id": "col-123",
                     "uuid": "col-123",
                     "vector_store_name": "col_test_123",
-                    "status": CollectionStatus.READY
+                    "status": CollectionStatus.READY,
+                    "config": {"chunk_size": 1000},
+                    "embedding_model": "test-model",
+                    "quantization": "float32",
+                    "chunk_overlap": 200
                 }
                 
                 collection_repo = AsyncMock()
@@ -770,7 +821,8 @@ class TestReindexOperation:
                 
                 document_repo = AsyncMock()
                 document_repo.get_stats_by_collection.return_value = {"total_documents": 10}
-                document_repo.list_by_collection.return_value = []
+                # list_by_collection returns a tuple of (documents, count)
+                document_repo.list_by_collection.return_value = ([], 0)
                 
                 # Should raise validation error
                 with pytest.raises(ValueError, match="Reindex validation failed"):
@@ -821,10 +873,14 @@ class TestRemoveSourceOperation:
         collection_repo = AsyncMock()
         
         document_repo = AsyncMock()
-        documents = [
-            {"id": "doc1", "file_path": "/test/old_docs/doc1.txt"},
-            {"id": "doc2", "file_path": "/test/old_docs/doc2.txt"}
-        ]
+        # Create mock document objects
+        doc1 = Mock()
+        doc1.id = "doc1"
+        doc1.file_path = "/test/old_docs/doc1.txt"
+        doc2 = Mock()
+        doc2.id = "doc2"
+        doc2.file_path = "/test/old_docs/doc2.txt"
+        documents = [doc1, doc2]
         document_repo.list_by_collection_and_source.return_value = documents
         document_repo.bulk_update_status = AsyncMock()
         document_repo.get_stats_by_collection.return_value = {

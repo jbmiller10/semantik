@@ -15,17 +15,7 @@ from packages.shared.database.models import Collection, CollectionStatus
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.webui.services.search_service import SearchService
 
-
-@pytest.fixture()
-def mock_db_session() -> AsyncMock:
-    """Mock database session."""
-    return AsyncMock(spec=AsyncSession)
-
-
-@pytest.fixture()
-def mock_collection_repo() -> AsyncMock:
-    """Mock collection repository."""
-    return AsyncMock(spec=CollectionRepository)
+# Database and repository fixtures are now imported from conftest.py
 
 
 @pytest.fixture()
@@ -768,7 +758,7 @@ class TestSingleCollectionSearch:
 
             # Verify timeout was doubled
             timeout_used = mock_client_class.call_args[1]["timeout"]
-            assert timeout_used.timeout == 60.0  # 30.0 * 2
+            # httpx.Timeout doesn't have .timeout attribute, only .connect, .read, .write
             assert timeout_used.read == 60.0     # 30.0 * 2
 
     @pytest.mark.asyncio()

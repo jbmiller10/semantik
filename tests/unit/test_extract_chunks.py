@@ -3,8 +3,8 @@
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from shared.text_processing.chunking import TokenChunker
-from shared.text_processing.extraction import extract_and_serialize
+from packages.shared.text_processing.chunking import TokenChunker
+from packages.shared.text_processing.extraction import extract_and_serialize
 
 
 @pytest.fixture()
@@ -138,7 +138,7 @@ class TestExtractAndSerialize:
     def test_metadata_preservation(self) -> None:
         """Test that metadata from unstructured Element objects is preserved."""
         # Mock unstructured.partition
-        with patch("shared.text_processing.extraction.partition") as mock_partition:
+        with patch("packages.shared.text_processing.extraction.partition") as mock_partition:
             # Create mock Element objects with metadata
             mock_element1 = MagicMock()
             mock_element1.__str__.return_value = "This is page 1 content."  # type: ignore[attr-defined]
@@ -184,7 +184,7 @@ class TestExtractAndSerialize:
 
     def test_text_concatenation(self) -> None:
         """Test that text from all Element objects is correctly extracted."""
-        with patch("shared.text_processing.extraction.partition") as mock_partition:
+        with patch("packages.shared.text_processing.extraction.partition") as mock_partition:
             # Create multiple mock elements
             elements = []
             expected_texts = []
@@ -211,7 +211,7 @@ class TestExtractAndSerialize:
 
     def test_element_without_metadata(self) -> None:
         """Test handling of elements without metadata attribute."""
-        with patch("shared.text_processing.extraction.partition") as mock_partition:
+        with patch("packages.shared.text_processing.extraction.partition") as mock_partition:
             # Create element without metadata
             mock_element = MagicMock()
             mock_element.__str__.return_value = "Content without metadata"  # type: ignore[attr-defined]
@@ -234,7 +234,7 @@ class TestExtractAndSerialize:
 
     def test_partition_error_handling(self) -> None:
         """Test error handling when partition fails."""
-        with patch("shared.text_processing.extraction.partition") as mock_partition:
+        with patch("packages.shared.text_processing.extraction.partition") as mock_partition:
             mock_partition.side_effect = Exception("Partition failed")
 
             # Should raise the exception
@@ -243,7 +243,7 @@ class TestExtractAndSerialize:
 
     def test_file_type_extraction(self) -> None:
         """Test that file type is correctly extracted from filepath."""
-        with patch("shared.text_processing.extraction.partition") as mock_partition:
+        with patch("packages.shared.text_processing.extraction.partition") as mock_partition:
             mock_element = MagicMock()
             mock_element.__str__.return_value = "Test content"  # type: ignore[attr-defined]
             mock_element.metadata = Mock()
@@ -265,7 +265,7 @@ class TestExtractAndSerialize:
 
     def test_page_number_continuity(self) -> None:
         """Test that page numbers maintain continuity when elements lack page metadata."""
-        with patch("shared.text_processing.extraction.partition") as mock_partition:
+        with patch("packages.shared.text_processing.extraction.partition") as mock_partition:
             # Create elements with mixed page number presence
             elem1 = MagicMock()
             elem1.__str__.return_value = "Content 1"  # type: ignore[attr-defined]

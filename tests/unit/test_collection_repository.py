@@ -5,15 +5,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from shared.database.exceptions import (
+from packages.shared.database.exceptions import (
     AccessDeniedError,
     DatabaseOperationError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
     ValidationError,
 )
-from shared.database.models import Collection, CollectionStatus
-from shared.database.repositories.collection_repository import CollectionRepository
+from packages.shared.database.models import Collection, CollectionStatus
+from packages.shared.database.repositories.collection_repository import CollectionRepository
 from sqlalchemy.exc import IntegrityError
 
 
@@ -69,7 +69,7 @@ class TestCollectionRepository:
         mock_session.execute.return_value = mock_result
 
         # Mock UUID generation
-        with patch("shared.database.repositories.collection_repository.uuid4") as mock_uuid:
+        with patch("packages.shared.database.repositories.collection_repository.uuid4") as mock_uuid:
             mock_uuid.return_value = "test-uuid-1234"
 
             # Act
