@@ -15,6 +15,7 @@ from packages.shared.contracts.search import (
     SearchRequest,
 )
 from packages.vecpipe.search_api import (
+    app,
     search_post,
 )
 

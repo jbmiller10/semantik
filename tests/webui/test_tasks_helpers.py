@@ -120,7 +120,7 @@ class TestTaskHelperFunctions:
         """Test sanitization with None input."""
         assert _sanitize_audit_details(None) is None
 
-    @patch("packages.shared.text_processing.extraction.extract_and_serialize")
+    @patch("shared.text_processing.extraction.extract_and_serialize")
     def test_extract_and_serialize_thread_safe(self, mock_extract):
         """Test thread-safe text extraction wrapper."""
         # Mock the extraction function to avoid file access
@@ -341,11 +341,11 @@ class TestMetricsRecording:
 
         # Verify metrics were created (only numeric ones)
         # The function creates one metric per numeric value in the metrics dict
-        # Plus potentially one for is_final=True
-        assert mock_metrics_class.call_count == 5
+        # success is boolean, so it's skipped
+        assert mock_metrics_class.call_count == 4
 
         # Verify session operations
-        assert mock_session.add.call_count == 5
+        assert mock_session.add.call_count == 4
         mock_session.commit.assert_called_once()
 
     @patch("packages.webui.tasks.update_collection_stats")
