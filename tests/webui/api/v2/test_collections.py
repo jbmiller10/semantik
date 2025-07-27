@@ -451,7 +451,7 @@ class TestUpdateCollection:
         collection_uuid = str(uuid.uuid4())
         update_request = CollectionUpdate(name="Updated Name")
 
-        mock_collection_service.update.side_effect = AccessDeniedError("Not the owner")
+        mock_collection_service.update.side_effect = AccessDeniedError(str(mock_user["id"]), "Collection", collection_uuid)
 
         with pytest.raises(HTTPException) as exc_info:
             await update_collection(
@@ -572,7 +572,7 @@ class TestDeleteCollection:
         """Test 403 error when user lacks permission."""
         collection_uuid = str(uuid.uuid4())
 
-        mock_collection_service.delete_collection.side_effect = AccessDeniedError("Not the owner")
+        mock_collection_service.delete_collection.side_effect = AccessDeniedError(str(mock_user["id"]), "Collection", collection_uuid)
 
         with pytest.raises(HTTPException) as exc_info:
             await delete_collection(
@@ -1155,7 +1155,7 @@ class TestListCollectionDocuments:
         """Test 403 error when user lacks access."""
         collection_uuid = str(uuid.uuid4())
 
-        mock_collection_service.list_documents.side_effect = AccessDeniedError("No access to collection")
+        mock_collection_service.list_documents.side_effect = AccessDeniedError(str(mock_user["id"]), "Collection", collection_uuid)
 
         with pytest.raises(HTTPException) as exc_info:
             await list_collection_documents(

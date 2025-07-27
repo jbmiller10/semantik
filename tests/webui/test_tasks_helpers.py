@@ -118,7 +118,6 @@ class TestTaskHelperFunctions:
 class TestAuditLogging:
     """Test audit logging functionality."""
 
-    @pytest.mark.asyncio
     async def test_audit_log_operation_success(self):
         """Test successful audit log creation."""
         with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
@@ -159,7 +158,6 @@ class TestAuditLogging:
                 mock_session.add.assert_called_once_with(mock_audit_log)
                 mock_session.commit.assert_called_once()
 
-    @pytest.mark.asyncio
     async def test_audit_log_operation_failure(self):
         """Test audit log creation handles failures gracefully."""
         with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
@@ -180,7 +178,6 @@ class TestAuditLogging:
             
             # Function should complete without raising
 
-    @pytest.mark.asyncio
     async def test_audit_collection_deletion(self):
         """Test audit logging for collection deletion."""
         with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
@@ -207,7 +204,6 @@ class TestAuditLogging:
                 assert call_args["details"]["vector_count"] == 5000
                 assert "deleted_at" in call_args["details"]
 
-    @pytest.mark.asyncio
     async def test_audit_collection_deletions_batch(self):
         """Test batch audit logging for multiple collection deletions."""
         with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
@@ -234,7 +230,6 @@ class TestAuditLogging:
                 assert mock_session.add.call_count == 3
                 assert mock_session.commit.call_count == 1  # Single commit for batch
 
-    @pytest.mark.asyncio
     async def test_audit_collection_deletions_batch_empty(self):
         """Test batch audit with empty list."""
         # Should handle empty list gracefully
@@ -245,7 +240,6 @@ class TestAuditLogging:
 class TestMetricsRecording:
     """Test metrics recording functionality."""
 
-    @pytest.mark.asyncio
     async def test_record_operation_metrics_success(self):
         """Test successful operation metrics recording."""
         with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
@@ -282,7 +276,6 @@ class TestMetricsRecording:
                 assert mock_session.add.call_count == 4
                 mock_session.commit.assert_called_once()
 
-    @pytest.mark.asyncio
     @patch("packages.webui.tasks.update_collection_stats")
     async def test_update_collection_metrics(self, mock_update_stats):
         """Test collection metrics update."""
@@ -290,7 +283,6 @@ class TestMetricsRecording:
         
         mock_update_stats.assert_called_once_with("col-123", 100, 1000, 10240000)
 
-    @pytest.mark.asyncio
     @patch("packages.webui.tasks.update_collection_stats")
     async def test_update_collection_metrics_failure(self, mock_update_stats):
         """Test collection metrics update handles failures."""
@@ -303,7 +295,6 @@ class TestMetricsRecording:
 class TestActiveCollections:
     """Test active collections retrieval."""
 
-    @pytest.mark.asyncio
     async def test_get_active_collections(self):
         """Test getting active collections from database."""
         with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
@@ -350,7 +341,6 @@ class TestActiveCollections:
                 assert "staging_col_2" in active
                 # col3 has no vector store name, so nothing from it
 
-    @pytest.mark.asyncio
     async def test_get_active_collections_with_string_staging(self):
         """Test handling of staging info as JSON string."""
         with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
@@ -383,7 +373,6 @@ class TestActiveCollections:
 class TestStagingCleanup:
     """Test staging resource cleanup."""
 
-    @pytest.mark.asyncio
     async def test_cleanup_staging_resources_success(self):
         """Test successful staging cleanup."""
         with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant_manager:
@@ -423,7 +412,6 @@ class TestStagingCleanup:
                     # Verify database update
                     mock_repo.update.assert_called_once_with("col-123", {"qdrant_staging": None})
 
-    @pytest.mark.asyncio
     async def test_cleanup_staging_resources_no_staging(self):
         """Test cleanup when no staging exists."""
         with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
@@ -447,7 +435,6 @@ class TestStagingCleanup:
                 # No update should be called
                 mock_repo.update.assert_not_called()
 
-    @pytest.mark.asyncio
     async def test_cleanup_staging_resources_qdrant_failure(self):
         """Test cleanup continues despite Qdrant failures."""
         with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant_manager:
@@ -515,7 +502,6 @@ class TestCleanupOldResults:
 class TestConcurrentOperations:
     """Test handling of concurrent operations."""
 
-    @pytest.mark.asyncio
     async def test_multiple_updaters_same_operation(self):
         """Test multiple updaters for same operation don't conflict."""
         operation_id = "shared-op-123"
@@ -545,7 +531,6 @@ class TestConcurrentOperations:
             # All updates should be sent
             assert mock_redis.xadd.call_count >= len(updaters)
 
-    @pytest.mark.asyncio
     async def test_concurrent_operation_processing(self):
         """Test concurrent processing doesn't cause issues."""
         # This is more of a design validation test
@@ -571,7 +556,6 @@ class TestConcurrentOperations:
 class TestEdgeCases:
     """Test edge cases and error conditions."""
 
-    @pytest.mark.asyncio
     async def test_updater_with_invalid_redis_url(self):
         """Test updater handles invalid Redis URL."""
         updater = CeleryTaskWithOperationUpdates("test-op")
@@ -601,7 +585,6 @@ class TestEdgeCases:
         # Very large number should cap at maximum
         assert calculate_cleanup_delay(10**9) == CLEANUP_DELAY_MAX_SECONDS
 
-    @pytest.mark.asyncio
     async def test_audit_log_with_circular_reference(self):
         """Test audit logging handles circular references in details."""
         with patch("shared.database.database.AsyncSessionLocal") as mock_session_local:
@@ -635,7 +618,6 @@ class TestEdgeCases:
 class TestPerformance:
     """Performance-related tests."""
 
-    @pytest.mark.asyncio
     async def test_large_batch_updates(self):
         """Test sending many updates in quick succession."""
         updater = CeleryTaskWithOperationUpdates("perf-test-op")

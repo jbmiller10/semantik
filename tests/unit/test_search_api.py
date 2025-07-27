@@ -237,8 +237,7 @@ class TestSearchAPI:
                         mock_qdrant_client.aclose.assert_called_once()
                         mock_model_manager.shutdown.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_model_status(self, mock_model_manager, test_client_for_search_api):
+    def test_model_status(self, mock_model_manager, test_client_for_search_api):
         """Test /model/status endpoint."""
         with patch("packages.vecpipe.search_api.model_manager", mock_model_manager):
             response = test_client_for_search_api.get("/model/status")
@@ -251,8 +250,7 @@ class TestSearchAPI:
             assert response.status_code == 200
             assert response.json() == {"error": "Model manager not initialized"}
 
-    @pytest.mark.asyncio
-    async def test_root_endpoint(self, mock_settings, mock_qdrant_client, mock_embedding_service, test_client_for_search_api):
+    def test_root_endpoint(self, mock_settings, mock_qdrant_client, mock_embedding_service, test_client_for_search_api):
         """Test root health check endpoint."""
         with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
             with patch("packages.vecpipe.search_api.embedding_service", mock_embedding_service):
@@ -294,8 +292,7 @@ class TestSearchAPI:
             assert response.status_code == 503
             assert "Qdrant client not initialized" in response.json()["detail"]
 
-    @pytest.mark.asyncio
-    async def test_health_endpoint(self, mock_qdrant_client, mock_embedding_service, test_client_for_search_api):
+    def test_health_endpoint(self, mock_qdrant_client, mock_embedding_service, test_client_for_search_api):
         """Test /health endpoint."""
         with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
             with patch("packages.vecpipe.search_api.embedding_service", mock_embedding_service):
@@ -335,8 +332,7 @@ class TestSearchAPI:
                 response = test_client_for_search_api.get("/health")
                 assert response.status_code == 503
 
-    @pytest.mark.asyncio
-    async def test_search_post_endpoint(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
+    def test_search_post_endpoint(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
         """Test POST /search endpoint."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
         
@@ -387,8 +383,7 @@ class TestSearchAPI:
                 assert result["results"][0]["score"] == 0.95
                 assert result["model_used"] == "test-model/float32"
                 
-    @pytest.mark.asyncio
-    async def test_search_with_reranking(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
+    def test_search_with_reranking(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
         """Test search with reranking enabled."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
         
@@ -453,8 +448,7 @@ class TestSearchAPI:
             assert result["results"][0]["score"] == 0.95
             assert result["results"][1]["score"] == 0.90
 
-    @pytest.mark.asyncio
-    async def test_search_with_filters(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
+    def test_search_with_filters(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
         """Test search with metadata filters."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
         
@@ -492,8 +486,7 @@ class TestSearchAPI:
         call_args = mock_qdrant_client.post.call_args
         assert "filter" in call_args[1]["json"]
 
-    @pytest.mark.asyncio
-    async def test_search_error_handling(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
+    def test_search_error_handling(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
         """Test search error handling scenarios."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
         
@@ -526,8 +519,7 @@ class TestSearchAPI:
         assert response.status_code == 503
         assert "Embedding service error" in response.json()["detail"]
 
-    @pytest.mark.asyncio
-    async def test_hybrid_search_endpoint(self, mock_settings, mock_qdrant_client, mock_hybrid_engine, test_client_for_search_api):
+    def test_hybrid_search_endpoint(self, mock_settings, mock_qdrant_client, mock_hybrid_engine, test_client_for_search_api):
         """Test /hybrid_search endpoint."""
         mock_settings.USE_MOCK_EMBEDDINGS = True
         
@@ -561,8 +553,7 @@ class TestSearchAPI:
         assert result["keywords_extracted"] == ["test", "query"]
         assert result["search_mode"] == "filter"
 
-    @pytest.mark.asyncio
-    async def test_batch_search_endpoint(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
+    def test_batch_search_endpoint(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
         """Test /search/batch endpoint."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
         
@@ -597,8 +588,7 @@ class TestSearchAPI:
             # Verify embeddings were generated for all queries
             assert mock_model_manager.generate_embedding_async.call_count == 3
 
-    @pytest.mark.asyncio
-    async def test_keyword_search_endpoint(self, mock_hybrid_engine, test_client_for_search_api):
+    def test_keyword_search_endpoint(self, mock_hybrid_engine, test_client_for_search_api):
         """Test /keyword_search endpoint."""
         response = test_client_for_search_api.get(
             "/keyword_search",
@@ -617,8 +607,7 @@ class TestSearchAPI:
         assert len(result["results"]) == 1
         assert result["results"][0]["score"] == 0.0  # No vector score for keyword search
 
-    @pytest.mark.asyncio
-    async def test_collection_info_endpoint(self, mock_qdrant_client, test_client_for_search_api):
+    def test_collection_info_endpoint(self, mock_qdrant_client, test_client_for_search_api):
         """Test /collection/info endpoint."""
         mock_qdrant_client.get.return_value.json.return_value = {
             "result": {
@@ -636,8 +625,7 @@ class TestSearchAPI:
         assert result["name"] == "test_collection"
         assert result["points_count"] == 1000
 
-    @pytest.mark.asyncio
-    async def test_list_models_endpoint(self, test_client_for_search_api, mock_embedding_service):
+    def test_list_models_endpoint(self, test_client_for_search_api, mock_embedding_service):
         """Test /models endpoint."""
         with patch("shared.embedding.QUANTIZED_MODEL_INFO", {
             "test-model": {
@@ -660,8 +648,7 @@ class TestSearchAPI:
                 assert result["models"][0]["dimension"] == 768
                 assert result["current_model"] == "test-model"
 
-    @pytest.mark.asyncio
-    async def test_embed_endpoint(self, mock_model_manager, test_client_for_search_api):
+    def test_embed_endpoint(self, mock_model_manager, test_client_for_search_api):
         """Test /embed endpoint."""
         response = test_client_for_search_api.post(
             "/embed",
@@ -680,8 +667,7 @@ class TestSearchAPI:
         assert result["batch_count"] == 2  # 3 texts with batch_size=2
         assert result["embedding_time_ms"] is not None
 
-    @pytest.mark.asyncio
-    async def test_embed_memory_error(self, mock_model_manager, test_client_for_search_api):
+    def test_embed_memory_error(self, mock_model_manager, test_client_for_search_api):
         """Test /embed endpoint with memory error."""
         from packages.vecpipe.memory_utils import InsufficientMemoryError
         
@@ -701,8 +687,7 @@ class TestSearchAPI:
         assert response.status_code == 507
         assert "insufficient_memory" in response.json()["detail"]
 
-    @pytest.mark.asyncio
-    async def test_upsert_endpoint(self, mock_qdrant_client, test_client_for_search_api):
+    def test_upsert_endpoint(self, mock_qdrant_client, test_client_for_search_api):
         """Test /upsert endpoint."""
         mock_qdrant_client.put.return_value.raise_for_status = AsyncMock()
         
@@ -739,6 +724,7 @@ class TestSearchAPI:
         assert "points" in call_args[1]["json"]
         assert call_args[1]["json"]["wait"] is True
 
+    @pytest.mark.asyncio
     @pytest.mark.asyncio
     async def test_upsert_error_handling(self, mock_qdrant_client):
         """Test /upsert endpoint error handling."""
@@ -778,8 +764,7 @@ class TestSearchAPI:
             assert exc_info.value.status_code == 502
             assert "Collection not found" in str(exc_info.value.detail)
 
-    @pytest.mark.asyncio
-    async def test_suggest_models_endpoint(self, test_client_for_search_api, mock_model_manager):
+    def test_suggest_models_endpoint(self, test_client_for_search_api, mock_model_manager):
         """Test /models/suggest endpoint."""
         with patch("packages.vecpipe.search_api.get_gpu_memory_info") as mock_gpu_info:
             with patch("packages.vecpipe.search_api.suggest_model_configuration") as mock_suggest:
@@ -811,8 +796,7 @@ class TestSearchAPI:
                 assert result["gpu_available"] is False
                 assert "No GPU detected" in result["message"]
 
-    @pytest.mark.asyncio
-    async def test_embedding_info_endpoint(self, mock_settings, mock_embedding_service, test_client_for_search_api):
+    def test_embedding_info_endpoint(self, mock_settings, mock_embedding_service, test_client_for_search_api):
         """Test /embedding/info endpoint."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
         
@@ -841,8 +825,7 @@ class TestSearchAPI:
         finally:
             search_api_module.embedding_service = original_service
 
-    @pytest.mark.asyncio
-    async def test_search_with_collection_metadata(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
+    def test_search_with_collection_metadata(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
         """Test search with collection metadata for model selection."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
         
@@ -890,8 +873,7 @@ class TestSearchAPI:
                 assert call_args[0][2] == "float16"  # quantization
                 assert call_args[0][3] == "Custom instruction"  # instruction
 
-    @pytest.mark.asyncio
-    async def test_search_get_endpoint(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
+    def test_search_get_endpoint(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
         """Test GET /search endpoint (compatibility)."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
         
@@ -942,6 +924,7 @@ class TestSearchAPI:
         assert "Cannot load models when using mock embeddings" in response.json()["detail"]
 
     @pytest.mark.asyncio
+    @pytest.mark.asyncio
     async def test_generate_embedding_async_mock_mode(self, mock_settings):
         """Test generate_embedding_async in mock mode."""
         mock_settings.USE_MOCK_EMBEDDINGS = True
@@ -954,6 +937,7 @@ class TestSearchAPI:
         assert len(embedding) == 1024
         assert all(isinstance(x, float) for x in embedding)
 
+    @pytest.mark.asyncio
     @pytest.mark.asyncio
     async def test_generate_embedding_async_error(self, mock_settings, mock_model_manager):
         """Test generate_embedding_async error handling."""
@@ -974,8 +958,7 @@ class TestSearchAPI:
             # Restore original
             search_api_module.model_manager = original_manager
 
-    @pytest.mark.asyncio
-    async def test_reranking_memory_error(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
+    def test_reranking_memory_error(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
         """Test reranking with insufficient memory."""
         from packages.vecpipe.memory_utils import InsufficientMemoryError
         

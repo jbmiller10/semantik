@@ -183,7 +183,10 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     start_metrics_server(METRICS_PORT)
     logger.info(f"Metrics server started on port {METRICS_PORT}")
 
-    qdrant_client = httpx.AsyncClient(base_url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}", timeout=60.0)
+    qdrant_client = httpx.AsyncClient(
+        base_url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}", 
+        timeout=httpx.Timeout(60.0)
+    )
     logger.info(f"Connected to Qdrant at {settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
 
     # Initialize model manager with lazy loading

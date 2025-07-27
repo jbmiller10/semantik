@@ -42,14 +42,13 @@ class TestWebSocketMessageFlow:
             })
             return f"msg-{len(client.messages)}"
         
-        client.xadd = mock_xadd
+        client.xadd = AsyncMock(side_effect=mock_xadd)
         client.expire = AsyncMock()
         client.close = AsyncMock()
         client.ping = AsyncMock()
         
         return client
 
-    @pytest.mark.asyncio
     async def test_index_operation_websocket_messages(self, mock_redis_client):
         """Test WebSocket messages during INDEX operation."""
         with patch("redis.asyncio.from_url", return_value=mock_redis_client):
@@ -110,7 +109,6 @@ class TestWebSocketMessageFlow:
                     assert index_complete_msg["message"]["data"]["qdrant_collection"] == "test_vec"
                     assert index_complete_msg["message"]["data"]["vector_dim"] == 1024
 
-    @pytest.mark.asyncio
     async def test_append_operation_progress_messages(self, mock_redis_client):
         """Test progress messages during APPEND operation."""
         with patch("redis.asyncio.from_url", return_value=mock_redis_client):
@@ -170,7 +168,6 @@ class TestWebSocketMessageFlow:
                 assert data["new_documents_registered"] == 3
                 assert data["duplicate_documents_skipped"] == 2
 
-    @pytest.mark.asyncio
     async def test_reindex_operation_checkpoint_messages(self, mock_redis_client):
         """Test checkpoint messages during REINDEX operation."""
         with patch("redis.asyncio.from_url", return_value=mock_redis_client):
@@ -248,7 +245,6 @@ class TestWebSocketMessageFlow:
                                     assert "validation_complete" in message_types
                                     assert "reindex_completed" in message_types
 
-    @pytest.mark.asyncio
     async def test_error_message_propagation(self, mock_redis_client):
         """Test error messages are properly sent through WebSocket."""
         with patch("redis.asyncio.from_url", return_value=mock_redis_client):
@@ -294,7 +290,6 @@ class TestWebSocketMessageFlow:
                     messages = mock_redis_client.messages
                     assert len(messages) >= 0  # At least the connection test
 
-    @pytest.mark.asyncio
     async def test_concurrent_updates_ordering(self, mock_redis_client):
         """Test that concurrent updates maintain order."""
         with patch("redis.asyncio.from_url", return_value=mock_redis_client):
@@ -323,7 +318,6 @@ class TestWebSocketMessageFormats:
         """Create an updater instance."""
         return CeleryTaskWithOperationUpdates("test-op")
 
-    @pytest.mark.asyncio
     async def test_progress_message_format(self, updater):
         """Test progress message format matches frontend expectations."""
         with patch("redis.asyncio.from_url") as mock_from_url:
@@ -359,7 +353,6 @@ class TestWebSocketMessageFormats:
             timestamp = datetime.fromisoformat(msg["timestamp"].replace("Z", "+00:00"))
             assert timestamp.tzinfo is not None
 
-    @pytest.mark.asyncio
     async def test_completion_message_format(self, updater):
         """Test completion message includes all required fields."""
         with patch("redis.asyncio.from_url") as mock_from_url:
@@ -393,7 +386,6 @@ class TestWebSocketMessageFormats:
             assert msg["data"]["result"]["success"] is True
             assert msg["data"]["result"]["documents_processed"] == 100
 
-    @pytest.mark.asyncio
     async def test_error_message_sanitization(self, updater):
         """Test error messages are sanitized before sending."""
         with patch("redis.asyncio.from_url") as mock_from_url:
@@ -427,7 +419,6 @@ class TestWebSocketMessageFormats:
 class TestRedisStreamBehavior:
     """Test Redis stream-specific behavior."""
 
-    @pytest.mark.asyncio
     async def test_stream_ttl_setting(self):
         """Test that TTL is set on first message."""
         updater = CeleryTaskWithOperationUpdates("test-ttl")
@@ -455,7 +446,6 @@ class TestRedisStreamBehavior:
             # TTL should still only be called once
             assert mock_redis.expire.call_count == 1
 
-    @pytest.mark.asyncio
     async def test_stream_maxlen_enforcement(self):
         """Test that stream length is limited."""
         updater = CeleryTaskWithOperationUpdates("test-maxlen")
@@ -476,7 +466,6 @@ class TestRedisStreamBehavior:
             assert "maxlen" in call_args[1]
             assert call_args[1]["maxlen"] == 1000
 
-    @pytest.mark.asyncio
     async def test_redis_connection_pooling(self):
         """Test that Redis connections are reused within updater."""
         updater = CeleryTaskWithOperationUpdates("test-pool")
@@ -505,7 +494,6 @@ class TestRedisStreamBehavior:
 class TestWebSocketIntegrationScenarios:
     """Test complete WebSocket integration scenarios."""
 
-    @pytest.mark.asyncio
     async def test_full_document_processing_flow(self):
         """Test complete document processing flow with all messages."""
         operation_id = "full-flow-op"
@@ -585,7 +573,6 @@ class TestWebSocketIntegrationScenarios:
             for i in range(1, len(all_messages)):
                 assert all_messages[i]["time"] >= all_messages[i-1]["time"]
 
-    @pytest.mark.asyncio
     async def test_operation_failure_flow(self):
         """Test message flow when operation fails."""
         operation_id = "fail-flow-op"

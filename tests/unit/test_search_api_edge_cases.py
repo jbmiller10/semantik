@@ -148,8 +148,7 @@ def test_client_for_search_api(mock_settings, mock_qdrant_client, mock_model_man
 class TestSearchAPIEdgeCases:
     """Test edge cases and complex scenarios in search_api."""
 
-    @pytest.mark.asyncio
-    async def test_search_without_content_then_rerank(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
+    def test_search_without_content_then_rerank(self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api):
         """Test reranking when initial results don't have content."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
         
@@ -243,6 +242,7 @@ class TestSearchAPIEdgeCases:
                     assert result["reranking_used"] is True
 
     @pytest.mark.asyncio
+    @pytest.mark.asyncio
     async def test_search_with_missing_content_during_rerank(self, mock_settings, mock_qdrant_client, mock_model_manager):
         """Test reranking when content fetch fails."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
@@ -304,6 +304,7 @@ class TestSearchAPIEdgeCases:
                     documents = call_args[1]["documents"]
                     assert "Document from" in documents[0]  # Fallback content
 
+    @pytest.mark.asyncio
     @pytest.mark.asyncio
     async def test_search_with_reranking_failure(self, mock_settings, mock_qdrant_client, mock_model_manager):
         """Test graceful fallback when reranking fails."""
@@ -372,6 +373,7 @@ class TestSearchAPIEdgeCases:
                     assert result.reranker_model is None  # But failed
 
     @pytest.mark.asyncio
+    @pytest.mark.asyncio
     async def test_hybrid_search_error_handling(self, mock_settings, mock_qdrant_client):
         """Test hybrid search error scenarios."""
         mock_settings.USE_MOCK_EMBEDDINGS = True
@@ -388,6 +390,7 @@ class TestSearchAPIEdgeCases:
                 assert exc_info.value.status_code == 500
                 assert "Hybrid search error" in str(exc_info.value.detail)
 
+    @pytest.mark.asyncio
     @pytest.mark.asyncio
     async def test_batch_search_partial_failure(self, mock_settings, mock_qdrant_client, mock_model_manager):
         """Test batch search when some queries fail."""
@@ -414,6 +417,7 @@ class TestSearchAPIEdgeCases:
                     await batch_search(request)
                 assert exc_info.value.status_code == 500
 
+    @pytest.mark.asyncio
     @pytest.mark.asyncio
     async def test_collection_metadata_error_handling(self, mock_settings, mock_qdrant_client, mock_model_manager):
         """Test search when collection metadata fetch fails."""
@@ -451,6 +455,7 @@ class TestSearchAPIEdgeCases:
                         assert result.model_used == "test-model/float32"
 
     @pytest.mark.asyncio
+    @pytest.mark.asyncio
     async def test_upsert_with_http_error_parsing(self, mock_qdrant_client):
         """Test upsert error parsing when response format is unexpected."""
         with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
@@ -487,6 +492,7 @@ class TestSearchAPIEdgeCases:
             assert "Vector database error" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
+    @pytest.mark.asyncio
     async def test_search_with_invalid_collection_info(self, mock_settings, mock_qdrant_client, mock_model_manager):
         """Test search when collection info has unexpected format."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
@@ -518,6 +524,7 @@ class TestSearchAPIEdgeCases:
                 call_args = mock_model_manager.generate_embedding_async.call_args
                 assert call_args is not None
 
+    @pytest.mark.asyncio
     @pytest.mark.asyncio
     async def test_search_with_custom_reranker_params(self, mock_settings, mock_qdrant_client, mock_model_manager):
         """Test search with custom reranker model and quantization."""
@@ -571,6 +578,7 @@ class TestSearchAPIEdgeCases:
                 assert call_args[1]["quantization"] == "int8"
                 assert result.reranker_model == "custom-reranker/int8"
 
+    @pytest.mark.asyncio
     @pytest.mark.asyncio
     async def test_search_with_large_k_and_reranking(self, mock_settings, mock_qdrant_client, mock_model_manager):
         """Test search with large k value and reranking limits."""
@@ -632,6 +640,7 @@ class TestSearchAPIEdgeCases:
                     assert call_args[1]["json"]["limit"] == 200  # max_candidates
 
     @pytest.mark.asyncio
+    @pytest.mark.asyncio
     async def test_search_with_empty_query(self, mock_settings, mock_qdrant_client, mock_model_manager):
         """Test search with empty or whitespace-only query."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
@@ -650,6 +659,7 @@ class TestSearchAPIEdgeCases:
                 result = await search_post(request)
                 assert result.query == "   "
 
+    @pytest.mark.asyncio
     @pytest.mark.asyncio
     async def test_generate_embedding_async_with_no_model_manager(self, mock_settings):
         """Test generate_embedding_async when model manager is not initialized."""
@@ -670,6 +680,7 @@ class TestSearchAPIEdgeCases:
             search_api_module.model_manager = original_manager
 
     @pytest.mark.asyncio
+    @pytest.mark.asyncio
     async def test_search_faiss_fallback(self, mock_settings, mock_qdrant_client, mock_model_manager):
         """Test search falling back to FAISS when Qdrant is unavailable."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
@@ -687,6 +698,7 @@ class TestSearchAPIEdgeCases:
                     await search_post(request)
                 assert exc_info.value.status_code == 502
 
+    @pytest.mark.asyncio
     @pytest.mark.asyncio
     async def test_keyword_search_cleanup(self, mock_hybrid_engine):
         """Test that keyword search properly cleans up resources."""
@@ -708,8 +720,7 @@ class TestSearchAPIEdgeCases:
             assert response.status_code == 503
             assert "Qdrant client not initialized" in response.json()["detail"]
 
-    @pytest.mark.asyncio
-    async def test_models_load_error(self, mock_settings, mock_embedding_service, test_client_for_search_api):
+    def test_models_load_error(self, mock_settings, mock_embedding_service, test_client_for_search_api):
         """Test /models/load endpoint error handling."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
         
@@ -733,6 +744,7 @@ class TestSearchAPIEdgeCases:
             # Restore original
             search_api_module.embedding_service = original_service
 
+    @pytest.mark.asyncio
     @pytest.mark.asyncio
     async def test_search_with_score_threshold(self, mock_settings, mock_qdrant_client, mock_model_manager):
         """Test search respects score threshold in results."""

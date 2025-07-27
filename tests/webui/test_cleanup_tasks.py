@@ -236,7 +236,6 @@ class TestCleanupQdrantCollections:
         assert mock_asyncio_run.call_count >= 2
 
 
-@pytest.mark.asyncio()
 class TestGetActiveCollections:
     """Test suite for _get_active_collections helper function."""
 
@@ -281,7 +280,6 @@ class TestGetActiveCollections:
         assert "staging_col_2_20240115_120000" in active_collections
 
 
-@pytest.mark.asyncio()
 class TestAuditCollectionDeletion:
     """Test suite for _audit_collection_deletions_batch helper function."""
 

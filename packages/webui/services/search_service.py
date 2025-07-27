@@ -6,10 +6,10 @@ import time
 from typing import Any
 
 import httpx
-from shared.config import settings
-from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
-from shared.database.models import Collection, CollectionStatus
-from shared.database.repositories.collection_repository import CollectionRepository
+from packages.shared.config import settings
+from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
+from packages.shared.database.models import Collection, CollectionStatus
+from packages.shared.database.repositories.collection_repository import CollectionRepository
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)

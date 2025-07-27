@@ -9,8 +9,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from webui.api.schemas import DirectoryScanFile, DirectoryScanProgress, DirectoryScanResponse
-from webui.websocket_manager import ws_manager
+from packages.webui.api.schemas import DirectoryScanFile, DirectoryScanProgress, DirectoryScanResponse
+from packages.webui.websocket_manager import ws_manager
 
 logger = logging.getLogger(__name__)
 

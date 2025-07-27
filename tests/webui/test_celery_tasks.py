@@ -81,7 +81,6 @@ class TestCeleryTaskHelpers:
         assert _sanitize_error_message(msg) == expected
 
 
-@pytest.mark.asyncio
 class TestCeleryTaskWithOperationUpdates:
     """Test the operation updates helper class."""
 
@@ -100,7 +99,6 @@ class TestCeleryTaskWithOperationUpdates:
         """Create an updater instance."""
         return CeleryTaskWithOperationUpdates("test-op-123")
 
-    @pytest.mark.asyncio
     async def test_context_manager_lifecycle(self, updater, mock_redis):
         """Test context manager properly manages Redis connection."""
         # Patch redis.asyncio.from_url to return the mock directly
@@ -112,7 +110,6 @@ class TestCeleryTaskWithOperationUpdates:
             # After exit, connection should be closed
             mock_redis.close.assert_called_once()
 
-    @pytest.mark.asyncio
     async def test_send_update_formats_message(self, updater, mock_redis):
         """Test update message formatting."""
         # Patch redis.asyncio.from_url to return the mock directly
@@ -133,7 +130,6 @@ class TestCeleryTaskWithOperationUpdates:
             assert message["data"] == {"key": "value"}
             assert "timestamp" in message
 
-    @pytest.mark.asyncio
     async def test_send_update_handles_errors(self, updater, mock_redis):
         """Test graceful error handling in send_update."""
         mock_redis.xadd.side_effect = Exception("Redis error")
@@ -149,7 +145,6 @@ class TestCeleryTaskWithOperationUpdates:
                 mock_redis.xadd.assert_called_once()
 
 
-@pytest.mark.asyncio
 class TestProcessCollectionOperation:
     """Test the main process_collection_operation task."""
 
@@ -207,7 +202,6 @@ class TestProcessCollectionOperation:
     @patch("packages.webui.tasks.OperationRepository")
     @patch("packages.webui.tasks.CollectionRepository")
     @patch("packages.webui.tasks.DocumentRepository")
-    @pytest.mark.asyncio
     async def test_process_collection_operation_index_success(
         self,
         mock_doc_repo_class,
@@ -267,7 +261,6 @@ class TestProcessCollectionOperation:
     @patch("packages.webui.tasks.OperationRepository")
     @patch("packages.webui.tasks.CollectionRepository")
     @patch("packages.webui.tasks.DocumentRepository")
-    @pytest.mark.asyncio
     async def test_process_collection_operation_failure_handling(
         self,
         mock_doc_repo_class,
@@ -336,7 +329,6 @@ class TestProcessCollectionOperation:
             assert retry_call[1]["countdown"] == 60
 
 
-@pytest.mark.asyncio
 class TestIndexOperation:
     """Test INDEX operation processing."""
 
@@ -364,7 +356,6 @@ class TestIndexOperation:
 
     @patch("packages.webui.tasks.qdrant_manager")
     @patch("packages.webui.tasks.get_model_config")
-    @pytest.mark.asyncio
     async def test_process_index_operation_success(
         self,
         mock_get_model_config,
@@ -424,7 +415,6 @@ class TestIndexOperation:
         mock_updater.send_update.assert_called()
 
     @patch("packages.webui.tasks.qdrant_manager")
-    @pytest.mark.asyncio
     async def test_process_index_operation_qdrant_failure(
         self,
         mock_qdrant_global,
@@ -463,7 +453,6 @@ class TestIndexOperation:
             )
 
 
-@pytest.mark.asyncio
 class TestAppendOperation:
     """Test APPEND operation processing."""
 
@@ -497,7 +486,6 @@ class TestAppendOperation:
     @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
     @patch("packages.webui.tasks.httpx.AsyncClient")
     @patch("packages.webui.tasks.qdrant_manager")
-    @pytest.mark.asyncio
     async def test_process_append_operation_success(
         self,
         mock_qdrant_global,
@@ -585,7 +573,6 @@ class TestAppendOperation:
         mock_updater.send_update.assert_called()
 
     @patch("packages.webui.tasks.DocumentScanningService")
-    @pytest.mark.asyncio
     async def test_process_append_operation_no_source_path(
         self,
         mock_scanner_class,
@@ -611,7 +598,6 @@ class TestAppendOperation:
             )
 
 
-@pytest.mark.asyncio
 class TestReindexOperation:
     """Test REINDEX operation processing."""
 
@@ -631,7 +617,6 @@ class TestReindexOperation:
     @patch("packages.webui.tasks.httpx.AsyncClient")
     @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
     @patch("packages.webui.tasks.cleanup_old_collections")
-    @pytest.mark.asyncio
     async def test_process_reindex_operation_success(
         self,
         mock_cleanup_task,
@@ -738,7 +723,6 @@ class TestReindexOperation:
 
     @patch("packages.webui.tasks.QdrantManager")
     @patch("packages.webui.tasks.qdrant_manager")
-    @pytest.mark.asyncio
     async def test_process_reindex_operation_validation_failure(
         self,
         mock_qdrant_global,
@@ -799,12 +783,10 @@ class TestReindexOperation:
                 collection_repo.update.assert_called_with("col-123", {"qdrant_staging": None})
 
 
-@pytest.mark.asyncio
 class TestRemoveSourceOperation:
     """Test REMOVE_SOURCE operation processing."""
 
     @patch("packages.webui.tasks.AsyncSessionLocal")
-    @pytest.mark.asyncio
     async def test_process_remove_source_operation_success(
         self,
         mock_session_local,
@@ -885,7 +867,6 @@ class TestRemoveSourceOperation:
         assert result["documents_removed"] == 2
         assert result["source_path"] == "/test/old_docs"
 
-    @pytest.mark.asyncio
     async def test_process_remove_source_operation_no_documents(
         self,
         mock_updater
@@ -947,7 +928,6 @@ class TestReindexValidation:
         
         return client
 
-    @pytest.mark.asyncio
     async def test_validate_reindex_success(self, mock_qdrant_client):
         """Test successful reindex validation."""
         result = await _validate_reindex(mock_qdrant_client, "old", "new", sample_size=10)
@@ -958,7 +938,6 @@ class TestReindexValidation:
         assert result["new_count"] == 1050
         assert result["sample_size"] == 10
 
-    @pytest.mark.asyncio
     async def test_validate_reindex_vector_count_mismatch(self, mock_qdrant_client):
         """Test validation failure due to vector count mismatch."""
         # Mock significant vector count difference
@@ -976,7 +955,6 @@ class TestReindexValidation:
         assert result["passed"] is False
         assert any("Vector count mismatch" in issue for issue in result["issues"])
 
-    @pytest.mark.asyncio
     async def test_validate_reindex_empty_new_collection(self, mock_qdrant_client):
         """Test validation failure when new collection is empty."""
         # Mock empty new collection
@@ -1022,7 +1000,6 @@ class TestTaskFailureHandling:
     @patch("packages.webui.tasks.AsyncSessionLocal")
     @patch("packages.webui.tasks.OperationRepository")
     @patch("packages.webui.tasks.CollectionRepository")
-    @pytest.mark.asyncio
     async def test_handle_task_failure_async_index(
         self,
         mock_col_repo_class,
@@ -1080,7 +1057,6 @@ class TestTaskFailureHandling:
     @patch("packages.webui.tasks.OperationRepository")
     @patch("packages.webui.tasks.CollectionRepository")
     @patch("packages.webui.tasks._cleanup_staging_resources")
-    @pytest.mark.asyncio
     async def test_handle_task_failure_async_reindex(
         self,
         mock_cleanup_staging,
