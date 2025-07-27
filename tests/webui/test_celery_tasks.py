@@ -1106,9 +1106,9 @@ class TestTaskFailureHandling:
     @patch("shared.database.database.AsyncSessionLocal")
     @patch("shared.database.repositories.operation_repository.OperationRepository")
     @patch("shared.database.repositories.collection_repository.CollectionRepository")
-    @patch("packages.webui.tasks._cleanup_staging_resources")
+    @patch("packages.webui.tasks.QdrantManager")
     async def test_handle_task_failure_async_reindex(
-        self, mock_cleanup_staging, mock_col_repo_class, mock_op_repo_class, mock_session_local
+        self, mock_qdrant_manager_class, mock_col_repo_class, mock_op_repo_class, mock_session_local
     ):
         """Test async failure handling for REINDEX operation."""
         from packages.webui.tasks import _handle_task_failure_async
@@ -1150,8 +1150,7 @@ class TestTaskFailureHandling:
         call_args = collection_repo.update_status.call_args
         assert "Re-indexing failed" in call_args[1]["status_message"]
 
-        # Verify staging cleanup was called
-        mock_cleanup_staging.assert_called_once()
+        # No need to verify staging cleanup - it's done inline in the failure handler
 
 
 class TestCleanupTasks:

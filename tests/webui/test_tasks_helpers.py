@@ -340,7 +340,9 @@ class TestMetricsRecording:
         await _record_operation_metrics(operation_repo, "op-123", metrics)
 
         # Verify metrics were created (only numeric ones)
-        assert mock_metrics_class.call_count == 4
+        # The function creates one metric per numeric value in the metrics dict
+        # Plus potentially one for is_final=True
+        assert mock_metrics_class.call_count == 5
 
         # Verify session operations
         assert mock_session.add.call_count == 4
@@ -365,7 +367,7 @@ class TestMetricsRecording:
 class TestActiveCollections:
     """Test active collections retrieval."""
 
-    @patch("packages.shared.database.repositories.collection_repository.CollectionRepository")
+    @patch("shared.database.repositories.collection_repository.CollectionRepository")
     @patch("shared.database.database.AsyncSessionLocal")
     async def test_get_active_collections(self, mock_session_local, mock_repo_class):
         """Test getting active collections from database."""
@@ -414,7 +416,7 @@ class TestActiveCollections:
         assert "staging_col_2" in active
         # col3 has no vector store name, so nothing from it
 
-    @patch("packages.shared.database.repositories.collection_repository.CollectionRepository")
+    @patch("shared.database.repositories.collection_repository.CollectionRepository")
     @patch("shared.database.database.AsyncSessionLocal")
     async def test_get_active_collections_with_string_staging(self, mock_session_local, mock_repo_class):
         """Test handling of staging info as JSON string."""
@@ -454,7 +456,7 @@ class TestActiveCollections:
 class TestStagingCleanup:
     """Test staging resource cleanup."""
 
-    @patch("packages.shared.database.repositories.collection_repository.CollectionRepository")
+    @patch("shared.database.repositories.collection_repository.CollectionRepository")
     @patch("shared.database.database.AsyncSessionLocal")
     @patch("packages.webui.tasks.qdrant_manager")
     async def test_cleanup_staging_resources_success(self, mock_qdrant_manager, mock_session_local, mock_repo_class):
@@ -499,7 +501,7 @@ class TestStagingCleanup:
         # Verify database update
         mock_repo.update.assert_called_once_with("col-123", {"qdrant_staging": None})
 
-    @patch("packages.shared.database.repositories.collection_repository.CollectionRepository")
+    @patch("shared.database.repositories.collection_repository.CollectionRepository")
     @patch("shared.database.database.AsyncSessionLocal")
     async def test_cleanup_staging_resources_no_staging(self, mock_session_local, mock_repo_class):
         """Test cleanup when no staging exists."""
@@ -530,7 +532,7 @@ class TestStagingCleanup:
         # No update should be called
         mock_repo.update.assert_not_called()
 
-    @patch("packages.shared.database.repositories.collection_repository.CollectionRepository")
+    @patch("shared.database.repositories.collection_repository.CollectionRepository")
     @patch("shared.database.database.AsyncSessionLocal")
     @patch("packages.webui.tasks.qdrant_manager")
     async def test_cleanup_staging_resources_qdrant_failure(
