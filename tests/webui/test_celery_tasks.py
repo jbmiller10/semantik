@@ -46,6 +46,14 @@ from packages.shared.database.models import (
 )
 
 
+@pytest.fixture
+def mock_updater():
+    """Create mock operation updater."""
+    updater = AsyncMock()
+    updater.send_update = AsyncMock()
+    return updater
+
+
 class TestCeleryTaskHelpers:
     """Test helper functions used by Celery tasks."""
 
@@ -385,13 +393,6 @@ class TestIndexOperation:
         
         return manager
 
-    @pytest.fixture
-    def mock_updater(self):
-        """Create mock operation updater."""
-        updater = AsyncMock()
-        updater.send_update = AsyncMock()
-        return updater
-
     @patch("packages.webui.tasks.qdrant_manager")
     @patch("packages.webui.tasks.get_model_config")
     async def test_process_index_operation_success(
@@ -520,7 +521,7 @@ class TestAppendOperation:
             docs.append(doc)
         return docs
 
-    @patch("packages.webui.tasks.DocumentScanningService")
+    @patch("webui.services.document_scanning_service.DocumentScanningService")
     @patch("packages.webui.tasks.executor")
     @patch("packages.webui.tasks.httpx.AsyncClient")
     @patch("packages.webui.tasks.qdrant_manager")
@@ -614,7 +615,7 @@ class TestAppendOperation:
         # Verify progress updates
         mock_updater.send_update.assert_called()
 
-    @patch("packages.webui.tasks.DocumentScanningService")
+    @patch("webui.services.document_scanning_service.DocumentScanningService")
     async def test_process_append_operation_no_source_path(
         self,
         mock_scanner_class,

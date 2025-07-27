@@ -784,6 +784,9 @@ class TestAdditionalCoverage:
     def test_model_eval_mode(self, mock_transformers) -> None:
         """Test that model is set to eval mode after loading"""
         _, _, mock_model, _ = mock_transformers
+        
+        # Configure the mock to return itself from .to() to maintain the same object
+        mock_model.to.return_value = mock_model
 
         reranker = CrossEncoderReranker()
         reranker.load_model()
