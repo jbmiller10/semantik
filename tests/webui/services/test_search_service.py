@@ -858,7 +858,7 @@ class TestSingleCollectionSearch:
             mock_client_class.return_value.__aenter__.return_value = mock_client
             mock_client.post.side_effect = ValueError("Some error")
 
-            with pytest.raises(ValueError):
+            with pytest.raises(ValueError, match="Some error"):
                 await search_service.single_collection_search(
                     user_id=1,
                     collection_uuid=mock_collection.id,
@@ -903,7 +903,7 @@ class TestSearchServiceEdgeCases:
                 MagicMock(json=lambda: {"results": []}, raise_for_status=lambda: None),
             ]
 
-            result = await search_service.search_single_collection(
+            await search_service.search_single_collection(
                 collection=mock_collection,
                 query="test query",
                 k=10,
@@ -1008,7 +1008,7 @@ class TestSearchServiceEdgeCases:
         search_delays = [0.1, 0.1]  # Both searches take 100ms
         call_order = []
 
-        async def mock_post(*args: Any, **kwargs: Any) -> MagicMock:
+        async def mock_post(**kwargs: Any) -> MagicMock:
             collection_name = kwargs["json"]["collection"]
             call_order.append(f"start_{collection_name}")
             await asyncio.sleep(search_delays.pop(0))

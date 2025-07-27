@@ -186,13 +186,11 @@ class TestCreateCollection:
         collection_service: CollectionService,
     ) -> None:
         """Test collection creation with empty name."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Collection name is required"):
             await collection_service.create_collection(
                 user_id=1,
                 name="",
             )
-
-        assert "Collection name is required" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_create_collection_whitespace_name(
@@ -200,13 +198,11 @@ class TestCreateCollection:
         collection_service: CollectionService,
     ) -> None:
         """Test collection creation with whitespace-only name."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Collection name is required"):
             await collection_service.create_collection(
                 user_id=1,
                 name="   ",
             )
-
-        assert "Collection name is required" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_create_collection_already_exists(
@@ -232,7 +228,7 @@ class TestCreateCollection:
         """Test collection creation with database error."""
         mock_collection_repo.create.side_effect = Exception("Database error")
 
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(Exception, match="Database error") as exc_info:
             await collection_service.create_collection(
                 user_id=1,
                 name="Test Collection",
@@ -506,7 +502,7 @@ class TestReindexCollection:
         mock_operation_repo.create.return_value = mock_operation
 
         with patch("packages.webui.celery_app.celery_app.send_task"):
-            result = await collection_service.reindex_collection(
+            await collection_service.reindex_collection(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
             )
@@ -1303,25 +1299,27 @@ class TestCollectionServiceEdgeCases:
         mock_operation_repo.create.return_value = mock_operation
 
         task_ids = []
-        with patch("packages.webui.celery_app.celery_app.send_task") as mock_send_task:
-            with patch(
+        with (
+            patch("packages.webui.celery_app.celery_app.send_task") as mock_send_task,
+            patch(
                 "uuid.uuid4",
                 side_effect=[
                     uuid.UUID("11111111-1111-1111-1111-111111111111"),
                     uuid.UUID("22222222-2222-2222-2222-222222222222"),
                 ],
-            ):
-                await collection_service.create_collection(
-                    user_id=1,
-                    name="Collection 1",
-                )
-                task_ids.append(mock_send_task.call_args[1]["task_id"])
+            ),
+        ):
+            await collection_service.create_collection(
+                user_id=1,
+                name="Collection 1",
+            )
+            task_ids.append(mock_send_task.call_args[1]["task_id"])
 
-                await collection_service.create_collection(
-                    user_id=1,
-                    name="Collection 2",
-                )
-                task_ids.append(mock_send_task.call_args[1]["task_id"])
+            await collection_service.create_collection(
+                user_id=1,
+                name="Collection 2",
+            )
+            task_ids.append(mock_send_task.call_args[1]["task_id"])
 
         # Verify unique task IDs
         assert len(task_ids) == 2

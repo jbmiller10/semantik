@@ -124,7 +124,7 @@ class TestWebuiIntegration(unittest.TestCase):
 
         texts = [chunk["text"] for chunk in file_chunks]
         embeddings = mock_service.generate_embeddings(
-            texts, "test-model", batch_size=32, show_progress=True  # Jobs API shows progress
+            texts=texts, model_name="test-model", batch_size=32, show_progress=True  # Jobs API shows progress
         )
 
         assert embeddings is not None
@@ -216,7 +216,7 @@ class TestCrossPackageWorkflow(unittest.TestCase):
 
         import asyncio
 
-        async def async_test():
+        async def async_test() -> None:
             from packages.shared.embedding import cleanup, get_embedding_service, initialize_embedding_service
 
             # 1. Initialize service (as search_api might)

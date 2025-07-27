@@ -1164,7 +1164,7 @@ def _sanitize_audit_details(details: dict[str, Any] | None, _seen: set[int] | No
     # Handle circular references
     if _seen is None:
         _seen = set()
-    
+
     # Check if we've already seen this object
     obj_id = id(details)
     if obj_id in _seen:

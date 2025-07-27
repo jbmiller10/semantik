@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
 """Simple test to verify our async fixes are working"""
 
+from pathlib import Path
+
 
 # Test the async mode is configured
-def test_asyncio_mode_configured():
+def test_asyncio_mode_configured() -> bool:
     """Test that asyncio_mode is set to auto in pytest config"""
-    with open("pyproject.toml") as f:
+    with Path("pyproject.toml").open() as f:
         content = f.read()
 
     if 'asyncio_mode = "auto"' in content:
         print("✓ asyncio_mode is configured correctly in pyproject.toml")
         return True
-    else:
-        print("✗ asyncio_mode NOT found in pyproject.toml")
-        return False
+    print("✗ asyncio_mode NOT found in pyproject.toml")
+    return False
 
 
-def test_exception_classes():
+def test_exception_classes() -> bool:
     """Check if exception classes are defined properly"""
     try:
         # Read the exceptions file
-        with open("packages/shared/database/__init__.py") as f:
+        with Path("packages/shared/database/__init__.py").open() as f:
             content = f.read()
 
         # Check for the corrected exception definitions
@@ -44,7 +45,7 @@ def test_exception_classes():
         return False
 
 
-def main():
+def main() -> None:
     print("Verifying async and exception fixes...\n")
 
     results = []

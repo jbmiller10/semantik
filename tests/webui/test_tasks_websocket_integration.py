@@ -50,266 +50,271 @@ class TestWebSocketMessageFlow:
         """Test WebSocket messages during INDEX operation."""
 
         # Create an async function that returns the mock
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_args, **_kwargs):
             return mock_redis_client
 
-        with patch("redis.asyncio.from_url", new=mock_from_url):
-            with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant:
-                with patch("shared.embedding.models.get_model_config") as mock_get_model_config:
-                    # Setup Qdrant mock
-                    client = Mock()
-                    client.create_collection = Mock()
-                    client.get_collection = Mock(return_value=Mock(vectors_count=0))
-                    mock_qdrant.get_client.return_value = client
+        with (
+            patch("redis.asyncio.from_url", new=mock_from_url),
+            patch("packages.webui.tasks.qdrant_manager") as mock_qdrant,
+            patch("shared.embedding.models.get_model_config") as mock_get_model_config,
+        ):
+            # Setup Qdrant mock
+            client = Mock()
+            client.create_collection = Mock()
+            client.get_collection = Mock(return_value=Mock(vectors_count=0))
+            mock_qdrant.get_client.return_value = client
 
-                    # Mock model config
-                    mock_get_model_config.return_value = Mock(dimension=1024)
+            # Mock model config
+            mock_get_model_config.return_value = Mock(dimension=1024)
 
-                    # Setup operation and collection
-                    operation = {
-                        "id": "op-123",
-                        "collection_id": "col-123",
-                        "type": OperationType.INDEX,
-                        "config": {},
-                        "user_id": 1,
-                    }
+            # Setup operation and collection
+            operation = {
+                "id": "op-123",
+                "collection_id": "col-123",
+                "type": OperationType.INDEX,
+                "config": {},
+                "user_id": 1,
+            }
 
-                    collection = {
-                        "id": "col-123",
-                        "uuid": "col-123",
-                        "name": "Test Collection",
-                        "vector_store_name": "test_vec",
-                        "config": {"vector_dim": 1024},
-                        "embedding_model": "test-model",
-                    }
+            collection = {
+                "id": "col-123",
+                "uuid": "col-123",
+                "name": "Test Collection",
+                "vector_store_name": "test_vec",
+                "config": {"vector_dim": 1024},
+                "embedding_model": "test-model",
+            }
 
-                    collection_repo = AsyncMock()
-                    collection_repo.update = AsyncMock()
-                    document_repo = AsyncMock()
+            collection_repo = AsyncMock()
+            collection_repo.update = AsyncMock()
+            document_repo = AsyncMock()
 
-                    # Run operation
-                    updater = CeleryTaskWithOperationUpdates("op-123")
-                    async with updater:
-                        await _process_index_operation(operation, collection, collection_repo, document_repo, updater)
+            # Run operation
+            updater = CeleryTaskWithOperationUpdates("op-123")
+            async with updater:
+                await _process_index_operation(operation, collection, collection_repo, document_repo, updater)
 
-                    # Verify message sequence
-                    messages = mock_redis_client.messages
-                    assert len(messages) >= 1  # At least the index_completed message
+            # Verify message sequence
+            messages = mock_redis_client.messages
+            assert len(messages) >= 1  # At least the index_completed message
 
-                    # Check message types
-                    message_types = [msg["message"]["type"] for msg in messages]
-                    assert "index_completed" in message_types
+            # Check message types
+            message_types = [msg["message"]["type"] for msg in messages]
+            assert "index_completed" in message_types
 
-                    # Verify stream key format
-                    assert all(msg["stream"] == "operation-progress:op-123" for msg in messages)
+            # Verify stream key format
+            assert all(msg["stream"] == "operation-progress:op-123" for msg in messages)
 
-                    # Verify message content
-                    index_complete_msg = next(msg for msg in messages if msg["message"]["type"] == "index_completed")
-                    assert index_complete_msg["message"]["data"]["qdrant_collection"] == "test_vec"
-                    assert index_complete_msg["message"]["data"]["vector_dim"] == 1024
+            # Verify message content
+            index_complete_msg = next(msg for msg in messages if msg["message"]["type"] == "index_completed")
+            assert index_complete_msg["message"]["data"]["qdrant_collection"] == "test_vec"
+            assert index_complete_msg["message"]["data"]["vector_dim"] == 1024
 
     async def test_append_operation_progress_messages(self, mock_redis_client):
         """Test progress messages during APPEND operation."""
 
         # Create an async function that returns the mock
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_args, **_kwargs):
             return mock_redis_client
 
-        with patch("redis.asyncio.from_url", new=mock_from_url):
-            with patch("webui.services.document_scanning_service.DocumentScanningService") as mock_scanner_class:
-                # Setup document scanner
-                scanner = AsyncMock()
-                scanner.scan_directory_and_register_documents.return_value = {
-                    "total_documents_found": 5,
-                    "new_documents_registered": 3,
-                    "duplicate_documents_skipped": 2,
-                    "total_size_bytes": 512000,
-                    "errors": [],
-                }
-                mock_scanner_class.return_value = scanner
+        with (
+            patch("redis.asyncio.from_url", new=mock_from_url),
+            patch("webui.services.document_scanning_service.DocumentScanningService") as mock_scanner_class,
+        ):
+            # Setup document scanner
+            scanner = AsyncMock()
+            scanner.scan_directory_and_register_documents.return_value = {
+                "total_documents_found": 5,
+                "new_documents_registered": 3,
+                "duplicate_documents_skipped": 2,
+                "total_size_bytes": 512000,
+                "errors": [],
+            }
+            mock_scanner_class.return_value = scanner
 
-                # Setup operation and collection
-                operation = {
-                    "id": "op-456",
-                    "collection_id": "col-456",
-                    "type": OperationType.APPEND,
-                    "config": {"source_path": "/test/docs"},
-                    "user_id": 1,
-                }
+            # Setup operation and collection
+            operation = {
+                "id": "op-456",
+                "collection_id": "col-456",
+                "type": OperationType.APPEND,
+                "config": {"source_path": "/test/docs"},
+                "user_id": 1,
+            }
 
-                collection = {
-                    "id": "col-456",
-                    "uuid": "col-456",
-                    "name": "Test Collection",
-                    "vector_store_name": "test_vec",
-                }
+            collection = {
+                "id": "col-456",
+                "uuid": "col-456",
+                "name": "Test Collection",
+                "vector_store_name": "test_vec",
+            }
 
-                collection_repo = AsyncMock()
-                document_repo = AsyncMock()
-                document_repo.session = AsyncMock()
-                document_repo.list_by_collection.return_value = ([], 0)
+            collection_repo = AsyncMock()
+            document_repo = AsyncMock()
+            document_repo.session = AsyncMock()
+            document_repo.list_by_collection.return_value = ([], 0)
 
-                # Run operation
-                updater = CeleryTaskWithOperationUpdates("op-456")
-                async with updater:
-                    await _process_append_operation(operation, collection, collection_repo, document_repo, updater)
+            # Run operation
+            updater = CeleryTaskWithOperationUpdates("op-456")
+            async with updater:
+                await _process_append_operation(operation, collection, collection_repo, document_repo, updater)
 
-                # Verify progress messages
-                messages = mock_redis_client.messages
-                message_types = [msg["message"]["type"] for msg in messages]
+            # Verify progress messages
+            messages = mock_redis_client.messages
+            message_types = [msg["message"]["type"] for msg in messages]
 
-                # Check expected message sequence
-                assert "scanning_documents" in message_types
-                assert "scanning_completed" in message_types
+            # Check expected message sequence
+            assert "scanning_documents" in message_types
+            assert "scanning_completed" in message_types
 
-                # Verify scanning completed message
-                scan_complete = next(msg for msg in messages if msg["message"]["type"] == "scanning_completed")
-                data = scan_complete["message"]["data"]
-                assert data["total_files_found"] == 5
-                assert data["new_documents_registered"] == 3
-                assert data["duplicate_documents_skipped"] == 2
+            # Verify scanning completed message
+            scan_complete = next(msg for msg in messages if msg["message"]["type"] == "scanning_completed")
+            data = scan_complete["message"]["data"]
+            assert data["total_files_found"] == 5
+            assert data["new_documents_registered"] == 3
+            assert data["duplicate_documents_skipped"] == 2
 
     async def test_reindex_operation_checkpoint_messages(self, mock_redis_client):
         """Test checkpoint messages during REINDEX operation."""
 
         # Create an async function that returns the mock
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_args, **_kwargs):
             return mock_redis_client
 
-        with patch("redis.asyncio.from_url", new=mock_from_url):
-            with patch("shared.managers.qdrant_manager.QdrantManager") as mock_qdrant_class:
-                with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant:
-                    # Mock reindex_handler as an async function
-                    async def mock_reindex_handler(*args, **kwargs):
-                        return {"collection_name": "staging_123", "vector_dim": 1536}
+        with (
+            patch("redis.asyncio.from_url", new=mock_from_url),
+            patch("shared.managers.qdrant_manager.QdrantManager") as mock_qdrant_class,
+            patch("packages.webui.tasks.qdrant_manager") as mock_qdrant,
+        ):
+            # Mock reindex_handler as an async function
+            async def mock_reindex_handler(*_args, **_kwargs):
+                return {"collection_name": "staging_123", "vector_dim": 1536}
 
-                    # Mock _validate_reindex as an async function
-                    async def mock_validate_reindex(*args, **kwargs):
-                        return {"passed": True, "issues": [], "sample_size": 10}
+            # Mock _validate_reindex as an async function
+            async def mock_validate_reindex(*_args, **_kwargs):
+                return {"passed": True, "issues": [], "sample_size": 10}
 
-                    with patch("packages.webui.tasks.reindex_handler", new=mock_reindex_handler):
-                        with patch("packages.webui.tasks._validate_reindex", new=mock_validate_reindex):
-                            with patch("packages.webui.tasks.httpx.AsyncClient") as mock_httpx:
-                                # cleanup_old_collections is a Celery task, not async
-                                mock_cleanup = Mock()
-                                mock_cleanup.apply_async = Mock(return_value=Mock(id="task-123"))
-                                with patch("packages.webui.tasks.cleanup_old_collections", mock_cleanup):
-                                    # Setup mocks
-                                    manager = Mock()
-                                    manager.create_staging_collection.return_value = "staging_123"
-                                    mock_qdrant_class.return_value = manager
+            with (
+                patch("packages.webui.tasks.reindex_handler", new=mock_reindex_handler),
+                patch("packages.webui.tasks._validate_reindex", new=mock_validate_reindex),
+                patch("packages.webui.tasks.httpx.AsyncClient") as mock_httpx,
+            ):
+                # cleanup_old_collections is a Celery task, not async
+                mock_cleanup = Mock()
+                mock_cleanup.apply_async = Mock(return_value=Mock(id="task-123"))
+                with patch("packages.webui.tasks.cleanup_old_collections", mock_cleanup):
+                    # Setup mocks
+                    manager = Mock()
+                    manager.create_staging_collection.return_value = "staging_123"
+                    mock_qdrant_class.return_value = manager
 
-                                    client = Mock()
-                                    mock_qdrant.get_client.return_value = client
+                    client = Mock()
+                    mock_qdrant.get_client.return_value = client
 
-                                    # Mocks are now set up via patch decorators
+                    # Mocks are now set up via patch decorators
 
-                                    # Mock internal API response
-                                    http_client = AsyncMock()
-                                    response = Mock()
-                                    response.status_code = 200
-                                    response.json.return_value = {"old_collection_names": ["old_123"]}
-                                    http_client.post.return_value = response
-                                    mock_httpx.return_value.__aenter__.return_value = http_client
+                    # Mock internal API response
+                    http_client = AsyncMock()
+                    response = Mock()
+                    response.status_code = 200
+                    response.json.return_value = {"old_collection_names": ["old_123"]}
+                    http_client.post.return_value = response
+                    mock_httpx.return_value.__aenter__.return_value = http_client
 
-                                    # Setup operation and collection
-                                    operation = {
-                                        "id": "op-789",
-                                        "collection_id": "col-789",
-                                        "type": OperationType.REINDEX,
-                                        "config": {"new_config": {}},
-                                        "user_id": 1,
-                                    }
+                    # Setup operation and collection
+                    operation = {
+                        "id": "op-789",
+                        "collection_id": "col-789",
+                        "type": OperationType.REINDEX,
+                        "config": {"new_config": {}},
+                        "user_id": 1,
+                    }
 
-                                    collection = {
-                                        "id": "col-789",
-                                        "uuid": "col-789",
-                                        "name": "Test Collection",
-                                        "vector_store_name": "test_vec",
-                                        "status": "ready",
-                                        "vector_count": 1000,
-                                        "config": {"embedding_model": "test-model"},
-                                    }
+                    collection = {
+                        "id": "col-789",
+                        "uuid": "col-789",
+                        "name": "Test Collection",
+                        "vector_store_name": "test_vec",
+                        "status": "ready",
+                        "vector_count": 1000,
+                        "config": {"embedding_model": "test-model"},
+                    }
 
-                                    collection_repo = AsyncMock()
-                                    document_repo = AsyncMock()
-                                    document_repo.get_stats_by_collection.return_value = {"total_documents": 10}
-                                    document_repo.list_by_collection.return_value = []
+                    collection_repo = AsyncMock()
+                    document_repo = AsyncMock()
+                    document_repo.get_stats_by_collection.return_value = {"total_documents": 10}
+                    document_repo.list_by_collection.return_value = []
 
-                                    # Run operation
-                                    updater = CeleryTaskWithOperationUpdates("op-789")
-                                    async with updater:
-                                        await _process_reindex_operation(
-                                            operation, collection, collection_repo, document_repo, updater
-                                        )
+                    # Run operation
+                    updater = CeleryTaskWithOperationUpdates("op-789")
+                    async with updater:
+                        await _process_reindex_operation(operation, collection, collection_repo, document_repo, updater)
 
-                                    # Verify checkpoint messages
-                                    messages = mock_redis_client.messages
-                                    message_types = [msg["message"]["type"] for msg in messages]
+                    # Verify checkpoint messages
+                    messages = mock_redis_client.messages
+                    message_types = [msg["message"]["type"] for msg in messages]
 
-                                    # Check critical checkpoints
-                                    assert "reindex_preflight" in message_types
-                                    assert "staging_created" in message_types
-                                    assert "validation_complete" in message_types
-                                    assert "reindex_completed" in message_types
+                    # Check critical checkpoints
+                    assert "reindex_preflight" in message_types
+                    assert "staging_created" in message_types
+                    assert "validation_complete" in message_types
+                    assert "reindex_completed" in message_types
 
     async def test_error_message_propagation(self, mock_redis_client):
         """Test error messages are properly sent through WebSocket."""
 
         # Create an async function that returns the mock
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_args, **_kwargs):
             return mock_redis_client
 
-        with patch("redis.asyncio.from_url", new=mock_from_url):
-            with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant:
-                with patch("shared.embedding.models.get_model_config") as mock_get_model_config:
-                    # Setup Qdrant to fail
-                    client = Mock()
-                    client.create_collection.side_effect = Exception("Qdrant connection failed")
-                    mock_qdrant.get_client.return_value = client
+        with (
+            patch("redis.asyncio.from_url", new=mock_from_url),
+            patch("packages.webui.tasks.qdrant_manager") as mock_qdrant,
+            patch("shared.embedding.models.get_model_config") as mock_get_model_config,
+        ):
+            # Setup Qdrant to fail
+            client = Mock()
+            client.create_collection.side_effect = Exception("Qdrant connection failed")
+            mock_qdrant.get_client.return_value = client
 
-                    # Mock model config
-                    mock_get_model_config.return_value = Mock(dimension=1024)
+            # Mock model config
+            mock_get_model_config.return_value = Mock(dimension=1024)
 
-                    operation = {
-                        "id": "op-error",
-                        "collection_id": "col-error",
-                        "type": OperationType.INDEX,
-                        "config": {},
-                        "user_id": 1,
-                    }
+            operation = {
+                "id": "op-error",
+                "collection_id": "col-error",
+                "type": OperationType.INDEX,
+                "config": {},
+                "user_id": 1,
+            }
 
-                    collection = {
-                        "id": "col-error",
-                        "uuid": "col-error",
-                        "name": "Test Collection",
-                        "vector_store_name": None,
-                        "config": {},
-                        "embedding_model": "test-model",
-                    }
+            collection = {
+                "id": "col-error",
+                "uuid": "col-error",
+                "name": "Test Collection",
+                "vector_store_name": None,
+                "config": {},
+                "embedding_model": "test-model",
+            }
 
-                    collection_repo = AsyncMock()
-                    collection_repo.update = AsyncMock()
-                    document_repo = AsyncMock()
+            collection_repo = AsyncMock()
+            collection_repo.update = AsyncMock()
+            document_repo = AsyncMock()
 
-                    # Run operation expecting failure
-                    updater = CeleryTaskWithOperationUpdates("op-error")
-                    async with updater:
-                        with pytest.raises(Exception, match="Qdrant connection failed"):
-                            await _process_index_operation(
-                                operation, collection, collection_repo, document_repo, updater
-                            )
+            # Run operation expecting failure
+            updater = CeleryTaskWithOperationUpdates("op-error")
+            async with updater:
+                with pytest.raises(Exception, match="Qdrant connection failed"):
+                    await _process_index_operation(operation, collection, collection_repo, document_repo, updater)
 
-                    # Even with error, some messages might not be sent
-                    # The operation fails before any messages are sent
-                    messages = mock_redis_client.messages
-                    # No assertion on message count as error happens early
+            # Even with error, some messages might not be sent
+            # The operation fails before any messages are sent
+            # No assertion on message count as error happens early
 
     async def test_concurrent_updates_ordering(self, mock_redis_client):
         """Test that concurrent updates maintain order."""
 
         # Create an async function that returns the mock
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_args, **_kwargs):
             return mock_redis_client
 
         with patch("redis.asyncio.from_url", new=mock_from_url):
@@ -347,10 +352,10 @@ class TestWebSocketMessageFormats:
         captured_messages = []
 
         # Create an async function that returns the mock
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_args, **_kwargs):
             mock_redis = AsyncMock()
 
-            async def capture_xadd(stream, message, **kwargs):
+            async def capture_xadd(_stream, message, **_kwargs):
                 captured_messages.append(json.loads(message["message"]))
 
             mock_redis.xadd = AsyncMock(side_effect=capture_xadd)
@@ -391,10 +396,10 @@ class TestWebSocketMessageFormats:
         captured_messages = []
 
         # Create an async function that returns the mock
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_args, **_kwargs):
             mock_redis = AsyncMock()
 
-            async def capture_xadd(stream, message, **kwargs):
+            async def capture_xadd(_stream, message, **_kwargs):
                 captured_messages.append(json.loads(message["message"]))
 
             mock_redis.xadd = AsyncMock(side_effect=capture_xadd)
@@ -436,10 +441,10 @@ class TestWebSocketMessageFormats:
         captured_messages = []
 
         # Create an async function that returns the mock
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_args, **_kwargs):
             mock_redis = AsyncMock()
 
-            async def capture_xadd(stream, message, **kwargs):
+            async def capture_xadd(_stream, message, **_kwargs):
                 captured_messages.append(json.loads(message["message"]))
 
             mock_redis.xadd = AsyncMock(side_effect=capture_xadd)
@@ -484,7 +489,7 @@ class TestRedisStreamBehavior:
         mock_redis.ping = AsyncMock()
 
         # Create an async function that returns the mock
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_args, **_kwargs):
             return mock_redis
 
         with patch("redis.asyncio.from_url", new=mock_from_url):
@@ -522,7 +527,7 @@ class TestRedisStreamBehavior:
         mock_redis.ping = AsyncMock()
 
         # Create an async function that returns the mock
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_args, **_kwargs):
             return mock_redis
 
         with patch("redis.asyncio.from_url", new=mock_from_url):
@@ -554,7 +559,7 @@ class TestRedisStreamBehavior:
         call_count = 0
 
         # Create an async function that returns the same mock
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_args, **_kwargs):
             nonlocal call_count
             call_count += 1
             return mock_redis
@@ -589,10 +594,10 @@ class TestWebSocketIntegrationScenarios:
         all_messages = []
 
         # Create an async function that returns the mock
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_args, **_kwargs):
             mock_redis = AsyncMock()
 
-            async def track_xadd(stream, message, **kwargs):
+            async def track_xadd(_stream, message, **_kwargs):
                 msg_data = json.loads(message["message"])
                 all_messages.append({"time": datetime.now(UTC), "type": msg_data["type"], "data": msg_data["data"]})
 
@@ -656,10 +661,10 @@ class TestWebSocketIntegrationScenarios:
         all_messages = []
 
         # Create an async function that returns the mock
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_args, **_kwargs):
             mock_redis = AsyncMock()
 
-            async def track_xadd(stream, message, **kwargs):
+            async def track_xadd(_stream, message, **_kwargs):
                 msg_data = json.loads(message["message"])
                 all_messages.append(msg_data)
 

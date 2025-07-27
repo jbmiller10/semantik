@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Fix nested with statement indentation issues."""
 
+import py_compile
+from pathlib import Path
+
 # Read the file
-with open("tests/unit/test_search_api.py") as f:
+file_path = Path("tests/unit/test_search_api.py")
+with file_path.open() as f:
     lines = f.readlines()
 
 # Fix specific indentation issues
@@ -48,13 +52,12 @@ while i < len(lines):
     i += 1
 
 # Write the fixed content
-with open("tests/unit/test_search_api.py", "w") as f:
+with file_path.open("w") as f:
     f.writelines(fixed_lines)
 
 print("\nFixed nested with statement indentation issues")
 
 # Verify it's syntactically correct
-import py_compile
 
 try:
     py_compile.compile("tests/unit/test_search_api.py", doraise=True)

@@ -18,7 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 
-async def check_collections():
+async def check_collections() -> None:
     """Check all collections and their status."""
     await pg_connection_manager.initialize()
 
@@ -66,7 +66,7 @@ async def check_collections():
             print()
 
 
-async def check_failed_operations():
+async def check_failed_operations() -> None:
     """Check for any failed operations."""
     async with AsyncSessionLocal() as db:
         stmt = select(Operation).where(Operation.status == OperationStatus.FAILED).order_by(Operation.created_at.desc())
@@ -88,7 +88,7 @@ async def check_failed_operations():
                 print()
 
 
-async def check_document_status(collection_id: str | None = None):
+async def check_document_status(collection_id: str | None = None) -> None:
     """Check document processing status."""
     async with AsyncSessionLocal() as db:
         # Build query
@@ -108,7 +108,7 @@ async def check_document_status(collection_id: str | None = None):
             print(f"{'='*80}\n")
 
             # Group by collection
-            collection_stats = {}
+            collection_stats: dict[str, dict[str, int]] = {}
             for row in doc_stats:
                 coll_id = row.collection_id
                 status = row.status
@@ -131,7 +131,7 @@ async def check_document_status(collection_id: str | None = None):
                 print()
 
 
-async def check_recent_errors():
+async def check_recent_errors() -> None:
     """Check for recent document processing errors."""
     async with AsyncSessionLocal() as db:
         stmt = (
@@ -157,7 +157,7 @@ async def check_recent_errors():
                 print()
 
 
-async def check_pending_operations():
+async def check_pending_operations() -> None:
     """Check for operations stuck in pending or processing state."""
     async with AsyncSessionLocal() as db:
         stmt = (
@@ -188,7 +188,7 @@ async def check_pending_operations():
                 print()
 
 
-async def main():
+async def main() -> None:
     """Run all diagnostic checks."""
     print("Semantik Collection & Operation Status Check")
     print("=" * 80)

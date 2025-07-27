@@ -14,7 +14,7 @@ try:
     from packages.webui.websocket_manager import ws_manager
 
     # Cancel all tasks in the singleton
-    for task_id, task in list(ws_manager.consumer_tasks.items()):
+    for _task_id, task in list(ws_manager.consumer_tasks.items()):
         if not task.done():
             task.cancel()
 

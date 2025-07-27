@@ -6,8 +6,6 @@ get, list, cancel operations and WebSocket connections.
 """
 
 from datetime import UTC, datetime
-
-UTC = UTC
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 

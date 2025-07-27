@@ -12,6 +12,51 @@ import GPUtil
 import psutil
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, Info, start_http_server
 
+# Re-export prometheus_client types for convenience
+__all__ = [
+    "Counter",
+    "Gauge",
+    "Histogram",
+    "MetricsCollector",
+    "TimingContext",
+    "registry",
+    "system_info",
+    "operations_created",
+    "operations_completed",
+    "operations_failed",
+    "operation_duration",
+    "files_processed",
+    "files_failed",
+    "chunks_created",
+    "embeddings_generated",
+    "queue_length",
+    "processing_lag",
+    "extraction_duration",
+    "chunking_duration",
+    "embedding_batch_duration",
+    "ingestion_duration",
+    "gpu_memory_used",
+    "gpu_memory_total",
+    "gpu_utilization",
+    "cpu_utilization",
+    "memory_utilization",
+    "memory_used",
+    "memory_total",
+    "qdrant_points",
+    "qdrant_upload_errors",
+    "metrics_collector",
+    "record_operation_started",
+    "record_operation_completed",
+    "record_operation_failed",
+    "record_file_processed",
+    "record_file_failed",
+    "record_chunks_created",
+    "record_embeddings_generated",
+    "update_queue_length",
+    "update_processing_lag",
+    "start_metrics_server",
+]
+
 # Create custom registry
 registry = CollectorRegistry()
 

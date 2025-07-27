@@ -2,9 +2,10 @@
 
 import psutil
 
+from prometheus_client import generate_latest
+
 from packages.shared.metrics.prometheus import (
     cpu_utilization,
-    generate_latest,
     memory_utilization,
     metrics_collector,
     registry,

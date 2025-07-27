@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 
-def run_tests():
+def run_tests() -> int:
     """Run the search_api unit tests."""
     print("Running search_api unit tests...")
 

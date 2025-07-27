@@ -12,10 +12,12 @@ from typing import Any, Protocol, TypeVar, Union
 import numpy as np
 import torch
 import torch.nn.functional as F  # noqa: N812
+from numpy.typing import NDArray
 from sentence_transformers import SentenceTransformer
 from shared.config.vecpipe import VecpipeConfig
 from torch import Tensor
-from transformers import AutoModel, AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import AutoModel, AutoTokenizer, PreTrainedModel
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from .base import BaseEmbeddingService
 
@@ -48,7 +50,7 @@ class EmbeddingServiceProtocol(Protocol):
         show_progress: bool = True,
         instruction: str | None = None,
         **kwargs: Any,
-    ) -> np.ndarray | None:
+    ) -> NDArray[np.float32] | None:
         """Generate embeddings synchronously."""
         ...
 
@@ -320,7 +322,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
 
         return kwargs
 
-    async def _embed_texts_internal(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> np.ndarray:
+    async def _embed_texts_internal(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> NDArray[np.float32]:
         """Internal method for embedding texts without validation checks.
 
         This is used during initialization and other internal operations.
@@ -353,7 +355,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
 
     def _embed_texts_sync(
         self, texts: list[str], batch_size: int, normalize: bool, show_progress: bool, instruction: str | None
-    ) -> np.ndarray:
+    ) -> NDArray[np.float32]:
         """Synchronously embed texts (runs in thread pool)."""
         if self.is_qwen_model:
             return self._embed_qwen_texts(texts, batch_size, normalize, instruction)
@@ -361,7 +363,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
 
     def _embed_qwen_texts(
         self, texts: list[str], batch_size: int, normalize: bool, instruction: str | None
-    ) -> np.ndarray:
+    ) -> NDArray[np.float32]:
         """Embed texts using Qwen model."""
         # Apply instruction if provided
         if instruction:
@@ -400,13 +402,13 @@ class DenseEmbeddingService(BaseEmbeddingService):
 
     def _embed_sentence_transformer_texts(
         self, texts: list[str], batch_size: int, normalize: bool, show_progress: bool
-    ) -> np.ndarray:
+    ) -> NDArray[np.float32]:
         """Embed texts using sentence-transformers."""
         if self.model is None:
             raise RuntimeError("Model not initialized")
         # Type assertion: This method is only called when we have a SentenceTransformer
         assert isinstance(self.model, SentenceTransformer)
-        embeddings: np.ndarray = self.model.encode(
+        embeddings: NDArray[np.float32] = self.model.encode(
             texts,
             batch_size=batch_size,
             normalize_embeddings=normalize,
@@ -415,7 +417,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
         )
         return embeddings
 
-    async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> np.ndarray:
+    async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> NDArray[np.float32]:
         """Generate embeddings for multiple texts.
 
         Args:
@@ -459,13 +461,13 @@ class DenseEmbeddingService(BaseEmbeddingService):
         # Delegate to internal method
         return await self._embed_texts_internal(texts, batch_size, **kwargs)
 
-    async def _embed_single_internal(self, text: str, **kwargs: Any) -> np.ndarray:
+    async def _embed_single_internal(self, text: str, **kwargs: Any) -> NDArray[np.float32]:
         """Internal method for embedding a single text without validation."""
         embeddings = await self._embed_texts_internal([text], batch_size=1, **kwargs)
-        result: np.ndarray = embeddings[0]
+        result: NDArray[np.float32] = embeddings[0]
         return result
 
-    async def embed_single(self, text: str, **kwargs: Any) -> np.ndarray:
+    async def embed_single(self, text: str, **kwargs: Any) -> NDArray[np.float32]:
         """Generate embedding for a single text."""
         if not self._initialized:
             raise RuntimeError("Embedding service not initialized. Call initialize() first.")
@@ -474,7 +476,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
             raise ValueError("text must be a string")
 
         embeddings = await self.embed_texts([text], batch_size=1, **kwargs)
-        result: np.ndarray = embeddings[0]
+        result: NDArray[np.float32] = embeddings[0]
         return result
 
     def get_dimension(self) -> int:
@@ -677,7 +679,7 @@ class EmbeddingService:
         show_progress: bool = True,
         instruction: str | None = None,
         **kwargs: Any,
-    ) -> np.ndarray | None:
+    ) -> NDArray[np.float32] | None:
         """Generate embeddings synchronously.
 
         Args:
@@ -974,7 +976,7 @@ class _LazyEmbeddingService:
         show_progress: bool = True,
         instruction: str | None = None,
         **kwargs: Any,
-    ) -> np.ndarray | None:
+    ) -> NDArray[np.float32] | None:
         """Generate embeddings synchronously."""
         return self._get_instance().generate_embeddings(
             texts, model_name, quantization, batch_size, show_progress, instruction, **kwargs

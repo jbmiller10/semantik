@@ -645,9 +645,7 @@ class TestDirectoryScanService:
         # - 50 files (83.3%)
         # Note: Non-recursive scan doesn't send a final 100% update in the current implementation
         percentages = [
-            call[0][1]["data"].get("percentage", 0)
-            for call in progress_calls
-            if "percentage" in call[0][1]["data"]
+            call[0][1]["data"].get("percentage", 0) for call in progress_calls if "percentage" in call[0][1]["data"]
         ]
         assert len(percentages) >= 2, f"Expected at least 2 progress updates, got {len(percentages)}"
         assert 0.0 in percentages, "Should have initial 0% progress"

@@ -6,39 +6,22 @@ CRUD operations, source management, and reindexing functionality.
 """
 
 import uuid
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database.exceptions import (
     AccessDeniedError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
     InvalidStateError,
-    ValidationError,
 )
 from packages.shared.database.models import (
     Collection,
     CollectionStatus,
-    Document,
-    DocumentStatus,
-    Operation,
-    OperationStatus,
-    OperationType,
-)
-from packages.webui.api.schemas import (
-    AddSourceRequest,
-    CollectionCreate,
-    CollectionListResponse,
-    CollectionResponse,
-    CollectionUpdate,
-    DocumentListResponse,
-    OperationResponse,
 )
 from packages.webui.services.collection_service import CollectionService
 
@@ -82,19 +65,19 @@ def mock_collection_service() -> AsyncMock:
 @pytest.fixture()
 def client(mock_user: dict[str, Any], mock_collection_service: AsyncMock) -> TestClient:
     """Create a test client with mocked dependencies."""
-    from packages.webui.main import app
     from packages.webui.auth import get_current_user
+    from packages.webui.main import app
     from packages.webui.services.factory import get_collection_service
-    
+
     # Override dependencies
     app.dependency_overrides[get_current_user] = lambda: mock_user
     app.dependency_overrides[get_collection_service] = lambda: mock_collection_service
-    
+
     # Create test client
     client = TestClient(app)
-    
+
     yield client
-    
+
     # Clean up
     app.dependency_overrides.clear()
 
@@ -189,7 +172,7 @@ class TestCreateCollection:
         )
 
         response = client.post("/api/v2/collections", json=create_request)
-        
+
         assert response.status_code == 409
         assert "already exists" in response.json()["detail"]
 
@@ -204,7 +187,7 @@ class TestCreateCollection:
         mock_collection_service.create_collection.side_effect = ValueError("Invalid chunk size")
 
         response = client.post("/api/v2/collections", json=create_request)
-        
+
         assert response.status_code == 400
         assert "Invalid chunk size" in response.json()["detail"]
 
@@ -219,7 +202,7 @@ class TestCreateCollection:
         mock_collection_service.create_collection.side_effect = Exception("Database error")
 
         response = client.post("/api/v2/collections", json=create_request)
-        
+
         assert response.status_code == 500
         assert "Failed to create collection" in response.json()["detail"]
 
@@ -266,7 +249,7 @@ class TestListCollections:
         response = client.get("/api/v2/collections?page=3&per_page=20&include_public=false")
 
         assert response.status_code == 200
-        
+
         # Verify offset calculation
         mock_collection_service.list_for_user.assert_called_once_with(
             user_id=1,
@@ -284,7 +267,7 @@ class TestListCollections:
         mock_collection_service.list_for_user.side_effect = Exception("Database error")
 
         response = client.get("/api/v2/collections")
-        
+
         assert response.status_code == 500
         assert "Failed to list collections" in response.json()["detail"]
 
@@ -298,14 +281,14 @@ class TestGetCollection:
         mock_collection: MagicMock,
     ) -> None:
         """Test successful collection retrieval."""
-        from packages.webui.main import app
         from packages.webui.dependencies import get_collection_for_user
-        
+        from packages.webui.main import app
+
         app.dependency_overrides[get_collection_for_user] = lambda: mock_collection
-        
+
         collection_uuid = mock_collection.id
         response = client.get(f"/api/v2/collections/{collection_uuid}")
-        
+
         assert response.status_code == 200
         result = response.json()
         assert result["id"] == mock_collection.id
@@ -336,7 +319,7 @@ class TestUpdateCollection:
         response = client.put(f"/api/v2/collections/{collection_uuid}", json=update_request)
 
         assert response.status_code == 200
-        
+
         mock_collection_service.update.assert_called_once_with(
             collection_id=collection_uuid,
             user_id=1,
@@ -363,7 +346,7 @@ class TestUpdateCollection:
         response = client.put(f"/api/v2/collections/{collection_uuid}", json=update_request)
 
         assert response.status_code == 200
-        
+
         # Verify only name is included in updates
         mock_collection_service.update.assert_called_once_with(
             collection_id=collection_uuid,
@@ -450,9 +433,9 @@ class TestDeleteCollection:
         mock_collection_service.delete_collection.return_value = None
 
         response = client.delete(f"/api/v2/collections/{collection_uuid}")
-        
+
         assert response.status_code == 204
-        
+
         mock_collection_service.delete_collection.assert_called_once_with(
             collection_id=collection_uuid,
             user_id=1,
@@ -469,7 +452,7 @@ class TestDeleteCollection:
         mock_collection_service.delete_collection.side_effect = EntityNotFoundError("Collection", collection_uuid)
 
         response = client.delete(f"/api/v2/collections/{collection_uuid}")
-        
+
         assert response.status_code == 404
         assert "not found" in response.json()["detail"]
 
@@ -484,7 +467,7 @@ class TestDeleteCollection:
         mock_collection_service.delete_collection.side_effect = AccessDeniedError("1", "Collection", collection_uuid)
 
         response = client.delete(f"/api/v2/collections/{collection_uuid}")
-        
+
         assert response.status_code == 403
         assert "Only the collection owner" in response.json()["detail"]
 
@@ -501,7 +484,7 @@ class TestDeleteCollection:
         )
 
         response = client.delete(f"/api/v2/collections/{collection_uuid}")
-        
+
         assert response.status_code == 409
         assert "Cannot delete collection" in response.json()["detail"]
 
@@ -535,11 +518,8 @@ class TestAddSource:
 
         mock_collection_service.add_source.return_value = operation_data
 
-        response = client.post(
-            f"/api/v2/collections/{collection_uuid}/sources",
-            json=add_source_request
-        )
-        
+        response = client.post(f"/api/v2/collections/{collection_uuid}/sources", json=add_source_request)
+
         assert response.status_code == 202
         result = response.json()
         assert result["id"] == operation_data["uuid"]
@@ -563,10 +543,7 @@ class TestAddSource:
 
         mock_collection_service.add_source.side_effect = EntityNotFoundError("Collection", collection_uuid)
 
-        response = client.post(
-            f"/api/v2/collections/{collection_uuid}/sources",
-            json=add_source_request
-        )
+        response = client.post(f"/api/v2/collections/{collection_uuid}/sources", json=add_source_request)
 
         assert response.status_code == 404
         assert "not found" in response.json()["detail"]
@@ -580,14 +557,9 @@ class TestAddSource:
         collection_uuid = str(uuid.uuid4())
         add_source_request = {"source_path": "/data/documents"}
 
-        mock_collection_service.add_source.side_effect = InvalidStateError(
-            "Collection is currently being reindexed"
-        )
+        mock_collection_service.add_source.side_effect = InvalidStateError("Collection is currently being reindexed")
 
-        response = client.post(
-            f"/api/v2/collections/{collection_uuid}/sources",
-            json=add_source_request
-        )
+        response = client.post(f"/api/v2/collections/{collection_uuid}/sources", json=add_source_request)
 
         assert response.status_code == 409
         assert "Collection is currently being reindexed" in response.json()["detail"]
@@ -616,9 +588,7 @@ class TestRemoveSource:
 
         mock_collection_service.remove_source.return_value = operation_data
 
-        response = client.delete(
-            f"/api/v2/collections/{collection_uuid}/sources?source_path={source_path}"
-        )
+        response = client.delete(f"/api/v2/collections/{collection_uuid}/sources?source_path={source_path}")
 
         assert response.status_code == 202
         result = response.json()
@@ -658,10 +628,7 @@ class TestReindexCollection:
 
         mock_collection_service.reindex_collection.return_value = operation_data
 
-        response = client.post(
-            f"/api/v2/collections/{collection_uuid}/reindex",
-            json=config_updates
-        )
+        response = client.post(f"/api/v2/collections/{collection_uuid}/reindex", json=config_updates)
 
         assert response.status_code == 202
         result = response.json()

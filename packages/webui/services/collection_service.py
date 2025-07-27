@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -471,7 +471,7 @@ class CollectionService:
         Returns:
             Tuple of (collections list, total count)
         """
-        return await self.collection_repo.list_for_user(  # type: ignore[no-any-return]
+        return await self.collection_repo.list_for_user(
             user_id=user_id,
             offset=offset,
             limit=limit,
@@ -509,7 +509,7 @@ class CollectionService:
         # Commit the transaction
         await self.db_session.commit()
 
-        return updated_collection
+        return cast(Collection, updated_collection)
 
     async def list_documents(
         self, collection_id: str, user_id: int, offset: int = 0, limit: int = 50

@@ -8,6 +8,7 @@ import logging
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -26,9 +27,9 @@ class SearchBenchmark:
 
     def __init__(self) -> None:
         self.embedding_service = EmbeddingService()
-        self.results = []
+        self.results: list[dict[str, Any]] = []
 
-    def benchmark_embedding_generation(self, texts: list[str], model_config: dict) -> None:
+    def benchmark_embedding_generation(self, texts: list[str], model_config: dict[str, Any]) -> dict[str, Any] | None:
         """Benchmark embedding generation with different configurations"""
 
         model_name = model_config["model"]
@@ -72,7 +73,9 @@ class SearchBenchmark:
         logger.error("Failed to generate embeddings")
         return None
 
-    def compare_search_quality(self, query: str, documents: list[str], configs: list[dict]) -> None:
+    def compare_search_quality(
+        self, query: str, documents: list[str], configs: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """Compare search quality across different configurations"""
 
         results = []

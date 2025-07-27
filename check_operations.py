@@ -4,7 +4,7 @@ from shared.database import pg_connection_manager
 from sqlalchemy import text
 
 
-async def check_operations():
+async def check_operations() -> None:
     await pg_connection_manager.initialize()
     async with pg_connection_manager.get_session() as db:
         result = await db.execute(

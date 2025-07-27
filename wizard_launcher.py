@@ -43,11 +43,11 @@ def check_poetry() -> bool:
             possible_paths = [
                 home / ".local" / "bin" / "poetry",
                 home / ".poetry" / "bin" / "poetry",
-                "/usr/local/bin/poetry",
+                Path("/usr/local/bin/poetry"),
             ]
 
         for path in possible_paths:
-            if path.exists():
+            if path and path.exists():
                 poetry_cmd = str(path)
                 break
 

@@ -694,9 +694,11 @@ class TestSingleCollectionSearch:
             "Collection", search_request.collection_id
         )
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
-            with pytest.raises(HTTPException) as exc_info:
-                await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
+        with (
+            patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert exc_info.value.status_code == 404
         assert "Collection" in str(exc_info.value.detail)
@@ -725,9 +727,11 @@ class TestSingleCollectionSearch:
             str(mock_user["id"]), "Collection", search_request.collection_id
         )
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
-            with pytest.raises(HTTPException) as exc_info:
-                await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
+        with (
+            patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert exc_info.value.status_code == 403
         assert "does not have access" in str(exc_info.value.detail)
@@ -753,9 +757,11 @@ class TestSingleCollectionSearch:
         # Mock service raising generic exception
         mock_search_service.single_collection_search.side_effect = Exception("Database connection failed")
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
-            with pytest.raises(HTTPException) as exc_info:
-                await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
+        with (
+            patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert exc_info.value.status_code == 500
         assert exc_info.value.detail == "Search failed"
@@ -998,9 +1004,11 @@ class TestMultiCollectionSearchEdgeCases:
             str(mock_user["id"]), "Collections", ",".join(search_request.collection_uuids)
         )
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
-            with pytest.raises(HTTPException) as exc_info:
-                await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
+        with (
+            patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert exc_info.value.status_code == 403
         assert "does not have access" in str(exc_info.value.detail)
@@ -1026,9 +1034,11 @@ class TestMultiCollectionSearchEdgeCases:
         # Mock service raising generic exception
         mock_search_service.multi_collection_search.side_effect = Exception("Unexpected error")
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
-            with pytest.raises(HTTPException) as exc_info:
-                await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
+        with (
+            patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert exc_info.value.status_code == 500
         assert exc_info.value.detail == "Search failed"
@@ -1166,7 +1176,7 @@ class TestSearchValidation:
 
     def test_empty_collection_list_validation(self):
         """Test that empty collection list is rejected."""
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="At least one collection UUID must be provided"):
             CollectionSearchRequest(
                 collection_uuids=[],
                 query="test",
@@ -1180,7 +1190,7 @@ class TestSearchValidation:
         # Generate 11 valid UUIDs (exceeds max of 10)
         uuids = [str(uuid.uuid4()) for _ in range(11)]
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Cannot search more than 10 collections at once"):
             CollectionSearchRequest(
                 collection_uuids=uuids,
                 query="test",
@@ -1194,7 +1204,7 @@ class TestSearchValidation:
         valid_uuid = str(uuid.uuid4())
 
         # Test empty query
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Query cannot be empty"):
             CollectionSearchRequest(
                 collection_uuids=[valid_uuid],
                 query="",
@@ -1202,7 +1212,7 @@ class TestSearchValidation:
             )
 
         # Test query that's too long
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Query is too long"):
             CollectionSearchRequest(
                 collection_uuids=[valid_uuid],
                 query="x" * 1001,  # Exceeds max length of 1000
@@ -1216,7 +1226,7 @@ class TestSearchValidation:
         valid_uuid = str(uuid.uuid4())
 
         # Test k = 0
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="k must be between 1 and 100"):
             CollectionSearchRequest(
                 collection_uuids=[valid_uuid],
                 query="test",
@@ -1224,7 +1234,7 @@ class TestSearchValidation:
             )
 
         # Test k > 100
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="k must be between 1 and 100"):
             CollectionSearchRequest(
                 collection_uuids=[valid_uuid],
                 query="test",
@@ -1238,7 +1248,7 @@ class TestSearchValidation:
         valid_uuid = str(uuid.uuid4())
 
         # Test negative score threshold
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Score threshold must be between 0 and 1"):
             CollectionSearchRequest(
                 collection_uuids=[valid_uuid],
                 query="test",
@@ -1247,7 +1257,7 @@ class TestSearchValidation:
             )
 
         # Test score threshold > 1.0
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Score threshold must be between 0 and 1"):
             CollectionSearchRequest(
                 collection_uuids=[valid_uuid],
                 query="test",
@@ -1262,7 +1272,7 @@ class TestSearchValidation:
         valid_uuid = str(uuid.uuid4())
 
         # Test negative alpha
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Hybrid alpha must be between 0 and 1"):
             CollectionSearchRequest(
                 collection_uuids=[valid_uuid],
                 query="test",
@@ -1271,7 +1281,7 @@ class TestSearchValidation:
             )
 
         # Test alpha > 1.0
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Hybrid alpha must be between 0 and 1"):
             CollectionSearchRequest(
                 collection_uuids=[valid_uuid],
                 query="test",

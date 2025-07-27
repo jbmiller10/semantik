@@ -18,7 +18,7 @@ try:
     from packages.webui.websocket_manager import ws_manager as _global_ws_manager
 
     # Force cleanup of any existing state
-    for task_id, task in list(_global_ws_manager.consumer_tasks.items()):
+    for _task_id, task in list(_global_ws_manager.consumer_tasks.items()):
         if not task.done():
             task.cancel()
     _global_ws_manager.consumer_tasks.clear()
@@ -113,10 +113,8 @@ class TestRedisStreamWebSocketManager:
 
             # Ensure Redis is cleaned up
             if manager.redis:
-                try:
+                with contextlib.suppress(Exception):
                     await asyncio.wait_for(manager.redis.close(), timeout=0.5)
-                except Exception:
-                    pass
                 manager.redis = None
         except Exception as e:
             # Force cleanup if any error occurs
@@ -509,7 +507,7 @@ class TestRedisStreamWebSocketManager:
         manager.redis = None  # Redis not connected
 
         # Set up operation getter to avoid errors
-        async def mock_get_operation(operation_id):
+        async def mock_get_operation(_operation_id):
             return None
 
         manager.set_operation_getter(mock_get_operation)
@@ -589,7 +587,7 @@ class TestRedisStreamWebSocketManager:
         manager.redis = mock_redis
 
         # Set up operation getter that returns None
-        async def mock_get_operation(operation_id):
+        async def mock_get_operation(_operation_id):
             return None
 
         manager.set_operation_getter(mock_get_operation)
@@ -611,7 +609,7 @@ class TestRedisStreamWebSocketManager:
         manager.redis = mock_redis
 
         # Set up operation getter that raises an exception
-        async def mock_get_operation(operation_id):
+        async def mock_get_operation(_operation_id):
             raise Exception("Database error")
 
         manager.set_operation_getter(mock_get_operation)
@@ -735,7 +733,7 @@ class TestRedisStreamWebSocketManager:
             # Mock stream doesn't exist for a few calls, then exists
             call_count = 0
 
-            async def xinfo_side_effect(*args):
+            async def xinfo_side_effect(*_args):
                 nonlocal call_count
                 call_count += 1
                 if call_count < 3:
@@ -766,10 +764,8 @@ class TestRedisStreamWebSocketManager:
             finally:
                 # Always cancel and clean up the task
                 consumer_task.cancel()
-                try:
+                with contextlib.suppress(TimeoutError, asyncio.CancelledError):
                     await asyncio.wait_for(consumer_task, timeout=0.5)
-                except (TimeoutError, asyncio.CancelledError):
-                    pass
 
         # Run with overall timeout
         await asyncio.wait_for(run_test(), timeout=10.0)
@@ -968,15 +964,14 @@ class TestRedisStreamWebSocketManager:
         # Track group creation attempts
         group_create_count = 0
 
-        async def xgroup_create_side_effect(*args, **kwargs):
+        async def xgroup_create_side_effect(*_args, **_kwargs):
             nonlocal group_create_count
             group_create_count += 1
             if group_create_count == 1:
                 # First creation succeeds
                 return
-            else:
-                # Subsequent attempts also succeed
-                return
+            # Subsequent attempts also succeed
+            return
 
         mock_redis.xgroup_create = AsyncMock(side_effect=xgroup_create_side_effect)
         mock_redis.xgroup_delconsumer = AsyncMock()
@@ -984,7 +979,7 @@ class TestRedisStreamWebSocketManager:
         # Track read calls
         read_call_count = 0
 
-        async def xreadgroup_side_effect(*args, **kwargs):
+        async def xreadgroup_side_effect(*_args, **_kwargs):
             nonlocal read_call_count
             read_call_count += 1
             if read_call_count == 2:  # On second read, throw NOGROUP
@@ -1038,7 +1033,7 @@ class TestWebSocketManagerSingleton:
         original_connections = ws_manager.connections.copy()
 
         # Cancel ALL existing tasks before the test to ensure clean state
-        for task_id, task in list(ws_manager.consumer_tasks.items()):
+        for _task_id, task in list(ws_manager.consumer_tasks.items()):
             if not task.done():
                 task.cancel()
 
@@ -1046,10 +1041,8 @@ class TestWebSocketManagerSingleton:
         if ws_manager.consumer_tasks:
             tasks = list(ws_manager.consumer_tasks.values())
             for task in tasks:
-                try:
+                with contextlib.suppress(TimeoutError, asyncio.CancelledError):
                     await asyncio.wait_for(task, timeout=0.1)
-                except (TimeoutError, asyncio.CancelledError):
-                    pass
 
         # Clear everything
         ws_manager.consumer_tasks.clear()
@@ -1060,17 +1053,15 @@ class TestWebSocketManagerSingleton:
         # Async cleanup after test
         # Cancel any tasks that were created during the test
         tasks_to_cancel = []
-        for task_id, task in list(ws_manager.consumer_tasks.items()):
+        for _task_id, task in list(ws_manager.consumer_tasks.items()):
             if not task.done():
                 task.cancel()
                 tasks_to_cancel.append(task)
 
         # Wait for all tasks to complete with a timeout
         for task in tasks_to_cancel:
-            try:
+            with contextlib.suppress(TimeoutError, asyncio.CancelledError):
                 await asyncio.wait_for(task, timeout=0.1)
-            except (TimeoutError, asyncio.CancelledError):
-                pass
 
         # Clear connections and tasks
         ws_manager.connections.clear()

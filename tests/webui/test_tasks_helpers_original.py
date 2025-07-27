@@ -9,12 +9,11 @@ This test suite covers additional functionality not covered in the main test fil
 """
 
 import asyncio
-import json
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, Mock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
+
 
 # Helper function to create a proper async session mock
 def create_async_session_mock():
@@ -24,15 +23,15 @@ def create_async_session_mock():
     mock_session.commit = AsyncMock()
     mock_session.rollback = AsyncMock()
     mock_session.close = AsyncMock()
-    
+
     @asynccontextmanager
     async def session_maker():
         yield mock_session
-    
+
     return session_maker, mock_session
 
+
 # Import shared models that are used in the tests for type reference
-from packages.shared.database.models import CollectionAuditLog, OperationMetrics
 
 from packages.webui.tasks import (
     CeleryTaskWithOperationUpdates,
@@ -47,7 +46,6 @@ from packages.webui.tasks import (
     calculate_cleanup_delay,
     cleanup_old_results,
     extract_and_serialize_thread_safe,
-    test_task,
 )
 
 
@@ -118,10 +116,10 @@ class TestTaskHelperFunctions:
         """Test thread-safe text extraction wrapper."""
         # Mock the extraction function to avoid file access
         mock_extract.return_value = [("Test content", {"page": 1})]
-        
+
         # Call the thread-safe wrapper
         result = extract_and_serialize_thread_safe("/any/file.pdf")
-        
+
         assert result == [("Test content", {"page": 1})]
         mock_extract.assert_called_once_with("/any/file.pdf")
 
@@ -137,28 +135,28 @@ class TestAuditLogging:
         mock_session = AsyncMock()
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
-        
+
         # Create an async context manager factory
         @asynccontextmanager
         async def session_context():
             yield mock_session
-        
+
         # Make AsyncSessionLocal return our context manager when called
         mock_session_local.return_value = session_context()
-        
+
         # Mock audit log instance
         mock_audit_log = MagicMock()
         mock_audit_log_class.return_value = mock_audit_log
-        
+
         # Create audit log
         await _audit_log_operation(
             collection_id="col-123",
             operation_id=456,
             user_id=1,
             action="test_action",
-            details={"field": "value", "password": "secret", "api_key": "hidden"}
+            details={"field": "value", "password": "secret", "api_key": "hidden"},
         )
-        
+
         # Verify audit log was created with correct parameters
         mock_audit_log_class.assert_called_once()
         call_kwargs = mock_audit_log_class.call_args.kwargs
@@ -170,7 +168,7 @@ class TestAuditLogging:
         assert "password" not in call_kwargs["details"]
         assert "api_key" not in call_kwargs["details"]
         assert call_kwargs["details"]["field"] == "value"
-        
+
         # Verify session operations
         mock_session.add.assert_called_once_with(mock_audit_log)
         mock_session.commit.assert_called_once()
@@ -182,23 +180,18 @@ class TestAuditLogging:
         mock_session = MagicMock()
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock(side_effect=Exception("Database error"))
-        
+
         mock_session_cm = AsyncMock()
         mock_session_cm.__aenter__.return_value = mock_session
         mock_session_cm.__aexit__.return_value = None
         mock_session_local.return_value = mock_session_cm
-        
+
         # Should not raise exception
-        await _audit_log_operation(
-            collection_id="col-123",
-            operation_id=456,
-            user_id=1,
-            action="test_action"
-        )
-        
+        await _audit_log_operation(collection_id="col-123", operation_id=456, user_id=1, action="test_action")
+
         # Function should complete without raising
 
-    @patch("shared.database.models.CollectionAuditLog") 
+    @patch("shared.database.models.CollectionAuditLog")
     @patch("shared.database.database.AsyncSessionLocal")
     async def test_audit_collection_deletion(self, mock_session_local, mock_audit_log_class):
         """Test audit logging for collection deletion."""
@@ -206,19 +199,19 @@ class TestAuditLogging:
         mock_session = MagicMock()
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
-        
+
         mock_session_cm = AsyncMock()
         mock_session_cm.__aenter__.return_value = mock_session
         mock_session_cm.__aexit__.return_value = None
         mock_session_local.return_value = mock_session_cm
-        
+
         # Mock audit log
         mock_audit_log = MagicMock()
         mock_audit_log_class.return_value = mock_audit_log
-        
+
         # Create deletion audit log
         await _audit_collection_deletion("test_collection", 5000)
-        
+
         # Verify audit log creation
         mock_audit_log_class.assert_called_once()
         call_kwargs = mock_audit_log_class.call_args.kwargs
@@ -229,7 +222,7 @@ class TestAuditLogging:
         assert call_kwargs["details"]["collection_name"] == "test_collection"
         assert call_kwargs["details"]["vector_count"] == 5000
         assert "deleted_at" in call_kwargs["details"]
-        
+
         # Verify session operations
         mock_session.add.assert_called_once_with(mock_audit_log)
         mock_session.commit.assert_called_once()
@@ -242,28 +235,29 @@ class TestAuditLogging:
         mock_session = MagicMock()
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
-        
+
         mock_session_cm = AsyncMock()
         mock_session_cm.__aenter__.return_value = mock_session
         mock_session_cm.__aexit__.return_value = None
         mock_session_local.return_value = mock_session_cm
-        
+
         # Mock audit log
         mock_audit_logs = []
+
         def create_audit_log(**kwargs):
             log = MagicMock()
             for k, v in kwargs.items():
                 setattr(log, k, v)
             mock_audit_logs.append(log)
             return log
-        
+
         mock_audit_log_class.side_effect = create_audit_log
-        
+
         # Create batch deletion audit logs
         deletions = [("collection_1", 1000), ("collection_2", 2000), ("collection_3", 3000)]
-        
+
         await _audit_collection_deletions_batch(deletions)
-        
+
         # Verify multiple audit logs created
         assert mock_audit_log_class.call_count == 3
         assert mock_session.add.call_count == 3
@@ -287,45 +281,46 @@ class TestMetricsRecording:
         mock_session = MagicMock()
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
-        
+
         mock_session_cm = AsyncMock()
         mock_session_cm.__aenter__.return_value = mock_session
         mock_session_cm.__aexit__.return_value = None
         mock_session_local.return_value = mock_session_cm
-        
+
         # Mock operation repository
         operation_repo = AsyncMock()
         operation = Mock()
         operation.id = 123
         operation_repo.get_by_uuid.return_value = operation
-        
+
         # Mock metrics
         mock_metrics = []
+
         def create_metric(**kwargs):
             metric = MagicMock()
             for k, v in kwargs.items():
                 setattr(metric, k, v)
             mock_metrics.append(metric)
             return metric
-        
+
         mock_metrics_class.side_effect = create_metric
-        
+
         # Record metrics
         metrics = {
             "duration_seconds": 45.5,
             "cpu_seconds": 40.2,
             "memory_peak_bytes": 1024000,
             "documents_processed": 100,
-            "success": True  # Boolean is treated as numeric (bool is subclass of int)
+            "success": True,  # Boolean is treated as numeric (bool is subclass of int)
         }
-        
+
         await _record_operation_metrics(operation_repo, "op-123", metrics)
-        
+
         # Verify metrics were created (only numeric ones)
         # Note: In Python, bool is a subclass of int, so isinstance(True, int | float) returns True
         # This means the boolean "success" value is converted to float(1.0) and stored as a metric
         assert mock_metrics_class.call_count == 5
-        
+
         # Verify session operations
         assert mock_session.add.call_count == 5
         mock_session.commit.assert_called_once()
@@ -359,7 +354,7 @@ class TestActiveCollections:
         mock_session_cm.__aenter__.return_value = mock_session
         mock_session_cm.__aexit__.return_value = None
         mock_session_local.return_value = mock_session_cm
-        
+
         # Mock repository
         mock_repo = AsyncMock()
         mock_collections = [
@@ -367,27 +362,22 @@ class TestActiveCollections:
                 "id": "col1",
                 "vector_store_name": "vec_col_1",
                 "qdrant_collections": ["col_1_v1", "col_1_v2"],
-                "qdrant_staging": None
+                "qdrant_staging": None,
             },
             {
                 "id": "col2",
                 "vector_store_name": "vec_col_2",
                 "qdrant_collections": None,
-                "qdrant_staging": {"collection_name": "staging_col_2"}
+                "qdrant_staging": {"collection_name": "staging_col_2"},
             },
-            {
-                "id": "col3",
-                "vector_store_name": None,
-                "qdrant_collections": [],
-                "qdrant_staging": None
-            }
+            {"id": "col3", "vector_store_name": None, "qdrant_collections": [], "qdrant_staging": None},
         ]
         mock_repo.list_all.return_value = mock_collections
         mock_repo_class.return_value = mock_repo
-        
+
         # Get active collections
         active = await _get_active_collections()
-        
+
         # Verify results
         assert isinstance(active, set)
         assert "vec_col_1" in active
@@ -407,7 +397,7 @@ class TestActiveCollections:
         mock_session_cm.__aenter__.return_value = mock_session
         mock_session_cm.__aexit__.return_value = None
         mock_session_local.return_value = mock_session_cm
-        
+
         # Mock repository
         mock_repo = AsyncMock()
         mock_collections = [
@@ -415,15 +405,15 @@ class TestActiveCollections:
                 "id": "col1",
                 "vector_store_name": "vec_col_1",
                 "qdrant_collections": None,
-                "qdrant_staging": {"collection_name": "staging_from_json"}
+                "qdrant_staging": {"collection_name": "staging_from_json"},
             }
         ]
         mock_repo.list_all.return_value = mock_collections
         mock_repo_class.return_value = mock_repo
-        
+
         # Get active collections
         active = await _get_active_collections()
-        
+
         # Verify dict staging info was parsed
         assert "staging_from_json" in active
 
@@ -442,17 +432,15 @@ class TestStagingCleanup:
         mock_session_cm.__aenter__.return_value = mock_session
         mock_session_cm.__aexit__.return_value = None
         mock_session_local.return_value = mock_session_cm
-        
+
         # Mock repository
         mock_repo = AsyncMock()
         collection = Mock()
-        collection.qdrant_staging = {
-            "collection_name": "staging_test_123"
-        }
+        collection.qdrant_staging = {"collection_name": "staging_test_123"}
         mock_repo.get_by_uuid.return_value = collection
         mock_repo.update = AsyncMock()
         mock_repo_class.return_value = mock_repo
-        
+
         # Mock Qdrant
         client = Mock()
         collections_response = Mock()
@@ -461,14 +449,14 @@ class TestStagingCleanup:
         client.get_collections.return_value = collections_response
         client.delete_collection = Mock()
         mock_qdrant_manager.get_client.return_value = client
-        
+
         # Clean up staging
         operation = {"type": "REINDEX"}
         await _cleanup_staging_resources("col-123", operation)
-        
+
         # Verify deletion
         client.delete_collection.assert_called_once_with("staging_test_123")
-        
+
         # Verify database update
         mock_repo.update.assert_called_once_with("col-123", {"qdrant_staging": None})
 
@@ -482,25 +470,27 @@ class TestStagingCleanup:
         mock_session_cm.__aenter__.return_value = mock_session
         mock_session_cm.__aexit__.return_value = None
         mock_session_local.return_value = mock_session_cm
-        
+
         # Mock repository
         mock_repo = AsyncMock()
         collection = Mock()
         collection.qdrant_staging = None
         mock_repo.get_by_uuid.return_value = collection
         mock_repo_class.return_value = mock_repo
-        
+
         # Clean up staging (should handle gracefully)
         operation = {"type": "REINDEX"}
         await _cleanup_staging_resources("col-123", operation)
-        
+
         # No update should be called
         mock_repo.update.assert_not_called()
 
-    @patch("shared.database.repositories.collection_repository.CollectionRepository") 
+    @patch("shared.database.repositories.collection_repository.CollectionRepository")
     @patch("shared.database.database.AsyncSessionLocal")
     @patch("packages.webui.tasks.qdrant_manager")
-    async def test_cleanup_staging_resources_qdrant_failure(self, mock_qdrant_manager, mock_session_local, mock_repo_class):
+    async def test_cleanup_staging_resources_qdrant_failure(
+        self, mock_qdrant_manager, mock_session_local, mock_repo_class
+    ):
         """Test cleanup continues despite Qdrant failures."""
         # Setup session mock
         mock_session = MagicMock()
@@ -508,26 +498,24 @@ class TestStagingCleanup:
         mock_session_cm.__aenter__.return_value = mock_session
         mock_session_cm.__aexit__.return_value = None
         mock_session_local.return_value = mock_session_cm
-        
+
         # Mock repository
         mock_repo = AsyncMock()
         collection = Mock()
-        collection.qdrant_staging = {
-            "collection_name": "staging_test_123"
-        }
+        collection.qdrant_staging = {"collection_name": "staging_test_123"}
         mock_repo.get_by_uuid.return_value = collection
         mock_repo.update = AsyncMock()
         mock_repo_class.return_value = mock_repo
-        
+
         # Mock Qdrant to fail
         client = Mock()
         client.get_collections.side_effect = Exception("Qdrant error")
         mock_qdrant_manager.get_client.return_value = client
-        
+
         # Clean up staging (should not raise)
         operation = {"type": "REINDEX"}
         await _cleanup_staging_resources("col-123", operation)
-        
+
         # Database should still be updated
         mock_repo.update.assert_called_once_with("col-123", {"qdrant_staging": None})
 
@@ -580,19 +568,20 @@ class TestConcurrentOperations:
             mock_redis.expire = AsyncMock(return_value=True)
             mock_redis.close = AsyncMock()
             mock_redis.ping = AsyncMock(return_value=True)
-            
+
             # Make from_url return a coroutine that returns the mock redis
             async def return_mock_redis(*args, **kwargs):
                 return mock_redis
+
             mock_from_url.side_effect = return_mock_redis
-            
+
             # Send updates sequentially
             updates_sent = 0
             for i, updater in enumerate(updaters):
                 async with updater:
                     await updater.send_update(f"update_{i}", {"index": i})
                     updates_sent += 1
-            
+
             # All updates should be sent
             assert updates_sent == 3
             assert mock_redis.xadd.call_count >= 3
@@ -656,29 +645,25 @@ class TestEdgeCases:
         mock_session = MagicMock()
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
-        
+
         mock_session_cm = AsyncMock()
         mock_session_cm.__aenter__.return_value = mock_session
         mock_session_cm.__aexit__.return_value = None
         mock_session_local.return_value = mock_session_cm
-        
+
         # Mock audit log
         mock_audit_log = MagicMock()
         mock_audit_log_class.return_value = mock_audit_log
-        
+
         # Create circular reference
         details = {"a": {"b": None}}
         details["a"]["b"] = details["a"]  # Circular ref
-        
+
         # Should handle without infinite recursion
         await _audit_log_operation(
-            collection_id="col-123",
-            operation_id=456,
-            user_id=1,
-            action="test_circular",
-            details=details
+            collection_id="col-123", operation_id=456, user_id=1, action="test_circular", details=details
         )
-        
+
         # Should complete without error
         mock_session.commit.assert_called_once()
 
@@ -698,20 +683,18 @@ class TestPerformance:
             mock_redis.expire = AsyncMock(return_value=True)
             mock_redis.close = AsyncMock()
             mock_redis.ping = AsyncMock(return_value=True)
-            
+
             # Make from_url return a coroutine that returns the mock redis
             async def return_mock_redis(*args, **kwargs):
                 return mock_redis
+
             mock_from_url.side_effect = return_mock_redis
-            
+
             # Send many updates
             async with updater:
                 for i in range(100):
-                    await updater.send_update(
-                        "progress",
-                        {"index": i, "total": 100, "percent": i}
-                    )
-            
+                    await updater.send_update("progress", {"index": i, "total": 100, "percent": i})
+
             # All updates should be sent
             assert mock_redis.xadd.call_count == 100
 

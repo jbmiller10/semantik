@@ -13,7 +13,9 @@ def test_asyncio_mode_configured():
     config.read("pyproject.toml")
 
     # Read the pyproject.toml content
-    with open("pyproject.toml") as f:
+    from pathlib import Path
+
+    with Path("pyproject.toml").open() as f:
         content = f.read()
 
     assert 'asyncio_mode = "auto"' in content, "asyncio_mode should be set to auto"

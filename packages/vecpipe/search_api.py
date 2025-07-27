@@ -251,9 +251,8 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
                     # Try with parameters first (for facade classes)
                     if model_name is not None and quantization is not None:
                         return cast(dict[str, Any], self._service.get_model_info(model_name, quantization))
-                    else:
-                        # Try without parameters (for base classes)
-                        return cast(dict[str, Any], self._service.get_model_info())
+                    # Try without parameters (for base classes)
+                    return cast(dict[str, Any], self._service.get_model_info())
                 except TypeError:
                     # If it fails, try the other way
                     if model_name is None and quantization is None:
@@ -264,9 +263,8 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
                                 self.current_model_name or "unknown", self.current_quantization or "float32"
                             ),
                         )
-                    else:
-                        # Already tried with parameters, must not need them
-                        return cast(dict[str, Any], self._service.get_model_info())
+                    # Already tried with parameters, must not need them
+                    return cast(dict[str, Any], self._service.get_model_info())
             return {
                 "model_name": model_name or self.current_model_name,
                 "dimension": 1024,  # Default dimension

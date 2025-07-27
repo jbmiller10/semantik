@@ -4,13 +4,14 @@ import asyncio
 import functools
 import logging
 from collections.abc import Callable, Coroutine
-from typing import Any, TypeVar
+from typing import Any, ParamSpec, TypeVar
 
 from sqlalchemy.exc import OperationalError
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+P = ParamSpec("P")
 
 
 def with_db_retry(
@@ -18,7 +19,7 @@ def with_db_retry(
     delay: float = 1.0,
     backoff: float = 2.0,
     max_delay: float = 30.0,
-) -> Any:
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Decorator to retry database operations on lock errors.
 

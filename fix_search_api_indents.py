@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Fix indentation issues in test_search_api.py"""
 
+from pathlib import Path
 
 # Read the file
-with open("tests/unit/test_search_api.py") as f:
+file_path = Path("tests/unit/test_search_api.py")
+with file_path.open() as f:
     lines = f.readlines()
 
 # Fix lines with excessive indentation (16 spaces where there should be 8)
@@ -22,7 +24,7 @@ for i, line in enumerate(lines):
         fixed_lines.append(line)
 
 # Write the fixed content
-with open("tests/unit/test_search_api.py", "w") as f:
+with file_path.open("w") as f:
     f.writelines(fixed_lines)
 
 print("\nFixed indentation issues in test_search_api.py")

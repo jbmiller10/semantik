@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Fix all indentation issues in test_search_api.py"""
 
+import py_compile
+from pathlib import Path
+
 # Read the file
-with open("tests/unit/test_search_api.py") as f:
+file_path = Path("tests/unit/test_search_api.py")
+with file_path.open() as f:
     lines = f.readlines()
 
 # Fix lines with excessive indentation (16 spaces where there should be 8)
@@ -17,13 +21,12 @@ for i, line in enumerate(lines):
         fixed_lines.append(line)
 
 # Write the fixed content
-with open("tests/unit/test_search_api.py", "w") as f:
+with file_path.open("w") as f:
     f.writelines(fixed_lines)
 
 print("\nFixed all indentation issues")
 
 # Verify it's syntactically correct
-import py_compile
 
 try:
     py_compile.compile("tests/unit/test_search_api.py", doraise=True)

@@ -6,7 +6,7 @@ Debug script to identify what's causing the test hang in websocket_manager tests
 import asyncio
 
 
-async def check_running_tasks():
+async def check_running_tasks() -> None:
     """Check for any running asyncio tasks."""
     tasks = asyncio.all_tasks()
     print(f"Total active tasks: {len(tasks)}")

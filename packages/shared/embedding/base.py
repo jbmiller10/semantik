@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 
 
 class BaseEmbeddingService(ABC):
@@ -27,7 +28,7 @@ class BaseEmbeddingService(ABC):
         """
 
     @abstractmethod
-    async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> np.ndarray:
+    async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> NDArray[np.float32]:
         """Generate embeddings for multiple texts.
 
         Args:
@@ -44,7 +45,7 @@ class BaseEmbeddingService(ABC):
         """
 
     @abstractmethod
-    async def embed_single(self, text: str, **kwargs: Any) -> np.ndarray:
+    async def embed_single(self, text: str, **kwargs: Any) -> NDArray[np.float32]:
         """Generate embedding for a single text.
 
         Args:

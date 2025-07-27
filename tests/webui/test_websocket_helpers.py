@@ -1,6 +1,7 @@
 """Helper utilities for WebSocket testing."""
 
 import asyncio
+import contextlib
 import os
 from typing import Any
 from unittest.mock import AsyncMock
@@ -163,12 +164,10 @@ class WebSocketTestHarness:
                             if len(parts) == 3:  # user_id:operation:operation_id
                                 user_id = parts[0]
                                 operation_id = parts[2]
-                                try:
+                                with contextlib.suppress(TimeoutError):
                                     await asyncio.wait_for(
                                         client.disconnect(self.manager, operation_id, user_id), timeout=0.5
                                     )
-                                except TimeoutError:
-                                    pass
 
                 self.clients.clear()
 

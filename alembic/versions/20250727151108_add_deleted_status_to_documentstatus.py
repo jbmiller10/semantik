@@ -8,8 +8,6 @@ Create Date: 2025-07-27 15:11:08
 
 from collections.abc import Sequence
 
-import sqlalchemy as sa
-
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -35,4 +33,5 @@ def downgrade() -> None:
     # 3. Drop the old enum
     # 4. Rename the new enum to the original name
     # For now, we'll leave this as a no-op since it's complex and rarely needed
-    pass
+    # PostgreSQL doesn't support removing enum values directly
+    return
