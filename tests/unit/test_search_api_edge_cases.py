@@ -578,53 +578,53 @@ class TestSearchAPIEdgeCases:
                 with patch("packages.vecpipe.search_api.get_reranker_for_embedding_model") as mock_get_reranker:
                     with patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant:
                         mock_get_reranker.return_value = "test-reranker"
-                    
-                    # Mock collection info
-                    mock_qdrant_client.get.return_value.json.return_value = {
-                        "result": {
-                            "config": {
-                                "params": {
-                                    "vectors": {"size": 1024}
+                        
+                        # Mock collection info
+                        mock_qdrant_client.get.return_value.json.return_value = {
+                            "result": {
+                                "config": {
+                                    "params": {
+                                        "vectors": {"size": 1024}
+                                    }
                                 }
                             }
                         }
-                    }
-                    mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
-                    
-                    # Create many mock results
-                    mock_results = []
-                    for i in range(200):  # Max candidates limit
-                        mock_results.append({
-                            "id": f"id-{i}",
-                            "score": 0.9 - (i * 0.001),
-                            "payload": {
-                                "path": f"/test/file{i}.txt",
-                                "chunk_id": f"chunk-{i}",
-                                "doc_id": f"doc-{i}",
-                                "content": f"Content {i}"
-                            }
-                        })
-                    
-                    mock_search_qdrant.return_value = mock_results
-                    
-                    # Return reranked indices for top 50
-                    mock_model_manager.rerank_async.return_value = [
-                        (i, 0.99 - (i * 0.01)) for i in range(50)
-                    ]
-                    
-                    request = SearchRequest(
-                        query="test query",
-                        k=50,  # Request 50 results
-                        use_reranker=True
-                    )
-                    
-                    result = await search_post(request)
-                    
-                    # Should return exactly k results
-                    assert len(result.results) == 50
-                    # Verify search_k was capped at max_candidates (200)
-                    call_args = mock_search_qdrant.call_args
-                    assert call_args[0][4] == 200  # max_candidates (5th arg to search_qdrant)
+                        mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
+                        
+                        # Create many mock results
+                        mock_results = []
+                        for i in range(200):  # Max candidates limit
+                            mock_results.append({
+                                "id": f"id-{i}",
+                                "score": 0.9 - (i * 0.001),
+                                "payload": {
+                                    "path": f"/test/file{i}.txt",
+                                    "chunk_id": f"chunk-{i}",
+                                    "doc_id": f"doc-{i}",
+                                    "content": f"Content {i}"
+                                }
+                            })
+                        
+                        mock_search_qdrant.return_value = mock_results
+                        
+                        # Return reranked indices for top 50
+                        mock_model_manager.rerank_async.return_value = [
+                            (i, 0.99 - (i * 0.01)) for i in range(50)
+                        ]
+                        
+                        request = SearchRequest(
+                            query="test query",
+                            k=50,  # Request 50 results
+                            use_reranker=True
+                        )
+                        
+                        result = await search_post(request)
+                        
+                        # Should return exactly k results
+                        assert len(result.results) == 50
+                        # Verify search_k was capped at max_candidates (200)
+                        call_args = mock_search_qdrant.call_args
+                        assert call_args[0][4] == 200  # max_candidates (5th arg to search_qdrant)
 
     @pytest.mark.asyncio
     async def test_search_with_minimal_query(self, mock_settings, mock_qdrant_client, mock_model_manager):
