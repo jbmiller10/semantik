@@ -159,23 +159,24 @@ class TestSearchAPIEdgeCases:
         with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
             with patch("packages.vecpipe.search_api.model_manager", mock_model_manager):
                 with patch("packages.vecpipe.search_api.get_reranker_for_embedding_model") as mock_get_reranker:
-                    mock_get_reranker.return_value = "test-reranker"
-                    
-                    # Mock collection info
-                    mock_qdrant_client.get.return_value.json.return_value = {
-                        "result": {
-                            "config": {
-                                "params": {
-                                    "vectors": {"size": 1024}
+                    # Mock search_qdrant function to avoid real Qdrant client creation
+                    with patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant:
+                        mock_get_reranker.return_value = "test-reranker"
+                        
+                        # Mock collection info
+                        mock_qdrant_client.get.return_value.json.return_value = {
+                            "result": {
+                                "config": {
+                                    "params": {
+                                        "vectors": {"size": 1024}
+                                    }
                                 }
                             }
                         }
-                    }
-                    mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
-                    
-                    # Mock initial search results without content
-                    initial_results = {
-                        "result": [
+                        mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
+                        
+                        # Mock initial search results without content
+                        mock_search_qdrant.return_value = [
                             {
                                 "id": "1",
                                 "score": 0.85,
@@ -197,53 +198,50 @@ class TestSearchAPIEdgeCases:
                                 }
                             }
                         ]
-                    }
-                    
-                    # Mock fetching content for reranking
-                    fetch_results = {
-                        "result": {
-                            "points": [
-                                {
-                                    "payload": {
-                                        "chunk_id": "chunk-1",
-                                        "content": "Fetched content 1"
+                        
+                        # Mock fetching content for reranking
+                        fetch_results = {
+                            "result": {
+                                "points": [
+                                    {
+                                        "payload": {
+                                            "chunk_id": "chunk-1",
+                                            "content": "Fetched content 1"
+                                        }
+                                    },
+                                    {
+                                        "payload": {
+                                            "chunk_id": "chunk-2",
+                                            "content": "Fetched content 2"
+                                        }
                                     }
-                                },
-                                {
-                                    "payload": {
-                                        "chunk_id": "chunk-2",
-                                        "content": "Fetched content 2"
-                                    }
-                                }
-                            ]
+                                ]
+                            }
                         }
-                    }
-                    
-                    # Set up mock to return different results for different calls
-                    mock_qdrant_client.post.return_value.json.side_effect = [
-                        initial_results,  # First call for search
-                        fetch_results     # Second call for fetching content
-                    ]
-                    mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
-                    
-                    response = test_client_for_search_api.post(
-                        "/search",
-                        json={
-                            "query": "test query",
-                            "k": 2,
-                            "use_reranker": True,
-                            "include_content": False  # Don't request content initially
-                        }
-                    )
-                    
-                    assert response.status_code == 200
-                    result = response.json()
-                    
-                    # Verify content was fetched for reranking
-                    assert mock_qdrant_client.post.call_count == 2
-                    second_call = mock_qdrant_client.post.call_args_list[1]
-                    assert "filter" in second_call[1]["json"]
-                    assert result["reranking_used"] is True
+                        
+                        # Set up mock for fetching content
+                        mock_qdrant_client.post.return_value.json.return_value = fetch_results
+                        mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
+                        
+                        response = test_client_for_search_api.post(
+                            "/search",
+                            json={
+                                "query": "test query",
+                                "k": 2,
+                                "use_reranker": True,
+                                "include_content": False  # Don't request content initially
+                            }
+                        )
+                        
+                        assert response.status_code == 200
+                        result = response.json()
+                        
+                        # Verify content was fetched for reranking
+                        assert mock_qdrant_client.post.call_count == 1  # Only for fetching content
+                        call_args = mock_qdrant_client.post.call_args
+                        assert "/points/scroll" in call_args[0][0]
+                        assert "filter" in call_args[1]["json"]
+                        assert result["reranking_used"] is True
 
     @pytest.mark.asyncio
     async def test_search_with_missing_content_during_rerank(self, mock_settings, mock_qdrant_client, mock_model_manager):
@@ -253,59 +251,58 @@ class TestSearchAPIEdgeCases:
         with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
             with patch("packages.vecpipe.search_api.model_manager", mock_model_manager):
                 with patch("packages.vecpipe.search_api.get_reranker_for_embedding_model") as mock_get_reranker:
-                    mock_get_reranker.return_value = "test-reranker"
-                    
-                    # Mock collection info
-                    mock_qdrant_client.get.return_value.json.return_value = {
-                        "result": {
-                            "config": {
-                                "params": {
-                                    "vectors": {"size": 1024}
+                    # Mock search_qdrant function to avoid real Qdrant client creation
+                    with patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant:
+                        mock_get_reranker.return_value = "test-reranker"
+                        
+                        # Mock collection info
+                        mock_qdrant_client.get.return_value.json.return_value = {
+                            "result": {
+                                "config": {
+                                    "params": {
+                                        "vectors": {"size": 1024}
+                                    }
                                 }
                             }
                         }
-                    }
-                    mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
-                    
-                    # Mock search results without content
-                    mock_qdrant_client.post.return_value.json.side_effect = [
-                        {
-                            "result": [
-                                {
-                                    "id": "1",
-                                    "score": 0.85,
-                                    "payload": {
-                                        "path": "/test/file.txt",
-                                        "chunk_id": "chunk-1",
-                                        "doc_id": "doc-1"
-                                    }
+                        mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
+                        
+                        # Mock search results without content
+                        mock_search_qdrant.return_value = [
+                            {
+                                "id": "1",
+                                "score": 0.85,
+                                "payload": {
+                                    "path": "/test/file.txt",
+                                    "chunk_id": "chunk-1",
+                                    "doc_id": "doc-1"
                                 }
-                            ]
-                        },
+                            }
+                        ]
+                        
                         # Content fetch fails (returns empty)
-                        {
+                        mock_qdrant_client.post.return_value.json.return_value = {
                             "result": {
                                 "points": []
                             }
                         }
-                    ]
-                    mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
-                    
-                    request = SearchRequest(
-                        query="test query",
-                        k=1,
-                        use_reranker=True
-                    )
-                    
-                    result = await search_post(request)
-                    
-                    # Should still return results with fallback content
-                    assert len(result.results) == 1
-                    # Verify reranking was attempted with fallback content
-                    mock_model_manager.rerank_async.assert_called_once()
-                    call_args = mock_model_manager.rerank_async.call_args
-                    documents = call_args[1]["documents"]
-                    assert "Document from" in documents[0]  # Fallback content
+                        mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
+                        
+                        request = SearchRequest(
+                            query="test query",
+                            k=1,
+                            use_reranker=True
+                        )
+                        
+                        result = await search_post(request)
+                        
+                        # Should still return results with fallback content
+                        assert len(result.results) == 1
+                        # Verify reranking was attempted with fallback content
+                        mock_model_manager.rerank_async.assert_called_once()
+                        call_args = mock_model_manager.rerank_async.call_args
+                        documents = call_args[1]["documents"]
+                        assert "Document from" in documents[0]  # Fallback content
 
     @pytest.mark.asyncio
     async def test_search_with_reranking_failure(self, mock_settings, mock_qdrant_client, mock_model_manager):
@@ -315,23 +312,23 @@ class TestSearchAPIEdgeCases:
         with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
             with patch("packages.vecpipe.search_api.model_manager", mock_model_manager):
                 with patch("packages.vecpipe.search_api.get_reranker_for_embedding_model") as mock_get_reranker:
-                    mock_get_reranker.return_value = "test-reranker"
-                    
-                    # Mock collection info
-                    mock_qdrant_client.get.return_value.json.return_value = {
-                        "result": {
-                            "config": {
-                                "params": {
-                                    "vectors": {"size": 1024}
+                    with patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant:
+                        mock_get_reranker.return_value = "test-reranker"
+                        
+                        # Mock collection info
+                        mock_qdrant_client.get.return_value.json.return_value = {
+                            "result": {
+                                "config": {
+                                    "params": {
+                                        "vectors": {"size": 1024}
+                                    }
                                 }
                             }
                         }
-                    }
-                    mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
-                    
-                    # Mock search results
-                    mock_qdrant_client.post.return_value.json.return_value = {
-                        "result": [
+                        mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
+                        
+                        # Mock search results
+                        mock_search_qdrant.return_value = [
                             {
                                 "id": "1",
                                 "score": 0.95,
@@ -353,26 +350,25 @@ class TestSearchAPIEdgeCases:
                                 }
                             }
                         ]
-                    }
-                    mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
-                    
-                    # Make reranking fail (but not with InsufficientMemoryError)
-                    mock_model_manager.rerank_async.side_effect = Exception("Reranking model error")
-                    
-                    request = SearchRequest(
-                        query="test query",
-                        k=2,
-                        use_reranker=True
-                    )
-                    
-                    result = await search_post(request)
-                    
-                    # Should return original results without reranking
-                    assert len(result.results) == 2
-                    assert result.results[0].score == 0.95  # Original scores
-                    assert result.results[1].score == 0.90
-                    assert result.reranking_used is True  # Was attempted
-                    assert result.reranker_model is None  # But failed
+                        mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
+                        
+                        # Make reranking fail (but not with InsufficientMemoryError)
+                        mock_model_manager.rerank_async.side_effect = Exception("Reranking model error")
+                        
+                        request = SearchRequest(
+                            query="test query",
+                            k=2,
+                            use_reranker=True
+                        )
+                        
+                        result = await search_post(request)
+                        
+                        # Should return original results without reranking
+                        assert len(result.results) == 2
+                        assert result.results[0].score == 0.95  # Original scores
+                        assert result.results[1].score == 0.90
+                        assert result.reranking_used is True  # Was attempted
+                        assert result.reranker_model is None  # But failed
 
     @pytest.mark.asyncio
     async def test_hybrid_search_error_handling(self, mock_settings, mock_qdrant_client):
@@ -426,32 +422,30 @@ class TestSearchAPIEdgeCases:
             with patch("packages.vecpipe.search_api.model_manager", mock_model_manager):
                 with patch("qdrant_client.QdrantClient") as mock_sync_client:
                     with patch("packages.shared.database.collection_metadata.get_collection_metadata") as mock_get_metadata:
-                        # Make metadata fetch fail
-                        mock_get_metadata.side_effect = Exception("Metadata fetch failed")
-                        
-                        # Mock collection info
-                        mock_qdrant_client.get.return_value.json.return_value = {
-                            "result": {
-                                "config": {
-                                    "params": {
-                                        "vectors": {"size": 1024}
+                        with patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant:
+                            # Make metadata fetch fail
+                            mock_get_metadata.side_effect = Exception("Metadata fetch failed")
+                            
+                            # Mock collection info
+                            mock_qdrant_client.get.return_value.json.return_value = {
+                                "result": {
+                                    "config": {
+                                        "params": {
+                                            "vectors": {"size": 1024}
+                                        }
                                     }
                                 }
                             }
-                        }
-                        mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
+                            mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
                         
-                        # Mock search results
-                        mock_qdrant_client.post.return_value.json.return_value = {
-                            "result": []
-                        }
-                        mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
-                        
-                        request = SearchRequest(query="test", k=5)
-                        
-                        # Should continue with default model despite metadata error
-                        result = await search_post(request)
-                        assert result.model_used == "test-model/float32"
+                            # Mock search results
+                            mock_search_qdrant.return_value = []
+                            
+                            request = SearchRequest(query="test", k=5)
+                            
+                            # Should continue with default model despite metadata error
+                            result = await search_post(request)
+                            assert result.model_used == "test-model/float32"
 
     @pytest.mark.asyncio
     async def test_upsert_with_http_error_parsing(self, mock_qdrant_client):
@@ -496,30 +490,28 @@ class TestSearchAPIEdgeCases:
         
         with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
             with patch("packages.vecpipe.search_api.model_manager", mock_model_manager):
-                # Mock collection info with missing/invalid structure
-                mock_qdrant_client.get.return_value.json.return_value = {
-                    "result": {
-                        # Missing config.params.vectors.size
-                        "points_count": 100
+                with patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant:
+                    # Mock collection info with missing/invalid structure
+                    mock_qdrant_client.get.return_value.json.return_value = {
+                        "result": {
+                            # Missing config.params.vectors.size
+                            "points_count": 100
+                        }
                     }
-                }
-                mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
-                
-                # Mock search results
-                mock_qdrant_client.post.return_value.json.return_value = {
-                    "result": []
-                }
-                mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
-                
-                request = SearchRequest(query="test", k=5)
-                
-                # Should use default dimension
-                result = await search_post(request)
-                assert result is not None
-                
-                # Verify default dimension was used for embedding
-                call_args = mock_model_manager.generate_embedding_async.call_args
-                assert call_args is not None
+                    mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
+                    
+                    # Mock search results
+                    mock_search_qdrant.return_value = []
+                    
+                    request = SearchRequest(query="test", k=5)
+                    
+                    # Should use default dimension
+                    result = await search_post(request)
+                    assert result is not None
+                    
+                    # Verify default dimension was used for embedding
+                    call_args = mock_model_manager.generate_embedding_async.call_args
+                    assert call_args is not None
 
     @pytest.mark.asyncio
     async def test_search_with_custom_reranker_params(self, mock_settings, mock_qdrant_client, mock_model_manager):
@@ -528,21 +520,21 @@ class TestSearchAPIEdgeCases:
         
         with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
             with patch("packages.vecpipe.search_api.model_manager", mock_model_manager):
-                # Mock collection info
-                mock_qdrant_client.get.return_value.json.return_value = {
-                    "result": {
-                        "config": {
-                            "params": {
-                                "vectors": {"size": 1024}
+                with patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant:
+                    # Mock collection info
+                    mock_qdrant_client.get.return_value.json.return_value = {
+                        "result": {
+                            "config": {
+                                "params": {
+                                    "vectors": {"size": 1024}
+                                }
                             }
                         }
                     }
-                }
-                mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
-                
-                # Mock search results
-                mock_qdrant_client.post.return_value.json.return_value = {
-                    "result": [
+                    mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
+                    
+                    # Mock search results
+                    mock_search_qdrant.return_value = [
                         {
                             "id": "1",
                             "score": 0.85,
@@ -554,25 +546,24 @@ class TestSearchAPIEdgeCases:
                             }
                         }
                     ]
-                }
-                mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
-                
-                request = SearchRequest(
-                    query="test query",
-                    k=1,
-                    use_reranker=True,
-                    rerank_model="custom-reranker",
-                    rerank_quantization="int8"
-                )
-                
-                result = await search_post(request)
-                
-                # Verify custom reranker params were used
-                mock_model_manager.rerank_async.assert_called_once()
-                call_args = mock_model_manager.rerank_async.call_args
-                assert call_args[1]["model_name"] == "custom-reranker"
-                assert call_args[1]["quantization"] == "int8"
-                assert result.reranker_model == "custom-reranker/int8"
+                    mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
+                    
+                    request = SearchRequest(
+                        query="test query",
+                        k=1,
+                        use_reranker=True,
+                        rerank_model="custom-reranker",
+                        rerank_quantization="int8"
+                    )
+                    
+                    result = await search_post(request)
+                    
+                    # Verify custom reranker params were used
+                    mock_model_manager.rerank_async.assert_called_once()
+                    call_args = mock_model_manager.rerank_async.call_args
+                    assert call_args[1]["model_name"] == "custom-reranker"
+                    assert call_args[1]["quantization"] == "int8"
+                    assert result.reranker_model == "custom-reranker/int8"
 
     @pytest.mark.asyncio
     async def test_search_with_large_k_and_reranking(self, mock_settings, mock_qdrant_client, mock_model_manager):
@@ -582,7 +573,8 @@ class TestSearchAPIEdgeCases:
         with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
             with patch("packages.vecpipe.search_api.model_manager", mock_model_manager):
                 with patch("packages.vecpipe.search_api.get_reranker_for_embedding_model") as mock_get_reranker:
-                    mock_get_reranker.return_value = "test-reranker"
+                    with patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant:
+                        mock_get_reranker.return_value = "test-reranker"
                     
                     # Mock collection info
                     mock_qdrant_client.get.return_value.json.return_value = {
@@ -610,10 +602,7 @@ class TestSearchAPIEdgeCases:
                             }
                         })
                     
-                    mock_qdrant_client.post.return_value.json.return_value = {
-                        "result": mock_results
-                    }
-                    mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
+                    mock_search_qdrant.return_value = mock_results
                     
                     # Return reranked indices for top 50
                     mock_model_manager.rerank_async.return_value = [
@@ -631,8 +620,8 @@ class TestSearchAPIEdgeCases:
                     # Should return exactly k results
                     assert len(result.results) == 50
                     # Verify search_k was capped at max_candidates (200)
-                    call_args = mock_qdrant_client.post.call_args
-                    assert call_args[1]["json"]["limit"] == 200  # max_candidates
+                    call_args = mock_search_qdrant.call_args
+                    assert call_args[0][4] == 200  # max_candidates (5th arg to search_qdrant)
 
     @pytest.mark.asyncio
     async def test_search_with_empty_query(self, mock_settings, mock_qdrant_client, mock_model_manager):
@@ -641,17 +630,33 @@ class TestSearchAPIEdgeCases:
         
         with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
             with patch("packages.vecpipe.search_api.model_manager", mock_model_manager):
-                # Mock to return empty embedding for empty text
-                mock_model_manager.generate_embedding_async.return_value = [0.0] * 1024
-                
-                request = SearchRequest(
-                    query="   ",  # Whitespace only
-                    k=5
-                )
-                
-                # Should handle gracefully
-                result = await search_post(request)
-                assert result.query == "   "
+                with patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant:
+                    # Mock collection info
+                    mock_qdrant_client.get.return_value.json.return_value = {
+                        "result": {
+                            "config": {
+                                "params": {
+                                    "vectors": {"size": 1024}
+                                }
+                            }
+                        }
+                    }
+                    mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
+                    
+                    # Mock to return empty embedding for empty text
+                    mock_model_manager.generate_embedding_async.return_value = [0.0] * 1024
+                    
+                    # Mock search results
+                    mock_search_qdrant.return_value = []
+                    
+                    request = SearchRequest(
+                        query="   ",  # Whitespace only
+                        k=5
+                    )
+                    
+                    # Should handle gracefully
+                    result = await search_post(request)
+                    assert result.query == "   "
 
     @pytest.mark.asyncio
     async def test_generate_embedding_async_with_no_model_manager(self, mock_settings):
@@ -679,16 +684,29 @@ class TestSearchAPIEdgeCases:
         
         with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
             with patch("packages.vecpipe.search_api.model_manager", mock_model_manager):
-                # Make Qdrant unavailable
-                mock_qdrant_client.post.side_effect = httpx.ConnectError("Connection refused")
-                
-                # Currently, the search_api doesn't have FAISS fallback implemented
-                # This test documents the expected behavior when it's added
-                request = SearchRequest(query="test", k=5)
-                
-                with pytest.raises(HTTPException) as exc_info:
-                    await search_post(request)
-                assert exc_info.value.status_code == 502
+                with patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant:
+                    # Mock collection info
+                    mock_qdrant_client.get.return_value.json.return_value = {
+                        "result": {
+                            "config": {
+                                "params": {
+                                    "vectors": {"size": 1024}
+                                }
+                            }
+                        }
+                    }
+                    mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
+                    
+                    # Make Qdrant unavailable
+                    mock_search_qdrant.side_effect = httpx.ConnectError("Connection refused")
+                    
+                    # Currently, the search_api doesn't have FAISS fallback implemented
+                    # This test documents the expected behavior when it's added
+                    request = SearchRequest(query="test", k=5)
+                    
+                    with pytest.raises(HTTPException) as exc_info:
+                        await search_post(request)
+                    assert exc_info.value.status_code == 502
 
     @pytest.mark.asyncio
     async def test_keyword_search_cleanup(self, mock_hybrid_engine):
@@ -706,15 +724,38 @@ class TestSearchAPIEdgeCases:
 
     def test_collection_info_error(self, mock_qdrant_client, test_client_for_search_api):
         """Test collection info endpoint error handling."""
-        with patch("packages.vecpipe.search_api.qdrant_client", None):
+        import packages.vecpipe.search_api as search_api_module
+        
+        # Temporarily set qdrant_client to None
+        original_client = search_api_module.qdrant_client
+        search_api_module.qdrant_client = None
+        
+        try:
             response = test_client_for_search_api.get("/collection/info")
             assert response.status_code == 503
             assert "Qdrant client not initialized" in response.json()["detail"]
+        finally:
+            # Restore original
+            search_api_module.qdrant_client = original_client
 
     def test_models_load_error(self, mock_settings, mock_embedding_service, test_client_for_search_api):
         """Test /models/load endpoint error handling."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
         
+        # First test with mock embeddings enabled
+        mock_settings.USE_MOCK_EMBEDDINGS = True
+        response = test_client_for_search_api.post(
+            "/models/load",
+            json={
+                "model_name": "test-model",
+                "quantization": "float32"
+            }
+        )
+        assert response.status_code == 400
+        assert "Cannot load models when using mock embeddings" in response.json()["detail"]
+        
+        # Now test with embedding service not initialized
+        mock_settings.USE_MOCK_EMBEDDINGS = False
         import packages.vecpipe.search_api as search_api_module
         
         # Temporarily set embedding_service to None
@@ -742,21 +783,21 @@ class TestSearchAPIEdgeCases:
         
         with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
             with patch("packages.vecpipe.search_api.model_manager", mock_model_manager):
-                # Mock collection info
-                mock_qdrant_client.get.return_value.json.return_value = {
-                    "result": {
-                        "config": {
-                            "params": {
-                                "vectors": {"size": 1024}
+                with patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant:
+                    # Mock collection info
+                    mock_qdrant_client.get.return_value.json.return_value = {
+                        "result": {
+                            "config": {
+                                "params": {
+                                    "vectors": {"size": 1024}
+                                }
                             }
                         }
                     }
-                }
-                mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
-                
-                # Mock search results with varying scores
-                mock_qdrant_client.post.return_value.json.return_value = {
-                    "result": [
+                    mock_qdrant_client.get.return_value.raise_for_status = AsyncMock()
+                    
+                    # Mock search results with varying scores
+                    mock_search_qdrant.return_value = [
                         {
                             "id": "1",
                             "score": 0.95,
@@ -773,17 +814,16 @@ class TestSearchAPIEdgeCases:
                             "payload": {"path": "/low.txt", "chunk_id": "c3", "doc_id": "d3"}
                         }
                     ]
-                }
-                mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
-                
-                request = SearchRequest(
-                    query="test query",
-                    k=10,
-                    score_threshold=0.7  # Should filter out the last result
-                )
-                
-                result = await search_post(request)
-                
-                # The search_api currently doesn't filter by score_threshold
-                # This documents expected behavior if implemented
-                assert len(result.results) == 3  # Currently returns all results
+                    mock_qdrant_client.post.return_value.raise_for_status = AsyncMock()
+                    
+                    request = SearchRequest(
+                        query="test query",
+                        k=10,
+                        score_threshold=0.7  # Should filter out the last result
+                    )
+                    
+                    result = await search_post(request)
+                    
+                    # The search_api currently doesn't filter by score_threshold
+                    # This documents expected behavior if implemented
+                    assert len(result.results) == 3  # Currently returns all results

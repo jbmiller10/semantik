@@ -1,20 +1,21 @@
 """Unit tests for OperationRepository."""
 
 from datetime import UTC, datetime
+from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from packages.shared.database.exceptions import AccessDeniedError, DatabaseOperationError, EntityNotFoundError, ValidationError
-from packages.shared.database.models import Collection, Operation, OperationStatus, OperationType
-from packages.shared.database.repositories.operation_repository import OperationRepository
+from shared.database.exceptions import AccessDeniedError, DatabaseOperationError, EntityNotFoundError, ValidationError
+from shared.database.models import Collection, Operation, OperationStatus, OperationType
+from shared.database.repositories.operation_repository import OperationRepository
 
 
 class TestOperationRepository:
     """Test cases for OperationRepository."""
 
     @pytest.fixture()
-    def mock_session(self) -> None:
+    def mock_session(self) -> AsyncMock:
         """Create a mock async session."""
         session = AsyncMock()
         # Make execute return completed coroutines immediately
@@ -27,12 +28,12 @@ class TestOperationRepository:
         return session
 
     @pytest.fixture()
-    def repository(self, mock_session) -> None:
+    def repository(self, mock_session) -> OperationRepository:
         """Create an OperationRepository instance with mocked session."""
         return OperationRepository(mock_session)
 
     @pytest.fixture()
-    def sample_collection(self) -> None:
+    def sample_collection(self) -> Collection:
         """Create a sample collection for testing."""
         return Collection(
             id=str(uuid4()),
@@ -46,7 +47,7 @@ class TestOperationRepository:
         )
 
     @pytest.fixture()
-    def sample_operation(self, sample_collection) -> None:
+    def sample_operation(self, sample_collection) -> Operation:
         """Create a sample operation for testing."""
         operation = Operation(
             id=1,
@@ -75,7 +76,7 @@ class TestOperationRepository:
         mock_session.execute.return_value = collection_result
 
         # Mock UUID generation
-        with patch("packages.shared.database.repositories.operation_repository.uuid4") as mock_uuid:
+        with patch("shared.database.repositories.operation_repository.uuid4") as mock_uuid:
             mock_uuid.return_value = "test-operation-uuid"
 
             # Act
@@ -107,7 +108,7 @@ class TestOperationRepository:
                 operation_type=OperationType.INDEX,
                 config={},
             )
-        assert "Operation config cannot be empty" in str(exc_info.value)
+        assert str(exc_info.value) == "Validation error on field 'config': Operation config cannot be empty"
 
     @pytest.mark.asyncio()
     async def test_create_operation_collection_not_found(self, repository, mock_session):
@@ -125,7 +126,7 @@ class TestOperationRepository:
                 operation_type=OperationType.INDEX,
                 config={"path": "/test"},
             )
-        assert "collection" in str(exc_info.value)
+        assert str(exc_info.value) == "collection with ID 'nonexistent' not found"
 
     @pytest.mark.asyncio()
     async def test_create_operation_access_denied(self, repository, mock_session, sample_collection):
@@ -146,8 +147,7 @@ class TestOperationRepository:
                 operation_type=OperationType.INDEX,
                 config={"path": "/test"},
             )
-        assert "1" in str(exc_info.value)
-        assert sample_collection.id in str(exc_info.value)
+        assert str(exc_info.value) == f"User '1' does not have access to collection '{sample_collection.id}'"
 
     @pytest.mark.asyncio()
     async def test_create_operation_public_collection(self, repository, mock_session, sample_collection):
@@ -502,7 +502,7 @@ class TestOperationRepository:
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
             await repository.cancel(sample_operation.uuid, sample_operation.user_id)
-        assert "Cannot cancel operation in OperationStatus.COMPLETED status" in str(exc_info.value)
+        assert str(exc_info.value) == "Validation error on field 'status': Cannot cancel operation in OperationStatus.COMPLETED status"
 
     @pytest.mark.asyncio()
     async def test_get_active_operations_count(self, repository, mock_session):
@@ -526,4 +526,4 @@ class TestOperationRepository:
         # Act & Assert
         with pytest.raises(DatabaseOperationError) as exc_info:
             await repository.get_by_uuid("test-id")
-        assert "Database connection lost" in str(exc_info.value)
+        assert str(exc_info.value) == "Failed to get operation: Database connection lost"

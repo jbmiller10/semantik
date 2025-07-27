@@ -624,14 +624,19 @@ class TestPerformance:
         assert "param_count" not in info
         assert "estimated_size_gb" not in info
 
+    @patch("torch.cuda.is_available", return_value=True)
     @patch("torch.cuda.empty_cache")
-    def test_memory_cleanup(self, mock_empty_cache, reranker_loaded) -> None:
+    def test_memory_cleanup(self, mock_empty_cache, mock_cuda_available, reranker_loaded) -> None:
         """Test GPU memory cleanup on unload"""
+        # The reranker_loaded fixture creates a reranker with device="cuda"
+        # We need to ensure CUDA is available during the unload_model call
+        assert reranker_loaded.device == "cuda"  # Verify the device is actually CUDA
+        
         reranker_loaded.unload_model()
 
-        # Should call empty_cache if on CUDA
-        if reranker_loaded.device == "cuda":
-            mock_empty_cache.assert_called_once()
+        # Should call empty_cache since device is CUDA and CUDA is available
+        mock_empty_cache.assert_called_once()
+        mock_cuda_available.assert_called()  # Verify CUDA availability was checked
 
     @patch("torch.cuda.empty_cache")
     @patch("torch.cuda.is_available", return_value=False)
@@ -788,11 +793,16 @@ class TestAdditionalCoverage:
         # Configure the mock to return itself from .to() to maintain the same object
         mock_model.to.return_value = mock_model
 
-        reranker = CrossEncoderReranker()
-        reranker.load_model()
+        # Mock CUDA availability to ensure consistent device selection
+        with patch("torch.cuda.is_available", return_value=False):
+            reranker = CrossEncoderReranker()
+            assert reranker.device == "cpu"  # Verify device is CPU
+            reranker.load_model()
 
         # Verify eval() was called
         mock_model.eval.assert_called_once()
+        # Verify to() was called since device is CPU and quantization is float16
+        mock_model.to.assert_called_once_with("cpu")
 
     def test_bfloat16_quantization(self, mock_transformers) -> None:
         """Test bfloat16 quantization type"""
