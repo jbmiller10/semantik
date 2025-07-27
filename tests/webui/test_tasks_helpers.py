@@ -137,16 +137,23 @@ class TestAuditLogging:
     """Test audit logging functionality."""
 
     @patch("packages.shared.database.models.CollectionAuditLog")
-    @patch("packages.shared.database.database.AsyncSessionLocal")
-    async def test_audit_log_operation_success(self, mock_session_local, mock_audit_log_class):
+    async def test_audit_log_operation_success(self, mock_audit_log_class):
         """Test successful audit log creation."""
         # Create a proper async session mock
         mock_session = AsyncMock()
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
         
-        # Replace AsyncSessionLocal with our mock function
-        mock_session_local.side_effect = create_mock_async_session_local(mock_session)
+        # Create session maker function
+        def session_maker():
+            @asynccontextmanager
+            async def session_context():
+                yield mock_session
+            return session_context()
+        
+        # Use the test session maker
+        from packages.shared.database import database
+        database.set_test_session_maker(session_maker)
 
         # Mock audit log instance
         mock_audit_log = MagicMock()
@@ -179,16 +186,23 @@ class TestAuditLogging:
         # Clean up
         database.clear_test_session_maker()
 
-    @patch("packages.shared.database.database.AsyncSessionLocal")
-    async def test_audit_log_operation_failure(self, mock_session_local):
+    async def test_audit_log_operation_failure(self):
         """Test audit log creation handles failures gracefully."""
         # Create a mock session that fails on commit
         mock_session = AsyncMock()
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock(side_effect=Exception("Database error"))
         
-        # Replace AsyncSessionLocal with our mock function
-        mock_session_local.side_effect = create_mock_async_session_local(mock_session)
+        # Create session maker function
+        def session_maker():
+            @asynccontextmanager
+            async def session_context():
+                yield mock_session
+            return session_context()
+        
+        # Use the test session maker
+        from packages.shared.database import database
+        database.set_test_session_maker(session_maker)
 
         # Should not raise exception
         await _audit_log_operation(collection_id="col-123", operation_id=456, user_id=1, action="test_action")
