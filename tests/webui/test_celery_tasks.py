@@ -816,9 +816,11 @@ class TestRemoveSourceOperation:
         mock_session = AsyncMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.begin = AsyncMock()
-        mock_session.begin.return_value.__aenter__ = AsyncMock()
-        mock_session.begin.return_value.__aexit__ = AsyncMock()
+        # Create a proper async context manager for begin()
+        mock_transaction = AsyncMock()
+        mock_transaction.__aenter__ = AsyncMock(return_value=mock_transaction)
+        mock_transaction.__aexit__ = AsyncMock(return_value=None)
+        mock_session.begin.return_value = mock_transaction
         mock_session_local.return_value = mock_session
 
         operation = {
@@ -958,9 +960,19 @@ class TestReindexValidation:
             point.payload = {"doc_id": f"doc{i}" for i in range(10)}
         client.scroll.return_value = (sample_points, None)
 
-        # Mock search results
-        search_results = [Mock(score=0.95, payload={"doc_id": "doc1"}) for _ in range(5)]
-        client.search.return_value = search_results
+        # Mock search results - need to return results that match the test points
+        def mock_search(collection_name, *args, **kwargs):
+            # Return results that match the point being searched for
+            # This simulates that both collections return the same results
+            results = []
+            for i in range(5):  # Return top 5 results
+                result = Mock()
+                result.score = 0.95 - (i * 0.01)  # Slightly decreasing scores
+                result.payload = {"doc_id": f"doc{i}"}
+                results.append(result)
+            return results
+        
+        client.search.side_effect = mock_search
 
         return client
 
@@ -968,6 +980,11 @@ class TestReindexValidation:
         """Test successful reindex validation."""
         result = await _validate_reindex(mock_qdrant_client, "old", "new", sample_size=10)
 
+        # Debug print
+        if not result["passed"]:
+            print(f"Validation failed with issues: {result.get('issues', [])}")
+            print(f"Full result: {result}")
+        
         assert result["passed"] is True
         assert result["issues"] == []
         assert result["old_count"] == 1000
