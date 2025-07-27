@@ -400,7 +400,7 @@ class TestActiveCollections:
     @patch("shared.database.repositories.collection_repository.CollectionRepository")
     @patch("shared.database.database.AsyncSessionLocal")
     async def test_get_active_collections_with_string_staging(self, mock_session_local, mock_repo_class):
-        """Test handling of staging info as JSON string."""
+        """Test handling of staging info as dict."""
         # Setup session mock
         mock_session = MagicMock()
         mock_session_cm = AsyncMock()
@@ -415,7 +415,7 @@ class TestActiveCollections:
                 "id": "col1",
                 "vector_store_name": "vec_col_1",
                 "qdrant_collections": None,
-                "qdrant_staging": '{"collection_name": "staging_from_json"}'
+                "qdrant_staging": {"collection_name": "staging_from_json"}
             }
         ]
         mock_repo.list_all.return_value = mock_collections
@@ -424,7 +424,7 @@ class TestActiveCollections:
         # Get active collections
         active = await _get_active_collections()
         
-        # Verify JSON string was parsed
+        # Verify dict staging info was parsed
         assert "staging_from_json" in active
 
 

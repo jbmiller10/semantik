@@ -548,19 +548,27 @@ class TestAppendOperation:
         def mock_extract_func(filepath):
             return [("This is test content", {"page": 1})]
         
+        # Mock asyncio.get_event_loop and run_in_executor
+        mock_loop = Mock()
+        async def async_extract(*args):
+            return mock_extract_func(args[2])  # Third arg is the filepath
+        mock_loop.run_in_executor = Mock(return_value=async_extract(None, None, "/test/documents/doc0.txt"))
+        
         # Mock TokenChunker to return chunks
         mock_chunker = Mock()
         mock_chunk = {
             "id": "chunk1",
             "text": "This is test content",
             "metadata": {"page": 1},
-            "doc_id": "doc-0"
+            "doc_id": "doc-0",
+            "chunk_id": "chunk1"  # Add missing chunk_id
         }
         mock_chunker.chunk_text.return_value = [mock_chunk]
         
         # Patch both the extract function and TokenChunker
         with patch("packages.webui.tasks.extract_and_serialize_thread_safe", side_effect=mock_extract_func), \
-             patch("packages.webui.tasks.TokenChunker", return_value=mock_chunker):
+             patch("packages.webui.tasks.TokenChunker", return_value=mock_chunker), \
+             patch("asyncio.get_event_loop", return_value=mock_loop):
             # Mock httpx client for vecpipe API
             mock_client = AsyncMock()
             mock_response = Mock()
@@ -600,11 +608,8 @@ class TestAppendOperation:
 
             document_repo = AsyncMock()
             document_repo.session = AsyncMock()
-            # First call returns empty list (before scan), second call returns scanned docs
-            document_repo.list_by_collection.side_effect = [
-                ([], 0),  # Before scan
-                (mock_documents, 3)  # After scan, returns documents that need processing
-            ]
+            # Return the scanned documents that need processing
+            document_repo.list_by_collection.return_value = (mock_documents, 3)
             document_repo.update_status = AsyncMock()
             document_repo.get_stats_by_collection.return_value = {
                 "total_documents": 10,
@@ -830,8 +835,8 @@ class TestReindexOperation:
 
                 document_repo = AsyncMock()
                 document_repo.get_stats_by_collection.return_value = {"total_documents": 10}
-                # list_by_collection returns a tuple of (documents, count)
-                document_repo.list_by_collection.return_value = ([], 0)
+                # list_by_collection returns just a list of documents
+                document_repo.list_by_collection.return_value = []
 
                 # Should raise validation error
                 with pytest.raises(ValueError, match="Reindex validation failed"):

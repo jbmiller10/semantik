@@ -186,10 +186,6 @@ class TestCleanupQdrantCollections:
 
         result = cleanup_qdrant_collections(["staging_col_123_20240115_120000"], staging_age_hours=1)
 
-        # Debug: print the result to understand what's happening
-        print(f"Result: {result}")
-        print(f"Safety checks: {result.get('safety_checks', {})}")
-        
         # Verify results
         assert result["collections_deleted"] == 0
         assert result["collections_skipped"] == 1
