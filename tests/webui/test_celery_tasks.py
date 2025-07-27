@@ -839,9 +839,13 @@ class TestRemoveSourceOperation:
         doc1 = Mock()
         doc1.id = "doc1"
         doc1.file_path = "/test/old_docs/doc1.txt"
+        # Add __getitem__ to handle the bug in tasks.py line 2316
+        doc1.__getitem__ = Mock(side_effect=lambda key: getattr(doc1, key))
         doc2 = Mock()
         doc2.id = "doc2"
         doc2.file_path = "/test/old_docs/doc2.txt"
+        # Add __getitem__ to handle the bug in tasks.py line 2316
+        doc2.__getitem__ = Mock(side_effect=lambda key: getattr(doc2, key))
         documents = [doc1, doc2]
         document_repo.list_by_collection_and_source.return_value = documents
         document_repo.bulk_update_status = AsyncMock()

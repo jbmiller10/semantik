@@ -168,7 +168,12 @@ class TestAuditLogging:
 
         # Verify audit log was created with correct parameters
         mock_audit_log_class.assert_called_once()
-        call_kwargs = mock_audit_log_class.call_args[1]
+        
+        # Check how the mock was called - print for debugging
+        print("Call args:", mock_audit_log_class.call_args)
+        print("Kwargs:", mock_audit_log_class.call_args.kwargs)
+        
+        call_kwargs = mock_audit_log_class.call_args.kwargs
         assert call_kwargs["collection_id"] == "col-123"
         assert call_kwargs["operation_id"] == 456
         assert call_kwargs["user_id"] == 1
@@ -181,23 +186,21 @@ class TestAuditLogging:
         mock_session.add.assert_called_once_with(mock_audit_log)
         mock_session.commit.assert_called_once()
 
-    async def test_audit_log_operation_failure(self):
+    @patch("shared.database.database.AsyncSessionLocal")
+    async def test_audit_log_operation_failure(self, mock_async_session_local):
         """Test audit log creation handles failures gracefully."""
         # Create a mock session that fails on commit
         mock_session = AsyncMock()
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock(side_effect=Exception("Database error"))
         
-        # Create session maker function
-        def session_maker():
-            @asynccontextmanager
-            async def session_context():
-                yield mock_session
-            return session_context()
+        # Create an async context manager factory
+        @asynccontextmanager
+        async def session_context():
+            yield mock_session
         
-        # Use the test session maker
-        from packages.shared.database import database
-        database.set_test_session_maker(session_maker)
+        # Make AsyncSessionLocal return our context manager when called
+        mock_async_session_local.return_value = session_context()
 
         # Should not raise exception
         await _audit_log_operation(collection_id="col-123", operation_id=456, user_id=1, action="test_action")
