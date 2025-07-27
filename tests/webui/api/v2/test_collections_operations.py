@@ -6,11 +6,10 @@ This module provides tests for listing operations and documents within collectio
 
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
-from fastapi.testclient import TestClient
 
 from packages.shared.database.exceptions import (
     AccessDeniedError,
@@ -67,7 +66,7 @@ class TestListCollectionOperations:
     ) -> None:
         """Test successful operation listing."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
-        
+
         # Create mock operations with proper collection_id
         operations = []
         for i in range(3):
@@ -111,7 +110,7 @@ class TestListCollectionOperations:
     ) -> None:
         """Test listing operations with status and type filters."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
-        
+
         # Create mock operations
         operation1 = MagicMock(spec=Operation)
         operation1.uuid = "op-1"
@@ -123,7 +122,7 @@ class TestListCollectionOperations:
         operation1.created_at = datetime.now(UTC)
         operation1.started_at = datetime.now(UTC)
         operation1.completed_at = datetime.now(UTC)
-        
+
         operation2 = MagicMock(spec=Operation)
         operation2.uuid = "op-2"
         operation2.collection_id = collection_uuid  # Fix: Use proper string value
@@ -277,19 +276,19 @@ class TestListCollectionDocuments:
     ) -> None:
         """Test successful document listing."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
-        
+
         # Create mock documents
         documents = []
         for i in range(3):
             doc = MagicMock(spec=Document)
-            doc.id = i + 1
+            doc.id = f"doc-{i+1}"
             doc.collection_id = collection_uuid
             doc.file_name = f"document{i}.txt"
             doc.file_path = f"/data/document{i}.txt"
             doc.file_size = 1024 * (i + 1)
             doc.mime_type = "text/plain"
             doc.content_hash = f"hash{i}"
-            doc.status = DocumentStatus.INDEXED
+            doc.status = DocumentStatus.COMPLETED
             doc.error_message = None
             doc.chunk_count = 10 * (i + 1)
             doc.meta = {"test": f"metadata{i}"}
@@ -324,25 +323,25 @@ class TestListCollectionDocuments:
     ) -> None:
         """Test listing documents with status filter."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
-        
+
         # Create mock documents with different statuses
         doc1 = MagicMock(spec=Document)
-        doc1.id = 1
+        doc1.id = "doc-1"
         doc1.collection_id = collection_uuid
         doc1.file_name = "document1.txt"
         doc1.file_path = "/data/document1.txt"
         doc1.file_size = 1024
         doc1.mime_type = "text/plain"
         doc1.content_hash = "hash1"
-        doc1.status = DocumentStatus.INDEXED
+        doc1.status = DocumentStatus.COMPLETED
         doc1.error_message = None
         doc1.chunk_count = 10
         doc1.meta = {}
         doc1.created_at = datetime.now(UTC)
         doc1.updated_at = datetime.now(UTC)
-        
+
         doc2 = MagicMock(spec=Document)
-        doc2.id = 2
+        doc2.id = "doc-2"
         doc2.collection_id = collection_uuid
         doc2.file_name = "document2.txt"
         doc2.file_path = "/data/document2.txt"
@@ -363,13 +362,13 @@ class TestListCollectionDocuments:
             collection_uuid=collection_uuid,
             page=1,
             per_page=50,
-            status="indexed",
+            status="completed",
             current_user=mock_user,
             service=mock_collection_service,
         )
 
         assert len(result.documents) == 1
-        assert result.documents[0].status == "indexed"
+        assert result.documents[0].status == "completed"
         assert result.total == 1  # Total should be updated after filtering
 
     @pytest.mark.asyncio()
@@ -453,7 +452,7 @@ class TestListCollectionDocuments:
     ) -> None:
         """Test document listing with pagination."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
-        
+
         # Return empty list for page 2
         mock_collection_service.list_documents.return_value = ([], 50)
 

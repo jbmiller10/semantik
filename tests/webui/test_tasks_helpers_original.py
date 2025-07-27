@@ -559,7 +559,11 @@ class TestConcurrentOperations:
             mock_redis.expire = AsyncMock(return_value=True)
             mock_redis.close = AsyncMock()
             mock_redis.ping = AsyncMock(return_value=True)
-            mock_from_url.return_value = mock_redis
+            
+            # Make from_url return a coroutine that returns the mock redis
+            async def return_mock_redis(*args, **kwargs):
+                return mock_redis
+            mock_from_url.side_effect = return_mock_redis
             
             # Send updates sequentially
             updates_sent = 0
@@ -673,7 +677,11 @@ class TestPerformance:
             mock_redis.expire = AsyncMock(return_value=True)
             mock_redis.close = AsyncMock()
             mock_redis.ping = AsyncMock(return_value=True)
-            mock_from_url.return_value = mock_redis
+            
+            # Make from_url return a coroutine that returns the mock redis
+            async def return_mock_redis(*args, **kwargs):
+                return mock_redis
+            mock_from_url.side_effect = return_mock_redis
             
             # Send many updates
             async with updater:
