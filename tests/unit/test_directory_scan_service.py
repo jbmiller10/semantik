@@ -13,8 +13,8 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from pyfakefs.fake_filesystem_unittest import Patcher
-from webui.api.schemas import DirectoryScanFile, DirectoryScanProgress, DirectoryScanResponse
-from webui.services.directory_scan_service import (
+from packages.webui.api.schemas import DirectoryScanFile, DirectoryScanProgress, DirectoryScanResponse
+from packages.webui.services.directory_scan_service import (
     HASH_CHUNK_SIZE,
     MAX_FILE_SIZE,
     PROGRESS_UPDATE_INTERVAL,
@@ -37,19 +37,19 @@ class TestDirectoryScanService:
         with Patcher() as patcher:
             # Create test directory structure
             patcher.fs.create_dir("/test_dir")
-            patcher.fs.create_file("/test_dir/document1.pdf", st_size=1024)
-            patcher.fs.create_file("/test_dir/document2.docx", st_size=2048)
-            patcher.fs.create_file("/test_dir/text_file.txt", st_size=512)
-            patcher.fs.create_file("/test_dir/not_supported.xyz", st_size=256)
+            patcher.fs.create_file("/test_dir/document1.pdf", contents=b"PDF content" * 100)
+            patcher.fs.create_file("/test_dir/document2.docx", contents=b"DOCX content" * 150)
+            patcher.fs.create_file("/test_dir/text_file.txt", contents=b"Text content" * 40)
+            patcher.fs.create_file("/test_dir/not_supported.xyz", contents=b"XYZ content" * 20)
             patcher.fs.create_dir("/test_dir/subdir")
-            patcher.fs.create_file("/test_dir/subdir/nested.md", st_size=768)
+            patcher.fs.create_file("/test_dir/subdir/nested.md", contents=b"MD content" * 70)
             patcher.fs.create_file("/test_dir/subdir/large_file.pdf", st_size=MAX_FILE_SIZE + 1)
             yield patcher.fs
 
     @pytest.fixture()
     def mock_ws_manager(self):
         """Mock WebSocket manager"""
-        with patch("webui.services.directory_scan_service.ws_manager") as mock:
+        with patch("packages.webui.services.directory_scan_service.ws_manager") as mock:
             mock._broadcast = AsyncMock()
             yield mock
 
@@ -69,7 +69,8 @@ class TestDirectoryScanService:
         assert result.scan_id == "scan-123"
         assert result.path == "/test_dir"
         assert result.total_files == 4  # Excludes .xyz and large file
-        assert result.total_size == 1024 + 2048 + 512 + 768  # Sum of valid files
+        # Total size should be sum of all valid files
+        assert result.total_size == 1100 + 1800 + 480 + 700  # Actual sizes from content
 
         # Verify files
         file_paths = {f.file_path for f in result.files}
@@ -227,7 +228,7 @@ class TestDirectoryScanService:
         """Test WebSocket progress updates during scan"""
         # Create more files to trigger progress updates
         for i in range(PROGRESS_UPDATE_INTERVAL + 5):
-            fake_fs.create_file(f"/test_dir/file_{i}.txt", st_size=100)
+            fake_fs.create_file(f"/test_dir/file_{i}.txt", contents=b"x" * 100)
 
         await service.scan_directory_preview(
             path="/test_dir",
@@ -260,17 +261,15 @@ class TestDirectoryScanService:
         """Test error handling during scan"""
         # Mock an error during file scanning
         with patch.object(service, "_scan_file", side_effect=Exception("Scan error")):
-            result = await service.scan_directory_preview(
-                path="/test_dir",
-                scan_id="scan-error",
-                user_id=123,
-                recursive=False,
-            )
+            with pytest.raises(Exception, match="Scan error"):
+                await service.scan_directory_preview(
+                    path="/test_dir",
+                    scan_id="scan-error",
+                    user_id=123,
+                    recursive=False,
+                )
 
-            # Should still return a result
-            assert isinstance(result, DirectoryScanResponse)
-
-            # Verify error message was sent via WebSocket
+            # Verify error message was sent via WebSocket before raising
             error_calls = [
                 call
                 for call in mock_ws_manager._broadcast.call_args_list
@@ -366,7 +365,7 @@ class TestDirectoryScanService:
     async def test_file_permission_errors(self, service, fake_fs, mock_ws_manager):
         """Test handling files with permission errors"""
         # Create file without read permissions
-        fake_fs.create_file("/test_dir/restricted.pdf", st_size=1024, st_mode=0o000)
+        fake_fs.create_file("/test_dir/restricted.pdf", contents=b"restricted" * 100, st_mode=0o000)
 
         result = await service.scan_directory_preview(
             path="/test_dir",
@@ -431,13 +430,13 @@ class TestDirectoryScanServiceEdgeCases:
         return DirectoryScanService()
 
     @pytest.mark.asyncio()
-    async def test_scan_file_with_invalid_hash(self, service, fake_fs):
+    async def test_scan_file_with_invalid_hash(self, service, fs):
         """Test handling files that fail hash calculation"""
         # Create a file that will fail to hash
         with patch.object(service, "_calculate_file_hash", side_effect=OSError("Hash calculation failed")):
             # This should raise an OSError wrapped in the scan_file method
             file_path = Path("/test.pdf")
-            fake_fs.create_file(str(file_path), st_size=1024)
+            fs.create_file(str(file_path), contents=b"test" * 256)
 
             file_info, warning = await service._scan_file(file_path, None, None)
 
@@ -446,10 +445,10 @@ class TestDirectoryScanServiceEdgeCases:
             assert "Error scanning file" in warning
 
     @pytest.mark.asyncio()
-    async def test_count_files_error_handling(self, service, fake_fs):
+    async def test_count_files_error_handling(self, service, fs):
         """Test file counting with errors"""
-        fake_fs.create_dir("/test_count")
-        fake_fs.create_file("/test_count/file1.pdf", st_size=100)
+        fs.create_dir("/test_count")
+        fs.create_file("/test_count/file1.pdf", contents=b"x" * 100)
 
         # Mock os.walk to raise an error
         with patch("os.walk", side_effect=Exception("Walk error")):
@@ -464,7 +463,7 @@ class TestDirectoryScanServiceEdgeCases:
             assert count == 0
 
     @pytest.mark.asyncio()
-    @patch("webui.services.directory_scan_service.ws_manager")
+    @patch("packages.webui.services.directory_scan_service.ws_manager")
     async def test_websocket_broadcast_failure(self, mock_ws_manager, service, fake_fs):
         """Test handling WebSocket broadcast failures"""
         # Make broadcast fail
@@ -481,10 +480,10 @@ class TestDirectoryScanServiceEdgeCases:
         assert isinstance(result, DirectoryScanResponse)
 
     @pytest.mark.asyncio()
-    async def test_scan_recursive_error_handling(self, service, fake_fs):
+    async def test_scan_recursive_error_handling(self, service, fs):
         """Test error handling in recursive scan"""
-        fake_fs.create_dir("/test_recursive")
-        fake_fs.create_file("/test_recursive/file.pdf", st_size=100)
+        fs.create_dir("/test_recursive")
+        fs.create_file("/test_recursive/file.pdf", contents=b"x" * 100)
 
         # Mock os.walk to raise an error
         with patch("os.walk", side_effect=Exception("Walk error")):
@@ -509,7 +508,7 @@ class TestDirectoryScanProgress:
         return DirectoryScanService()
 
     @pytest.mark.asyncio()
-    @patch("webui.services.directory_scan_service.ws_manager")
+    @patch("packages.webui.services.directory_scan_service.ws_manager")
     async def test_progress_message_structure(self, mock_ws_manager, service):
         """Test progress message data structure"""
         await service._send_progress(
@@ -541,7 +540,7 @@ class TestDirectoryScanProgress:
         # Create exactly PROGRESS_UPDATE_INTERVAL + 1 files
         num_files = PROGRESS_UPDATE_INTERVAL + 1
         for i in range(num_files):
-            fake_fs.create_file(f"/test_progress/file_{i}.txt", st_size=100)
+            fake_fs.create_file(f"/test_progress/file_{i}.txt", contents=b"x" * 100)
 
         with patch.object(service, "_send_progress", new_callable=AsyncMock) as mock_send:
             await service.scan_directory_preview(

@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, Mock, call, patch
 import pytest
 import redis.asyncio as redis
 from fastapi import WebSocket
-from webui.websocket_manager import RedisStreamWebSocketManager
+from packages.webui.websocket_manager import RedisStreamWebSocketManager
 
 
 class TestWebSocketManager:
@@ -74,10 +74,11 @@ class TestWebSocketManager:
         return operation
 
     @pytest.mark.asyncio()
-    @patch("webui.websocket_manager.redis.from_url")
+    @patch("packages.webui.websocket_manager.redis.from_url")
     async def test_startup_success(self, mock_redis_from_url, ws_manager, mock_redis):
         """Test successful startup and Redis connection"""
-        mock_redis_from_url.return_value = mock_redis
+        # redis.from_url is async, so make it return a coroutine
+        mock_redis_from_url.return_value = asyncio.coroutine(lambda: mock_redis)()
 
         await ws_manager.startup()
 
@@ -87,19 +88,21 @@ class TestWebSocketManager:
         mock_redis_from_url.assert_called_once()
 
     @pytest.mark.asyncio()
-    @patch("webui.websocket_manager.redis.from_url")
-    @patch("webui.websocket_manager.asyncio.sleep")
+    @patch("packages.webui.websocket_manager.redis.from_url")
+    @patch("packages.webui.websocket_manager.asyncio.sleep")
     async def test_startup_retry_on_failure(self, mock_sleep, mock_redis_from_url, ws_manager):
         """Test startup retry logic on connection failure"""
         # First two attempts fail, third succeeds
         mock_redis_success = AsyncMock(spec=redis.Redis)
         mock_redis_success.ping = AsyncMock()
 
-        mock_redis_from_url.side_effect = [
-            Exception("Connection failed"),
-            Exception("Connection failed"),
-            mock_redis_success,
-        ]
+        # Make from_url raise exceptions then succeed
+        async def side_effect_func(*args, **kwargs):
+            if mock_redis_from_url.call_count <= 2:
+                raise Exception("Connection failed")
+            return mock_redis_success
+        
+        mock_redis_from_url.side_effect = side_effect_func
 
         await ws_manager.startup()
 
@@ -108,8 +111,8 @@ class TestWebSocketManager:
         assert mock_sleep.call_count == 2  # Two retries
 
     @pytest.mark.asyncio()
-    @patch("webui.websocket_manager.redis.from_url")
-    @patch("webui.websocket_manager.logger")
+    @patch("packages.webui.websocket_manager.redis.from_url")
+    @patch("packages.webui.websocket_manager.logger")
     async def test_startup_failure_after_max_retries(self, mock_logger, mock_redis_from_url, ws_manager):
         """Test graceful degradation when Redis connection fails"""
         mock_redis_from_url.side_effect = Exception("Connection failed")
@@ -281,7 +284,7 @@ class TestWebSocketManager:
         assert sent_data["data"]["percentage"] == 50
 
     @pytest.mark.asyncio()
-    @patch("webui.websocket_manager.logger")
+    @patch("packages.webui.websocket_manager.logger")
     async def test_send_update_redis_failure(self, mock_logger, ws_manager, mock_redis, mock_websocket):
         """Test fallback to direct broadcast on Redis failure"""
         ws_manager.redis = mock_redis
@@ -310,6 +313,9 @@ class TestWebSocketManager:
 
         # Mock consumer group creation success
         mock_redis.xgroup_create.return_value = None
+        
+        # Mock xinfo_groups to return empty list
+        mock_redis.xinfo_groups.return_value = []
 
         # Mock messages to consume
         test_messages = [
@@ -544,7 +550,7 @@ class TestWebSocketManager:
         assert ws_manager._get_operation_func == mock_getter
 
     @pytest.mark.asyncio()
-    @patch("webui.websocket_manager.AsyncSessionLocal")
+    @patch("packages.webui.websocket_manager.AsyncSessionLocal")
     async def test_default_operation_getter(self, mock_session_local, ws_manager, mock_websocket, mock_operation):
         """Test default operation getter when not injected"""
         ws_manager.redis = Mock()
@@ -553,7 +559,7 @@ class TestWebSocketManager:
         mock_session = AsyncMock()
         mock_session_local.return_value.__aenter__.return_value = mock_session
 
-        with patch("webui.websocket_manager.OperationRepository") as mock_repo_class:
+        with patch("packages.webui.websocket_manager.OperationRepository") as mock_repo_class:
             mock_repo = AsyncMock()
             mock_repo.get_by_uuid.return_value = mock_operation
             mock_repo_class.return_value = mock_repo
@@ -576,7 +582,7 @@ class TestWebSocketManagerErrorHandling:
         return manager
 
     @pytest.mark.asyncio()
-    @patch("webui.websocket_manager.logger")
+    @patch("packages.webui.websocket_manager.logger")
     async def test_consumer_error_recovery(self, mock_logger, ws_manager):
         """Test consumer error recovery"""
         mock_redis = AsyncMock()
@@ -624,6 +630,7 @@ class TestWebSocketManagerErrorHandling:
 
         mock_redis.xreadgroup.side_effect = [bad_messages, asyncio.CancelledError()]
         mock_redis.xinfo_stream.return_value = {"length": 1}
+        mock_redis.xinfo_groups.return_value = []
 
         # Setup connection
         mock_ws = Mock()
