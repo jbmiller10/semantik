@@ -1,6 +1,6 @@
 """Unit tests for shared API contracts."""
 
-from typing import Any, Dict
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -26,7 +26,7 @@ class TestSearchContracts:
 
     def test_search_request_with_top_k_alias(self) -> None:
         """Test SearchRequest with alias field 'top_k'."""
-        req_data: Dict[str, Any] = {"query": "test query", "top_k": 10}
+        req_data: dict[str, Any] = {"query": "test query", "top_k": 10}
         req = SearchRequest(**req_data)
         assert req.query == "test query"
         assert req.k == 10  # alias mapped to canonical field

@@ -1,7 +1,6 @@
 """Unit tests for OperationRepository."""
 
 from datetime import UTC, datetime
-from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 

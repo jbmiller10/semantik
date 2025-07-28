@@ -1,6 +1,6 @@
 """Shared fixtures for service tests."""
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -109,7 +109,7 @@ def mock_collection() -> MagicMock:
     collection.updated_at = MagicMock()
 
     # Add to_dict method
-    def collection_to_dict() -> Dict[str, Any]:
+    def collection_to_dict() -> dict[str, Any]:
         return {
             "id": collection.id,
             "uuid": collection.uuid,
@@ -150,7 +150,7 @@ def mock_operation() -> MagicMock:
     operation.created_by = 1
 
     # Add to_dict method
-    def operation_to_dict() -> Dict[str, Any]:
+    def operation_to_dict() -> dict[str, Any]:
         return {
             "id": operation.id,
             "uuid": operation.uuid,

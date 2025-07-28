@@ -1,7 +1,7 @@
 """Unit tests for SQLAlchemy models timezone handling."""
 
+from collections.abc import Generator
 from datetime import UTC, datetime
-from typing import Generator
 
 import pytest
 from sqlalchemy import create_engine

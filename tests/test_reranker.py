@@ -5,7 +5,8 @@ Tests the reranking functionality with mocked models
 
 import queue
 import threading
-from typing import Any, Callable, Generator, List, Tuple
+from collections.abc import Callable, Generator
+from typing import Any
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -30,7 +31,7 @@ def _mock_torch_cuda() -> Generator[None, None, None]:
 
 
 @pytest.fixture()
-def mock_transformers() -> Generator[Tuple[MagicMock, MagicMock, MagicMock, MagicMock], None, None]:
+def mock_transformers() -> Generator[tuple[MagicMock, MagicMock, MagicMock, MagicMock], None, None]:
     """Mock transformers imports"""
     with (
         patch("vecpipe.reranker.AutoModelForCausalLM") as mock_model_class,
@@ -59,7 +60,7 @@ def mock_transformers() -> Generator[Tuple[MagicMock, MagicMock, MagicMock, Magi
 
 
 @pytest.fixture()
-def reranker_unloaded(mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> CrossEncoderReranker:
+def reranker_unloaded(mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> CrossEncoderReranker:
     """Create reranker instance without loading model"""
     _, _, _, _ = mock_transformers
     with patch("torch.cuda.is_available", return_value=True):
@@ -67,14 +68,16 @@ def reranker_unloaded(mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, 
 
 
 @pytest.fixture()
-def reranker_loaded(reranker_unloaded: CrossEncoderReranker, mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> CrossEncoderReranker:  # noqa: ARG001
+def reranker_loaded(
+    reranker_unloaded: CrossEncoderReranker, mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock]  # noqa: ARG001
+) -> CrossEncoderReranker:
     """Create reranker instance with model loaded"""
     reranker_unloaded.load_model()
     return reranker_unloaded
 
 
 @pytest.fixture()
-def sample_documents() -> List[str]:
+def sample_documents() -> list[str]:
     """Sample documents for testing"""
     return [
         "Machine learning is a subset of artificial intelligence.",
@@ -152,7 +155,11 @@ class TestInitialization:
 class TestModelLoading:
     """Test model loading and unloading"""
 
-    def test_load_model_success(self, reranker_unloaded: CrossEncoderReranker, mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
+    def test_load_model_success(
+        self,
+        reranker_unloaded: CrossEncoderReranker,
+        mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+    ) -> None:
         """Test successful model loading"""
         model_class, tokenizer_class, mock_model, mock_tokenizer = mock_transformers
 
@@ -168,7 +175,9 @@ class TestModelLoading:
             TEST_MODEL_NAME, trust_remote_code=True, padding_side="left"
         )
 
-    def test_load_model_with_quantization(self, mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
+    def test_load_model_with_quantization(
+        self, mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock]
+    ) -> None:
         """Test model loading with int8 quantization"""
         model_class, _, _, _ = mock_transformers
 
@@ -184,7 +193,11 @@ class TestModelLoading:
         assert reranker_loaded.model is None
         assert reranker_loaded.tokenizer is None
 
-    def test_load_model_thread_safety(self, reranker_unloaded: CrossEncoderReranker, mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
+    def test_load_model_thread_safety(
+        self,
+        reranker_unloaded: CrossEncoderReranker,
+        mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+    ) -> None:
         """Test thread-safe model loading"""
 
         def load_model() -> None:
@@ -200,7 +213,11 @@ class TestModelLoading:
         model_class, _, _, _ = mock_transformers
         assert model_class.from_pretrained.call_count == 1
 
-    def test_load_model_already_loaded(self, reranker_loaded: CrossEncoderReranker, mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
+    def test_load_model_already_loaded(
+        self,
+        reranker_loaded: CrossEncoderReranker,
+        mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+    ) -> None:
         """Test loading when model is already loaded"""
         model_class, _, _, _ = mock_transformers
 
@@ -213,7 +230,11 @@ class TestModelLoading:
         # Should not load again
         model_class.from_pretrained.assert_not_called()
 
-    def test_load_model_error_handling(self, reranker_unloaded: CrossEncoderReranker, mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
+    def test_load_model_error_handling(
+        self,
+        reranker_unloaded: CrossEncoderReranker,
+        mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+    ) -> None:
         """Test error handling during model loading"""
         model_class, _, _, _ = mock_transformers
         model_class.from_pretrained.side_effect = Exception("Model loading failed")
@@ -267,9 +288,13 @@ class TestRelevanceScoring:
     @patch("torch.stack")
     @patch("torch.nn.functional.softmax")
     def test_compute_relevance_scores_basic(
-        self, mock_softmax: MagicMock, mock_stack: MagicMock, reranker_loaded: CrossEncoderReranker,
-        mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock],
-        sample_documents: List[str], mock_model_output: Callable[[int], MagicMock]
+        self,
+        mock_softmax: MagicMock,
+        mock_stack: MagicMock,
+        reranker_loaded: CrossEncoderReranker,
+        mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+        sample_documents: list[str],
+        mock_model_output: Callable[[int], MagicMock],
     ) -> None:
         """Test basic relevance score computation"""
         _, _, mock_model, mock_tokenizer = mock_transformers
@@ -304,9 +329,12 @@ class TestRelevanceScoring:
     @patch("torch.stack")
     @patch("torch.nn.functional.softmax")
     def test_compute_relevance_scores_empty_documents(
-        self, mock_softmax: MagicMock, mock_stack: MagicMock, reranker_loaded: CrossEncoderReranker,
-        mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock],
-        mock_model_output: Callable[[int], MagicMock]
+        self,
+        mock_softmax: MagicMock,
+        mock_stack: MagicMock,
+        reranker_loaded: CrossEncoderReranker,
+        mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+        mock_model_output: Callable[[int], MagicMock],
     ) -> None:
         """Test handling of empty documents"""
         _, _, mock_model, mock_tokenizer = mock_transformers
@@ -337,7 +365,11 @@ class TestRelevanceScoring:
         scores = reranker_loaded.compute_relevance_scores("query", [])
         assert scores == []
 
-    def test_compute_relevance_scores_batching(self, reranker_loaded: CrossEncoderReranker, mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
+    def test_compute_relevance_scores_batching(
+        self,
+        reranker_loaded: CrossEncoderReranker,
+        mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+    ) -> None:
         """Test batch processing of documents"""
         _, _, mock_model, mock_tokenizer = mock_transformers
 
@@ -374,7 +406,7 @@ class TestRelevanceScoring:
         # Mock the tokenizer encode for yes/no tokens
         original_encode = mock_tokenizer.encode
 
-        def encode_with_yes_no(text: str, add_special_tokens: bool = True) -> List[int]:
+        def encode_with_yes_no(text: str, add_special_tokens: bool = True) -> list[int]:
             if text in ["Yes", "No", "yes", "no"]:
                 return original_encode(text, add_special_tokens)  # type: ignore[no-any-return]
             return [1, 2, 3]
@@ -416,7 +448,7 @@ class TestRelevanceScoring:
 class TestReranking:
     """Test reranking functionality"""
 
-    def test_rerank_basic(self, reranker_loaded: CrossEncoderReranker, sample_documents: List[str]) -> None:
+    def test_rerank_basic(self, reranker_loaded: CrossEncoderReranker, sample_documents: list[str]) -> None:
         """Test basic reranking functionality"""
         query = "artificial intelligence"
 
@@ -434,7 +466,9 @@ class TestReranking:
             assert indices == (1, 3, 4)  # Indices of top 3 scores
             assert scores == (0.9, 0.7, 0.5)
 
-    def test_rerank_top_k_larger_than_docs(self, reranker_loaded: CrossEncoderReranker, sample_documents: List[str]) -> None:
+    def test_rerank_top_k_larger_than_docs(
+        self, reranker_loaded: CrossEncoderReranker, sample_documents: list[str]
+    ) -> None:
         """Test reranking when top_k > number of documents"""
         query = "test"
 
@@ -450,7 +484,7 @@ class TestReranking:
         results = reranker_loaded.rerank("query", [], top_k=10)
         assert results == []
 
-    def test_rerank_with_scores(self, reranker_loaded: CrossEncoderReranker, sample_documents: List[str]) -> None:
+    def test_rerank_with_scores(self, reranker_loaded: CrossEncoderReranker, sample_documents: list[str]) -> None:
         """Test reranking with return_scores=True"""
         query = "machine learning"
 
@@ -485,9 +519,12 @@ class TestEdgeCases:
     @patch("torch.stack")
     @patch("torch.nn.functional.softmax")
     def test_very_long_documents(
-        self, mock_softmax: MagicMock, mock_stack: MagicMock, reranker_loaded: CrossEncoderReranker,
-        mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock],
-        mock_model_output: Callable[[int], MagicMock]
+        self,
+        mock_softmax: MagicMock,
+        mock_stack: MagicMock,
+        reranker_loaded: CrossEncoderReranker,
+        mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+        mock_model_output: Callable[[int], MagicMock],
     ) -> None:
         """Test handling of documents exceeding max_length"""
         _, _, mock_model, mock_tokenizer = mock_transformers
@@ -532,9 +569,9 @@ class TestEdgeCases:
             # Called with correct query
             mock_compute.assert_called_once_with(query, documents, None)
 
-    def test_concurrent_reranking(self, reranker_loaded: CrossEncoderReranker, sample_documents: List[str]) -> None:
+    def test_concurrent_reranking(self, reranker_loaded: CrossEncoderReranker, sample_documents: list[str]) -> None:
         """Test thread safety during concurrent reranking"""
-        results_queue: queue.Queue[Tuple[int, List[Tuple[int, float]]]] = queue.Queue()
+        results_queue: queue.Queue[tuple[int, list[tuple[int, float]]]] = queue.Queue()
 
         def rerank_task(query_id: int) -> None:
             with patch.object(reranker_loaded, "compute_relevance_scores") as mock:
@@ -554,15 +591,18 @@ class TestEdgeCases:
     @patch("torch.stack")
     @patch("torch.nn.functional.softmax")
     def test_special_token_encoding_fallback(
-        self, mock_softmax: MagicMock, mock_stack: MagicMock, reranker_loaded: CrossEncoderReranker,
-        mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock],
-        mock_model_output: Callable[[int], MagicMock]
+        self,
+        mock_softmax: MagicMock,
+        mock_stack: MagicMock,
+        reranker_loaded: CrossEncoderReranker,
+        mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+        mock_model_output: Callable[[int], MagicMock],
     ) -> None:
         """Test fallback when capitalized Yes/No tokens don't work"""
         _, _, mock_model, mock_tokenizer = mock_transformers
 
         # Configure tokenizer to return multiple tokens for capitalized versions
-        def encode_side_effect(text: str, add_special_tokens: bool = True) -> List[int]:  # noqa: ARG001
+        def encode_side_effect(text: str, add_special_tokens: bool = True) -> list[int]:  # noqa: ARG001
             token_map = {
                 "Yes": [1, 2, 3],  # Multiple tokens
                 "No": [4, 5],  # Multiple tokens
@@ -636,7 +676,9 @@ class TestPerformance:
 
     @patch("torch.cuda.is_available", return_value=True)
     @patch("torch.cuda.empty_cache")
-    def test_memory_cleanup(self, mock_empty_cache: MagicMock, mock_cuda_available: MagicMock, reranker_loaded: CrossEncoderReranker) -> None:
+    def test_memory_cleanup(
+        self, mock_empty_cache: MagicMock, mock_cuda_available: MagicMock, reranker_loaded: CrossEncoderReranker
+    ) -> None:
         """Test GPU memory cleanup on unload"""
         # The reranker_loaded fixture creates a reranker with device="cuda"
         # We need to ensure CUDA is available during the unload_model call
@@ -650,7 +692,9 @@ class TestPerformance:
 
     @patch("torch.cuda.empty_cache")
     @patch("torch.cuda.is_available", return_value=False)
-    def test_no_memory_cleanup_on_cpu(self, mock_cuda_available: MagicMock, mock_empty_cache: MagicMock) -> None:  # noqa: ARG002
+    def test_no_memory_cleanup_on_cpu(
+        self, mock_cuda_available: MagicMock, mock_empty_cache: MagicMock
+    ) -> None:  # noqa: ARG002
         """Test no GPU cleanup when on CPU"""
         reranker = CrossEncoderReranker(device="cpu")
         with patch("vecpipe.reranker.AutoModelForCausalLM"), patch("vecpipe.reranker.AutoTokenizer"):
@@ -690,10 +734,10 @@ def assert_valid_rerank_results(results: list[tuple[int, float]], expected_lengt
     assert scores == sorted(scores, reverse=True)
 
 
-def create_mock_tokenizer_encode(special_tokens: dict[str, List[int]]) -> Callable[[str, bool], List[int]]:
+def create_mock_tokenizer_encode(special_tokens: dict[str, list[int]]) -> Callable[[str, bool], list[int]]:
     """Create mock tokenizer encode function"""
 
-    def encode(text: str, add_special_tokens: bool = True) -> List[int]:  # noqa: ARG001
+    def encode(text: str, add_special_tokens: bool = True) -> list[int]:  # noqa: ARG001
         return special_tokens.get(text, [1, 2, 3])  # Default tokens
 
     return encode
@@ -731,7 +775,11 @@ class TestUtilities:
 class TestAdditionalCoverage:
     """Additional tests to achieve 100% coverage"""
 
-    def test_flash_attention_detection(self, reranker_unloaded: CrossEncoderReranker, mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
+    def test_flash_attention_detection(
+        self,
+        reranker_unloaded: CrossEncoderReranker,
+        mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+    ) -> None:
         """Test flash attention detection logic"""
         import importlib.util
 
@@ -750,7 +798,9 @@ class TestAdditionalCoverage:
             reranker_unloaded.load_model()
             mock_find_spec.assert_called_once_with("flash_attn")
 
-    def test_device_map_configuration(self, mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
+    def test_device_map_configuration(
+        self, mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock]
+    ) -> None:
         """Test device_map parameter based on device type"""
         model_class, _, _, _ = mock_transformers
 
@@ -773,7 +823,7 @@ class TestAdditionalCoverage:
         call_kwargs = model_class.from_pretrained.call_args[1]
         assert call_kwargs["device_map"] is None
 
-    def test_model_to_device_logic(self, mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
+    def test_model_to_device_logic(self, mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
         """Test conditional model.to(device) logic"""
         model_class, _, mock_model, _ = mock_transformers
 
@@ -796,7 +846,7 @@ class TestAdditionalCoverage:
             reranker_int8.load_model()
             mock_model_int8.to.assert_not_called()
 
-    def test_model_eval_mode(self, mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
+    def test_model_eval_mode(self, mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
         """Test that model is set to eval mode after loading"""
         _, _, mock_model, _ = mock_transformers
 
@@ -814,7 +864,7 @@ class TestAdditionalCoverage:
         # Verify to() was called since device is CPU and quantization is float16
         mock_model.to.assert_called_once_with("cpu")
 
-    def test_bfloat16_quantization(self, mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
+    def test_bfloat16_quantization(self, mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
         """Test bfloat16 quantization type"""
         model_class, _, _, _ = mock_transformers
 
@@ -825,7 +875,9 @@ class TestAdditionalCoverage:
         call_kwargs = model_class.from_pretrained.call_args[1]
         assert call_kwargs["torch_dtype"] == torch.bfloat16
 
-    def test_quantization_config_removes_torch_dtype(self, mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
+    def test_quantization_config_removes_torch_dtype(
+        self, mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock]
+    ) -> None:
         """Test that torch_dtype is removed when using quantization_config"""
         model_class, _, _, _ = mock_transformers
 
@@ -839,12 +891,16 @@ class TestAdditionalCoverage:
             assert "torch_dtype" not in call_kwargs
             assert "quantization_config" in call_kwargs
 
-    def test_token_encoding_error(self, reranker_loaded: CrossEncoderReranker, mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
+    def test_token_encoding_error(
+        self,
+        reranker_loaded: CrossEncoderReranker,
+        mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+    ) -> None:
         """Test ValueError when yes/no tokens can't be encoded to single tokens"""
         _, _, mock_model, mock_tokenizer = mock_transformers
 
         # Configure tokenizer to return multiple tokens for all variants
-        def bad_encode(text: str, add_special_tokens: bool = True) -> List[int]:  # noqa: ARG001
+        def bad_encode(text: str, add_special_tokens: bool = True) -> list[int]:  # noqa: ARG001
             # Always return multiple tokens
             return [1, 2, 3]
 
@@ -858,7 +914,11 @@ class TestAdditionalCoverage:
         with pytest.raises(ValueError, match="Yes/No tokens must encode to single tokens"):
             reranker_loaded.compute_relevance_scores("query", ["document"])
 
-    def test_model_info_calculations(self, reranker_loaded: CrossEncoderReranker, mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
+    def test_model_info_calculations(
+        self,
+        reranker_loaded: CrossEncoderReranker,
+        mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+    ) -> None:
         """Test model info parameter calculations"""
         _, _, mock_model, _ = mock_transformers
 
@@ -880,7 +940,11 @@ class TestAdditionalCoverage:
         assert info["batch_size"] == 128  # float16 on 0.6B model
         assert info["max_length"] == 512
 
-    def test_custom_batch_size_parameter(self, reranker_loaded: CrossEncoderReranker, mock_transformers: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
+    def test_custom_batch_size_parameter(
+        self,
+        reranker_loaded: CrossEncoderReranker,
+        mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+    ) -> None:
         """Test compute_relevance_scores with custom batch_size"""
         _, _, mock_model, mock_tokenizer = mock_transformers
 
@@ -925,7 +989,7 @@ class TestAdditionalCoverage:
             # Create iterator for returning scores in batches
             score_index = 0
 
-            def get_batch_scores() -> List[float]:
+            def get_batch_scores() -> list[float]:
                 nonlocal score_index
                 batch_size = batch_sizes_seen[-1] if batch_sizes_seen else custom_batch_size
                 batch_scores = scores_to_return[score_index : score_index + batch_size]

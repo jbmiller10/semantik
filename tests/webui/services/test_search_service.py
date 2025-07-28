@@ -1008,7 +1008,7 @@ class TestSearchServiceEdgeCases:
         search_delays = [0.1, 0.1]  # Both searches take 100ms
         call_order = []
 
-        async def mock_post(**kwargs: Any) -> MagicMock:
+        async def mock_post(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
             collection_name = kwargs["json"]["collection"]
             call_order.append(f"start_{collection_name}")
             await asyncio.sleep(search_delays.pop(0))

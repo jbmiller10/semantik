@@ -4,7 +4,7 @@ import asyncio
 import functools
 import logging
 from collections.abc import Callable
-from typing import Any, ParamSpec, TypeVar, cast
+from typing import ParamSpec, TypeVar, cast
 
 from sqlalchemy.exc import OperationalError
 

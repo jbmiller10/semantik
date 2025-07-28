@@ -1012,7 +1012,7 @@ class TestReindexValidation:
         client.scroll.return_value = (sample_points, None)
 
         # Mock search results - need to return results that match the test points
-        def mock_search(_collection_name, *_args, **_kwargs):
+        def mock_search(*args, **kwargs):  # noqa: ARG001
             # Return results that match the point being searched for
             # This simulates that both collections return the same results
             results = []
