@@ -464,8 +464,12 @@ class TestDirectoryScanServiceEdgeCases:
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.directory_scan_service.ws_manager")
-    async def test_websocket_broadcast_failure(self, mock_ws_manager, service, fake_fs):
+    async def test_websocket_broadcast_failure(self, mock_ws_manager, service, fs):
         """Test handling WebSocket broadcast failures"""
+        # Create test directory
+        fs.create_dir("/test_dir")
+        fs.create_file("/test_dir/test.pdf", contents=b"test" * 100)
+        
         # Make broadcast fail
         mock_ws_manager._broadcast.side_effect = Exception("WebSocket error")
 
@@ -535,12 +539,14 @@ class TestDirectoryScanProgress:
         assert message["data"]["percentage"] == 50.0
 
     @pytest.mark.asyncio()
-    async def test_progress_update_intervals(self, service, fake_fs):
+    async def test_progress_update_intervals(self, service, fs):
         """Test that progress updates happen at correct intervals"""
+        # Create test directory first
+        fs.create_dir("/test_progress")
         # Create exactly PROGRESS_UPDATE_INTERVAL + 1 files
         num_files = PROGRESS_UPDATE_INTERVAL + 1
         for i in range(num_files):
-            fake_fs.create_file(f"/test_progress/file_{i}.txt", contents=b"x" * 100)
+            fs.create_file(f"/test_progress/file_{i}.txt", contents=b"x" * 100)
 
         with patch.object(service, "_send_progress", new_callable=AsyncMock) as mock_send:
             await service.scan_directory_preview(

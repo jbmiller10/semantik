@@ -177,10 +177,14 @@ class TestWebSocketManager:
         assert "op-123" in ws_manager.consumer_tasks
 
     @pytest.mark.asyncio()
-    async def test_connect_without_redis(self, ws_manager, mock_websocket, mock_operation):
+    @patch("packages.webui.websocket_manager.RedisStreamWebSocketManager.startup")
+    async def test_connect_without_redis(self, mock_startup, ws_manager, mock_websocket, mock_operation):
         """Test connection when Redis is not available"""
         ws_manager.redis = None
         ws_manager._get_operation_func = AsyncMock(return_value=mock_operation)
+        
+        # Mock startup to not actually connect to Redis
+        mock_startup.return_value = None
 
         await ws_manager.connect(mock_websocket, "op-123", "user-123")
 
@@ -353,8 +357,16 @@ class TestWebSocketManager:
             ]
         ]
 
-        # Return messages once, then empty
-        mock_redis.xreadgroup.side_effect = [test_messages, [], asyncio.CancelledError()]
+        # Return messages once, then block forever (until cancelled)
+        async def xreadgroup_side_effect(*args, **kwargs):
+            if mock_redis.xreadgroup.call_count == 1:
+                return test_messages
+            else:
+                # Block until cancelled
+                await asyncio.sleep(10)
+                return []
+        
+        mock_redis.xreadgroup.side_effect = xreadgroup_side_effect
 
         # Setup WebSocket connection
         mock_websocket = Mock()
@@ -364,8 +376,8 @@ class TestWebSocketManager:
         # Run consumer
         task = asyncio.create_task(ws_manager._consume_updates("op-123"))
 
-        # Let it process
-        await asyncio.sleep(0.1)
+        # Let it process messages
+        await asyncio.sleep(0.5)
 
         # Cancel task
         task.cancel()
@@ -403,8 +415,8 @@ class TestWebSocketManager:
 
         task = asyncio.create_task(ws_manager._consume_updates("op-123"))
 
-        # Let it attempt a few times
-        await asyncio.sleep(0.1)
+        # Let it attempt a few times (need more time since it waits 2 seconds between attempts)
+        await asyncio.sleep(5)
         
         # Cancel the task
         task.cancel()
@@ -558,7 +570,7 @@ class TestWebSocketManager:
         assert ws_manager._get_operation_func == mock_getter
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.websocket_manager.AsyncSessionLocal")
+    @patch("packages.shared.database.database.AsyncSessionLocal")
     async def test_default_operation_getter(self, mock_session_local, ws_manager, mock_websocket, mock_operation):
         """Test default operation getter when not injected"""
         ws_manager.redis = Mock()
@@ -567,7 +579,7 @@ class TestWebSocketManager:
         mock_session = AsyncMock()
         mock_session_local.return_value.__aenter__.return_value = mock_session
 
-        with patch("packages.webui.websocket_manager.OperationRepository") as mock_repo_class:
+        with patch("packages.shared.database.repositories.operation_repository.OperationRepository") as mock_repo_class:
             mock_repo = AsyncMock()
             mock_repo.get_by_uuid.return_value = mock_operation
             mock_repo_class.return_value = mock_repo
@@ -612,16 +624,17 @@ class TestWebSocketManagerErrorHandling:
 
         task = asyncio.create_task(ws_manager._consume_updates("op-123"))
 
-        # Let it process errors
-        await asyncio.sleep(0.1)
+        # Let it process errors (need time for retries and delays)
+        await asyncio.sleep(1)
 
         # Cancel task
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
 
-        # Should have logged errors
-        assert mock_logger.error.call_count >= 1
+        # Should have logged errors (either debug for NOGROUP or error for other exceptions)
+        total_logs = mock_logger.error.call_count + mock_logger.debug.call_count
+        assert total_logs >= 1
 
     @pytest.mark.asyncio()
     async def test_malformed_message_handling(self, ws_manager):
@@ -641,7 +654,16 @@ class TestWebSocketManagerErrorHandling:
             ]
         ]
 
-        mock_redis.xreadgroup.side_effect = [bad_messages, asyncio.CancelledError()]
+        # Return bad message then block
+        async def xreadgroup_side_effect(*args, **kwargs):
+            if mock_redis.xreadgroup.call_count == 1:
+                return bad_messages
+            else:
+                # Block until cancelled
+                await asyncio.sleep(10)
+                return []
+        
+        mock_redis.xreadgroup.side_effect = xreadgroup_side_effect
         mock_redis.xinfo_stream.return_value = {"length": 1}
         mock_redis.xinfo_groups.return_value = []
 
@@ -652,6 +674,11 @@ class TestWebSocketManagerErrorHandling:
 
         task = asyncio.create_task(ws_manager._consume_updates("op-123"))
 
+        # Let it process the bad message
+        await asyncio.sleep(0.5)
+        
+        # Cancel task
+        task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
 
