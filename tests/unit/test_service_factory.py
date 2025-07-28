@@ -6,6 +6,7 @@ Tests service factory functions and dependency injection
 
 from unittest.mock import AsyncMock, Mock, patch
 
+import httpx
 import pytest
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
@@ -16,14 +17,14 @@ from webui.services.directory_scan_service import DirectoryScanService
 from webui.services.document_scanning_service import DocumentScanningService
 from webui.services.factory import (
     create_collection_service,
-    create_directory_scan_service,
     create_document_scanning_service,
     create_operation_service,
     create_resource_manager,
     create_search_service,
     get_collection_service,
-    get_document_scanning_service,
+    get_directory_scan_service,
     get_operation_service,
+    get_search_service,
 )
 from webui.services.operation_service import OperationService
 from webui.services.resource_manager import ResourceManager
@@ -64,26 +65,30 @@ class TestServiceFactory:
         assert service.db_session == mock_db_session
         assert hasattr(service, "operation_repo")
 
-    @patch("webui.services.factory.httpx.AsyncClient")
-    def test_create_search_service(self, mock_httpx_client, mock_db_session):
-        """Test creating SearchService with HTTP client"""
-        mock_client = Mock()
-        mock_httpx_client.return_value = mock_client
-
+    def test_create_search_service(self, mock_db_session):
+        """Test creating SearchService with default configuration"""
         service = create_search_service(mock_db_session)
 
         assert isinstance(service, SearchService)
         assert service.db_session == mock_db_session
-        assert service.http_client == mock_client
         assert hasattr(service, "collection_repo")
+        assert hasattr(service, "default_timeout")
+        assert hasattr(service, "retry_timeout_multiplier")
 
-    def test_create_directory_scan_service(self, mock_db_session):
-        """Test creating DirectoryScanService with dependencies"""
-        service = create_directory_scan_service(mock_db_session)
+    def test_create_search_service_with_custom_timeout(self, mock_db_session):
+        """Test creating SearchService with custom timeout configuration"""
+        custom_timeout = httpx.Timeout(30.0)
+        custom_multiplier = 2.5
 
-        assert isinstance(service, DirectoryScanService)
-        assert service.db_session == mock_db_session
-        assert hasattr(service, "document_repo")
+        service = create_search_service(
+            mock_db_session,
+            default_timeout=custom_timeout,
+            retry_timeout_multiplier=custom_multiplier,
+        )
+
+        assert isinstance(service, SearchService)
+        assert service.default_timeout == custom_timeout
+        assert service.retry_timeout_multiplier == custom_multiplier
 
     def test_create_resource_manager(self, mock_db_session):
         """Test creating ResourceManager with dependencies"""
@@ -102,49 +107,43 @@ class TestServiceFactoryDependencyInjection:
     async def test_get_collection_service_dependency(self, mock_get_db):
         """Test get_collection_service for FastAPI dependency injection"""
         mock_db = AsyncMock(spec=AsyncSession)
-
-        # Mock the async generator
-        async def mock_db_generator():
-            yield mock_db
-
-        mock_get_db.return_value = mock_db_generator()
+        mock_get_db.return_value = mock_db
 
         # Test the dependency function
-        async for service in get_collection_service():
-            assert isinstance(service, CollectionService)
-            assert service.db_session == mock_db
-
-    @pytest.mark.asyncio()
-    @patch("webui.services.factory.get_db")
-    async def test_get_document_scanning_service_dependency(self, mock_get_db):
-        """Test get_document_scanning_service for FastAPI dependency injection"""
-        mock_db = AsyncMock(spec=AsyncSession)
-
-        async def mock_db_generator():
-            yield mock_db
-
-        mock_get_db.return_value = mock_db_generator()
-
-        # Test the dependency function
-        async for service in get_document_scanning_service():
-            assert isinstance(service, DocumentScanningService)
-            assert service.db_session == mock_db
+        service = await get_collection_service(mock_db)
+        assert isinstance(service, CollectionService)
+        assert service.db_session == mock_db
 
     @pytest.mark.asyncio()
     @patch("webui.services.factory.get_db")
     async def test_get_operation_service_dependency(self, mock_get_db):
         """Test get_operation_service for FastAPI dependency injection"""
         mock_db = AsyncMock(spec=AsyncSession)
-
-        async def mock_db_generator():
-            yield mock_db
-
-        mock_get_db.return_value = mock_db_generator()
+        mock_get_db.return_value = mock_db
 
         # Test the dependency function
-        async for service in get_operation_service():
-            assert isinstance(service, OperationService)
-            assert service.db_session == mock_db
+        service = await get_operation_service(mock_db)
+        assert isinstance(service, OperationService)
+        assert service.db_session == mock_db
+
+    @pytest.mark.asyncio()
+    @patch("webui.services.factory.get_db")
+    async def test_get_search_service_dependency(self, mock_get_db):
+        """Test get_search_service for FastAPI dependency injection"""
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_get_db.return_value = mock_db
+
+        # Test the dependency function
+        service = await get_search_service(mock_db)
+        assert isinstance(service, SearchService)
+        assert service.db_session == mock_db
+
+    @pytest.mark.asyncio()
+    async def test_get_directory_scan_service_dependency(self):
+        """Test get_directory_scan_service for FastAPI dependency injection"""
+        # DirectoryScanService doesn't require database
+        service = await get_directory_scan_service()
+        assert isinstance(service, DirectoryScanService)
 
 
 class TestServiceFactoryRepositoryCreation:
@@ -179,6 +178,41 @@ class TestServiceFactoryRepositoryCreation:
         assert service.operation_repo == mock_op_repo
         assert service.document_repo == mock_doc_repo
 
+    @patch("webui.services.factory.DocumentRepository")
+    def test_document_scanning_service_repository_creation(self, mock_doc_repo_class):
+        """Test repository creation for DocumentScanningService"""
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_doc_repo = Mock(spec=DocumentRepository)
+        mock_doc_repo_class.return_value = mock_doc_repo
+
+        # Create service
+        service = create_document_scanning_service(mock_db)
+
+        # Verify repository was created with session
+        mock_doc_repo_class.assert_called_once_with(mock_db)
+        assert service.document_repo == mock_doc_repo
+
+    @patch("webui.services.factory.CollectionRepository")
+    @patch("webui.services.factory.OperationRepository")
+    def test_resource_manager_repository_creation(self, mock_op_repo_class, mock_coll_repo_class):
+        """Test repository creation for ResourceManager"""
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_coll_repo = Mock(spec=CollectionRepository)
+        mock_op_repo = Mock(spec=OperationRepository)
+
+        mock_coll_repo_class.return_value = mock_coll_repo
+        mock_op_repo_class.return_value = mock_op_repo
+
+        # Create manager
+        manager = create_resource_manager(mock_db)
+
+        # Verify repositories were created
+        mock_coll_repo_class.assert_called_once_with(mock_db)
+        mock_op_repo_class.assert_called_once_with(mock_db)
+
+        assert manager.collection_repo == mock_coll_repo
+        assert manager.operation_repo == mock_op_repo
+
 
 class TestServiceFactoryEdgeCases:
     """Test edge cases and error scenarios"""
@@ -192,44 +226,55 @@ class TestServiceFactoryEdgeCases:
         service2 = create_document_scanning_service(None)
         assert service2.db_session is None
 
-    @patch("webui.services.factory.httpx.AsyncClient")
-    def test_search_service_http_client_creation(self, mock_httpx_client):
-        """Test HTTP client creation for SearchService"""
-        mock_db = AsyncMock(spec=AsyncSession)
-        mock_client = Mock()
-        mock_httpx_client.return_value = mock_client
+        service3 = create_operation_service(None)
+        assert service3.db_session is None
 
+    def test_search_service_default_parameters(self):
+        """Test SearchService creation with default parameters"""
+        mock_db = AsyncMock(spec=AsyncSession)
         service = create_search_service(mock_db)
 
-        # Verify HTTP client was created with correct parameters
-        mock_httpx_client.assert_called_once_with(
-            timeout=30.0,
-            limits=mock_httpx_client.call_args[1]["limits"],
-        )
-
-        # Check limits
-        limits = mock_httpx_client.call_args[1]["limits"]
-        assert limits.max_keepalive_connections == 5
-        assert limits.max_connections == 10
+        # Should have default values
+        # SearchService sets default timeout if None is passed
+        assert service.default_timeout.pool == 30.0
+        assert service.default_timeout.connect == 5.0
+        assert service.default_timeout.read == 30.0
+        assert service.default_timeout.write == 5.0
+        assert service.retry_timeout_multiplier == 4.0
 
 
 class TestServiceFactoryIntegration:
-    """Test service factory integration scenarios"""
+    """Test factory functions with real instances"""
 
     @pytest.mark.asyncio()
-    async def test_service_lifecycle_in_request(self):
-        """Test service creation and cleanup in a request lifecycle"""
-        mock_db = AsyncMock(spec=AsyncSession)
+    async def test_fastapi_dependency_injection_pattern(self):
+        """Test how factory functions integrate with FastAPI dependencies"""
+        # Test the direct factory functions (no async dependencies)
+        mock_db = AsyncMock()
 
-        # Simulate FastAPI request lifecycle
-        service = create_collection_service(mock_db)
+        # Test collection service
+        collection_service = create_collection_service(mock_db)
+        assert isinstance(collection_service, CollectionService)
 
-        # Use the service
-        assert service is not None
-        assert isinstance(service, CollectionService)
+        # Test document scanning service
+        doc_scan_service = create_document_scanning_service(mock_db)
+        assert isinstance(doc_scan_service, DocumentScanningService)
 
-        # Service should be ready to use
-        assert service.db_session == mock_db
+        # Test operation service
+        operation_service = create_operation_service(mock_db)
+        assert isinstance(operation_service, OperationService)
+
+        # Test search service
+        search_service = create_search_service(mock_db)
+        assert isinstance(search_service, SearchService)
+
+        # Test resource manager
+        resource_manager = create_resource_manager(mock_db)
+        assert isinstance(resource_manager, ResourceManager)
+
+        # Test directory scan service (no db dependency)
+        dir_scan_service = await get_directory_scan_service()
+        assert isinstance(dir_scan_service, DirectoryScanService)
 
     def test_multiple_service_creation(self):
         """Test creating multiple services with same session"""
@@ -247,3 +292,18 @@ class TestServiceFactoryIntegration:
 
         # But have different repository instances
         assert coll_service.collection_repo != doc_service.document_repo
+
+    @pytest.mark.asyncio()
+    async def test_service_lifecycle_in_request(self):
+        """Test service creation and cleanup in a request lifecycle"""
+        mock_db = AsyncMock(spec=AsyncSession)
+
+        # Simulate FastAPI request lifecycle
+        service = create_collection_service(mock_db)
+
+        # Use the service
+        assert service is not None
+        assert isinstance(service, CollectionService)
+
+        # Service should be ready to use
+        assert service.db_session == mock_db

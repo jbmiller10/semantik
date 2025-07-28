@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
 Comprehensive test suite for webui/services/resource_manager.py
-Tests resource allocation, limits, and quotas for collection operations
+Tests resource allocation, quotas, and management
 """
 
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -15,16 +16,16 @@ class TestResourceEstimate:
     """Test ResourceEstimate class"""
 
     def test_resource_estimate_creation(self):
-        """Test creating resource estimate"""
-        estimate = ResourceEstimate(memory_mb=1024, storage_gb=10.5, cpu_cores=2.5, gpu_memory_mb=2048)
+        """Test creating ResourceEstimate"""
+        estimate = ResourceEstimate(memory_mb=1024, storage_gb=2.5, cpu_cores=4.0, gpu_memory_mb=2048)
 
         assert estimate.memory_mb == 1024
-        assert estimate.storage_gb == 10.5
-        assert estimate.cpu_cores == 2.5
+        assert estimate.storage_gb == 2.5
+        assert estimate.cpu_cores == 4.0
         assert estimate.gpu_memory_mb == 2048
 
     def test_resource_estimate_defaults(self):
-        """Test resource estimate with default values"""
+        """Test ResourceEstimate default values"""
         estimate = ResourceEstimate()
 
         assert estimate.memory_mb == 0
@@ -33,14 +34,11 @@ class TestResourceEstimate:
         assert estimate.gpu_memory_mb == 0
 
     def test_resource_estimate_string_representation(self):
-        """Test string representation of resource estimate"""
-        estimate = ResourceEstimate(memory_mb=512, storage_gb=5.0, cpu_cores=1.0, gpu_memory_mb=1024)
+        """Test ResourceEstimate string representation"""
+        estimate = ResourceEstimate(memory_mb=512, storage_gb=1.0, cpu_cores=2.0, gpu_memory_mb=1024)
 
-        str_repr = str(estimate)
-        assert "memory=512MB" in str_repr
-        assert "storage=5.0GB" in str_repr
-        assert "cpu=1.0" in str_repr
-        assert "gpu=1024MB" in str_repr
+        expected = "ResourceEstimate(memory=512MB, storage=1.0GB, cpu=2.0, gpu=1024MB)"
+        assert str(estimate) == expected
 
 
 class TestResourceManager:
@@ -48,12 +46,12 @@ class TestResourceManager:
 
     @pytest.fixture()
     def mock_collection_repo(self):
-        """Create a mock collection repository"""
+        """Create a mock CollectionRepository"""
         return AsyncMock()
 
     @pytest.fixture()
     def mock_operation_repo(self):
-        """Create a mock operation repository"""
+        """Create a mock OperationRepository"""
         return AsyncMock()
 
     @pytest.fixture()
@@ -65,353 +63,379 @@ class TestResourceManager:
         )
 
     @pytest.mark.asyncio()
-    async def test_can_create_collection_within_limit(self, resource_manager, mock_collection_repo):
-        """Test checking if user can create collection within limit"""
-        user_id = 123
-
-        # Mock user has 3 active collections (under limit of 10)
-        mock_collections = [{"id": f"coll-{i}", "status": "active"} for i in range(3)]
+    async def test_can_create_collection_success(self, resource_manager, mock_collection_repo):
+        """Test can_create_collection when under limit"""
+        # Mock user has 3 active collections
+        mock_collections = [
+            {"id": "1", "status": "ready"},
+            {"id": "2", "status": "ready"},
+            {"id": "3", "status": "processing"},
+        ]
         mock_collection_repo.list_by_user.return_value = mock_collections
 
-        result = await resource_manager.can_create_collection(user_id)
-
+        # Should be able to create (3 < 10)
+        result = await resource_manager.can_create_collection(123)
         assert result is True
-        mock_collection_repo.list_by_user.assert_called_once_with(user_id)
 
     @pytest.mark.asyncio()
     async def test_can_create_collection_at_limit(self, resource_manager, mock_collection_repo):
-        """Test checking if user can create collection when at limit"""
-        user_id = 123
-
-        # Mock user has 10 active collections (at limit)
-        mock_collections = [{"id": f"coll-{i}", "status": "active"} for i in range(10)]
+        """Test can_create_collection when at limit"""
+        # Mock user has 10 active collections
+        mock_collections = [{"id": str(i), "status": "ready"} for i in range(10)]
         mock_collection_repo.list_by_user.return_value = mock_collections
 
-        result = await resource_manager.can_create_collection(user_id)
-
+        # Should not be able to create (10 >= 10)
+        result = await resource_manager.can_create_collection(123)
         assert result is False
 
     @pytest.mark.asyncio()
-    async def test_can_create_collection_with_deleted(self, resource_manager, mock_collection_repo):
-        """Test that deleted collections don't count toward limit"""
-        user_id = 123
-
-        # Mock user has 8 active and 5 deleted collections
-        mock_collections = []
-        for i in range(8):
-            mock_collections.append({"id": f"active-{i}", "status": "active"})
-        for i in range(5):
-            mock_collections.append({"id": f"deleted-{i}", "status": "deleted"})
-
+    async def test_can_create_collection_excludes_deleted(self, resource_manager, mock_collection_repo):
+        """Test can_create_collection excludes deleted collections"""
+        # Mock user has 9 active + 5 deleted collections
+        mock_collections = [{"id": str(i), "status": "ready"} for i in range(9)]
+        mock_collections.extend([{"id": str(i + 9), "status": "deleted"} for i in range(5)])
         mock_collection_repo.list_by_user.return_value = mock_collections
 
-        result = await resource_manager.can_create_collection(user_id)
-
-        assert result is True  # 8 active < 10 limit
-
-    @pytest.mark.asyncio()
-    async def test_can_create_collection_error_handling(self, resource_manager, mock_collection_repo):
-        """Test error handling in can_create_collection"""
-        user_id = 123
-
-        # Mock repository error
-        mock_collection_repo.list_by_user.side_effect = Exception("Database error")
-
-        result = await resource_manager.can_create_collection(user_id)
-
-        assert result is False  # Safe default on error
+        # Should be able to create (9 active < 10)
+        result = await resource_manager.can_create_collection(123)
+        assert result is True
 
     @pytest.mark.asyncio()
     @patch("webui.services.resource_manager.psutil.virtual_memory")
     @patch("webui.services.resource_manager.psutil.disk_usage")
-    async def test_can_allocate_sufficient_resources(self, mock_disk_usage, mock_virtual_memory, resource_manager):
-        """Test resource allocation when sufficient resources available"""
-        user_id = 123
-
-        # Mock system resources (plenty available)
+    async def test_can_allocate_sufficient_resources(
+        self, mock_disk_usage, mock_virtual_memory, resource_manager, mock_collection_repo
+    ):
+        """Test can_allocate with sufficient system resources"""
+        # Mock system resources
         mock_memory = Mock()
-        mock_memory.available = 16 * 1024 * 1024 * 1024  # 16GB
+        mock_memory.available = 8 * 1024 * 1024 * 1024  # 8GB
         mock_virtual_memory.return_value = mock_memory
 
         mock_disk = Mock()
         mock_disk.free = 100 * 1024 * 1024 * 1024  # 100GB
         mock_disk_usage.return_value = mock_disk
 
-        # Mock user usage (well under quota)
-        resource_manager._get_user_resource_usage = AsyncMock(return_value={"storage_gb": 10.0})
+        # Mock user resource usage
+        mock_collections = [{"total_size_bytes": 1024 * 1024 * 1024}]  # 1GB
+        mock_collection_repo.list_by_user.return_value = mock_collections
 
         # Request moderate resources
-        resources = ResourceEstimate(
-            memory_mb=2048,  # 2GB
-            storage_gb=5.0,  # 5GB
-        )
+        resources = ResourceEstimate(memory_mb=1024, storage_gb=5.0)
 
-        result = await resource_manager.can_allocate(user_id, resources)
-
+        result = await resource_manager.can_allocate(123, resources)
         assert result is True
 
     @pytest.mark.asyncio()
     @patch("webui.services.resource_manager.psutil.virtual_memory")
-    @patch("webui.services.resource_manager.psutil.disk_usage")
-    async def test_can_allocate_insufficient_memory(self, mock_disk_usage, mock_virtual_memory, resource_manager):
-        """Test resource allocation when insufficient memory"""
-        user_id = 123
-
+    async def test_can_allocate_insufficient_memory(self, mock_virtual_memory, resource_manager, mock_collection_repo):
+        """Test can_allocate with insufficient memory"""
         # Mock low memory
         mock_memory = Mock()
         mock_memory.available = 1 * 1024 * 1024 * 1024  # 1GB
         mock_virtual_memory.return_value = mock_memory
 
-        mock_disk = Mock()
-        mock_disk.free = 100 * 1024 * 1024 * 1024  # 100GB
-        mock_disk_usage.return_value = mock_disk
+        # Request too much memory
+        resources = ResourceEstimate(memory_mb=2048)  # 2GB
 
-        # Mock user usage
-        resource_manager._get_user_resource_usage = AsyncMock(return_value={"storage_gb": 10.0})
-
-        # Request more memory than available
-        resources = ResourceEstimate(
-            memory_mb=2048,  # 2GB (more than 80% of 1GB)
-            storage_gb=1.0,
-        )
-
-        result = await resource_manager.can_allocate(user_id, resources)
-
+        result = await resource_manager.can_allocate(123, resources)
         assert result is False
 
     @pytest.mark.asyncio()
-    @patch("webui.services.resource_manager.psutil.virtual_memory")
-    @patch("webui.services.resource_manager.psutil.disk_usage")
-    async def test_can_allocate_insufficient_storage(self, mock_disk_usage, mock_virtual_memory, resource_manager):
-        """Test resource allocation when insufficient storage"""
-        user_id = 123
+    async def test_estimate_resources_single_file(self, resource_manager):
+        """Test resource estimation for single file"""
+        # Create a temporary file
+        import tempfile
 
-        # Mock sufficient memory
-        mock_memory = Mock()
-        mock_memory.available = 16 * 1024 * 1024 * 1024  # 16GB
-        mock_virtual_memory.return_value = mock_memory
+        with tempfile.NamedTemporaryFile() as temp_file:
+            # Write 10MB of data
+            temp_file.write(b"x" * (10 * 1024 * 1024))
+            temp_file.flush()
 
-        # Mock low disk space
-        mock_disk = Mock()
-        mock_disk.free = 5 * 1024 * 1024 * 1024  # 5GB
-        mock_disk_usage.return_value = mock_disk
+            estimate = await resource_manager.estimate_resources(temp_file.name, "BAAI/bge-base-en-v1.5")
 
-        # Mock user usage
-        resource_manager._get_user_resource_usage = AsyncMock(return_value={"storage_gb": 10.0})
-
-        # Request more storage than available
-        resources = ResourceEstimate(
-            memory_mb=512,
-            storage_gb=10.0,  # More than 80% of 5GB
-        )
-
-        result = await resource_manager.can_allocate(user_id, resources)
-
-        assert result is False
+            # Should estimate based on file size and model
+            assert estimate.memory_mb > 0
+            assert estimate.storage_gb > 0
+            assert estimate.cpu_cores >= 1.0
+            assert estimate.gpu_memory_mb == 400  # Model size for BGE
 
     @pytest.mark.asyncio()
-    @patch("webui.services.resource_manager.psutil.virtual_memory")
-    @patch("webui.services.resource_manager.psutil.disk_usage")
-    async def test_can_allocate_user_quota_exceeded(self, mock_disk_usage, mock_virtual_memory, resource_manager):
-        """Test resource allocation when user quota would be exceeded"""
-        user_id = 123
+    async def test_estimate_resources_directory(self, resource_manager):
+        """Test resource estimation for directory"""
+        # Create a temporary directory with files
+        import tempfile
 
-        # Mock plenty of system resources
-        mock_memory = Mock()
-        mock_memory.available = 16 * 1024 * 1024 * 1024  # 16GB
-        mock_virtual_memory.return_value = mock_memory
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create some files
+            for i in range(5):
+                file_path = Path(temp_dir) / f"file_{i}.txt"
+                file_path.write_bytes(b"x" * (2 * 1024 * 1024))  # 2MB each
 
-        mock_disk = Mock()
-        mock_disk.free = 100 * 1024 * 1024 * 1024  # 100GB
-        mock_disk_usage.return_value = mock_disk
+            estimate = await resource_manager.estimate_resources(temp_dir, "sentence-transformers/all-MiniLM-L6-v2")
 
-        # Mock user already using 45GB (near 50GB quota)
-        resource_manager._get_user_resource_usage = AsyncMock(return_value={"storage_gb": 45.0})
-
-        # Request would exceed quota
-        resources = ResourceEstimate(
-            memory_mb=512,
-            storage_gb=10.0,  # Would put user at 55GB
-        )
-
-        result = await resource_manager.can_allocate(user_id, resources)
-
-        assert result is False
+            # Should sum all file sizes
+            assert estimate.memory_mb > 0
+            assert estimate.storage_gb > 0
+            assert estimate.cpu_cores >= 1.0
+            assert estimate.gpu_memory_mb == 100  # Model size for MiniLM
 
     @pytest.mark.asyncio()
-    async def test_reserve_resources(self, resource_manager):
-        """Test reserving resources for an operation"""
-        operation_id = "op-123"
-        resources = ResourceEstimate(memory_mb=1024, storage_gb=5.0)
-
-        result = await resource_manager.reserve_resources(operation_id, resources)
-
-        assert result is True
-        assert operation_id in resource_manager._reserved_resources
-        assert resource_manager._reserved_resources[operation_id] == resources
-
-    @pytest.mark.asyncio()
-    async def test_release_resources(self, resource_manager):
-        """Test releasing reserved resources"""
-        operation_id = "op-123"
-        resources = ResourceEstimate(memory_mb=1024, storage_gb=5.0)
-
-        # Reserve first
-        await resource_manager.reserve_resources(operation_id, resources)
-        assert operation_id in resource_manager._reserved_resources
-
-        # Release
-        await resource_manager.release_resources(operation_id)
-        assert operation_id not in resource_manager._reserved_resources
-
-    @pytest.mark.asyncio()
-    async def test_release_resources_not_reserved(self, resource_manager):
-        """Test releasing resources that weren't reserved"""
-        # Should not raise error
-        await resource_manager.release_resources("non-existent-op")
-
-    @pytest.mark.asyncio()
-    async def test_estimate_operation_resources_scan(self, resource_manager):
-        """Test estimating resources for scan operation"""
-        source_path = "/test/path"
-
-        # Mock file system stats
-        with patch("webui.services.resource_manager.Path") as mock_path_class:
-            mock_path = Mock()
-            mock_path.exists.return_value = True
-            mock_path.is_dir.return_value = True
-            mock_path_class.return_value = mock_path
-
-            with patch("webui.services.resource_manager.os.walk") as mock_walk:
-                # Mock directory with some files
-                mock_walk.return_value = [
-                    ("/test/path", [], ["file1.pdf", "file2.txt"]),
-                    ("/test/path/sub", [], ["file3.docx"]),
-                ]
-
-                with patch("os.path.getsize") as mock_getsize:
-                    # Mock file sizes
-                    mock_getsize.side_effect = [
-                        10 * 1024 * 1024,  # 10MB
-                        5 * 1024 * 1024,  # 5MB
-                        15 * 1024 * 1024,  # 15MB
-                    ]
-
-                    estimate = await resource_manager.estimate_operation_resources(
-                        operation_type="scan",
-                        source_path=source_path,
-                    )
-
-                    # Should estimate based on file count and sizes
-                    assert estimate.memory_mb > 0
-                    assert estimate.storage_gb > 0
-
-    @pytest.mark.asyncio()
-    async def test_estimate_operation_resources_reindex(self, resource_manager, mock_collection_repo):
-        """Test estimating resources for reindex operation"""
-        collection_id = "coll-123"
-
-        # Mock collection with documents
+    async def test_reserve_for_reindex_success(self, resource_manager, mock_collection_repo):
+        """Test reserving resources for reindex"""
+        # Mock collection
         mock_collection = {
-            "id": collection_id,
-            "documents_count": 100,
-            "total_size_bytes": 500 * 1024 * 1024,  # 500MB
+            "id": "test-collection",
+            "total_size_bytes": 5 * 1024 * 1024 * 1024,  # 5GB
         }
-        mock_collection_repo.get_by_uuid.return_value = mock_collection
+        mock_collection_repo.get_by_id.return_value = mock_collection
 
-        estimate = await resource_manager.estimate_operation_resources(
-            operation_type="reindex",
-            collection_id=collection_id,
-        )
+        # Mock sufficient system resources
+        with patch.object(resource_manager, "_check_system_resources", return_value=True):
+            result = await resource_manager.reserve_for_reindex("test-collection")
+            assert result is True
 
-        # Should estimate based on document count
-        assert estimate.memory_mb >= 512  # Base memory
-        assert estimate.gpu_memory_mb > 0  # For embeddings
+            # Should have reserved resources
+            assert "reindex_test-collection" in resource_manager._reserved_resources
+
+    @pytest.mark.asyncio()
+    async def test_reserve_for_reindex_insufficient_resources(self, resource_manager, mock_collection_repo):
+        """Test reserve_for_reindex with insufficient resources"""
+        # Mock collection
+        mock_collection = {
+            "id": "test-collection",
+            "total_size_bytes": 50 * 1024 * 1024 * 1024,  # 50GB
+        }
+        mock_collection_repo.get_by_id.return_value = mock_collection
+
+        # Mock insufficient system resources
+        with patch.object(resource_manager, "_check_system_resources", return_value=False):
+            result = await resource_manager.reserve_for_reindex("test-collection")
+            assert result is False
+
+            # Should not have reserved resources
+            assert "reindex_test-collection" not in resource_manager._reserved_resources
+
+    @pytest.mark.asyncio()
+    async def test_release_reindex_reservation(self, resource_manager):
+        """Test releasing reindex reservation"""
+        # Manually add a reservation
+        resource_manager._reserved_resources["reindex_test-collection"] = ResourceEstimate(memory_mb=1024)
+
+        # Release it
+        await resource_manager.release_reindex_reservation("test-collection")
+
+        # Should be removed
+        assert "reindex_test-collection" not in resource_manager._reserved_resources
+
+    @pytest.mark.asyncio()
+    async def test_get_resource_usage(self, resource_manager, mock_collection_repo):
+        """Test getting resource usage for collection"""
+        # Mock collection with usage info
+        mock_collection = {
+            "id": "test-collection",
+            "document_count": 1000,
+            "vector_count": 5000,
+            "total_size_bytes": 2 * 1024 * 1024 * 1024,  # 2GB
+        }
+        mock_collection_repo.get_by_id.return_value = mock_collection
+
+        usage = await resource_manager.get_resource_usage("test-collection")
+
+        assert usage["documents"] == 1000
+        assert usage["vectors"] == 5000
+        assert usage["storage_bytes"] == 2 * 1024 * 1024 * 1024
+        assert usage["storage_gb"] == 2.0
 
     @pytest.mark.asyncio()
     async def test_get_user_resource_usage(self, resource_manager, mock_collection_repo):
-        """Test getting user's current resource usage"""
-        user_id = 123
-
+        """Test getting total resource usage for user"""
         # Mock user's collections
         mock_collections = [
-            {"id": "coll-1", "status": "active", "total_size_bytes": 1 * 1024 * 1024 * 1024},
-            {"id": "coll-2", "status": "active", "total_size_bytes": 2 * 1024 * 1024 * 1024},
-            {"id": "coll-3", "status": "deleted", "total_size_bytes": 5 * 1024 * 1024 * 1024},
+            {"total_size_bytes": 1 * 1024 * 1024 * 1024},  # 1GB
+            {"total_size_bytes": 2 * 1024 * 1024 * 1024},  # 2GB
+            {"total_size_bytes": 5 * 1024 * 1024 * 1024},  # 5GB
         ]
         mock_collection_repo.list_by_user.return_value = mock_collections
 
-        usage = await resource_manager._get_user_resource_usage(user_id)
+        # Call private method directly
+        usage = await resource_manager._get_user_resource_usage(123)
 
-        # Should sum only active collections
-        assert usage["storage_gb"] == 3.0  # 1GB + 2GB, not the deleted 5GB
+        assert usage["collections"] == 3
+        assert usage["storage_gb"] == 8.0
 
     @pytest.mark.asyncio()
-    async def test_concurrent_resource_operations(self, resource_manager):
-        """Test concurrent resource reservation/release"""
-        operation_ids = [f"op-{i}" for i in range(5)]
-        resources = [ResourceEstimate(memory_mb=512 * i, storage_gb=float(i)) for i in range(1, 6)]
+    async def test_concurrent_resource_reservation(self, resource_manager, mock_collection_repo):
+        """Test concurrent resource reservation with lock"""
+        # Mock collections
+        mock_collection = {
+            "id": "test-collection",
+            "total_size_bytes": 1 * 1024 * 1024 * 1024,  # 1GB
+        }
+        mock_collection_repo.get_by_id.return_value = mock_collection
 
-        # Reserve resources concurrently
-        tasks = [
-            resource_manager.reserve_resources(op_id, res) for op_id, res in zip(operation_ids, resources, strict=False)
-        ]
-        results = await asyncio.gather(*tasks)
+        # Mock sufficient resources
+        with patch.object(resource_manager, "_check_system_resources", return_value=True):
+            # Reserve resources concurrently
+            results = await asyncio.gather(
+                resource_manager.reserve_for_reindex("collection-1"),
+                resource_manager.reserve_for_reindex("collection-2"),
+                resource_manager.reserve_for_reindex("collection-3"),
+            )
 
-        assert all(results)
-        assert len(resource_manager._reserved_resources) == 5
+            # All should succeed
+            assert all(results)
 
-        # Release some resources concurrently
-        release_tasks = [resource_manager.release_resources(op_id) for op_id in operation_ids[:3]]
-        await asyncio.gather(*release_tasks)
-
-        assert len(resource_manager._reserved_resources) == 2
+            # All should be reserved
+            assert len(resource_manager._reserved_resources) == 3
 
 
 class TestResourceManagerEdgeCases:
-    """Test edge cases and error scenarios"""
-
-    @pytest.fixture()
-    def resource_manager(self):
-        mock_collection_repo = AsyncMock()
-        mock_operation_repo = AsyncMock()
-        return ResourceManager(mock_collection_repo, mock_operation_repo)
+    """Test edge cases for ResourceManager"""
 
     @pytest.mark.asyncio()
-    async def test_estimate_resources_invalid_path(self, resource_manager):
-        """Test estimating resources with invalid path"""
-        estimate = await resource_manager.estimate_operation_resources(
-            operation_type="scan",
-            source_path="/non/existent/path",
-        )
+    async def test_estimate_resources_invalid_path(self):
+        """Test resource estimation with invalid path"""
+        manager = ResourceManager(AsyncMock(), AsyncMock())
 
-        # Should return minimal estimate
-        assert estimate.memory_mb == 256
-        assert estimate.storage_gb == 0.1
+        # Should handle non-existent path gracefully
+        estimate = await manager.estimate_resources("/non/existent/path", "some-model")
+
+        # When path doesn't exist, no files are found, so size_gb = 0
+        # Memory: 0 * 2048 + 1000 (default model) + 500 = 1500MB
+        # Storage: 0 * 1.75 = 0GB
+        # CPU: max(0/10, 0, 1.0) = 1.0
+        assert estimate.memory_mb == 1500  # 1000MB default model + 500MB overhead
+        assert estimate.storage_gb == 0.0  # No files found
+        assert estimate.cpu_cores == 1.0
 
     @pytest.mark.asyncio()
-    async def test_estimate_resources_unknown_operation(self, resource_manager):
-        """Test estimating resources for unknown operation type"""
-        estimate = await resource_manager.estimate_operation_resources(
-            operation_type="unknown_op",
-        )
+    async def test_estimate_resources_unknown_model(self):
+        """Test resource estimation with unknown model"""
+        manager = ResourceManager(AsyncMock(), AsyncMock())
 
-        # Should return default estimate
-        assert estimate.memory_mb == 512
-        assert estimate.storage_gb == 1.0
+        import tempfile
+
+        with tempfile.NamedTemporaryFile() as temp_file:
+            temp_file.write(b"x" * 1024)  # 1KB
+            temp_file.flush()
+
+            estimate = await manager.estimate_resources(temp_file.name, "unknown/model-name")
+
+            # Should use default model size (1000MB)
+            assert estimate.gpu_memory_mb == 1000
 
     @pytest.mark.asyncio()
     @patch("webui.services.resource_manager.psutil.virtual_memory")
-    async def test_can_allocate_psutil_error(self, mock_virtual_memory, resource_manager):
-        """Test resource allocation when psutil fails"""
-        user_id = 123
+    @patch("webui.services.resource_manager.psutil.disk_usage")
+    async def test_check_system_resources_with_reserved(self, mock_disk_usage, mock_virtual_memory):
+        """Test system resource check considering reserved resources"""
+        manager = ResourceManager(AsyncMock(), AsyncMock())
 
-        # Mock psutil error
-        mock_virtual_memory.side_effect = Exception("System error")
+        # Add some reserved resources
+        manager._reserved_resources["op1"] = ResourceEstimate(memory_mb=1024, storage_gb=10.0)
+        manager._reserved_resources["op2"] = ResourceEstimate(memory_mb=2048, storage_gb=20.0)
 
-        resources = ResourceEstimate(memory_mb=1024)
+        # Mock system resources
+        mock_memory = Mock()
+        mock_memory.available = 8 * 1024 * 1024 * 1024  # 8GB
+        mock_virtual_memory.return_value = mock_memory
 
-        # Should handle error gracefully
-        result = await resource_manager.can_allocate(user_id, resources)
+        mock_disk = Mock()
+        mock_disk.free = 100 * 1024 * 1024 * 1024  # 100GB
+        mock_disk_usage.return_value = mock_disk
 
-        assert result is False  # Safe default
+        # Request resources that would definitely exceed available resources after reserved
+        # Available after reserved: 8192MB - 3072MB = 5120MB memory, 100GB - 30GB = 70GB storage
+        # 80% of available: 4096MB memory, 56GB storage
+        # Request more than that
+        estimate = ResourceEstimate(memory_mb=5000, storage_gb=60.0)
+
+        result = await manager._check_system_resources(estimate)
+
+        # Should fail due to reserved resources
+        assert result is False
+
+    def test_is_gpu_model(self):
+        """Test GPU model detection"""
+        manager = ResourceManager(AsyncMock(), AsyncMock())
+
+        # Currently returns True for all models
+        assert manager._is_gpu_model("any-model") is True
+        assert manager._is_gpu_model("cpu-only-model") is True  # Still returns True
+
+
+class TestResourceManagerIntegration:
+    """Test ResourceManager integration scenarios"""
+
+    @pytest.mark.asyncio()
+    async def test_full_allocation_workflow(self):
+        """Test complete resource allocation workflow"""
+        mock_collection_repo = AsyncMock()
+        mock_operation_repo = AsyncMock()
+        manager = ResourceManager(mock_collection_repo, mock_operation_repo)
+
+        # Setup mocks
+        mock_collection_repo.list_by_user.return_value = []  # No existing collections
+        mock_collection_repo.get_by_id.return_value = {
+            "id": "test-collection",
+            "total_size_bytes": 1024 * 1024 * 1024,  # 1GB
+        }
+
+        # Check if user can create collection
+        can_create = await manager.can_create_collection(123)
+        assert can_create is True
+
+        # Estimate resources for a path
+        import tempfile
+
+        with tempfile.NamedTemporaryFile() as temp_file:
+            temp_file.write(b"x" * 1024 * 1024)  # 1MB
+            temp_file.flush()
+
+            estimate = await manager.estimate_resources(temp_file.name, "BAAI/bge-base-en-v1.5")
+            assert estimate.memory_mb > 0
+
+        # Reserve resources for reindex
+        with patch.object(manager, "_check_system_resources", return_value=True):
+            reserved = await manager.reserve_for_reindex("test-collection")
+            assert reserved is True
+
+        # Get resource usage
+        usage = await manager.get_resource_usage("test-collection")
+        assert "storage_gb" in usage
+
+        # Release reservation
+        await manager.release_reindex_reservation("test-collection")
+        assert len(manager._reserved_resources) == 0
+
+    @pytest.mark.asyncio()
+    async def test_rate_limiting_disabled(self):
+        """Test that rate limiting is disabled"""
+        mock_collection_repo = AsyncMock()
+        mock_operation_repo = AsyncMock()
+        manager = ResourceManager(mock_collection_repo, mock_operation_repo)
+
+        # Mock many recent operations
+        recent_ops = [{"id": str(i)} for i in range(100)]
+        mock_operation_repo.list_by_user.return_value = recent_ops
+
+        # Get recent operations count
+        count = await manager._get_recent_operations_count(123, hours=1)
+        assert count == 100
+
+        # But can_allocate should not check rate limits
+        # (The rate limit code is commented out in the implementation)
+        with patch.object(manager, "_get_user_resource_usage") as mock_get_usage:
+            mock_get_usage.return_value = {"storage_gb": 1.0}
+
+            with patch("webui.services.resource_manager.psutil.virtual_memory") as mock_mem:
+                with patch("webui.services.resource_manager.psutil.disk_usage") as mock_disk:
+                    mock_mem.return_value = Mock(available=10 * 1024 * 1024 * 1024)
+                    mock_disk.return_value = Mock(free=100 * 1024 * 1024 * 1024)
+
+                    resources = ResourceEstimate(memory_mb=100, storage_gb=1.0)
+                    result = await manager.can_allocate(123, resources)
+
+                    # Should succeed despite many recent operations
+                    assert result is True

@@ -42,7 +42,7 @@ class TestOperationService:
         # Mock operation
         mock_operation = Mock(spec=Operation)
         mock_operation.uuid = "test-uuid"
-        mock_operation.type = OperationType.SCAN
+        mock_operation.type = OperationType.INDEX
         mock_operation.status = OperationStatus.PROCESSING
         mock_operation.user_id = 123
         mock_operation.collection_id = "collection-uuid"
@@ -72,7 +72,7 @@ class TestOperationService:
     async def test_get_operation_access_denied(self, operation_service, mock_operation_repo):
         """Test get operation when access is denied"""
         mock_operation_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError(
-            "User does not have access to this operation"
+            user_id="456", resource_type="operation", resource_id="test-uuid"
         )
 
         with pytest.raises(AccessDeniedError):
@@ -176,7 +176,7 @@ class TestOperationService:
         for i in range(3):
             op = Mock(spec=Operation)
             op.uuid = f"op-{i}"
-            op.type = OperationType.SCAN
+            op.type = OperationType.INDEX
             op.status = OperationStatus.COMPLETED
             mock_operations.append(op)
 
@@ -251,7 +251,7 @@ class TestOperationService:
     async def test_verify_websocket_access_denied(self, operation_service, mock_operation_repo):
         """Test WebSocket access verification when denied"""
         mock_operation_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError(
-            "User does not have access"
+            user_id="456", resource_type="operation", resource_id="test-uuid"
         )
 
         with pytest.raises(AccessDeniedError):
@@ -357,7 +357,7 @@ class TestOperationServiceIntegration:
         # Mock operation with all details
         mock_operation = Mock(spec=Operation)
         mock_operation.uuid = "test-uuid"
-        mock_operation.type = OperationType.SCAN
+        mock_operation.type = OperationType.INDEX
         mock_operation.status = OperationStatus.PROCESSING
         mock_operation.task_id = "celery-task-456"
         mock_operation.user_id = 123
