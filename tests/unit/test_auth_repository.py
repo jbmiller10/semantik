@@ -37,7 +37,7 @@ class TestPostgreSQLAuthRepository:
         """Test repository initialization"""
         repo = PostgreSQLAuthRepository(mock_session)
         assert repo.session == mock_session
-        assert repo.model_class == RefreshToken
+        assert repo.model == RefreshToken
 
     @pytest.mark.asyncio()
     async def test_save_refresh_token_success(self, auth_repo, mock_session):
@@ -75,7 +75,7 @@ class TestPostgreSQLAuthRepository:
             await auth_repo.save_refresh_token("123", "hash", datetime.now(UTC))
 
         assert exc_info.value.operation == "save"
-        assert exc_info.value.resource == "refresh_token"
+        assert exc_info.value.entity_type == "refresh_token"
 
     @pytest.mark.asyncio()
     async def test_save_refresh_token_generic_error(self, auth_repo, mock_session):

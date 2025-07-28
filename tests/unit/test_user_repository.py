@@ -95,7 +95,7 @@ class TestPostgreSQLUserRepository:
 
         with pytest.raises(DatabaseOperationError) as exc_info:
             await user_repo.create_user(incomplete_data)
-        
+
         assert "Username, email, and hashed_password are required" in str(exc_info.value)
 
     @pytest.mark.asyncio()

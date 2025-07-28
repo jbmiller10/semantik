@@ -39,7 +39,7 @@ class TestPostgreSQLApiKeyRepository:
         """Test repository initialization"""
         repo = PostgreSQLApiKeyRepository(mock_session)
         assert repo.session == mock_session
-        assert repo.model_class == ApiKey
+        assert repo.model == ApiKey
 
     @pytest.mark.asyncio()
     @patch("secrets.token_urlsafe")
