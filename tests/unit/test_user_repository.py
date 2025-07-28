@@ -39,7 +39,7 @@ class TestPostgreSQLUserRepository:
         """Test repository initialization"""
         repo = PostgreSQLUserRepository(mock_session)
         assert repo.session == mock_session
-        assert repo.model_class == User
+        assert repo.model == User
         assert isinstance(repo.pwd_context, CryptContext)
 
     @pytest.mark.asyncio()
@@ -93,8 +93,10 @@ class TestPostgreSQLUserRepository:
             # Missing email and hashed_password
         }
 
-        with pytest.raises(ValueError, match="Username, email, and hashed_password are required"):
+        with pytest.raises(DatabaseOperationError) as exc_info:
             await user_repo.create_user(incomplete_data)
+        
+        assert "Username, email, and hashed_password are required" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_create_user_duplicate_username(self, user_repo, mock_session):
