@@ -2,8 +2,8 @@ import React from 'react'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useNavigate } from 'react-router-dom'
-import { CollectionsDashboard } from '../CollectionsDashboard'
-import { CollectionDetailsModal } from '../CollectionDetailsModal'
+import CollectionsDashboard from '../CollectionsDashboard'
+import CollectionDetailsModal from '../CollectionDetailsModal'
 import { useUIStore } from '../../stores/uiStore'
 import { 
   renderWithErrorHandlers, 
@@ -13,6 +13,7 @@ import {
   mockConsoleError
 } from '../../tests/utils/errorTestUtils'
 import { 
+  createErrorHandler,
   collectionErrorHandlers, 
   authErrorHandlers,
   combineErrorHandlers 
@@ -21,10 +22,14 @@ import { server } from '../../tests/mocks/server'
 import { handlers } from '../../tests/mocks/handlers'
 
 // Mock navigation
-vi.mock('react-router-dom', () => ({
-  ...vi.importActual('react-router-dom'),
-  useNavigate: vi.fn()
-}))
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom')
+  return {
+    ...actual,
+    useNavigate: vi.fn(),
+    MemoryRouter: actual.MemoryRouter
+  }
+})
 
 // Mock stores and hooks
 vi.mock('../../stores/uiStore')
@@ -84,7 +89,7 @@ describe('Collections - Permission Error Handling', () => {
       // Set up 401 error for collections endpoint
       server.use(
         authErrorHandlers.unauthorized()[0], // GET /api/auth/me returns 401
-        collectionErrorHandlers.createErrorHandler('get', '/api/v2/collections', 401)
+        createErrorHandler('get', '/api/v2/collections', 401)
       )
       
       renderWithErrorHandlers(
@@ -396,7 +401,7 @@ describe('Collections - Permission Error Handling', () => {
     it('should handle invalid API key errors', async () => {
       // Simulate API key auth failure
       server.use(
-        collectionErrorHandlers.createErrorHandler('get', '/api/v2/collections', 401, {
+        createErrorHandler('get', '/api/v2/collections', 401, {
           detail: 'Invalid API key'
         })
       )
@@ -422,7 +427,7 @@ describe('Collections - Permission Error Handling', () => {
 
     it('should handle expired API key', async () => {
       server.use(
-        collectionErrorHandlers.createErrorHandler('get', '/api/v2/collections', 401, {
+        createErrorHandler('get', '/api/v2/collections', 401, {
           detail: 'API key expired'
         })
       )
@@ -450,7 +455,7 @@ describe('Collections - Permission Error Handling', () => {
   describe('Session Management', () => {
     it('should handle concurrent session limit', async () => {
       server.use(
-        collectionErrorHandlers.createErrorHandler('post', '/api/auth/login', 403, {
+        createErrorHandler('post', '/api/auth/login', 403, {
           detail: 'Maximum concurrent sessions reached. Please log out from another device.'
         })
       )
@@ -483,7 +488,7 @@ describe('Collections - Permission Error Handling', () => {
         } as any)
         
         server.use(
-          authErrorHandlers.createErrorHandler('get', '/api/auth/me', 401, {
+          createErrorHandler('get', '/api/auth/me', 401, {
             detail: 'Session expired. Please log in again.'
           })
         )

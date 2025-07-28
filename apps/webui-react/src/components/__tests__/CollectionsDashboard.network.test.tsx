@@ -1,7 +1,7 @@
 import React from 'react'
 import { screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { CollectionsDashboard } from '../CollectionsDashboard'
+import CollectionsDashboard from '../CollectionsDashboard'
 import { 
   renderWithErrorHandlers, 
   waitForError, 

@@ -1,7 +1,7 @@
 import React from 'react'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { SearchInterface } from '../SearchInterface'
+import SearchInterface from '../SearchInterface'
 import { useSearchStore } from '../../stores/searchStore'
 import { useCollectionStore } from '../../stores/collectionStore'
 import { useUIStore } from '../../stores/uiStore'
