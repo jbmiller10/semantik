@@ -69,7 +69,8 @@ def reranker_unloaded(mock_transformers: tuple[MagicMock, MagicMock, MagicMock, 
 
 @pytest.fixture()
 def reranker_loaded(
-    reranker_unloaded: CrossEncoderReranker, mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock]  # noqa: ARG001
+    reranker_unloaded: CrossEncoderReranker,
+    mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock],  # noqa: ARG001
 ) -> CrossEncoderReranker:
     """Create reranker instance with model loaded"""
     reranker_unloaded.load_model()
