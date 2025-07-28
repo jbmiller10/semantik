@@ -91,7 +91,7 @@ class TestPostgreSQLAuthRepository:
     async def test_verify_refresh_token_valid(self, auth_repo, mock_session):
         """Test verifying a valid refresh token"""
         token = "test_token"
-        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        hashlib.sha256(token.encode()).hexdigest()
 
         # Mock refresh token
         mock_refresh_token = Mock()
@@ -110,7 +110,7 @@ class TestPostgreSQLAuthRepository:
         assert result == "123"
 
         # Verify the query
-        execute_call = mock_session.execute.call_args[0][0]
+        mock_session.execute.call_args[0][0]
         # The query should check for token_hash, not revoked, and not expired
 
     @pytest.mark.asyncio()
@@ -156,7 +156,7 @@ class TestPostgreSQLAuthRepository:
     async def test_revoke_refresh_token_success(self, auth_repo, mock_session):
         """Test successful token revocation"""
         token = "test_token"
-        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        hashlib.sha256(token.encode()).hexdigest()
 
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = 1  # Token ID
@@ -165,7 +165,7 @@ class TestPostgreSQLAuthRepository:
         await auth_repo.revoke_refresh_token(token)
 
         # Verify update query was executed
-        execute_call = mock_session.execute.call_args[0][0]
+        mock_session.execute.call_args[0][0]
         # Should be an update query setting is_revoked = True
 
     @pytest.mark.asyncio()
@@ -199,7 +199,7 @@ class TestPostgreSQLAuthRepository:
         mock_session.flush.assert_called_once()
 
         # Verify update query
-        execute_call = mock_session.execute.call_args[0][0]
+        mock_session.execute.call_args[0][0]
         # Should be updating User.last_login
 
     @pytest.mark.asyncio()

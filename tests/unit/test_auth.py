@@ -69,7 +69,7 @@ class TestUserModels:
 
     def test_user_create_invalid_email(self):
         """Test email validation"""
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="validation error"):
             UserCreate(
                 username="test_user",
                 email="invalid-email",

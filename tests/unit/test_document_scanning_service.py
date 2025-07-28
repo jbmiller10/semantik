@@ -5,7 +5,6 @@ Tests document processing pipeline, file formats, and error scenarios
 """
 
 import hashlib
-import os
 import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -29,8 +28,7 @@ class TestDocumentScanningService:
     @pytest.fixture()
     def mock_document_repo(self):
         """Create a mock DocumentRepository"""
-        repo = AsyncMock()
-        return repo
+        return AsyncMock()
 
     @pytest.fixture()
     def scanning_service(self, mock_session, mock_document_repo):
@@ -178,7 +176,7 @@ class TestDocumentScanningService:
         mock_document_repo.create.side_effect = mock_create
 
         # Scan with small batch size
-        stats = await scanning_service.scan_directory_and_register_documents(
+        await scanning_service.scan_directory_and_register_documents(
             collection_id=collection_id,
             source_path=temp_directory,
             batch_size=2,
@@ -305,7 +303,7 @@ class TestDocumentScanningService:
             assert captured_doc["content_hash"] == expected_hash
 
             # Cleanup
-            os.unlink(temp_file.name)
+            Path(temp_file.name).unlink()
 
     @pytest.mark.asyncio()
     async def test_register_file_metadata(self, scanning_service, mock_document_repo):
@@ -343,7 +341,7 @@ class TestDocumentScanningService:
             assert captured_doc["file_size"] == 15  # Length of "# Test Document"
 
             # Cleanup
-            os.unlink(temp_file.name)
+            Path(temp_file.name).unlink()
 
     @pytest.mark.asyncio()
     async def test_skip_large_files(self, scanning_service, mock_document_repo):
@@ -416,7 +414,7 @@ class TestDocumentScanningFormats:
             assert captured_doc["mime_type"] == "application/pdf"
             assert Path(captured_doc["file_path"]).suffix == ".pdf"
 
-            os.unlink(temp_file.name)
+            Path(temp_file.name).unlink()
 
     @pytest.mark.asyncio()
     async def test_office_formats_handling(self, scanning_service):
@@ -427,7 +425,7 @@ class TestDocumentScanningFormats:
             ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         }
 
-        for ext, expected_mime in office_formats.items():
+        for ext, _expected_mime in office_formats.items():
             with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as temp_file:
                 temp_file.write(b"Office content")
                 temp_file.flush()
@@ -455,7 +453,7 @@ class TestDocumentScanningFormats:
                 # Mime type detection might vary by system
                 assert captured_doc["mime_type"] is not None
 
-                os.unlink(temp_file.name)
+                Path(temp_file.name).unlink()
 
     @pytest.mark.asyncio()
     async def test_text_formats_handling(self, scanning_service):
@@ -495,7 +493,7 @@ class TestDocumentScanningFormats:
                 if ext != ".md" or captured_doc["mime_type"] is not None:
                     assert expected_mime in captured_doc["mime_type"] or captured_doc["mime_type"] == "text/plain"
 
-                os.unlink(temp_file.name)
+                Path(temp_file.name).unlink()
 
 
 class TestDocumentScanningPerformance:
@@ -573,4 +571,4 @@ class TestDocumentScanningPerformance:
             expected_hash = hashlib.sha256(content).hexdigest()
             assert captured_doc["content_hash"] == expected_hash
 
-            os.unlink(temp_file.name)
+            Path(temp_file.name).unlink()

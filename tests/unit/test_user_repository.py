@@ -70,7 +70,7 @@ class TestPostgreSQLUserRepository:
         mock_user.updated_at = datetime.now(UTC)
         mock_user.last_login = None
 
-        result = await user_repo.create_user(user_data)
+        await user_repo.create_user(user_data)
 
         # Verify operations
         mock_session.scalar.assert_called_once()  # Check for existing user
@@ -240,7 +240,7 @@ class TestPostgreSQLUserRepository:
 
         updates = {"username": "newuser", "email": "new@example.com", "full_name": "New Name"}
 
-        result = await user_repo.update_user("123", updates)
+        await user_repo.update_user("123", updates)
 
         # Verify updates were applied
         assert mock_user.username == "newuser"

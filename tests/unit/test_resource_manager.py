@@ -426,16 +426,17 @@ class TestResourceManagerIntegration:
 
         # But can_allocate should not check rate limits
         # (The rate limit code is commented out in the implementation)
-        with patch.object(manager, "_get_user_resource_usage") as mock_get_usage:
+        with (
+            patch.object(manager, "_get_user_resource_usage") as mock_get_usage,
+            patch("webui.services.resource_manager.psutil.virtual_memory") as mock_mem,
+            patch("webui.services.resource_manager.psutil.disk_usage") as mock_disk,
+        ):
             mock_get_usage.return_value = {"storage_gb": 1.0}
+            mock_mem.return_value = Mock(available=10 * 1024 * 1024 * 1024)
+            mock_disk.return_value = Mock(free=100 * 1024 * 1024 * 1024)
 
-            with patch("webui.services.resource_manager.psutil.virtual_memory") as mock_mem:
-                with patch("webui.services.resource_manager.psutil.disk_usage") as mock_disk:
-                    mock_mem.return_value = Mock(available=10 * 1024 * 1024 * 1024)
-                    mock_disk.return_value = Mock(free=100 * 1024 * 1024 * 1024)
+            resources = ResourceEstimate(memory_mb=100, storage_gb=1.0)
+            result = await manager.can_allocate(123, resources)
 
-                    resources = ResourceEstimate(memory_mb=100, storage_gb=1.0)
-                    result = await manager.can_allocate(123, resources)
-
-                    # Should succeed despite many recent operations
-                    assert result is True
+            # Should succeed despite many recent operations
+            assert result is True

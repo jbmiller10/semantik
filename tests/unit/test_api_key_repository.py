@@ -226,7 +226,7 @@ class TestPostgreSQLApiKeyRepository:
 
         updates = {"name": "New Name", "permissions": {"read": True, "write": False}, "is_active": False}
 
-        result = await api_key_repo.update_api_key("test-uuid", updates)
+        await api_key_repo.update_api_key("test-uuid", updates)
 
         # Verify updates were applied
         assert mock_api_key.name == "New Name"
@@ -520,9 +520,8 @@ class TestApiKeyRepositoryEdgeCases:
         api_key_repo.session.flush = AsyncMock()
         api_key_repo.session.refresh = AsyncMock()
 
-        with patch("secrets.token_urlsafe", return_value="token"):
-            with patch("uuid.uuid4", return_value="uuid"):
-                result = await api_key_repo.create_api_key("123", "Test", None)
+        with patch("secrets.token_urlsafe", return_value="token"), patch("uuid.uuid4", return_value="uuid"):
+            await api_key_repo.create_api_key("123", "Test", None)
 
         # Should default to empty dict
         api_key_obj = api_key_repo.session.add.call_args[0][0]

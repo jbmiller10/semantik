@@ -25,8 +25,7 @@ class TestOperationService:
     @pytest.fixture()
     def mock_operation_repo(self):
         """Create a mock OperationRepository"""
-        repo = AsyncMock()
-        return repo
+        return AsyncMock()
 
     @pytest.fixture()
     def operation_service(self, mock_session, mock_operation_repo):
@@ -319,10 +318,8 @@ class TestOperationServiceErrorHandling:
             "Database connection error"
         )
 
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(Exception, match="Database connection error"):
             await operation_service.get_operation("test-uuid", 123)
-
-        assert "Database connection error" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_handle_concurrent_cancellation(self, operation_service):
