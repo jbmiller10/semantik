@@ -261,9 +261,10 @@ describe('SearchInterface - Network Error Handling', () => {
       // Should show warning toast about partial failure
       await waitFor(() => {
         expect(mockAddToast).toHaveBeenCalledWith(
-          expect.stringContaining('Search completed with errors'),
-          'warning'
-        )
+          {
+    message: expect.stringContaining('Search completed with errors'),
+    type: 'warning'
+  })
       })
     })
 
@@ -293,9 +294,10 @@ describe('SearchInterface - Network Error Handling', () => {
       
       await waitFor(() => {
         expect(mockAddToast).toHaveBeenCalledWith(
-          expect.stringContaining('All collections failed'),
-          'error'
-        )
+          {
+    message: expect.stringContaining('All collections failed'),
+    type: 'error'
+  })
       })
     })
   })

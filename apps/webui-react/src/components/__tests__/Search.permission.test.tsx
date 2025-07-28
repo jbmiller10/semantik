@@ -410,9 +410,10 @@ describe('Search - Permission Error Handling', () => {
       
       // Should show helpful message about rate limits
       expect(mockAddToast).toHaveBeenCalledWith(
-        expect.stringContaining('100 requests per hour'),
-        'error'
-      )
+        {
+    message: expect.stringContaining('100 requests per hour'),
+    type: 'error'
+  })
     })
   })
 

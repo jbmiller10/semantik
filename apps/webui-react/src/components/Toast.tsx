@@ -10,7 +10,8 @@ function Toast() {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`max-w-sm w-full bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden ${
+          data-testid="toast"
+          className={`max-w-sm w-full bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden toast-${toast.type} ${
             toast.type === 'error'
               ? 'border-l-4 border-red-500'
               : toast.type === 'success'

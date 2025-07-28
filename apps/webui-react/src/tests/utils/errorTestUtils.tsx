@@ -35,16 +35,19 @@ export const waitForError = async (errorMessage: string | RegExp) => {
  */
 export const waitForToast = async (message: string | RegExp, type?: 'error' | 'success' | 'warning' | 'info') => {
   await waitFor(() => {
-    const toast = screen.getByTestId('toast')
-    expect(toast).toBeInTheDocument()
+    const toasts = screen.getAllByTestId('toast')
+    expect(toasts.length).toBeGreaterThan(0)
     
     const regex = typeof message === 'string' 
       ? new RegExp(message, 'i') 
       : message
-    expect(toast).toHaveTextContent(regex)
     
-    if (type) {
-      expect(toast).toHaveClass(`toast-${type}`)
+    // Check if any toast contains the message
+    const matchingToast = toasts.find(toast => regex.test(toast.textContent || ''))
+    expect(matchingToast).toBeTruthy()
+    
+    if (type && matchingToast) {
+      expect(matchingToast).toHaveClass(`toast-${type}`)
     }
   })
 }
