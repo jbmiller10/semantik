@@ -81,21 +81,12 @@ jobs:
     
     - name: Run Collection Component Tests
       working-directory: ./apps/webui-react
-      run: |
-        npm test -- --run \
-          src/components/__tests__/CollectionCard.test.tsx \
-          src/components/__tests__/CreateCollectionModal.test.tsx \
-          src/components/__tests__/CollectionsDashboard.test.tsx \
-          src/components/__tests__/CollectionDetailsModal.test.tsx \
-          src/components/__tests__/DeleteCollectionModal.test.tsx \
-          src/components/__tests__/RenameCollectionModal.test.tsx \
-          src/components/__tests__/ReindexCollectionModal.test.tsx \
-          src/components/__tests__/AddDataToCollectionModal.test.tsx
+      run: npm run test:collections
     
     - name: Generate test report
       if: always()
       working-directory: ./apps/webui-react
-      run: npm test -- --run --reporter=junit --outputFile=test-results.xml || true
+      run: npm run test:collections -- --reporter=junit --outputFile=test-results.xml || true
     
     - name: Upload test results
       if: always()

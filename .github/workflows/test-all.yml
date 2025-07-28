@@ -90,18 +90,7 @@ jobs:
 
   frontend-tests:
     runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        test-group:
-          - name: "Core Components"
-            tests: "src/components/__tests__/(CollectionCard|CreateCollectionModal|CollectionsDashboard|CollectionDetailsModal).test.tsx"
-          - name: "Modal Components"
-            tests: "src/components/__tests__/(DeleteCollectionModal|RenameCollectionModal|ReindexCollectionModal|AddDataToCollectionModal).test.tsx"
-          - name: "Other Components"
-            tests: "src/components/__tests__/!(Collection*).test.tsx"
-    
-    name: Frontend Tests - ${{ matrix.test-group.name }}
+    name: Frontend Tests
     
     steps:
     - uses: actions/checkout@v4
@@ -120,17 +109,15 @@ jobs:
       working-directory: ./apps/webui-react
       run: npm ci
     
-    - name: Run ${{ matrix.test-group.name }} tests
+    - name: Run all frontend tests
       working-directory: ./apps/webui-react
-      run: npm test -- --run "${{ matrix.test-group.tests }}"
+      run: npm run test:ci
     
     - name: Generate coverage report
-      if: matrix.test-group.name == 'Core Components'
       working-directory: ./apps/webui-react
       run: npm run test:coverage -- --run
     
     - name: Upload frontend coverage
-      if: matrix.test-group.name == 'Core Components'
       uses: codecov/codecov-action@v4
       with:
         token: ${{ secrets.CODECOV_TOKEN }}

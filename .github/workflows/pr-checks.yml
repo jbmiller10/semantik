@@ -4,6 +4,12 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+# Grant permissions for PR comments
+permissions:
+  pull-requests: write
+  contents: read
+  issues: write
+
 jobs:
   check-tests:
     runs-on: ubuntu-latest
@@ -88,14 +94,22 @@ jobs:
       working-directory: ./apps/webui-react
       run: |
         echo "Running tests for changed files..."
-        npm test -- --run ${{ steps.changed-tests.outputs.all_changed_files }}
+        # Convert absolute paths to relative paths for vitest
+        TEST_FILES=""
+        for file in ${{ steps.changed-tests.outputs.all_changed_files }}; do
+          # Extract the relative path from apps/webui-react/
+          RELATIVE_PATH=$(echo "$file" | sed 's|^.*/apps/webui-react/||')
+          TEST_FILES="$TEST_FILES $RELATIVE_PATH"
+        done
+        echo "Test files: $TEST_FILES"
+        npm test -- --run $TEST_FILES
     
     - name: Run all collection component tests
       if: contains(github.event.pull_request.title, 'collection') || contains(github.event.pull_request.body, 'collection')
       working-directory: ./apps/webui-react
       run: |
         echo "Running all collection component tests..."
-        npm test -- --run "src/components/__tests__/*Collection*.test.tsx"
+        npm run test:collections
 
   coverage-check:
     runs-on: ubuntu-latest
@@ -118,16 +132,7 @@ jobs:
     
     - name: Run coverage for collection components
       working-directory: ./apps/webui-react
-      run: |
-        npm run test:coverage -- --run \
-          src/components/__tests__/CollectionCard.test.tsx \
-          src/components/__tests__/CreateCollectionModal.test.tsx \
-          src/components/__tests__/CollectionsDashboard.test.tsx \
-          src/components/__tests__/CollectionDetailsModal.test.tsx \
-          src/components/__tests__/DeleteCollectionModal.test.tsx \
-          src/components/__tests__/RenameCollectionModal.test.tsx \
-          src/components/__tests__/ReindexCollectionModal.test.tsx \
-          src/components/__tests__/AddDataToCollectionModal.test.tsx
+      run: npm run test:collections -- --coverage
     
     - name: Generate coverage summary
       working-directory: ./apps/webui-react
@@ -142,6 +147,7 @@ jobs:
     
     - name: Comment PR with coverage
       uses: marocchino/sticky-pull-request-comment@v2
+      if: github.event_name == 'pull_request'
       with:
         header: coverage
         message: |
