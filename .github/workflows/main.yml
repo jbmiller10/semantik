@@ -1,0 +1,362 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+# Cancel in-progress runs for PRs
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20.x"
+  POETRY_VERSION: "1.7.1"
+  # Test environment variables
+  DATABASE_URL: postgresql://semantik_test:test_password@localhost:5432/semantik_test
+  QDRANT_HOST: localhost
+  QDRANT_PORT: 6333
+  REDIS_URL: redis://localhost:6379/0
+  JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY || 'test-secret-key-for-ci' }}
+  USE_MOCK_EMBEDDINGS: "true"
+  PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:512"
+
+jobs:
+  # Single job for all linting and formatting checks
+  quality-checks:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # For proper diff in PR checks
+
+      # Python setup with caching
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache Poetry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local
+            ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ env.POETRY_VERSION }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
+
+      - name: Install Python dependencies
+        run: poetry install --with dev
+
+      # Node.js setup with caching
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+
+      - name: Cache Node modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            apps/webui-react/node_modules
+          key: node-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            node-${{ runner.os }}-
+
+      - name: Install Node dependencies
+        run: |
+          npm ci
+          cd apps/webui-react && npm ci
+
+      # Run all quality checks in parallel
+      - name: Python formatting (Black)
+        run: poetry run black --check .
+
+      - name: Python linting (Ruff)
+        run: poetry run ruff check .
+
+      - name: Python type checking (Mypy)
+        run: poetry run mypy packages/ --ignore-missing-imports
+        continue-on-error: true  # TODO: Remove when type issues are fixed
+
+      - name: Frontend linting
+        working-directory: ./apps/webui-react
+        run: npm run lint
+
+  # Security scanning job
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy scan results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Check Python dependencies
+        uses: pyupio/safety-action@v1
+        with:
+          api-key: ${{ secrets.SAFETY_API_KEY }}
+        continue-on-error: true  # Don't fail the build for now
+
+  # Backend tests with proper service management
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    needs: quality-checks
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: semantik_test
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: semantik_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+      
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6333:6333
+        options: >-
+          --health-cmd "curl -f http://localhost:6333/health"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Restore Poetry cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local
+            ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ env.POETRY_VERSION }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Restore Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --with test
+
+      - name: Run database migrations
+        run: poetry run alembic upgrade head
+
+      - name: Run backend tests
+        run: |
+          poetry run pytest tests/ -v \
+            --cov=packages \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            -m "not e2e"
+
+      - name: Upload backend coverage
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage.xml
+          flags: backend
+          fail_ci_if_error: false
+
+  # Frontend tests - simplified without matrix
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    needs: quality-checks
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+
+      - name: Restore Node modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            apps/webui-react/node_modules
+          key: node-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd apps/webui-react && npm ci
+
+      - name: Run all frontend tests
+        working-directory: ./apps/webui-react
+        run: npm run test:ci
+
+      - name: Generate coverage report
+        working-directory: ./apps/webui-react
+        run: npm run test:coverage -- --run
+
+      - name: Upload frontend coverage
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: ./apps/webui-react/coverage
+          flags: frontend
+          fail_ci_if_error: false
+
+  # Build validation
+  build-validation:
+    name: Build Validation
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-tests]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+
+      - name: Restore Node modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            apps/webui-react/node_modules
+          key: node-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd apps/webui-react && npm ci
+
+      - name: Build frontend
+        working-directory: ./apps/webui-react
+        run: npm run build
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker images
+        run: |
+          docker buildx build --platform linux/amd64 -f packages/webui/Dockerfile --cache-from type=gha --cache-to type=gha,mode=max -t semantik-webui:test .
+          docker buildx build --platform linux/amd64 -f packages/vecpipe/Dockerfile --cache-from type=gha --cache-to type=gha,mode=max -t semantik-vecpipe:test .
+
+  # PR-specific checks (only runs on PRs)
+  pr-analysis:
+    name: PR Analysis
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v45
+
+      - name: Comment PR size
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: pr-size
+          message: |
+            ## 📊 PR Summary
+            
+            **Changed files:** ${{ steps.changed-files.outputs.all_count }}
+            
+            <details>
+            <summary>File changes</summary>
+            
+            ```
+            ${{ steps.changed-files.outputs.all_changed_files }}
+            ```
+            </details>
+
+  # Summary job for branch protection
+  ci-summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [quality-checks, security-scan, backend-tests, frontend-tests, build-validation]
+    if: always()
+    steps:
+      - name: Check CI Status
+        run: |
+          if [[ "${{ needs.quality-checks.result }}" != "success" ]] || 
+             [[ "${{ needs.backend-tests.result }}" != "success" ]] || 
+             [[ "${{ needs.frontend-tests.result }}" != "success" ]] || 
+             [[ "${{ needs.build-validation.result }}" != "success" ]]; then
+            echo "CI failed"
+            exit 1
+          fi
+          echo "CI passed"
