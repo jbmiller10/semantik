@@ -3,6 +3,7 @@
 Comprehensive test suite for webui/rate_limiter.py
 Tests rate limiting functionality under various scenarios
 """
+# ruff: noqa: ARG001
 
 import time
 from unittest.mock import Mock, patch
@@ -72,17 +73,17 @@ class TestRateLimiterIntegration:
 
         @app.get("/test")
         @test_limiter.limit("5/minute")
-        def test_endpoint():
+        def test_endpoint(request: Request):
             return {"message": "success"}
 
         @app.get("/test-high-limit")
         @test_limiter.limit("100/minute")
-        def test_high_limit_endpoint():
+        def test_high_limit_endpoint(request: Request):
             return {"message": "success"}
 
         @app.get("/test-per-hour")
         @test_limiter.limit("10/hour")
-        def test_per_hour_endpoint():
+        def test_per_hour_endpoint(request: Request):
             return {"message": "success"}
 
         return app
@@ -180,14 +181,14 @@ class TestRateLimiterScenarios:
         # Track which IP is making the request
         current_ip = "192.168.1.100"
 
-        def get_test_ip(_request: Request):
+        def get_test_ip(request: Request):
             return current_ip
 
         test_limiter = Limiter(key_func=get_test_ip)
 
         @app.get("/test")
         @test_limiter.limit("2/minute")
-        def test_endpoint():
+        def test_endpoint(request: Request):
             return {"message": "success"}
 
         client = TestClient(app)
@@ -216,7 +217,7 @@ class TestRateLimiterScenarios:
 
         @app.get("/test")
         @limiter.limit("2/second")
-        def test_endpoint():
+        def test_endpoint(request: Request):
             request_times.append(time.time())
             return {"message": "success"}
 
@@ -246,7 +247,7 @@ class TestRateLimiterScenarios:
 
         @app.get("/test")
         @custom_limiter.limit("5/minute")
-        def test_endpoint():
+        def test_endpoint(request: Request):
             return {"message": "success"}
 
         # This demonstrates how rate limiting can be customized per user
@@ -264,7 +265,7 @@ class TestRateLimiterEdgeCases:
         # This should log an error but not raise during decoration
         @app.get("/bad")
         @limiter.limit("invalid-format")
-        def bad_endpoint():
+        def bad_endpoint(request: Request):
             return {"message": "success"}
 
         # The endpoint will work but without rate limiting applied
@@ -280,7 +281,7 @@ class TestRateLimiterEdgeCases:
 
         @app.get("/test")
         @fresh_limiter.limit("5/minute")
-        def test_endpoint():
+        def test_endpoint(request: Request):
             return {"message": "success"}
 
         client = TestClient(app)
@@ -311,7 +312,7 @@ class TestRateLimiterEdgeCases:
 
         @app.get("/test")
         @fresh_limiter.limit("5/minute")
-        def test_endpoint():
+        def test_endpoint(request: Request):
             return {"message": "success"}
 
         client = TestClient(app)
@@ -332,12 +333,12 @@ class TestRateLimiterPatterns:
 
         @app.get("/search")
         @limiter.limit("30/minute")
-        def search():
+        def search(request: Request):
             return {"results": []}
 
         @app.get("/search/rerank")
         @limiter.limit("60/minute")
-        def search_rerank():
+        def search_rerank(request: Request):
             return {"results": []}
 
         client = TestClient(app)
@@ -356,17 +357,17 @@ class TestRateLimiterPatterns:
 
         @app.post("/collections/{id}/scan")
         @limiter.limit("5/hour")
-        def scan_collection(_id: int):
+        def scan_collection(request: Request, id: int):
             return {"status": "scanning"}
 
         @app.post("/collections/{id}/reindex")
         @limiter.limit("10/hour")
-        def reindex_collection(_id: int):
+        def reindex_collection(request: Request, id: int):
             return {"status": "reindexing"}
 
         @app.delete("/collections/{id}")
         @limiter.limit("10/hour")
-        def delete_collection(_id: int):
+        def delete_collection(request: Request, id: int):
             return {"status": "deleted"}
 
         client = TestClient(app)
@@ -382,7 +383,7 @@ class TestRateLimiterPatterns:
 
         @app.get("/api/data")
         @limiter.limit("1/5minutes")
-        def get_data():
+        def get_data(request: Request):
             return {"data": "sensitive"}
 
         client = TestClient(app)
@@ -413,7 +414,7 @@ class TestRateLimiterMonitoring:
 
         @app.get("/test")
         @limiter.limit("1/minute")
-        def test_endpoint():
+        def test_endpoint(request: Request):
             return {"message": "success"}
 
         client = TestClient(app)
@@ -438,7 +439,7 @@ class TestRateLimiterMonitoring:
 
         @app.get("/test")
         @limiter.limit("0/minute")  # Always exceeded for testing
-        def test_endpoint():
+        def test_endpoint(request: Request):
             return {"message": "success"}
 
         TestClient(app)
