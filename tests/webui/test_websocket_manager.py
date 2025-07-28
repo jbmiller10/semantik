@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import json
 from datetime import UTC, datetime
+from typing import Any, AsyncIterator, Dict, Generator, List, Optional, Set
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -145,7 +146,7 @@ class TestRedisStreamWebSocketManager:
         """Test startup retry logic when Redis is initially unavailable."""
         call_count = 0
 
-        async def mock_from_url(*args, **kwargs):  # noqa: ARG001
+        async def mock_from_url(*args: Any, **kwargs: Any) -> AsyncMock:  # noqa: ARG001
             nonlocal call_count
             call_count += 1
             if call_count < 3:
@@ -164,7 +165,7 @@ class TestRedisStreamWebSocketManager:
             assert manager.redis is not None
 
     @pytest.mark.asyncio()
-    async def test_startup_graceful_degradation(self, manager):
+    async def test_startup_graceful_degradation(self, manager: RedisStreamWebSocketManager) -> None:
         """Test graceful degradation when Redis is completely unavailable."""
         with (
             patch("packages.webui.websocket_manager.redis.from_url", side_effect=Exception("Connection failed")),
@@ -175,7 +176,7 @@ class TestRedisStreamWebSocketManager:
             assert manager.redis is None  # Should degrade gracefully
 
     @pytest.mark.asyncio()
-    async def test_shutdown(self, manager, mock_redis, mock_websocket):
+    async def test_shutdown(self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock, mock_websocket: AsyncMock) -> None:
         """Test proper shutdown and cleanup."""
         manager.redis = mock_redis
 
@@ -183,7 +184,7 @@ class TestRedisStreamWebSocketManager:
         manager.connections["user1:operation:operation1"] = {mock_websocket}
 
         # Create a real asyncio task that can be cancelled and awaited
-        async def dummy_coro():
+        async def dummy_coro() -> None:
             await asyncio.sleep(10)  # Long sleep that will be cancelled
 
         mock_task = asyncio.create_task(dummy_coro())
@@ -198,7 +199,7 @@ class TestRedisStreamWebSocketManager:
         mock_redis.close.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_connect_success(self, manager, mock_websocket, mock_redis):
+    async def test_connect_success(self, manager: RedisStreamWebSocketManager, mock_websocket: AsyncMock, mock_redis: AsyncMock) -> None:
         """Test successful WebSocket connection."""
         manager.redis = mock_redis
 
@@ -228,7 +229,7 @@ class TestRedisStreamWebSocketManager:
         mock_operation.error_message = None
 
         # Set up the operation getter function
-        async def mock_get_operation(operation_id):
+        async def mock_get_operation(operation_id: str) -> Dict[str, Any]:
             if operation_id == "operation1":
                 return mock_operation
             return None
@@ -250,7 +251,7 @@ class TestRedisStreamWebSocketManager:
         assert sent_data["data"]["status"] == "processing"
 
     @pytest.mark.asyncio()
-    async def test_connect_connection_limit(self, manager, mock_websocket):
+    async def test_connect_connection_limit(self, manager: RedisStreamWebSocketManager, mock_websocket: AsyncMock) -> None:
         """Test connection limit enforcement."""
         # Add max connections for user
         for i in range(manager.max_connections_per_user):
@@ -262,13 +263,13 @@ class TestRedisStreamWebSocketManager:
         mock_websocket.close.assert_called_once_with(code=1008, reason="Connection limit exceeded")
 
     @pytest.mark.asyncio()
-    async def test_disconnect(self, manager, mock_websocket):
+    async def test_disconnect(self, manager: RedisStreamWebSocketManager, mock_websocket: AsyncMock) -> None:
         """Test WebSocket disconnection handling."""
         # Add connection
         manager.connections["user1:operation:operation1"] = {mock_websocket}
 
         # Add consumer task
-        async def dummy_coro():
+        async def dummy_coro() -> None:
             await asyncio.sleep(10)  # Long sleep that will be cancelled
 
         mock_task = asyncio.create_task(dummy_coro())
@@ -284,7 +285,7 @@ class TestRedisStreamWebSocketManager:
         assert mock_task.cancelled()
 
     @pytest.mark.asyncio()
-    async def test_send_operation_update_with_redis(self, manager, mock_redis):
+    async def test_send_operation_update_with_redis(self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock) -> None:
         """Test sending operation update via Redis stream."""
         manager.redis = mock_redis
 
@@ -309,7 +310,7 @@ class TestRedisStreamWebSocketManager:
         mock_redis.expire.assert_called_once_with("operation-progress:operation1", 86400)
 
     @pytest.mark.asyncio()
-    async def test_send_operation_update_without_redis(self, manager, mock_websocket):
+    async def test_send_operation_update_without_redis(self, manager: RedisStreamWebSocketManager, mock_websocket: AsyncMock) -> None:
         """Test fallback to direct broadcast when Redis is unavailable."""
         manager.redis = None
         manager.connections["user1:operation:operation1"] = {mock_websocket}
@@ -324,7 +325,7 @@ class TestRedisStreamWebSocketManager:
         assert sent_data["data"] == update_data
 
     @pytest.mark.asyncio()
-    async def test_consume_updates(self, manager, mock_redis, mock_websocket):
+    async def test_consume_updates(self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock, mock_websocket: AsyncMock) -> None:
         """Test consuming updates from Redis stream."""
         manager.redis = mock_redis
         manager.connections["user1:operation:operation1"] = {mock_websocket}
@@ -374,7 +375,7 @@ class TestRedisStreamWebSocketManager:
         mock_redis.xack.assert_called_with("operation-progress:operation1", manager.consumer_group, "msg-id-1")
 
     @pytest.mark.asyncio()
-    async def test_send_history(self, manager, mock_redis, mock_websocket):
+    async def test_send_history(self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock, mock_websocket: AsyncMock) -> None:
         """Test sending message history to newly connected client."""
         manager.redis = mock_redis
 
@@ -409,7 +410,7 @@ class TestRedisStreamWebSocketManager:
         mock_redis.xrange.assert_called_once_with("operation-progress:operation1", min="-", max="+", count=100)
 
     @pytest.mark.asyncio()
-    async def test_broadcast(self, manager):
+    async def test_broadcast(self, manager: RedisStreamWebSocketManager) -> None:
         """Test broadcasting message to all connections for an operation."""
         # Create multiple WebSocket connections for same operation
         ws1 = AsyncMock(spec=WebSocket)
@@ -429,7 +430,7 @@ class TestRedisStreamWebSocketManager:
         ws3.send_json.assert_called_once_with(test_message)
 
     @pytest.mark.asyncio()
-    async def test_broadcast_handles_disconnected_clients(self, manager):
+    async def test_broadcast_handles_disconnected_clients(self, manager: RedisStreamWebSocketManager) -> None:
         """Test that broadcast handles and cleans up disconnected clients."""
         # Create WebSocket that will fail
         ws_good = AsyncMock(spec=WebSocket)
@@ -449,7 +450,7 @@ class TestRedisStreamWebSocketManager:
         assert ws_bad not in manager.connections["user1:operation:operation1"]
 
     @pytest.mark.asyncio()
-    async def test_cleanup_operation_stream(self, manager, mock_redis):
+    async def test_cleanup_operation_stream(self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock) -> None:
         """Test cleaning up Redis stream for completed operation."""
         manager.redis = mock_redis
 
@@ -467,7 +468,7 @@ class TestRedisStreamWebSocketManager:
         mock_redis.xgroup_destroy.assert_any_call("operation-progress:operation1", "group2")
 
     @pytest.mark.asyncio()
-    async def test_cleanup_operation_stream_without_redis(self, manager):
+    async def test_cleanup_operation_stream_without_redis(self, manager: RedisStreamWebSocketManager) -> None:
         """Test cleanup gracefully handles missing Redis."""
         manager.redis = None
 
@@ -475,7 +476,7 @@ class TestRedisStreamWebSocketManager:
         await manager.cleanup_stream("operation1")
 
     @pytest.mark.asyncio()
-    async def test_concurrent_connections(self, manager, mock_redis):
+    async def test_concurrent_connections(self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock) -> None:
         """Test handling multiple concurrent connections for same operation."""
         manager.redis = mock_redis
 
@@ -502,12 +503,12 @@ class TestRedisStreamWebSocketManager:
         assert "operation1" in manager.consumer_tasks
 
     @pytest.mark.asyncio()
-    async def test_connect_redis_reconnect_attempt(self, manager, mock_websocket, mock_redis):
+    async def test_connect_redis_reconnect_attempt(self, manager: RedisStreamWebSocketManager, mock_websocket: AsyncMock, mock_redis: AsyncMock) -> None:
         """Test that connect attempts to reconnect to Redis if not connected."""
         manager.redis = None  # Redis not connected
 
         # Set up operation getter to avoid errors
-        async def mock_get_operation(_operation_id):
+        async def mock_get_operation(_operation_id: str) -> Dict[str, Any]:
             return None
 
         manager.set_operation_getter(mock_get_operation)
@@ -515,7 +516,7 @@ class TestRedisStreamWebSocketManager:
         # Mock the startup method to simulate reconnection
         with patch.object(manager, "startup", new_callable=AsyncMock) as mock_startup:
 
-            async def set_redis():
+            async def set_redis() -> None:
                 manager.redis = mock_redis  # Simulate successful reconnection
 
             mock_startup.side_effect = set_redis
@@ -527,7 +528,7 @@ class TestRedisStreamWebSocketManager:
             mock_websocket.accept.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_connect_without_operation_getter(self, manager, mock_websocket, mock_redis):
+    async def test_connect_without_operation_getter(self, manager: RedisStreamWebSocketManager, mock_websocket: AsyncMock, mock_redis: AsyncMock) -> None:
         """Test connect uses default operation retrieval when no getter is set."""
         manager.redis = mock_redis
 
@@ -582,12 +583,12 @@ class TestRedisStreamWebSocketManager:
             assert sent_data["type"] == "current_state"
 
     @pytest.mark.asyncio()
-    async def test_connect_operation_not_found(self, manager, mock_websocket, mock_redis):
+    async def test_connect_operation_not_found(self, manager: RedisStreamWebSocketManager, mock_websocket: AsyncMock, mock_redis: AsyncMock) -> None:
         """Test connect handles case when operation is not found."""
         manager.redis = mock_redis
 
         # Set up operation getter that returns None
-        async def mock_get_operation(_operation_id):
+        async def mock_get_operation(_operation_id: str) -> Dict[str, Any]:
             return None
 
         manager.set_operation_getter(mock_get_operation)
@@ -604,12 +605,12 @@ class TestRedisStreamWebSocketManager:
         mock_websocket.send_json.assert_not_called()
 
     @pytest.mark.asyncio()
-    async def test_connect_operation_state_error(self, manager, mock_websocket, mock_redis):
+    async def test_connect_operation_state_error(self, manager: RedisStreamWebSocketManager, mock_websocket: AsyncMock, mock_redis: AsyncMock) -> None:
         """Test connect handles errors when getting operation state."""
         manager.redis = mock_redis
 
         # Set up operation getter that raises an exception
-        async def mock_get_operation(_operation_id):
+        async def mock_get_operation(_operation_id: str) -> Dict[str, Any]:
             raise Exception("Database error")
 
         manager.set_operation_getter(mock_get_operation)
@@ -727,13 +728,13 @@ class TestRedisStreamWebSocketManager:
         """Test consumer handles non-existent stream gracefully."""
 
         # Wrap the entire test in a timeout
-        async def run_test():
+        async def run_test() -> None:
             manager.redis = mock_redis
 
             # Mock stream doesn't exist for a few calls, then exists
             call_count = 0
 
-            async def xinfo_side_effect(*_args):
+            async def xinfo_side_effect(*_args: Any) -> Dict[str, int]:
                 nonlocal call_count
                 call_count += 1
                 if call_count < 3:
@@ -889,7 +890,7 @@ class TestRedisStreamWebSocketManager:
         manager.connections["user1:operation:operation1"] = {ws_failing}
 
         # Add a task that's already done
-        async def completed_task():
+        async def completed_task() -> None:
             return "done"
 
         done_task = asyncio.create_task(completed_task())
@@ -899,7 +900,7 @@ class TestRedisStreamWebSocketManager:
         # Make Redis close fail - but the shutdown method doesn't actually handle Redis close errors
         # Looking at the source, it just calls await self.redis.close() without error handling
         # So we need to patch the method to not raise
-        async def mock_close():
+        async def mock_close() -> None:
             raise Exception("Redis close failed")
 
         mock_redis.close = mock_close
@@ -964,7 +965,7 @@ class TestRedisStreamWebSocketManager:
         # Track group creation attempts
         group_create_count = 0
 
-        async def xgroup_create_side_effect(*_args, **_kwargs):
+        async def xgroup_create_side_effect(*_args: Any, **_kwargs: Any) -> None:
             nonlocal group_create_count
             group_create_count += 1
             if group_create_count == 1:
@@ -979,7 +980,7 @@ class TestRedisStreamWebSocketManager:
         # Track read calls
         read_call_count = 0
 
-        async def xreadgroup_side_effect(*_args, **_kwargs):
+        async def xreadgroup_side_effect(*_args: Any, **_kwargs: Any) -> List[Any]:
             nonlocal read_call_count
             read_call_count += 1
             if read_call_count == 2:  # On second read, throw NOGROUP
@@ -1011,7 +1012,7 @@ class TestRedisStreamWebSocketManager:
     async def test_set_operation_getter(self, manager):
         """Test setting custom operation getter function."""
 
-        async def custom_getter(op_id):
+        async def custom_getter(op_id: str) -> Dict[str, Any]:
             return f"operation_{op_id}"
 
         manager.set_operation_getter(custom_getter)

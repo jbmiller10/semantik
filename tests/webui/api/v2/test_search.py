@@ -85,7 +85,7 @@ class TestMultiCollectionSearch:
 
     @pytest.mark.asyncio()
     async def test_multi_collection_search_success(
-        self, mock_user: dict[str, Any], mock_collections: list[MagicMock], mock_search_results: list[dict[str, Any]]
+        self, mock_user: dict[str, Any], mock_collections: list[MagicMock], mock_search_results: dict[str, list[dict[str, Any]]]
     ) -> None:
         """Test successful multi-collection search."""
         # Create a proper Request object with minimal required attributes
@@ -165,7 +165,7 @@ class TestMultiCollectionSearch:
         assert response.partial_failure is False
 
     @pytest.mark.asyncio()
-    async def test_multi_collection_search_partial_failure(self, mock_user, mock_collections):
+    async def test_multi_collection_search_partial_failure(self, mock_user: dict[str, Any], mock_collections: list[MagicMock]) -> None:
         """Test multi-collection search with partial failures."""
         # Create a proper Request object with minimal required attributes
         scope = {
@@ -229,7 +229,7 @@ class TestMultiCollectionSearch:
         assert len(response.results) == 1  # Only results from successful collection
 
     @pytest.mark.asyncio()
-    async def test_multi_collection_search_no_reranking_same_model(self, mock_user, mock_collections):
+    async def test_multi_collection_search_no_reranking_same_model(self, mock_user: dict[str, Any], mock_collections: list[MagicMock]) -> None:
         """Test no re-ranking when all collections use the same model."""
         # Create a proper Request object with minimal required attributes
         scope = {
@@ -312,7 +312,7 @@ class TestSearchReranking:
     """Test search reranking functionality."""
 
     @pytest.mark.asyncio()
-    async def test_search_with_reranking_disabled(self, mock_user, mock_collections):
+    async def test_search_with_reranking_disabled(self, mock_user: dict[str, Any], mock_collections: list[MagicMock]) -> None:
         """Test that search works correctly with reranking disabled."""
         # Create a proper Request object
         scope = {
@@ -386,7 +386,7 @@ class TestSearchReranking:
         assert response.results[0].reranked_score is None
 
     @pytest.mark.asyncio()
-    async def test_search_with_reranking_enabled(self, mock_user, mock_collections):
+    async def test_search_with_reranking_enabled(self, mock_user: dict[str, Any], mock_collections: list[MagicMock]) -> None:
         """Test that search works correctly with reranking enabled."""
         # Create a proper Request object
         scope = {
@@ -475,7 +475,7 @@ class TestSearchReranking:
         assert response.results[1].reranked_score == 0.92
 
     @pytest.mark.asyncio()
-    async def test_search_reranking_different_scores(self, mock_user, mock_collections):
+    async def test_search_reranking_different_scores(self, mock_user: dict[str, Any], mock_collections: list[MagicMock]) -> None:
         """Test that reranking produces different scores from original scores."""
         # Create a proper Request object
         scope = {
@@ -552,7 +552,7 @@ class TestSearchReranking:
         assert response.results[1].score == 0.85
 
     @pytest.mark.asyncio()
-    async def test_single_collection_search_with_reranking(self, mock_user):
+    async def test_single_collection_search_with_reranking(self, mock_user: dict[str, Any]) -> None:
         """Test single collection search with reranking enabled."""
         # Create a proper Request object
         scope = {
@@ -613,7 +613,7 @@ class TestSingleCollectionSearch:
     """Test single collection search endpoint."""
 
     @pytest.mark.asyncio()
-    async def test_single_collection_search_success(self, mock_user):
+    async def test_single_collection_search_success(self, mock_user: dict[str, Any]) -> None:
         """Test successful single collection search."""
         # Create a proper Request object with minimal required attributes
         scope = {
@@ -672,7 +672,7 @@ class TestSingleCollectionSearch:
         assert response.search_time_ms == 100
 
     @pytest.mark.asyncio()
-    async def test_single_collection_search_not_found(self, mock_user):
+    async def test_single_collection_search_not_found(self, mock_user: dict[str, Any]) -> None:
         """Test single collection search with non-existent collection."""
         scope = {
             "type": "http",
@@ -705,7 +705,7 @@ class TestSingleCollectionSearch:
         assert search_request.collection_id in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
-    async def test_single_collection_search_access_denied(self, mock_user):
+    async def test_single_collection_search_access_denied(self, mock_user: dict[str, Any]) -> None:
         """Test single collection search with access denied."""
         scope = {
             "type": "http",
@@ -737,7 +737,7 @@ class TestSingleCollectionSearch:
         assert "does not have access" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
-    async def test_single_collection_search_general_error(self, mock_user):
+    async def test_single_collection_search_general_error(self, mock_user: dict[str, Any]) -> None:
         """Test single collection search with general error."""
         scope = {
             "type": "http",
@@ -771,7 +771,7 @@ class TestMultiCollectionSearchEdgeCases:
     """Test edge cases for multi-collection search."""
 
     @pytest.mark.asyncio()
-    async def test_multi_collection_search_with_special_characters(self, mock_user, mock_collections):
+    async def test_multi_collection_search_with_special_characters(self, mock_user: dict[str, Any], mock_collections: list[MagicMock]) -> None:
         """Test search with special characters in query."""
         scope = {
             "type": "http",
@@ -812,7 +812,7 @@ class TestMultiCollectionSearchEdgeCases:
         assert len(response.results) == 0
 
     @pytest.mark.asyncio()
-    async def test_multi_collection_search_with_metadata_filter(self, mock_user, mock_collections):
+    async def test_multi_collection_search_with_metadata_filter(self, mock_user: dict[str, Any], mock_collections: list[MagicMock]) -> None:
         """Test search with metadata filters."""
         scope = {
             "type": "http",
@@ -870,7 +870,7 @@ class TestMultiCollectionSearchEdgeCases:
         assert response.results[0].metadata["file_type"] == "pdf"
 
     @pytest.mark.asyncio()
-    async def test_multi_collection_search_different_search_types(self, mock_user, mock_collections):
+    async def test_multi_collection_search_different_search_types(self, mock_user: dict[str, Any], mock_collections: list[MagicMock]) -> None:
         """Test search with different search types."""
         scope = {
             "type": "http",
@@ -925,7 +925,7 @@ class TestMultiCollectionSearchEdgeCases:
         assert response.search_type == "question"
 
     @pytest.mark.asyncio()
-    async def test_multi_collection_search_with_score_threshold(self, mock_user, mock_collections):
+    async def test_multi_collection_search_with_score_threshold(self, mock_user: dict[str, Any], mock_collections: list[MagicMock]) -> None:
         """Test search with score threshold filtering."""
         scope = {
             "type": "http",
@@ -982,7 +982,7 @@ class TestMultiCollectionSearchEdgeCases:
         assert response.results[0].score >= 0.8
 
     @pytest.mark.asyncio()
-    async def test_multi_collection_search_access_denied(self, mock_user, mock_collections):
+    async def test_multi_collection_search_access_denied(self, mock_user: dict[str, Any], mock_collections: list[MagicMock]) -> None:
         """Test multi-collection search with access denied error."""
         scope = {
             "type": "http",
@@ -1014,7 +1014,7 @@ class TestMultiCollectionSearchEdgeCases:
         assert "does not have access" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
-    async def test_multi_collection_search_general_error(self, mock_user, mock_collections):
+    async def test_multi_collection_search_general_error(self, mock_user: dict[str, Any], mock_collections: list[MagicMock]) -> None:
         """Test multi-collection search with general error."""
         scope = {
             "type": "http",
@@ -1048,7 +1048,7 @@ class TestHybridSearchParameters:
     """Test hybrid search functionality."""
 
     @pytest.mark.asyncio()
-    async def test_hybrid_search_with_custom_alpha(self, mock_user, mock_collections):
+    async def test_hybrid_search_with_custom_alpha(self, mock_user: dict[str, Any], mock_collections: list[MagicMock]) -> None:
         """Test hybrid search with custom alpha parameter."""
         scope = {
             "type": "http",
@@ -1109,7 +1109,7 @@ class TestHybridSearchParameters:
         assert len(response.results) == 1
 
     @pytest.mark.asyncio()
-    async def test_code_search_type(self, mock_user, mock_collections):
+    async def test_code_search_type(self, mock_user: dict[str, Any], mock_collections: list[MagicMock]) -> None:
         """Test search with code search type."""
         scope = {
             "type": "http",
@@ -1165,7 +1165,7 @@ class TestHybridSearchParameters:
 class TestSearchValidation:
     """Test request validation for search endpoints."""
 
-    def test_invalid_uuid_format_validation(self):
+    def test_invalid_uuid_format_validation(self) -> None:
         """Test that invalid UUID format is rejected."""
         with pytest.raises(ValueError, match="Invalid UUID format"):
             CollectionSearchRequest(
@@ -1174,7 +1174,7 @@ class TestSearchValidation:
                 k=10,
             )
 
-    def test_empty_collection_list_validation(self):
+    def test_empty_collection_list_validation(self) -> None:
         """Test that empty collection list is rejected."""
         with pytest.raises(ValueError, match="At least one collection UUID must be provided"):
             CollectionSearchRequest(
@@ -1183,7 +1183,7 @@ class TestSearchValidation:
                 k=10,
             )
 
-    def test_too_many_collections_validation(self):
+    def test_too_many_collections_validation(self) -> None:
         """Test that too many collections are rejected."""
         import uuid
 
@@ -1197,7 +1197,7 @@ class TestSearchValidation:
                 k=10,
             )
 
-    def test_query_length_validation(self):
+    def test_query_length_validation(self) -> None:
         """Test query length limits."""
         import uuid
 
@@ -1219,7 +1219,7 @@ class TestSearchValidation:
                 k=10,
             )
 
-    def test_k_parameter_validation(self):
+    def test_k_parameter_validation(self) -> None:
         """Test k parameter limits."""
         import uuid
 
@@ -1241,7 +1241,7 @@ class TestSearchValidation:
                 k=101,
             )
 
-    def test_score_threshold_validation(self):
+    def test_score_threshold_validation(self) -> None:
         """Test score threshold limits."""
         import uuid
 
@@ -1265,7 +1265,7 @@ class TestSearchValidation:
                 score_threshold=1.1,
             )
 
-    def test_hybrid_alpha_validation(self):
+    def test_hybrid_alpha_validation(self) -> None:
         """Test hybrid alpha parameter limits."""
         import uuid
 
@@ -1294,7 +1294,7 @@ class TestSearchResultFormatting:
     """Test response formatting for search results."""
 
     @pytest.mark.asyncio()
-    async def test_multi_collection_search_empty_results(self, mock_user, mock_collections):
+    async def test_multi_collection_search_empty_results(self, mock_user: dict[str, Any], mock_collections: list[MagicMock]) -> None:
         """Test search with no results."""
         scope = {
             "type": "http",
@@ -1335,7 +1335,7 @@ class TestSearchResultFormatting:
         assert response.failed_collections is None
 
     @pytest.mark.asyncio()
-    async def test_result_file_path_handling(self, mock_user, mock_collections):
+    async def test_result_file_path_handling(self, mock_user: dict[str, Any], mock_collections: list[MagicMock]) -> None:
         """Test file path and file name extraction."""
         scope = {
             "type": "http",
@@ -1417,7 +1417,7 @@ class TestSearchResultFormatting:
         assert response.results[2].file_path == ""
 
     @pytest.mark.asyncio()
-    async def test_result_missing_optional_fields(self, mock_user, mock_collections):
+    async def test_result_missing_optional_fields(self, mock_user: dict[str, Any], mock_collections: list[MagicMock]) -> None:
         """Test handling of results with missing optional fields."""
         scope = {
             "type": "http",
@@ -1474,7 +1474,7 @@ class TestSearchResultFormatting:
         assert result.reranked_score is None
 
     @pytest.mark.asyncio()
-    async def test_single_collection_search_with_metadata_filter(self, mock_user):
+    async def test_single_collection_search_with_metadata_filter(self, mock_user: dict[str, Any]) -> None:
         """Test single collection search with metadata filtering."""
         scope = {
             "type": "http",
@@ -1521,7 +1521,7 @@ class TestSearchResultFormatting:
         assert response.results[0].metadata["file_type"] == "markdown"
 
     @pytest.mark.asyncio()
-    async def test_multi_collection_timing_metrics(self, mock_user, mock_collections):
+    async def test_multi_collection_timing_metrics(self, mock_user: dict[str, Any], mock_collections: list[MagicMock]) -> None:
         """Test timing metrics in response."""
         scope = {
             "type": "http",
