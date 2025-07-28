@@ -77,8 +77,11 @@ class TestWebSocketManager:
     @patch("packages.webui.websocket_manager.redis.from_url")
     async def test_startup_success(self, mock_redis_from_url, ws_manager, mock_redis):
         """Test successful startup and Redis connection"""
-        # redis.from_url is async, so make it return a coroutine
-        mock_redis_from_url.return_value = asyncio.coroutine(lambda: mock_redis)()
+        # redis.from_url is async, so use side_effect
+        async def async_redis_from_url(*args, **kwargs):
+            return mock_redis
+        
+        mock_redis_from_url.side_effect = async_redis_from_url
 
         await ws_manager.startup()
 
@@ -383,28 +386,33 @@ class TestWebSocketManager:
         """Test consumer behavior when stream doesn't exist yet"""
         ws_manager.redis = mock_redis
 
-        # Stream doesn't exist
-        mock_redis.xinfo_stream.side_effect = Exception("Stream does not exist")
-
-        # Should retry after delay
+        # Stream doesn't exist initially, then exists
         call_count = 0
-
-        async def track_calls(*args, **kwargs):
+        
+        async def xinfo_side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
-            if call_count > 2:
-                raise asyncio.CancelledError()
-            await asyncio.sleep(0.01)
-
-        mock_redis.xreadgroup.side_effect = track_calls
+            if call_count <= 2:
+                raise Exception("Stream does not exist")
+            # After 2 attempts, return stream info
+            return {"length": 0}
+        
+        mock_redis.xinfo_stream.side_effect = xinfo_side_effect
+        mock_redis.xgroup_create.return_value = None
+        mock_redis.xreadgroup.side_effect = asyncio.CancelledError()
 
         task = asyncio.create_task(ws_manager._consume_updates("op-123"))
 
+        # Let it attempt a few times
+        await asyncio.sleep(0.1)
+        
+        # Cancel the task
+        task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
 
-        # Should have attempted multiple times
-        assert call_count > 1
+        # Should have called xinfo_stream multiple times
+        assert mock_redis.xinfo_stream.call_count >= 2
 
     @pytest.mark.asyncio()
     async def test_send_history(self, ws_manager, mock_redis, mock_websocket):
@@ -587,6 +595,11 @@ class TestWebSocketManagerErrorHandling:
         """Test consumer error recovery"""
         mock_redis = AsyncMock()
         ws_manager.redis = mock_redis
+
+        # Mock stream exists and consumer group creation
+        mock_redis.xinfo_stream.return_value = {"length": 5}
+        mock_redis.xgroup_create.return_value = None
+        mock_redis.xinfo_groups.return_value = []
 
         # Simulate various errors
         error_sequence = [
