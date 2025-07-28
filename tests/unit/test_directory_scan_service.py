@@ -6,16 +6,14 @@ Tests path validation, permission checking, file discovery logic, and error scen
 
 import asyncio
 import hashlib
-import json
-from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from pyfakefs.fake_filesystem_unittest import Patcher
-from packages.webui.api.schemas import DirectoryScanFile, DirectoryScanProgress, DirectoryScanResponse
+
+from packages.webui.api.schemas import DirectoryScanResponse
 from packages.webui.services.directory_scan_service import (
-    HASH_CHUNK_SIZE,
     MAX_FILE_SIZE,
     PROGRESS_UPDATE_INTERVAL,
     SUPPORTED_EXTENSIONS,
@@ -271,9 +269,7 @@ class TestDirectoryScanService:
 
             # Verify error message was sent via WebSocket before raising
             error_calls = [
-                call
-                for call in mock_ws_manager._broadcast.call_args_list
-                if call[0][1].get("type") == "error"
+                call for call in mock_ws_manager._broadcast.call_args_list if call[0][1].get("type") == "error"
             ]
             assert len(error_calls) > 0
 
@@ -469,7 +465,7 @@ class TestDirectoryScanServiceEdgeCases:
         # Create test directory
         fs.create_dir("/test_dir")
         fs.create_file("/test_dir/test.pdf", contents=b"test" * 100)
-        
+
         # Make broadcast fail
         mock_ws_manager._broadcast.side_effect = Exception("WebSocket error")
 
@@ -493,9 +489,7 @@ class TestDirectoryScanServiceEdgeCases:
         with patch("os.walk", side_effect=Exception("Walk error")):
             # Use the generator method directly
             result_list = []
-            async for file_info, warning in service._scan_recursive(
-                Path("/test_recursive"), None, None
-            ):
+            async for file_info, warning in service._scan_recursive(Path("/test_recursive"), None, None):
                 result_list.append((file_info, warning))
 
             # Should yield error warning
@@ -557,11 +551,7 @@ class TestDirectoryScanProgress:
             )
 
             # Count progress update calls
-            progress_calls = [
-                call
-                for call in mock_send.call_args_list
-                if call[1]["msg_type"] == "progress"
-            ]
+            progress_calls = [call for call in mock_send.call_args_list if call[1]["msg_type"] == "progress"]
 
             # Should have at least 2 progress updates
             # (one at PROGRESS_UPDATE_INTERVAL and one at completion)

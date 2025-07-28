@@ -6,13 +6,13 @@ Tests connection management, message routing, error handling, and reconnection l
 
 import asyncio
 import json
-import uuid
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, Mock, call, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 import redis.asyncio as redis
 from fastapi import WebSocket
+
 from packages.webui.websocket_manager import RedisStreamWebSocketManager
 
 
@@ -77,10 +77,11 @@ class TestWebSocketManager:
     @patch("packages.webui.websocket_manager.redis.from_url")
     async def test_startup_success(self, mock_redis_from_url, ws_manager, mock_redis):
         """Test successful startup and Redis connection"""
+
         # redis.from_url is async, so use side_effect
-        async def async_redis_from_url(*args, **kwargs):
+        async def async_redis_from_url(*args, **kwargs):  # noqa: ARG001
             return mock_redis
-        
+
         mock_redis_from_url.side_effect = async_redis_from_url
 
         await ws_manager.startup()
@@ -100,11 +101,11 @@ class TestWebSocketManager:
         mock_redis_success.ping = AsyncMock()
 
         # Make from_url raise exceptions then succeed
-        async def side_effect_func(*args, **kwargs):
+        async def side_effect_func(*args, **kwargs):  # noqa: ARG001
             if mock_redis_from_url.call_count <= 2:
                 raise Exception("Connection failed")
             return mock_redis_success
-        
+
         mock_redis_from_url.side_effect = side_effect_func
 
         await ws_manager.startup()
@@ -182,7 +183,7 @@ class TestWebSocketManager:
         """Test connection when Redis is not available"""
         ws_manager.redis = None
         ws_manager._get_operation_func = AsyncMock(return_value=mock_operation)
-        
+
         # Mock startup to not actually connect to Redis
         mock_startup.return_value = None
 
@@ -320,10 +321,10 @@ class TestWebSocketManager:
 
         # Mock consumer group creation - raise BUSYGROUP to simulate existing group
         mock_redis.xgroup_create.side_effect = Exception("BUSYGROUP Consumer Group name already exists")
-        
+
         # Mock xinfo_groups to return empty list
         mock_redis.xinfo_groups.return_value = []
-        
+
         # Mock xack to succeed
         mock_redis.xack.return_value = None
 
@@ -359,14 +360,13 @@ class TestWebSocketManager:
         ]
 
         # Return messages once, then block forever (until cancelled)
-        async def xreadgroup_side_effect(*args, **kwargs):
+        async def xreadgroup_side_effect(*args, **kwargs):  # noqa: ARG001
             if mock_redis.xreadgroup.call_count == 1:
                 return test_messages
-            else:
-                # Block until cancelled
-                await asyncio.sleep(10)
-                return []
-        
+            # Block until cancelled
+            await asyncio.sleep(10)
+            return []
+
         mock_redis.xreadgroup.side_effect = xreadgroup_side_effect
 
         # Setup WebSocket connection
@@ -401,15 +401,15 @@ class TestWebSocketManager:
 
         # Stream doesn't exist initially, then exists
         call_count = 0
-        
-        async def xinfo_side_effect(*args, **kwargs):
+
+        async def xinfo_side_effect(*args, **kwargs):  # noqa: ARG001
             nonlocal call_count
             call_count += 1
             if call_count <= 2:
                 raise Exception("Stream does not exist")
             # After 2 attempts, return stream info
             return {"length": 0}
-        
+
         mock_redis.xinfo_stream.side_effect = xinfo_side_effect
         mock_redis.xgroup_create.return_value = None
         mock_redis.xreadgroup.side_effect = asyncio.CancelledError()
@@ -418,7 +418,7 @@ class TestWebSocketManager:
 
         # Let it attempt a few times (need more time since it waits 2 seconds between attempts)
         await asyncio.sleep(5)
-        
+
         # Cancel the task
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -436,19 +436,11 @@ class TestWebSocketManager:
         history_messages = [
             (
                 "msg-1",
-                {
-                    "message": json.dumps(
-                        {"type": "progress", "data": {"percentage": 10}}
-                    )
-                },
+                {"message": json.dumps({"type": "progress", "data": {"percentage": 10}})},
             ),
             (
                 "msg-2",
-                {
-                    "message": json.dumps(
-                        {"type": "progress", "data": {"percentage": 20}}
-                    )
-                },
+                {"message": json.dumps({"type": "progress", "data": {"percentage": 20}})},
             ),
         ]
         mock_redis.xrange.return_value = history_messages
@@ -459,16 +451,14 @@ class TestWebSocketManager:
         assert mock_websocket.send_json.call_count == 2
 
         # Verify correct stream key used
-        mock_redis.xrange.assert_called_once_with(
-            "operation-progress:op-123", min="-", max="+", count=100
-        )
+        mock_redis.xrange.assert_called_once_with("operation-progress:op-123", min="-", max="+", count=100)
 
     @pytest.mark.asyncio()
     async def test_broadcast_to_multiple_connections(self, ws_manager):
         """Test broadcasting to multiple WebSocket connections"""
         # Create multiple WebSockets
         websockets = []
-        for i in range(3):
+        for _i in range(3):
             ws = Mock()
             ws.send_json = AsyncMock()
             websockets.append(ws)
@@ -497,9 +487,7 @@ class TestWebSocketManager:
         ws_fail = Mock()
         ws_fail.send_json = AsyncMock(side_effect=Exception("Connection lost"))
 
-        ws_manager.connections = {
-            "user-123:operation:op-123": {ws_success, ws_fail}
-        }
+        ws_manager.connections = {"user-123:operation:op-123": {ws_success, ws_fail}}
 
         # Test broadcast
         message = {"type": "error", "data": {"message": "Test error"}}
@@ -516,7 +504,7 @@ class TestWebSocketManager:
         """Test closing connections when operation completes"""
         # Create WebSockets
         websockets = []
-        for i in range(2):
+        for _i in range(2):
             ws = Mock()
             ws.close = AsyncMock()
             websockets.append(ws)
@@ -654,14 +642,13 @@ class TestWebSocketManagerErrorHandling:
         ]
 
         # Return bad message then block
-        async def xreadgroup_side_effect(*args, **kwargs):
+        async def xreadgroup_side_effect(*args, **kwargs):  # noqa: ARG001
             if mock_redis.xreadgroup.call_count == 1:
                 return bad_messages
-            else:
-                # Block until cancelled
-                await asyncio.sleep(10)
-                return []
-        
+            # Block until cancelled
+            await asyncio.sleep(10)
+            return []
+
         mock_redis.xreadgroup.side_effect = xreadgroup_side_effect
         mock_redis.xinfo_stream.return_value = {"length": 1}
         mock_redis.xinfo_groups.return_value = []
@@ -679,7 +666,7 @@ class TestWebSocketManagerErrorHandling:
 
         # Let it process the bad message
         await asyncio.sleep(0.5)
-        
+
         # Cancel task
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -767,7 +754,7 @@ class TestWebSocketManagerIntegration:
         ws_manager._get_operation_func = AsyncMock(side_effect=operations)
 
         # Connect all operations
-        for i, (op, ws) in enumerate(zip(operations, websockets)):
+        for i, (op, ws) in enumerate(zip(operations, websockets, strict=False)):
             await ws_manager.connect(ws, op.uuid, f"user-{i}")
 
         # Verify all connections established
@@ -783,7 +770,7 @@ class TestWebSocketManagerIntegration:
             )
 
         # Disconnect all
-        for i, (op, ws) in enumerate(zip(operations, websockets)):
+        for i, (op, ws) in enumerate(zip(operations, websockets, strict=False)):
             await ws_manager.disconnect(ws, op.uuid, f"user-{i}")
 
         # Verify cleanup

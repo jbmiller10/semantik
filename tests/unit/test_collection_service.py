@@ -4,12 +4,11 @@ Comprehensive test suite for webui/services/collection_service.py
 Tests collection CRUD operations, permission checking, state transitions, and error handling
 """
 
-import uuid
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+
 from packages.shared.database.exceptions import AccessDeniedError, EntityAlreadyExistsError, InvalidStateError
 from packages.shared.database.models import Collection, CollectionStatus, OperationStatus, OperationType
 from packages.webui.services.collection_service import CollectionService
@@ -264,9 +263,7 @@ class TestCollectionService:
         )
 
         # Verify status update
-        mock_collection_repo.update_status.assert_called_once_with(
-            mock_collection.id, CollectionStatus.PROCESSING
-        )
+        mock_collection_repo.update_status.assert_called_once_with(mock_collection.id, CollectionStatus.PROCESSING)
 
         # Verify commit and Celery task
         mock_session.commit.assert_called_once()
@@ -346,7 +343,7 @@ class TestCollectionService:
         # Test reindex with config updates
         config_updates = {"chunk_size": 512, "chunk_overlap": 100}
 
-        operation_dict = await collection_service.reindex_collection(
+        _ = await collection_service.reindex_collection(
             collection_id="collection-123", user_id=123, config_updates=config_updates
         )
 
@@ -379,9 +376,7 @@ class TestCollectionService:
         )
 
         # Verify status update
-        mock_collection_repo.update_status.assert_called_once_with(
-            mock_collection.id, CollectionStatus.PROCESSING
-        )
+        mock_collection_repo.update_status.assert_called_once_with(mock_collection.id, CollectionStatus.PROCESSING)
 
         # Verify commit and Celery task
         mock_session.commit.assert_called_once()
@@ -433,11 +428,11 @@ class TestCollectionService:
         # Create a mock collection object with name attribute
         mock_collection_obj = Mock()
         mock_collection_obj.name = "collection_123"
-        
+
         # Create the collections response
         mock_collections_response = Mock()
         mock_collections_response.collections = [mock_collection_obj]
-        
+
         mock_qdrant_client.get_collections.return_value = mock_collections_response
         mock_qdrant_manager.get_client.return_value = mock_qdrant_client
 
@@ -560,9 +555,7 @@ class TestCollectionService:
         )
 
         # Verify status update
-        mock_collection_repo.update_status.assert_called_once_with(
-            mock_collection.id, CollectionStatus.PROCESSING
-        )
+        mock_collection_repo.update_status.assert_called_once_with(mock_collection.id, CollectionStatus.PROCESSING)
 
         # Verify commit and Celery task
         mock_session.commit.assert_called_once()
@@ -579,7 +572,9 @@ class TestCollectionService:
 
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
 
-        with pytest.raises(InvalidStateError, match="Cannot remove source from collection in CollectionStatus.PENDING state"):
+        with pytest.raises(
+            InvalidStateError, match="Cannot remove source from collection in CollectionStatus.PENDING state"
+        ):
             await collection_service.remove_source(
                 collection_id="collection-123", user_id=123, source_path="/path/to/remove"
             )
@@ -605,9 +600,7 @@ class TestCollectionService:
         assert len(collections) == 3
         assert total == 3
 
-        mock_collection_repo.list_for_user.assert_called_once_with(
-            user_id=123, offset=0, limit=50, include_public=True
-        )
+        mock_collection_repo.list_for_user.assert_called_once_with(user_id=123, offset=0, limit=50, include_public=True)
 
     @pytest.mark.asyncio()
     async def test_update_collection_success(self, collection_service, mock_collection_repo, mock_session):
@@ -629,9 +622,7 @@ class TestCollectionService:
 
         # Test update
         updates = {"name": "Updated Name", "description": "Updated description"}
-        result = await collection_service.update(
-            collection_id="collection-123", user_id=123, updates=updates
-        )
+        result = await collection_service.update(collection_id="collection-123", user_id=123, updates=updates)
 
         # Verify ownership check
         assert mock_collection.owner_id == 123
@@ -655,9 +646,7 @@ class TestCollectionService:
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
 
         with pytest.raises(AccessDeniedError):
-            await collection_service.update(
-                collection_id="collection-123", user_id=123, updates={"name": "New Name"}
-            )
+            await collection_service.update(collection_id="collection-123", user_id=123, updates={"name": "New Name"})
 
     @pytest.mark.asyncio()
     async def test_list_documents(self, collection_service, mock_collection_repo, mock_document_repo):
@@ -747,16 +736,12 @@ class TestCollectionServiceErrorHandling:
         )
 
         with pytest.raises(Exception, match="Database connection error"):
-            await collection_service.add_source(
-                collection_id="collection-123", user_id=123, source_path="/path"
-            )
+            await collection_service.add_source(collection_id="collection-123", user_id=123, source_path="/path")
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.collection_service.celery_app")
     @patch("packages.webui.services.collection_service.logger")
-    async def test_create_collection_partial_failure(
-        self, mock_logger, mock_celery_app, collection_service
-    ):
+    async def test_create_collection_partial_failure(self, mock_logger, mock_celery_app, collection_service):
         """Test collection creation when operation creation fails"""
         # Mock collection creation success
         mock_collection = Mock(spec=Collection)
@@ -779,7 +764,7 @@ class TestCollectionServiceIntegration:
     @patch("packages.webui.services.collection_service.uuid")
     async def test_collection_creation_workflow(self, mock_uuid, mock_celery_app):
         """Test complete collection creation workflow"""
-        # Setup UUIDs  
+        # Setup UUIDs
         mock_uuid_obj = Mock()
         mock_uuid_obj.hex = "task-uuid-123"
         mock_uuid.uuid4.return_value = mock_uuid_obj
@@ -789,9 +774,7 @@ class TestCollectionServiceIntegration:
         mock_collection_repo = AsyncMock()
         mock_operation_repo = AsyncMock()
         mock_document_repo = AsyncMock()
-        service = CollectionService(
-            mock_session, mock_collection_repo, mock_operation_repo, mock_document_repo
-        )
+        service = CollectionService(mock_session, mock_collection_repo, mock_operation_repo, mock_document_repo)
 
         # Mock collection with all attributes
         mock_collection = Mock(spec=Collection)
@@ -865,9 +848,7 @@ class TestCollectionServiceIntegration:
         mock_collection_repo = AsyncMock()
         mock_operation_repo = AsyncMock()
         mock_document_repo = AsyncMock()
-        service = CollectionService(
-            mock_session, mock_collection_repo, mock_operation_repo, mock_document_repo
-        )
+        service = CollectionService(mock_session, mock_collection_repo, mock_operation_repo, mock_document_repo)
 
         # Test state transitions
         test_cases = [

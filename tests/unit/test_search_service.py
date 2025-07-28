@@ -4,13 +4,12 @@ Comprehensive test suite for webui/services/search_service.py
 Tests query building, result processing, multi-collection search, and reranking integration
 """
 
-import asyncio
 import time
-from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
+
 from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from packages.shared.database.models import Collection, CollectionStatus
 from packages.webui.services.search_service import SearchService
@@ -80,9 +79,7 @@ class TestSearchService:
     async def test_validate_collection_not_found(self, search_service, mock_collection_repo):
         """Test collection access validation when collection not found"""
         # Mock not found error
-        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = EntityNotFoundError(
-            "collection", "uuid-1"
-        )
+        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = EntityNotFoundError("collection", "uuid-1")
 
         with pytest.raises(AccessDeniedError):
             await search_service.validate_collection_access(["uuid-1"], user_id=123)
@@ -222,9 +219,7 @@ class TestSearchService:
             mock_response = Mock()
             mock_response.status_code = status_code
             mock_client = AsyncMock()
-            mock_client.post.side_effect = httpx.HTTPStatusError(
-                "HTTP Error", request=Mock(), response=mock_response
-            )
+            mock_client.post.side_effect = httpx.HTTPStatusError("HTTP Error", request=Mock(), response=mock_response)
             mock_httpx_client.return_value.__aenter__.return_value = mock_client
 
             # Test search
@@ -344,9 +339,7 @@ class TestSearchService:
 
         # Mock mixed responses - one success, one failure, one timeout
         success_response = Mock()
-        success_response.json.return_value = {
-            "results": [{"id": "doc1", "content": "Success doc", "score": 0.9}]
-        }
+        success_response.json.return_value = {"results": [{"id": "doc1", "content": "Success doc", "score": 0.9}]}
         success_response.raise_for_status = Mock()
 
         mock_client = AsyncMock()
@@ -400,7 +393,7 @@ class TestSearchService:
         mock_httpx_client.return_value.__aenter__.return_value = mock_client
 
         # Test with hybrid search
-        result = await search_service.multi_collection_search(
+        _ = await search_service.multi_collection_search(
             user_id=123,
             collection_uuids=["uuid-1"],
             query="test query",
@@ -488,9 +481,7 @@ class TestSearchService:
         mock_response = Mock()
         mock_response.status_code = 404
         mock_client = AsyncMock()
-        mock_client.post.side_effect = httpx.HTTPStatusError(
-            "Not found", request=Mock(), response=mock_response
-        )
+        mock_client.post.side_effect = httpx.HTTPStatusError("Not found", request=Mock(), response=mock_response)
         mock_httpx_client.return_value.__aenter__.return_value = mock_client
 
         with pytest.raises(EntityNotFoundError):
@@ -502,9 +493,7 @@ class TestSearchService:
 
         # Test 403 error
         mock_response.status_code = 403
-        mock_client.post.side_effect = httpx.HTTPStatusError(
-            "Forbidden", request=Mock(), response=mock_response
-        )
+        mock_client.post.side_effect = httpx.HTTPStatusError("Forbidden", request=Mock(), response=mock_response)
 
         with pytest.raises(AccessDeniedError):
             await search_service.single_collection_search(
@@ -610,16 +599,16 @@ class TestSearchServiceErrorHandling:
         # Track timeout values used
         timeout_values = []
 
-        async def capture_timeout(*args, **kwargs):
+        async def capture_timeout(*args, **kwargs):  # noqa: ARG001
             # Capture the timeout from the AsyncClient context manager
             timeout_values.append(mock_httpx_client.call_args[1].get("timeout"))
             if len(timeout_values) == 1:
                 raise httpx.ReadTimeout("First timeout")
-            else:
-                response = Mock()
-                response.json.return_value = {"results": []}
-                response.raise_for_status = Mock()
-                return response
+            # Return response on retry
+            response = Mock()
+            response.json.return_value = {"results": []}
+            response.raise_for_status = Mock()
+            return response
 
         mock_client = AsyncMock()
         mock_client.post.side_effect = capture_timeout
@@ -672,9 +661,7 @@ class TestSearchServiceIntegration:
         mock_responses = []
         for i in range(5):
             response = Mock()
-            response.json.return_value = {
-                "results": [{"id": f"doc-{i}", "score": 0.9 - i * 0.1}]
-            }
+            response.json.return_value = {"results": [{"id": f"doc-{i}", "score": 0.9 - i * 0.1}]}
             response.raise_for_status = Mock()
             mock_responses.append(response)
 
@@ -690,7 +677,7 @@ class TestSearchServiceIntegration:
             query="test query",
             k=10,
         )
-        elapsed_time = time.time() - start_time
+        _ = time.time() - start_time
 
         # Should complete successfully
         assert len(result["results"]) == 5
@@ -705,7 +692,7 @@ class TestSearchServiceIntegration:
         # Setup service
         mock_session = AsyncMock()
         mock_collection_repo = AsyncMock()
-        service = SearchService(mock_session, mock_collection_repo)
+        _ = SearchService(mock_session, mock_collection_repo)
 
         # Create test results with specific scores
         test_results = [
@@ -716,14 +703,16 @@ class TestSearchServiceIntegration:
 
         # Process results as the service would
         all_results = []
-        for collection, results, error in test_results:
+        for collection, results, _ in test_results:
             if results:
                 for result in results:
-                    all_results.append({
-                        "collection_id": collection.id,
-                        "collection_name": collection.name,
-                        **result,
-                    })
+                    all_results.append(
+                        {
+                            "collection_id": collection.id,
+                            "collection_name": collection.name,
+                            **result,
+                        }
+                    )
 
         # Sort and limit
         all_results.sort(key=lambda x: x.get("score", 0.0), reverse=True)
