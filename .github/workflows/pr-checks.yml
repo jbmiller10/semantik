@@ -97,8 +97,8 @@ jobs:
         # Convert absolute paths to relative paths for vitest
         TEST_FILES=""
         for file in ${{ steps.changed-tests.outputs.all_changed_files }}; do
-          # Extract the relative path from apps/webui-react/
-          RELATIVE_PATH=$(echo "$file" | sed 's|^.*/apps/webui-react/||')
+          # Extract the relative path from apps/webui-react/ (removing the prefix)
+          RELATIVE_PATH=$(echo "$file" | sed 's|^apps/webui-react/||')
           TEST_FILES="$TEST_FILES $RELATIVE_PATH"
         done
         echo "Test files: $TEST_FILES"
