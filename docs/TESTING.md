@@ -539,6 +539,120 @@ coverage-badge -o coverage.svg
        assert result is not None
    ```
 
+## Frontend Testing
+
+### Frontend Test Structure
+
+Frontend tests are located in `apps/webui-react/src/**/__tests__/` directories, following the pattern of keeping tests close to the components they test.
+
+### Collection Components Test Coverage
+
+We have comprehensive test coverage for all collection-related components:
+
+| Component | Test File | Tests | Status |
+|-----------|-----------|-------|--------|
+| CollectionCard | CollectionCard.test.tsx | 10 | ✅ |
+| CreateCollectionModal | CreateCollectionModal.test.tsx | 28 | ✅ |
+| CollectionsDashboard | CollectionsDashboard.test.tsx | 25 | ✅ |
+| CollectionDetailsModal | CollectionDetailsModal.test.tsx | 35 | ✅ |
+| DeleteCollectionModal | DeleteCollectionModal.test.tsx | 23 | ✅ |
+| RenameCollectionModal | RenameCollectionModal.test.tsx | 26 | ✅ |
+| ReindexCollectionModal | ReindexCollectionModal.test.tsx | 23 | ✅ |
+| AddDataToCollectionModal | AddDataToCollectionModal.test.tsx | 29 | ✅ |
+
+### Running Frontend Tests
+
+```bash
+# Change to frontend directory
+cd apps/webui-react
+
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run with coverage
+npm run test:coverage
+
+# Run specific test file
+npm test -- CreateCollectionModal
+
+# Using the test script
+./scripts/test-frontend.sh --collections
+./scripts/test-frontend.sh --coverage --collections
+./scripts/test-frontend.sh --watch
+./scripts/test-frontend.sh --file CreateCollectionModal
+```
+
+### Frontend Test Guidelines
+
+1. **Use React Testing Library**
+   ```typescript
+   import { render, screen, waitFor } from '@testing-library/react';
+   import userEvent from '@testing-library/user-event';
+   ```
+
+2. **Mock External Dependencies**
+   ```typescript
+   vi.mock('@/stores/collectionStore', () => ({
+     useCollectionStore: vi.fn(() => ({
+       collections: mockCollections,
+       createCollection: vi.fn(),
+     })),
+   }));
+   ```
+
+3. **Test User Interactions**
+   - Focus on testing behavior, not implementation
+   - Use accessible queries (getByRole, getByLabelText)
+   - Test error states and edge cases
+
+### CI/CD Integration
+
+The project includes GitHub Actions workflows for automated testing:
+
+1. **`frontend-tests.yml`**: Runs on every push/PR affecting frontend code
+   - Linting
+   - Unit tests with multiple Node.js versions
+   - Coverage reports
+   - Build verification
+
+2. **`test-all.yml`**: Comprehensive test suite
+   - Backend tests with PostgreSQL and Redis
+   - Frontend tests in parallel groups
+   - Integration tests
+   - Linting and formatting checks
+
+3. **`pr-checks.yml`**: Pull request specific checks
+   - Verify test coverage for changed files
+   - Run affected tests
+   - Generate coverage reports
+
+### Test Script Usage
+
+A convenience script is provided for running frontend tests:
+
+```bash
+# Show help
+./scripts/test-frontend.sh --help
+
+# Run collection component tests (default)
+./scripts/test-frontend.sh
+
+# Run all frontend tests
+./scripts/test-frontend.sh --all
+
+# Run with coverage
+./scripts/test-frontend.sh --coverage --collections
+
+# Watch mode for development
+./scripts/test-frontend.sh --watch
+
+# Run specific test file
+./scripts/test-frontend.sh --file CreateCollectionModal
+```
+
 ## Next Steps
 
 1. **Expand Test Coverage**: Focus on untested modules
@@ -546,5 +660,6 @@ coverage-badge -o coverage.svg
 3. **Implement Mutation Testing**: Ensure test quality
 4. **Create Test Templates**: Standardize test patterns
 5. **Add Visual Regression Tests**: For frontend components
+6. **Complete Phase 3-4 Frontend Tests**: Integration tests, hook tests, and edge case tests
 
 Remember: Good tests are an investment in code quality and developer confidence. Write tests that you'll thank yourself for later!

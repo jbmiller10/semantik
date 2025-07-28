@@ -1,0 +1,152 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check-tests:
+    runs-on: ubuntu-latest
+    name: Verify Test Coverage
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for proper diff
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: '**/package-lock.json'
+    
+    - name: Get changed files
+      id: changed-files
+      uses: tj-actions/changed-files@v45
+      with:
+        files: |
+          apps/webui-react/src/components/**/*.tsx
+          apps/webui-react/src/components/**/*.ts
+          !apps/webui-react/src/components/**/*.test.tsx
+          !apps/webui-react/src/components/**/*.test.ts
+    
+    - name: Check for missing tests
+      if: steps.changed-files.outputs.any_changed == 'true'
+      run: |
+        echo "## Changed Component Files" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "The following component files were modified:" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+          echo "- $file" >> $GITHUB_STEP_SUMMARY
+          
+          # Extract component name and check for test file
+          component_name=$(basename "$file" .tsx | sed 's/\.ts$//')
+          test_file="apps/webui-react/src/components/__tests__/${component_name}.test.tsx"
+          
+          if [ ! -f "$test_file" ]; then
+            echo "  ⚠️  Missing test file: $test_file" >> $GITHUB_STEP_SUMMARY
+            echo "::warning file=$file::Missing test file for this component"
+          else
+            echo "  ✅ Test file exists: $test_file" >> $GITHUB_STEP_SUMMARY
+          fi
+        done
+
+  test-affected:
+    runs-on: ubuntu-latest
+    name: Test Affected Components
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: '**/package-lock.json'
+    
+    - name: Install dependencies
+      run: |
+        npm ci
+        cd apps/webui-react && npm ci
+    
+    - name: Get changed test files
+      id: changed-tests
+      uses: tj-actions/changed-files@v45
+      with:
+        files: |
+          apps/webui-react/src/**/*.test.tsx
+          apps/webui-react/src/**/*.test.ts
+    
+    - name: Run changed tests
+      if: steps.changed-tests.outputs.any_changed == 'true'
+      working-directory: ./apps/webui-react
+      run: |
+        echo "Running tests for changed files..."
+        npm test -- --run ${{ steps.changed-tests.outputs.all_changed_files }}
+    
+    - name: Run all collection component tests
+      if: contains(github.event.pull_request.title, 'collection') || contains(github.event.pull_request.body, 'collection')
+      working-directory: ./apps/webui-react
+      run: |
+        echo "Running all collection component tests..."
+        npm test -- --run "src/components/__tests__/*Collection*.test.tsx"
+
+  coverage-check:
+    runs-on: ubuntu-latest
+    name: Coverage Report
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: '**/package-lock.json'
+    
+    - name: Install dependencies
+      run: |
+        npm ci
+        cd apps/webui-react && npm ci
+    
+    - name: Run coverage for collection components
+      working-directory: ./apps/webui-react
+      run: |
+        npm run test:coverage -- --run \
+          src/components/__tests__/CollectionCard.test.tsx \
+          src/components/__tests__/CreateCollectionModal.test.tsx \
+          src/components/__tests__/CollectionsDashboard.test.tsx \
+          src/components/__tests__/CollectionDetailsModal.test.tsx \
+          src/components/__tests__/DeleteCollectionModal.test.tsx \
+          src/components/__tests__/RenameCollectionModal.test.tsx \
+          src/components/__tests__/ReindexCollectionModal.test.tsx \
+          src/components/__tests__/AddDataToCollectionModal.test.tsx
+    
+    - name: Generate coverage summary
+      working-directory: ./apps/webui-react
+      run: |
+        echo "## Frontend Test Coverage" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Collection Components Coverage" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        cat coverage/coverage-summary.json | jq -r '.total | "Statements: \(.statements.pct)%\nBranches: \(.branches.pct)%\nFunctions: \(.functions.pct)%\nLines: \(.lines.pct)%"' >> $GITHUB_STEP_SUMMARY || echo "Coverage report not available" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+    
+    - name: Comment PR with coverage
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: coverage
+        message: |
+          ## 📊 Test Coverage Report
+          
+          Frontend collection components test coverage has been updated.
+          
+          See the [Actions summary](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for detailed coverage information.
