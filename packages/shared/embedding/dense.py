@@ -263,7 +263,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
                 self.dimension = getattr(self.model.config, "hidden_size", None)
             elif self.model is not None and hasattr(self.model, "get_sentence_embedding_dimension"):
                 # For sentence-transformers
-                self.dimension = self.model.get_sentence_embedding_dimension()
+                self.dimension = self.model.get_sentence_embedding_dimension()  # type: ignore[operator]
             else:
                 # Fallback: generate test embedding to determine dimension
                 test_embedding = await self._embed_single_internal("test")
@@ -281,7 +281,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
         """Synchronously load the model (runs in thread pool)."""
         if self.is_qwen_model:
             # Load Qwen model using transformers
-            self.tokenizer = AutoTokenizer.from_pretrained(  # type: ignore[no-untyped-call]
+            self.tokenizer = AutoTokenizer.from_pretrained(
                 model_name, padding_side="left", trust_remote_code=kwargs.get("trust_remote_code", False)
             )
 

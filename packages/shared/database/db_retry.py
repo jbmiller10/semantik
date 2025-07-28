@@ -4,7 +4,7 @@ import asyncio
 import functools
 import logging
 from collections.abc import Callable
-from typing import ParamSpec, TypeVar, cast
+from typing import Any, ParamSpec, TypeVar
 
 from sqlalchemy.exc import OperationalError
 
@@ -19,7 +19,7 @@ def with_db_retry(
     delay: float = 1.0,
     backoff: float = 2.0,
     max_delay: float = 30.0,
-) -> Callable[[Callable[P, T]], Callable[P, T]]:
+) -> Callable[[Callable[P, Any]], Callable[P, Any]]:
     """
     Decorator to retry database operations on lock errors.
 
@@ -30,9 +30,9 @@ def with_db_retry(
         max_delay: Maximum delay between retries
     """
 
-    def decorator(func: Callable[P, T]) -> Callable[P, T]:
+    def decorator(func: Callable[P, Any]) -> Callable[P, Any]:
         @functools.wraps(func)
-        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
             current_delay = delay
             last_exception = None
 
@@ -58,7 +58,7 @@ def with_db_retry(
             raise RuntimeError("Unexpected retry loop exit")
 
         @functools.wraps(func)
-        def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+        def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
             current_delay = delay
             last_exception = None
 
@@ -87,7 +87,7 @@ def with_db_retry(
 
         # Return appropriate wrapper based on function type
         if asyncio.iscoroutinefunction(func):
-            return cast(Callable[P, T], async_wrapper)
-        return cast(Callable[P, T], sync_wrapper)
+            return async_wrapper
+        return sync_wrapper
 
     return decorator
