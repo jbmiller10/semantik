@@ -7,7 +7,7 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
-sys.modules["shared.metrics.prometheus"] = MagicMock()
+sys.modules["packages.shared.metrics.prometheus"] = MagicMock()
 
 
 class TestEmbeddingService(unittest.TestCase):
@@ -18,7 +18,7 @@ class TestEmbeddingService(unittest.TestCase):
         """Test basic embedding service functionality"""
         mock_cuda.return_value = False  # Use CPU for simplicity
 
-        from shared.embedding import EmbeddingService
+        from packages.shared.embedding import EmbeddingService
 
         # Create service
         service = EmbeddingService()
@@ -34,7 +34,7 @@ class TestEmbeddingService(unittest.TestCase):
         """Test quantization fallback can be configured"""
         mock_cuda.return_value = False
 
-        from shared.embedding import EmbeddingService
+        from packages.shared.embedding import EmbeddingService
 
         service = EmbeddingService()
 
@@ -47,7 +47,7 @@ class TestEmbeddingService(unittest.TestCase):
 
     def test_model_info_export(self) -> None:
         """Test that model info is exported"""
-        from shared.embedding import POPULAR_MODELS, QUANTIZED_MODEL_INFO
+        from packages.shared.embedding import POPULAR_MODELS, QUANTIZED_MODEL_INFO
 
         # Should have model info
         assert len(QUANTIZED_MODEL_INFO) > 0

@@ -183,7 +183,9 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     start_metrics_server(METRICS_PORT)
     logger.info(f"Metrics server started on port {METRICS_PORT}")
 
-    qdrant_client = httpx.AsyncClient(base_url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}", timeout=60.0)
+    qdrant_client = httpx.AsyncClient(
+        base_url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}", timeout=httpx.Timeout(60.0)
+    )
     logger.info(f"Connected to Qdrant at {settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
 
     # Initialize model manager with lazy loading
@@ -242,11 +244,29 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
         def is_initialized(self) -> bool:
             return getattr(self._service, "is_initialized", False)
 
-        def get_model_info(self) -> dict[str, Any]:
+        def get_model_info(self, model_name: str | None = None, quantization: str | None = None) -> dict[str, Any]:
+            # Handle both parameter styles - with and without arguments
             if hasattr(self._service, "get_model_info"):
-                return cast(dict[str, Any], self._service.get_model_info())
+                try:
+                    # Try with parameters first (for facade classes)
+                    if model_name is not None and quantization is not None:
+                        return cast(dict[str, Any], self._service.get_model_info(model_name, quantization))
+                    # Try without parameters (for base classes)
+                    return cast(dict[str, Any], self._service.get_model_info())
+                except TypeError:
+                    # If it fails, try the other way
+                    if model_name is None and quantization is None:
+                        # Already tried without parameters, must need them
+                        return cast(
+                            dict[str, Any],
+                            self._service.get_model_info(
+                                self.current_model_name or "unknown", self.current_quantization or "float32"
+                            ),
+                        )
+                    # Already tried with parameters, must not need them
+                    return cast(dict[str, Any], self._service.get_model_info())
             return {
-                "model_name": self.current_model_name,
+                "model_name": model_name or self.current_model_name,
                 "dimension": 1024,  # Default dimension
             }
 
@@ -378,10 +398,8 @@ async def root() -> dict[str, Any]:
         }
 
         if not settings.USE_MOCK_EMBEDDINGS and embedding_service:
-            model_info = embedding_service.get_model_info(
-                embedding_service.current_model_name or settings.DEFAULT_EMBEDDING_MODEL,
-                embedding_service.current_quantization or settings.DEFAULT_QUANTIZATION,
-            )
+            # The wrapper's get_model_info doesn't take parameters
+            model_info = embedding_service.get_model_info()
 
             health_info["embedding_service"] = {
                 "current_model": embedding_service.current_model_name,

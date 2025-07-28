@@ -105,6 +105,7 @@ line_length = 120
 
 [tool.mypy]
 python_version = "3.11"
+plugins = ["pydantic.mypy"]
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -124,6 +125,7 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --cov=packages.vecpipe --cov=packages.webui --cov-report=html --cov-report=term"
 pythonpath = ["."]
+asyncio_mode = "auto"
 markers = [
     "e2e: End-to-end tests that require a running instance (deselect with '-m \"not e2e\"')",
 ]

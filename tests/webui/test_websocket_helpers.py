@@ -135,29 +135,52 @@ class WebSocketTestHarness:
 
     async def cleanup(self):
         """Clean up all connections and consumer tasks."""
+        try:
 
-        # First, cancel all consumer tasks to prevent event loop errors
-        for _, task in list(self.manager.consumer_tasks.items()):
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
-        self.manager.consumer_tasks.clear()
+            async def perform_cleanup():
+                # First, cancel all consumer tasks to prevent event loop errors
+                for task_id, task in list(self.manager.consumer_tasks.items()):
+                    task.cancel()
+                    try:
+                        # Short timeout to prevent infinite hanging
+                        await asyncio.wait_for(task, timeout=0.1)
+                    except (TimeoutError, asyncio.CancelledError):
+                        # Expected - task was cancelled or timed out
+                        pass
+                    except Exception as e:
+                        # Log but don't fail
+                        import logging
 
-        # Disconnect all clients
-        for client in self.clients.values():
-            # Find the connection info from manager
-            for key, websockets in list(self.manager.connections.items()):
-                if client.websocket in websockets:
-                    parts = key.split(":")
-                    if len(parts) == 3:  # user_id:operation:operation_id
-                        user_id = parts[0]
-                        operation_id = parts[2]
-                        await client.disconnect(self.manager, operation_id, user_id)
+                        logger = logging.getLogger(__name__)
+                        logger.warning(f"Error cancelling task {task_id} in helper cleanup: {e}")
+                self.manager.consumer_tasks.clear()
 
-        self.clients.clear()
+                # Disconnect all clients
+                for client in self.clients.values():
+                    # Find the connection info from manager
+                    for key, websockets in list(self.manager.connections.items()):
+                        if client.websocket in websockets:
+                            parts = key.split(":")
+                            if len(parts) == 3:  # user_id:operation:operation_id
+                                user_id = parts[0]
+                                operation_id = parts[2]
+                                with contextlib.suppress(TimeoutError):
+                                    await asyncio.wait_for(
+                                        client.disconnect(self.manager, operation_id, user_id), timeout=0.5
+                                    )
 
-        # Clear all remaining connections
-        self.manager.connections.clear()
+                self.clients.clear()
+
+                # Clear all remaining connections
+                self.manager.connections.clear()
+
+            # Apply overall timeout to cleanup
+            await asyncio.wait_for(perform_cleanup(), timeout=2.0)
+        except TimeoutError:
+            # Force cleanup on timeout
+            self.manager.consumer_tasks.clear()
+            self.manager.connections.clear()
+            self.clients.clear()
 
 
 async def simulate_operation_updates(updater, delays: list[float] = None):

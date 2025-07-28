@@ -4,6 +4,7 @@ Collection metadata management for tracking model information
 
 import logging
 import uuid
+from typing import Any
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
@@ -69,7 +70,7 @@ def store_collection_metadata(
         logger.error(f"Failed to store collection metadata: {e}")
 
 
-def get_collection_metadata(qdrant: QdrantClient, collection_name: str) -> dict | None:
+def get_collection_metadata(qdrant: QdrantClient, collection_name: str) -> dict[str, Any] | None:
     """Get metadata for a collection"""
     try:
         result = qdrant.retrieve(collection_name=METADATA_COLLECTION, ids=[collection_name])

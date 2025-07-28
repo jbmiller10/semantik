@@ -7,10 +7,10 @@ export const createErrorHandler = (
   method: 'get' | 'post' | 'put' | 'delete' | 'patch',
   path: string,
   status: number,
-  response?: { detail?: string; message?: string } | any
+  response?: { detail?: string; message?: string } | Record<string, unknown>
 ) => {
   return http[method](path, () => {
-    const defaultResponses: Record<number, any> = {
+    const defaultResponses: Record<number, { detail: string }> = {
       400: { detail: 'Bad request' },
       401: { detail: 'Unauthorized' },
       403: { detail: 'Access denied' },
@@ -221,7 +221,7 @@ export const documentErrorHandlers = {
 /**
  * Combine multiple error handler sets
  */
-export const combineErrorHandlers = (...handlerSets: (() => any[])[]) => {
+export const combineErrorHandlers = (...handlerSets: (() => ReturnType<typeof http.get>[])[]) => {
   return handlerSets.flatMap(handlerSet => handlerSet())
 }
 
@@ -232,7 +232,7 @@ export const createSlowResponseHandler = (
   method: 'get' | 'post' | 'put' | 'delete' | 'patch',
   path: string,
   delayMs: number,
-  response: any
+  response: unknown
 ) => {
   return http[method](path, async () => {
     await delay(delayMs)

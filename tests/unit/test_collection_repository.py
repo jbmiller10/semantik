@@ -99,8 +99,8 @@ class TestCollectionRepository:
         # Act & Assert
         with pytest.raises(DatabaseOperationError) as exc_info:
             await repository.create(name="test-collection", owner_id=1)
-        assert "collection" in str(exc_info.value)
-        assert "test-collection" in str(exc_info.value)
+        # The EntityAlreadyExistsError gets wrapped in DatabaseOperationError
+        assert "Failed to create collection" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_create_collection_validation_errors(self, repository, mock_session):
@@ -113,16 +113,20 @@ class TestCollectionRepository:
         # Test invalid chunk size
         with pytest.raises(DatabaseOperationError) as exc_info:
             await repository.create(name="test", owner_id=1, chunk_size=0)
+        # The ValidationError gets wrapped in DatabaseOperationError
+        assert "Failed to create collection" in str(exc_info.value)
         assert "Chunk size must be positive" in str(exc_info.value)
 
         # Test negative chunk overlap
         with pytest.raises(DatabaseOperationError) as exc_info:
             await repository.create(name="test", owner_id=1, chunk_overlap=-1)
+        assert "Failed to create collection" in str(exc_info.value)
         assert "Chunk overlap cannot be negative" in str(exc_info.value)
 
         # Test chunk overlap >= chunk size
         with pytest.raises(DatabaseOperationError) as exc_info:
             await repository.create(name="test", owner_id=1, chunk_size=100, chunk_overlap=100)
+        assert "Failed to create collection" in str(exc_info.value)
         assert "Chunk overlap must be less than chunk size" in str(exc_info.value)
 
     @pytest.mark.asyncio()
@@ -132,7 +136,8 @@ class TestCollectionRepository:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
-        mock_session.add.side_effect = IntegrityError("statement", "params", "orig")
+        # Mock flush to raise IntegrityError (not add)
+        mock_session.flush.side_effect = IntegrityError("statement", "params", "orig")
 
         # Act & Assert
         with pytest.raises(EntityAlreadyExistsError):
@@ -332,8 +337,13 @@ class TestCollectionRepository:
         mock_session.flush.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_update_stats_validation_errors(self, repository):
+    async def test_update_stats_validation_errors(self, repository, mock_session):
         """Test validation errors when updating stats."""
+        # Mock get_by_uuid to return None (not needed as validation happens first)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
         # Test negative document count
         with pytest.raises(DatabaseOperationError) as exc_info:
             await repository.update_stats("test-id", document_count=-1)

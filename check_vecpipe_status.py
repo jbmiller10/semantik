@@ -9,7 +9,7 @@ import json
 import httpx
 
 
-async def check_vecpipe_health():
+async def check_vecpipe_health() -> bool:
     """Check if vecpipe service is running and healthy."""
     vecpipe_url = "http://vecpipe:8000"
 
@@ -43,7 +43,7 @@ async def check_vecpipe_health():
         return False
 
 
-async def test_embedding_generation():
+async def test_embedding_generation() -> None:
     """Test embedding generation with a sample text."""
     vecpipe_url = "http://vecpipe:8000"
 
@@ -89,7 +89,7 @@ async def test_embedding_generation():
         traceback.print_exc()
 
 
-async def test_qdrant_connection():
+async def test_qdrant_connection() -> None:
     """Test Qdrant connection via vecpipe."""
     vecpipe_url = "http://vecpipe:8000"
 
@@ -113,7 +113,7 @@ async def test_qdrant_connection():
         print(f"  Note: Could not test Qdrant connection: {e}")
 
 
-async def check_required_services():
+async def check_required_services() -> None:
     """Check if all required services are running."""
     services = {
         "PostgreSQL": "postgresql://semantik:semantik@postgres:5432/semantik",
@@ -144,7 +144,7 @@ async def check_required_services():
             print(f"✗ {service_name}: Not accessible - {str(e)[:100]}")
 
 
-async def main():
+async def main() -> None:
     """Run all checks."""
     print("Vecpipe Service Status Check")
     print("=" * 50)

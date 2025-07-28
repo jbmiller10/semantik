@@ -177,14 +177,17 @@ def calculate_cleanup_delay(vector_count: int) -> int:
     Returns:
         Delay in seconds
     """
-    additional_delay = (vector_count // 10000) * CLEANUP_DELAY_PER_10K_VECTORS
+    # Handle negative vector count by using 0
+    safe_vector_count = max(0, vector_count)
+
+    additional_delay = (safe_vector_count // 10000) * CLEANUP_DELAY_PER_10K_VECTORS
     total_delay = CLEANUP_DELAY_MIN_SECONDS + additional_delay
 
     # Cap at maximum delay
     cleanup_delay = min(total_delay, CLEANUP_DELAY_MAX_SECONDS)
 
     logger.info(
-        f"Calculated cleanup delay: {cleanup_delay}s for {vector_count} vectors "
+        f"Calculated cleanup delay: {cleanup_delay}s for {safe_vector_count} vectors "
         f"(base: {CLEANUP_DELAY_MIN_SECONDS}s, additional: {additional_delay}s)"
     )
 
@@ -1138,7 +1141,7 @@ def _sanitize_error_message(error_msg: str) -> str:
     # Replace user home paths
     sanitized = re.sub(r"/home/[^/]+", "/home/~", error_msg)
     sanitized = re.sub(r"/Users/[^/]+", "/Users/~", sanitized)
-    sanitized = re.sub(r"C:\\Users\\[^\\]+", "C:\\Users\\~", sanitized)
+    sanitized = re.sub(r"C:\\Users\\[^\\]+", r"C:\\Users\\~", sanitized)
 
     # Redact email addresses
     sanitized = re.sub(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", "[email]", sanitized)
@@ -1147,7 +1150,7 @@ def _sanitize_error_message(error_msg: str) -> str:
     return re.sub(r"(/tmp/|/var/folders/)[^/]+/[^/]+", r"\1[redacted]", sanitized)
 
 
-def _sanitize_audit_details(details: dict[str, Any] | None) -> dict[str, Any] | None:
+def _sanitize_audit_details(details: dict[str, Any] | None, _seen: set[int] | None = None) -> dict[str, Any] | None:
     """Sanitize audit log details to ensure no PII is logged.
 
     This function removes or redacts potentially sensitive information:
@@ -1157,6 +1160,16 @@ def _sanitize_audit_details(details: dict[str, Any] | None) -> dict[str, Any] | 
     """
     if not details:
         return details
+
+    # Handle circular references
+    if _seen is None:
+        _seen = set()
+
+    # Check if we've already seen this object
+    obj_id = id(details)
+    if obj_id in _seen:
+        return {"__circular_reference__": True}
+    _seen.add(obj_id)
 
     sanitized: dict[str, Any] = {}
 
@@ -1170,7 +1183,7 @@ def _sanitize_audit_details(details: dict[str, Any] | None) -> dict[str, Any] | 
             sanitized[key] = _sanitize_error_message(value)
         # Recursively sanitize nested dictionaries
         elif isinstance(value, dict):
-            sanitized_value = _sanitize_audit_details(value)
+            sanitized_value = _sanitize_audit_details(value, _seen)
             if sanitized_value is not None:
                 sanitized[key] = sanitized_value
         # Sanitize list items
@@ -1179,13 +1192,15 @@ def _sanitize_audit_details(details: dict[str, Any] | None) -> dict[str, Any] | 
                 (
                     _sanitize_error_message(item)
                     if isinstance(item, str)
-                    else _sanitize_audit_details(item) if isinstance(item, dict) else item
+                    else _sanitize_audit_details(item, _seen) if isinstance(item, dict) else item
                 )
                 for item in value
             ]
         else:
             sanitized[key] = value
 
+    # Remove from seen set when done with this object
+    _seen.discard(obj_id)
     return sanitized
 
 

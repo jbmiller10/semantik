@@ -14,7 +14,7 @@ class TestOperationRepository:
     """Test cases for OperationRepository."""
 
     @pytest.fixture()
-    def mock_session(self) -> None:
+    def mock_session(self) -> AsyncMock:
         """Create a mock async session."""
         session = AsyncMock()
         # Make execute return completed coroutines immediately
@@ -27,12 +27,12 @@ class TestOperationRepository:
         return session
 
     @pytest.fixture()
-    def repository(self, mock_session) -> None:
+    def repository(self, mock_session: AsyncMock) -> OperationRepository:
         """Create an OperationRepository instance with mocked session."""
         return OperationRepository(mock_session)
 
     @pytest.fixture()
-    def sample_collection(self) -> None:
+    def sample_collection(self) -> Collection:
         """Create a sample collection for testing."""
         return Collection(
             id=str(uuid4()),
@@ -46,7 +46,7 @@ class TestOperationRepository:
         )
 
     @pytest.fixture()
-    def sample_operation(self, sample_collection) -> None:
+    def sample_operation(self, sample_collection: Collection) -> Operation:
         """Create a sample operation for testing."""
         operation = Operation(
             id=1,
@@ -62,7 +62,9 @@ class TestOperationRepository:
         return operation
 
     @pytest.mark.asyncio()
-    async def test_create_operation_success(self, repository, mock_session, sample_collection):
+    async def test_create_operation_success(
+        self, repository: OperationRepository, mock_session: AsyncMock, sample_collection: Collection
+    ) -> None:
         """Test successful operation creation."""
         # Setup
         user_id = 1
@@ -97,7 +99,9 @@ class TestOperationRepository:
         mock_session.flush.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_create_operation_empty_config(self, repository, mock_session):
+    async def test_create_operation_empty_config(
+        self, repository: OperationRepository, mock_session: AsyncMock
+    ) -> None:
         """Test operation creation with empty config."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
@@ -107,10 +111,12 @@ class TestOperationRepository:
                 operation_type=OperationType.INDEX,
                 config={},
             )
-        assert "Operation config cannot be empty" in str(exc_info.value)
+        assert str(exc_info.value) == "Validation error on field 'config': Operation config cannot be empty"
 
     @pytest.mark.asyncio()
-    async def test_create_operation_collection_not_found(self, repository, mock_session):
+    async def test_create_operation_collection_not_found(
+        self, repository: OperationRepository, mock_session: AsyncMock
+    ) -> None:
         """Test operation creation with non-existent collection."""
         # Setup
         collection_result = MagicMock()
@@ -125,10 +131,12 @@ class TestOperationRepository:
                 operation_type=OperationType.INDEX,
                 config={"path": "/test"},
             )
-        assert "collection" in str(exc_info.value)
+        assert str(exc_info.value) == "collection with ID 'nonexistent' not found"
 
     @pytest.mark.asyncio()
-    async def test_create_operation_access_denied(self, repository, mock_session, sample_collection):
+    async def test_create_operation_access_denied(
+        self, repository: OperationRepository, mock_session: AsyncMock, sample_collection: Collection
+    ) -> None:
         """Test operation creation without access to collection."""
         # Setup - private collection with different owner
         sample_collection.owner_id = 999
@@ -146,11 +154,12 @@ class TestOperationRepository:
                 operation_type=OperationType.INDEX,
                 config={"path": "/test"},
             )
-        assert "1" in str(exc_info.value)
-        assert sample_collection.id in str(exc_info.value)
+        assert str(exc_info.value) == f"User '1' does not have access to collection '{sample_collection.id}'"
 
     @pytest.mark.asyncio()
-    async def test_create_operation_public_collection(self, repository, mock_session, sample_collection):
+    async def test_create_operation_public_collection(
+        self, repository: OperationRepository, mock_session: AsyncMock, sample_collection: Collection
+    ) -> None:
         """Test operation creation on public collection."""
         # Setup - public collection with different owner
         sample_collection.owner_id = 999
@@ -173,7 +182,9 @@ class TestOperationRepository:
         mock_session.add.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_get_by_uuid(self, repository, mock_session, sample_operation):
+    async def test_get_by_uuid(
+        self, repository: OperationRepository, mock_session: AsyncMock, sample_operation: Operation
+    ) -> None:
         """Test getting operation by UUID."""
         # Setup
         mock_result = MagicMock()
@@ -187,7 +198,7 @@ class TestOperationRepository:
         assert result == sample_operation
 
     @pytest.mark.asyncio()
-    async def test_get_by_uuid_not_found(self, repository, mock_session):
+    async def test_get_by_uuid_not_found(self, repository: OperationRepository, mock_session: AsyncMock) -> None:
         """Test getting non-existent operation by UUID."""
         # Setup
         mock_result = MagicMock()
@@ -201,7 +212,9 @@ class TestOperationRepository:
         assert result is None
 
     @pytest.mark.asyncio()
-    async def test_get_by_uuid_with_permission_check_owner(self, repository, mock_session, sample_operation):
+    async def test_get_by_uuid_with_permission_check_owner(
+        self, repository: OperationRepository, mock_session: AsyncMock, sample_operation: Operation
+    ) -> None:
         """Test getting operation with permission check as owner."""
         # Setup
         mock_result = MagicMock()
@@ -215,7 +228,9 @@ class TestOperationRepository:
         assert result == sample_operation
 
     @pytest.mark.asyncio()
-    async def test_get_by_uuid_with_permission_check_collection_owner(self, repository, mock_session, sample_operation):
+    async def test_get_by_uuid_with_permission_check_collection_owner(
+        self, repository: OperationRepository, mock_session: AsyncMock, sample_operation: Operation
+    ) -> None:
         """Test getting operation with permission check as collection owner."""
         # Setup - different user but owns the collection
         sample_operation.user_id = 999
@@ -252,7 +267,9 @@ class TestOperationRepository:
         assert result == sample_operation
 
     @pytest.mark.asyncio()
-    async def test_get_by_uuid_with_permission_check_denied(self, repository, mock_session, sample_operation):
+    async def test_get_by_uuid_with_permission_check_denied(
+        self, repository: OperationRepository, mock_session: AsyncMock, sample_operation: Operation
+    ) -> None:
         """Test permission denied for operation."""
         # Setup
         sample_operation.user_id = 999
@@ -268,7 +285,9 @@ class TestOperationRepository:
             await repository.get_by_uuid_with_permission_check(sample_operation.uuid, 1)
 
     @pytest.mark.asyncio()
-    async def test_set_task_id(self, repository, mock_session, sample_operation):
+    async def test_set_task_id(
+        self, repository: OperationRepository, mock_session: AsyncMock, sample_operation: Operation
+    ) -> None:
         """Test setting task ID for an operation."""
         # Setup
         task_id = "celery-task-123"
@@ -285,7 +304,7 @@ class TestOperationRepository:
         mock_session.flush.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_set_task_id_not_found(self, repository, mock_session):
+    async def test_set_task_id_not_found(self, repository: OperationRepository, mock_session: AsyncMock) -> None:
         """Test setting task ID for non-existent operation."""
         # Setup
         mock_result = MagicMock()
@@ -297,7 +316,9 @@ class TestOperationRepository:
             await repository.set_task_id("nonexistent", "task-id")
 
     @pytest.mark.asyncio()
-    async def test_update_status(self, repository, mock_session, sample_operation):
+    async def test_update_status(
+        self, repository: OperationRepository, mock_session: AsyncMock, sample_operation: Operation
+    ) -> None:
         """Test updating operation status."""
         # Setup
         # Mock get_by_uuid to return the operation
@@ -317,7 +338,9 @@ class TestOperationRepository:
         mock_session.flush.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_update_status_auto_timestamps(self, repository, mock_session, sample_operation):
+    async def test_update_status_auto_timestamps(
+        self, repository: OperationRepository, mock_session: AsyncMock, sample_operation: Operation
+    ) -> None:
         """Test automatic timestamp setting based on status."""
         # Setup for PROCESSING status
         sample_operation.started_at = None
@@ -339,7 +362,9 @@ class TestOperationRepository:
         assert sample_operation.completed_at is not None
 
     @pytest.mark.asyncio()
-    async def test_list_for_collection(self, repository, mock_session, sample_collection):
+    async def test_list_for_collection(
+        self, repository: OperationRepository, mock_session: AsyncMock, sample_collection: Collection
+    ) -> None:
         """Test listing operations for a collection."""
         # Setup
         operations = [
@@ -376,7 +401,9 @@ class TestOperationRepository:
         assert total == 3
 
     @pytest.mark.asyncio()
-    async def test_list_for_collection_with_filters(self, repository, mock_session, sample_collection):
+    async def test_list_for_collection_with_filters(
+        self, repository: OperationRepository, mock_session: AsyncMock, sample_collection: Collection
+    ) -> None:
         """Test listing operations with status and type filters."""
         # Setup
         operations = [
@@ -417,7 +444,9 @@ class TestOperationRepository:
         assert total == 1
 
     @pytest.mark.asyncio()
-    async def test_list_for_collection_access_denied(self, repository, mock_session, sample_collection):
+    async def test_list_for_collection_access_denied(
+        self, repository: OperationRepository, mock_session: AsyncMock, sample_collection: Collection
+    ) -> None:
         """Test listing operations without access to collection."""
         # Setup
         sample_collection.owner_id = 999
@@ -432,7 +461,7 @@ class TestOperationRepository:
             await repository.list_for_collection(sample_collection.id, user_id=1)
 
     @pytest.mark.asyncio()
-    async def test_list_for_user(self, repository, mock_session):
+    async def test_list_for_user(self, repository: OperationRepository, mock_session: AsyncMock) -> None:
         """Test listing operations for a user."""
         # Setup
         user_id = 1
@@ -465,7 +494,9 @@ class TestOperationRepository:
         assert total == 5
 
     @pytest.mark.asyncio()
-    async def test_cancel_pending_operation(self, repository, mock_session, sample_operation):
+    async def test_cancel_pending_operation(
+        self, repository: OperationRepository, mock_session: AsyncMock, sample_operation: Operation
+    ) -> None:
         """Test cancelling a pending operation."""
         # Setup
         sample_operation.status = OperationStatus.PENDING
@@ -480,7 +511,9 @@ class TestOperationRepository:
         mock_session.flush.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_cancel_processing_operation(self, repository, mock_session, sample_operation):
+    async def test_cancel_processing_operation(
+        self, repository: OperationRepository, mock_session: AsyncMock, sample_operation: Operation
+    ) -> None:
         """Test cancelling a processing operation."""
         # Setup
         sample_operation.status = OperationStatus.PROCESSING
@@ -493,7 +526,9 @@ class TestOperationRepository:
         assert result.status == OperationStatus.CANCELLED
 
     @pytest.mark.asyncio()
-    async def test_cancel_completed_operation(self, repository, mock_session, sample_operation):
+    async def test_cancel_completed_operation(
+        self, repository: OperationRepository, mock_session: AsyncMock, sample_operation: Operation
+    ) -> None:
         """Test cancelling an already completed operation."""
         # Setup
         sample_operation.status = OperationStatus.COMPLETED
@@ -502,10 +537,13 @@ class TestOperationRepository:
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
             await repository.cancel(sample_operation.uuid, sample_operation.user_id)
-        assert "Cannot cancel operation in OperationStatus.COMPLETED status" in str(exc_info.value)
+        assert (
+            str(exc_info.value)
+            == "Validation error on field 'status': Cannot cancel operation in OperationStatus.COMPLETED status"
+        )
 
     @pytest.mark.asyncio()
-    async def test_get_active_operations_count(self, repository, mock_session):
+    async def test_get_active_operations_count(self, repository: OperationRepository, mock_session: AsyncMock) -> None:
         """Test getting count of active operations."""
         # Setup
         mock_session.scalar.return_value = 5
@@ -518,7 +556,9 @@ class TestOperationRepository:
         mock_session.scalar.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_database_operation_error_handling(self, repository, mock_session):
+    async def test_database_operation_error_handling(
+        self, repository: OperationRepository, mock_session: AsyncMock
+    ) -> None:
         """Test handling of unexpected database errors."""
         # Setup
         mock_session.execute.side_effect = Exception("Database connection lost")
@@ -526,4 +566,4 @@ class TestOperationRepository:
         # Act & Assert
         with pytest.raises(DatabaseOperationError) as exc_info:
             await repository.get_by_uuid("test-id")
-        assert "Database connection lost" in str(exc_info.value)
+        assert str(exc_info.value) == "Failed to get operation: Database connection lost"

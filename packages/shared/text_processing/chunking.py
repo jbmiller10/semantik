@@ -5,6 +5,7 @@ Uses tiktoken for accurate token counting.
 """
 
 import logging
+from typing import Any
 
 import tiktoken
 
@@ -40,7 +41,7 @@ class TokenChunker:
             f"Initialized tokenizer: {model_name}, chunk_size: {self.chunk_size}, overlap: {self.chunk_overlap}"
         )
 
-    def chunk_text(self, text: str, doc_id: str, metadata: dict | None = None) -> list[dict]:
+    def chunk_text(self, text: str, doc_id: str, metadata: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """Split text into overlapping chunks by token count"""
         if not text.strip():
             return []

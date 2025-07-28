@@ -6,11 +6,12 @@ import time
 from typing import Any
 
 import httpx
-from shared.config import settings
-from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
-from shared.database.models import Collection, CollectionStatus
-from shared.database.repositories.collection_repository import CollectionRepository
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from packages.shared.config import settings
+from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
+from packages.shared.database.models import Collection, CollectionStatus
+from packages.shared.database.repositories.collection_repository import CollectionRepository
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +23,23 @@ class SearchService:
         self,
         db_session: AsyncSession,
         collection_repo: CollectionRepository,
+        default_timeout: httpx.Timeout | None = None,
+        retry_timeout_multiplier: float = 4.0,
     ):
-        """Initialize the search service."""
+        """Initialize the search service.
+
+        Args:
+            db_session: Database session for transactions
+            collection_repo: Repository for collection data access
+            default_timeout: Default timeout configuration for HTTP requests.
+                            Defaults to Timeout(timeout=30.0, connect=5.0, read=30.0, write=5.0)
+            retry_timeout_multiplier: Multiplier applied to timeout values when retrying failed requests.
+                                    Defaults to 4.0
+        """
         self.db_session = db_session
         self.collection_repo = collection_repo
+        self.default_timeout = default_timeout or httpx.Timeout(timeout=30.0, connect=5.0, read=30.0, write=5.0)
+        self.retry_timeout_multiplier = retry_timeout_multiplier
 
     async def validate_collection_access(self, collection_uuids: list[str], user_id: int) -> list[Collection]:
         """Validate user has access to all requested collections.
@@ -51,7 +65,7 @@ class SearchService:
                 collections.append(collection)
             except (EntityNotFoundError, AccessDeniedError) as e:
                 logger.error(f"Error accessing collection {uuid}: {e}")
-                raise AccessDeniedError(f"Access denied or collection not found: {uuid}") from e
+                raise AccessDeniedError(str(user_id), "collection", uuid) from e
 
         return collections
 
@@ -81,18 +95,17 @@ class SearchService:
 
         # Use default timeout if not provided
         if timeout is None:
-            timeout = httpx.Timeout(timeout=30.0, connect=5.0, read=30.0, write=5.0)
+            timeout = self.default_timeout
 
         # Build search request for this collection
         collection_search_params = {
             **search_params,
             "query": query,
-            "k": k * settings.SEARCH_CANDIDATE_MULTIPLIER,  # Get more candidates for re-ranking
+            "k": k,  # Request exactly k results (vecpipe will handle candidate multiplier if reranking)
             "collection": collection.vector_store_name,
             "model_name": collection.embedding_model,
             "quantization": collection.quantization,
             "include_content": True,
-            "use_reranker": False,  # We'll do re-ranking after merging
         }
 
         try:
@@ -106,7 +119,18 @@ class SearchService:
         except httpx.ReadTimeout:
             # Retry with longer timeout
             logger.warning(f"Search timeout for collection {collection.name}, retrying...")
-            extended_timeout = httpx.Timeout(timeout=120.0, connect=5.0, read=120.0, write=5.0)
+            # Calculate extended timeout by multiplying current timeout values
+            # Calculate a general timeout based on the maximum of individual timeouts
+            max_timeout = (
+                max(timeout.connect or 0, timeout.read or 0, timeout.write or 0, timeout.pool or 0)
+                * self.retry_timeout_multiplier
+            )
+            extended_timeout = httpx.Timeout(
+                timeout=max_timeout if max_timeout > 0 else 120.0,
+                connect=timeout.connect * self.retry_timeout_multiplier if timeout.connect else 20.0,
+                read=timeout.read * self.retry_timeout_multiplier if timeout.read else 120.0,
+                write=timeout.write * self.retry_timeout_multiplier if timeout.write else 20.0,
+            )
 
             try:
                 async with httpx.AsyncClient(timeout=extended_timeout) as client:
@@ -137,7 +161,18 @@ class SearchService:
     def _handle_http_error(
         self, error: httpx.HTTPStatusError, collection: Collection, retry: bool
     ) -> tuple[Collection, None, str]:
-        """Handle HTTP status errors during search."""
+        """Handle HTTP status errors during search operations.
+
+        Maps HTTP status codes to appropriate error messages for user feedback.
+
+        Args:
+            error: The HTTP status error that occurred
+            collection: The collection that was being searched
+            retry: Whether this error occurred during a retry attempt
+
+        Returns:
+            Tuple of (collection, None for results, error message)
+        """
         retry_suffix = " after retry" if retry else ""
         status_code = error.response.status_code
 
@@ -159,69 +194,6 @@ class SearchService:
             f"Search failed for collection '{collection.name}'{retry_suffix} (status: {status_code})",
         )
 
-    async def rerank_merged_results(
-        self,
-        query: str,
-        results: list[tuple[Collection, dict[str, Any]]],
-        rerank_model: str | None = None,
-        k: int = 10,
-    ) -> list[tuple[Collection, dict[str, Any], float]]:
-        """Re-rank merged results from multiple collections.
-
-        Args:
-            query: Original search query
-            results: List of (collection, result) tuples
-            rerank_model: Optional reranker model name
-            k: Number of top results to return
-
-        Returns:
-            List of (collection, result, reranked_score) tuples
-        """
-        if not results:
-            return []
-
-        # Prepare documents for re-ranking
-        documents = []
-        for _, result in results:
-            # Use content if available, otherwise use metadata
-            content = result.get("content", "")
-            if not content and result.get("metadata"):
-                content = str(result.get("metadata", {}))
-            documents.append(content)
-
-        # Build re-ranking request
-        rerank_params = {
-            "query": query,
-            "documents": documents,
-            "model_name": rerank_model or "Qwen/Qwen3-Reranker",
-            "k": min(k, len(documents)),
-        }
-
-        try:
-            timeout = httpx.Timeout(timeout=60.0, connect=5.0, read=60.0, write=5.0)
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(f"{settings.SEARCH_API_URL}/rerank", json=rerank_params)
-                response.raise_for_status()
-
-            rerank_result = response.json()
-            reranked_indices = rerank_result.get("results", [])
-
-            # Build reranked results with new scores
-            reranked_results = []
-            for idx, score in reranked_indices:
-                if 0 <= idx < len(results):
-                    collection, result = results[idx]
-                    reranked_results.append((collection, result, score))
-
-            return reranked_results[:k]
-
-        except Exception as e:
-            logger.error(f"Re-ranking failed: {e}")
-            # Fall back to original scores
-            scored_results = [(collection, result, result.get("score", 0.0)) for collection, result in results]
-            scored_results.sort(key=lambda x: x[2], reverse=True)
-            return scored_results[:k]
-
     async def multi_collection_search(
         self,
         user_id: int,
@@ -231,6 +203,7 @@ class SearchService:
         search_type: str = "semantic",
         score_threshold: float | None = None,
         metadata_filter: dict[str, Any] | None = None,
+        use_reranker: bool = True,
         rerank_model: str | None = None,
         hybrid_alpha: float = 0.7,
         hybrid_search_mode: str = "weighted",
@@ -245,6 +218,7 @@ class SearchService:
             search_type: Type of search (semantic, hybrid, etc.)
             score_threshold: Minimum score threshold for results
             metadata_filter: Optional metadata filters
+            use_reranker: Whether to use reranking
             rerank_model: Optional reranker model
             hybrid_alpha: Weight for hybrid search
             hybrid_search_mode: Mode for hybrid search
@@ -262,6 +236,8 @@ class SearchService:
             "search_type": search_type,
             "score_threshold": score_threshold,
             "filters": metadata_filter,
+            "use_reranker": use_reranker,
+            "rerank_model": rerank_model,
         }
 
         # Add hybrid search parameters if applicable
@@ -274,7 +250,7 @@ class SearchService:
             )
 
         # Create timeout for searches
-        timeout = httpx.Timeout(timeout=30.0, connect=5.0, read=30.0, write=5.0)
+        timeout = self.default_timeout
 
         # Execute searches in parallel
         search_tasks = [
@@ -303,7 +279,13 @@ class SearchService:
                 if results:
                     # Add collection info to each result
                     for result in results:
-                        all_results.append((collection, result))
+                        all_results.append(
+                            {
+                                "collection_id": collection.id,
+                                "collection_name": collection.name,
+                                **result,
+                            }
+                        )
 
                 collection_results.append(
                     {
@@ -313,20 +295,11 @@ class SearchService:
                     }
                 )
 
-        # Re-rank merged results
-        reranked_results = await self.rerank_merged_results(query, all_results, rerank_model, k)
+        # Sort merged results by score (results are already reranked by vecpipe if reranking was enabled)
+        all_results.sort(key=lambda x: x.get("score", 0.0), reverse=True)
 
-        # Format final results
-        final_results = []
-        for collection, result, score in reranked_results:
-            final_results.append(
-                {
-                    "collection_id": collection.id,
-                    "collection_name": collection.name,
-                    **result,
-                    "reranked_score": score,
-                }
-            )
+        # Limit to requested k results
+        final_results = all_results[:k]
 
         processing_time = time.time() - start_time
 
@@ -404,7 +377,15 @@ class SearchService:
             )
 
         try:
-            timeout = httpx.Timeout(timeout=60.0, connect=5.0, read=60.0, write=5.0)
+            # Use a longer timeout for single collection searches
+            # Calculate timeout based on the read timeout (usually the longest operation)
+            general_timeout = self.default_timeout.read * 2 if self.default_timeout.read else 60.0
+            timeout = httpx.Timeout(
+                timeout=general_timeout,
+                connect=self.default_timeout.connect if self.default_timeout.connect else 5.0,
+                read=self.default_timeout.read * 2 if self.default_timeout.read else 60.0,
+                write=self.default_timeout.write if self.default_timeout.write else 5.0,
+            )
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(f"{settings.SEARCH_API_URL}/search", json=search_params)
                 response.raise_for_status()
@@ -414,9 +395,9 @@ class SearchService:
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
-                raise EntityNotFoundError(f"Collection '{collection.name}' not found in vector store") from e
+                raise EntityNotFoundError("collection", collection_uuid) from e
             if e.response.status_code == 403:
-                raise AccessDeniedError(f"Access denied to collection '{collection.name}'") from e
+                raise AccessDeniedError(str(user_id), "collection", collection_uuid) from e
             logger.error(f"Search failed with status {e.response.status_code}: {e}")
             raise
 

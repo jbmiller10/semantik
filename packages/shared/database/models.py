@@ -49,6 +49,7 @@ class DocumentStatus(str, enum.Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+    DELETED = "deleted"
 
 
 class PermissionType(str, enum.Enum):

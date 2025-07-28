@@ -3,14 +3,15 @@
 import asyncio
 import functools
 import logging
-from collections.abc import Callable, Coroutine
-from typing import Any, TypeVar
+from collections.abc import Callable
+from typing import Any, ParamSpec, TypeVar
 
 from sqlalchemy.exc import OperationalError
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+P = ParamSpec("P")
 
 
 def with_db_retry(
@@ -18,7 +19,7 @@ def with_db_retry(
     delay: float = 1.0,
     backoff: float = 2.0,
     max_delay: float = 30.0,
-) -> Any:
+) -> Callable[[Callable[P, Any]], Callable[P, Any]]:
     """
     Decorator to retry database operations on lock errors.
 
@@ -29,15 +30,15 @@ def with_db_retry(
         max_delay: Maximum delay between retries
     """
 
-    def decorator(func: Callable[..., T]) -> Callable[..., T] | Callable[..., Coroutine[Any, Any, T]]:
+    def decorator(func: Callable[P, Any]) -> Callable[P, Any]:
         @functools.wraps(func)
-        async def async_wrapper(*args: Any, **kwargs: Any) -> T:
+        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
             current_delay = delay
             last_exception = None
 
             for attempt in range(retries + 1):
                 try:
-                    return await func(*args, **kwargs)  # type: ignore[no-any-return, misc]
+                    return await func(*args, **kwargs)
                 except OperationalError as e:
                     if "database is locked" not in str(e) or attempt == retries:
                         raise
@@ -57,7 +58,7 @@ def with_db_retry(
             raise RuntimeError("Unexpected retry loop exit")
 
         @functools.wraps(func)
-        def sync_wrapper(*args: Any, **kwargs: Any) -> T:
+        def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
             current_delay = delay
             last_exception = None
 

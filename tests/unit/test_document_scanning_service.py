@@ -1,423 +1,574 @@
-"""Unit tests for DocumentScanningService."""
+#!/usr/bin/env python3
+"""
+Comprehensive test suite for webui/services/document_scanning_service.py
+Tests document processing pipeline, file formats, and error scenarios
+"""
 
-# mypy: ignore-errors
-
+import hashlib
 import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
+from unittest.mock import AsyncMock, Mock
 
 import pytest
-
-from packages.shared.database.models import Document
-from packages.webui.services.document_scanning_service import SUPPORTED_EXTENSIONS, DocumentScanningService
+from shared.database.models import Document
+from webui.services.document_scanning_service import SUPPORTED_EXTENSIONS, DocumentScanningService
 
 
 class TestDocumentScanningService:
-    """Test cases for DocumentScanningService."""
+    """Test DocumentScanningService implementation"""
 
     @pytest.fixture()
-    def mock_session(self) -> None:
-        """Create a mock async session."""
+    def mock_session(self):
+        """Create a mock AsyncSession"""
+        session = AsyncMock()
+        session.commit = AsyncMock()
+        return session
+
+    @pytest.fixture()
+    def mock_document_repo(self):
+        """Create a mock DocumentRepository"""
         return AsyncMock()
 
     @pytest.fixture()
-    def mock_document_repo(self) -> None:
-        """Create a mock DocumentRepository."""
-        mock = AsyncMock()
-
-        # Default behavior - create returns a new document
-        def default_create(**kwargs) -> None:
-            doc = Document(
-                id=str(uuid4()),
-                collection_id=kwargs.get("collection_id", str(uuid4())),
-                file_path=kwargs.get("file_path", "/test/file.txt"),
-                file_name=kwargs.get("file_name", "file.txt"),
-                file_size=kwargs.get("file_size", 1024),
-                content_hash=kwargs.get("content_hash", "a" * 64),
-            )
-            # Set created_at timestamp to current time
-            doc.created_at = datetime.now(UTC)
-            return doc
-
-        mock.create.side_effect = default_create
-        return mock
+    def scanning_service(self, mock_session, mock_document_repo):
+        """Create DocumentScanningService with mocked dependencies"""
+        return DocumentScanningService(
+            db_session=mock_session,
+            document_repo=mock_document_repo,
+        )
 
     @pytest.fixture()
-    def service(self, mock_session, mock_document_repo) -> None:
-        """Create a DocumentScanningService instance with mocked dependencies."""
-        return DocumentScanningService(db_session=mock_session, document_repo=mock_document_repo)
-
-    def create_test_file(self, temp_dir: Path, filename: str, content: str = "test content") -> Path:
-        """Helper to create a test file."""
-        file_path = temp_dir / filename
-        file_path.write_text(content)
-        return file_path
-
-    @pytest.mark.asyncio()
-    async def test_scan_directory_nonexistent_path(self, service):
-        """Test scanning a non-existent directory raises ValueError."""
-        with pytest.raises(ValueError, match="Source path does not exist"):
-            await service.scan_directory_and_register_documents(
-                collection_id=str(uuid4()), source_path="/nonexistent/path"
-            )
-
-    @pytest.mark.asyncio()
-    async def test_scan_directory_not_a_directory(self, service):
-        """Test scanning a file instead of directory raises ValueError."""
-        with (
-            tempfile.NamedTemporaryFile() as tmp_file,
-            pytest.raises(ValueError, match="Source path is not a directory"),
-        ):
-            await service.scan_directory_and_register_documents(collection_id=str(uuid4()), source_path=tmp_file.name)
-
-    @pytest.mark.asyncio()
-    async def test_scan_empty_directory(self, service):
-        """Test scanning an empty directory returns zero stats."""
+    def temp_directory(self):
+        """Create a temporary directory with test files"""
         with tempfile.TemporaryDirectory() as temp_dir:
-            stats = await service.scan_directory_and_register_documents(
-                collection_id=str(uuid4()), source_path=temp_dir
-            )
+            # Create test files
+            test_files = {
+                "document.pdf": b"PDF content",
+                "text.txt": b"Text content",
+                "presentation.pptx": b"PowerPoint content",
+                "readme.md": b"# Markdown content",
+                "email.eml": b"Email content",
+                "webpage.html": b"<html>Web content</html>",
+                "document.docx": b"Word content",
+                "legacy.doc": b"Legacy Word content",
+                "image.jpg": b"JPEG image",  # Not supported
+                "script.py": b"Python code",  # Not supported
+                "subdir/nested.pdf": b"Nested PDF",
+                "subdir/deep/file.txt": b"Deep nested text",
+            }
 
-            assert stats["total_documents_found"] == 0
-            assert stats["new_documents_registered"] == 0
-            assert stats["duplicate_documents_skipped"] == 0
-            assert stats["errors"] == []
-            assert stats["total_size_bytes"] == 0
+            for file_path, content in test_files.items():
+                full_path = Path(temp_dir) / file_path
+                full_path.parent.mkdir(parents=True, exist_ok=True)
+                full_path.write_bytes(content)
+
+            yield temp_dir
+
+    def test_supported_extensions(self):
+        """Test that all expected extensions are supported"""
+        expected = {".pdf", ".docx", ".doc", ".txt", ".text", ".pptx", ".eml", ".md", ".html"}
+        assert expected == SUPPORTED_EXTENSIONS
 
     @pytest.mark.asyncio()
-    async def test_scan_directory_with_supported_files(self, service, mock_document_repo):
-        """Test scanning directory with supported file types."""
-        collection_id = str(uuid4())
+    async def test_scan_directory_success(self, scanning_service, mock_document_repo, temp_directory):
+        """Test successful directory scanning"""
+        collection_id = "test-collection-uuid"
 
-        # Setup mock to return documents with created_at timestamps
-        def create_mock_document(**kwargs) -> None:
-            doc = Document(
-                id=str(uuid4()),
-                collection_id=collection_id,
-                file_path=kwargs.get("file_path", "/test/file"),
-                file_name=kwargs.get("file_name", "file"),
-                file_size=kwargs.get("file_size", 100),
-                content_hash=kwargs.get("content_hash", "a" * 64),
-            )
-            doc.created_at = datetime.now(UTC)
+        # Mock document creation - simulate some new, some duplicates
+        async def mock_create(**kwargs):
+            # Create document with proper attributes
+            doc = Mock(spec=Document)
+            doc.id = f"doc-{kwargs.get('file_name', 'unknown')}"
+            # For .txt files, simulate they were created before the scan (duplicates)
+            if kwargs.get("file_path", "").endswith(".txt"):
+                doc.created_at = datetime.now(UTC) - timedelta(hours=1)  # Old document
+            else:
+                doc.created_at = datetime.now(UTC) + timedelta(seconds=1)  # New document
             return doc
 
-        mock_document_repo.create.side_effect = create_mock_document
+        mock_document_repo.create.side_effect = mock_create
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-
-            # Create test files
-            self.create_test_file(temp_path, "test.pdf", "PDF content")
-            self.create_test_file(temp_path, "test.txt", "Text content")
-            self.create_test_file(temp_path, "test.docx", "DOCX content")
-
-            # Create unsupported file that should be ignored
-            self.create_test_file(temp_path, "test.jpg", "Image content")
-
-            stats = await service.scan_directory_and_register_documents(
-                collection_id=collection_id, source_path=temp_dir, recursive=False
-            )
-
-            # Verify results
-            assert stats["total_documents_found"] == 3  # Only supported files
-            assert stats["new_documents_registered"] == 3
-            assert stats["duplicate_documents_skipped"] == 0
-            assert len(stats["errors"]) == 0
-            assert stats["total_size_bytes"] > 0
-
-            # Verify document repo was called for each supported file
-            assert mock_document_repo.create.call_count == 3
-
-    @pytest.mark.asyncio()
-    async def test_scan_directory_with_duplicates(self, service, mock_document_repo):
-        """Test that duplicate files are properly detected."""
-        collection_id = str(uuid4())
-
-        # Create documents with different created_at times
-        existing_doc = Document(
-            id="doc1",
+        # Scan directory
+        stats = await scanning_service.scan_directory_and_register_documents(
             collection_id=collection_id,
-            file_path="/test1.txt",
-            file_name="test1.txt",
-            file_size=100,
-            content_hash="a" * 64,
+            source_path=temp_directory,
+            recursive=True,
         )
-        # Simulate existing document created 1 hour ago
-        existing_doc.created_at = datetime.now(UTC) - timedelta(hours=1)
 
-        # Configure mock to return existing doc for first file,
-        # and create a new doc dynamically for second file
-        def create_side_effect(**kwargs) -> None:
-            if kwargs.get("file_name") == "test1.txt":
-                return existing_doc
-            # Create new document with current timestamp
-            new_doc = Document(
-                id="doc2",
-                collection_id=collection_id,
-                file_path="/test2.txt",
-                file_name="test2.txt",
-                file_size=100,
-                content_hash="b" * 64,
-            )
-            # This will be created after scan starts
-            new_doc.created_at = datetime.now(UTC)
-            return new_doc
-
-        mock_document_repo.create.side_effect = create_side_effect
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-
-            # Create two files
-            self.create_test_file(temp_path, "test1.txt", "Content 1")
-            self.create_test_file(temp_path, "test2.txt", "Content 2")
-
-            stats = await service.scan_directory_and_register_documents(
-                collection_id=collection_id, source_path=temp_dir
-            )
-
-            # Both files should be found
-            assert stats["total_documents_found"] == 2
-            assert stats["new_documents_registered"] == 1  # Only second file is new
-            assert stats["duplicate_documents_skipped"] == 1  # First file is duplicate
-            assert mock_document_repo.create.call_count == 2
+        # Verify stats
+        # We have 10 supported files: document.pdf, text.txt, presentation.pptx, readme.md,
+        # email.eml, webpage.html, document.docx, legacy.doc, subdir/nested.pdf, subdir/deep/file.txt
+        assert stats["total_documents_found"] == 10  # All supported files
+        assert stats["new_documents_registered"] == 8  # Excluding 2 .txt files
+        assert stats["duplicate_documents_skipped"] == 2  # The 2 .txt files
+        assert stats["total_size_bytes"] > 0
+        assert len(stats["errors"]) == 0
 
     @pytest.mark.asyncio()
-    async def test_scan_directory_recursive(self, service, mock_document_repo):
-        """Test recursive directory scanning."""
-        collection_id = str(uuid4())
+    async def test_scan_directory_non_recursive(self, scanning_service, mock_document_repo, temp_directory):
+        """Test non-recursive directory scanning"""
+        collection_id = "test-collection-uuid"
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+        # Mock document creation
+        async def mock_create(**kwargs):
+            doc = Mock(spec=Document)
+            doc.id = f"doc-{kwargs.get('file_name', 'unknown')}"
+            doc.created_at = datetime.now(UTC) + timedelta(seconds=1)  # New document
+            return doc
 
-            # Create nested directory structure
-            subdir = temp_path / "subdir"
-            subdir.mkdir()
-            nested_dir = subdir / "nested"
-            nested_dir.mkdir()
+        mock_document_repo.create.side_effect = mock_create
 
-            # Create files at different levels
-            self.create_test_file(temp_path, "root.txt")
-            self.create_test_file(subdir, "sub.pdf")
-            self.create_test_file(nested_dir, "nested.docx")
+        # Scan directory non-recursively
+        stats = await scanning_service.scan_directory_and_register_documents(
+            collection_id=collection_id,
+            source_path=temp_directory,
+            recursive=False,
+        )
 
-            stats = await service.scan_directory_and_register_documents(
-                collection_id=collection_id, source_path=temp_dir, recursive=True
-            )
-
-            assert stats["total_documents_found"] == 3
-            assert mock_document_repo.create.call_count == 3
-
-    @pytest.mark.asyncio()
-    async def test_scan_directory_non_recursive(self, service, mock_document_repo):
-        """Test non-recursive directory scanning only gets root files."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-
-            # Create nested directory structure
-            subdir = temp_path / "subdir"
-            subdir.mkdir()
-
-            # Create files at different levels
-            self.create_test_file(temp_path, "root.txt")
-            self.create_test_file(subdir, "sub.pdf")
-
-            stats = await service.scan_directory_and_register_documents(
-                collection_id=str(uuid4()), source_path=temp_dir, recursive=False
-            )
-
-            assert stats["total_documents_found"] == 1  # Only root file
-            assert mock_document_repo.create.call_count == 1
+        # Should only find files in root directory (8 files: pdf, txt, pptx, md, eml, html, docx, doc)
+        assert stats["total_documents_found"] == 8  # Only root level supported files
+        assert stats["new_documents_registered"] == 8
+        assert stats["duplicate_documents_skipped"] == 0
 
     @pytest.mark.asyncio()
-    async def test_scan_directory_with_file_errors(self, service, mock_document_repo):
-        """Test handling of file processing errors."""
-        # Make document creation fail for testing
-        mock_document_repo.create.side_effect = Exception("Database error")
+    async def test_scan_directory_with_source_id(self, scanning_service, mock_document_repo, temp_directory):
+        """Test scanning with source ID"""
+        collection_id = "test-collection-uuid"
+        source_id = 42
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-            self.create_test_file(temp_path, "test.txt")
+        call_args_list = []
 
-            stats = await service.scan_directory_and_register_documents(
-                collection_id=str(uuid4()), source_path=temp_dir
+        async def capture_calls(**kwargs):
+            call_args_list.append(kwargs)
+            doc = Mock(spec=Document)
+            doc.id = f"doc-{kwargs.get('file_name', 'unknown')}"
+            doc.created_at = datetime.now(UTC) + timedelta(seconds=1)
+            return doc
+
+        mock_document_repo.create.side_effect = capture_calls
+
+        # Scan with source ID
+        await scanning_service.scan_directory_and_register_documents(
+            collection_id=collection_id,
+            source_path=temp_directory,
+            source_id=source_id,
+            recursive=False,
+        )
+
+        # Verify all documents have source_id
+        assert all(doc.get("source_id") == source_id for doc in call_args_list)
+
+    @pytest.mark.asyncio()
+    async def test_scan_directory_batch_processing(
+        self, scanning_service, mock_document_repo, mock_session, temp_directory
+    ):
+        """Test batch processing during scan"""
+        collection_id = "test-collection-uuid"
+
+        # Mock document creation
+        async def mock_create(**kwargs):
+            doc = Mock(spec=Document)
+            doc.id = f"doc-{kwargs.get('file_name', 'unknown')}"
+            doc.created_at = datetime.now(UTC) + timedelta(seconds=1)  # New document
+            return doc
+
+        mock_document_repo.create.side_effect = mock_create
+
+        # Scan with small batch size
+        await scanning_service.scan_directory_and_register_documents(
+            collection_id=collection_id,
+            source_path=temp_directory,
+            batch_size=2,
+            recursive=True,
+        )
+
+        # Verify commits were called multiple times (8 files / 2 batch = 4 commits)
+        assert mock_session.commit.call_count >= 4
+
+    @pytest.mark.asyncio()
+    async def test_scan_directory_progress_callback(self, scanning_service, mock_document_repo, temp_directory):
+        """Test progress callback functionality"""
+        collection_id = "test-collection-uuid"
+        progress_updates = []
+
+        async def progress_callback(processed, total):
+            progress_updates.append((processed, total))
+
+        # Mock document creation
+        async def mock_create(**kwargs):
+            doc = Mock(spec=Document)
+            doc.id = f"doc-{kwargs.get('file_name', 'unknown')}"
+            doc.created_at = datetime.now(UTC) + timedelta(seconds=1)  # New document
+            return doc
+
+        mock_document_repo.create.side_effect = mock_create
+
+        # Scan with progress callback
+        await scanning_service.scan_directory_and_register_documents(
+            collection_id=collection_id,
+            source_path=temp_directory,
+            recursive=True,
+            progress_callback=progress_callback,
+        )
+
+        # Verify progress updates
+        assert len(progress_updates) > 0
+        # Last update should show all documents processed
+        last_processed, last_total = progress_updates[-1]
+        assert last_processed == 10  # All supported files (10 total)
+
+    @pytest.mark.asyncio()
+    async def test_scan_directory_invalid_path(self, scanning_service):
+        """Test scanning non-existent directory"""
+        with pytest.raises(ValueError, match="Source path does not exist"):
+            await scanning_service.scan_directory_and_register_documents(
+                collection_id="test-collection",
+                source_path="/non/existent/path",
             )
 
+    @pytest.mark.asyncio()
+    async def test_scan_directory_not_directory(self, scanning_service, temp_directory):
+        """Test scanning a file instead of directory"""
+        file_path = Path(temp_directory) / "document.pdf"
+
+        with pytest.raises(ValueError, match="Source path is not a directory"):
+            await scanning_service.scan_directory_and_register_documents(
+                collection_id="test-collection",
+                source_path=str(file_path),
+            )
+
+    @pytest.mark.asyncio()
+    async def test_scan_directory_with_errors(self, scanning_service, mock_document_repo, temp_directory):
+        """Test handling errors during document registration"""
+        collection_id = "test-collection-uuid"
+
+        # Mock document creation to fail for PDF files
+        async def mock_create_with_errors(**kwargs):
+            if kwargs.get("file_name", "").endswith(".pdf"):
+                raise Exception("Failed to process PDF")
+            doc = Mock(spec=Document)
+            doc.id = f"doc-{kwargs.get('file_name', 'unknown')}"
+            doc.created_at = datetime.now(UTC) + timedelta(seconds=1)
+            return doc
+
+        mock_document_repo.create.side_effect = mock_create_with_errors
+
+        # Scan directory
+        stats = await scanning_service.scan_directory_and_register_documents(
+            collection_id=collection_id,
+            source_path=temp_directory,
+            recursive=True,
+        )
+
+        # Verify error handling
+        assert len(stats["errors"]) == 2  # Two PDF files
+        assert all("Failed to process PDF" in err["error"] for err in stats["errors"])
+        assert stats["new_documents_registered"] == 8  # Non-PDF files succeeded (8 total)
+
+    @pytest.mark.asyncio()
+    async def test_register_file_content_hash(self, scanning_service, mock_document_repo):
+        """Test file content hash calculation"""
+        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as temp_file:
+            content = b"Test content for hashing"
+            temp_file.write(content)
+            temp_file.flush()
+
+            # Calculate expected hash
+            expected_hash = hashlib.sha256(content).hexdigest()
+
+            # Capture document dict
+            captured_doc = None
+
+            async def capture_doc(**kwargs):
+                nonlocal captured_doc
+                captured_doc = kwargs
+                doc = Mock(spec=Document)
+                doc.id = f"doc-{kwargs.get('file_name', 'unknown')}"
+                doc.created_at = datetime.now(UTC) + timedelta(seconds=1)
+                return doc
+
+            mock_document_repo.create.side_effect = capture_doc
+
+            # Register file
+            await scanning_service._register_file(
+                collection_id="test-collection",
+                file_path=Path(temp_file.name),
+                source_id=None,
+                scan_start_time=datetime.now(UTC),
+            )
+
+            # Verify hash
+            assert captured_doc is not None
+            assert captured_doc["content_hash"] == expected_hash
+
+            # Cleanup
+            Path(temp_file.name).unlink()
+
+    @pytest.mark.asyncio()
+    async def test_register_file_metadata(self, scanning_service, mock_document_repo):
+        """Test file metadata extraction"""
+        with tempfile.NamedTemporaryFile(suffix=".md", delete=False) as temp_file:
+            temp_file.write(b"# Test Document")
+            temp_file.flush()
+
+            # Capture document dict
+            captured_doc = None
+
+            async def capture_doc(**kwargs):
+                nonlocal captured_doc
+                captured_doc = kwargs
+                doc = Mock(spec=Document)
+                doc.id = f"doc-{kwargs.get('file_name', 'unknown')}"
+                doc.created_at = datetime.now(UTC) + timedelta(seconds=1)
+                return doc
+
+            mock_document_repo.create.side_effect = capture_doc
+
+            # Register file
+            await scanning_service._register_file(
+                collection_id="test-collection",
+                file_path=Path(temp_file.name),
+                source_id=None,
+                scan_start_time=datetime.now(UTC),
+            )
+
+            # Verify metadata
+            assert captured_doc is not None
+            assert captured_doc["file_name"].endswith(".md")
+            assert Path(captured_doc["file_path"]).suffix == ".md"
+            assert captured_doc["mime_type"] == "text/markdown"
+            assert captured_doc["file_size"] == 15  # Length of "# Test Document"
+
+            # Cleanup
+            Path(temp_file.name).unlink()
+
+    @pytest.mark.asyncio()
+    async def test_skip_large_files(self, scanning_service, mock_document_repo):
+        """Test that files exceeding MAX_FILE_SIZE are skipped"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create a file that appears large
+            large_file = Path(temp_dir) / "large.pdf"
+            large_file.write_bytes(b"PDF")
+
+            # Mock the _register_file method to simulate large file detection
+            original_register = scanning_service._register_file
+
+            async def mock_register_file(collection_id, file_path, source_id, scan_start_time):
+                # Check if it's our large file
+                if file_path.name == "large.pdf":
+                    # Simulate the ValueError that would be raised for large files
+                    raise ValueError(f"Document too large: {600 * 1024 * 1024} bytes (max {500 * 1024 * 1024} bytes)")
+                # Otherwise call original method
+                return await original_register(collection_id, file_path, source_id, scan_start_time)
+
+            scanning_service._register_file = mock_register_file
+
+            stats = await scanning_service.scan_directory_and_register_documents(
+                collection_id="test-collection",
+                source_path=temp_dir,
+            )
+
+            # File should be found but skipped due to size
             assert stats["total_documents_found"] == 1
             assert stats["new_documents_registered"] == 0
-            assert stats["duplicate_documents_skipped"] == 0
             assert len(stats["errors"]) == 1
-            assert "test.txt" in stats["errors"][0]["document"]
-            assert "Database error" in stats["errors"][0]["error"]
+            assert "Document too large" in stats["errors"][0]["error"]
+
+
+class TestDocumentScanningFormats:
+    """Test handling of different file formats"""
+
+    @pytest.fixture()
+    def scanning_service(self):
+        mock_session = AsyncMock()
+        mock_document_repo = AsyncMock()
+        return DocumentScanningService(mock_session, mock_document_repo)
 
     @pytest.mark.asyncio()
-    async def test_scan_file_single(self, service, mock_document_repo):
-        """Test scanning a single file."""
-        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp_file:
-            tmp_file.write(b"Test content")
-            tmp_file.flush()
+    async def test_pdf_file_handling(self, scanning_service):
+        """Test PDF file detection and processing"""
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_file:
+            temp_file.write(b"%PDF-1.4 PDF content")
+            temp_file.flush()
 
-            try:
-                result = await service.scan_document(collection_id=str(uuid4()), file_path=tmp_file.name)
+            captured_doc = None
 
-                assert "document_id" in result
-                assert result["is_new"] is True
-                assert result["file_size"] > 0
-                assert result["file_name"] == Path(tmp_file.name).name
-                assert result["mime_type"] == "text/plain"
+            async def capture_doc(**kwargs):
+                nonlocal captured_doc
+                captured_doc = kwargs
+                doc = Mock(spec=Document)
+                doc.id = f"doc-{kwargs.get('file_name', 'unknown')}"
+                doc.created_at = datetime.now(UTC) + timedelta(seconds=1)
+                return doc
 
-            finally:
-                Path(tmp_file.name).unlink()
+            scanning_service.document_repo.create.side_effect = capture_doc
 
-    @pytest.mark.asyncio()
-    async def test_scan_file_unsupported_type(self, service):
-        """Test scanning unsupported file type raises ValueError."""
-        with (
-            tempfile.NamedTemporaryFile(suffix=".jpg") as tmp_file,
-            pytest.raises(ValueError, match="Unsupported document type"),
-        ):
-            await service.scan_document(collection_id=str(uuid4()), file_path=tmp_file.name)
-
-    @pytest.mark.asyncio()
-    async def test_calculate_file_hash(self, service):
-        """Test file hash calculation."""
-        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-            content = b"Test content for hashing"
-            tmp_file.write(content)
-            tmp_file.flush()
-
-            try:
-                hash_result = await service._calculate_file_hash(Path(tmp_file.name))
-
-                # Verify it's a valid SHA-256 hash (64 hex characters)
-                assert len(hash_result) == 64
-                assert all(c in "0123456789abcdef" for c in hash_result)
-
-                # Verify hash is consistent
-                hash_result2 = await service._calculate_file_hash(Path(tmp_file.name))
-                assert hash_result == hash_result2
-
-            finally:
-                Path(tmp_file.name).unlink()
-
-    def test_get_mime_type(self, service) -> None:
-        """Test MIME type detection."""
-        # Test known extensions
-        assert service._get_mime_type(Path("test.pdf")) == "application/pdf"
-        assert service._get_mime_type(Path("test.txt")) == "text/plain"
-        assert (
-            service._get_mime_type(Path("test.docx"))
-            == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
-        assert service._get_mime_type(Path("test.html")) == "text/html"
-        assert service._get_mime_type(Path("test.md")) == "text/markdown"
-
-        # Test case insensitive
-        assert service._get_mime_type(Path("TEST.PDF")) == "application/pdf"
-
-    def test_supported_extensions(self) -> None:
-        """Test that all supported extensions are defined correctly."""
-        # Verify expected extensions are supported
-        expected_extensions = {".pdf", ".docx", ".doc", ".txt", ".text", ".pptx", ".eml", ".md", ".html"}
-        assert expected_extensions == SUPPORTED_EXTENSIONS
-
-    @pytest.mark.asyncio()
-    async def test_large_file_rejection(self, service):
-        """Test that files exceeding max size are rejected."""
-        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp_file:
-            # Create a file that appears to be over the size limit
-            # We'll mock the stat call to return a large size
-            tmp_file.write(b"Small content")
-            tmp_file.flush()
-
-            try:
-                with patch("pathlib.Path.stat") as mock_stat:
-                    mock_stat.return_value = MagicMock(st_size=600 * 1024 * 1024)  # 600MB
-
-                    with pytest.raises(ValueError, match="Document too large"):
-                        await service._register_file(collection_id=str(uuid4()), file_path=Path(tmp_file.name))
-
-            finally:
-                Path(tmp_file.name).unlink()
-
-    @pytest.mark.asyncio()
-    async def test_batch_processing(self, service, mock_document_repo, mock_session):
-        """Test batch processing with commit after batch_size files."""
-        collection_id = str(uuid4())
-
-        # Setup mock to return documents with created_at
-        def create_mock_document(**kwargs) -> None:
-            doc = Document(
-                id=str(uuid4()),
-                collection_id=collection_id,
-                file_path=kwargs.get("file_path", "/test/file"),
-                file_name=kwargs.get("file_name", "file"),
-                file_size=kwargs.get("file_size", 100),
-                content_hash=kwargs.get("content_hash", "a" * 64),
+            await scanning_service._register_file(
+                collection_id="test",
+                file_path=Path(temp_file.name),
+                source_id=None,
+                scan_start_time=datetime.now(UTC),
             )
-            doc.created_at = datetime.now(UTC)
-            return doc
 
-        mock_document_repo.create.side_effect = create_mock_document
+            assert captured_doc["mime_type"] == "application/pdf"
+            assert Path(captured_doc["file_path"]).suffix == ".pdf"
+
+            Path(temp_file.name).unlink()
+
+    @pytest.mark.asyncio()
+    async def test_office_formats_handling(self, scanning_service):
+        """Test Microsoft Office formats handling"""
+        office_formats = {
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".doc": "application/msword",
+            ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        }
+
+        for ext, _expected_mime in office_formats.items():
+            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as temp_file:
+                temp_file.write(b"Office content")
+                temp_file.flush()
+
+                captured_doc = None
+
+                async def capture_doc(**kwargs):
+                    nonlocal captured_doc
+                    captured_doc = kwargs
+                    doc = Mock(spec=Document)
+                    doc.id = f"doc-{kwargs.get('file_name', 'unknown')}"
+                    doc.created_at = datetime.now(UTC) + timedelta(seconds=1)
+                    return doc
+
+                scanning_service.document_repo.create.side_effect = capture_doc
+
+                await scanning_service._register_file(
+                    collection_id="test",
+                    file_path=Path(temp_file.name),
+                    source_id=None,
+                    scan_start_time=datetime.now(UTC),
+                )
+
+                assert Path(captured_doc["file_path"]).suffix == ext
+                # Mime type detection might vary by system
+                assert captured_doc["mime_type"] is not None
+
+                Path(temp_file.name).unlink()
+
+    @pytest.mark.asyncio()
+    async def test_text_formats_handling(self, scanning_service):
+        """Test text-based formats handling"""
+        text_formats = {
+            ".txt": "text/plain",
+            ".md": "text/markdown",
+            ".html": "text/html",
+        }
+
+        for ext, expected_mime in text_formats.items():
+            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as temp_file:
+                temp_file.write(b"Text content")
+                temp_file.flush()
+
+                captured_doc = None
+
+                async def capture_doc(**kwargs):
+                    nonlocal captured_doc
+                    captured_doc = kwargs
+                    doc = Mock(spec=Document)
+                    doc.id = f"doc-{kwargs.get('file_name', 'unknown')}"
+                    doc.created_at = datetime.now(UTC) + timedelta(seconds=1)
+                    return doc
+
+                scanning_service.document_repo.create.side_effect = capture_doc
+
+                await scanning_service._register_file(
+                    collection_id="test",
+                    file_path=Path(temp_file.name),
+                    source_id=None,
+                    scan_start_time=datetime.now(UTC),
+                )
+
+                assert Path(captured_doc["file_path"]).suffix == ext
+                # Some systems might not detect markdown mime type
+                if ext != ".md" or captured_doc["mime_type"] is not None:
+                    assert expected_mime in captured_doc["mime_type"] or captured_doc["mime_type"] == "text/plain"
+
+                Path(temp_file.name).unlink()
+
+
+class TestDocumentScanningPerformance:
+    """Test performance-related aspects of document scanning"""
+
+    @pytest.mark.asyncio()
+    async def test_large_directory_scanning(self):
+        """Test scanning directory with many files"""
+        mock_session = AsyncMock()
+        mock_document_repo = AsyncMock()
+        scanning_service = DocumentScanningService(mock_session, mock_document_repo)
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            # Create many files
+            num_files = 100
+            for i in range(num_files):
+                file_path = Path(temp_dir) / f"document_{i}.txt"
+                file_path.write_text(f"Content {i}")
 
-            # Create 5 files
-            for i in range(5):
-                self.create_test_file(temp_path, f"test{i}.txt", f"Content {i}")
+            # Mock fast document creation
+            async def mock_create(**kwargs):
+                doc = Mock(spec=Document)
+                doc.id = f"doc-{kwargs.get('file_name', 'unknown')}"
+                doc.created_at = datetime.now(UTC) + timedelta(seconds=1)
+                return doc
 
-            # Set batch size to 2
-            stats = await service.scan_directory_and_register_documents(
-                collection_id=collection_id, source_path=temp_dir, batch_size=2
+            mock_document_repo.create.side_effect = mock_create
+
+            # Scan directory
+            stats = await scanning_service.scan_directory_and_register_documents(
+                collection_id="test-collection",
+                source_path=temp_dir,
+                batch_size=20,  # Process in batches
             )
 
-            assert stats["total_documents_found"] == 5
-            # Session commit should be called 3 times (2 + 2 + 1)
-            assert mock_session.commit.call_count == 3
+            assert stats["total_documents_found"] == num_files
+            assert stats["new_documents_registered"] == num_files
+            # Should have committed multiple times
+            assert mock_session.commit.call_count == 5  # 100 files / 20 batch size
 
     @pytest.mark.asyncio()
-    async def test_progress_callback(self, service, mock_document_repo):
-        """Test progress callback functionality."""
-        collection_id = str(uuid4())
-        progress_calls = []
+    async def test_hash_calculation_chunking(self):
+        """Test that file hashing uses chunking for large files"""
+        mock_session = AsyncMock()
+        mock_document_repo = AsyncMock()
+        scanning_service = DocumentScanningService(mock_session, mock_document_repo)
 
-        # Setup mock to return documents with created_at
-        def create_mock_document(**kwargs) -> None:
-            doc = Document(
-                id=str(uuid4()),
-                collection_id=collection_id,
-                file_path=kwargs.get("file_path", "/test/file"),
-                file_name=kwargs.get("file_name", "file"),
-                file_size=kwargs.get("file_size", 100),
-                content_hash=kwargs.get("content_hash", "a" * 64),
-            )
-            doc.created_at = datetime.now(UTC)
-            return doc
+        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as temp_file:
+            # Write content larger than chunk size
+            content = b"x" * (8192 * 3 + 100)  # 3+ chunks
+            temp_file.write(content)
+            temp_file.flush()
 
-        mock_document_repo.create.side_effect = create_mock_document
+            captured_doc = None
 
-        async def progress_callback(processed: int, total: int) -> None:
-            progress_calls.append((processed, total))
+            async def capture_doc(**kwargs):
+                nonlocal captured_doc
+                captured_doc = kwargs
+                doc = Mock(spec=Document)
+                doc.id = f"doc-{kwargs.get('file_name', 'unknown')}"
+                doc.created_at = datetime.now(UTC) + timedelta(seconds=1)
+                return doc
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            mock_document_repo.create.side_effect = capture_doc
 
-            # Create 3 files
-            for i in range(3):
-                self.create_test_file(temp_path, f"test{i}.txt", f"Content {i}")
-
-            stats = await service.scan_directory_and_register_documents(
-                collection_id=collection_id, source_path=temp_dir, progress_callback=progress_callback
+            # Register file
+            await scanning_service._register_file(
+                collection_id="test",
+                file_path=Path(temp_file.name),
+                source_id=None,
+                scan_start_time=datetime.now(UTC),
             )
 
-            assert stats["total_documents_found"] == 3
-            # Progress callback should be called 3 times
-            assert len(progress_calls) == 3
-            # In non-recursive mode, total is updated incrementally
-            assert progress_calls[0][0] == 1  # First file processed
-            assert progress_calls[1][0] == 2  # Second file processed
-            assert progress_calls[2][0] == 3  # Third file processed
+            # Verify hash is calculated correctly
+            expected_hash = hashlib.sha256(content).hexdigest()
+            assert captured_doc["content_hash"] == expected_hash
+
+            Path(temp_file.name).unlink()

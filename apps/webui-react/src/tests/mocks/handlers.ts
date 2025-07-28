@@ -3,8 +3,7 @@ import { http, HttpResponse } from 'msw'
 export const handlers = [
   // Auth endpoints
   http.post('/api/auth/login', async ({ request }) => {
-    const body = await request.json() as any
-    const { username, password } = body as { username: string; password: string }
+    const { username, password } = await request.json() as { username: string; password: string }
     
     if (username === 'testuser' && password === 'testpass') {
       return HttpResponse.json({
@@ -68,8 +67,8 @@ export const handlers = [
   }),
 
   http.put('/api/collections/:name', async ({ params, request }) => {
-    const body = await request.json() as any
-    const { new_name } = body as { new_name: string }
+    const body = await request.json() as { new_name: string }
+    const { new_name } = body
     
     return HttpResponse.json({
       message: `Collection ${params.name} renamed to ${new_name}`,
@@ -90,7 +89,7 @@ export const handlers = [
 
   // Search endpoints
   http.post('/api/search', async ({ request }) => {
-    const body = await request.json() as any
+    const body = await request.json() as { query: string; collection?: string; search_type?: string }
     
     return HttpResponse.json({
       results: [

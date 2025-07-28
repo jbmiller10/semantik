@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useSearchStore } from '../stores/searchStore';
 import { useUIStore } from '../stores/uiStore';
 import { AlertTriangle, ChevronRight, FileText, Layers } from 'lucide-react';
+import { GPUMemoryError } from './GPUMemoryError';
 
 function SearchResults() {
   const { 
@@ -28,6 +29,27 @@ function SearchResults() {
   }
 
   if (error) {
+    // Check if this is a GPU memory error
+    if (error === 'GPU_MEMORY_ERROR' && (window as any).__gpuMemoryError) {
+      const gpuError = (window as any).__gpuMemoryError;
+      return (
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <GPUMemoryError
+            suggestion={gpuError.suggestion}
+            currentModel={gpuError.currentModel}
+            onSelectSmallerModel={(model) => {
+              // This will be handled by the parent component
+              // We need to pass this handler from SearchInterface
+              if ((window as any).__handleSelectSmallerModel) {
+                (window as any).__handleSelectSmallerModel(model);
+              }
+            }}
+          />
+        </div>
+      );
+    }
+    
+    // Regular error display
     return (
       <div className="bg-white rounded-lg shadow-md p-6">
         <div className="bg-red-50 border border-red-200 rounded-md p-4">

@@ -2,21 +2,23 @@
 
 import logging
 import uuid
-from typing import Any
+from typing import Any, cast
 
-from shared.database.exceptions import AccessDeniedError, EntityAlreadyExistsError, InvalidStateError
-from shared.database.models import Collection, CollectionStatus, OperationType
-from shared.database.repositories.collection_repository import CollectionRepository
-from shared.database.repositories.document_repository import DocumentRepository
-from shared.database.repositories.operation_repository import OperationRepository
 from sqlalchemy.ext.asyncio import AsyncSession
-from webui.celery_app import celery_app
-from webui.utils.qdrant_manager import qdrant_manager
+
+from packages.shared.database.exceptions import AccessDeniedError, EntityAlreadyExistsError, InvalidStateError
+from packages.shared.database.models import Collection, CollectionStatus, OperationType
+from packages.shared.database.repositories.collection_repository import CollectionRepository
+from packages.shared.database.repositories.document_repository import DocumentRepository
+from packages.shared.database.repositories.operation_repository import OperationRepository
+from packages.webui.celery_app import celery_app
+from packages.webui.utils.qdrant_manager import qdrant_manager
 
 logger = logging.getLogger(__name__)
 
 # Configuration constants
 QDRANT_COLLECTION_PREFIX = "collection_"
+DEFAULT_VECTOR_DIMENSION = 1536  # Default vector dimension for embeddings
 
 
 class CollectionService:
@@ -349,12 +351,7 @@ class CollectionService:
 
         # Only owner can delete
         if collection.owner_id != user_id:
-            raise AccessDeniedError(
-                entity_id=str(user_id),
-                entity_type="user",
-                resource_id=collection_id,
-                message="Only the collection owner can delete it",
-            )
+            raise AccessDeniedError(user_id=str(user_id), resource_type="Collection", resource_id=collection_id)
 
         # Check if there's an active operation
         active_ops = await self.operation_repo.get_active_operations_count(collection.id)
@@ -474,7 +471,7 @@ class CollectionService:
         Returns:
             Tuple of (collections list, total count)
         """
-        return await self.collection_repo.list_for_user(  # type: ignore[no-any-return]
+        return await self.collection_repo.list_for_user(
             user_id=user_id,
             offset=offset,
             limit=limit,
@@ -504,7 +501,7 @@ class CollectionService:
 
         # Only the owner can update the collection
         if collection.owner_id != user_id:
-            raise AccessDeniedError("Only the collection owner can update it")
+            raise AccessDeniedError(user_id=str(user_id), resource_type="Collection", resource_id=collection_id)
 
         # Perform the update
         updated_collection = await self.collection_repo.update(str(collection.id), updates)
@@ -512,7 +509,7 @@ class CollectionService:
         # Commit the transaction
         await self.db_session.commit()
 
-        return updated_collection
+        return cast(Collection, updated_collection)
 
     async def list_documents(
         self, collection_id: str, user_id: int, offset: int = 0, limit: int = 50

@@ -530,6 +530,27 @@ async def list_collection_operations(
     Returns a paginated list of operations performed on the collection,
     ordered by creation date (newest first).
     """
+    # Validate filters before processing
+    from packages.shared.database.models import OperationStatus, OperationType
+
+    if status:
+        try:
+            OperationStatus(status)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status: {status}. Valid values are: {[st.value for st in OperationStatus]}",
+            ) from None
+
+    if operation_type:
+        try:
+            OperationType(operation_type)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid operation type: {operation_type}. Valid values are: {[t.value for t in OperationType]}",
+            ) from None
+
     try:
         offset = (page - 1) * per_page
 
@@ -543,30 +564,17 @@ async def list_collection_operations(
         )
 
         # Filter operations if status or type specified
-        from packages.shared.database.models import OperationStatus, OperationType
-
         if status or operation_type:
             filtered_operations = operations
 
             if status:
-                try:
-                    status_enum = OperationStatus(status)
-                    filtered_operations = [op for op in filtered_operations if op.status == status_enum]
-                except ValueError:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Invalid status: {status}",
-                    ) from None
+                status_enum = OperationStatus(status)
+                filtered_operations = [op for op in filtered_operations if op.status == status_enum]
 
             if operation_type:
-                try:
-                    type_enum = OperationType(operation_type)
-                    filtered_operations = [op for op in filtered_operations if op.type == type_enum]
-                except ValueError:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Invalid operation type: {operation_type}",
-                    ) from None
+                type_enum = OperationType(operation_type)
+                filtered_operations = [op for op in filtered_operations if op.type == type_enum]
+
             operations = filtered_operations
 
         # Convert ORM objects to response models
@@ -623,6 +631,18 @@ async def list_collection_documents(
 
     Returns a paginated list of documents in the collection.
     """
+    # Validate status filter before processing
+    from packages.shared.database.models import DocumentStatus
+
+    if status:
+        try:
+            DocumentStatus(status)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status: {status}. Valid values are: {[st.value for st in DocumentStatus]}",
+            ) from None
+
     try:
         offset = (page - 1) * per_page
 
@@ -635,18 +655,10 @@ async def list_collection_documents(
         )
 
         # Filter by status if provided
-        from packages.shared.database.models import DocumentStatus
-
         if status:
-            try:
-                status_enum = DocumentStatus(status)
-                documents = [doc for doc in documents if doc.status == status_enum]
-                total = len(documents)  # Update total after filtering
-            except ValueError:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid status: {status}",
-                ) from None
+            status_enum = DocumentStatus(status)
+            documents = [doc for doc in documents if doc.status == status_enum]
+            total = len(documents)  # Update total after filtering
 
         # Convert ORM objects to response models
         from packages.webui.api.schemas import DocumentResponse

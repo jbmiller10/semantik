@@ -1,44 +1,52 @@
 """Tests for embedding service context managers."""
 
 import asyncio
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
+import numpy as np
 import pytest
-from shared.embedding.base import BaseEmbeddingService
-from shared.embedding.context import ManagedEmbeddingService, embedding_service_context, temporary_embedding_service
+from numpy.typing import NDArray
+
+from packages.shared.embedding.base import BaseEmbeddingService
+from packages.shared.embedding.context import (
+    ManagedEmbeddingService,
+    embedding_service_context,
+    temporary_embedding_service,
+)
 
 
 class MockEmbeddingService(BaseEmbeddingService):
     """Mock embedding service for testing."""
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         self._initialized = False
         self.cleanup_called = False
         self.initialize_called = False
-        self.model_name = None
+        self.model_name: str | None = None
 
     @property
     def is_initialized(self) -> bool:
         return self._initialized
 
-    async def initialize(self, model_name: str, **kwargs):
+    async def initialize(self, model_name: str, **kwargs: Any) -> None:
         self.initialize_called = True
         self.model_name = model_name
         self._initialized = True
 
-    async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs):
-        return [[0.1] * 384 for _ in texts]
+    async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> NDArray[np.float32]:
+        return np.array([[0.1] * 384 for _ in texts], dtype=np.float32)
 
-    async def embed_single(self, text: str, **kwargs):
-        return [0.1] * 384
+    async def embed_single(self, text: str, **kwargs: Any) -> NDArray[np.float32]:
+        return np.array([0.1] * 384, dtype=np.float32)
 
     def get_dimension(self) -> int:
         return 384
 
-    def get_model_info(self) -> dict:
+    def get_model_info(self) -> dict[str, Any]:
         return {"model_name": self.model_name, "dimension": 384, "device": "cpu", "max_sequence_length": 512}
 
-    async def cleanup(self):
+    async def cleanup(self) -> None:
         self.cleanup_called = True
         self._initialized = False
 
@@ -47,11 +55,11 @@ class TestEmbeddingServiceContext:
     """Test embedding_service_context function."""
 
     @pytest.mark.asyncio()
-    async def test_context_manager_basic_usage(self):
+    async def test_context_manager_basic_usage(self) -> None:
         """Test basic context manager usage."""
         mock_service = MockEmbeddingService()
 
-        with patch("shared.embedding.context.get_embedding_service", return_value=mock_service):
+        with patch("packages.shared.embedding.context.get_embedding_service", return_value=mock_service):
             async with embedding_service_context() as service:
                 assert service is mock_service
                 embeddings = await service.embed_texts(["test"])
@@ -61,12 +69,12 @@ class TestEmbeddingServiceContext:
             assert mock_service.cleanup_called
 
     @pytest.mark.asyncio()
-    async def test_context_manager_with_exception(self):
+    async def test_context_manager_with_exception(self) -> None:
         """Test context manager cleans up even with exceptions."""
         mock_service = MockEmbeddingService()
 
         with (
-            patch("shared.embedding.context.get_embedding_service", return_value=mock_service),
+            patch("packages.shared.embedding.context.get_embedding_service", return_value=mock_service),
             pytest.raises(ValueError, match="Test error"),
         ):
             async with embedding_service_context():
@@ -76,12 +84,12 @@ class TestEmbeddingServiceContext:
         assert mock_service.cleanup_called
 
     @pytest.mark.asyncio()
-    async def test_context_manager_cleanup_error(self):
+    async def test_context_manager_cleanup_error(self) -> None:
         """Test context manager handles cleanup errors gracefully."""
         mock_service = MockEmbeddingService()
-        mock_service.cleanup = AsyncMock(side_effect=Exception("Cleanup failed"))
+        mock_service.cleanup = AsyncMock(side_effect=Exception("Cleanup failed"))  # type: ignore[method-assign]
 
-        with patch("shared.embedding.context.get_embedding_service", return_value=mock_service):
+        with patch("packages.shared.embedding.context.get_embedding_service", return_value=mock_service):
             # Should not raise even if cleanup fails
             async with embedding_service_context() as service:
                 assert service is mock_service
@@ -94,9 +102,10 @@ class TestTemporaryEmbeddingService:
     """Test temporary_embedding_service context manager."""
 
     @pytest.mark.asyncio()
-    async def test_temporary_service_creation(self):
+    async def test_temporary_service_creation(self) -> None:
         """Test creating a temporary service with specific model."""
         async with temporary_embedding_service("test-model", service_class=MockEmbeddingService) as service:
+            service = cast(MockEmbeddingService, service)
             assert service.initialize_called
             assert service.model_name == "test-model"
             assert service.is_initialized
@@ -105,33 +114,33 @@ class TestTemporaryEmbeddingService:
         assert service.cleanup_called
 
     @pytest.mark.asyncio()
-    async def test_temporary_service_with_kwargs(self):
+    async def test_temporary_service_with_kwargs(self) -> None:
         """Test passing kwargs to temporary service."""
         async with temporary_embedding_service(
             "test-model", service_class=MockEmbeddingService, device="cuda", quantization="int8"
         ) as service:
-            assert service.model_name == "test-model"
+            assert cast(MockEmbeddingService, service).model_name == "test-model"
 
     @pytest.mark.asyncio()
-    async def test_temporary_service_exception_handling(self):
+    async def test_temporary_service_exception_handling(self) -> None:
         """Test temporary service handles exceptions properly."""
         with pytest.raises(RuntimeError):
             async with temporary_embedding_service("test-model", service_class=MockEmbeddingService) as service:
                 raise RuntimeError("Test error")
 
         # Cleanup should still happen
-        assert service.cleanup_called
+        assert cast(MockEmbeddingService, service).cleanup_called
 
 
 class TestManagedEmbeddingService:
     """Test ManagedEmbeddingService class."""
 
     @pytest.mark.asyncio()
-    async def test_managed_service_async_context(self):
+    async def test_managed_service_async_context(self) -> None:
         """Test using ManagedEmbeddingService as async context manager."""
         mock_service = MockEmbeddingService()
 
-        with patch("shared.embedding.context.get_embedding_service", return_value=mock_service):
+        with patch("packages.shared.embedding.context.get_embedding_service", return_value=mock_service):
             managed = ManagedEmbeddingService(mock_mode=True)
 
             async with managed as service:
@@ -153,7 +162,7 @@ class TestBaseEmbeddingServiceContextManager:
     """Test context manager implementation in BaseEmbeddingService."""
 
     @pytest.mark.asyncio()
-    async def test_base_service_context_manager(self):
+    async def test_base_service_context_manager(self) -> None:
         """Test using service directly as context manager."""
         service = MockEmbeddingService()
         service._initialized = True
@@ -166,7 +175,7 @@ class TestBaseEmbeddingServiceContextManager:
         assert service.cleanup_called
 
     @pytest.mark.asyncio()
-    async def test_base_service_context_with_exception(self):
+    async def test_base_service_context_with_exception(self) -> None:
         """Test base service context manager with exception."""
         service = MockEmbeddingService()
         service._initialized = True
@@ -178,10 +187,10 @@ class TestBaseEmbeddingServiceContextManager:
         assert service.cleanup_called
 
     @pytest.mark.asyncio()
-    async def test_base_service_cleanup_error_suppressed(self):
+    async def test_base_service_cleanup_error_suppressed(self) -> None:
         """Test that cleanup errors don't mask original exception."""
         service = MockEmbeddingService()
-        service.cleanup = AsyncMock(side_effect=Exception("Cleanup failed"))
+        service.cleanup = AsyncMock(side_effect=Exception("Cleanup failed"))  # type: ignore[method-assign]
 
         # The ValueError should propagate, not the cleanup error
         with pytest.raises(ValueError, match="Original error"):
@@ -193,10 +202,10 @@ class TestConcurrentContextManagers:
     """Test concurrent usage of context managers."""
 
     @pytest.mark.asyncio()
-    async def test_multiple_temporary_services(self):
+    async def test_multiple_temporary_services(self) -> None:
         """Test creating multiple temporary services concurrently."""
 
-        async def create_and_use_service(model_name: str):
+        async def create_and_use_service(model_name: str) -> tuple[str, int]:
             async with temporary_embedding_service(model_name, service_class=MockEmbeddingService) as service:
                 embeddings = await service.embed_texts([f"test from {model_name}"])
                 return model_name, len(embeddings)
@@ -212,22 +221,22 @@ class TestConcurrentContextManagers:
             assert embed_count == 1
 
     @pytest.mark.asyncio()
-    async def test_nested_context_managers(self):
+    async def test_nested_context_managers(self) -> None:
         """Test nested context manager usage."""
         outer_service = MockEmbeddingService()
 
-        with patch("shared.embedding.context.get_embedding_service", return_value=outer_service):
+        with patch("packages.shared.embedding.context.get_embedding_service", return_value=outer_service):
             async with embedding_service_context() as outer:
                 assert outer is outer_service
 
                 async with temporary_embedding_service("inner-model", service_class=MockEmbeddingService) as inner:
                     # Both services should be active
                     assert outer is not inner
-                    assert inner.model_name == "inner-model"
+                    assert cast(MockEmbeddingService, inner).model_name == "inner-model"
 
                 # Inner should be cleaned up
-                assert inner.cleanup_called
-                assert not outer.cleanup_called
+                assert cast(MockEmbeddingService, inner).cleanup_called
+                assert not cast(MockEmbeddingService, outer).cleanup_called
 
             # Now outer should be cleaned up
-            assert outer.cleanup_called
+            assert cast(MockEmbeddingService, outer).cleanup_called

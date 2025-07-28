@@ -1,5 +1,6 @@
 """Factory functions for creating service instances with dependencies."""
 
+import httpx
 from fastapi import Depends
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
@@ -184,11 +185,17 @@ async def get_operation_service(db: AsyncSession = Depends(get_db)) -> Operation
     return create_operation_service(db)
 
 
-def create_search_service(db: AsyncSession) -> SearchService:
+def create_search_service(
+    db: AsyncSession,
+    default_timeout: httpx.Timeout | None = None,
+    retry_timeout_multiplier: float = 4.0,
+) -> SearchService:
     """Create a SearchService instance with required dependencies.
 
     Args:
         db: AsyncSession instance from FastAPI's dependency injection
+        default_timeout: Optional default timeout configuration for HTTP requests
+        retry_timeout_multiplier: Multiplier for timeout values on retry attempts
 
     Returns:
         Configured SearchService instance
@@ -200,11 +207,14 @@ def create_search_service(db: AsyncSession) -> SearchService:
     return SearchService(
         db_session=db,
         collection_repo=collection_repo,
+        default_timeout=default_timeout,
+        retry_timeout_multiplier=retry_timeout_multiplier,
     )
 
 
 async def get_search_service(db: AsyncSession = Depends(get_db)) -> SearchService:
     """FastAPI dependency for SearchService injection."""
+    # Use default timeout configuration, can be customized if needed
     return create_search_service(db)
 
 

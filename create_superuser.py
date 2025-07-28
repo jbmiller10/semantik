@@ -23,7 +23,7 @@ from packages.shared.database import get_db, pwd_context
 from packages.shared.database.models import User
 
 
-async def create_superuser(username: str, email: str, password: str):
+async def create_superuser(username: str, email: str, password: str) -> bool:
     """Create a superuser with the given credentials."""
     # Create async session
     async for session in get_db():
@@ -44,7 +44,7 @@ async def create_superuser(username: str, email: str, password: str):
             response = input("Would you like to make this existing user a superuser? (y/n): ")
             if response.lower() == "y":
                 existing_user.is_superuser = True
-                existing_user.updated_at = datetime.now(UTC)
+                existing_user.updated_at = datetime.now(UTC)  # type: ignore[assignment]
                 await session.commit()
                 print(f"User '{existing_user.username}' is now a superuser!")
                 return True
@@ -75,7 +75,7 @@ async def create_superuser(username: str, email: str, password: str):
     return False
 
 
-async def main():
+async def main() -> None:
     """Main function to handle command line arguments or interactive input."""
     print("=== Semantik Superuser Creation ===\n")
 
