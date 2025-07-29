@@ -11,10 +11,10 @@ import {
   waitForToast
 } from '../../tests/utils/errorTestUtils'
 import { 
-  searchErrorHandlers,
   documentErrorHandlers
 } from '../../tests/mocks/errorHandlers'
 import { server } from '../../tests/mocks/server'
+import type { SearchResult } from '../../stores/searchStore'
 
 // Mock stores
 vi.mock('../../stores/searchStore')

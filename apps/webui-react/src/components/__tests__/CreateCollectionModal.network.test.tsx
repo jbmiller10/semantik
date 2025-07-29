@@ -170,7 +170,7 @@ describe('CreateCollectionModal - Network Error Handling', () => {
       
       // Go back online and retry
       simulateOnline()
-      mockCreateCollectionMutation.mutateAsync.mockResolvedValue({ id: 'test-uuid', initial_operation_id: null } as any)
+      mockCreateCollectionMutation.mutateAsync.mockResolvedValue({ id: 'test-uuid', initial_operation_id: null })
       
       await userEvent.click(screen.getByRole('button', { name: /create collection/i }))
       
@@ -189,7 +189,7 @@ describe('CreateCollectionModal - Network Error Handling', () => {
     it('should disable submit button during network request', async () => {
       // Mock a slow network request
       mockCreateCollectionMutation.mutateAsync.mockImplementation(() => 
-        new Promise(resolve => setTimeout(() => resolve({ id: 'test', initial_operation_id: null } as any), 1000))
+        new Promise(resolve => setTimeout(() => resolve({ id: 'test', initial_operation_id: null }), 1000))
       )
       
       renderWithErrorHandlers(
@@ -216,7 +216,7 @@ describe('CreateCollectionModal - Network Error Handling', () => {
   describe('Two-step Creation Process Network Errors', () => {
     it('should handle failure in add-source step after successful collection creation', async () => {
       // First call succeeds, second fails
-      mockCreateCollectionMutation.mutateAsync.mockResolvedValue({ id: 'test-uuid', name: 'Test', initial_operation_id: 'op-123' } as any)
+      mockCreateCollectionMutation.mutateAsync.mockResolvedValue({ id: 'test-uuid', name: 'Test', initial_operation_id: 'op-123' })
       mockAddSourceMutation.mutateAsync.mockRejectedValue(new Error('Network error during add source'))
       
       renderWithErrorHandlers(
@@ -239,7 +239,7 @@ describe('CreateCollectionModal - Network Error Handling', () => {
     })
 
     it('should handle network recovery between creation and add-source', async () => {
-      mockCreateCollectionMutation.mutateAsync.mockResolvedValue({ id: 'test-uuid', name: 'Test', initial_operation_id: 'op-123' } as any)
+      mockCreateCollectionMutation.mutateAsync.mockResolvedValue({ id: 'test-uuid', name: 'Test', initial_operation_id: 'op-123' })
       
       // First attempt at add-source fails
       mockAddSourceMutation.mutateAsync.mockRejectedValueOnce(new Error('Network error'))

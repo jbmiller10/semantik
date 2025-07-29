@@ -14,6 +14,7 @@ import { collectionKeys } from '../useCollections';
 import { collectionsV2Api } from '../../services/api/v2/collections';
 import { useUIStore } from '../../stores/uiStore';
 import type { Operation, Collection, AddSourceRequest } from '../../types/collection';
+import type { MockAxiosResponse } from '../../tests/types/test-types';
 
 // Mock the API module
 vi.mock('../../services/api/v2/collections', () => ({
@@ -117,7 +118,7 @@ describe('useCollectionOperations', () => {
     it('should fetch operations for a collection', async () => {
       vi.mocked(collectionsV2Api.listOperations).mockResolvedValue({
         data: mockOperations,
-      } as any);
+      } as MockAxiosResponse<Operation[]>);
 
       const { result } = renderHook(() => useCollectionOperations('col-1'), {
         wrapper: createWrapper(queryClient),
@@ -136,7 +137,7 @@ describe('useCollectionOperations', () => {
     it('should accept limit option', async () => {
       vi.mocked(collectionsV2Api.listOperations).mockResolvedValue({
         data: mockOperations.slice(0, 2),
-      } as any);
+      } as MockAxiosResponse<Operation[]>);
 
       const { result } = renderHook(() => useCollectionOperations('col-1', { limit: 2 }), {
         wrapper: createWrapper(queryClient),
@@ -152,7 +153,7 @@ describe('useCollectionOperations', () => {
     it('should auto-refetch when there are active operations', async () => {
       vi.mocked(collectionsV2Api.listOperations).mockResolvedValue({
         data: mockOperations,
-      } as any);
+      } as MockAxiosResponse<Operation[]>);
 
       const { result } = renderHook(() => useCollectionOperations('col-1'), {
         wrapper: createWrapper(queryClient),
@@ -166,7 +167,7 @@ describe('useCollectionOperations', () => {
       const refetchInterval = queryClient.getQueryDefaults(operationKeys.list('col-1')).queries?.refetchInterval;
       if (typeof refetchInterval === 'function') {
         const query = queryClient.getQueryCache().find(operationKeys.list('col-1'));
-        const interval = refetchInterval({ state: { data: mockOperations } } as any, query);
+        const interval = refetchInterval({ state: { data: mockOperations } } as Parameters<typeof refetchInterval>[0], query);
         expect(interval).toBe(5000); // 5 seconds for active operations
       }
     });
@@ -179,7 +180,7 @@ describe('useCollectionOperations', () => {
 
       vi.mocked(collectionsV2Api.listOperations).mockResolvedValue({
         data: completedOperations,
-      } as any);
+      } as MockAxiosResponse<Operation[]>);
 
       const { result } = renderHook(() => useCollectionOperations('col-1'), {
         wrapper: createWrapper(queryClient),
@@ -192,7 +193,7 @@ describe('useCollectionOperations', () => {
       const refetchInterval = queryClient.getQueryDefaults(operationKeys.list('col-1')).queries?.refetchInterval;
       if (typeof refetchInterval === 'function') {
         const query = queryClient.getQueryCache().find(operationKeys.list('col-1'));
-        const interval = refetchInterval({ state: { data: completedOperations } } as any, query);
+        const interval = refetchInterval({ state: { data: completedOperations } } as Parameters<typeof refetchInterval>[0], query);
         expect(interval).toBe(false);
       }
     });
@@ -214,7 +215,7 @@ describe('useCollectionOperations', () => {
 
       vi.mocked(collectionsV2Api.addSource).mockResolvedValue({
         data: newOperation,
-      } as any);
+      } as MockAxiosResponse<Operation[]>);
 
       // Pre-populate caches
       queryClient.setQueryData(operationKeys.list('col-1'), mockOperations);
@@ -267,7 +268,7 @@ describe('useCollectionOperations', () => {
             collectionId: 'col-1',
             sourcePath: '/test',
           });
-        } catch (e) {
+        } catch {
           // Expected to throw
         }
       });
@@ -302,7 +303,7 @@ describe('useCollectionOperations', () => {
 
       vi.mocked(collectionsV2Api.removeSource).mockResolvedValue({
         data: removeOperation,
-      } as any);
+      } as MockAxiosResponse<Operation[]>);
 
       // Pre-populate caches
       queryClient.setQueryData(operationKeys.list('col-1'), mockOperations);
@@ -348,7 +349,7 @@ describe('useCollectionOperations', () => {
 
       vi.mocked(collectionsV2Api.reindex).mockResolvedValue({
         data: reindexOperation,
-      } as any);
+      } as MockAxiosResponse<Operation[]>);
 
       // Pre-populate caches
       queryClient.setQueryData(operationKeys.list('col-1'), mockOperations);
@@ -384,7 +385,7 @@ describe('useCollectionOperations', () => {
       
       vi.mocked(collectionsV2Api.reindex).mockResolvedValue({
         data: mockOperations[0],
-      } as any);
+      } as MockAxiosResponse<Operation[]>);
 
       const { result } = renderHook(() => useReindexCollection(), {
         wrapper: createWrapper(queryClient),
@@ -524,7 +525,7 @@ describe('useCollectionOperations', () => {
     it('should invalidate all relevant queries after mutation', async () => {
       vi.mocked(collectionsV2Api.addSource).mockResolvedValue({
         data: mockOperations[0],
-      } as any);
+      } as MockAxiosResponse<Operation[]>);
 
       const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
 

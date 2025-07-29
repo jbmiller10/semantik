@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AxiosError } from 'axios';
+import { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import DeleteCollectionModal from '../DeleteCollectionModal';
 import { collectionsV2Api } from '../../services/api/v2/collections';
 import { useUIStore } from '../../stores/uiStore';
@@ -221,7 +221,7 @@ describe('DeleteCollectionModal', () => {
         status: 409,
         statusText: 'Conflict',
         headers: {},
-        config: {} as any,
+        config: {} as InternalAxiosRequestConfig,
       };
       mockCollectionsV2Api.delete.mockRejectedValue(error);
       renderComponent();
@@ -268,7 +268,7 @@ describe('DeleteCollectionModal', () => {
       const deletePromise = new Promise<void>((resolve) => {
         resolveDelete = resolve;
       });
-      mockCollectionsV2Api.delete.mockReturnValue(deletePromise as any);
+      mockCollectionsV2Api.delete.mockReturnValue(deletePromise as Promise<{ data: {} }>);
       renderComponent();
       
       const input = screen.getByLabelText(/Type DELETE to confirm/);

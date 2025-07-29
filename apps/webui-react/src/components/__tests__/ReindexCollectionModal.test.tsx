@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
-import { AxiosError } from 'axios';
+import { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import ReindexCollectionModal from '../ReindexCollectionModal';
 import { useReindexCollection } from '../../hooks/useCollectionOperations';
 import { useUIStore } from '../../stores/uiStore';
@@ -216,7 +216,7 @@ describe('ReindexCollectionModal', () => {
       data: {},
       statusText: 'Forbidden',
       headers: {},
-      config: {} as any,
+      config: {} as InternalAxiosRequestConfig,
     });
     
     mockMutateAsync.mockRejectedValueOnce(error403);
@@ -243,7 +243,7 @@ describe('ReindexCollectionModal', () => {
       data: {},
       statusText: 'Not Found',
       headers: {},
-      config: {} as any,
+      config: {} as InternalAxiosRequestConfig,
     });
     
     mockMutateAsync.mockRejectedValueOnce(error404);
@@ -270,7 +270,7 @@ describe('ReindexCollectionModal', () => {
       data: {},
       statusText: 'Conflict',
       headers: {},
-      config: {} as any,
+      config: {} as InternalAxiosRequestConfig,
     });
     
     mockMutateAsync.mockRejectedValueOnce(error409);
@@ -297,7 +297,7 @@ describe('ReindexCollectionModal', () => {
       data: { detail: 'Custom error message from API' },
       statusText: 'Bad Request',
       headers: {},
-      config: {} as any,
+      config: {} as InternalAxiosRequestConfig,
     });
     
     mockMutateAsync.mockRejectedValueOnce(customError);

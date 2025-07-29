@@ -3,7 +3,6 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useNavigate } from 'react-router-dom'
 import CollectionsDashboard from '../CollectionsDashboard'
-// import CollectionDetailsModal from '../CollectionDetailsModal' // Unused import
 import { useUIStore } from '../../stores/uiStore'
 import { 
   renderWithErrorHandlers, 
@@ -69,8 +68,16 @@ describe('Collections - Permission Error Handling', () => {
     vi.mocked(useNavigate).mockReturnValue(mockNavigate)
     
     vi.mocked(useUIStore).mockReturnValue({
-      addToast: mockAddToast
-    } as any)
+      addToast: mockAddToast,
+      toasts: [],
+      activeTab: 'collections' as const,
+      showDocumentViewer: null,
+      showCollectionDetailsModal: null,
+      removeToast: vi.fn(),
+      setActiveTab: vi.fn(),
+      setShowDocumentViewer: vi.fn(),
+      setShowCollectionDetailsModal: vi.fn()
+    } as ReturnType<typeof useUIStore>)
   })
 
   describe('Unauthorized Access (401)', () => {
@@ -79,9 +86,9 @@ describe('Collections - Permission Error Handling', () => {
       vi.mocked(useCollections).mockReturnValue({
         data: [],
         isLoading: false,
-        error: { message: 'Unauthorized' },
+        error: { message: 'Unauthorized' } as Error,
         refetch: mockFetchCollections
-      } as any)
+      } as ReturnType<typeof useCollections>)
       
       // Set up 401 error for collections endpoint
       server.use(
@@ -117,8 +124,19 @@ describe('Collections - Permission Error Handling', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn()
-      } as any)
-      vi.mocked(useCreateCollection).mockReturnValue(mockCreateCollectionMutation as any)
+      } as ReturnType<typeof useCollections>)
+      vi.mocked(useCreateCollection).mockReturnValue({
+        ...mockCreateCollectionMutation,
+        mutate: vi.fn(),
+        data: undefined,
+        error: null,
+        isSuccess: false,
+        isIdle: false,
+        status: 'idle',
+        reset: vi.fn(),
+        variables: undefined,
+        context: undefined
+      } as ReturnType<typeof useCreateCollection>)
       
       // Start with valid auth
       server.use(...handlers)
@@ -167,9 +185,9 @@ describe('Collections - Permission Error Handling', () => {
       vi.mocked(useCollections).mockReturnValue({
         data: [],
         isLoading: false,
-        error: { message: 'Unauthorized' },
+        error: { message: 'Unauthorized' } as Error,
         refetch: mockFetchCollections
-      } as any)
+      } as ReturnType<typeof useCollections>)
       
       server.use(...authErrorHandlers.unauthorized())
       
@@ -223,7 +241,7 @@ describe('Collections - Permission Error Handling', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn()
-      } as any)
+      } as ReturnType<typeof useCollections>)
       
       server.use(
         collectionErrorHandlers.permissionError()[0]
@@ -258,7 +276,13 @@ describe('Collections - Permission Error Handling', () => {
       )
       
       // Import the default export
-      const DeleteCollectionModal = (await import('../DeleteCollectionModal')).default
+      const DeleteCollectionModal = (await import('../DeleteCollectionModal')).default as React.ComponentType<{
+        onClose: () => void;
+        collectionId: string;
+        collectionName: string;
+        stats: { total_files: number; total_vectors: number; total_size: number; job_count: number };
+        onSuccess: () => void;
+      }>
       
       renderWithErrorHandlers(
         <DeleteCollectionModal
@@ -269,7 +293,7 @@ describe('Collections - Permission Error Handling', () => {
           onSuccess={vi.fn()}
         />,
         []
-      )
+      ) as ReturnType<typeof renderWithErrorHandlers>
       
       // Try to delete
       const deleteButton = screen.getByRole('button', { name: /delete/i })
@@ -277,17 +301,29 @@ describe('Collections - Permission Error Handling', () => {
       
       // Mock the delete mutation to call onError
       const { useMutation } = await import('@tanstack/react-query')
-      vi.mocked(useMutation).mockImplementation((options: any) => ({
+      vi.mocked(useMutation).mockImplementation((options) => ({
         mutate: () => {
-          options.onError?.({
-            response: { 
-              status: 403,
-              data: { detail: 'Only the collection owner can delete this collection' } 
-            }
-          })
+          if (typeof options === 'object' && 'onError' in options && options.onError) {
+            options.onError({
+              response: { 
+                status: 403,
+                data: { detail: 'Only the collection owner can delete this collection' } 
+              }
+            } as unknown as Error, undefined, undefined)
+          }
         },
         isPending: false,
-      } as any))
+        mutateAsync: vi.fn(),
+        data: undefined,
+        error: null,
+        isError: false,
+        isSuccess: false,
+        isIdle: false,
+        status: 'idle',
+        reset: vi.fn(),
+        variables: undefined,
+        context: undefined
+      }))
       
       await waitFor(() => {
         expect(mockAddToast).toHaveBeenCalledWith({
@@ -301,23 +337,47 @@ describe('Collections - Permission Error Handling', () => {
     })
 
     it('should hide admin features for non-admin users', async () => {
-      // Mock a non-admin user
-      const mockUser = {
-        id: 1,
-        username: 'regular_user',
-        is_superuser: false
-      }
       
       const { useCollections } = await import('../../hooks/useCollections')
       vi.mocked(useCollections).mockReturnValue({
         data: [
-          { id: '1', uuid: '1', name: 'My Collection', status: 'ready' },
-          { id: '2', uuid: '2', name: 'Shared Collection', status: 'ready', is_public: true }
+          { 
+            id: '1', 
+            name: 'My Collection', 
+            status: 'ready',
+            owner_id: 1,
+            vector_store_name: 'test_store',
+            embedding_model: 'test-model',
+            quantization: 'float16',
+            chunk_size: 1000,
+            chunk_overlap: 200,
+            is_public: false,
+            document_count: 0,
+            vector_count: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          },
+          { 
+            id: '2', 
+            name: 'Shared Collection', 
+            status: 'ready', 
+            is_public: true,
+            owner_id: 1,
+            vector_store_name: 'test_store2',
+            embedding_model: 'test-model',
+            quantization: 'float16',
+            chunk_size: 1000,
+            chunk_overlap: 200,
+            document_count: 0,
+            vector_count: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }
         ],
         isLoading: false,
         error: null,
         refetch: vi.fn()
-      } as any)
+      })
       
       renderWithErrorHandlers(
         <CollectionsDashboard />,
@@ -336,9 +396,9 @@ describe('Collections - Permission Error Handling', () => {
       vi.mocked(useCollections).mockReturnValue({
         data: [],
         isLoading: false,
-        error: { message: 'Collection not found' },
+        error: { message: 'Collection not found' } as Error,
         refetch: vi.fn()
-      } as any)
+      })
       
       server.use(
         collectionErrorHandlers.notFound()[0]
@@ -358,11 +418,6 @@ describe('Collections - Permission Error Handling', () => {
     })
 
     it('should handle permission changes mid-session', async () => {
-      const mockCollection = {
-        uuid: 'test-collection',
-        name: 'Test Collection',
-        status: 'ready'
-      }
       
       const mockUpdateCollection = vi.fn()
       
@@ -407,9 +462,9 @@ describe('Collections - Permission Error Handling', () => {
       vi.mocked(useCollections).mockReturnValue({
         data: [],
         isLoading: false,
-        error: { message: 'Invalid API key' },
+        error: { message: 'Invalid API key' } as Error,
         refetch: mockFetchCollections
-      } as any)
+      })
       
       renderWithErrorHandlers(
         <CollectionsDashboard />,
@@ -433,9 +488,9 @@ describe('Collections - Permission Error Handling', () => {
       vi.mocked(useCollections).mockReturnValue({
         data: [],
         isLoading: false,
-        error: { message: 'API key expired' },
+        error: { message: 'API key expired' } as Error,
         refetch: mockFetchCollections
-      } as any)
+      })
       
       renderWithErrorHandlers(
         <CollectionsDashboard />,
@@ -472,7 +527,7 @@ describe('Collections - Permission Error Handling', () => {
     })
 
     it('should handle session timeout gracefully', async () => {
-      const { mockError, restore } = mockConsoleError()
+      const { restore } = mockConsoleError()
       
       try {
         // Simulate a long-running session
@@ -480,9 +535,9 @@ describe('Collections - Permission Error Handling', () => {
         vi.mocked(useCollections).mockReturnValue({
           data: [],
           isLoading: false,
-          error: { message: 'Session expired' },
+          error: { message: 'Session expired' } as Error,
           refetch: mockFetchCollections
-        } as any)
+        })
         
         server.use(
           createErrorHandler('get', '/api/auth/me', 401, {

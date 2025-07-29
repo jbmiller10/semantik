@@ -85,7 +85,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -120,7 +120,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -144,7 +144,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -168,7 +168,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -192,7 +192,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -216,7 +216,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -237,7 +237,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -262,7 +262,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -295,7 +295,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -319,7 +319,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -343,7 +343,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -367,7 +367,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -390,7 +390,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -411,7 +411,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -429,7 +429,7 @@ describe('CollectionsDashboard', () => {
         isLoading: true,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -449,7 +449,7 @@ describe('CollectionsDashboard', () => {
         isLoading: true, // Loading but data exists
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -470,7 +470,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: mockError,
         refetch: mockRefetch,
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -494,7 +494,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: mockError,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -511,7 +511,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -527,7 +527,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -544,7 +544,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -565,7 +565,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -588,7 +588,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -602,7 +602,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 
@@ -616,7 +616,7 @@ describe('CollectionsDashboard', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      } as any);
+      });
 
       renderWithQueryClient(<CollectionsDashboard />);
 

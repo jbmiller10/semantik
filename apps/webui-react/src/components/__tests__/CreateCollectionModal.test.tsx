@@ -58,10 +58,12 @@ vi.mock('../../hooks/useDirectoryScan', () => ({
   useDirectoryScan: () => mockDirectoryScanState,
 }));
 
-const mockOperationProgressState: any = {
+const mockOperationProgressState = {
   sendMessage: vi.fn(),
   readyState: WebSocket.CLOSED,
   isConnected: false,
+  onComplete: undefined as (() => void) | undefined,
+  onError: undefined as ((error: Error) => void) | undefined,
 };
 
 vi.mock('../../hooks/useOperationProgress', () => ({

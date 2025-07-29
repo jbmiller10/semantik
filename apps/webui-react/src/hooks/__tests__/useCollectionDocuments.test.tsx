@@ -9,7 +9,8 @@ import {
   documentKeys,
 } from '../useCollectionDocuments';
 import { collectionsV2Api } from '../../services/api/v2/collections';
-import type { DocumentListResponse, DocumentItem } from '../../services/api/v2/types';
+import type { DocumentListResponse, DocumentResponse } from '../../services/api/v2/types';
+import type { MockAxiosResponse } from '../../tests/types/test-types';
 
 // Mock the API module
 vi.mock('../../services/api/v2/collections', () => ({
@@ -36,7 +37,7 @@ const createWrapper = (queryClient: QueryClient) => {
 };
 
 // Mock data
-const mockDocuments: DocumentItem[] = [
+const mockDocuments: DocumentResponse[] = [
   {
     id: 'doc-1',
     collection_id: 'col-1',
@@ -44,12 +45,11 @@ const mockDocuments: DocumentItem[] = [
     file_path: '/data/docs/document1.pdf',
     file_type: 'pdf',
     file_size: 1024000,
+    chunk_count: 50,
     metadata: {
       title: 'Document 1',
       pages: 10,
     },
-    status: 'indexed',
-    vector_count: 50,
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
   },
@@ -60,9 +60,8 @@ const mockDocuments: DocumentItem[] = [
     file_path: '/data/docs/document2.txt',
     file_type: 'txt',
     file_size: 5000,
+    chunk_count: 10,
     metadata: {},
-    status: 'indexed',
-    vector_count: 10,
     created_at: '2024-01-01T01:00:00Z',
     updated_at: '2024-01-01T01:00:00Z',
   },
@@ -73,12 +72,11 @@ const mockDocuments: DocumentItem[] = [
     file_path: '/data/images/photo1.jpg',
     file_type: 'jpg',
     file_size: 2048000,
+    chunk_count: 5,
     metadata: {
       width: 1920,
       height: 1080,
     },
-    status: 'indexed',
-    vector_count: 5,
     created_at: '2024-01-01T02:00:00Z',
     updated_at: '2024-01-01T02:00:00Z',
   },
@@ -104,7 +102,7 @@ describe('useCollectionDocuments', () => {
     it('should fetch documents with default pagination', async () => {
       vi.mocked(collectionsV2Api.listDocuments).mockResolvedValue({
         data: mockDocumentResponse,
-      } as any);
+      } as MockAxiosResponse<DocumentListResponse>);
 
       const { result } = renderHook(() => useCollectionDocuments('col-1'), {
         wrapper: createWrapper(queryClient),
@@ -132,7 +130,7 @@ describe('useCollectionDocuments', () => {
 
       vi.mocked(collectionsV2Api.listDocuments).mockResolvedValue({
         data: customResponse,
-      } as any);
+      } as MockAxiosResponse<DocumentListResponse>);
 
       const { result } = renderHook(
         () => useCollectionDocuments('col-1', { page: 2, limit: 20 }),
@@ -176,7 +174,7 @@ describe('useCollectionDocuments', () => {
       // First page
       vi.mocked(collectionsV2Api.listDocuments).mockResolvedValue({
         data: mockDocumentResponse,
-      } as any);
+      } as MockAxiosResponse<DocumentListResponse>);
 
       const { result, rerender } = renderHook(
         ({ page }) => useCollectionDocuments('col-1', { page }),
@@ -207,7 +205,7 @@ describe('useCollectionDocuments', () => {
 
       vi.mocked(collectionsV2Api.listDocuments).mockResolvedValue({
         data: secondPageResponse,
-      } as any);
+      } as MockAxiosResponse<DocumentListResponse>);
 
       // Change to page 2
       rerender({ page: 2 });
@@ -247,7 +245,7 @@ describe('useCollectionDocuments', () => {
 
       vi.mocked(collectionsV2Api.listDocuments).mockResolvedValue({
         data: mockDocumentResponse,
-      } as any);
+      } as MockAxiosResponse<DocumentListResponse>);
 
       await act(async () => {
         await result.current('col-1', 1, 50, 3); // Current page 1 of 3
@@ -282,7 +280,7 @@ describe('useCollectionDocuments', () => {
 
       vi.mocked(collectionsV2Api.listDocuments).mockResolvedValue({
         data: mockDocumentResponse,
-      } as any);
+      } as MockAxiosResponse<DocumentListResponse>);
 
       await act(async () => {
         await result.current('col-1', 1, 25); // Custom limit of 25
@@ -332,7 +330,7 @@ describe('useCollectionDocuments', () => {
     });
 
     it('should count documents correctly for each source', () => {
-      const documentsWithSameSource: DocumentItem[] = [
+      const documentsWithSameSource: DocumentResponse[] = [
         { ...mockDocuments[0], id: 'doc-a', source_path: '/data/shared' },
         { ...mockDocuments[1], id: 'doc-b', source_path: '/data/shared' },
         { ...mockDocuments[2], id: 'doc-c', source_path: '/data/shared' },
@@ -374,7 +372,7 @@ describe('useCollectionDocuments', () => {
     it('should use 30 second stale time', async () => {
       vi.mocked(collectionsV2Api.listDocuments).mockResolvedValue({
         data: mockDocumentResponse,
-      } as any);
+      } as MockAxiosResponse<DocumentListResponse>);
 
       const { result } = renderHook(() => useCollectionDocuments('col-1'), {
         wrapper: createWrapper(queryClient),
@@ -391,12 +389,12 @@ describe('useCollectionDocuments', () => {
 
   describe('loading states', () => {
     it('should properly handle loading transitions', async () => {
-      let resolvePromise: (value: any) => void;
+      let resolvePromise: (value: MockAxiosResponse<DocumentListResponse>) => void;
       const promise = new Promise((resolve) => {
         resolvePromise = resolve;
       });
 
-      vi.mocked(collectionsV2Api.listDocuments).mockReturnValue(promise as any);
+      vi.mocked(collectionsV2Api.listDocuments).mockReturnValue(promise as Promise<MockAxiosResponse<DocumentListResponse>>);
 
       const { result } = renderHook(() => useCollectionDocuments('col-1'), {
         wrapper: createWrapper(queryClient),

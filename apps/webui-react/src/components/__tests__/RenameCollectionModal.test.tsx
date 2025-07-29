@@ -354,7 +354,6 @@ describe('RenameCollectionModal', () => {
     });
 
     it('should prevent submission when name equals current name', async () => {
-      const user = userEvent.setup();
       const mockUpdate = vi.mocked(collectionsV2Api.update);
       
       render(

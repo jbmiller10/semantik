@@ -14,7 +14,6 @@ import {
   testErrorBoundary,
   mockConsoleError
 } from '../../tests/utils/errorTestUtils'
-import { collectionErrorHandlers } from '../../tests/mocks/errorHandlers'
 import { server } from '../../tests/mocks/server'
 import { TestWrapper } from '../../tests/utils/testUtils'
 import { render } from '@testing-library/react'
@@ -329,11 +328,14 @@ describe('Error States - Integration Tests', () => {
       server.use(...authErrorHandlers.unauthorized())
       
       vi.mocked(useCollectionStore).mockReturnValue({
+        selectedCollectionId: null,
+        setSelectedCollection: vi.fn(),
+        clearStore: vi.fn(),
         collections: [],
         loading: false,
         error: 'Unauthorized',
         fetchCollections: vi.fn()
-      } as any)
+      } as unknown as ReturnType<typeof useCollectionStore>)
       
       const mockNavigate = vi.fn()
       vi.mock('react-router-dom', () => ({
@@ -362,7 +364,12 @@ describe('Error States - Integration Tests', () => {
         fetchCollections: mockFetchCollections
       }
       
-      vi.mocked(useCollectionStore).mockReturnValue(storeState as any)
+      vi.mocked(useCollectionStore).mockReturnValue({
+        selectedCollectionId: null,
+        setSelectedCollection: vi.fn(),
+        clearStore: vi.fn(),
+        ...storeState
+      } as unknown as ReturnType<typeof useCollectionStore>)
       
       const { rerender } = renderWithErrorHandlers(<CollectionsDashboard />, [])
       
@@ -371,7 +378,12 @@ describe('Error States - Integration Tests', () => {
       
       // Transition to loading
       storeState = { ...storeState, loading: true, error: null }
-      vi.mocked(useCollectionStore).mockReturnValue(storeState as any)
+      vi.mocked(useCollectionStore).mockReturnValue({
+        selectedCollectionId: null,
+        setSelectedCollection: vi.fn(),
+        clearStore: vi.fn(),
+        ...storeState
+      } as unknown as ReturnType<typeof useCollectionStore>)
       rerender(<CollectionsDashboard />)
       
       expect(screen.queryByText(/failed to load/i)).not.toBeInTheDocument()
@@ -381,9 +393,14 @@ describe('Error States - Integration Tests', () => {
       storeState = {
         ...storeState,
         loading: false,
-        collections: [{ uuid: '1', name: 'Success!', status: 'ready' }]
+        collections: [{ uuid: '1', name: 'Success!', status: 'ready' } as unknown as Collection]
       }
-      vi.mocked(useCollectionStore).mockReturnValue(storeState as any)
+      vi.mocked(useCollectionStore).mockReturnValue({
+        selectedCollectionId: null,
+        setSelectedCollection: vi.fn(),
+        clearStore: vi.fn(),
+        ...storeState
+      } as unknown as ReturnType<typeof useCollectionStore>)
       rerender(<CollectionsDashboard />)
       
       expect(screen.queryByText(/loading/i)).not.toBeInTheDocument()
