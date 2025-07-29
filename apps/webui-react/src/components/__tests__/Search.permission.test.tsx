@@ -143,7 +143,7 @@ describe('Search - Permission Error Handling', () => {
         fetchCollections: vi.fn(),
         loading: false,
         error: null
-      } as any)
+      } as ReturnType<typeof useCollectionStore>)
       
       vi.mocked(useSearchStore).mockReturnValue({
         searchParams: { selectedCollections: [] },
@@ -151,7 +151,7 @@ describe('Search - Permission Error Handling', () => {
         error: null,
         performSearch: mockSearch,
         setSearchParams: vi.fn()
-      } as any)
+      } as Partial<ReturnType<typeof useSearchStore>> as ReturnType<typeof useSearchStore>)
       
       renderWithErrorHandlers(
         <SearchInterface />,
@@ -197,7 +197,7 @@ describe('Search - Permission Error Handling', () => {
         partialFailure: false,
         failedCollections: [],
         searchParams: { query: 'test' }
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
       
       server.use(
         documentErrorHandlers.permissionError()[0]
@@ -246,7 +246,7 @@ describe('Search - Permission Error Handling', () => {
       ]
       
       vi.mocked(useSearchStore).mockReturnValue({
-        results: mixedResults as any,
+        results: mixedResults as SearchResult[],
         totalResults: 2,
         isSearching: false,
         error: null,

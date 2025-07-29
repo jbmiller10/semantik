@@ -357,7 +357,7 @@ describe('OperationProgress - WebSocket Error Handling', () => {
     it('should handle completion message during connection issues', async () => {
       let onCompleteCallback: (() => void) | undefined
       
-      vi.mocked(useOperationProgress).mockImplementation(({ operationId, onComplete }) => {
+      vi.mocked(useOperationProgress).mockImplementation(({ onComplete }) => {
         onCompleteCallback = onComplete
         
         // Simulate connection issue
