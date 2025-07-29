@@ -1,7 +1,8 @@
 import React from 'react'
 import { screen } from '@testing-library/react'
-import { SearchResults } from '../SearchResults'
+import SearchResults from '../SearchResults'
 import { useSearchStore } from '../../stores/searchStore'
+import type { SearchResult } from '../../stores/searchStore'
 import { useUIStore } from '../../stores/uiStore'
 import { 
   renderWithErrorHandlers
@@ -9,7 +10,6 @@ import {
 
 // Mock stores
 vi.mock('../../stores/searchStore')
-vi.mock('../../stores/collectionStore')
 vi.mock('../../stores/uiStore')
 
 describe('Search Results - Validation and Partial Failure Handling', () => {
@@ -23,7 +23,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
       addToast: mockAddToast,
       setShowDocumentViewer: mockSetShowDocumentViewer,
       showDocumentViewer: null
-    } as any)
+    } as ReturnType<typeof useUIStore>)
   })
 
   describe('Partial Failure Display', () => {
@@ -62,7 +62,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
         partialFailure: true,
         failedCollections: mockFailedCollections,
         searchParams: { query: 'test query' }
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -104,7 +104,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
         partialFailure: true,
         failedCollections: mockFailedCollections,
         searchParams: { query: 'test' }
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -155,7 +155,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
         partialFailure: true,
         failedCollections: mockFailedCollections,
         searchParams: { query: 'test' }
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -180,7 +180,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
         partialFailure: false,
         failedCollections: [],
         searchParams: { query: '' }
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -200,7 +200,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
         partialFailure: false,
         failedCollections: [],
         searchParams: { query: veryLongQuery }
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -229,7 +229,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
         partialFailure: false,
         failedCollections: [],
         searchParams: { query: specialQuery }
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -252,7 +252,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           query: 'test',
           selectedCollections: []
         }
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -280,7 +280,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           query: 'test',
           selectedCollections: ['invalid-uuid']
         }
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -311,7 +311,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
       ]
 
       vi.mocked(useSearchStore).mockReturnValue({
-        results: malformedResults as any,
+        results: malformedResults as SearchResult[],
         totalResults: 2,
         isSearching: false,
         error: null,
@@ -319,7 +319,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
         partialFailure: false,
         failedCollections: [],
         searchParams: { query: 'test' }
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -354,7 +354,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
       ]
 
       vi.mocked(useSearchStore).mockReturnValue({
-        results: resultsWithInvalidScores as any,
+        results: resultsWithInvalidScores as SearchResult[],
         totalResults: 2,
         isSearching: false,
         error: null,
@@ -362,7 +362,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
         partialFailure: false,
         failedCollections: [],
         searchParams: { query: 'test' }
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -391,7 +391,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
         partialFailure: false,
         failedCollections: [],
         searchParams: { query: 'test' }
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -432,7 +432,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
       ]
 
       vi.mocked(useSearchStore).mockReturnValue({
-        results: mixedModelResults as any,
+        results: mixedModelResults as SearchResult[],
         totalResults: 2,
         isSearching: false,
         error: null,
@@ -440,7 +440,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
         partialFailure: false,
         failedCollections: [],
         searchParams: { query: 'test' }
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
 
       renderWithErrorHandlers(<SearchResults />, [])
 
