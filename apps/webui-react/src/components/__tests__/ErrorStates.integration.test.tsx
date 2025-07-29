@@ -102,19 +102,18 @@ describe('Error States - Integration Tests', () => {
     })
 
     it('should show loading spinner in search while searching', () => {
-      vi.mocked(useSearchStore).mockReturnValue({
+      vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock({
         isSearching: true,
-        results: [],
-        error: null,
-        searchParams: { query: 'test' }
-      } as any)
+        loading: true,
+        searchParams: { ...createSearchStoreMock().searchParams, query: 'test' }
+      }))
       
-      vi.mocked(useCollectionStore).mockReturnValue({
+      vi.mocked(useCollectionStore).mockReturnValue(createCollectionStoreMock({
         collections: [
-          { uuid: '1', name: 'Test Collection', status: 'ready' }
+          { uuid: '1', name: 'Test Collection', status: 'ready' } as unknown as Collection
         ],
         loading: false
-      } as any)
+      }))
       
       renderWithErrorHandlers(<SearchInterface />, [])
       
@@ -136,12 +135,12 @@ describe('Error States - Integration Tests', () => {
 
   describe('Empty States', () => {
     it('should show helpful empty state for new users', () => {
-      vi.mocked(useCollectionStore).mockReturnValue({
+      vi.mocked(useCollectionStore).mockReturnValue(createCollectionStoreMock({
         collections: [],
         loading: false,
         error: null,
         fetchCollections: vi.fn()
-      } as any)
+      }))
       
       renderWithErrorHandlers(<CollectionsDashboard />, [])
       
@@ -156,13 +155,9 @@ describe('Error States - Integration Tests', () => {
     })
 
     it('should show empty search results appropriately', () => {
-      vi.mocked(useSearchStore).mockReturnValue({
-        results: [],
-        totalResults: 0,
-        isSearching: false,
-        error: null,
-        searchParams: { query: 'obscure query with no matches' }
-      } as any)
+      vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock({
+        searchParams: { ...createSearchStoreMock().searchParams, query: 'obscure query with no matches' }
+      }))
       
       renderWithErrorHandlers(
         <TestWrapper>
@@ -179,9 +174,9 @@ describe('Error States - Integration Tests', () => {
     })
 
     it('should show empty active operations state', () => {
-      vi.mocked(useCollectionStore).mockReturnValue({
+      vi.mocked(useCollectionStore).mockReturnValue(createCollectionStoreMock({
         getCollectionOperations: vi.fn().mockReturnValue([])
-      } as any)
+      }))
       
       render(
         <TestWrapper>
@@ -201,12 +196,12 @@ describe('Error States - Integration Tests', () => {
       const mockFetchCollections = vi.fn()
       
       // First render with error
-      vi.mocked(useCollectionStore).mockReturnValue({
+      vi.mocked(useCollectionStore).mockReturnValue(createCollectionStoreMock({
         collections: [],
         loading: false,
         error: 'Network error',
         fetchCollections: mockFetchCollections
-      } as any)
+      }))
       
       const { rerender } = renderWithErrorHandlers(<CollectionsDashboard />, [])
       
@@ -215,14 +210,14 @@ describe('Error States - Integration Tests', () => {
       const retryButton = screen.getByRole('button', { name: /retry/i })
       
       // Mock successful retry
-      vi.mocked(useCollectionStore).mockReturnValue({
+      vi.mocked(useCollectionStore).mockReturnValue(createCollectionStoreMock({
         collections: [
-          { uuid: '1', name: 'Test Collection', status: 'ready' }
+          { uuid: '1', name: 'Test Collection', status: 'ready' } as unknown as Collection
         ],
         loading: false,
         error: null,
         fetchCollections: mockFetchCollections
-      } as any)
+      }))
       
       await userEvent.click(retryButton)
       
@@ -239,18 +234,14 @@ describe('Error States - Integration Tests', () => {
 
     it('should clear error state when switching tabs', () => {
       // Start with error in collections
-      vi.mocked(useCollectionStore).mockReturnValue({
+      vi.mocked(useCollectionStore).mockReturnValue(createCollectionStoreMock({
         collections: [],
         loading: false,
         error: 'Failed to load',
         fetchCollections: vi.fn()
-      } as any)
+      }))
       
-      vi.mocked(useSearchStore).mockReturnValue({
-        results: [],
-        error: null,
-        isSearching: false
-      } as any)
+      vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock())
       
       const { rerender } = render(
         <TestWrapper>
@@ -263,9 +254,16 @@ describe('Error States - Integration Tests', () => {
       
       // Switch to search tab
       vi.mocked(useUIStore).mockReturnValue({
+        addToast: mockAddToast,
         activeTab: 'search',
-        addToast: mockAddToast
-      } as any)
+        toasts: [],
+        showDocumentViewer: null,
+        showCollectionDetailsModal: null,
+        removeToast: vi.fn(),
+        setActiveTab: vi.fn(),
+        setShowDocumentViewer: vi.fn(),
+        setShowCollectionDetailsModal: vi.fn()
+      })
       
       rerender(
         <TestWrapper>
@@ -280,7 +278,7 @@ describe('Error States - Integration Tests', () => {
 
   describe('Error Boundaries in Action', () => {
     it('should catch render errors in CollectionCard', async () => {
-      const { mockError, restore } = mockConsoleError()
+      const { restore } = mockConsoleError()
       
       try {
         // Create a collection with invalid data that will cause render error
@@ -291,12 +289,12 @@ describe('Error States - Integration Tests', () => {
           // Missing required fields
         }
         
-        vi.mocked(useCollectionStore).mockReturnValue({
-          collections: [badCollection as any],
+        vi.mocked(useCollectionStore).mockReturnValue(createCollectionStoreMock({
+          collections: [badCollection as unknown as Collection],
           loading: false,
           error: null,
           fetchCollections: vi.fn()
-        } as any)
+        }))
         
         // Wrap in error boundary
         render(
@@ -320,12 +318,12 @@ describe('Error States - Integration Tests', () => {
         new Error('Unexpected error in effect')
       )
       
-      vi.mocked(useCollectionStore).mockReturnValue({
+      vi.mocked(useCollectionStore).mockReturnValue(createCollectionStoreMock({
         collections: [],
         loading: false,
         error: null,
         fetchCollections: mockFetchCollections
-      } as any)
+      }))
       
       renderWithErrorHandlers(<CollectionsDashboard />, [])
       
@@ -342,20 +340,18 @@ describe('Error States - Integration Tests', () => {
   describe('Concurrent Error States', () => {
     it('should handle multiple simultaneous errors', async () => {
       // Set up multiple error sources
-      vi.mocked(useCollectionStore).mockReturnValue({
+      vi.mocked(useCollectionStore).mockReturnValue(createCollectionStoreMock({
         collections: [],
         loading: false,
         error: 'Collections service unavailable',
         fetchCollections: vi.fn(),
         operations: [],
         operationsError: 'Operations service unavailable'
-      } as any)
+      }))
       
-      vi.mocked(useSearchStore).mockReturnValue({
-        results: [],
-        error: 'Search service unavailable',
-        isSearching: false
-      } as any)
+      vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock({
+        error: 'Search service unavailable'
+      }))
       
       renderWithErrorHandlers(<HomePage />, [])
       
@@ -453,17 +449,15 @@ describe('Error States - Integration Tests', () => {
     it('should maintain error state while retrying', async () => {
       const mockSearch = vi.fn()
       
-      vi.mocked(useSearchStore).mockReturnValue({
-        results: [],
+      vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock({
         error: 'Search failed',
-        isSearching: false,
         performSearch: mockSearch,
-        searchParams: { query: 'test' }
-      } as any)
+        searchParams: { ...createSearchStoreMock().searchParams, query: 'test' }
+      }))
       
-      vi.mocked(useCollectionStore).mockReturnValue({
-        collections: [{ uuid: '1', name: 'Test', status: 'ready' }]
-      } as any)
+      vi.mocked(useCollectionStore).mockReturnValue(createCollectionStoreMock({
+        collections: [{ uuid: '1', name: 'Test', status: 'ready' } as unknown as Collection]
+      }))
       
       renderWithErrorHandlers(<SearchInterface />, [])
       
@@ -471,13 +465,13 @@ describe('Error States - Integration Tests', () => {
       expect(screen.getByText(/search failed/i)).toBeInTheDocument()
       
       // Start new search
-      vi.mocked(useSearchStore).mockReturnValue({
-        results: [],
-        error: 'Search failed', // Error persists until cleared
-        isSearching: true, // Now searching
+      vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock({
+        error: 'Search failed',
+        isSearching: true,
+        loading: true,
         performSearch: mockSearch,
-        searchParams: { query: 'test' }
-      } as any)
+        searchParams: { ...createSearchStoreMock().searchParams, query: 'test' }
+      }))
       
       await userEvent.click(screen.getByRole('button', { name: /search/i }))
       

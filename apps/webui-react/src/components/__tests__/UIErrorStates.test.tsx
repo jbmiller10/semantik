@@ -395,8 +395,8 @@ describe('UI Error States', () => {
       ]
       
       // Simulate various error scenarios and check toast messages
-      for (const _error of technicalErrors) {
-        // Test pattern - actual implementation would use _error
+      // Test pattern - actual implementation would iterate through errors
+      for (let i = 0; i < technicalErrors.length; i++) {
         mockAddToast.mockClear()
         
         // Trigger an error (component specific)

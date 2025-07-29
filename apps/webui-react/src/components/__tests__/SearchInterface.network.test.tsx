@@ -282,7 +282,7 @@ describe('SearchInterface - Network Error Handling', () => {
           })),
           results: [],
           totalResults: 0
-        } as any)
+        } as ReturnType<typeof useSearchStore>)
       })
       
       await userEvent.type(screen.getByPlaceholderText(/search/i), 'test')
@@ -355,7 +355,7 @@ describe('SearchInterface - Network Error Handling', () => {
         collections: [],
         fetchCollections: mockFetchCollections,
         error: 'Failed to load collections'
-      } as any)
+      } as ReturnType<typeof useCollectionStore>)
       
       renderWithErrorHandlers(
         <SearchInterface />,
