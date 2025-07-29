@@ -1,6 +1,7 @@
 import React from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import Toast from '../../components/Toast'
 
 export const TestWrapper = ({ children }: { children: React.ReactNode }) => {
   // Create a new QueryClient for each test to avoid caching issues
@@ -19,6 +20,7 @@ export const TestWrapper = ({ children }: { children: React.ReactNode }) => {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
         {children}
+        <Toast />
       </MemoryRouter>
     </QueryClientProvider>
   )
