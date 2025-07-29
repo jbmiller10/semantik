@@ -7,9 +7,9 @@ import { useUIStore } from '../../stores/uiStore'
 import { 
   renderWithErrorHandlers,
   mockWebSocket,
-  MockWebSocket,
-  waitForToast
+  MockWebSocket
 } from '../../tests/utils/errorTestUtils'
+import type { MockedFunction, MockOperation } from '@/tests/types/test-types'
 
 // Mock the hooks
 vi.mock('../../hooks/useOperationProgress')
@@ -20,14 +20,14 @@ describe('OperationProgress - WebSocket Error Handling', () => {
   const mockAddToast = vi.fn()
   const mockUpdateOperationProgress = vi.fn()
   
-  const mockOperation = {
+  const mockOperation: MockOperation = {
     id: 'test-op-id',
     collection_id: 'test-coll-id',
-    type: 'index',
-    status: 'processing',
+    type: 'index' as const,
+    status: 'processing' as const,
     progress: 0,
     message: 'Starting...',
-    source_path: '/data/documents',
+    config: { source_path: '/data/documents' },
     created_at: new Date().toISOString()
   }
 
@@ -39,11 +39,11 @@ describe('OperationProgress - WebSocket Error Handling', () => {
     
     vi.mocked(useUIStore).mockReturnValue({
       addToast: mockAddToast
-    } as any)
+    } as ReturnType<typeof useUIStore>)
     
     vi.mocked(useCollectionStore).mockReturnValue({
       updateOperationProgress: mockUpdateOperationProgress
-    } as any)
+    } as ReturnType<typeof useCollectionStore>)
   })
 
   afterEach(() => {
@@ -52,9 +52,7 @@ describe('OperationProgress - WebSocket Error Handling', () => {
 
   describe('Connection Failures', () => {
     it('should handle initial connection failure', async () => {
-      const wsInstance: MockWebSocket | null = null
-      
-      vi.mocked(useOperationProgress).mockImplementation(({ operationId, onError }) => {
+      vi.mocked(useOperationProgress).mockImplementation(({ onError }) => {
         // Simulate connection failure
         setTimeout(() => {
           onError?.(new Error('Failed to connect to WebSocket'))
@@ -88,7 +86,7 @@ describe('OperationProgress - WebSocket Error Handling', () => {
       let onErrorCallback: ((error: Error) => void) | undefined
       let connectionState = { isConnected: true, error: null, retryCount: 0 }
       
-      vi.mocked(useOperationProgress).mockImplementation(({ operationId, onError }) => {
+      vi.mocked(useOperationProgress).mockImplementation(({ onError }) => {
         onErrorCallback = onError
         return connectionState
       })
@@ -117,10 +115,10 @@ describe('OperationProgress - WebSocket Error Handling', () => {
     })
 
     it('should handle authentication failure', async () => {
-      vi.mocked(useOperationProgress).mockImplementation(({ operationId, onError }) => {
+      vi.mocked(useOperationProgress).mockImplementation(({ onError }) => {
         setTimeout(() => {
-          const error = new Error('WebSocket authentication failed')
-          ;(error as any).code = 4401
+          const error = new Error('WebSocket authentication failed') as Error & { code: number }
+          error.code = 4401
           onError?.(error)
         }, 0)
         
@@ -146,10 +144,10 @@ describe('OperationProgress - WebSocket Error Handling', () => {
     })
 
     it('should handle permission denied for operation', async () => {
-      vi.mocked(useOperationProgress).mockImplementation(({ operationId, onError }) => {
+      vi.mocked(useOperationProgress).mockImplementation(({ onError }) => {
         setTimeout(() => {
-          const error = new Error('Permission denied')
-          ;(error as any).code = 4403
+          const error = new Error('Permission denied') as Error & { code: number }
+          error.code = 4403
           onError?.(error)
         }, 0)
         
@@ -195,7 +193,7 @@ describe('OperationProgress - WebSocket Error Handling', () => {
               if (typeof msg === 'object' && msg.type === 'progress') {
                 onProgress?.(msg.progress, msg.message || '')
               }
-            } catch (e) {
+            } catch {
               // Malformed message - should be handled gracefully
             }
             messageIndex++
@@ -230,7 +228,7 @@ describe('OperationProgress - WebSocket Error Handling', () => {
         // Send message with missing progress
         setTimeout(() => {
           try {
-            onProgress?.(undefined as any, 'Missing progress')
+            onProgress?.(undefined as unknown as number, 'Missing progress')
           } catch (e) {
             onError?.(e as Error)
           }
@@ -382,7 +380,7 @@ describe('OperationProgress - WebSocket Error Handling', () => {
     })
 
     it('should handle error status during operation', async () => {
-      vi.mocked(useOperationProgress).mockImplementation(({ operationId, onError }) => {
+      vi.mocked(useOperationProgress).mockImplementation(({ onError }) => {
         setTimeout(() => {
           onError?.(new Error('Operation failed: Insufficient disk space'))
         }, 0)

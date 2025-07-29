@@ -4,14 +4,11 @@ import userEvent from '@testing-library/user-event'
 import CreateCollectionModal from '../CreateCollectionModal'
 import { 
   renderWithErrorHandlers, 
-  waitForToast,
   expectFormDataPreserved,
   simulateOffline,
   simulateOnline
 } from '../../tests/utils/errorTestUtils'
 import { collectionErrorHandlers } from '../../tests/mocks/errorHandlers'
-import { server } from '../../tests/mocks/server'
-import { handlers } from '../../tests/mocks/handlers'
 
 // Mock hooks and stores
 const mockCreateCollectionMutation = {

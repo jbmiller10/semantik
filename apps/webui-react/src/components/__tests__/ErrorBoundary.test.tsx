@@ -153,8 +153,9 @@ describe('ErrorBoundary', () => {
 
   it('handles errors thrown during render', () => {
     const BadComponent = () => {
-      const obj: any = null
-      return <div>{obj.nonExistent.property}</div>
+      const obj: unknown = null
+      // Intentionally cause a runtime error
+      return <div>{(obj as { nonExistent: { property: string } }).nonExistent.property}</div>
     }
 
     render(
@@ -197,7 +198,7 @@ describe('ErrorBoundary', () => {
     // Use a try-catch to handle the error from event handler
     try {
       await user.click(button)
-    } catch (e) {
+    } catch {
       // Expected - event handler errors are not caught by ErrorBoundary
     }
 
