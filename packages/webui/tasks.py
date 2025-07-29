@@ -2376,20 +2376,13 @@ async def _process_remove_source_operation(
                             with QdrantOperationTimer("delete_points"):
                                 # Create filter to match vectors by doc_id
                                 filter_condition = Filter(
-                                    must=[
-                                        FieldCondition(
-                                            key="doc_id",
-                                            match=MatchValue(value=doc_id)
-                                        )
-                                    ]
+                                    must=[FieldCondition(key="doc_id", match=MatchValue(value=doc_id))]
                                 )
 
                                 # Delete points matching the filter
                                 qdrant_client.delete(
                                     collection_name=qdrant_collection,
-                                    points_selector=FilterSelector(
-                                        filter=filter_condition
-                                    ),
+                                    points_selector=FilterSelector(filter=filter_condition),
                                 )
 
                                 # Log the deletion
