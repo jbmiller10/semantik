@@ -8,11 +8,7 @@ import { useUIStore } from '../../stores/uiStore';
 import { searchV2Api } from '../../services/api/v2/collections';
 
 // Mock the API
-vi.mock('../../services/api/v2/collections', () => ({
-  searchV2Api: {
-    search: vi.fn(),
-  },
-}));
+vi.mock('../../services/api/v2/collections');
 
 // Mock the hooks
 vi.mock('../../hooks/useCollections', () => ({
@@ -108,9 +104,9 @@ describe('SearchInterface Reranking Tests', () => {
       },
     };
 
-    (searchV2Api.search as any).mockResolvedValueOnce(mockSearchResponse);
+    vi.mocked(searchV2Api.search).mockResolvedValueOnce(mockSearchResponse);
 
-    const { container } = render(<SearchInterface />, { wrapper: createWrapper() });
+    render(<SearchInterface />, { wrapper: createWrapper() });
 
     // Set search query and select collection
     const queryInput = screen.getByPlaceholderText('Enter your search query...');
@@ -189,7 +185,7 @@ describe('SearchInterface Reranking Tests', () => {
       },
     };
 
-    (searchV2Api.search as any).mockResolvedValueOnce(mockSearchResponse);
+    vi.mocked(searchV2Api.search).mockResolvedValueOnce(mockSearchResponse);
 
     render(<SearchInterface />, { wrapper: createWrapper() });
 
@@ -267,11 +263,11 @@ describe('SearchInterface Reranking Tests', () => {
           },
         },
         headers: {},
-        config: {} as any,
+        config: {},
       }
     );
 
-    (searchV2Api.search as any).mockRejectedValueOnce(mockError);
+    vi.mocked(searchV2Api.search).mockRejectedValueOnce(mockError);
 
     render(<SearchInterface />, { wrapper: createWrapper() });
 
@@ -339,7 +335,7 @@ describe('SearchInterface Reranking Tests', () => {
       },
     };
 
-    (searchV2Api.search as any).mockResolvedValueOnce(mockSearchResponse);
+    vi.mocked(searchV2Api.search).mockResolvedValueOnce(mockSearchResponse);
 
     render(<SearchInterface />, { wrapper: createWrapper() });
 
