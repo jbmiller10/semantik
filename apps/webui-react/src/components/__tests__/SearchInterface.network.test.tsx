@@ -2,7 +2,7 @@ import React from 'react'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import SearchInterface from '../SearchInterface'
-import { renderWithProviders } from '../../tests/utils/test-utils'
+import { render } from '../../tests/utils/test-utils'
 import { server } from '../../tests/mocks/server'
 import { http, HttpResponse } from 'msw'
 
@@ -15,7 +15,7 @@ describe('SearchInterface - Network Error Handling', () => {
       })
     )
 
-    renderWithProviders(<SearchInterface />)
+    render(<SearchInterface />)
 
     // Enter search query
     const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
@@ -53,7 +53,7 @@ describe('SearchInterface - Network Error Handling', () => {
       })
     )
 
-    renderWithProviders(<SearchInterface />)
+    render(<SearchInterface />)
 
     // Enter search query
     const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
@@ -112,7 +112,7 @@ describe('SearchInterface - Network Error Handling', () => {
       })
     )
 
-    renderWithProviders(<SearchInterface />)
+    render(<SearchInterface />)
 
     // Enter search query
     const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
@@ -143,14 +143,14 @@ describe('SearchInterface - Network Error Handling', () => {
   })
 
   it('should disable search button when no collections selected', () => {
-    renderWithProviders(<SearchInterface />)
+    render(<SearchInterface />)
 
     const searchButton = screen.getByRole('button', { name: /search/i })
     expect(searchButton).toBeDisabled()
   })
 
   it('should require search query', async () => {
-    renderWithProviders(<SearchInterface />)
+    render(<SearchInterface />)
 
     // Open collection dropdown and select a collection
     const collectionDropdown = screen.getByRole('button', { name: /select collections/i })

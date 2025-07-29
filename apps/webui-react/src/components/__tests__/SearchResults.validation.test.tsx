@@ -387,7 +387,9 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
 
       renderWithErrorHandlers(<SearchResults />, [])
 
-      expect(screen.getByText('Collection not found')).toBeInTheDocument()
+      // The component renders both the collection name and error message
+      expect(screen.getByText('Unknown Collection')).toBeInTheDocument()
+      expect(screen.getByText(/Collection not found/)).toBeInTheDocument()
     })
   })
 

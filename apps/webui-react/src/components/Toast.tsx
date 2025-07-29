@@ -3,7 +3,7 @@ import { useUIStore } from '../stores/uiStore';
 function Toast() {
   const { toasts, removeToast } = useUIStore();
 
-  if (toasts.length === 0) return null;
+  if (!toasts || toasts.length === 0) return null;
 
   return (
     <div className="fixed bottom-0 right-0 p-6 space-y-4 z-50">

@@ -67,18 +67,27 @@ describe('Search - Permission Error Handling', () => {
     vi.clearAllMocks()
     
     // Mock useUIStore to work with selectors
-    vi.mocked(useUIStore).mockImplementation((selector?: any) => {
+    vi.mocked(useUIStore).mockImplementation(((selector?: any) => {
       const store = {
         addToast: mockAddToast,
         setShowDocumentViewer: mockSetShowDocumentViewer,
         showDocumentViewer: null
       }
       return selector ? selector(store) : store
-    } as any)
+    }) as any)
   })
 
   describe('Collection Search Permissions', () => {
     it('should handle searching in collections without permission', async () => {
+      // Mock useCollections hook to return the test collections
+      const { useCollections } = await import('../../hooks/useCollections')
+      vi.mocked(useCollections).mockReturnValue({
+        data: [mockPublicCollection, mockPrivateCollection],
+        isLoading: false,
+        error: null,
+        refetch: vi.fn()
+      } as any)
+      
       vi.mocked(useCollectionStore).mockReturnValue({
         collections: [mockPublicCollection, mockPrivateCollection],
         fetchCollections: vi.fn(),
@@ -141,8 +150,8 @@ describe('Search - Permission Error Handling', () => {
       // Select private collection
       await userEvent.click(screen.getByText('Private Collection'))
       
-      // Enter search query
-      await userEvent.type(screen.getByPlaceholderText(/search/i), 'test')
+      // Enter search query - be specific about which search input
+      await userEvent.type(screen.getByPlaceholderText(/Enter your search query/i), 'test')
       
       // Mock search to simulate permission error
       mockSearch.mockImplementation(async () => {
@@ -192,6 +201,15 @@ describe('Search - Permission Error Handling', () => {
           embedding_model: 'test-model'
         }
       ]
+      
+      // Mock useCollections hook to return the test collections
+      const { useCollections } = await import('../../hooks/useCollections')
+      vi.mocked(useCollections).mockReturnValue({
+        data: collections,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn()
+      } as any)
       
       vi.mocked(useCollectionStore).mockReturnValue({
         collections,
@@ -294,9 +312,14 @@ describe('Search - Permission Error Handling', () => {
         []
       )
       
-      // Click on the result to expand it
-      const resultItem = screen.getByText('Test content')
-      await userEvent.click(resultItem)
+      // Click on the document to expand it (documents are collapsed by default)
+      const documentName = screen.getByText('doc.txt')
+      await userEvent.click(documentName.closest('.cursor-pointer')!)
+      
+      // Now the content should be visible
+      await waitFor(() => {
+        expect(screen.getByText('Test content')).toBeInTheDocument()
+      })
       
       // Now the view document button should be visible
       await waitFor(() => {
@@ -367,6 +390,18 @@ describe('Search - Permission Error Handling', () => {
         []
       )
       
+      // First expand both documents (they're collapsed by default)
+      const publicDoc = screen.getByText('/public/doc.txt')
+      await userEvent.click(publicDoc.closest('.cursor-pointer')!)
+      
+      const privateDoc = screen.getByText('/private/secret.txt')
+      await userEvent.click(privateDoc.closest('.cursor-pointer')!)
+      
+      // Wait for content to be visible
+      await waitFor(() => {
+        expect(screen.getByText('Public content')).toBeInTheDocument()
+      })
+      
       // Public document should have view button
       const publicResult = screen.getByText('Public content')
       const publicViewButton = publicResult.closest('div')?.querySelector('button[aria-label*="view"]')
@@ -431,9 +466,18 @@ describe('Search - Permission Error Handling', () => {
         []
       )
       
+      // First expand the documents to see the content
+      const myDoc = screen.getByText('/my/doc.txt')
+      await userEvent.click(myDoc.closest('.cursor-pointer')!)
+      
+      const publicDoc = screen.getByText('/public/shared.txt')
+      await userEvent.click(publicDoc.closest('.cursor-pointer')!)
+      
       // Should show successful results
-      expect(screen.getByText('My content')).toBeInTheDocument()
-      expect(screen.getByText('Public content')).toBeInTheDocument()
+      await waitFor(() => {
+        expect(screen.getByText('My content')).toBeInTheDocument()
+        expect(screen.getByText('Public content')).toBeInTheDocument()
+      })
       
       // Should show permission error for failed collection
       const alert = screen.getByRole('alert')

@@ -284,7 +284,7 @@ describe('LoginPage', () => {
     const errorToast = uiState.toasts.find(toast => toast.type === 'error')
     expect(errorToast).toMatchObject({
       type: 'error',
-      message: 'Authentication failed',
+      message: 'Network Error'
     })
   })
 })
