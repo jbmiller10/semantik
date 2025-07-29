@@ -199,7 +199,7 @@ jobs:
           key: venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('**/poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry install --with test
+        run: poetry install --with dev
 
       - name: Run database migrations
         run: poetry run alembic upgrade head
