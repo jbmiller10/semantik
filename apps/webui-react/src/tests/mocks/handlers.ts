@@ -249,7 +249,7 @@ export const handlers = [
 
   // Search endpoint
   http.post('/api/v2/search', async ({ request }) => {
-    const body = await request.json() as any
+    const body = await request.json() as { use_reranker?: boolean }
     
     return HttpResponse.json({
       results: [

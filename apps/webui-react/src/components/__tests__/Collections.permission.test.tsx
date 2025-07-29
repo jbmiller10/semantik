@@ -1,5 +1,5 @@
 import React from 'react'
-import { screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useNavigate } from 'react-router-dom'
 import CollectionsDashboard from '../CollectionsDashboard'
@@ -7,7 +7,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { useAuthStore } from '../../stores/authStore'
 import { 
   renderWithErrorHandlers, 
-  waitForError,
+  // waitForError,
   mockConsoleError
 } from '../../tests/utils/errorTestUtils'
 import { 
@@ -44,7 +44,7 @@ vi.mock('../../services/api/v2/client', async () => {
       if (error.response?.status === 401) {
         const authStore = await import('../../stores/authStore')
         await authStore.useAuthStore.getState().logout()
-        const navigate = (window as any).__navigate
+        const navigate = (window as unknown as { __navigate?: (path: string) => void }).__navigate
         if (navigate && window.location.pathname !== '/login') {
           navigate('/login')
         }
@@ -120,7 +120,7 @@ describe('Collections - Permission Error Handling', () => {
     vi.mocked(useNavigate).mockReturnValue(mockNavigate)
     
     // Set up navigation mock for axios interceptor
-    ;(window as any).__navigate = mockNavigate
+    ;(window as unknown as { __navigate: typeof mockNavigate }).__navigate = mockNavigate
     
     // Set up default mock implementations for hooks
     vi.mocked(useCollections).mockReturnValue({
@@ -194,12 +194,12 @@ describe('Collections - Permission Error Handling', () => {
       refreshToken: 'test-refresh-token',
       logout: vi.fn(),
       setAuth: vi.fn()
-    } as any)
+    } as Parameters<typeof useAuthStore>[0])
   })
   
   afterEach(() => {
     // Clean up navigation mock
-    delete (window as any).__navigate
+    delete (window as unknown as { __navigate?: unknown }).__navigate
   })
 
   describe('Unauthorized Access (401)', () => {
@@ -212,8 +212,8 @@ describe('Collections - Permission Error Handling', () => {
         user: null,
         refreshToken: null,
         setAuth: vi.fn()
-      } as any))
-      ;(useAuthStore as any).getState = () => ({ 
+      } as ReturnType<typeof useAuthStore>));
+      (useAuthStore as unknown as { getState: () => { logout: () => void } }).getState = () => ({ 
         logout: mockLogout,
         token: null,
         user: null,
@@ -255,14 +255,14 @@ describe('Collections - Permission Error Handling', () => {
       const mockLogout = vi.fn()
       vi.mocked(useAuthStore).mockImplementation(() => ({
         logout: mockLogout
-      } as any))
-      ;(useAuthStore as any).getState = () => ({ logout: mockLogout })
+      } as ReturnType<typeof useAuthStore>));
+      (useAuthStore as unknown as { getState: () => { logout: () => void } }).getState = () => ({ logout: mockLogout })
       
       // Create a more realistic mock that tracks state
-      let mutationState = {
+      const mutationState = {
         isError: false,
         isPending: false,
-        error: null as any,
+        error: null as Error | null,
       };
       
       const mockCreateCollectionMutation = {
@@ -368,8 +368,8 @@ describe('Collections - Permission Error Handling', () => {
         user: null,
         refreshToken: null,
         setAuth: vi.fn()
-      } as any))
-      ;(useAuthStore as any).getState = () => ({ 
+      } as ReturnType<typeof useAuthStore>));
+      (useAuthStore as unknown as { getState: () => { logout: () => void } }).getState = () => ({ 
         logout: mockLogout,
         token: null,
         user: null,
@@ -383,7 +383,7 @@ describe('Collections - Permission Error Handling', () => {
         error: { 
           message: 'Request failed with status code 401',
           response: { status: 401, data: { detail: 'Unauthorized' } }
-        } as any,
+        } as Error & { response: { status: number; data: { detail: string } } },
         refetch: vi.fn()
       })
       
@@ -582,12 +582,13 @@ describe('Collections - Permission Error Handling', () => {
       // This would typically happen when trying to view a deleted collection
       
       // Mock that collection fetch returns 404
-      const mockCollection404Error = {
-        response: {
-          status: 404,
-          data: { detail: 'Collection not found' }
-        }
-      }
+      // Removed unused variable: mockCollection404Error
+      // const mockCollection404Error = {
+      //   response: {
+      //     status: 404,
+      //     data: { detail: 'Collection not found' }
+      //   }
+      // }
       
       // Simulate the error handling that would redirect
       mockAddToast({ type: 'error', message: 'Collection not found' })
@@ -656,7 +657,7 @@ describe('Collections - Permission Error Handling', () => {
             status: 401, 
             data: { detail: 'Invalid API key' } 
           }
-        } as any,
+        } as Error & { response: { status: number; data: { detail: string } } },
         refetch: mockFetchCollections
       } as ReturnType<typeof useCollections>)
       
@@ -689,7 +690,7 @@ describe('Collections - Permission Error Handling', () => {
             status: 401, 
             data: { detail: 'API key expired' } 
           }
-        } as any,
+        } as Error & { response: { status: number; data: { detail: string } } },
         refetch: mockFetchCollections
       } as ReturnType<typeof useCollections>)
       
@@ -737,8 +738,8 @@ describe('Collections - Permission Error Handling', () => {
         const mockLogout = vi.fn()
         vi.mocked(useAuthStore).mockImplementation(() => ({
           logout: mockLogout
-        } as any))
-        ;(useAuthStore as any).getState = () => ({ logout: mockLogout })
+        } as ReturnType<typeof useAuthStore>));
+        (useAuthStore as unknown as { getState: () => { logout: () => void } }).getState = () => ({ logout: mockLogout })
         
         // Simulate a long-running session
         vi.mocked(useCollections).mockReturnValue({
@@ -750,7 +751,7 @@ describe('Collections - Permission Error Handling', () => {
               status: 401,
               data: { detail: 'Session expired. Please log in again.' }
             }
-          } as any,
+          } as Error & { response: { status: number; data: { detail: string } } },
           refetch: mockFetchCollections
         } as ReturnType<typeof useCollections>)
         

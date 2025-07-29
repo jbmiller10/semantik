@@ -7,11 +7,12 @@ import {
   waitForError, 
   simulateOffline,
   simulateOnline,
-  testRetryFunctionality
+  // testRetryFunctionality
 } from '../../tests/utils/errorTestUtils'
-import { collectionErrorHandlers, createTimeoutHandler } from '../../tests/mocks/errorHandlers'
-import { server } from '../../tests/mocks/server'
-import { handlers } from '../../tests/mocks/handlers'
+import { collectionErrorHandlers } from '../../tests/mocks/errorHandlers'
+// import { createTimeoutHandler } from '../../tests/mocks/errorHandlers'
+// import { server } from '../../tests/mocks/server'
+// import { handlers } from '../../tests/mocks/handlers'
 
 // Mock hooks and stores
 const mockCollectionsQuery = {

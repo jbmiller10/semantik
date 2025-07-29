@@ -10,7 +10,7 @@ import type { Operation } from '../../types/collection'
 export function mockReindexError(collectionId: string, status: number, detail?: string) {
   server.use(
     http.post(`/api/v2/collections/${collectionId}/reindex`, () => {
-      const errorResponse: any = {}
+      const errorResponse: { detail?: string } = {}
       
       if (detail) {
         errorResponse.detail = detail
@@ -48,7 +48,7 @@ export function mockReindexSuccess(collectionId: string, operation?: Partial<Ope
 }
 
 // Helper to mock search API errors
-export function mockSearchError(status: number, detail?: any) {
+export function mockSearchError(status: number, detail?: string | { message: string; suggestion: string }) {
   server.use(
     http.post('/api/v2/search', () => {
       if (status === 507 && detail) {
@@ -64,7 +64,7 @@ export function mockSearchError(status: number, detail?: any) {
 }
 
 // Helper to mock search API success with custom response
-export function mockSearchSuccess(response: any) {
+export function mockSearchSuccess(response: { results: unknown[] }) {
   server.use(
     http.post('/api/v2/search', () => {
       return HttpResponse.json(response)

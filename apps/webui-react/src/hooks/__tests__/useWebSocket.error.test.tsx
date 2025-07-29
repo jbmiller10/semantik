@@ -57,7 +57,7 @@ describe('useWebSocket - Error Handling', () => {
     it('should retry connection on failure', async () => {
       const onClose = vi.fn()
       
-      const { result } = renderHook(() => 
+      renderHook(() => 
         useWebSocket(
           'ws://localhost:8080/ws/test',
           {
@@ -230,7 +230,7 @@ describe('useWebSocket - Error Handling', () => {
 
     it('should handle rapid message bursts', async () => {
       const onMessage = vi.fn()
-      const messages: any[] = []
+      const messages: MessageEvent[] = []
       
       renderHook(() => 
         useWebSocket(

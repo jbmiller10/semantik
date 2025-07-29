@@ -274,7 +274,7 @@ describe('SearchInterface Reranking Tests', () => {
       expect(state.error).toBe('GPU_MEMORY_ERROR');
       
       // Check that the detailed error info was stored
-      const gpuError = (window as any).__gpuMemoryError;
+      const gpuError = (window as unknown as { __gpuMemoryError?: { message: string; suggestion: string } }).__gpuMemoryError;
       expect(gpuError).toBeDefined();
       expect(gpuError.message).toContain('Insufficient GPU memory for reranking');
       expect(gpuError.suggestion).toContain('Try using a smaller model or different quantization');

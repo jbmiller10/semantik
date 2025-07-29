@@ -41,7 +41,7 @@ apiClient.interceptors.response.use(
       // Check if we're in a test environment
       if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
         // In tests, this will be mocked via useNavigate
-        const navigate = (window as any).__navigate;
+        const navigate = (window as unknown as { __navigate?: (path: string) => void }).__navigate;
         if (navigate) {
           navigate('/login');
         } else {

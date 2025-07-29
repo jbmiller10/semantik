@@ -9,7 +9,7 @@ import {
   mockWebSocket
 } from '../../tests/utils/errorTestUtils'
 import { operationsV2Api } from '../../services/api/v2/collections'
-import type { Operation } from '../../types/collection'
+// import type { Operation } from '../../types/collection'
 
 // Mock the hooks and APIs
 vi.mock('../../hooks/useOperationProgress')
@@ -407,7 +407,7 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
     })
 
     it('should clean up WebSocket connections when operations complete', async () => {
-      const cleanupFn = vi.fn()
+      // const cleanupFn = vi.fn()
       
       vi.mocked(useOperationProgress).mockReturnValue({
         isConnected: true,

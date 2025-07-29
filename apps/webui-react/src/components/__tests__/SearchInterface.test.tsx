@@ -43,7 +43,7 @@ vi.mock('../SearchResults', () => ({
 
 // Mock CollectionMultiSelect component
 vi.mock('../CollectionMultiSelect', () => ({
-  CollectionMultiSelect: ({ collections, selectedCollections, onChange, disabled }: any) => (
+  CollectionMultiSelect: ({ selectedCollections, onChange, disabled }: { selectedCollections: string[]; onChange: (collections: string[]) => void; disabled?: boolean }) => (
     <div data-testid="collection-multiselect">
       <button 
         aria-label="Select collections"
@@ -58,7 +58,7 @@ vi.mock('../CollectionMultiSelect', () => ({
 
 // Mock RerankingConfiguration component
 vi.mock('../RerankingConfiguration', () => ({
-  RerankingConfiguration: ({ enabled, model, quantization, onChange }: any) => (
+  RerankingConfiguration: ({ enabled, onChange }: { enabled: boolean; onChange: (config: { useReranker: boolean }) => void }) => (
     <div data-testid="reranking-configuration">
       <label>
         <input 

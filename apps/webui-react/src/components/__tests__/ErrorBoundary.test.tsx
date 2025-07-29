@@ -209,7 +209,7 @@ describe('ErrorBoundary', () => {
         // This tests the concept without causing uncaught exceptions
         try {
           throw new Error('Event handler error')
-        } catch (e) {
+        } catch {
           // Event handler errors are not caught by error boundaries
           // So we handle it here to avoid uncaught exception in tests
         }
