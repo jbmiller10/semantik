@@ -489,10 +489,21 @@ describe('Search - Permission Error Handling', () => {
         setRerankingAvailable: vi.fn()
       } as ReturnType<typeof useSearchStore>)
       
+      // Mock useCollections hook for SearchInterface
+      const { useCollections } = await import('../../hooks/useCollections')
+      vi.mocked(useCollections).mockReturnValue({
+        data: [mockPublicCollection],
+        isLoading: false,
+        error: null,
+        refetch: vi.fn()
+      } as ReturnType<typeof useCollections>)
+      
       vi.mocked(useCollectionStore).mockReturnValue({
         collections: [mockPublicCollection],
-        fetchCollections: vi.fn()
-      } as Partial<ReturnType<typeof useCollectionStore>> as ReturnType<typeof useCollectionStore>)
+        fetchCollections: vi.fn(),
+        loading: false,
+        error: null
+      } as ReturnType<typeof useCollectionStore>)
       
       renderWithErrorHandlers(
         <SearchInterface />,
@@ -565,10 +576,21 @@ describe('Search - Permission Error Handling', () => {
         setRerankingAvailable: vi.fn()
       } as ReturnType<typeof useSearchStore>)
       
+      // Mock useCollections hook for SearchInterface
+      const { useCollections } = await import('../../hooks/useCollections')
+      vi.mocked(useCollections).mockReturnValue({
+        data: [mockPublicCollection],
+        isLoading: false,
+        error: null,
+        refetch: vi.fn()
+      } as ReturnType<typeof useCollections>)
+      
       vi.mocked(useCollectionStore).mockReturnValue({
         collections: [mockPublicCollection],
-        fetchCollections: vi.fn()
-      } as Partial<ReturnType<typeof useCollectionStore>> as ReturnType<typeof useCollectionStore>)
+        fetchCollections: vi.fn(),
+        loading: false,
+        error: null
+      } as ReturnType<typeof useCollectionStore>)
       
       renderWithErrorHandlers(
         <SearchInterface />,

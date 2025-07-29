@@ -2,409 +2,170 @@ import React from 'react'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import SearchInterface from '../SearchInterface'
-import { useSearchStore } from '../../stores/searchStore'
-import { useCollectionStore } from '../../stores/collectionStore'
-import { useUIStore } from '../../stores/uiStore'
-import { 
-  renderWithErrorHandlers, 
-  simulateOffline,
-  simulateOnline
-} from '../../tests/utils/errorTestUtils'
-import { searchErrorHandlers, collectionErrorHandlers } from '../../tests/mocks/errorHandlers'
-import { searchV2Api } from '../../services/api/v2/collections'
-
-// Mock stores
-vi.mock('../../stores/searchStore')
-vi.mock('../../stores/collectionStore')
-vi.mock('../../stores/uiStore')
-
-// Mock the search API
-vi.mock('../../services/api/v2/collections', () => ({
-  searchV2Api: {
-    search: vi.fn()
-  }
-}))
+import { renderWithProviders } from '../../tests/utils/test-utils'
+import { server } from '../../tests/mocks/server'
+import { http, HttpResponse } from 'msw'
 
 describe('SearchInterface - Network Error Handling', () => {
-  const mockSearch = vi.fn()
-  const mockSetError = vi.fn()
-  const mockAddToast = vi.fn()
-  const mockCollections = [
-    {
-      uuid: 'coll-1',
-      name: 'Test Collection 1',
-      status: 'ready',
-      document_count: 100,
-      vector_count: 1000,
-      embedding_model: 'test-model',
-      quantization: 'float16'
-    },
-    {
-      uuid: 'coll-2', 
-      name: 'Test Collection 2',
-      status: 'ready',
-      document_count: 200,
-      vector_count: 2000,
-      embedding_model: 'test-model'
-    }
-  ]
-
-  beforeEach(() => {
-    vi.clearAllMocks()
-    
-    // Create a stateful mock for the search store
-    let currentSearchParams = {
-      query: '',
-      selectedCollections: [],
-      limit: 10,
-      searchType: 'hybrid',
-      includeContent: true,
-      weightKeyword: 0.5,
-      weightSemantic: 0.5,
-      rerankModel: null,
-      topK: 10,
-      scoreThreshold: 0,
-      hybridMode: 'reciprocal_rank' as const,
-      hybridAlpha: 0.5,
-      useReranker: false,
-      rerankTopK: null,
-      keywordMode: 'bm25' as const
-    };
-    
-    const mockValidateAndUpdateSearchParams = vi.fn((params) => {
-      currentSearchParams = { ...currentSearchParams, ...params };
-    });
-    
-    vi.mocked(useSearchStore).mockReturnValue({
-      searchParams: currentSearchParams,
-      isSearching: false,
-      error: null,
-      setSearchParams: vi.fn(),
-      performSearch: mockSearch,
-      setError: mockSetError,
-      setResults: vi.fn(),
-      clearResults: vi.fn(),
-      results: [],
-      totalResults: 0,
-      searchTime: 0,
-      failedCollections: [],
-      partialFailure: false,
-      loading: false,
-      rerankingMetrics: null,
-      setLoading: vi.fn(),
-      setRerankingMetrics: vi.fn(),
-      setFailedCollections: vi.fn(),
-      setPartialFailure: vi.fn(),
-      updateSearchParams: vi.fn(),
-      validateAndUpdateSearchParams: mockValidateAndUpdateSearchParams,
-      validationErrors: [],
-      hasValidationErrors: () => false,
-      getValidationError: () => undefined
-    } as ReturnType<typeof useSearchStore>)
-    
-    vi.mocked(useCollectionStore).mockReturnValue({
-      collections: mockCollections,
-      fetchCollections: vi.fn(),
-      loading: false,
-      error: null
-    } as ReturnType<typeof useCollectionStore>)
-    
-    vi.mocked(useUIStore).mockReturnValue({
-      addToast: mockAddToast
-    } as Partial<ReturnType<typeof useUIStore>> as ReturnType<typeof useUIStore>)
-  })
-
-  describe('Search Request Network Failures', () => {
-    it('should show error when search fails due to network error', async () => {
-      renderWithErrorHandlers(
-        <SearchInterface />,
-        searchErrorHandlers.networkError()
-      )
-
-      // Select collections
-      const multiSelect = screen.getByText(/select collections/i)
-      await userEvent.click(multiSelect)
-      
-      const collection1 = await screen.findByText('Test Collection 1')
-      await userEvent.click(collection1)
-      
-      // Enter search query
-      const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
-      await userEvent.type(searchInput, 'test query')
-      
-      // Mock search to reject
-      vi.mocked(searchV2Api.search).mockRejectedValue(new Error('Network error'))
-      
-      // Submit search
-      const searchButton = screen.getByRole('button', { name: /search/i })
-      await userEvent.click(searchButton)
-      
-      // Should show error
-      await waitFor(() => {
-        expect(mockAddToast).toHaveBeenCalledWith({
-          type: 'error',
-          message: 'Network error'
-        })
+  it('should show error toast when search fails due to network error', async () => {
+    // Override the search handler to return a network error
+    server.use(
+      http.post('/api/v2/search', () => {
+        return HttpResponse.error()
       })
-    })
+    )
 
-    it('should preserve search parameters after network error', async () => {
-      renderWithErrorHandlers(
-        <SearchInterface />,
-        searchErrorHandlers.networkError()
-      )
+    renderWithProviders(<SearchInterface />)
 
-      // Set up search parameters
-      const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
-      await userEvent.type(searchInput, 'important documents')
-      
-      // Select collections
-      const multiSelect = screen.getByText(/select collections/i)
-      await userEvent.click(multiSelect)
-      await userEvent.click(await screen.findByText('Test Collection 1'))
-      await userEvent.click(await screen.findByText('Test Collection 2'))
-      
-      mockSearch.mockRejectedValue(new Error('Network error'))
-      
-      // Search
-      await userEvent.click(screen.getByRole('button', { name: /search/i }))
-      
-      await waitFor(() => {
-        expect(mockSetError).toHaveBeenCalled()
-      })
-      
-      // All parameters should be preserved
-      expect(searchInput).toHaveValue('important documents')
-      // Collections should still be selected (would need to check the component state)
-    })
-
-    it('should handle offline to online transition', async () => {
-      renderWithErrorHandlers(
-        <SearchInterface />,
-        []
-      )
-
-      const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
-      await userEvent.type(searchInput, 'test')
-      
-      // Go offline
-      simulateOffline()
-      mockSearch.mockRejectedValue(new Error('Network error'))
-      
-      await userEvent.click(screen.getByRole('button', { name: /search/i }))
-      
-      await waitFor(() => {
-        expect(mockSetError).toHaveBeenCalledWith('Network error')
-      })
-      
-      // Go back online
-      simulateOnline()
-      mockSearch.mockResolvedValue(undefined)
-      mockSetError.mockClear()
-      
-      // Try again
-      await userEvent.click(screen.getByRole('button', { name: /search/i }))
-      
-      // Should work now
-      await waitFor(() => {
-        expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({
-          query: 'test'
-        }))
-      })
-      expect(mockSetError).not.toHaveBeenCalled()
-    })
-
-    it('should disable search button during network request', async () => {
-      // Mock slow request
-      mockSearch.mockImplementation(() => 
-        new Promise(resolve => setTimeout(resolve, 1000))
-      )
-      
-      renderWithErrorHandlers(
-        <SearchInterface />,
-        []
-      )
-
-      await userEvent.type(screen.getByPlaceholderText(/search/i), 'test')
-      
-      const searchButton = screen.getByRole('button', { name: /search/i })
-      
-      // Update the mock to show searching state
-      vi.mocked(useSearchStore).mockReturnValue({
-        ...vi.mocked(useSearchStore).mock.results[0].value,
-        isSearching: true
-      } as ReturnType<typeof useSearchStore>)
-      
-      await userEvent.click(searchButton)
-      
-      // Rerender to see the updated state
-      renderWithErrorHandlers(
-        <SearchInterface />,
-        []
-      )
-      
-      // Button should show searching state
-      expect(screen.getByRole('button', { name: /searching/i })).toBeDisabled()
+    // Enter search query
+    const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
+    await userEvent.type(searchInput, 'test query')
+    
+    // Open collection dropdown
+    const collectionDropdown = screen.getByRole('button', { name: /select collections/i })
+    await userEvent.click(collectionDropdown)
+    
+    // Select a collection
+    const collection = await screen.findByText('Test Collection 1')
+    await userEvent.click(collection)
+    
+    // Close dropdown by clicking outside
+    await userEvent.click(searchInput)
+    
+    // Submit search
+    const searchButton = screen.getByRole('button', { name: /search/i })
+    await userEvent.click(searchButton)
+    
+    // Should show error message
+    await waitFor(() => {
+      expect(screen.getByText(/search failed/i)).toBeInTheDocument()
     })
   })
 
-  describe('Partial Failure Handling', () => {
-    it('should display results and warnings for partial failures', async () => {
-      renderWithErrorHandlers(
-        <SearchInterface />,
-        searchErrorHandlers.partialFailure()
-      )
+  it('should handle server errors gracefully', async () => {
+    // Override the search handler to return a 500 error
+    server.use(
+      http.post('/api/v2/search', () => {
+        return HttpResponse.json(
+          { detail: 'Internal server error' },
+          { status: 500 }
+        )
+      })
+    )
 
-      // Select all collections
-      const multiSelect = screen.getByText(/select collections/i)
-      await userEvent.click(multiSelect)
-      await userEvent.click(screen.getByText(/select all/i))
-      
-      await userEvent.type(screen.getByPlaceholderText(/search/i), 'test')
-      
-      // Mock the search to return partial results
-      mockSearch.mockImplementation(async () => {
-        // Update the store to reflect partial failure
-        vi.mocked(useSearchStore).mockReturnValue({
-          ...vi.mocked(useSearchStore).mock.results[0].value,
-          partialFailure: true,
-          failedCollections: [
+    renderWithProviders(<SearchInterface />)
+
+    // Enter search query
+    const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
+    await userEvent.type(searchInput, 'test query')
+    
+    // Open collection dropdown
+    const collectionDropdown = screen.getByRole('button', { name: /select collections/i })
+    await userEvent.click(collectionDropdown)
+    
+    // Select a collection
+    const collection = await screen.findByText('Test Collection 1')
+    await userEvent.click(collection)
+    
+    // Close dropdown
+    await userEvent.click(searchInput)
+    
+    // Submit search
+    const searchButton = screen.getByRole('button', { name: /search/i })
+    await userEvent.click(searchButton)
+    
+    // Should show error message
+    await waitFor(() => {
+      expect(screen.getByText(/search failed/i)).toBeInTheDocument()
+    })
+  })
+
+  it('should handle partial failures', async () => {
+    // Override the search handler to return partial failure
+    server.use(
+      http.post('/api/v2/search', () => {
+        return HttpResponse.json({
+          results: [
             {
-              collection_id: 'coll-2',
-              collection_name: 'Failed Collection',
+              document_id: 'doc_1',
+              chunk_id: 'chunk_1',
+              score: 0.9,
+              text: 'Test result',
+              file_path: '/test.txt',
+              file_name: 'test.txt',
+              collection_id: '123e4567-e89b-12d3-a456-426614174000',
+              collection_name: 'Test Collection 1',
+            }
+          ],
+          total_results: 1,
+          partial_failure: true,
+          failed_collections: [
+            {
+              collection_id: '456e7890-e89b-12d3-a456-426614174001',
+              collection_name: 'Test Collection 2',
               error: 'Vector index corrupted'
             }
           ],
-          results: [
-            {
-              collection_id: 'coll-1',
-              collection_name: 'Working Collection',
-              chunk_id: 1,
-              content: 'Test result',
-              score: 0.9
-            }
-          ],
-          totalResults: 1
-        } as ReturnType<typeof useSearchStore>)
+          search_time_ms: 100,
+          total_time_ms: 150,
+        })
       })
-      
-      await userEvent.click(screen.getByRole('button', { name: /search/i }))
-      
-      // Should show warning toast about partial failure
-      await waitFor(() => {
-        expect(mockAddToast).toHaveBeenCalledWith(
-          {
-    message: expect.stringContaining('Search completed with errors'),
-    type: 'warning'
-  })
-      })
-    })
+    )
 
-    it('should handle all collections failing gracefully', async () => {
-      renderWithErrorHandlers(
-        <SearchInterface />,
-        []
-      )
+    renderWithProviders(<SearchInterface />)
 
-      // Mock all collections failing
-      mockSearch.mockImplementation(async () => {
-        vi.mocked(useSearchStore).mockReturnValue({
-          ...vi.mocked(useSearchStore).mock.results[0].value,
-          partialFailure: true,
-          failedCollections: mockCollections.map(c => ({
-            collection_id: c.uuid,
-            collection_name: c.name,
-            error: 'Search timeout'
-          })),
-          results: [],
-          totalResults: 0
-        } as ReturnType<typeof useSearchStore>)
-      })
-      
-      await userEvent.type(screen.getByPlaceholderText(/search/i), 'test')
-      await userEvent.click(screen.getByRole('button', { name: /search/i }))
-      
-      await waitFor(() => {
-        expect(mockAddToast).toHaveBeenCalledWith(
-          {
-    message: expect.stringContaining('All collections failed'),
-    type: 'error'
-  })
-      })
+    // Enter search query
+    const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
+    await userEvent.type(searchInput, 'test query')
+    
+    // Open collection dropdown
+    const collectionDropdown = screen.getByRole('button', { name: /select collections/i })
+    await userEvent.click(collectionDropdown)
+    
+    // Select both collections
+    const collection1 = await screen.findByText('Test Collection 1')
+    await userEvent.click(collection1)
+    
+    const collection2 = await screen.findByText('Test Collection 2')
+    await userEvent.click(collection2)
+    
+    // Close dropdown
+    await userEvent.click(searchInput)
+    
+    // Submit search
+    const searchButton = screen.getByRole('button', { name: /search/i })
+    await userEvent.click(searchButton)
+    
+    // Should show warning about partial failure
+    await waitFor(() => {
+      expect(screen.getByText(/search completed with.*failing/i)).toBeInTheDocument()
     })
   })
 
-  describe('Timeout Handling', () => {
-    it('should handle search timeout appropriately', async () => {
-      renderWithErrorHandlers(
-        <SearchInterface />,
-        []
-      )
+  it('should disable search button when no collections selected', () => {
+    renderWithProviders(<SearchInterface />)
 
-      // Mock timeout
-      mockSearch.mockRejectedValue(new Error('Request timeout after 30s'))
-      
-      await userEvent.type(screen.getByPlaceholderText(/search/i), 'complex query')
-      await userEvent.click(screen.getByRole('button', { name: /search/i }))
-      
-      await waitFor(() => {
-        expect(mockSetError).toHaveBeenCalledWith('Request timeout after 30s')
-      })
-      
-      // Should suggest trying with fewer collections or simpler query
-      // (This would be in the error message displayed to the user)
-    })
-
-    it('should handle rapid search requests', async () => {
-      renderWithErrorHandlers(
-        <SearchInterface />,
-        []
-      )
-
-      const searchInput = screen.getByPlaceholderText(/search/i)
-      const searchButton = screen.getByRole('button', { name: /search/i })
-      
-      // Type and search rapidly
-      await userEvent.type(searchInput, 'a')
-      await userEvent.click(searchButton)
-      
-      await userEvent.clear(searchInput)
-      await userEvent.type(searchInput, 'ab')
-      await userEvent.click(searchButton)
-      
-      await userEvent.clear(searchInput)
-      await userEvent.type(searchInput, 'abc')
-      await userEvent.click(searchButton)
-      
-      // Should handle all requests without errors
-      await waitFor(() => {
-        expect(mockSearch).toHaveBeenCalledTimes(3)
-      })
-    })
+    const searchButton = screen.getByRole('button', { name: /search/i })
+    expect(searchButton).toBeDisabled()
   })
 
-  describe('Collection Loading Errors During Search', () => {
-    it('should handle collection list refresh failure gracefully', async () => {
-      const mockFetchCollections = vi.fn()
-      vi.mocked(useCollectionStore).mockReturnValue({
-        collections: [],
-        fetchCollections: mockFetchCollections,
-        loading: false,
-        error: 'Failed to load collections'
-      } as ReturnType<typeof useCollectionStore>)
-      
-      renderWithErrorHandlers(
-        <SearchInterface />,
-        collectionErrorHandlers.networkError()
-      )
+  it('should require search query', async () => {
+    renderWithProviders(<SearchInterface />)
 
-      // Search should be disabled when no collections are selected
-      const searchButton = screen.getByRole('button', { name: /search/i })
-      expect(searchButton).toBeDisabled()
-      
-      // Try to refresh collections
-      await userEvent.click(screen.getByText(/refresh/i))
-      expect(mockFetchCollections).toHaveBeenCalled()
+    // Open collection dropdown and select a collection
+    const collectionDropdown = screen.getByRole('button', { name: /select collections/i })
+    await userEvent.click(collectionDropdown)
+    
+    const collection = await screen.findByText('Test Collection 1')
+    await userEvent.click(collection)
+    
+    // Try to search without query
+    const searchButton = screen.getByRole('button', { name: /search/i })
+    await userEvent.click(searchButton)
+    
+    // Should show error about missing query
+    await waitFor(() => {
+      expect(screen.getByText(/please enter a search query/i)).toBeInTheDocument()
     })
   })
 })

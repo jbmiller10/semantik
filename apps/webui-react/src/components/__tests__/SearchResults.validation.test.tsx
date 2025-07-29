@@ -1,5 +1,6 @@
 import React from 'react'
 import { screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import SearchResults from '../SearchResults'
 import { useSearchStore } from '../../stores/searchStore'
 import type { SearchResult } from '../../stores/searchStore'
@@ -125,7 +126,14 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
       expect(screen.getByText('Another Failed')).toBeInTheDocument()
       expect(screen.getByText(/Timeout during search/)).toBeInTheDocument()
       
-      // Should still show successful results
+      // Should show the collection is expanded by default
+      expect(screen.getByText('Working Collection')).toBeInTheDocument()
+      
+      // Click on the document to expand it (documents are collapsed by default)
+      const documentHeader = screen.getByText('doc1.txt')
+      await userEvent.click(documentHeader.closest('.cursor-pointer')!)
+      
+      // Now the content should be visible
       expect(screen.getByText('Test result from working collection')).toBeInTheDocument()
     })
 
@@ -230,6 +238,11 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
       
       // Should indicate that some results were returned despite failures
       expect(screen.getByText(/Found 1 results/i)).toBeInTheDocument()
+      
+      // Verify the successful result is accessible by expanding the document
+      const documentHeader = screen.getByText('file.txt')
+      await userEvent.click(documentHeader.closest('.cursor-pointer')!)
+      expect(screen.getByText('Successful result')).toBeInTheDocument()
     })
   })
 
@@ -313,6 +326,13 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
 
       renderWithErrorHandlers(<SearchResults />, [])
 
+      // Should display collection
+      expect(screen.getByText('Test Collection')).toBeInTheDocument()
+      
+      // Expand the document to see content
+      const documentHeader = screen.getByText('test.txt')
+      await userEvent.click(documentHeader.closest('.cursor-pointer')!)
+      
       // Should display results normally
       expect(screen.getByText(/Result with \[test\] in content/i)).toBeInTheDocument()
     })
@@ -418,11 +438,15 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
 
       renderWithErrorHandlers(<SearchResults />, [])
 
-      // Should show valid content
-      expect(screen.getByText('Valid content')).toBeInTheDocument()
-      
       // Should handle missing collection name by using 'Unknown Collection'
       expect(screen.getByText('Unknown Collection')).toBeInTheDocument()
+      
+      // Expand the document with valid content
+      const documentHeader = screen.getByText('test2.txt')
+      await userEvent.click(documentHeader.closest('.cursor-pointer')!)
+      
+      // Should show valid content
+      expect(screen.getByText('Valid content')).toBeInTheDocument()
     })
 
     it('should display score validation warnings', async () => {
@@ -470,6 +494,13 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
 
       renderWithErrorHandlers(<SearchResults />, [])
 
+      // Expand documents to see content
+      const doc1Header = screen.getByText('test.txt')
+      await userEvent.click(doc1Header.closest('.cursor-pointer')!)
+      
+      const doc2Header = screen.getByText('test2.txt')
+      await userEvent.click(doc2Header.closest('.cursor-pointer')!)
+      
       // Should still display results but maybe normalize scores
       expect(screen.getByText('Result with invalid score')).toBeInTheDocument()
       expect(screen.getByText('Result with negative score')).toBeInTheDocument()
@@ -510,8 +541,17 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
       // Should show total count
       expect(screen.getByText(/Found 1000 results/i)).toBeInTheDocument()
       
-      // Should implement pagination or virtualization (implementation specific)
-      // For now, just check that it doesn't crash
+      // The collection should be expanded by default
+      expect(screen.getByText('Large Collection')).toBeInTheDocument()
+      
+      // Check that the first document is shown
+      expect(screen.getByText('doc0.txt')).toBeInTheDocument()
+      
+      // Expand the first document
+      const firstDocHeader = screen.getByText('doc0.txt')
+      await userEvent.click(firstDocHeader.closest('.cursor-pointer')!)
+      
+      // Should show the first result
       expect(screen.getByText('Result 0')).toBeInTheDocument()
     })
   })
