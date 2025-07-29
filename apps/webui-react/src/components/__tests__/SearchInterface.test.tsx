@@ -58,7 +58,16 @@ vi.mock('../CollectionMultiSelect', () => ({
 
 // Mock RerankingConfiguration component
 vi.mock('../RerankingConfiguration', () => ({
-  RerankingConfiguration: ({ enabled, onChange }: { enabled: boolean; onChange: (config: { useReranker: boolean }) => void }) => (
+  RerankingConfiguration: ({ enabled, model, quantization, onChange }: { 
+    enabled: boolean; 
+    model?: string;
+    quantization?: string;
+    onChange: (config: { 
+      useReranker?: boolean;
+      rerankModel?: string;
+      rerankQuantization?: string;
+    }) => void 
+  }) => (
     <div data-testid="reranking-configuration">
       <label>
         <input 
