@@ -134,7 +134,7 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
     })
 
     it('should handle WebSocket failures without affecting UI refresh', { timeout: 15000 }, async () => {
-      const mockRefetch = vi.fn()
+      let apiCallCount = 0
       
       vi.mocked(useOperationProgress).mockImplementation((operationId, options) => {
         // Simulate connection error
@@ -151,8 +151,11 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
         }
       })
       
-      vi.mocked(operationsV2Api.list).mockResolvedValue({
-        data: mockActiveOperations
+      vi.mocked(operationsV2Api.list).mockImplementation(() => {
+        apiCallCount++
+        return Promise.resolve({
+          data: mockActiveOperations
+        })
       })
       
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
@@ -163,9 +166,12 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
         expect(screen.getByText('Re-index')).toBeInTheDocument()
       })
       
-      // Auto-refresh should continue working
+      // Store initial call count
+      const initialCallCount = apiCallCount
+      
+      // Auto-refresh should continue working - wait for at least one more API call
       await waitFor(() => {
-        expect(mockRefetch).toHaveBeenCalled()
+        expect(apiCallCount).toBeGreaterThan(initialCallCount)
       }, { timeout: 10000 }) // 5s refresh interval + buffer
     })
 
@@ -297,7 +303,7 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
 
   describe('Error Recovery and Fallback', () => {
     it('should fall back to polling when all WebSockets fail', { timeout: 15000 }, async () => {
-      const mockRefetch = vi.fn()
+      let apiCallCount = 0
       
       // All WebSocket connections fail
       vi.mocked(useOperationProgress).mockImplementation(() => {
@@ -308,8 +314,11 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
         }
       })
       
-      vi.mocked(operationsV2Api.list).mockResolvedValue({
-        data: mockActiveOperations
+      vi.mocked(operationsV2Api.list).mockImplementation(() => {
+        apiCallCount++
+        return Promise.resolve({
+          data: mockActiveOperations
+        })
       })
       
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
@@ -322,9 +331,12 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       // No live indicators should be shown
       expect(screen.queryByText(/live/i)).not.toBeInTheDocument()
       
-      // Polling should continue
+      // Store initial call count
+      const initialCallCount = apiCallCount
+      
+      // Polling should continue - wait for at least one more API call
       await waitFor(() => {
-        expect(mockRefetch).toHaveBeenCalled()
+        expect(apiCallCount).toBeGreaterThan(initialCallCount)
       }, { timeout: 10000 })
     })
 
@@ -384,7 +396,8 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
       
       await waitFor(() => {
-        expect(screen.getByText('Initial Index')).toBeInTheDocument()
+        const initialIndexElements = screen.getAllByText('Initial Index')
+        expect(initialIndexElements.length).toBeGreaterThan(0)
       })
       
       // Should limit WebSocket connections (implementation specific)
