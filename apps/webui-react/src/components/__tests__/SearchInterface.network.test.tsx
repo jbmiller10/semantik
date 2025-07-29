@@ -1,13 +1,55 @@
 import React from 'react'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import SearchInterface from '../SearchInterface'
 import { render } from '../../tests/utils/test-utils'
 import { server } from '../../tests/mocks/server'
 import { http, HttpResponse } from 'msw'
+import { useSearchStore } from '../../stores/searchStore'
+import { useUIStore } from '../../stores/uiStore'
+import { vi } from 'vitest'
 
 describe('SearchInterface - Network Error Handling', () => {
+  beforeEach(() => {
+    // Reset search store to initial state
+    const initialState = {
+      searchParams: {
+        query: '',
+        selectedCollections: [],
+        topK: 10,
+        scoreThreshold: 0.0,
+        searchType: 'semantic' as const,
+        useReranker: false,
+        hybridAlpha: 0.7,
+        hybridMode: 'reciprocal_rank' as const,
+        keywordMode: 'bm25' as const,
+        rerankModel: null,
+        rerankQuantization: null,
+      },
+      results: [],
+      loading: false,
+      error: null,
+      validationErrors: [],
+      collections: [],
+      failedCollections: [],
+      partialFailure: false,
+      rerankingMetrics: null,
+      rerankingAvailable: false,
+      rerankingModelsLoading: false,
+    }
+    useSearchStore.setState(initialState)
+    // Also clear UI store toasts
+    useUIStore.setState({ toasts: [] })
+    vi.clearAllMocks()
+  })
+  
+  afterEach(() => {
+    cleanup()
+  })
+  
   it('should show error toast when search fails due to network error', async () => {
+    const user = userEvent.setup()
+    
     // Override the search handler to return a network error
     server.use(
       http.post('/api/v2/search', () => {
@@ -17,32 +59,35 @@ describe('SearchInterface - Network Error Handling', () => {
 
     render(<SearchInterface />)
 
-    // Enter search query
-    const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
-    await userEvent.type(searchInput, 'test query')
-    
-    // Open collection dropdown
+    // First select a collection to avoid validation errors
     const collectionDropdown = screen.getByRole('button', { name: /select collections/i })
-    await userEvent.click(collectionDropdown)
+    await user.click(collectionDropdown)
     
-    // Select a collection
-    const collection = await screen.findByText('Test Collection 1')
-    await userEvent.click(collection)
+    // Select a collection (use getAllByText to handle multiple elements)
+    const collections = await screen.findAllByText('Test Collection 1')
+    const collection = collections.find(el => el.classList.contains('font-medium'))
+    await user.click(collection)
     
     // Close dropdown by clicking outside
-    await userEvent.click(searchInput)
+    const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
+    await user.click(searchInput)
+    
+    // Now enter search query
+    await user.type(searchInput, 'test query')
     
     // Submit search
     const searchButton = screen.getByRole('button', { name: /search/i })
-    await userEvent.click(searchButton)
+    await user.click(searchButton)
     
-    // Should show error message
+    // Should show error message in the SearchResults component
     await waitFor(() => {
-      expect(screen.getByText(/search failed/i)).toBeInTheDocument()
+      expect(screen.getByText('Network Error')).toBeInTheDocument()
     })
   })
 
   it('should handle server errors gracefully', async () => {
+    const user = userEvent.setup()
+    
     // Override the search handler to return a 500 error
     server.use(
       http.post('/api/v2/search', () => {
@@ -55,32 +100,35 @@ describe('SearchInterface - Network Error Handling', () => {
 
     render(<SearchInterface />)
 
-    // Enter search query
-    const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
-    await userEvent.type(searchInput, 'test query')
-    
-    // Open collection dropdown
+    // First select a collection to avoid validation errors
     const collectionDropdown = screen.getByRole('button', { name: /select collections/i })
-    await userEvent.click(collectionDropdown)
+    await user.click(collectionDropdown)
     
-    // Select a collection
-    const collection = await screen.findByText('Test Collection 1')
-    await userEvent.click(collection)
+    // Select a collection (use getAllByText to handle multiple elements)
+    const collections = await screen.findAllByText('Test Collection 1')
+    const collection = collections.find(el => el.classList.contains('font-medium'))
+    await user.click(collection)
     
-    // Close dropdown
-    await userEvent.click(searchInput)
+    // Close dropdown by clicking outside
+    const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
+    await user.click(searchInput)
+    
+    // Now enter search query
+    await user.type(searchInput, 'test query')
     
     // Submit search
     const searchButton = screen.getByRole('button', { name: /search/i })
-    await userEvent.click(searchButton)
+    await user.click(searchButton)
     
-    // Should show error message
+    // Should show error message in the SearchResults component
     await waitFor(() => {
-      expect(screen.getByText(/search failed/i)).toBeInTheDocument()
+      expect(screen.getByText('Internal server error')).toBeInTheDocument()
     })
   })
 
   it('should handle partial failures', async () => {
+    const user = userEvent.setup()
+    
     // Override the search handler to return partial failure
     server.use(
       http.post('/api/v2/search', () => {
@@ -114,58 +162,78 @@ describe('SearchInterface - Network Error Handling', () => {
 
     render(<SearchInterface />)
 
-    // Enter search query
-    const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
-    await userEvent.type(searchInput, 'test query')
-    
-    // Open collection dropdown
+    // First select collections to avoid validation errors
     const collectionDropdown = screen.getByRole('button', { name: /select collections/i })
-    await userEvent.click(collectionDropdown)
+    await user.click(collectionDropdown)
     
-    // Select both collections
-    const collection1 = await screen.findByText('Test Collection 1')
-    await userEvent.click(collection1)
+    // Select both collections (use getAllByText to handle multiple elements)
+    const collections1 = await screen.findAllByText('Test Collection 1')
+    const collection1 = collections1.find(el => el.classList.contains('font-medium'))
+    await user.click(collection1!)
     
-    const collection2 = await screen.findByText('Test Collection 2')
-    await userEvent.click(collection2)
+    const collections2 = await screen.findAllByText('Test Collection 2')
+    const collection2 = collections2.find(el => el.classList.contains('font-medium'))
+    await user.click(collection2!)
     
     // Close dropdown
-    await userEvent.click(searchInput)
+    const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
+    await user.click(searchInput)
+    
+    // Now enter search query
+    await user.type(searchInput, 'test query')
     
     // Submit search
     const searchButton = screen.getByRole('button', { name: /search/i })
-    await userEvent.click(searchButton)
+    await user.click(searchButton)
     
-    // Should show warning about partial failure
+    // Should show warning about partial failure in toast
     await waitFor(() => {
-      expect(screen.getByText(/search completed with.*failing/i)).toBeInTheDocument()
+      const toasts = useUIStore.getState().toasts
+      const warningToast = toasts.find(t => t.type === 'warning')
+      expect(warningToast).toBeDefined()
+      expect(warningToast?.message).toMatch(/Search completed with.*collection\(s\) failing/)
     })
   })
 
-  it('should disable search button when no collections selected', () => {
+  it('should disable search button when no collections selected', async () => {
     render(<SearchInterface />)
 
+    // Enter a search query first
+    const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
+    await userEvent.type(searchInput, 'test query')
+    
+    // By default, no collections are selected, so the search button should be disabled
     const searchButton = screen.getByRole('button', { name: /search/i })
     expect(searchButton).toBeDisabled()
   })
 
   it('should require search query', async () => {
+    const user = userEvent.setup()
     render(<SearchInterface />)
 
     // Open collection dropdown and select a collection
     const collectionDropdown = screen.getByRole('button', { name: /select collections/i })
-    await userEvent.click(collectionDropdown)
+    await user.click(collectionDropdown)
     
-    const collection = await screen.findByText('Test Collection 1')
-    await userEvent.click(collection)
+    const collections = await screen.findAllByText('Test Collection 1')
+    const collection = collections.find(el => el.classList.contains('font-medium'))
+    await user.click(collection!)
     
-    // Try to search without query
+    // Close dropdown by clicking outside
+    const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
+    await user.click(searchInput)
+    
+    // Type then clear the search input to trigger validation
+    await user.type(searchInput, 'test')
+    await user.clear(searchInput)
+    
+    // The search button should be disabled when there are validation errors
     const searchButton = screen.getByRole('button', { name: /search/i })
-    await userEvent.click(searchButton)
+    expect(searchButton).toBeDisabled()
     
-    // Should show error about missing query
+    // Should show validation error in the UI
     await waitFor(() => {
-      expect(screen.getByText(/please enter a search query/i)).toBeInTheDocument()
+      expect(screen.getByText('Search query is required')).toBeInTheDocument()
     })
   })
 })
