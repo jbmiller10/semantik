@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { CollectionsDashboard } from '../CollectionsDashboard'
 import { SearchInterface } from '../SearchInterface'
 import { ActiveOperationsTab } from '../ActiveOperationsTab'
-import { HomePage } from '../HomePage'
+import { HomePage } from '../../pages/HomePage'
 import { useCollectionStore } from '../../stores/collectionStore'
 import { useSearchStore } from '../../stores/searchStore'
 import { useUIStore } from '../../stores/uiStore'
@@ -12,7 +12,7 @@ import {
   renderWithErrorHandlers,
   mockConsoleError
 } from '../../tests/utils/errorTestUtils'
-import { TestWrapper } from '../../tests/utils/testUtils'
+import { TestWrapper } from '../../tests/utils/test-utils'
 import { render } from '@testing-library/react'
 import type { Collection } from '@/types/collection'
 
@@ -20,10 +20,13 @@ import type { Collection } from '@/types/collection'
 vi.mock('../../stores/collectionStore')
 vi.mock('../../stores/searchStore')
 vi.mock('../../stores/uiStore')
-vi.mock('react-router-dom', () => ({
-  ...vi.importActual('react-router-dom'),
-  useNavigate: () => vi.fn()
-}))
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom')
+  return {
+    ...actual,
+    useNavigate: () => vi.fn()
+  }
+})
 
 // Helper to create a search store mock
 const createSearchStoreMock = (overrides?: Partial<ReturnType<typeof useSearchStore>>) => ({

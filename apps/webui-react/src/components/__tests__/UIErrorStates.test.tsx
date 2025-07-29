@@ -7,7 +7,7 @@ import { AddDataToCollectionModal } from '../AddDataToCollectionModal'
 import { useUIStore } from '../../stores/uiStore'
 import { useCollectionStore } from '../../stores/collectionStore'
 import { renderWithErrorHandlers } from '../../tests/utils/errorTestUtils'
-import { TestWrapper } from '../../tests/utils/testUtils'
+import { TestWrapper } from '../../tests/utils/test-utils'
 import { render } from '@testing-library/react'
 
 // Mock stores
