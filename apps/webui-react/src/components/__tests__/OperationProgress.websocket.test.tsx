@@ -6,10 +6,9 @@ import { useCollectionStore } from '../../stores/collectionStore'
 import { useUIStore } from '../../stores/uiStore'
 import { 
   renderWithErrorHandlers,
-  mockWebSocket,
-  MockWebSocket
+  mockWebSocket
 } from '../../tests/utils/errorTestUtils'
-import type { MockedFunction, MockOperation } from '@/tests/types/test-types'
+import type { MockOperation } from '@/tests/types/test-types'
 
 // Mock the hooks
 vi.mock('../../hooks/useOperationProgress')

@@ -268,7 +268,7 @@ describe('DeleteCollectionModal', () => {
       const deletePromise = new Promise<void>((resolve) => {
         resolveDelete = resolve;
       });
-      mockCollectionsV2Api.delete.mockReturnValue(deletePromise as Promise<{ data: {} }>);
+      mockCollectionsV2Api.delete.mockReturnValue(deletePromise as Promise<{ data: object }>);
       renderComponent();
       
       const input = screen.getByLabelText(/Type DELETE to confirm/);

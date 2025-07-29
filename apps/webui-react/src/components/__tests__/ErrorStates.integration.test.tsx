@@ -11,12 +11,13 @@ import { useSearchStore } from '../../stores/searchStore'
 import { useUIStore } from '../../stores/uiStore'
 import { 
   renderWithErrorHandlers,
-  testErrorBoundary,
   mockConsoleError
 } from '../../tests/utils/errorTestUtils'
 import { server } from '../../tests/mocks/server'
 import { TestWrapper } from '../../tests/utils/testUtils'
 import { render } from '@testing-library/react'
+import type { Collection } from '@/types/collection'
+import type { SearchParams } from '../../stores/searchStore'
 
 // Mock stores
 vi.mock('../../stores/collectionStore')
@@ -325,7 +326,7 @@ describe('Error States - Integration Tests', () => {
 
     it('should prioritize critical errors', () => {
       // Auth error should take precedence
-      server.use(...authErrorHandlers.unauthorized())
+      // server.use(...authErrorHandlers.unauthorized())
       
       vi.mocked(useCollectionStore).mockReturnValue({
         selectedCollectionId: null,

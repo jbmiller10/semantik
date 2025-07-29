@@ -54,7 +54,7 @@ describe('Search - Permission Error Handling', () => {
       addToast: mockAddToast,
       setShowDocumentViewer: mockSetShowDocumentViewer,
       showDocumentViewer: null
-    } as any)
+    } as ReturnType<typeof useUIStore>)
   })
 
   describe('Collection Search Permissions', () => {
@@ -64,7 +64,7 @@ describe('Search - Permission Error Handling', () => {
         fetchCollections: vi.fn(),
         loading: false,
         error: null
-      } as any)
+      } as ReturnType<typeof useCollectionStore>)
       
       vi.mocked(useSearchStore).mockReturnValue({
         searchParams: {

@@ -14,6 +14,7 @@ import {
 import { collectionsV2Api } from '../../services/api/v2/collections';
 import { useUIStore } from '../../stores/uiStore';
 import type { Collection, CreateCollectionRequest, UpdateCollectionRequest } from '../../types/collection';
+import type { MockAxiosResponse } from '../../tests/types/test-types';
 
 // Mock the API module
 vi.mock('../../services/api/v2/collections', () => ({
@@ -117,7 +118,7 @@ describe('useCollections', () => {
     it('should fetch and return collections list', async () => {
       vi.mocked(collectionsV2Api.list).mockResolvedValue({
         data: { collections: mockCollections },
-      } as any);
+      } as MockAxiosResponse<{ collections: Collection[] }>);
 
       const { result } = renderHook(() => useCollections(), {
         wrapper: createWrapper(queryClient),
@@ -153,7 +154,7 @@ describe('useCollections', () => {
     it('should auto-refetch when there are active operations', async () => {
       vi.mocked(collectionsV2Api.list).mockResolvedValue({
         data: { collections: mockCollections },
-      } as any);
+      } as MockAxiosResponse<{ collections: Collection[] }>);
 
       const { result } = renderHook(() => useCollections(), {
         wrapper: createWrapper(queryClient),
@@ -167,7 +168,7 @@ describe('useCollections', () => {
       const refetchInterval = queryClient.getQueryDefaults(collectionKeys.lists()).queries?.refetchInterval;
       if (typeof refetchInterval === 'function') {
         const query = queryClient.getQueryCache().find(collectionKeys.lists());
-        const interval = refetchInterval({ state: { data: mockCollections } } as any, query);
+        const interval = refetchInterval({ state: { data: mockCollections } } as Parameters<typeof refetchInterval>[0], query);
         expect(interval).toBe(30000); // 30 seconds for active operations
       }
     });
@@ -181,7 +182,7 @@ describe('useCollections', () => {
 
       vi.mocked(collectionsV2Api.list).mockResolvedValue({
         data: { collections: collectionsWithoutActive },
-      } as any);
+      } as MockAxiosResponse<{ collections: Collection[] }>);
 
       const { result } = renderHook(() => useCollections(), {
         wrapper: createWrapper(queryClient),
@@ -195,7 +196,7 @@ describe('useCollections', () => {
       const refetchInterval = queryClient.getQueryDefaults(collectionKeys.lists()).queries?.refetchInterval;
       if (typeof refetchInterval === 'function') {
         const query = queryClient.getQueryCache().find(collectionKeys.lists());
-        const interval = refetchInterval({ state: { data: collectionsWithoutActive } } as any, query);
+        const interval = refetchInterval({ state: { data: collectionsWithoutActive } } as Parameters<typeof refetchInterval>[0], query);
         expect(interval).toBe(false);
       }
     });
@@ -206,7 +207,7 @@ describe('useCollections', () => {
       const collection = mockCollections[0];
       vi.mocked(collectionsV2Api.get).mockResolvedValue({
         data: collection,
-      } as any);
+      } as MockAxiosResponse<Collection>);
 
       const { result } = renderHook(() => useCollection('1'), {
         wrapper: createWrapper(queryClient),
@@ -259,7 +260,7 @@ describe('useCollections', () => {
 
       vi.mocked(collectionsV2Api.create).mockResolvedValue({
         data: createdCollection,
-      } as any);
+      } as MockAxiosResponse<Collection>);
 
       // Pre-populate cache with existing collections
       queryClient.setQueryData(collectionKeys.lists(), mockCollections);
@@ -307,7 +308,7 @@ describe('useCollections', () => {
       await act(async () => {
         try {
           await result.current.mutateAsync(createData);
-        } catch (e) {
+        } catch {
           // Expected to throw
         }
       });
@@ -337,10 +338,10 @@ describe('useCollections', () => {
         updated_at: '2024-01-03T00:00:00Z',
       };
 
-      vi.mocked(collectionsV2Api.update).mockResolvedValue({} as any);
+      vi.mocked(collectionsV2Api.update).mockResolvedValue({} as MockAxiosResponse<Collection>);
       vi.mocked(collectionsV2Api.get).mockResolvedValue({
         data: updatedCollection,
-      } as any);
+      } as MockAxiosResponse<Collection>);
 
       // Pre-populate caches
       queryClient.setQueryData(collectionKeys.lists(), mockCollections);
@@ -388,7 +389,7 @@ describe('useCollections', () => {
       await act(async () => {
         try {
           await result.current.mutateAsync({ id: '1', updates });
-        } catch (e) {
+        } catch {
           // Expected to throw
         }
       });
@@ -410,7 +411,7 @@ describe('useCollections', () => {
 
   describe('useDeleteCollection hook', () => {
     it('should delete collection with cascade cleanup', async () => {
-      vi.mocked(collectionsV2Api.delete).mockResolvedValue({} as any);
+      vi.mocked(collectionsV2Api.delete).mockResolvedValue({} as MockAxiosResponse<void>);
 
       // Pre-populate various caches
       queryClient.setQueryData(collectionKeys.lists(), mockCollections);
@@ -457,7 +458,7 @@ describe('useCollections', () => {
       await act(async () => {
         try {
           await result.current.mutateAsync('1');
-        } catch (e) {
+        } catch {
           // Expected to throw
         }
       });
@@ -520,7 +521,7 @@ describe('useCollections', () => {
     it('should invalidate queries after successful mutations', async () => {
       vi.mocked(collectionsV2Api.create).mockResolvedValue({
         data: { ...mockCollections[0], id: 'new-id' },
-      } as any);
+      } as MockAxiosResponse<Collection>);
 
       const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
@@ -540,12 +541,12 @@ describe('useCollections', () => {
 
   describe('loading states and transitions', () => {
     it('should properly transition through loading states', async () => {
-      let resolvePromise: (value: any) => void;
+      let resolvePromise: (value: MockAxiosResponse<{ collections: Collection[] }>) => void;
       const promise = new Promise((resolve) => {
         resolvePromise = resolve;
       });
 
-      vi.mocked(collectionsV2Api.list).mockReturnValue(promise as any);
+      vi.mocked(collectionsV2Api.list).mockReturnValue(promise as Promise<MockAxiosResponse<{ collections: Collection[] }>>);
 
       const { result } = renderHook(() => useCollections(), {
         wrapper: createWrapper(queryClient),

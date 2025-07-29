@@ -215,7 +215,7 @@ describe('useCollectionOperations', () => {
 
       vi.mocked(collectionsV2Api.addSource).mockResolvedValue({
         data: newOperation,
-      } as MockAxiosResponse<Operation[]>);
+      } as MockAxiosResponse<Operation>);
 
       // Pre-populate caches
       queryClient.setQueryData(operationKeys.list('col-1'), mockOperations);
@@ -303,7 +303,7 @@ describe('useCollectionOperations', () => {
 
       vi.mocked(collectionsV2Api.removeSource).mockResolvedValue({
         data: removeOperation,
-      } as MockAxiosResponse<Operation[]>);
+      } as MockAxiosResponse<Operation>);
 
       // Pre-populate caches
       queryClient.setQueryData(operationKeys.list('col-1'), mockOperations);
@@ -349,7 +349,7 @@ describe('useCollectionOperations', () => {
 
       vi.mocked(collectionsV2Api.reindex).mockResolvedValue({
         data: reindexOperation,
-      } as MockAxiosResponse<Operation[]>);
+      } as MockAxiosResponse<Operation>);
 
       // Pre-populate caches
       queryClient.setQueryData(operationKeys.list('col-1'), mockOperations);
@@ -385,7 +385,7 @@ describe('useCollectionOperations', () => {
       
       vi.mocked(collectionsV2Api.reindex).mockResolvedValue({
         data: mockOperations[0],
-      } as MockAxiosResponse<Operation[]>);
+      } as MockAxiosResponse<Operation>);
 
       const { result } = renderHook(() => useReindexCollection(), {
         wrapper: createWrapper(queryClient),
@@ -525,7 +525,7 @@ describe('useCollectionOperations', () => {
     it('should invalidate all relevant queries after mutation', async () => {
       vi.mocked(collectionsV2Api.addSource).mockResolvedValue({
         data: mockOperations[0],
-      } as MockAxiosResponse<Operation[]>);
+      } as MockAxiosResponse<Operation>);
 
       const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
 

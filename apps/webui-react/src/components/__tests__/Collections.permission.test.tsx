@@ -301,7 +301,7 @@ describe('Collections - Permission Error Handling', () => {
       
       // Mock the delete mutation to call onError
       const { useMutation } = await import('@tanstack/react-query')
-      vi.mocked(useMutation).mockImplementation((options) => ({
+      vi.mocked(useMutation).mockImplementation((options: Parameters<typeof useMutation>[0]) => ({
         mutate: () => {
           if (typeof options === 'object' && 'onError' in options && options.onError) {
             options.onError({
@@ -323,7 +323,7 @@ describe('Collections - Permission Error Handling', () => {
         reset: vi.fn(),
         variables: undefined,
         context: undefined
-      }))
+      } as ReturnType<typeof useMutation>))
       
       await waitFor(() => {
         expect(mockAddToast).toHaveBeenCalledWith({
