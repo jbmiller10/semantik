@@ -1,6 +1,6 @@
 import React from 'react'
 import { screen, waitFor } from '@testing-library/react'
-import { OperationProgress } from '../OperationProgress'
+import OperationProgress from '../OperationProgress'
 import { useOperationProgress } from '../../hooks/useOperationProgress'
 import { useCollectionStore } from '../../stores/collectionStore'
 import { useUIStore } from '../../stores/uiStore'
