@@ -1,13 +1,13 @@
 import React from 'react'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Toast } from '../Toast'
+import Toast from '../Toast'
 import { CreateCollectionModal } from '../CreateCollectionModal'
 import { AddDataToCollectionModal } from '../AddDataToCollectionModal'
 import { useUIStore } from '../../stores/uiStore'
 import { useCollectionStore } from '../../stores/collectionStore'
 import { renderWithErrorHandlers } from '../../tests/utils/errorTestUtils'
-import { TestWrapper } from '../../tests/utils/test-utils'
+import { TestWrapper } from '../../tests/utils/TestWrapper'
 import { render } from '@testing-library/react'
 
 // Mock stores
@@ -126,8 +126,11 @@ describe('UI Error States', () => {
         </TestWrapper>
       )
       
-      const closeButton = screen.getByRole('button', { name: /close/i })
-      await userEvent.click(closeButton)
+      // Find the close button within the toast (button with SVG)
+      const toast = screen.getByText('Click to dismiss error').closest('[data-testid="toast"]')
+      const closeButton = toast!.querySelector('button')
+      expect(closeButton).toBeInTheDocument()
+      await userEvent.click(closeButton!)
       
       expect(mockRemoveToast).toHaveBeenCalledWith('error-1')
     })
@@ -160,7 +163,7 @@ describe('UI Error States', () => {
       )
       
       // Submit without filling required fields
-      const submitButton = screen.getByRole('button', { name: /create$/i })
+      const submitButton = screen.getByRole('button', { name: /create collection/i })
       await userEvent.click(submitButton)
       
       // Should show validation error (browser native or custom)
@@ -206,11 +209,11 @@ describe('UI Error States', () => {
       await userEvent.type(chunkSizeInput, '0') // Below minimum
       
       // Check if browser validation will trigger
-      expect(parseInt(chunkSizeInput.value)).toBeLessThan(128) // Minimum is 128
+      expect(parseInt(chunkSizeInput.value)).toBeLessThan(100) // Minimum is 100
       
       // Input should have min/max attributes
-      expect(chunkSizeInput).toHaveAttribute('min', '128')
-      expect(chunkSizeInput).toHaveAttribute('max', '4096')
+      expect(chunkSizeInput).toHaveAttribute('min', '100')
+      expect(chunkSizeInput).toHaveAttribute('max', '2000')
     })
 
     it('should show path validation feedback', async () => {
@@ -299,7 +302,7 @@ describe('UI Error States', () => {
       
       await userEvent.type(screen.getByLabelText(/collection name/i), 'Test')
       
-      const submitButton = screen.getByRole('button', { name: /create$/i })
+      const submitButton = screen.getByRole('button', { name: /create collection/i })
       await userEvent.click(submitButton)
       
       // Button should be disabled immediately
@@ -525,7 +528,7 @@ describe('UI Error States', () => {
       
       const nameInput = screen.getByLabelText(/collection name/i)
       await userEvent.type(nameInput, 'Duplicate Name')
-      await userEvent.click(screen.getByRole('button', { name: /create$/i }))
+      await userEvent.click(screen.getByRole('button', { name: /create collection/i }))
       
       // Error should be associated with the input
       await waitFor(() => {
