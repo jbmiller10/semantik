@@ -1,4 +1,0 @@
-
-> webui-react@0.0.0 test
-> vitest --reporter=verbose --run 2
-

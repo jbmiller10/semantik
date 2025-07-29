@@ -1,7 +1,4 @@
 
 > webui-react@0.0.0 test
-> vitest --run --reporter=verbose 2
-
-
- RUN  v2.1.9 /home/dockertest/semantik/apps/webui-react
+> vitest --run 2
 
