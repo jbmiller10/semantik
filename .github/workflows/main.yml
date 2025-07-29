@@ -295,13 +295,6 @@ jobs:
         working-directory: ./apps/webui-react
         run: npm run build
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Docker images
-        run: |
-          docker buildx build --platform linux/amd64 -f packages/webui/Dockerfile --cache-from type=gha --cache-to type=gha,mode=max -t semantik-webui:test .
-          docker buildx build --platform linux/amd64 -f packages/vecpipe/Dockerfile --cache-from type=gha --cache-to type=gha,mode=max -t semantik-vecpipe:test .
 
   # PR-specific checks (only runs on PRs)
   pr-analysis:
