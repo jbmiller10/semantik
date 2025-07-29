@@ -76,9 +76,9 @@ describe('OperationProgress - WebSocket Error Handling', () => {
       // Should not show "Live" indicator
       expect(screen.queryByText(/live/i)).not.toBeInTheDocument()
       
-      // Error might be logged but UI should handle gracefully
+      // The component should still display operation type
       await waitFor(() => {
-        expect(screen.getByText('Starting...')).toBeInTheDocument()
+        expect(screen.getByText('Initial Indexing')).toBeInTheDocument()
       })
     })
 
@@ -137,9 +137,9 @@ describe('OperationProgress - WebSocket Error Handling', () => {
       // Should still show operation status
       expect(screen.getByRole('status')).toBeInTheDocument()
       
-      // Should not crash the component
+      // Should not crash the component - still shows operation info
       await waitFor(() => {
-        expect(screen.getByText('Starting...')).toBeInTheDocument()
+        expect(screen.getByText('Initial Indexing')).toBeInTheDocument()
       })
     })
 
@@ -168,7 +168,7 @@ describe('OperationProgress - WebSocket Error Handling', () => {
       
       // Component should handle gracefully
       await waitFor(() => {
-        expect(screen.getByText('Starting...')).toBeInTheDocument()
+        expect(screen.getByText('Initial Indexing')).toBeInTheDocument()
       })
     })
   })
@@ -187,7 +187,7 @@ describe('OperationProgress - WebSocket Error Handling', () => {
       
       // Component should render successfully
       expect(screen.getByRole('status')).toBeInTheDocument()
-      expect(screen.getByText('Starting...')).toBeInTheDocument()
+      expect(screen.getByText('Initial Indexing')).toBeInTheDocument()
       expect(screen.getByText('/data/documents')).toBeInTheDocument()
     })
 
@@ -203,7 +203,7 @@ describe('OperationProgress - WebSocket Error Handling', () => {
       
       // Component should not crash
       await waitFor(() => {
-        expect(screen.getByText('Starting...')).toBeInTheDocument()
+        expect(screen.getByText('Initial Indexing')).toBeInTheDocument()
       })
     })
 
@@ -261,7 +261,7 @@ describe('OperationProgress - WebSocket Error Handling', () => {
       }
       
       // Component should handle multiple retry attempts
-      expect(screen.getByText('Starting...')).toBeInTheDocument()
+      expect(screen.getByText('Initial Indexing')).toBeInTheDocument()
     })
 
     it('should restore state after reconnection', async () => {
@@ -326,7 +326,7 @@ describe('OperationProgress - WebSocket Error Handling', () => {
       
       // Should handle gracefully without errors
       await waitFor(() => {
-        expect(screen.getByText('Starting...')).toBeInTheDocument()
+        expect(screen.getByText('Initial Indexing')).toBeInTheDocument()
       })
     })
 

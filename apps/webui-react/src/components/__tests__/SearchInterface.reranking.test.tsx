@@ -211,17 +211,21 @@ describe('SearchInterface Reranking Tests', () => {
     render(<SearchInterface />, { wrapper: createWrapper() });
 
     // Initially, reranking options should not be visible
-    expect(document.getElementById('reranker-model')).toBeNull();
-    expect(document.getElementById('reranker-quantization')).toBeNull();
+    expect(screen.queryByLabelText(/Reranker Model/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Quantization/i)).not.toBeInTheDocument();
 
-    // Enable reranking
-    const rerankingCheckbox = screen.getByText('Enable Cross-Encoder Reranking');
+    // Enable reranking by clicking the checkbox input (not the label text)
+    const rerankingCheckbox = screen.getByLabelText('Enable cross-encoder reranking');
     fireEvent.click(rerankingCheckbox);
 
     // Now reranking options should be visible
     await waitFor(() => {
-      expect(document.getElementById('reranker-model')).toBeTruthy();
-      expect(document.getElementById('reranker-quantization')).toBeTruthy();
+      // Look for the select elements by their labels
+      const modelSelect = screen.getByLabelText(/Reranker Model/i);
+      const quantizationSelect = screen.getByLabelText(/Quantization/i);
+      
+      expect(modelSelect).toBeInTheDocument();
+      expect(quantizationSelect).toBeInTheDocument();
       expect(screen.getByText(/Reranking uses a more sophisticated model/)).toBeInTheDocument();
     });
   });
@@ -250,11 +254,11 @@ describe('SearchInterface Reranking Tests', () => {
     });
 
     // Enable reranking with large model
-    const rerankingCheckbox = screen.getByText('Enable Cross-Encoder Reranking');
+    const rerankingCheckbox = screen.getByLabelText('Enable cross-encoder reranking');
     fireEvent.click(rerankingCheckbox);
 
     await waitFor(() => {
-      const modelSelect = document.getElementById('reranker-model') as HTMLSelectElement;
+      const modelSelect = screen.getByLabelText(/Reranker Model/i);
       expect(modelSelect).toBeInTheDocument();
       fireEvent.change(modelSelect, { target: { value: 'Qwen/Qwen3-Reranker-8B' } });
     });
@@ -266,8 +270,14 @@ describe('SearchInterface Reranking Tests', () => {
     // Verify error is displayed
     await waitFor(() => {
       const state = useSearchStore.getState();
-      expect(state.error).toContain('Insufficient GPU memory for reranking');
-      expect(state.error).toContain('Try using a smaller model or different quantization');
+      // SearchInterface sets error to 'GPU_MEMORY_ERROR' for insufficient memory
+      expect(state.error).toBe('GPU_MEMORY_ERROR');
+      
+      // Check that the detailed error info was stored
+      const gpuError = (window as any).__gpuMemoryError;
+      expect(gpuError).toBeDefined();
+      expect(gpuError.message).toContain('Insufficient GPU memory for reranking');
+      expect(gpuError.suggestion).toContain('Try using a smaller model or different quantization');
     });
 
     // Verify toast notification

@@ -194,9 +194,10 @@ describe('CollectionsDashboard - Network Error Handling', () => {
         expect(screen.getByText('Collections')).toBeInTheDocument()
       })
       
-      // Open create modal - get the first create button (in header)
-      const createButtons = await screen.findAllByRole('button', { name: /create.*collection/i })
-      await userEvent.click(createButtons[0])
+      // Open create modal - when empty state, there are two buttons, click the header one
+      const header = screen.getByRole('heading', { name: 'Collections' }).parentElement?.parentElement
+      const headerButton = within(header!).getByRole('button', { name: /create.*collection/i })
+      await userEvent.click(headerButton)
       
       // Wait for modal to open and be fully rendered
       await waitFor(() => {
@@ -214,12 +215,11 @@ describe('CollectionsDashboard - Network Error Handling', () => {
       const nameInput = screen.getByLabelText(/collection name/i)
       await userEvent.type(nameInput, 'Test Collection')
       
-      // Submit - find all buttons with "Create Collection" text
-      const allButtons = screen.getAllByRole('button', { name: /Create Collection/i })
-      // The submit button is the one with type="submit" (last one in the list)
-      const submitButton = allButtons.find(btn => btn.getAttribute('type') === 'submit')
+      // Submit - find the button inside the modal
+      const modal = screen.getByRole('dialog')
+      const submitButton = within(modal).getByRole('button', { name: /Create Collection/i })
       expect(submitButton).toBeInTheDocument()
-      await userEvent.click(submitButton!)
+      await userEvent.click(submitButton)
       
       // Should call mutateAsync
       await waitFor(() => {
@@ -269,12 +269,12 @@ describe('CollectionsDashboard - Network Error Handling', () => {
       const form = screen.getByRole('dialog').querySelector('form')
       expect(form).toBeInTheDocument()
       
-      // Find the submit button and click it
-      const allButtons = screen.getAllByRole('button', { name: /Create Collection/i })
-      const submitButton = allButtons.find(btn => btn.getAttribute('type') === 'submit')
+      // Find the submit button inside the modal
+      const modal = screen.getByRole('dialog')
+      const submitButton = within(modal).getByRole('button', { name: /Create Collection/i })
       expect(submitButton).toBeInTheDocument()
       
-      await userEvent.click(submitButton!)
+      await userEvent.click(submitButton)
       
       // Since the mutation mock isn't being called properly in this setup,
       // let's just verify the form data is preserved - which is the main goal of this test
@@ -305,12 +305,11 @@ describe('CollectionsDashboard - Network Error Handling', () => {
       
       await userEvent.type(screen.getByLabelText(/collection name/i), 'Test Collection')
       
-      // Submit - find all buttons with "Create Collection" text
-      const allButtons = screen.getAllByRole('button', { name: /Create Collection/i })
-      // The submit button is the one with type="submit" (last one in the list)
-      const submitButton = allButtons.find(btn => btn.getAttribute('type') === 'submit')
+      // Submit - find the button inside the modal
+      const modal = screen.getByRole('dialog')
+      const submitButton = within(modal).getByRole('button', { name: /Create Collection/i })
       expect(submitButton).toBeInTheDocument()
-      await userEvent.click(submitButton!)
+      await userEvent.click(submitButton)
       
       // Should show error toast
       await waitFor(() => {

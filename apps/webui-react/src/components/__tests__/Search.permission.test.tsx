@@ -66,11 +66,15 @@ describe('Search - Permission Error Handling', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     
-    vi.mocked(useUIStore).mockReturnValue({
-      addToast: mockAddToast,
-      setShowDocumentViewer: mockSetShowDocumentViewer,
-      showDocumentViewer: null
-    } as ReturnType<typeof useUIStore>)
+    // Mock useUIStore to work with selectors
+    vi.mocked(useUIStore).mockImplementation((selector?: any) => {
+      const store = {
+        addToast: mockAddToast,
+        setShowDocumentViewer: mockSetShowDocumentViewer,
+        showDocumentViewer: null
+      }
+      return selector ? selector(store) : store
+    } as any)
   })
 
   describe('Collection Search Permissions', () => {
