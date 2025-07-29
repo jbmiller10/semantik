@@ -13,6 +13,7 @@ import { useRerankingAvailability } from '../hooks/useRerankingAvailability';
 function SearchInterface() {
   const {
     searchParams,
+    loading,
     updateSearchParams,
     validateAndUpdateSearchParams,
     setResults,
@@ -477,12 +478,12 @@ function SearchInterface() {
           <div className="pt-2">
             <button
               type="submit"
-              disabled={searchParams.selectedCollections.length === 0 || hasValidationErrors()}
+              disabled={loading || searchParams.selectedCollections.length === 0 || hasValidationErrors()}
               className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Perform search"
-              aria-disabled={searchParams.selectedCollections.length === 0 || hasValidationErrors()}
+              aria-disabled={loading || searchParams.selectedCollections.length === 0 || hasValidationErrors()}
             >
-              Search
+              {loading ? 'Searching...' : 'Search'}
             </button>
           </div>
         </form>
