@@ -3,14 +3,15 @@ import { useUIStore } from '../stores/uiStore';
 function Toast() {
   const { toasts, removeToast } = useUIStore();
 
-  if (toasts.length === 0) return null;
+  if (!toasts || toasts.length === 0) return null;
 
   return (
     <div className="fixed bottom-0 right-0 p-6 space-y-4 z-50">
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`max-w-sm w-full bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden ${
+          data-testid="toast"
+          className={`max-w-sm w-full bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden toast-${toast.type} ${
             toast.type === 'error'
               ? 'border-l-4 border-red-500'
               : toast.type === 'success'

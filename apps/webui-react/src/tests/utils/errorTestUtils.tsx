@@ -35,16 +35,19 @@ export const waitForError = async (errorMessage: string | RegExp) => {
  */
 export const waitForToast = async (message: string | RegExp, type?: 'error' | 'success' | 'warning' | 'info') => {
   await waitFor(() => {
-    const toast = screen.getByTestId('toast')
-    expect(toast).toBeInTheDocument()
+    const toasts = screen.getAllByTestId('toast')
+    expect(toasts.length).toBeGreaterThan(0)
     
     const regex = typeof message === 'string' 
       ? new RegExp(message, 'i') 
       : message
-    expect(toast).toHaveTextContent(regex)
     
-    if (type) {
-      expect(toast).toHaveClass(`toast-${type}`)
+    // Check if any toast contains the message
+    const matchingToast = toasts.find(toast => regex.test(toast.textContent || ''))
+    expect(matchingToast).toBeTruthy()
+    
+    if (type && matchingToast) {
+      expect(matchingToast).toHaveClass(`toast-${type}`)
     }
   })
 }
@@ -194,8 +197,9 @@ export class MockWebSocket {
   private _closeCode?: number
   private _closeReason?: string
 
-  constructor(url: string) {
-    this.url = url
+  constructor(url: string | URL) {
+    // Handle both string and URL object inputs
+    this.url = typeof url === 'string' ? url : url.toString()
     
     // Simulate connection based on URL patterns
     setTimeout(() => {
@@ -209,10 +213,12 @@ export class MockWebSocket {
 
   private shouldFailConnection(): boolean {
     // Fail if URL contains "fail" or "error"
-    return this.url.includes('fail') || this.url.includes('error')
+    // Ensure url is a string before calling includes
+    const urlString = String(this.url)
+    return urlString.includes('fail') || urlString.includes('error')
   }
 
-  private simulateOpen() {
+  simulateOpen() {
     this.readyState = MockWebSocket.OPEN
     this.onopen?.(new Event('open'))
     
@@ -274,11 +280,23 @@ export class MockWebSocket {
 // Replace global WebSocket with mock for tests
 export const mockWebSocket = () => {
   const originalWebSocket = global.WebSocket
-  global.WebSocket = MockWebSocket as unknown as typeof WebSocket
+  
+  // Use Object.defineProperty to override read-only WebSocket
+  Object.defineProperty(global, 'WebSocket', {
+    configurable: true,
+    enumerable: true,
+    value: MockWebSocket,
+    writable: true
+  })
   
   return {
     restore: () => {
-      global.WebSocket = originalWebSocket
+      Object.defineProperty(global, 'WebSocket', {
+        configurable: true,
+        enumerable: true,
+        value: originalWebSocket,
+        writable: true
+      })
     }
   }
 }

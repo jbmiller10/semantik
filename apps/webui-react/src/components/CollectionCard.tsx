@@ -92,7 +92,9 @@ function CollectionCard({ collection }: CollectionCardProps) {
   const cardBackground = isProcessing ? 'bg-blue-50' : collection.status === 'error' ? 'bg-red-50' : 'bg-white';
 
   return (
-    <div className={`relative rounded-lg border-2 shadow-sm hover:shadow-lg transition-all ${cardBorderColor} ${cardBackground} overflow-hidden`}>
+    <div 
+      data-testid="collection-card"
+      className={`relative rounded-lg border-2 shadow-sm hover:shadow-lg transition-all ${cardBorderColor} ${cardBackground} overflow-hidden`}>
       {/* Processing indicator bar */}
       {isProcessing && (
         <div className="absolute top-0 left-0 right-0 h-1 bg-blue-200" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={collection.activeOperation?.progress || 50} aria-label="Operation progress">

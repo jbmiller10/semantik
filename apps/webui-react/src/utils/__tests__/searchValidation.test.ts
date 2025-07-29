@@ -142,7 +142,7 @@ describe('Search Validation Utilities', () => {
         scoreThreshold: 0.5,
         hybridAlpha: 0.7,
         selectedCollections: ['123e4567-e89b-12d3-a456-426614174000'],
-        searchType: 'hybrid'
+        searchType: 'hybrid' as const
       };
       expect(validateSearchParams(validParams)).toEqual([]);
     });
@@ -154,7 +154,7 @@ describe('Search Validation Utilities', () => {
         scoreThreshold: -1,
         hybridAlpha: 2,
         selectedCollections: [],
-        searchType: 'hybrid'
+        searchType: 'hybrid' as const
       };
       const errors = validateSearchParams(invalidParams);
       expect(errors).toHaveLength(5);

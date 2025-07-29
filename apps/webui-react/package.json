@@ -12,7 +12,9 @@
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
     "test:watch": "vitest --watch",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:collections": "vitest run src/components/__tests__/*Collection*.test.tsx src/components/__tests__/AddDataToCollectionModal.test.tsx src/components/__tests__/DeleteCollectionModal.test.tsx src/components/__tests__/RenameCollectionModal.test.tsx src/components/__tests__/ReindexCollectionModal.test.tsx",
+    "test:ci": "vitest run --reporter=verbose"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.81.5",

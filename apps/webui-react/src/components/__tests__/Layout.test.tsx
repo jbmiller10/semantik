@@ -40,17 +40,17 @@ describe('Layout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     
-    ;(useNavigate as any).mockReturnValue(mockNavigate)
-    ;(useLocation as any).mockReturnValue({
+    ;(useNavigate as ReturnType<typeof vi.fn>).mockReturnValue(mockNavigate)
+    ;(useLocation as ReturnType<typeof vi.fn>).mockReturnValue({
       pathname: '/',
     })
     
-    ;(useAuthStore as any).mockReturnValue({
+    ;(useAuthStore as ReturnType<typeof vi.fn>).mockReturnValue({
       user: { username: 'testuser' },
       logout: mockLogout,
     })
     
-    ;(useUIStore as any).mockReturnValue({
+    ;(useUIStore as ReturnType<typeof vi.fn>).mockReturnValue({
       activeTab: 'collections',
       setActiveTab: mockSetActiveTab,
     })
@@ -75,7 +75,7 @@ describe('Layout', () => {
   })
 
   it('highlights active tab correctly', () => {
-    ;(useUIStore as any).mockReturnValue({
+    ;(useUIStore as ReturnType<typeof vi.fn>).mockReturnValue({
       activeTab: 'search',
       setActiveTab: mockSetActiveTab,
     })
@@ -110,7 +110,7 @@ describe('Layout', () => {
   })
 
   it('does not show navigation tabs on non-home pages', () => {
-    ;(useLocation as any).mockReturnValue({
+    ;(useLocation as ReturnType<typeof vi.fn>).mockReturnValue({
       pathname: '/settings',
     })
     
@@ -134,7 +134,7 @@ describe('Layout', () => {
   })
 
   it('shows back link on settings page', () => {
-    ;(useLocation as any).mockReturnValue({
+    ;(useLocation as ReturnType<typeof vi.fn>).mockReturnValue({
       pathname: '/settings',
     })
     

@@ -92,7 +92,7 @@ function OperationProgress({
   };
   
   return (
-    <div className={`space-y-3 ${className}`}>
+    <div className={`space-y-3 ${className}`} role="status" aria-live="polite">
       {/* Operation Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
@@ -140,6 +140,7 @@ function OperationProgress({
       {/* Operation Details */}
       {showDetails && (
         <div className="text-xs text-gray-600 space-y-1">
+          
           {/* Source path from config */}
           {(() => {
             const sourcePath = getSourcePath(operation.config);

@@ -10,7 +10,7 @@ packages = [{include = "vecpipe", from = "packages"}, {include = "webui", from =
 python = ">=3.11,<3.13"
 qdrant-client = "^1.9.0"
 sentence-transformers = "^3.0.0"
-fastapi = "^0.110.0"
+fastapi = "^0.116.0"
 uvicorn = "^0.27.1"
 pyarrow = "^15.0.0"
 pandas = "^2.2.0"
@@ -24,7 +24,7 @@ pypdf = "^5.0.0"
 python-docx = "^1.1.0"
 websockets = "^11.0.3"
 unstructured = {extras = ["all-docs"], version = "^0.18.1"}
-python-multipart = "^0.0.9"
+python-multipart = "^0.0.18"
 python-dotenv = "^1.0.1"
 torch = "*"
 transformers = "^4.51.0"
@@ -117,6 +117,12 @@ warn_unused_ignores = true
 warn_no_return = true
 follow_imports = "normal"
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

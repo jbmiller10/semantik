@@ -75,7 +75,7 @@ export function usePrefetchDocuments() {
 export function useSourceDirectories(documentsData?: DocumentListResponse) {
   if (!documentsData) return [];
   
-  const sourceMap = documentsData.documents.reduce((acc: Map<string, { path: string; document_count: number }>, doc: any) => {
+  const sourceMap = documentsData.documents.reduce((acc: Map<string, { path: string; document_count: number }>, doc) => {
     if (!acc.has(doc.source_path)) {
       acc.set(doc.source_path, { 
         path: doc.source_path, 

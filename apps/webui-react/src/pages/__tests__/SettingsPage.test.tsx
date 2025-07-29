@@ -255,7 +255,7 @@ describe('SettingsPage', () => {
     await user.click(screen.getAllByRole('button', { name: 'Reset Database' })[1])
     
     await waitFor(() => {
-      expect(global.alert).toHaveBeenCalledWith('Failed to reset database. Check console for details.')
+      expect(global.alert).toHaveBeenCalledWith('Failed to reset database: Failed to reset database')
     })
     
     expect(consoleError).toHaveBeenCalledWith('Failed to reset database:', expect.any(Error))

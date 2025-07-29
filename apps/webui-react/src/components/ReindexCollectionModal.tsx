@@ -80,10 +80,10 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
           } else if (error.response?.data?.detail) {
             errorMessage = error.response.data.detail;
           } else if (error.message) {
-            errorMessage = `Re-indexing failed: ${error.message}`;
+            errorMessage = error.message;
           }
         } else if (error instanceof Error) {
-          errorMessage = `Re-indexing failed: ${error.message}`;
+          errorMessage = error.message;
         }
         
         addToast({

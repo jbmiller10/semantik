@@ -23,7 +23,7 @@ describe('HomePage', () => {
   })
 
   it('renders SearchInterface when activeTab is search', () => {
-    ;(useUIStore as any).mockImplementation((selector: any) => {
+    ;(useUIStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (state: { activeTab: string }) => string | { activeTab: string }) => {
       const state = { activeTab: 'search' }
       return selector ? selector(state) : state
     })
@@ -36,7 +36,7 @@ describe('HomePage', () => {
   })
 
   it('renders CollectionsDashboard when activeTab is collections', () => {
-    ;(useUIStore as any).mockImplementation((selector: any) => {
+    ;(useUIStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (state: { activeTab: string }) => string | { activeTab: string }) => {
       const state = { activeTab: 'collections' }
       return selector ? selector(state) : state
     })
@@ -49,7 +49,7 @@ describe('HomePage', () => {
   })
 
   it('renders ActiveOperationsTab when activeTab is operations', () => {
-    ;(useUIStore as any).mockImplementation((selector: any) => {
+    ;(useUIStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (state: { activeTab: string }) => string | { activeTab: string }) => {
       const state = { activeTab: 'operations' }
       return selector ? selector(state) : state
     })
@@ -62,7 +62,7 @@ describe('HomePage', () => {
   })
 
   it('renders nothing when activeTab is an unknown value', () => {
-    ;(useUIStore as any).mockImplementation((selector: any) => {
+    ;(useUIStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (state: { activeTab: string }) => string | { activeTab: string }) => {
       const state = { activeTab: 'unknown' }
       return selector ? selector(state) : state
     })
@@ -77,7 +77,7 @@ describe('HomePage', () => {
   })
 
   it('uses the correct store selector', () => {
-    ;(useUIStore as any).mockImplementation((selector: any) => selector({ activeTab: 'search' }))
+    ;(useUIStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (state: { activeTab: string }) => string) => selector({ activeTab: 'search' }))
 
     render(<HomePage />)
     

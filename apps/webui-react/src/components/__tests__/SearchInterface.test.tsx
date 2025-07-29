@@ -11,13 +11,98 @@ vi.mock('@/stores/searchStore')
 vi.mock('@/stores/uiStore')
 vi.mock('@/stores/collectionStore')
 
+// Mock hooks
+vi.mock('@/hooks/useCollections', () => ({
+  useCollections: () => ({
+    data: [
+      {
+        id: 'test-collection',
+        name: 'Test Collection',
+        status: 'active',
+        total_files: 100,
+        total_vectors: 500,
+        model_name: 'Qwen/Qwen3-Embedding-0.6B',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+    ],
+    refetch: vi.fn(),
+    isLoading: false,
+    error: null,
+  })
+}))
+
+vi.mock('@/hooks/useRerankingAvailability', () => ({
+  useRerankingAvailability: vi.fn()
+}))
+
 // Mock SearchResults component
 vi.mock('../SearchResults', () => ({
   default: () => <div data-testid="search-results">Search Results</div>
 }))
 
+// Mock CollectionMultiSelect component
+vi.mock('../CollectionMultiSelect', () => ({
+  CollectionMultiSelect: ({ selectedCollections, onChange, disabled }: { selectedCollections: string[]; onChange: (collections: string[]) => void; disabled?: boolean }) => (
+    <div data-testid="collection-multiselect">
+      <button 
+        aria-label="Select collections"
+        disabled={disabled}
+        onClick={() => onChange(['test-collection'])}
+      >
+        {selectedCollections.length > 0 ? `${selectedCollections.length} selected` : 'Select collections'}
+      </button>
+    </div>
+  )
+}))
+
+// Mock RerankingConfiguration component
+vi.mock('../RerankingConfiguration', () => ({
+  RerankingConfiguration: ({ enabled, model, quantization, onChange }: { 
+    enabled: boolean; 
+    model?: string;
+    quantization?: string;
+    onChange: (config: { 
+      useReranker?: boolean;
+      rerankModel?: string;
+      rerankQuantization?: string;
+    }) => void 
+  }) => (
+    <div data-testid="reranking-configuration">
+      <label>
+        <input 
+          type="checkbox" 
+          checked={enabled}
+          onChange={(e) => onChange({ useReranker: e.target.checked })}
+          aria-label="Enable cross-encoder reranking"
+        />
+        Enable Cross-Encoder Reranking
+      </label>
+      {enabled && (
+        <div>
+          <select
+            value={model || 'BAAI/bge-reranker-v2-m3'}
+            onChange={(e) => onChange({ rerankModel: e.target.value })}
+          >
+            <option value="BAAI/bge-reranker-v2-m3">BAAI/bge-reranker-v2-m3</option>
+            <option value="Qwen/Qwen3-Reranker-0.6B">Qwen/Qwen3-Reranker-0.6B</option>
+          </select>
+          <select
+            value={quantization || 'int8'}
+            onChange={(e) => onChange({ rerankQuantization: e.target.value })}
+          >
+            <option value="int8">int8</option>
+            <option value="float16">float16</option>
+          </select>
+        </div>
+      )}
+    </div>
+  )
+}))
+
 describe('SearchInterface', () => {
   const mockUpdateSearchParams = vi.fn()
+  const mockValidateAndUpdateSearchParams = vi.fn()
   const mockSetResults = vi.fn()
   const mockSetLoading = vi.fn()
   const mockSetError = vi.fn()
@@ -46,6 +131,7 @@ describe('SearchInterface', () => {
     vi.mocked(useSearchStore).mockReturnValue({
       searchParams: defaultSearchParams,
       updateSearchParams: mockUpdateSearchParams,
+      validateAndUpdateSearchParams: mockValidateAndUpdateSearchParams,
       setResults: mockSetResults,
       setLoading: mockSetLoading,
       setError: mockSetError,
@@ -54,6 +140,8 @@ describe('SearchInterface', () => {
       setRerankingMetrics: mockSetRerankingMetrics,
       setFailedCollections: vi.fn(),
       setPartialFailure: vi.fn(),
+      hasValidationErrors: vi.fn().mockReturnValue(false),
+      getValidationError: vi.fn().mockReturnValue(undefined),
     })
     
     vi.mocked(useCollectionStore).mockReturnValue({
@@ -92,9 +180,9 @@ describe('SearchInterface', () => {
     
     // Check main elements
     expect(screen.getByText('Search Documents')).toBeInTheDocument()
-    expect(screen.getByLabelText('Search Query')).toBeInTheDocument()
+    expect(screen.getByLabelText('Search query')).toBeInTheDocument()
     expect(screen.getByText('Number of Results')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Perform search' })).toBeInTheDocument()
     
     // Check search tips
     expect(screen.getByText('Search Tips:')).toBeInTheDocument()
@@ -106,7 +194,7 @@ describe('SearchInterface', () => {
   it('validates empty search query', async () => {
     render(<SearchInterface />)
     
-    const searchButton = screen.getByRole('button', { name: 'Search' })
+    const searchButton = screen.getByRole('button', { name: 'Perform search' })
     
     // Since the search button is disabled when no collection is selected,
     // the validation won't trigger. Let's just check the button is disabled
@@ -118,6 +206,7 @@ describe('SearchInterface', () => {
     vi.mocked(useSearchStore).mockReturnValue({
       searchParams: { ...defaultSearchParams, query: 'test query', selectedCollections: ['test-collection'] },
       updateSearchParams: mockUpdateSearchParams,
+      validateAndUpdateSearchParams: mockValidateAndUpdateSearchParams,
       setResults: mockSetResults,
       setLoading: mockSetLoading,
       setError: mockSetError,
@@ -126,11 +215,13 @@ describe('SearchInterface', () => {
       setRerankingMetrics: mockSetRerankingMetrics,
       setFailedCollections: vi.fn(),
       setPartialFailure: vi.fn(),
+      hasValidationErrors: vi.fn().mockReturnValue(false),
+      getValidationError: vi.fn().mockReturnValue(undefined),
     })
     
     render(<SearchInterface />)
     
-    const searchButton = screen.getByRole('button', { name: 'Search' })
+    const searchButton = screen.getByRole('button', { name: 'Perform search' })
     expect(searchButton).not.toBeDisabled()
   })
 
@@ -144,13 +235,14 @@ describe('SearchInterface', () => {
     
     await user.click(hybridCheckbox)
     
-    expect(mockUpdateSearchParams).toHaveBeenCalledWith({ searchType: 'hybrid' })
+    expect(mockValidateAndUpdateSearchParams).toHaveBeenCalledWith({ searchType: 'hybrid' })
   })
 
   it('shows hybrid search options when enabled', async () => {
     vi.mocked(useSearchStore).mockReturnValue({
       searchParams: { ...defaultSearchParams, searchType: 'hybrid' },
       updateSearchParams: mockUpdateSearchParams,
+      validateAndUpdateSearchParams: mockValidateAndUpdateSearchParams,
       setResults: mockSetResults,
       setLoading: mockSetLoading,
       setError: mockSetError,
@@ -159,14 +251,16 @@ describe('SearchInterface', () => {
       setRerankingMetrics: mockSetRerankingMetrics,
       setFailedCollections: vi.fn(),
       setPartialFailure: vi.fn(),
+      hasValidationErrors: vi.fn().mockReturnValue(false),
+      getValidationError: vi.fn().mockReturnValue(undefined),
     })
     
     render(<SearchInterface />)
     
     expect(screen.getByLabelText('Hybrid Mode')).toBeInTheDocument()
     expect(screen.getByLabelText('Keyword Matching')).toBeInTheDocument()
-    expect(screen.getByText(/Rerank:/)).toBeInTheDocument()
-    expect(screen.getByText(/Filter:/)).toBeInTheDocument()
+    expect(screen.getByText(/Reciprocal Rank:/)).toBeInTheDocument()
+    expect(screen.getByText(/Relative Score:/)).toBeInTheDocument()
   })
 
   it('toggles reranking options', async () => {
@@ -179,26 +273,33 @@ describe('SearchInterface', () => {
     
     await user.click(rerankCheckbox)
     
-    expect(mockUpdateSearchParams).toHaveBeenCalledWith({ useReranker: true })
+    expect(mockValidateAndUpdateSearchParams).toHaveBeenCalledWith({ useReranker: true })
   })
 
   it('shows reranking options when enabled', async () => {
     vi.mocked(useSearchStore).mockReturnValue({
       searchParams: { ...defaultSearchParams, useReranker: true },
       updateSearchParams: mockUpdateSearchParams,
+      validateAndUpdateSearchParams: mockValidateAndUpdateSearchParams,
       setResults: mockSetResults,
       setLoading: mockSetLoading,
       setError: mockSetError,
       setCollections: mockSetCollections,
       collections: [],
       setRerankingMetrics: mockSetRerankingMetrics,
+      setFailedCollections: vi.fn(),
+      setPartialFailure: vi.fn(),
+      hasValidationErrors: vi.fn().mockReturnValue(false),
+      getValidationError: vi.fn().mockReturnValue(undefined),
     })
     
     render(<SearchInterface />)
     
-    expect(screen.getByText('Reranker Model')).toBeInTheDocument()
-    expect(screen.getByText('Quantization')).toBeInTheDocument()
-    expect(screen.getByText(/Reranking uses a more sophisticated model/)).toBeInTheDocument()
+    // Check that reranking options are shown
+    const selects = screen.getAllByRole('combobox')
+    expect(selects).toHaveLength(2) // Model and quantization selects
+    expect(screen.getByText('BAAI/bge-reranker-v2-m3')).toBeInTheDocument()
+    expect(screen.getByText('int8')).toBeInTheDocument()
   })
 
   it('updates search parameters when inputs change', async () => {
@@ -209,14 +310,14 @@ describe('SearchInterface', () => {
     const queryInput = screen.getByLabelText('Search Query')
     await user.type(queryInput, 't')
     
-    // Check that update was called
-    expect(mockUpdateSearchParams).toHaveBeenCalled()
+    // Check that validate and update was called
+    expect(mockValidateAndUpdateSearchParams).toHaveBeenCalled()
   })
 
   it('has disabled search button when no collection selected', () => {
     render(<SearchInterface />)
     
-    const searchButton = screen.getByRole('button', { name: 'Search' })
+    const searchButton = screen.getByRole('button', { name: 'Perform search' })
     expect(searchButton).toBeDisabled()
   })
 
@@ -224,6 +325,7 @@ describe('SearchInterface', () => {
     vi.mocked(useSearchStore).mockReturnValue({
       searchParams: { ...defaultSearchParams, selectedCollections: ['test-collection'] },
       updateSearchParams: mockUpdateSearchParams,
+      validateAndUpdateSearchParams: mockValidateAndUpdateSearchParams,
       setResults: mockSetResults,
       setLoading: mockSetLoading,
       setError: mockSetError,
@@ -232,11 +334,13 @@ describe('SearchInterface', () => {
       setRerankingMetrics: mockSetRerankingMetrics,
       setFailedCollections: vi.fn(),
       setPartialFailure: vi.fn(),
+      hasValidationErrors: vi.fn().mockReturnValue(false),
+      getValidationError: vi.fn().mockReturnValue(undefined),
     })
     
     render(<SearchInterface />)
     
-    const searchButton = screen.getByRole('button', { name: 'Search' })
+    const searchButton = screen.getByRole('button', { name: 'Perform search' })
     expect(searchButton).not.toBeDisabled()
   })
 
@@ -246,12 +350,17 @@ describe('SearchInterface', () => {
     vi.mocked(useSearchStore).mockReturnValue({
       searchParams: { ...defaultSearchParams, useReranker: true },
       updateSearchParams: mockUpdateSearchParams,
+      validateAndUpdateSearchParams: mockValidateAndUpdateSearchParams,
       setResults: mockSetResults,
       setLoading: mockSetLoading,
       setError: mockSetError,
       setCollections: mockSetCollections,
       collections: [],
       setRerankingMetrics: mockSetRerankingMetrics,
+      setFailedCollections: vi.fn(),
+      setPartialFailure: vi.fn(),
+      hasValidationErrors: vi.fn().mockReturnValue(false),
+      getValidationError: vi.fn().mockReturnValue(undefined),
     })
     
     render(<SearchInterface />)
@@ -265,7 +374,7 @@ describe('SearchInterface', () => {
     if (modelSelect) {
       await user.selectOptions(modelSelect, 'Qwen/Qwen3-Reranker-0.6B')
       
-      expect(mockUpdateSearchParams).toHaveBeenCalledWith({ 
+      expect(mockValidateAndUpdateSearchParams).toHaveBeenCalledWith({ 
         rerankModel: 'Qwen/Qwen3-Reranker-0.6B' 
       })
     }
@@ -277,12 +386,17 @@ describe('SearchInterface', () => {
     vi.mocked(useSearchStore).mockReturnValue({
       searchParams: { ...defaultSearchParams, useReranker: true },
       updateSearchParams: mockUpdateSearchParams,
+      validateAndUpdateSearchParams: mockValidateAndUpdateSearchParams,
       setResults: mockSetResults,
       setLoading: mockSetLoading,
       setError: mockSetError,
       setCollections: mockSetCollections,
       collections: [],
       setRerankingMetrics: mockSetRerankingMetrics,
+      setFailedCollections: vi.fn(),
+      setPartialFailure: vi.fn(),
+      hasValidationErrors: vi.fn().mockReturnValue(false),
+      getValidationError: vi.fn().mockReturnValue(undefined),
     })
     
     render(<SearchInterface />)
@@ -296,7 +410,7 @@ describe('SearchInterface', () => {
     if (quantizationSelect) {
       await user.selectOptions(quantizationSelect, 'float16')
       
-      expect(mockUpdateSearchParams).toHaveBeenCalledWith({ 
+      expect(mockValidateAndUpdateSearchParams).toHaveBeenCalledWith({ 
         rerankQuantization: 'float16' 
       })
     }

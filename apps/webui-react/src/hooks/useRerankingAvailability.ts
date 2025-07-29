@@ -36,10 +36,10 @@ export function useRerankingAvailability() {
         if (!status.reranking_available) {
           unavailabilityDetected.current = true;
         }
-      } catch (error: any) {
+      } catch (error) {
         console.warn('System status endpoint not available, assuming reranking is available');
         // If it's a 404, the endpoint doesn't exist yet - assume available
-        if (error?.response?.status === 404) {
+        if ((error as { response?: { status?: number } })?.response?.status === 404) {
           setRerankingAvailable(true);
         } else {
           // For other errors, be conservative

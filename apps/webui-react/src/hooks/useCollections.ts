@@ -11,7 +11,7 @@ import type {
 export const collectionKeys = {
   all: ['collections'] as const,
   lists: () => [...collectionKeys.all, 'list'] as const,
-  list: (filters?: any) => [...collectionKeys.lists(), filters] as const,
+  list: (filters?: unknown) => [...collectionKeys.lists(), filters] as const,
   details: () => [...collectionKeys.all, 'detail'] as const,
   detail: (id: string) => [...collectionKeys.details(), id] as const,
 };
