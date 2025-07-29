@@ -52,7 +52,7 @@ function CollectionsDashboard() {
   if (isLoading && collections.length === 0) {
     return (
       <div className="flex justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" role="status" aria-label="Loading collections"></div>
       </div>
     );
   }

@@ -259,7 +259,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
 
   return (
     <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto relative">
+      <div className="bg-white rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto relative" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         {/* Loading overlay */}
         {isSubmitting && (
           <div className="absolute inset-0 bg-white bg-opacity-90 flex items-center justify-center z-10 rounded-lg">
@@ -285,7 +285,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
           }}
         >
           <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-medium text-gray-900">Create New Collection</h3>
+            <h3 id="modal-title" className="text-lg font-medium text-gray-900">Create New Collection</h3>
             <p className="mt-1 text-sm text-gray-500">
               Create a new collection to store and search your documents
             </p>

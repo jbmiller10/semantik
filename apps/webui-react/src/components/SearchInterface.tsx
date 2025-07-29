@@ -176,7 +176,7 @@ function SearchInterface() {
         (window as Window & { __gpuMemoryError?: { message: string; suggestion: string; currentModel: string } }).__gpuMemoryError = {
           message: memoryErrorDetails.message,
           suggestion: memoryErrorDetails.suggestion,
-          currentModel: searchParams.rerankModel
+          currentModel: searchParams.rerankModel || ''
         };
         addToast({ 
           type: 'error', 

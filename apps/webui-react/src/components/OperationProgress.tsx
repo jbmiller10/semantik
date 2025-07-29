@@ -140,12 +140,6 @@ function OperationProgress({
       {/* Operation Details */}
       {showDetails && (
         <div className="text-xs text-gray-600 space-y-1">
-          {/* Operation message */}
-          {operation.message && (
-            <div className="text-sm text-gray-700">
-              {operation.message}
-            </div>
-          )}
           
           {/* Source path from config */}
           {(() => {

@@ -19,7 +19,7 @@ export function isError(error: unknown): error is Error {
  */
 export function getErrorMessage(error: unknown): string {
   if (isAxiosError(error)) {
-    const data = error.response?.data as unknown;
+    const data = error.response?.data as { detail?: unknown };
     const detail = data?.detail;
     
     // Handle structured error details
@@ -76,7 +76,7 @@ export function isStructuredError(detail: unknown): detail is StructuredError {
 export function isInsufficientMemoryError(error: unknown): boolean {
   if (!isAxiosError(error)) return false;
   
-  const data = error.response?.data as unknown;
+  const data = error.response?.data as { detail?: unknown };
   const detail = data?.detail;
   return (
     error.response?.status === 507 &&
@@ -94,7 +94,7 @@ export function getInsufficientMemoryErrorDetails(error: unknown): {
 } | null {
   if (!isInsufficientMemoryError(error)) return null;
   
-  const data = (error as AxiosError).response?.data as unknown;
+  const data = (error as AxiosError).response?.data as { detail?: unknown };
   const detail = data?.detail as StructuredError;
   return {
     message: detail.message || 'Insufficient GPU memory for reranking',

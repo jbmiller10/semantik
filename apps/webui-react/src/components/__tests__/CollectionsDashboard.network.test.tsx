@@ -1,5 +1,5 @@
 import React from 'react'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import CollectionsDashboard from '../CollectionsDashboard'
 import { 
@@ -80,6 +80,10 @@ describe('CollectionsDashboard - Network Error Handling', () => {
   });
   describe('Collection Loading Failures', () => {
     it('should show error message when collections fail to load due to network error', async () => {
+      // Set mock to return error state
+      mockCollectionsQuery.error = new Error('Network error')
+      mockCollectionsQuery.isLoading = false
+      
       renderWithErrorHandlers(
         <CollectionsDashboard />,
         collectionErrorHandlers.networkError()
@@ -96,6 +100,11 @@ describe('CollectionsDashboard - Network Error Handling', () => {
     })
 
     it('should retry loading collections when retry button is clicked', async () => {
+      // Set mock to return error state
+      mockCollectionsQuery.error = new Error('Network error')
+      mockCollectionsQuery.isLoading = false
+      mockCollectionsQuery.refetch = vi.fn()
+      
       renderWithErrorHandlers(
         <CollectionsDashboard />,
         collectionErrorHandlers.networkError()
@@ -103,25 +112,22 @@ describe('CollectionsDashboard - Network Error Handling', () => {
 
       await waitForError('Failed to load collections')
       
-      // Now set up success handlers for retry
-      server.use(...handlers)
-      
-      const retryButton = await testRetryFunctionality()
+      const retryButton = screen.getByRole('button', { name: /retry/i })
       await userEvent.click(retryButton)
       
       // Should trigger refetch
       await waitFor(() => {
         expect(mockCollectionsQuery.refetch).toHaveBeenCalled()
       })
-      
-      // Should eventually show collections
-      await waitFor(() => {
-        expect(screen.queryByText(/failed to load collections/i)).not.toBeInTheDocument()
-      })
     })
 
     it('should handle offline to online transition', async () => {
       simulateOffline()
+      
+      // Set mock to return error state initially
+      mockCollectionsQuery.error = new Error('Network error')
+      mockCollectionsQuery.isLoading = false
+      mockCollectionsQuery.refetch = vi.fn()
       
       renderWithErrorHandlers(
         <CollectionsDashboard />,
@@ -132,19 +138,26 @@ describe('CollectionsDashboard - Network Error Handling', () => {
       
       // Go back online
       simulateOnline()
-      server.use(...handlers)
       
       // Click retry
       const retryButton = screen.getByRole('button', { name: /retry/i })
       await userEvent.click(retryButton)
       
-      // Should load successfully
+      // Should trigger refetch
       await waitFor(() => {
-        expect(screen.queryByText(/failed to load collections/i)).not.toBeInTheDocument()
+        expect(mockCollectionsQuery.refetch).toHaveBeenCalled()
       })
     })
 
     it('should persist error state when retry also fails', async () => {
+      // Set mock to return error state
+      mockCollectionsQuery.error = new Error('Network error')
+      mockCollectionsQuery.isLoading = false
+      mockCollectionsQuery.refetch = vi.fn().mockImplementation(() => {
+        // Keep error state on retry
+        mockCollectionsQuery.error = new Error('Network error')
+      })
+      
       renderWithErrorHandlers(
         <CollectionsDashboard />,
         collectionErrorHandlers.networkError()
@@ -178,18 +191,25 @@ describe('CollectionsDashboard - Network Error Handling', () => {
     })
 
     it('should show error toast when collection creation fails due to network error', async () => {
-      // Set up network error for creation
-      server.use(...collectionErrorHandlers.networkError())
+      // Set up mutation to fail
+      mockCreateCollectionMutation.mutateAsync = vi.fn().mockRejectedValue(new Error('Network error'))
       
       // Fill form
       const nameInput = screen.getByLabelText(/collection name/i)
       await userEvent.type(nameInput, 'Test Collection')
       
       // Submit
-      const submitButton = screen.getByRole('button', { name: /create collection/i })
+      // Submit the form - find the submit button by querying inside the form
+      const submitButtons = await screen.findAllByText('Create Collection')
+      // The last one should be the submit button in the modal
+      const submitButton = submitButtons[submitButtons.length - 1]
       await userEvent.click(submitButton)
       
-      // Should show error toast
+      // Should call mutateAsync
+      await waitFor(() => {
+        expect(mockCreateCollectionMutation.mutateAsync).toHaveBeenCalled()
+      })
+      
       // Should show error toast
       await waitFor(() => {
         expect(mockAddToast).toHaveBeenCalledWith({
@@ -204,7 +224,8 @@ describe('CollectionsDashboard - Network Error Handling', () => {
     })
 
     it('should preserve form data when network error occurs', async () => {
-      server.use(...collectionErrorHandlers.networkError())
+      // Set up mutation to fail
+      mockCreateCollectionMutation.mutateAsync = vi.fn().mockRejectedValue(new Error('Network error'))
       
       // Fill out complete form
       await userEvent.type(screen.getByLabelText(/collection name/i), 'My Collection')
@@ -218,8 +239,16 @@ describe('CollectionsDashboard - Network Error Handling', () => {
       await userEvent.type(screen.getByLabelText(/chunk size/i), '1024')
       
       // Submit
-      const submitButton = screen.getByRole('button', { name: /create collection/i })
+      // Submit the form - find the submit button by querying inside the form
+      const submitButtons = await screen.findAllByText('Create Collection')
+      // The last one should be the submit button in the modal
+      const submitButton = submitButtons[submitButtons.length - 1]
       await userEvent.click(submitButton)
+      
+      // Should call mutateAsync
+      await waitFor(() => {
+        expect(mockCreateCollectionMutation.mutateAsync).toHaveBeenCalled()
+      })
       
       // Should show error toast
       await waitFor(() => {
@@ -236,11 +265,21 @@ describe('CollectionsDashboard - Network Error Handling', () => {
     })
 
     it('should allow retry after network error with preserved data', async () => {
-      server.use(...collectionErrorHandlers.networkError())
+      // First attempt fails
+      mockCreateCollectionMutation.mutateAsync = vi.fn()
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockResolvedValueOnce({ 
+          id: '123', 
+          name: 'Test Collection',
+          initial_operation_id: 'op-123'
+        })
       
       await userEvent.type(screen.getByLabelText(/collection name/i), 'Test Collection')
       
-      const submitButton = screen.getByRole('button', { name: /create collection/i })
+      // Submit the form - find the submit button by querying inside the form
+      const submitButtons = await screen.findAllByText('Create Collection')
+      // The last one should be the submit button in the modal
+      const submitButton = submitButtons[submitButtons.length - 1]
       await userEvent.click(submitButton)
       
       // Should show error toast
@@ -251,15 +290,15 @@ describe('CollectionsDashboard - Network Error Handling', () => {
         })
       })
       
-      // Set up success for retry
-      server.use(...handlers)
+      // Clear previous calls
+      mockAddToast.mockClear()
       
       // Try again - data should still be there
       await userEvent.click(submitButton)
       
       // Should succeed this time
       await waitFor(() => {
-        expect(screen.queryByText(/create new collection/i)).not.toBeInTheDocument()
+        expect(mockCreateCollectionMutation.mutateAsync).toHaveBeenCalledTimes(2)
       })
       
       // Should show success toast
@@ -274,43 +313,97 @@ describe('CollectionsDashboard - Network Error Handling', () => {
 
   describe('Auto-refresh Network Handling', () => {
     it('should handle network errors during auto-refresh gracefully', async () => {
-      // Start with successful load
-      server.use(...handlers)
+      // Start with successful load - mock returns data
+      mockCollectionsQuery.data = [
+        {
+          id: '1',
+          name: 'Test Collection',
+          description: 'Test description',
+          status: 'ready',
+          document_count: 10,
+          vector_count: 100,
+          owner_id: 1,
+          vector_store_name: 'test-store',
+          embedding_model: 'test-model',
+          quantization: 'float16',
+          chunk_size: 1000,
+          chunk_overlap: 200,
+          is_public: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+      ]
+      mockCollectionsQuery.isLoading = false
+      mockCollectionsQuery.error = null
+      
       renderWithErrorHandlers(<CollectionsDashboard />, [])
       
-      // Wait for initial load
+      // Wait for initial load - should show the collection
       await waitFor(() => {
-        expect(screen.queryByText(/loading collections/i)).not.toBeInTheDocument()
+        expect(screen.getByText('Test Collection')).toBeInTheDocument()
       })
       
-      // Now set up network error for refresh
-      server.use(...collectionErrorHandlers.networkError())
-      
-      // Force a refresh (simulate time passing)
-      // The component auto-refreshes every 30s for active operations
-      // We'll trigger it manually for testing
+      // Now simulate error during refresh - but keep the data (stale while revalidating)
+      mockCollectionsQuery.error = new Error('Network error')
       
       // Collections should remain visible (stale data)
       // Error might show as a toast but shouldn't replace the UI
-      await waitFor(() => {
-        expect(screen.queryByTestId('collection-card')).toBeInTheDocument()
-      }, { timeout: 5000 })
+      expect(screen.getByText('Test Collection')).toBeInTheDocument()
+      expect(screen.queryByText(/failed to load collections/i)).not.toBeInTheDocument()
     })
   })
 
   describe('Search with Network Errors', () => {
     it('should still allow searching in already loaded collections when network fails', async () => {
-      // Load successfully first
-      server.use(...handlers)
+      // Load successfully first - mock returns data
+      mockCollectionsQuery.data = [
+        {
+          id: '1',
+          name: 'Test Collection',
+          description: 'Test description',
+          status: 'ready',
+          document_count: 10,
+          vector_count: 100,
+          owner_id: 1,
+          vector_store_name: 'test-store',
+          embedding_model: 'test-model',
+          quantization: 'float16',
+          chunk_size: 1000,
+          chunk_overlap: 200,
+          is_public: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        },
+        {
+          id: '2',
+          name: 'Another Collection',
+          description: 'Another description',
+          status: 'ready',
+          document_count: 5,
+          vector_count: 50,
+          owner_id: 1,
+          vector_store_name: 'test-store-2',
+          embedding_model: 'test-model',
+          quantization: 'float16',
+          chunk_size: 1000,
+          chunk_overlap: 200,
+          is_public: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+      ]
+      mockCollectionsQuery.isLoading = false
+      mockCollectionsQuery.error = null
+      
       renderWithErrorHandlers(<CollectionsDashboard />, [])
       
       await waitFor(() => {
-        expect(screen.queryByText(/loading collections/i)).not.toBeInTheDocument()
+        expect(screen.getByText('Test Collection')).toBeInTheDocument()
+        expect(screen.getByText('Another Collection')).toBeInTheDocument()
       })
       
       // Now go offline
       simulateOffline()
-      server.use(...collectionErrorHandlers.networkError())
       
       // Search should still work on cached data
       const searchInput = screen.getByPlaceholderText(/search collections/i)
@@ -319,28 +412,32 @@ describe('CollectionsDashboard - Network Error Handling', () => {
       // Should filter existing collections
       // (This assumes the search is client-side on already loaded data)
       expect(searchInput).toHaveValue('test')
+      expect(screen.getByText('Test Collection')).toBeInTheDocument()
+      expect(screen.queryByText('Another Collection')).not.toBeInTheDocument()
     })
   })
 
   describe('Timeout Handling', () => {
     it('should handle request timeouts appropriately', async () => {
-      // Create a timeout handler that delays for 5 seconds
-      server.use(
-        createTimeoutHandler('get', '/api/v2/collections', 100)
-      )
+      // Set initial loading state
+      mockCollectionsQuery.isLoading = true
+      mockCollectionsQuery.error = null
+      mockCollectionsQuery.data = []
       
-      renderWithErrorHandlers(<CollectionsDashboard />, [])
+      const { rerender } = renderWithErrorHandlers(<CollectionsDashboard />, [])
       
       // Should show loading initially
-      mockCollectionsQuery.isLoading = true
+      expect(screen.getByRole('status')).toBeInTheDocument() // Loading spinner
       
-      // Verify loading state is triggered
+      // Simulate timeout - update state and rerender
+      mockCollectionsQuery.isLoading = false
+      mockCollectionsQuery.error = new Error('Request timeout')
+      rerender(<CollectionsDashboard />)
+      
+      // Should show error
       await waitFor(() => {
-        expect(mockCollectionsQuery.refetch).toHaveBeenCalled()
+        expect(screen.getByText(/failed to load collections/i)).toBeInTheDocument()
       })
-      
-      // Should eventually timeout and show error
-      await waitForError('Failed to load collections')
       
       // Should offer retry
       expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()

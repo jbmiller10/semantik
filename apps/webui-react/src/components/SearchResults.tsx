@@ -35,13 +35,14 @@ function SearchResults() {
       return (
         <div className="bg-white rounded-lg shadow-md p-6">
           <GPUMemoryError
-            suggestion={gpuError.suggestion}
-            currentModel={gpuError.currentModel}
+            suggestion={gpuError?.suggestion || ''}
+            currentModel={gpuError?.currentModel || ''}
             onSelectSmallerModel={(model) => {
               // This will be handled by the parent component
               // We need to pass this handler from SearchInterface
-              if ((window as Window & { __handleSelectSmallerModel?: (model: string) => void }).__handleSelectSmallerModel) {
-                (window as Window & { __handleSelectSmallerModel?: (model: string) => void }).__handleSelectSmallerModel(model);
+              const handler = (window as Window & { __handleSelectSmallerModel?: (model: string) => void }).__handleSelectSmallerModel;
+              if (handler) {
+                handler(model);
               }
             }}
           />
