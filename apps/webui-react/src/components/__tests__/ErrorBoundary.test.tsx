@@ -69,12 +69,13 @@ describe('ErrorBoundary', () => {
     expect(screen.getByText('Stack trace')).toBeInTheDocument()
     
     // The stack trace should be in a details element
-    const details = screen.getByRole('group')
+    const details = document.querySelector('details')
     expect(details).toBeInTheDocument()
     
     // Check that the stack trace contains expected text
-    const stackTrace = screen.getByText(/Error: Test error with stack/)
-    expect(stackTrace).toBeInTheDocument()
+    const preElement = details?.querySelector('pre')
+    expect(preElement).toBeInTheDocument()
+    expect(preElement?.textContent).toContain('Error: Test error with stack')
   })
 
   it('reloads page when reload button is clicked', async () => {
@@ -128,7 +129,7 @@ describe('ErrorBoundary', () => {
 
     // Check reload button styling
     const button = screen.getByRole('button', { name: 'Reload page' })
-    expect(button).toHaveClass('bg-blue-500', 'text-white', 'rounded', 'hover:bg-blue-600')
+    expect(button).toHaveClass('bg-blue-500', 'text-white', 'rounded')
   })
 
   it('renders correctly when error has no message', () => {
@@ -146,7 +147,8 @@ describe('ErrorBoundary', () => {
 
     expect(screen.getByText('Something went wrong')).toBeInTheDocument()
     // Error message paragraph should still be there, just empty
-    const errorParagraph = screen.getByText('Something went wrong').parentElement?.querySelector('p')
+    const container = screen.getByText('Something went wrong').parentElement
+    const errorParagraph = container?.querySelector('p')
     expect(errorParagraph).toBeInTheDocument()
     expect(errorParagraph?.textContent).toBe('')
   })

@@ -1,4 +1,5 @@
 import { renderHook, act } from '@testing-library/react'
+import { vi } from 'vitest'
 import { useWebSocket } from '../useWebSocket'
 import { mockWebSocket, MockWebSocket } from '../../tests/utils/errorTestUtils'
 

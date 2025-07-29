@@ -10,12 +10,20 @@ import {
   simulateOffline,
   simulateOnline
 } from '../../tests/utils/errorTestUtils'
-import { searchErrorHandlers } from '../../tests/mocks/errorHandlers'
+import { searchErrorHandlers, collectionErrorHandlers } from '../../tests/mocks/errorHandlers'
+import { searchV2Api } from '../../services/api/v2/collections'
 
 // Mock stores
 vi.mock('../../stores/searchStore')
 vi.mock('../../stores/collectionStore')
 vi.mock('../../stores/uiStore')
+
+// Mock the search API
+vi.mock('../../services/api/v2/collections', () => ({
+  searchV2Api: {
+    search: vi.fn()
+  }
+}))
 
 describe('SearchInterface - Network Error Handling', () => {
   const mockSearch = vi.fn()
@@ -44,17 +52,31 @@ describe('SearchInterface - Network Error Handling', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     
+    // Create a stateful mock for the search store
+    let currentSearchParams = {
+      query: '',
+      selectedCollections: [],
+      limit: 10,
+      searchType: 'hybrid',
+      includeContent: true,
+      weightKeyword: 0.5,
+      weightSemantic: 0.5,
+      rerankModel: null,
+      topK: 10,
+      scoreThreshold: 0,
+      hybridMode: 'reciprocal_rank' as const,
+      hybridAlpha: 0.5,
+      useReranker: false,
+      rerankTopK: null,
+      keywordMode: 'bm25' as const
+    };
+    
+    const mockValidateAndUpdateSearchParams = vi.fn((params) => {
+      currentSearchParams = { ...currentSearchParams, ...params };
+    });
+    
     vi.mocked(useSearchStore).mockReturnValue({
-      searchParams: {
-        query: '',
-        selectedCollections: [],
-        limit: 10,
-        searchType: 'hybrid',
-        includeContent: true,
-        weightKeyword: 0.5,
-        weightSemantic: 0.5,
-        rerankModel: null
-      },
+      searchParams: currentSearchParams,
       isSearching: false,
       error: null,
       setSearchParams: vi.fn(),
@@ -66,7 +88,18 @@ describe('SearchInterface - Network Error Handling', () => {
       totalResults: 0,
       searchTime: 0,
       failedCollections: [],
-      partialFailure: false
+      partialFailure: false,
+      loading: false,
+      rerankingMetrics: null,
+      setLoading: vi.fn(),
+      setRerankingMetrics: vi.fn(),
+      setFailedCollections: vi.fn(),
+      setPartialFailure: vi.fn(),
+      updateSearchParams: vi.fn(),
+      validateAndUpdateSearchParams: mockValidateAndUpdateSearchParams,
+      validationErrors: [],
+      hasValidationErrors: () => false,
+      getValidationError: () => undefined
     } as ReturnType<typeof useSearchStore>)
     
     vi.mocked(useCollectionStore).mockReturnValue({
@@ -96,11 +129,11 @@ describe('SearchInterface - Network Error Handling', () => {
       await userEvent.click(collection1)
       
       // Enter search query
-      const searchInput = screen.getByPlaceholderText(/search across your collections/i)
+      const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
       await userEvent.type(searchInput, 'test query')
       
       // Mock search to reject
-      mockSearch.mockRejectedValue(new Error('Network error'))
+      vi.mocked(searchV2Api.search).mockRejectedValue(new Error('Network error'))
       
       // Submit search
       const searchButton = screen.getByRole('button', { name: /search/i })
@@ -108,7 +141,10 @@ describe('SearchInterface - Network Error Handling', () => {
       
       // Should show error
       await waitFor(() => {
-        expect(mockSetError).toHaveBeenCalledWith('Network error')
+        expect(mockAddToast).toHaveBeenCalledWith({
+          type: 'error',
+          message: 'Network error'
+        })
       })
     })
 
@@ -119,7 +155,7 @@ describe('SearchInterface - Network Error Handling', () => {
       )
 
       // Set up search parameters
-      const searchInput = screen.getByPlaceholderText(/search across your collections/i)
+      const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
       await userEvent.type(searchInput, 'important documents')
       
       // Select collections
@@ -148,7 +184,7 @@ describe('SearchInterface - Network Error Handling', () => {
         []
       )
 
-      const searchInput = screen.getByPlaceholderText(/search across your collections/i)
+      const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
       await userEvent.type(searchInput, 'test')
       
       // Go offline
@@ -351,9 +387,9 @@ describe('SearchInterface - Network Error Handling', () => {
     it('should handle collection list refresh failure gracefully', async () => {
       const mockFetchCollections = vi.fn()
       vi.mocked(useCollectionStore).mockReturnValue({
-        ...vi.mocked(useCollectionStore).mock.results[0].value,
         collections: [],
         fetchCollections: mockFetchCollections,
+        loading: false,
         error: 'Failed to load collections'
       } as ReturnType<typeof useCollectionStore>)
       
@@ -362,12 +398,13 @@ describe('SearchInterface - Network Error Handling', () => {
         collectionErrorHandlers.networkError()
       )
 
-      // Should show message about no collections
-      expect(screen.getByText(/loading collections/i)).toBeInTheDocument()
-      
-      // Search should be disabled when no collections
+      // Search should be disabled when no collections are selected
       const searchButton = screen.getByRole('button', { name: /search/i })
       expect(searchButton).toBeDisabled()
+      
+      // Try to refresh collections
+      await userEvent.click(screen.getByText(/refresh/i))
+      expect(mockFetchCollections).toHaveBeenCalled()
     })
   })
 })

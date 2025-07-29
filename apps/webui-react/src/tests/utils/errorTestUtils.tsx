@@ -280,11 +280,23 @@ export class MockWebSocket {
 // Replace global WebSocket with mock for tests
 export const mockWebSocket = () => {
   const originalWebSocket = global.WebSocket
-  global.WebSocket = MockWebSocket as unknown as typeof WebSocket
+  
+  // Use Object.defineProperty to override read-only WebSocket
+  Object.defineProperty(global, 'WebSocket', {
+    configurable: true,
+    enumerable: true,
+    value: MockWebSocket,
+    writable: true
+  })
   
   return {
     restore: () => {
-      global.WebSocket = originalWebSocket
+      Object.defineProperty(global, 'WebSocket', {
+        configurable: true,
+        enumerable: true,
+        value: originalWebSocket,
+        writable: true
+      })
     }
   }
 }
