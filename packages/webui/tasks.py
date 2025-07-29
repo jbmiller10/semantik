@@ -47,7 +47,13 @@ from typing import Any
 import httpx
 import psutil
 import redis.asyncio as redis
-from qdrant_client.models import PointStruct
+from qdrant_client.models import (
+    FieldCondition,
+    Filter,
+    FilterSelector,
+    MatchValue,
+    PointStruct,
+)
 from shared.config import settings
 from shared.managers.qdrant_manager import QdrantManager
 from shared.metrics.collection_metrics import (
@@ -2320,13 +2326,36 @@ async def _process_remove_source_operation(
             return {"success": True, "documents_removed": 0, "source_path": source_path}
 
         # Remove vectors from Qdrant
-        # TODO: Uncomment when implementing actual vector deletion
-        # qdrant_client = qdrant_manager.get_client()
-        # vector_store_name = collection["vector_store_name"]
+        from webui.utils.qdrant_manager import qdrant_manager as connection_manager
+
+        qdrant_client = connection_manager.get_client()
+        qdrant_manager_instance = QdrantManager(qdrant_client)
+
+        # Get all collection names to delete from (including staging collections)
+        collections_to_clean = []
+
+        # Add the main collection
+        vector_store_name = collection.get("vector_store_name")
+        if vector_store_name:
+            collections_to_clean.append(vector_store_name)
+
+        # Add any Qdrant collections from the collection metadata
+        qdrant_collections = collection.get("qdrant_collections", [])
+        if isinstance(qdrant_collections, list):
+            collections_to_clean.extend(qdrant_collections)
+
+        # Add staging collections if they exist
+        qdrant_staging = collection.get("qdrant_staging", [])
+        if isinstance(qdrant_staging, list):
+            collections_to_clean.extend(qdrant_staging)
+
+        # Remove duplicates
+        collections_to_clean = list(set(collections_to_clean))
 
         # Get document IDs to remove
         doc_ids = [doc["id"] for doc in documents]
         removed_count = 0
+        deletion_errors = []
 
         # Remove vectors in batches
         batch_size = DOCUMENT_REMOVAL_BATCH_SIZE
@@ -2334,12 +2363,45 @@ async def _process_remove_source_operation(
             batch_ids = doc_ids[i : i + batch_size]
 
             try:
-                # Search for points with these document IDs
-                # TODO: This requires proper implementation when document IDs are stored in Qdrant payload
-                with QdrantOperationTimer("delete_points"):
-                    # For now, simulate deletion
-                    await asyncio.sleep(0.01)
-                    removed_count += len(batch_ids)
+                # Delete from each Qdrant collection
+                for qdrant_collection in collections_to_clean:
+                    try:
+                        # Check if collection exists
+                        if not await qdrant_manager_instance.collection_exists(qdrant_collection):
+                            logger.warning(f"Qdrant collection {qdrant_collection} does not exist, skipping")
+                            continue
+
+                        # Delete vectors for each document ID in the batch
+                        for doc_id in batch_ids:
+                            with QdrantOperationTimer("delete_points"):
+                                # Create filter to match vectors by doc_id
+                                filter_condition = Filter(
+                                    must=[
+                                        FieldCondition(
+                                            key="doc_id",
+                                            match=MatchValue(value=doc_id)
+                                        )
+                                    ]
+                                )
+
+                                # Delete points matching the filter
+                                qdrant_client.delete(
+                                    collection_name=qdrant_collection,
+                                    points_selector=FilterSelector(
+                                        filter=filter_condition
+                                    ),
+                                )
+
+                                # Log the deletion
+                                logger.info(f"Deleted vectors for doc_id={doc_id} from collection {qdrant_collection}")
+
+                    except Exception as e:
+                        error_msg = f"Failed to delete from collection {qdrant_collection}: {e}"
+                        logger.error(error_msg)
+                        deletion_errors.append(error_msg)
+
+                # Count removed vectors once per batch, not per collection
+                removed_count += len(batch_ids)
 
                 # Send progress update
                 progress = ((i + len(batch_ids)) / len(doc_ids)) * 100
@@ -2353,6 +2415,7 @@ async def _process_remove_source_operation(
                 )
             except Exception as e:
                 logger.error(f"Failed to remove vectors for batch: {e}")
+                deletion_errors.append(f"Batch {i//batch_size + 1} error: {str(e)}")
 
         # Wrap critical database operations in a transaction for atomicity
         from shared.database.database import AsyncSessionLocal
@@ -2400,6 +2463,7 @@ async def _process_remove_source_operation(
                 "source_path": source_path,
                 "documents_removed": len(documents),
                 "vectors_removed": removed_count,
+                "deletion_errors": deletion_errors if deletion_errors else None,
             },
         )
 
@@ -2417,6 +2481,7 @@ async def _process_remove_source_operation(
             "source_path": source_path,
             "documents_removed": len(documents),
             "vectors_removed": removed_count,
+            "deletion_errors": deletion_errors if deletion_errors else None,
         }
 
     except Exception as e:
