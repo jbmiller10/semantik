@@ -132,7 +132,7 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
         error: null,
         isLoading: false,
         refetch: mockRefetch
-      } as any)
+      } as ReturnType<typeof useQuery>)
       
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
       
@@ -149,7 +149,7 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
     })
 
     it('should handle rapid operation status changes with WebSocket errors', async () => {
-      const operationStatus = 'processing'
+      // const operationStatus = 'processing' // Unused variable
       
       vi.mocked(useOperationProgress).mockImplementation(({ operationId, onProgress, onComplete, onError }) => {
         if (operationId === 'op-1') {
@@ -199,7 +199,7 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
           // Simulate auth error for reindex operation
           setTimeout(() => {
             const error = new Error('Insufficient permissions for reindex')
-            ;(error as any).code = 4403
+            ;(error as Error & { code?: number }).code = 4403
             onError?.(error)
           }, 0)
         }
@@ -260,7 +260,7 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
           error: null,
           isLoading: false,
           refetch: vi.fn()
-        } as any
+        } as ReturnType<typeof useQuery>
       })
       
       const { rerender } = renderWithErrorHandlers(<ActiveOperationsTab />, [])
@@ -294,7 +294,7 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
         error: null,
         isLoading: false,
         refetch: mockRefetch
-      } as any)
+      } as ReturnType<typeof useQuery>)
       
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
       
@@ -318,7 +318,7 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
         error: null,
         isLoading: false,
         refetch: vi.fn()
-      } as any)
+      } as ReturnType<typeof useQuery>)
       
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
       
@@ -336,14 +336,14 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
         isConnected: true,
         error: null,
         retryCount: 0
-      } as any)
+      } as ReturnType<typeof useQuery>)
       
       vi.mocked(useQuery).mockReturnValue({
         data: null,
         error: new Error('Failed to fetch operations'),
         isLoading: false,
         refetch: vi.fn()
-      } as any)
+      } as ReturnType<typeof useQuery>)
       
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
       
@@ -372,7 +372,7 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
         error: null,
         isLoading: false,
         refetch: vi.fn()
-      } as any)
+      } as ReturnType<typeof useQuery>)
       
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
       
@@ -394,7 +394,7 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
         error: null,
         retryCount: 0,
         cleanup: cleanupFn
-      } as any)
+      } as ReturnType<typeof useQuery>)
       
       const { unmount } = renderWithErrorHandlers(<ActiveOperationsTab />, [])
       

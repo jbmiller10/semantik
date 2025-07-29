@@ -3,6 +3,7 @@ import { useWebSocket } from './useWebSocket';
 import { useUpdateOperationInCache } from './useCollectionOperations';
 import { useUIStore } from '../stores/uiStore';
 import { operationsV2Api } from '../services/api/v2/operations';
+import type { OperationStatus } from '../types/collection';
 
 interface UseOperationProgressOptions {
   onComplete?: () => void;
@@ -63,7 +64,7 @@ export function useOperationProgress(
         if (status && operationId) {
           // Update operation in React Query cache
           updateOperationInCache(operationId, {
-            status: status as any,
+            status: status as OperationStatus,
             progress: progress,
           });
           

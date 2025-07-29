@@ -1,4 +1,4 @@
-import { AxiosError } from 'axios';
+import { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import {
   isAxiosError,
   isError,
@@ -45,7 +45,7 @@ describe('errorUtils', () => {
         status: 400,
         statusText: 'Bad Request',
         headers: {},
-        config: {} as any,
+        config: {} as InternalAxiosRequestConfig,
       };
       expect(getErrorMessage(error)).toBe('Custom error message');
     });
@@ -57,7 +57,7 @@ describe('errorUtils', () => {
         status: 400,
         statusText: 'Bad Request',
         headers: {},
-        config: {} as any,
+        config: {} as InternalAxiosRequestConfig,
       };
       expect(getErrorMessage(error)).toBe('Structured error message');
     });
@@ -69,7 +69,7 @@ describe('errorUtils', () => {
         status: 400,
         statusText: 'Bad Request',
         headers: {},
-        config: {} as any,
+        config: {} as InternalAxiosRequestConfig,
       };
       expect(getErrorMessage(error)).toBe('Error field message');
     });
@@ -81,7 +81,7 @@ describe('errorUtils', () => {
         status: 404,
         statusText: 'Not Found',
         headers: {},
-        config: {} as any,
+        config: {} as InternalAxiosRequestConfig,
       };
       expect(getErrorMessage(error)).toBe('Not Found');
     });
@@ -126,7 +126,7 @@ describe('errorUtils', () => {
         status: 507,
         statusText: 'Insufficient Storage',
         headers: {},
-        config: {} as any,
+        config: {} as InternalAxiosRequestConfig,
       };
       expect(isInsufficientMemoryError(error)).toBe(true);
     });
@@ -138,7 +138,7 @@ describe('errorUtils', () => {
         status: 507,
         statusText: 'Insufficient Storage',
         headers: {},
-        config: {} as any,
+        config: {} as InternalAxiosRequestConfig,
       };
       expect(isInsufficientMemoryError(error)).toBe(false);
     });
@@ -150,7 +150,7 @@ describe('errorUtils', () => {
         status: 500,
         statusText: 'Internal Server Error',
         headers: {},
-        config: {} as any,
+        config: {} as InternalAxiosRequestConfig,
       };
       expect(isInsufficientMemoryError(error)).toBe(false);
     });
@@ -174,7 +174,7 @@ describe('errorUtils', () => {
         status: 507,
         statusText: 'Insufficient Storage',
         headers: {},
-        config: {} as any,
+        config: {} as InternalAxiosRequestConfig,
       };
       const details = getInsufficientMemoryErrorDetails(error);
       expect(details).toEqual({
@@ -190,7 +190,7 @@ describe('errorUtils', () => {
         status: 507,
         statusText: 'Insufficient Storage',
         headers: {},
-        config: {} as any,
+        config: {} as InternalAxiosRequestConfig,
       };
       const details = getInsufficientMemoryErrorDetails(error);
       expect(details).toEqual({

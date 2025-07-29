@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import CollectionCard from '../CollectionCard'
 import { useUIStore } from '@/stores/uiStore'
 import type { Collection, CollectionStatus } from '@/types/collection'
+import type { MockedFunction } from '@/tests/types/test-types'
 
 // Mock the UI store
 vi.mock('@/stores/uiStore', () => ({
@@ -34,7 +35,7 @@ describe('CollectionCard', () => {
   
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(useUIStore as any).mockReturnValue({
+    ;(useUIStore as MockedFunction<typeof useUIStore>).mockReturnValue({
       setShowCollectionDetailsModal: mockSetShowCollectionDetailsModal,
     })
   })

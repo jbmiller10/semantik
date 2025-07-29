@@ -12,13 +12,13 @@ describe('useWebSocket - Error Handling', () => {
     mockWs = mockWebSocket()
     
     // Track WebSocket instances
-    const OriginalWebSocket = global.WebSocket
+    // const OriginalWebSocket = global.WebSocket // Unused variable
     global.WebSocket = class extends MockWebSocket {
       constructor(url: string) {
         super(url)
         wsInstances.push(this)
       }
-    } as any
+    } as unknown as typeof WebSocket
   })
 
   afterEach(() => {
@@ -152,7 +152,7 @@ describe('useWebSocket - Error Handling', () => {
       const onMessage = vi.fn()
       const onError = vi.fn()
       
-      const { result } = renderHook(() => 
+      renderHook(() => 
         useWebSocket({
           url: 'ws://localhost:8080/ws/test',
           onMessage,
@@ -181,7 +181,7 @@ describe('useWebSocket - Error Handling', () => {
     it('should handle binary messages', async () => {
       const onMessage = vi.fn()
       
-      const { result } = renderHook(() => 
+      renderHook(() => 
         useWebSocket({
           url: 'ws://localhost:8080/ws/test',
           onMessage
@@ -208,9 +208,9 @@ describe('useWebSocket - Error Handling', () => {
 
     it('should handle rapid message bursts', async () => {
       const onMessage = vi.fn()
-      const messages: any[] = []
+      const messages: unknown[] = []
       
-      const { result } = renderHook(() => 
+      renderHook(() => 
         useWebSocket({
           url: 'ws://localhost:8080/ws/test',
           onMessage: (event) => {
@@ -308,7 +308,7 @@ describe('useWebSocket - Error Handling', () => {
       act(() => {
         try {
           result.current.send('test')
-        } catch (e) {
+        } catch {
           // Expected
         }
       })
@@ -337,7 +337,7 @@ describe('useWebSocket - Error Handling', () => {
     })
 
     it('should handle multiple rapid reconnections without memory leaks', async () => {
-      const { result, rerender } = renderHook(
+      renderHook(
         ({ url }) => useWebSocket({ url, reconnectInterval: 10 }),
         { initialProps: { url: 'ws://localhost:8080/ws/test' } }
       )

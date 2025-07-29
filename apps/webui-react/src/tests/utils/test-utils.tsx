@@ -24,6 +24,7 @@ const customRender = (
 }
 
 // Re-export everything from React Testing Library
+// eslint-disable-next-line react-refresh/only-export-components
 export * from '@testing-library/react'
 
 // Override the default render with our custom render

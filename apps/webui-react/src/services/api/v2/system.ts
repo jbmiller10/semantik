@@ -17,7 +17,7 @@ export const systemApi = {
     try {
       const response = await apiClient.get<SystemStatus>('/api/v2/system/status');
       return response.data;
-    } catch (error) {
+    } catch {
       // If the endpoint doesn't exist, try to infer from error responses
       console.warn('System status endpoint not available, returning defaults');
       return {

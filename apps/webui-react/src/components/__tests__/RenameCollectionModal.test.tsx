@@ -5,7 +5,9 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import RenameCollectionModal from '../RenameCollectionModal';
 import { TestWrapper } from '../../tests/utils/TestWrapper';
 import { collectionsV2Api } from '../../services/api/v2/collections';
-import { AxiosError } from 'axios';
+import { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import type { MockCollection } from '@/tests/types/test-types';
+import { createMockCollection } from '@/tests/types/test-types';
 
 // Mock the API
 vi.mock('../../services/api/v2/collections', () => ({
@@ -133,7 +135,7 @@ describe('RenameCollectionModal', () => {
       const invalidChars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
       
       for (const char of invalidChars) {
-        render(
+        const { unmount } = render(
           <TestWrapper>
             <RenameCollectionModal {...defaultProps} />
           </TestWrapper>
@@ -148,9 +150,8 @@ describe('RenameCollectionModal', () => {
         // Check error message
         expect(screen.getByText(`Collection name cannot contain "${char}"`)).toBeInTheDocument();
         
-        // Cleanup for next iteration
-        // eslint-disable-next-line testing-library/no-node-access
-        document.body.innerHTML = '';
+        // Cleanup for next iteration using proper cleanup method
+        unmount();
       }
     });
 
@@ -205,10 +206,10 @@ describe('RenameCollectionModal', () => {
     it('should call API and show success when rename succeeds', async () => {
       const user = userEvent.setup();
       const mockUpdate = vi.mocked(collectionsV2Api.update);
-      mockUpdate.mockResolvedValueOnce({ 
+      mockUpdate.mockResolvedValueOnce(createMockCollection({ 
         id: 'test-collection-id',
         name: 'New Collection Name' 
-      } as any);
+      }));
       
       render(
         <TestWrapper>
@@ -244,8 +245,8 @@ describe('RenameCollectionModal', () => {
       const mockUpdate = vi.mocked(collectionsV2Api.update);
       
       // Create a promise we can control
-      let resolveUpdate: (value: any) => void;
-      const updatePromise = new Promise((resolve) => {
+      let resolveUpdate: (value: MockCollection) => void;
+      const updatePromise = new Promise<MockCollection>((resolve) => {
         resolveUpdate = resolve;
       });
       mockUpdate.mockReturnValueOnce(updatePromise);
@@ -271,7 +272,7 @@ describe('RenameCollectionModal', () => {
       expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
       
       // Resolve the promise
-      resolveUpdate!({ id: 'test-collection-id', name: 'New Collection Name' });
+      resolveUpdate!(createMockCollection({ id: 'test-collection-id', name: 'New Collection Name' }));
       
       // Wait for loading state to clear
       await waitFor(() => {
@@ -290,7 +291,7 @@ describe('RenameCollectionModal', () => {
         status: 400,
         statusText: 'Bad Request',
         headers: {},
-        config: {} as any,
+        config: {} as InternalAxiosRequestConfig,
       };
       mockUpdate.mockRejectedValueOnce(axiosError);
       
@@ -427,10 +428,10 @@ describe('RenameCollectionModal', () => {
     it('should submit form when Enter is pressed in input', async () => {
       const user = userEvent.setup();
       const mockUpdate = vi.mocked(collectionsV2Api.update);
-      mockUpdate.mockResolvedValueOnce({ 
+      mockUpdate.mockResolvedValueOnce(createMockCollection({ 
         id: 'test-collection-id',
         name: 'New Name' 
-      } as any);
+      }));
       
       render(
         <TestWrapper>
@@ -555,8 +556,8 @@ describe('RenameCollectionModal', () => {
       const mockUpdate = vi.mocked(collectionsV2Api.update);
       
       // Create a promise we can control
-      let resolveUpdate: (value: any) => void;
-      const updatePromise = new Promise((resolve) => {
+      let resolveUpdate: (value: MockCollection) => void;
+      const updatePromise = new Promise<MockCollection>((resolve) => {
         resolveUpdate = resolve;
       });
       mockUpdate.mockReturnValueOnce(updatePromise);
@@ -579,7 +580,7 @@ describe('RenameCollectionModal', () => {
       expect(screen.getByRole('button', { name: 'Renaming...' })).toBeDisabled();
       
       // Resolve to clean up
-      resolveUpdate!({ id: 'test-collection-id', name: 'New Name' });
+      resolveUpdate!(createMockCollection({ id: 'test-collection-id', name: 'New Name' }));
       await waitFor(() => {
         expect(defaultProps.onSuccess).toHaveBeenCalled();
       });

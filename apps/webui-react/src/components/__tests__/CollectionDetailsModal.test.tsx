@@ -1,8 +1,8 @@
 import React from 'react';
-import { render, screen, waitFor, within, act } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
-import type { Collection, Operation, OperationStatus } from '../../types/collection';
+import type { Collection, Operation } from '../../types/collection';
 import type { DocumentResponse } from '../../services/api/v2/types';
 
 // Mock stores first
@@ -31,7 +31,7 @@ vi.mock('../../services/api/v2/collections', () => ({
 vi.mock('../../hooks/useCollections', () => ({
   collectionKeys: {
     lists: () => ['collections'],
-    list: (filters: any) => ['collections', filters],
+    list: (filters: unknown) => ['collections', filters],
     details: () => ['collections', 'details'],
     detail: (id: string) => ['collections', 'details', id],
   },
@@ -51,7 +51,7 @@ vi.mock('@tanstack/react-query', async () => {
 
 // Mock child modals
 vi.mock('../AddDataToCollectionModal', () => ({
-  default: vi.fn(({ onSuccess, onClose }: any) => (
+  default: vi.fn(({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) => (
     <div data-testid="add-data-modal">
       <button onClick={onSuccess}>Add Data Success</button>
       <button onClick={onClose}>Close Add Data</button>
@@ -60,7 +60,7 @@ vi.mock('../AddDataToCollectionModal', () => ({
 }));
 
 vi.mock('../RenameCollectionModal', () => ({
-  default: vi.fn(({ onSuccess, onClose }: any) => (
+  default: vi.fn(({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) => (
     <div data-testid="rename-modal">
       <button onClick={onSuccess}>Rename Success</button>
       <button onClick={onClose}>Close Rename</button>
@@ -69,7 +69,7 @@ vi.mock('../RenameCollectionModal', () => ({
 }));
 
 vi.mock('../DeleteCollectionModal', () => ({
-  default: vi.fn(({ onSuccess, onClose }: any) => (
+  default: vi.fn(({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) => (
     <div data-testid="delete-modal">
       <button onClick={onSuccess}>Delete Success</button>
       <button onClick={onClose}>Close Delete</button>
@@ -78,7 +78,7 @@ vi.mock('../DeleteCollectionModal', () => ({
 }));
 
 vi.mock('../ReindexCollectionModal', () => ({
-  default: vi.fn(({ onSuccess, onClose }: any) => (
+  default: vi.fn(({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) => (
     <div data-testid="reindex-modal">
       <button onClick={onSuccess}>Reindex Success</button>
       <button onClick={onClose}>Close Reindex</button>

@@ -139,10 +139,11 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
 
   // Cleanup
   useEffect(() => {
+    // Copy ref values to local variables to avoid React hooks warnings
+    const markInstance = markInstanceRef.current;
+    const pdfDoc = pdfDocRef.current;
+    
     return () => {
-      const markInstance = markInstanceRef.current;
-      const pdfDoc = pdfDocRef.current;
-      
       if (markInstance) {
         markInstance.unmark();
       }

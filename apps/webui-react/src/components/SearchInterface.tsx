@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useSearchStore } from '../stores/searchStore';
 import { useUIStore } from '../stores/uiStore';
 import { useCollections } from '../hooks/useCollections';
@@ -56,12 +56,12 @@ function SearchInterface() {
     };
   }, [collections, refetchCollections]);
 
-  const handleSelectSmallerModel = (model: string) => {
+  const handleSelectSmallerModel = useCallback((model: string) => {
     if (model === 'disabled') {
       // Disable reranking entirely
       updateSearchParams({ useReranker: false });
       setError(null);
-      delete (window as any).__gpuMemoryError;
+      delete (window as Window & { __gpuMemoryError?: unknown }).__gpuMemoryError;
       addToast({ 
         type: 'info', 
         message: 'Reranking disabled. Try searching again.' 
@@ -70,21 +70,21 @@ function SearchInterface() {
       // Switch to a smaller model
       updateSearchParams({ rerankModel: model });
       setError(null);
-      delete (window as any).__gpuMemoryError;
+      delete (window as Window & { __gpuMemoryError?: unknown }).__gpuMemoryError;
       addToast({ 
         type: 'info', 
         message: `Switched to ${model.split('/').pop()}. Try searching again.` 
       });
     }
-  };
+  }, [updateSearchParams, setError, addToast]);
 
   // Make the handler available globally for SearchResults
   useEffect(() => {
-    (window as any).__handleSelectSmallerModel = handleSelectSmallerModel;
+    (window as Window & { __handleSelectSmallerModel?: typeof handleSelectSmallerModel }).__handleSelectSmallerModel = handleSelectSmallerModel;
     return () => {
-      delete (window as any).__handleSelectSmallerModel;
+      delete (window as Window & { __handleSelectSmallerModel?: unknown }).__handleSelectSmallerModel;
     };
-  }, []);
+  }, [handleSelectSmallerModel]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -172,7 +172,7 @@ function SearchInterface() {
         // Store a special error marker that SearchResults can detect
         setError('GPU_MEMORY_ERROR');
         // Store the memory error details in a way SearchResults can access
-        (window as any).__gpuMemoryError = {
+        (window as Window & { __gpuMemoryError?: { message: string; suggestion: string; currentModel: string } }).__gpuMemoryError = {
           message: memoryErrorDetails.message,
           suggestion: memoryErrorDetails.suggestion,
           currentModel: searchParams.rerankModel

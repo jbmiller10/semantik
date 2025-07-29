@@ -30,8 +30,8 @@ function SearchResults() {
 
   if (error) {
     // Check if this is a GPU memory error
-    if (error === 'GPU_MEMORY_ERROR' && (window as any).__gpuMemoryError) {
-      const gpuError = (window as any).__gpuMemoryError;
+    if (error === 'GPU_MEMORY_ERROR' && (window as Window & { __gpuMemoryError?: { message: string; suggestion: string; currentModel: string } }).__gpuMemoryError) {
+      const gpuError = (window as Window & { __gpuMemoryError?: { message: string; suggestion: string; currentModel: string } }).__gpuMemoryError;
       return (
         <div className="bg-white rounded-lg shadow-md p-6">
           <GPUMemoryError
@@ -40,8 +40,8 @@ function SearchResults() {
             onSelectSmallerModel={(model) => {
               // This will be handled by the parent component
               // We need to pass this handler from SearchInterface
-              if ((window as any).__handleSelectSmallerModel) {
-                (window as any).__handleSelectSmallerModel(model);
+              if ((window as Window & { __handleSelectSmallerModel?: (model: string) => void }).__handleSelectSmallerModel) {
+                (window as Window & { __handleSelectSmallerModel?: (model: string) => void }).__handleSelectSmallerModel(model);
               }
             }}
           />

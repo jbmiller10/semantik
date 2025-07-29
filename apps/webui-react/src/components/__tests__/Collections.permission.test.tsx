@@ -3,20 +3,17 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useNavigate } from 'react-router-dom'
 import CollectionsDashboard from '../CollectionsDashboard'
-import CollectionDetailsModal from '../CollectionDetailsModal'
+// import CollectionDetailsModal from '../CollectionDetailsModal' // Unused import
 import { useUIStore } from '../../stores/uiStore'
 import { 
   renderWithErrorHandlers, 
   waitForError,
-  waitForToast,
-  removeAuthToken,
   mockConsoleError
 } from '../../tests/utils/errorTestUtils'
 import { 
   createErrorHandler,
   collectionErrorHandlers, 
-  authErrorHandlers,
-  combineErrorHandlers 
+  authErrorHandlers
 } from '../../tests/mocks/errorHandlers'
 import { server } from '../../tests/mocks/server'
 import { handlers } from '../../tests/mocks/handlers'

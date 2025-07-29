@@ -6,12 +6,8 @@ import AddDataToCollectionModal from '../AddDataToCollectionModal'
 import RenameCollectionModal from '../RenameCollectionModal'
 import ReindexCollectionModal from '../ReindexCollectionModal'
 import { 
-  renderWithErrorHandlers, 
-  waitForToast,
-  waitForError
+  renderWithErrorHandlers
 } from '../../tests/utils/errorTestUtils'
-import { collectionErrorHandlers } from '../../tests/mocks/errorHandlers'
-import { server } from '../../tests/mocks/server'
 
 // Mock hooks and stores
 const mockCreateCollectionMutation = {
@@ -380,7 +376,7 @@ describe('Collection Modals - API Validation Errors', () => {
     it('should handle duplicate name when renaming', async () => {
       // For server-side errors, we need to mock the mutation's onError callback
       const { useMutation } = await import('@tanstack/react-query')
-      vi.mocked(useMutation).mockImplementation((options: any) => ({
+      vi.mocked(useMutation).mockImplementation((options: { onError?: (error: unknown) => void }) => ({
         mutate: () => {
           options.onError?.({
             response: { 
@@ -390,7 +386,7 @@ describe('Collection Modals - API Validation Errors', () => {
           })
         },
         isPending: false,
-      } as any))
+      } as ReturnType<typeof useMutation>))
       
       renderWithErrorHandlers(
         <RenameCollectionModal 
