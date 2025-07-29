@@ -19,25 +19,15 @@ export interface MockAxiosResponse<T = unknown> extends Partial<AxiosResponse<T>
 }
 
 // Common Mock Data Types
-export interface MockCollection extends Collection {
-  // Add any test-specific fields if needed
-}
+export type MockCollection = Collection
 
-export interface MockOperation extends Operation {
-  // Add any test-specific fields if needed
-}
+export type MockOperation = Operation
 
-export interface MockDocument extends Document {
-  // Add any test-specific fields if needed
-}
+export type MockDocument = Document
 
-export interface MockSearchResult extends SearchResult {
-  // Add any test-specific fields if needed
-}
+export type MockSearchResult = SearchResult
 
-export interface MockUser extends User {
-  // Add any test-specific fields if needed
-}
+export type MockUser = User
 
 // Error Types
 export interface MockError {

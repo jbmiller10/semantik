@@ -183,7 +183,7 @@ describe('OperationProgress - WebSocket Error Handling', () => {
       
       let messageIndex = 0
       
-      vi.mocked(useOperationProgress).mockImplementation(({ operationId, onProgress }) => {
+      vi.mocked(useOperationProgress).mockImplementation(({ onProgress }) => {
         // Send messages sequentially
         const interval = setInterval(() => {
           if (messageIndex < mockMessages.length) {
@@ -223,7 +223,7 @@ describe('OperationProgress - WebSocket Error Handling', () => {
     })
 
     it('should handle missing required fields in messages', async () => {
-      vi.mocked(useOperationProgress).mockImplementation(({ operationId, onProgress, onError }) => {
+      vi.mocked(useOperationProgress).mockImplementation(({ onProgress, onError }) => {
         // Send message with missing progress
         setTimeout(() => {
           try {
@@ -250,7 +250,7 @@ describe('OperationProgress - WebSocket Error Handling', () => {
     it('should handle extremely large messages', async () => {
       const largeMessage = 'A'.repeat(100000) // 100KB message
       
-      vi.mocked(useOperationProgress).mockImplementation(({ operationId, onProgress }) => {
+      vi.mocked(useOperationProgress).mockImplementation(({ onProgress }) => {
         setTimeout(() => {
           onProgress?.(25, largeMessage)
         }, 0)
@@ -305,7 +305,7 @@ describe('OperationProgress - WebSocket Error Handling', () => {
       let isConnected = false
       let currentProgress = 25
       
-      vi.mocked(useOperationProgress).mockImplementation(({ operationId, onProgress }) => {
+      vi.mocked(useOperationProgress).mockImplementation(({ onProgress }) => {
         if (isConnected) {
           // Simulate receiving current state after reconnection
           setTimeout(() => {

@@ -337,7 +337,6 @@ describe('Collections - Permission Error Handling', () => {
     })
 
     it('should hide admin features for non-admin users', async () => {
-      
       const { useCollections } = await import('../../hooks/useCollections')
       vi.mocked(useCollections).mockReturnValue({
         data: [
@@ -377,7 +376,7 @@ describe('Collections - Permission Error Handling', () => {
         isLoading: false,
         error: null,
         refetch: vi.fn()
-      })
+      } as ReturnType<typeof useCollections>)
       
       renderWithErrorHandlers(
         <CollectionsDashboard />,
@@ -398,7 +397,7 @@ describe('Collections - Permission Error Handling', () => {
         isLoading: false,
         error: { message: 'Collection not found' } as Error,
         refetch: vi.fn()
-      })
+      } as ReturnType<typeof useCollections>)
       
       server.use(
         collectionErrorHandlers.notFound()[0]
@@ -418,7 +417,6 @@ describe('Collections - Permission Error Handling', () => {
     })
 
     it('should handle permission changes mid-session', async () => {
-      
       const mockUpdateCollection = vi.fn()
       
       // Skip this test as it needs refactoring for the new hook structure

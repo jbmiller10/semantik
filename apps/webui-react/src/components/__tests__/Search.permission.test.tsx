@@ -81,7 +81,7 @@ describe('Search - Permission Error Handling', () => {
         totalResults: 0,
         partialFailure: false,
         failedCollections: []
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
       
       renderWithErrorHandlers(
         <SearchInterface />,
@@ -113,7 +113,7 @@ describe('Search - Permission Error Handling', () => {
             error: 'Access denied to collection'
           }],
           results: [] // No results from private collection
-        } as any)
+        } as ReturnType<typeof useSearchStore>)
       })
       
       await userEvent.click(screen.getByRole('button', { name: /search/i }))
