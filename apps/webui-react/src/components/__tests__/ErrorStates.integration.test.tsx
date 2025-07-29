@@ -12,11 +12,9 @@ import {
   renderWithErrorHandlers,
   mockConsoleError
 } from '../../tests/utils/errorTestUtils'
-import { server } from '../../tests/mocks/server'
 import { TestWrapper } from '../../tests/utils/testUtils'
 import { render } from '@testing-library/react'
 import type { Collection } from '@/types/collection'
-import type { SearchParams } from '../../stores/searchStore'
 
 // Mock stores
 vi.mock('../../stores/collectionStore')
@@ -27,6 +25,41 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn()
 }))
 
+// Helper to create a search store mock
+const createSearchStoreMock = (overrides?: Partial<ReturnType<typeof useSearchStore>>) => ({
+  results: [],
+  loading: false,
+  error: null,
+  searchParams: {
+    query: '',
+    selectedCollections: [],
+    topK: 10,
+    scoreThreshold: 0.5,
+    searchType: 'semantic' as const,
+    useReranker: false
+  },
+  collections: [],
+  failedCollections: [],
+  partialFailure: false,
+  totalResults: 0,
+  searchTime: 0,
+  validationErrors: {},
+  isSearching: false,
+  performSearch: vi.fn(),
+  setSearchParams: vi.fn(),
+  clearResults: vi.fn(),
+  reset: vi.fn(),
+  ...overrides
+} as unknown as ReturnType<typeof useSearchStore>)
+
+// Helper to create a collection store mock  
+const createCollectionStoreMock = (overrides?: Record<string, unknown>) => ({
+  selectedCollectionId: null,
+  setSelectedCollection: vi.fn(),
+  clearStore: vi.fn(),
+  ...overrides
+} as unknown as ReturnType<typeof useCollectionStore>)
+
 describe('Error States - Integration Tests', () => {
   const mockAddToast = vi.fn()
   
@@ -35,18 +68,28 @@ describe('Error States - Integration Tests', () => {
     
     vi.mocked(useUIStore).mockReturnValue({
       addToast: mockAddToast,
-      activeTab: 'collections'
-    } as any)
+      activeTab: 'collections',
+      toasts: [],
+      showDocumentViewer: null,
+      showCollectionDetailsModal: null,
+      removeToast: vi.fn(),
+      setActiveTab: vi.fn(),
+      setShowDocumentViewer: vi.fn(),
+      setShowCollectionDetailsModal: vi.fn()
+    })
   })
 
   describe('Loading States', () => {
     it('should show loading skeleton in CollectionsDashboard', () => {
       vi.mocked(useCollectionStore).mockReturnValue({
+        selectedCollectionId: null,
+        setSelectedCollection: vi.fn(),
+        clearStore: vi.fn(),
         collections: [],
         loading: true,
         error: null,
         fetchCollections: vi.fn()
-      } as any)
+      } as unknown as ReturnType<typeof useCollectionStore>)
       
       renderWithErrorHandlers(<CollectionsDashboard />, [])
       
@@ -325,7 +368,7 @@ describe('Error States - Integration Tests', () => {
 
     it('should prioritize critical errors', () => {
       // Auth error should take precedence
-      // server.use(...authErrorHandlers.unauthorized())
+      // TODO: server.use(...authErrorHandlers.unauthorized())
       
       vi.mocked(useCollectionStore).mockReturnValue({
         selectedCollectionId: null,

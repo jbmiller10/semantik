@@ -468,7 +468,7 @@ describe('Search - Permission Error Handling', () => {
           error: 'Access revoked'
         }],
         searchParams: { query: 'test' }
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
       
       rerender(<SearchResults />)
       

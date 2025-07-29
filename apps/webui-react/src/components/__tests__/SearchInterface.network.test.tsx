@@ -7,14 +7,10 @@ import { useCollectionStore } from '../../stores/collectionStore'
 import { useUIStore } from '../../stores/uiStore'
 import { 
   renderWithErrorHandlers, 
-  waitForError,
-  waitForToast,
   simulateOffline,
   simulateOnline
 } from '../../tests/utils/errorTestUtils'
 import { searchErrorHandlers } from '../../tests/mocks/errorHandlers'
-import { server } from '../../tests/mocks/server'
-import { handlers } from '../../tests/mocks/handlers'
 
 // Mock stores
 vi.mock('../../stores/searchStore')
@@ -71,18 +67,18 @@ describe('SearchInterface - Network Error Handling', () => {
       searchTime: 0,
       failedCollections: [],
       partialFailure: false
-    } as any)
+    } as ReturnType<typeof useSearchStore>)
     
     vi.mocked(useCollectionStore).mockReturnValue({
       collections: mockCollections,
       fetchCollections: vi.fn(),
       loading: false,
       error: null
-    } as any)
+    } as ReturnType<typeof useCollectionStore>)
     
     vi.mocked(useUIStore).mockReturnValue({
       addToast: mockAddToast
-    } as any)
+    } as Partial<ReturnType<typeof useUIStore>> as ReturnType<typeof useUIStore>)
   })
 
   describe('Search Request Network Failures', () => {
@@ -201,7 +197,7 @@ describe('SearchInterface - Network Error Handling', () => {
       vi.mocked(useSearchStore).mockReturnValue({
         ...vi.mocked(useSearchStore).mock.results[0].value,
         isSearching: true
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
       
       await userEvent.click(searchButton)
       
@@ -253,7 +249,7 @@ describe('SearchInterface - Network Error Handling', () => {
             }
           ],
           totalResults: 1
-        } as any)
+        } as ReturnType<typeof useSearchStore>)
       })
       
       await userEvent.click(screen.getByRole('button', { name: /search/i }))
