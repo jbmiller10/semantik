@@ -2,6 +2,7 @@ import type { UseQueryResult, UseMutationResult } from '@tanstack/react-query'
 import type { Collection, Operation } from '@/types/collection'
 import type { Document } from '@/types/document'
 import type { SearchResult } from '@/types/search'
+import { vi } from 'vitest'
 
 // React Query Mock Types
 export type MockUseQueryResult<TData = unknown, TError = Error> = Partial<UseQueryResult<TData, TError>>
