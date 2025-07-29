@@ -10,6 +10,9 @@ import { searchV2Api } from '../../services/api/v2/collections';
 // Mock the API
 vi.mock('../../services/api/v2/collections');
 
+// Type the mocked module
+const mockedSearchV2Api = vi.mocked(searchV2Api);
+
 // Mock the hooks
 vi.mock('../../hooks/useCollections', () => ({
   useCollections: () => ({
@@ -104,7 +107,7 @@ describe('SearchInterface Reranking Tests', () => {
       },
     };
 
-    vi.mocked(searchV2Api.search).mockResolvedValueOnce(mockSearchResponse);
+    mockedSearchV2Api.search.mockResolvedValueOnce(mockSearchResponse);
 
     render(<SearchInterface />, { wrapper: createWrapper() });
 
@@ -185,7 +188,7 @@ describe('SearchInterface Reranking Tests', () => {
       },
     };
 
-    vi.mocked(searchV2Api.search).mockResolvedValueOnce(mockSearchResponse);
+    mockedSearchV2Api.search.mockResolvedValueOnce(mockSearchResponse);
 
     render(<SearchInterface />, { wrapper: createWrapper() });
 
@@ -267,7 +270,7 @@ describe('SearchInterface Reranking Tests', () => {
       }
     );
 
-    vi.mocked(searchV2Api.search).mockRejectedValueOnce(mockError);
+    mockedSearchV2Api.search.mockRejectedValueOnce(mockError);
 
     render(<SearchInterface />, { wrapper: createWrapper() });
 
@@ -335,7 +338,7 @@ describe('SearchInterface Reranking Tests', () => {
       },
     };
 
-    vi.mocked(searchV2Api.search).mockResolvedValueOnce(mockSearchResponse);
+    mockedSearchV2Api.search.mockResolvedValueOnce(mockSearchResponse);
 
     render(<SearchInterface />, { wrapper: createWrapper() });
 

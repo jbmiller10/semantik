@@ -168,11 +168,6 @@ jobs:
         image: qdrant/qdrant:latest
         ports:
           - 6333:6333
-        options: >-
-          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:6333/health || exit 1"
-          --health-interval 30s
-          --health-timeout 10s
-          --health-retries 10
 
     steps:
       - uses: actions/checkout@v4

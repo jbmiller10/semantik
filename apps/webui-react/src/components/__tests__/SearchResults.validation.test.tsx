@@ -1,17 +1,11 @@
 import React from 'react'
-import { screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { screen } from '@testing-library/react'
 import { SearchResults } from '../SearchResults'
-import { SearchInterface } from '../SearchInterface'
 import { useSearchStore } from '../../stores/searchStore'
-import { useCollectionStore } from '../../stores/collectionStore'
 import { useUIStore } from '../../stores/uiStore'
 import { 
-  renderWithErrorHandlers,
-  waitForError
+  renderWithErrorHandlers
 } from '../../tests/utils/errorTestUtils'
-import { searchErrorHandlers } from '../../tests/mocks/errorHandlers'
-import { server } from '../../tests/mocks/server'
 
 // Mock stores
 vi.mock('../../stores/searchStore')

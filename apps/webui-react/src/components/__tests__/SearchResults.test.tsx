@@ -54,21 +54,21 @@ describe('SearchResults', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     
-    ;(useUIStore as any).mockImplementation((selector: any) => {
+    vi.mocked(useUIStore).mockImplementation((selector: (state: ReturnType<typeof useUIStore>) => unknown) => {
       const state = {
         setShowDocumentViewer: mockSetShowDocumentViewer,
       }
-      return selector ? selector(state) : state
+      return selector ? selector(state as ReturnType<typeof useUIStore>) : state
     })
   })
 
   it('renders loading state', () => {
-    ;(useSearchStore as any).mockReturnValue({
+    vi.mocked(useSearchStore).mockReturnValue({
       results: [],
       loading: true,
       error: null,
       rerankingMetrics: null,
-    })
+    } as Partial<ReturnType<typeof useSearchStore>> as ReturnType<typeof useSearchStore>)
 
     render(<SearchResults />)
     
@@ -80,12 +80,12 @@ describe('SearchResults', () => {
 
   it('renders error state', () => {
     const errorMessage = 'Failed to fetch search results'
-    ;(useSearchStore as any).mockReturnValue({
+    vi.mocked(useSearchStore).mockReturnValue({
       results: [],
       loading: false,
       error: errorMessage,
       rerankingMetrics: null,
-    })
+    } as Partial<ReturnType<typeof useSearchStore>> as ReturnType<typeof useSearchStore>)
 
     render(<SearchResults />)
     
@@ -93,14 +93,14 @@ describe('SearchResults', () => {
   })
 
   it('renders nothing when results are empty', () => {
-    ;(useSearchStore as any).mockReturnValue({
+    vi.mocked(useSearchStore).mockReturnValue({
       results: [],
       loading: false,
       error: null,
       rerankingMetrics: null,
       failedCollections: [],
       partialFailure: false,
-    })
+    } as Partial<ReturnType<typeof useSearchStore>> as ReturnType<typeof useSearchStore>)
 
     const { container } = render(<SearchResults />)
     
@@ -108,14 +108,14 @@ describe('SearchResults', () => {
   })
 
   it('renders search results grouped by collection and document', () => {
-    ;(useSearchStore as any).mockReturnValue({
+    vi.mocked(useSearchStore).mockReturnValue({
       results: mockResults,
       loading: false,
       error: null,
       rerankingMetrics: null,
       failedCollections: [],
       partialFailure: false,
-    })
+    } as Partial<ReturnType<typeof useSearchStore>> as ReturnType<typeof useSearchStore>)
 
     render(<SearchResults />)
     
@@ -145,7 +145,7 @@ describe('SearchResults', () => {
   })
 
   it('displays reranking metrics when available', () => {
-    ;(useSearchStore as any).mockReturnValue({
+    vi.mocked(useSearchStore).mockReturnValue({
       results: mockResults,
       loading: false,
       error: null,
@@ -155,7 +155,7 @@ describe('SearchResults', () => {
       },
       failedCollections: [],
       partialFailure: false,
-    })
+    } as Partial<ReturnType<typeof useSearchStore>> as ReturnType<typeof useSearchStore>)
 
     render(<SearchResults />)
     
@@ -166,14 +166,14 @@ describe('SearchResults', () => {
   it('expands and collapses documents on click', async () => {
     const user = userEvent.setup()
     
-    ;(useSearchStore as any).mockReturnValue({
+    vi.mocked(useSearchStore).mockReturnValue({
       results: mockResults,
       loading: false,
       error: null,
       rerankingMetrics: null,
       failedCollections: [],
       partialFailure: false,
-    })
+    } as Partial<ReturnType<typeof useSearchStore>> as ReturnType<typeof useSearchStore>)
 
     render(<SearchResults />)
     
@@ -202,14 +202,14 @@ describe('SearchResults', () => {
   it('handles view document button click', async () => {
     const user = userEvent.setup()
     
-    ;(useSearchStore as any).mockReturnValue({
+    vi.mocked(useSearchStore).mockReturnValue({
       results: mockResults,
       loading: false,
       error: null,
       rerankingMetrics: null,
       failedCollections: [],
       partialFailure: false,
-    })
+    } as Partial<ReturnType<typeof useSearchStore>> as ReturnType<typeof useSearchStore>)
 
     render(<SearchResults />)
     
@@ -231,14 +231,14 @@ describe('SearchResults', () => {
   it('handles chunk click for document viewing', async () => {
     const user = userEvent.setup()
     
-    ;(useSearchStore as any).mockReturnValue({
+    vi.mocked(useSearchStore).mockReturnValue({
       results: mockResults,
       loading: false,
       error: null,
       rerankingMetrics: null,
       failedCollections: [],
       partialFailure: false,
-    })
+    } as Partial<ReturnType<typeof useSearchStore>> as ReturnType<typeof useSearchStore>)
 
     render(<SearchResults />)
     
@@ -267,14 +267,14 @@ describe('SearchResults', () => {
       },
     ]
     
-    ;(useSearchStore as any).mockReturnValue({
+    vi.mocked(useSearchStore).mockReturnValue({
       results: resultsWithoutCollectionId,
       loading: false,
       error: null,
       rerankingMetrics: null,
       failedCollections: [],
       partialFailure: false,
-    })
+    } as Partial<ReturnType<typeof useSearchStore>> as ReturnType<typeof useSearchStore>)
 
     render(<SearchResults />)
     
@@ -296,14 +296,14 @@ describe('SearchResults', () => {
   it('prevents event propagation when clicking view document button', async () => {
     const user = userEvent.setup()
     
-    ;(useSearchStore as any).mockReturnValue({
+    vi.mocked(useSearchStore).mockReturnValue({
       results: mockResults,
       loading: false,
       error: null,
       rerankingMetrics: null,
       failedCollections: [],
       partialFailure: false,
-    })
+    } as Partial<ReturnType<typeof useSearchStore>> as ReturnType<typeof useSearchStore>)
 
     render(<SearchResults />)
     
@@ -328,14 +328,14 @@ describe('SearchResults', () => {
   it('displays empty message when groupedResults is empty', () => {
     // This scenario shouldn't normally happen since we return null for empty results,
     // but the component has this code path
-    ;(useSearchStore as any).mockReturnValue({
+    vi.mocked(useSearchStore).mockReturnValue({
       results: [],
       loading: false,
       error: null,
       rerankingMetrics: null,
       failedCollections: [],
       partialFailure: false,
-    })
+    } as Partial<ReturnType<typeof useSearchStore>> as ReturnType<typeof useSearchStore>)
 
     // Force render by mocking a non-empty results array that groups to empty
     const { container } = render(<SearchResults />)
