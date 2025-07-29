@@ -1,5 +1,5 @@
 import React from 'react'
-import { screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Toast } from '../Toast'
 import { CreateCollectionModal } from '../CreateCollectionModal'
@@ -38,8 +38,15 @@ describe('UI Error States', () => {
       
       vi.mocked(useUIStore).mockReturnValue({
         toasts: mockToasts,
-        removeToast: vi.fn()
-      } as any)
+        removeToast: vi.fn(),
+        activeTab: 'collections',
+        showDocumentViewer: null,
+        showCollectionDetailsModal: null,
+        addToast: vi.fn(),
+        setActiveTab: vi.fn(),
+        setShowDocumentViewer: vi.fn(),
+        setShowCollectionDetailsModal: vi.fn()
+      })
       
       render(
         <TestWrapper>
@@ -69,8 +76,15 @@ describe('UI Error States', () => {
       
       vi.mocked(useUIStore).mockReturnValue({
         toasts: [mockToast],
-        removeToast: mockRemoveToast
-      } as any)
+        removeToast: mockRemoveToast,
+        activeTab: 'collections',
+        showDocumentViewer: null,
+        showCollectionDetailsModal: null,
+        addToast: vi.fn(),
+        setActiveTab: vi.fn(),
+        setShowDocumentViewer: vi.fn(),
+        setShowCollectionDetailsModal: vi.fn()
+      })
       
       render(
         <TestWrapper>
@@ -96,8 +110,15 @@ describe('UI Error States', () => {
           type: 'error' as const,
           duration: 10000
         }],
-        removeToast: mockRemoveToast
-      } as any)
+        removeToast: mockRemoveToast,
+        activeTab: 'collections',
+        showDocumentViewer: null,
+        showCollectionDetailsModal: null,
+        addToast: vi.fn(),
+        setActiveTab: vi.fn(),
+        setShowDocumentViewer: vi.fn(),
+        setShowCollectionDetailsModal: vi.fn()
+      })
       
       render(
         <TestWrapper>
@@ -115,12 +136,23 @@ describe('UI Error States', () => {
   describe('Form Validation Error Display', () => {
     it('should show inline validation errors in CreateCollectionModal', async () => {
       vi.mocked(useCollectionStore).mockReturnValue({
+        selectedCollectionId: null,
+        setSelectedCollection: vi.fn(),
+        clearStore: vi.fn(),
         createCollection: vi.fn()
-      } as any)
+      } as unknown as ReturnType<typeof useCollectionStore>)
       
       vi.mocked(useUIStore).mockReturnValue({
-        addToast: vi.fn()
-      } as any)
+        toasts: [],
+        removeToast: vi.fn(),
+        activeTab: 'collections',
+        showDocumentViewer: null,
+        showCollectionDetailsModal: null,
+        addToast: vi.fn(),
+        setActiveTab: vi.fn(),
+        setShowDocumentViewer: vi.fn(),
+        setShowCollectionDetailsModal: vi.fn()
+      })
       
       renderWithErrorHandlers(
         <CreateCollectionModal isOpen={true} onClose={vi.fn()} />,
@@ -141,12 +173,23 @@ describe('UI Error States', () => {
 
     it('should validate numeric inputs stay within bounds', async () => {
       vi.mocked(useCollectionStore).mockReturnValue({
+        selectedCollectionId: null,
+        setSelectedCollection: vi.fn(),
+        clearStore: vi.fn(),
         createCollection: vi.fn()
-      } as any)
+      } as unknown as ReturnType<typeof useCollectionStore>)
       
       vi.mocked(useUIStore).mockReturnValue({
-        addToast: vi.fn()
-      } as any)
+        toasts: [],
+        removeToast: vi.fn(),
+        activeTab: 'collections',
+        showDocumentViewer: null,
+        showCollectionDetailsModal: null,
+        addToast: vi.fn(),
+        setActiveTab: vi.fn(),
+        setShowDocumentViewer: vi.fn(),
+        setShowCollectionDetailsModal: vi.fn()
+      })
       
       renderWithErrorHandlers(
         <CreateCollectionModal isOpen={true} onClose={vi.fn()} />,
@@ -175,12 +218,23 @@ describe('UI Error States', () => {
       const mockAddToast = vi.fn()
       
       vi.mocked(useCollectionStore).mockReturnValue({
+        selectedCollectionId: null,
+        setSelectedCollection: vi.fn(),
+        clearStore: vi.fn(),
         addSource: mockAddSource
-      } as any)
+      } as unknown as ReturnType<typeof useCollectionStore>)
       
       vi.mocked(useUIStore).mockReturnValue({
-        addToast: mockAddToast
-      } as any)
+        toasts: [],
+        removeToast: vi.fn(),
+        activeTab: 'collections',
+        showDocumentViewer: null,
+        showCollectionDetailsModal: null,
+        addToast: mockAddToast,
+        setActiveTab: vi.fn(),
+        setShowDocumentViewer: vi.fn(),
+        setShowCollectionDetailsModal: vi.fn()
+      })
       
       const mockCollection = {
         uuid: 'test-uuid',
@@ -220,12 +274,23 @@ describe('UI Error States', () => {
       )
       
       vi.mocked(useCollectionStore).mockReturnValue({
+        selectedCollectionId: null,
+        setSelectedCollection: vi.fn(),
+        clearStore: vi.fn(),
         createCollection: mockCreateCollection
-      } as any)
+      } as unknown as ReturnType<typeof useCollectionStore>)
       
       vi.mocked(useUIStore).mockReturnValue({
-        addToast: vi.fn()
-      } as any)
+        toasts: [],
+        removeToast: vi.fn(),
+        activeTab: 'collections',
+        showDocumentViewer: null,
+        showCollectionDetailsModal: null,
+        addToast: vi.fn(),
+        setActiveTab: vi.fn(),
+        setShowDocumentViewer: vi.fn(),
+        setShowCollectionDetailsModal: vi.fn()
+      })
       
       renderWithErrorHandlers(
         <CreateCollectionModal isOpen={true} onClose={vi.fn()} />,
@@ -252,12 +317,23 @@ describe('UI Error States', () => {
       )
       
       vi.mocked(useCollectionStore).mockReturnValue({
+        selectedCollectionId: null,
+        setSelectedCollection: vi.fn(),
+        clearStore: vi.fn(),
         addSource: mockAddSource
-      } as any)
+      } as unknown as ReturnType<typeof useCollectionStore>)
       
       vi.mocked(useUIStore).mockReturnValue({
-        addToast: vi.fn()
-      } as any)
+        toasts: [],
+        removeToast: vi.fn(),
+        activeTab: 'collections',
+        showDocumentViewer: null,
+        showCollectionDetailsModal: null,
+        addToast: vi.fn(),
+        setActiveTab: vi.fn(),
+        setShowDocumentViewer: vi.fn(),
+        setShowCollectionDetailsModal: vi.fn()
+      })
       
       const mockCollection = {
         uuid: 'test-uuid',
@@ -292,9 +368,16 @@ describe('UI Error States', () => {
       const mockAddToast = vi.fn()
       
       vi.mocked(useUIStore).mockReturnValue({
+        toasts: [],
+        removeToast: vi.fn(),
+        activeTab: 'collections',
+        showDocumentViewer: null,
+        showCollectionDetailsModal: null,
         addToast: mockAddToast,
-        toasts: []
-      } as any)
+        setActiveTab: vi.fn(),
+        setShowDocumentViewer: vi.fn(),
+        setShowCollectionDetailsModal: vi.fn()
+      })
       
       const technicalErrors = [
         {
@@ -312,7 +395,7 @@ describe('UI Error States', () => {
       ]
       
       // Simulate various error scenarios and check toast messages
-      for (const error of technicalErrors) {
+      for (const _error of technicalErrors) {
         mockAddToast.mockClear()
         
         // Trigger an error (component specific)
@@ -327,14 +410,21 @@ describe('UI Error States', () => {
       const veryLongError = 'A'.repeat(500) + ' error details that go on and on...'
       
       vi.mocked(useUIStore).mockReturnValue({
-        addToast: mockAddToast,
         toasts: [{
           id: '1',
           message: veryLongError,
           type: 'error' as const,
           duration: 5000
-        }]
-      } as any)
+        }],
+        removeToast: vi.fn(),
+        activeTab: 'collections',
+        showDocumentViewer: null,
+        showCollectionDetailsModal: null,
+        addToast: mockAddToast,
+        setActiveTab: vi.fn(),
+        setShowDocumentViewer: vi.fn(),
+        setShowCollectionDetailsModal: vi.fn()
+      })
       
       render(
         <TestWrapper>
@@ -359,8 +449,15 @@ describe('UI Error States', () => {
           type: 'error' as const,
           duration: 5000
         }],
-        removeToast: vi.fn()
-      } as any)
+        removeToast: vi.fn(),
+        activeTab: 'collections',
+        showDocumentViewer: null,
+        showCollectionDetailsModal: null,
+        addToast: vi.fn(),
+        setActiveTab: vi.fn(),
+        setShowDocumentViewer: vi.fn(),
+        setShowCollectionDetailsModal: vi.fn()
+      })
       
       render(
         <TestWrapper>
@@ -400,14 +497,25 @@ describe('UI Error States', () => {
 
     it('should provide clear error context in forms', async () => {
       vi.mocked(useCollectionStore).mockReturnValue({
+        selectedCollectionId: null,
+        setSelectedCollection: vi.fn(),
+        clearStore: vi.fn(),
         createCollection: vi.fn().mockRejectedValue({
           response: { data: { detail: 'Name already exists' } }
         })
-      } as any)
+      } as unknown as ReturnType<typeof useCollectionStore>)
       
       vi.mocked(useUIStore).mockReturnValue({
-        addToast: vi.fn()
-      } as any)
+        toasts: [],
+        removeToast: vi.fn(),
+        activeTab: 'collections',
+        showDocumentViewer: null,
+        showCollectionDetailsModal: null,
+        addToast: vi.fn(),
+        setActiveTab: vi.fn(),
+        setShowDocumentViewer: vi.fn(),
+        setShowCollectionDetailsModal: vi.fn()
+      })
       
       renderWithErrorHandlers(
         <CreateCollectionModal isOpen={true} onClose={vi.fn()} />,

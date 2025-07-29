@@ -462,7 +462,7 @@ describe('Collections - Permission Error Handling', () => {
         isLoading: false,
         error: { message: 'Invalid API key' } as Error,
         refetch: mockFetchCollections
-      })
+      } as ReturnType<typeof useCollections>)
       
       renderWithErrorHandlers(
         <CollectionsDashboard />,
@@ -488,7 +488,7 @@ describe('Collections - Permission Error Handling', () => {
         isLoading: false,
         error: { message: 'API key expired' } as Error,
         refetch: mockFetchCollections
-      })
+      } as ReturnType<typeof useCollections>)
       
       renderWithErrorHandlers(
         <CollectionsDashboard />,
@@ -535,7 +535,7 @@ describe('Collections - Permission Error Handling', () => {
           isLoading: false,
           error: { message: 'Session expired' } as Error,
           refetch: mockFetchCollections
-        })
+        } as ReturnType<typeof useCollections>)
         
         server.use(
           createErrorHandler('get', '/api/auth/me', 401, {

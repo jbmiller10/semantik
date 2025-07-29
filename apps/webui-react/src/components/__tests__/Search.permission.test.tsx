@@ -254,7 +254,7 @@ describe('Search - Permission Error Handling', () => {
         partialFailure: false,
         failedCollections: [],
         searchParams: { query: 'test' }
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
       
       renderWithErrorHandlers(
         <SearchResults />,
@@ -310,7 +310,7 @@ describe('Search - Permission Error Handling', () => {
       }
       
       vi.mocked(useSearchStore).mockReturnValue({
-        results: searchResults as any,
+        results: searchResults as SearchResult[],
         totalResults: 2,
         isSearching: false,
         error: null,
@@ -318,7 +318,7 @@ describe('Search - Permission Error Handling', () => {
         partialFailure: true,
         failedCollections: [failedPrivate],
         searchParams: { query: 'test' }
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
       
       renderWithErrorHandlers(
         <SearchResults />,
@@ -357,12 +357,12 @@ describe('Search - Permission Error Handling', () => {
         error: null,
         performSearch: mockSearch,
         setError: vi.fn()
-      } as any)
+      } as Partial<ReturnType<typeof useSearchStore>> as ReturnType<typeof useSearchStore>)
       
       vi.mocked(useCollectionStore).mockReturnValue({
         collections: [mockPublicCollection],
         fetchCollections: vi.fn()
-      } as any)
+      } as Partial<ReturnType<typeof useCollectionStore>> as ReturnType<typeof useCollectionStore>)
       
       renderWithErrorHandlers(
         <SearchInterface />,
@@ -391,12 +391,12 @@ describe('Search - Permission Error Handling', () => {
         error: null,
         performSearch: mockSearch,
         setError: vi.fn()
-      } as any)
+      } as Partial<ReturnType<typeof useSearchStore>> as ReturnType<typeof useSearchStore>)
       
       vi.mocked(useCollectionStore).mockReturnValue({
         collections: [mockPublicCollection],
         fetchCollections: vi.fn()
-      } as any)
+      } as Partial<ReturnType<typeof useCollectionStore>> as ReturnType<typeof useCollectionStore>)
       
       renderWithErrorHandlers(
         <SearchInterface />,
@@ -438,14 +438,14 @@ describe('Search - Permission Error Handling', () => {
       ]
       
       vi.mocked(useSearchStore).mockReturnValue({
-        results: initialResults as any,
+        results: initialResults as SearchResult[],
         totalResults: 2,
         isSearching: false,
         error: null,
         partialFailure: false,
         failedCollections: [],
         searchParams: { query: 'test' }
-      } as any)
+      } as ReturnType<typeof useSearchStore>)
       
       const { rerender } = renderWithErrorHandlers(
         <SearchResults />,
@@ -457,7 +457,7 @@ describe('Search - Permission Error Handling', () => {
       
       // Simulate permission change - user loses access to collection 2
       vi.mocked(useSearchStore).mockReturnValue({
-        results: [initialResults[0]] as any,
+        results: [initialResults[0]] as SearchResult[],
         totalResults: 1,
         isSearching: false,
         error: null,
