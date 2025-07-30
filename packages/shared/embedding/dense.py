@@ -15,6 +15,12 @@ import torch.nn.functional as F  # noqa: N812
 from numpy.typing import NDArray
 from sentence_transformers import SentenceTransformer
 from shared.config.vecpipe import VecpipeConfig
+from shared.metrics.prometheus import (
+    record_oom_error,
+    record_batch_size_reduction,
+    update_current_batch_size,
+    update_gpu_memory_usage,
+)
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
 from transformers.modeling_utils import PreTrainedModel
@@ -173,6 +179,20 @@ class DenseEmbeddingService(BaseEmbeddingService):
         # Quantization settings
         self.quantization: str = "float32"
         self.dtype: torch.dtype = torch.float32
+        
+        # Adaptive batch size management
+        self.original_batch_size: int | None = None
+        self.current_batch_size: int | None = None
+        if config is not None:
+            self.min_batch_size: int = config.MIN_BATCH_SIZE
+            self.batch_size_increase_threshold: int = config.BATCH_SIZE_INCREASE_THRESHOLD
+            self.enable_adaptive_batch_size: bool = config.ENABLE_ADAPTIVE_BATCH_SIZE
+        else:
+            # Default values
+            self.min_batch_size: int = 1
+            self.batch_size_increase_threshold: int = 10
+            self.enable_adaptive_batch_size: bool = True
+        self.successful_batches: int = 0
 
     @property
     def is_initialized(self) -> bool:
@@ -365,59 +385,196 @@ class DenseEmbeddingService(BaseEmbeddingService):
     def _embed_qwen_texts(
         self, texts: list[str], batch_size: int, normalize: bool, instruction: str | None
     ) -> NDArray[np.float32]:
-        """Embed texts using Qwen model."""
+        """Embed texts using Qwen model with adaptive batch sizing."""
         # Apply instruction if provided
         if instruction:
             texts = [f"Instruct: {instruction}\nQuery:{text}" for text in texts]
 
+        # Initialize adaptive batch sizing if enabled
+        if self.enable_adaptive_batch_size and self.device == "cuda":
+            if self.original_batch_size is None:
+                self.original_batch_size = batch_size
+                self.current_batch_size = batch_size
+            
+            # Use current adaptive batch size
+            current_batch_size = self.current_batch_size or batch_size
+        else:
+            current_batch_size = batch_size
+
         all_embeddings = []
+        i = 0
+        
+        while i < len(texts):
+            batch_texts = texts[i : i + current_batch_size]
+            
+            try:
+                # Tokenize
+                if self.tokenizer is None:
+                    raise RuntimeError("Tokenizer not initialized")
+                batch_dict = self.tokenizer(
+                    batch_texts, padding=True, truncation=True, max_length=self.max_sequence_length, return_tensors="pt"
+                ).to(self.device)
 
-        for i in range(0, len(texts), batch_size):
-            batch_texts = texts[i : i + batch_size]
-
-            # Tokenize
-            if self.tokenizer is None:
-                raise RuntimeError("Tokenizer not initialized")
-            batch_dict = self.tokenizer(
-                batch_texts, padding=True, truncation=True, max_length=self.max_sequence_length, return_tensors="pt"
-            ).to(self.device)
-
-            # Generate embeddings
-            if self.model is None:
-                raise RuntimeError("Model not initialized")
-            # Type assertion: For Qwen models, self.model is an AutoModel instance
-            assert isinstance(self.model, PreTrainedModel)
-            with torch.no_grad():
-                if self.dtype == torch.float16:
-                    with torch.cuda.amp.autocast(dtype=torch.float16):
+                # Generate embeddings
+                if self.model is None:
+                    raise RuntimeError("Model not initialized")
+                # Type assertion: For Qwen models, self.model is an AutoModel instance
+                assert isinstance(self.model, PreTrainedModel)
+                with torch.no_grad():
+                    if self.dtype == torch.float16:
+                        with torch.cuda.amp.autocast(dtype=torch.float16):
+                            outputs = cast(Any, self.model)(**batch_dict)
+                    else:
                         outputs = cast(Any, self.model)(**batch_dict)
+
+                    embeddings = last_token_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
+
+                    if normalize:
+                        embeddings = F.normalize(embeddings, p=2, dim=1)
+
+                    all_embeddings.append(embeddings.cpu().numpy())
+                
+                # Track successful batches
+                if self.enable_adaptive_batch_size and self.device == "cuda":
+                    self.successful_batches += 1
+                    
+                    # Consider increasing batch size after threshold successes
+                    if (self.successful_batches >= self.batch_size_increase_threshold and 
+                        current_batch_size < self.original_batch_size):
+                        new_size = min(current_batch_size * 2, self.original_batch_size)
+                        logger.info(f"Increasing batch size from {current_batch_size} to {new_size} after {self.successful_batches} successes")
+                        current_batch_size = new_size
+                        self.current_batch_size = new_size
+                        self.successful_batches = 0
+                        
+                        # Update metric
+                        if self.model_name and self.quantization:
+                            update_current_batch_size(self.model_name, self.quantization, new_size)
+                
+                # Move to next batch
+                i += len(batch_texts)
+                
+            except torch.cuda.OutOfMemoryError:
+                if not self.enable_adaptive_batch_size or self.device != "cuda":
+                    raise
+                    
+                # Record OOM error
+                if self.model_name and self.quantization:
+                    record_oom_error(self.model_name, self.quantization)
+                    
+                if current_batch_size > self.min_batch_size:
+                    # Reduce batch size
+                    torch.cuda.empty_cache()
+                    new_batch_size = max(self.min_batch_size, current_batch_size // 2)
+                    logger.warning(
+                        f"OOM with batch size {current_batch_size}, reducing to {new_batch_size} "
+                        f"for model {self.model_name} with quantization {self.quantization}"
+                    )
+                    
+                    # Record batch size reduction
+                    if self.model_name and self.quantization:
+                        record_batch_size_reduction(self.model_name, self.quantization)
+                        update_current_batch_size(self.model_name, self.quantization, new_batch_size)
+                    
+                    current_batch_size = new_batch_size
+                    self.current_batch_size = new_batch_size
+                    self.successful_batches = 0
+                    
+                    # Don't increment i, retry same batch with smaller size
                 else:
-                    outputs = cast(Any, self.model)(**batch_dict)
-
-                embeddings = last_token_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
-
-                if normalize:
-                    embeddings = F.normalize(embeddings, p=2, dim=1)
-
-                all_embeddings.append(embeddings.cpu().numpy())
+                    logger.error(f"OOM even with minimum batch size {self.min_batch_size}")
+                    raise RuntimeError(
+                        f"Unable to process batch even with minimum batch size {self.min_batch_size}"
+                    ) from None
 
         return np.vstack(all_embeddings)
 
     def _embed_sentence_transformer_texts(
         self, texts: list[str], batch_size: int, normalize: bool, show_progress: bool
     ) -> NDArray[np.float32]:
-        """Embed texts using sentence-transformers."""
+        """Embed texts using sentence-transformers with adaptive batch sizing."""
         if self.model is None:
             raise RuntimeError("Model not initialized")
         # Type assertion: This method is only called when we have a SentenceTransformer
         assert isinstance(self.model, SentenceTransformer)
-        embeddings: NDArray[np.float32] = self.model.encode(
-            texts,
-            batch_size=batch_size,
-            normalize_embeddings=normalize,
-            convert_to_numpy=True,
-            show_progress_bar=show_progress,
-        )
+        
+        # Initialize adaptive batch sizing if enabled
+        if self.enable_adaptive_batch_size and self.device == "cuda":
+            if self.original_batch_size is None:
+                self.original_batch_size = batch_size
+                self.current_batch_size = batch_size
+            
+            # Use current adaptive batch size
+            current_batch_size = self.current_batch_size or batch_size
+        else:
+            current_batch_size = batch_size
+            
+        embeddings: NDArray[np.float32] | None = None
+        
+        while current_batch_size >= self.min_batch_size:
+            try:
+                logger.debug(f"Attempting to encode with batch_size={current_batch_size}, quantization={self.quantization}")
+                
+                embeddings = self.model.encode(
+                    texts,
+                    batch_size=current_batch_size,
+                    normalize_embeddings=normalize,
+                    convert_to_numpy=True,
+                    show_progress_bar=show_progress,
+                )
+                
+                # Track successful batches
+                if self.enable_adaptive_batch_size and self.device == "cuda":
+                    self.successful_batches += 1
+                    
+                    # Consider increasing batch size after threshold successes
+                    if (self.successful_batches >= self.batch_size_increase_threshold and 
+                        current_batch_size < self.original_batch_size):
+                        new_size = min(current_batch_size * 2, self.original_batch_size)
+                        logger.info(f"Increasing batch size from {current_batch_size} to {new_size} after {self.successful_batches} successes")
+                        self.current_batch_size = new_size
+                        self.successful_batches = 0
+                        
+                        # Update metric
+                        if self.model_name and self.quantization:
+                            update_current_batch_size(self.model_name, self.quantization, new_size)
+                
+                break  # Success, exit the retry loop
+                
+            except torch.cuda.OutOfMemoryError:
+                if not self.enable_adaptive_batch_size or self.device != "cuda":
+                    raise
+                    
+                # Record OOM error
+                if self.model_name and self.quantization:
+                    record_oom_error(self.model_name, self.quantization)
+                    
+                if current_batch_size > self.min_batch_size:
+                    # Reduce batch size
+                    torch.cuda.empty_cache()
+                    new_batch_size = max(self.min_batch_size, current_batch_size // 2)
+                    logger.warning(
+                        f"OOM with batch size {current_batch_size}, reducing to {new_batch_size} "
+                        f"for model {self.model_name} with quantization {self.quantization}"
+                    )
+                    
+                    # Record batch size reduction
+                    if self.model_name and self.quantization:
+                        record_batch_size_reduction(self.model_name, self.quantization)
+                        update_current_batch_size(self.model_name, self.quantization, new_batch_size)
+                        
+                    current_batch_size = new_batch_size
+                    self.current_batch_size = new_batch_size
+                    self.successful_batches = 0
+                else:
+                    logger.error(f"OOM even with minimum batch size {self.min_batch_size}")
+                    raise RuntimeError(
+                        f"Unable to process batch even with minimum batch size {self.min_batch_size}"
+                    ) from None
+                    
+        if embeddings is None:
+            raise RuntimeError("Failed to generate embeddings after all retries")
+            
         return embeddings
 
     async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> NDArray[np.float32]:
