@@ -47,7 +47,7 @@ def mock_model_manager():
     manager.generate_embedding_async = AsyncMock(return_value=[0.1] * 1024)
 
     # Make generate_embeddings_batch_async return the correct number of embeddings
-    async def mock_batch_embed(texts, *args, **kwargs):
+    async def mock_batch_embed(texts, *_args, **_kwargs):
         return [[0.1] * 1024 for _ in texts]
 
     manager.generate_embeddings_batch_async = AsyncMock(side_effect=mock_batch_embed)
