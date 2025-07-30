@@ -44,6 +44,10 @@ __all__ = [
     "memory_total",
     "qdrant_points",
     "qdrant_upload_errors",
+    "embedding_oom_errors_total",
+    "embedding_batch_size_reductions_total",
+    "embedding_current_batch_size",
+    "gpu_memory_usage_bytes",
     "metrics_collector",
     "record_operation_started",
     "record_operation_completed",
@@ -54,6 +58,10 @@ __all__ = [
     "record_embeddings_generated",
     "update_queue_length",
     "update_processing_lag",
+    "record_oom_error",
+    "record_batch_size_reduction",
+    "update_current_batch_size",
+    "update_gpu_memory_usage",
     "start_metrics_server",
 ]
 
@@ -129,6 +137,31 @@ memory_total = Gauge("embedding_memory_total_bytes", "System memory total", regi
 # Qdrant Metrics
 qdrant_points = Gauge("embedding_qdrant_points_total", "Total points in Qdrant", ["collection"], registry=registry)
 qdrant_upload_errors = Counter("embedding_qdrant_upload_errors_total", "Qdrant upload errors", registry=registry)
+
+# Adaptive Batch Sizing Metrics
+embedding_oom_errors_total = Counter(
+    "embedding_oom_errors_total",
+    "Total out of memory errors during embedding generation",
+    ["model", "quantization"],
+    registry=registry,
+)
+embedding_batch_size_reductions_total = Counter(
+    "embedding_batch_size_reductions_total",
+    "Total batch size reductions due to OOM errors",
+    ["model", "quantization"],
+    registry=registry,
+)
+embedding_current_batch_size = Gauge(
+    "embedding_current_batch_size",
+    "Current batch size being used for embeddings",
+    ["model", "quantization"],
+    registry=registry,
+)
+gpu_memory_usage_bytes = Gauge(
+    "gpu_memory_usage_bytes",
+    "Current GPU memory usage in bytes",
+    registry=registry,
+)
 
 
 class MetricsCollector:
@@ -272,6 +305,26 @@ def update_processing_lag(stage: str, lag_seconds: float) -> None:
 
 # Removed unused functions: update_qdrant_points and record_qdrant_error
 # These were defined but never called in the codebase
+
+
+def record_oom_error(model: str, quantization: str) -> None:
+    """Record an out of memory error during embedding generation"""
+    embedding_oom_errors_total.labels(model=model, quantization=quantization).inc()
+
+
+def record_batch_size_reduction(model: str, quantization: str) -> None:
+    """Record a batch size reduction due to OOM error"""
+    embedding_batch_size_reductions_total.labels(model=model, quantization=quantization).inc()
+
+
+def update_current_batch_size(model: str, quantization: str, size: int) -> None:
+    """Update the current batch size being used for embeddings"""
+    embedding_current_batch_size.labels(model=model, quantization=quantization).set(size)
+
+
+def update_gpu_memory_usage(bytes_used: int) -> None:
+    """Update the current GPU memory usage in bytes"""
+    gpu_memory_usage_bytes.set(bytes_used)
 
 
 def start_metrics_server(port: int = 9090) -> None:

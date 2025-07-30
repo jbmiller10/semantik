@@ -57,6 +57,36 @@ class TestEmbeddingService(unittest.TestCase):
         assert "Qwen/Qwen3-Embedding-0.6B" in QUANTIZED_MODEL_INFO
         assert QUANTIZED_MODEL_INFO["Qwen/Qwen3-Embedding-0.6B"]["dimension"] == 1024
 
+    @patch("torch.cuda.is_available")
+    def test_adaptive_batch_size_configuration(self, mock_cuda) -> None:
+        """Test adaptive batch size configuration"""
+        mock_cuda.return_value = True
+
+        from packages.shared.config.vecpipe import VecpipeConfig
+        from packages.shared.embedding import EmbeddingService
+
+        # Test with config
+        config = VecpipeConfig()
+        service = EmbeddingService(config=config)
+
+        # The sync wrapper delegates to the internal async service
+        internal_service = service._service
+
+        # Should load adaptive batch size settings from config
+        assert hasattr(internal_service, "enable_adaptive_batch_size")
+        assert hasattr(internal_service, "min_batch_size")
+        assert hasattr(internal_service, "batch_size_increase_threshold")
+        assert internal_service.enable_adaptive_batch_size == config.ENABLE_ADAPTIVE_BATCH_SIZE
+        assert internal_service.min_batch_size == config.MIN_BATCH_SIZE
+        assert internal_service.batch_size_increase_threshold == config.BATCH_SIZE_INCREASE_THRESHOLD
+
+        # Test without config (defaults)
+        service2 = EmbeddingService()
+        internal_service2 = service2._service
+        assert internal_service2.enable_adaptive_batch_size is True
+        assert internal_service2.min_batch_size == 1
+        assert internal_service2.batch_size_increase_threshold == 10
+
 
 if __name__ == "__main__":
     unittest.main()
