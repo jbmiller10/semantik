@@ -1,8 +1,5 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { AxiosError } from 'axios';
-import { collectionsV2Api } from '../services/api/v2/collections';
-import { useUIStore } from '../stores/uiStore';
+import { useDeleteCollection } from '../hooks/useCollections';
 
 interface CollectionStats {
   total_files: number;
@@ -26,31 +23,20 @@ function DeleteCollectionModal({
   onClose,
   onSuccess,
 }: DeleteCollectionModalProps) {
-  const { addToast } = useUIStore();
   const [confirmText, setConfirmText] = useState('');
   const [showDetails, setShowDetails] = useState(false);
 
-  const mutation = useMutation({
-    mutationFn: async () => {
-      return collectionsV2Api.delete(collectionId);
-    },
-    onSuccess: () => {
-      addToast({
-        type: 'success',
-        message: `Collection "${collectionName}" deleted successfully`,
-      });
-      onSuccess();
-    },
-    onError: (error: AxiosError<{ detail: string }>) => {
-      const message = error.response?.data?.detail || 'Failed to delete collection';
-      addToast({ type: 'error', message });
-    },
-  });
+  const deleteCollectionMutation = useDeleteCollection();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (confirmText === 'DELETE') {
-      mutation.mutate();
+      deleteCollectionMutation.mutate(collectionId, {
+        onSuccess: () => {
+          onSuccess();
+          onClose();
+        },
+      });
     }
   };
 
@@ -156,16 +142,16 @@ function DeleteCollectionModal({
               type="button"
               onClick={onClose}
               className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-              disabled={mutation.isPending}
+              disabled={deleteCollectionMutation.isPending}
             >
               Cancel
             </button>
             <button
               type="submit"
               className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={mutation.isPending || confirmText !== 'DELETE'}
+              disabled={deleteCollectionMutation.isPending || confirmText !== 'DELETE'}
             >
-              {mutation.isPending ? 'Deleting...' : 'Delete Collection'}
+              {deleteCollectionMutation.isPending ? 'Deleting...' : 'Delete Collection'}
             </button>
           </div>
         </form>

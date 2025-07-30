@@ -1,0 +1,35 @@
+# Docker Compose override for development
+# Use with: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  webui:
+    volumes:
+      # Mount source code for live reloading
+      - ./packages:/app/packages:ro
+      - ./alembic:/app/alembic:ro
+      - ./alembic.ini:/app/alembic.ini:ro
+    environment:
+      # Enable debug mode
+      - ENVIRONMENT=development
+      - DB_ECHO=true
+      # Enable hot reload
+      - WEBUI_RELOAD=true
+    command: ["webui"]  # Use standard webui command
+
+  vecpipe:
+    volumes:
+      # Mount source code for live reloading
+      - ./packages:/app/packages:ro
+    environment:
+      # Enable debug mode
+      - ENVIRONMENT=development
+      - DB_ECHO=true
+
+  worker:
+    volumes:
+      # Mount source code for live reloading
+      - ./packages:/app/packages:ro
+    environment:
+      # Enable debug mode
+      - ENVIRONMENT=development
+      - DB_ECHO=true

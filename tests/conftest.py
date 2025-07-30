@@ -350,3 +350,228 @@ def websocket_test_client(test_client) -> None:
 
     # TestClient already supports WebSocket testing
     return test_client
+
+
+# Additional fixtures for collection deletion tests
+@pytest_asyncio.fixture
+async def db_session():
+    """Create a new database session for testing."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from packages.shared.database.models import Base
+    
+    # Use in-memory SQLite for tests
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
+    async_session = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False
+    )
+    
+    async with async_session() as session:
+        yield session
+        await session.rollback()
+    
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def test_user_db(db_session):
+    """Create a test user in the database."""
+    from packages.shared.database.models import User
+    from datetime import datetime
+    
+    user = User(
+        id=1,
+        username="testuser",
+        hashed_password="hashed_password",
+        email="test@example.com",
+        is_active=True,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+@pytest_asyncio.fixture
+async def other_user_db(db_session):
+    """Create another test user in the database."""
+    from packages.shared.database.models import User
+    from datetime import datetime
+    
+    user = User(
+        id=2,
+        username="otheruser",
+        hashed_password="hashed_password",
+        email="other@example.com",
+        is_active=True,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+@pytest_asyncio.fixture
+async def collection_factory(db_session):
+    """Factory for creating test collections."""
+    from packages.shared.database.models import Collection, CollectionStatus
+    from datetime import datetime
+    from uuid import uuid4
+    
+    created_collections = []
+    
+    async def _create_collection(**kwargs):
+        defaults = {
+            "uuid": str(uuid4()),
+            "name": f"Test Collection {len(created_collections)}",
+            "description": "Test collection description",
+            "owner_id": 1,
+            "vector_store_name": f"col_{uuid4().hex[:16]}",
+            "embedding_model": "test-model",
+            "quantization": "float16",
+            "chunk_size": 1000,
+            "chunk_overlap": 200,
+            "is_public": False,
+            "status": CollectionStatus.READY,
+            "document_count": 0,
+            "vector_count": 0,
+            "total_size_bytes": 0,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }
+        defaults.update(kwargs)
+        
+        collection = Collection(**defaults)
+        db_session.add(collection)
+        await db_session.commit()
+        await db_session.refresh(collection)
+        
+        created_collections.append(collection)
+        return collection
+    
+    yield _create_collection
+
+
+@pytest_asyncio.fixture
+async def document_factory(db_session):
+    """Factory for creating test documents."""
+    from packages.shared.database.models import Document, DocumentStatus
+    from datetime import datetime
+    from uuid import uuid4
+    
+    created_documents = []
+    
+    async def _create_document(**kwargs):
+        defaults = {
+            "collection_id": 1,
+            "file_name": f"test_doc_{len(created_documents)}.txt",
+            "file_path": f"/test/path/test_doc_{len(created_documents)}.txt",
+            "source_path": "/test/source",
+            "file_size": 1024,
+            "mime_type": "text/plain",
+            "content_hash": f"hash_{uuid4().hex[:8]}",
+            "status": DocumentStatus.COMPLETED,
+            "chunk_count": 10,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }
+        defaults.update(kwargs)
+        
+        document = Document(**defaults)
+        db_session.add(document)
+        await db_session.commit()
+        await db_session.refresh(document)
+        
+        created_documents.append(document)
+        return document
+    
+    yield _create_document
+
+
+@pytest_asyncio.fixture
+async def operation_factory(db_session):
+    """Factory for creating test operations."""
+    from packages.shared.database.models import Operation, OperationType, OperationStatus
+    from datetime import datetime
+    from uuid import uuid4
+    
+    created_operations = []
+    
+    async def _create_operation(**kwargs):
+        defaults = {
+            "uuid": str(uuid4()),
+            "collection_id": 1,
+            "user_id": 1,
+            "type": OperationType.ADD_SOURCE,
+            "status": OperationStatus.COMPLETED,
+            "config": {},
+            "created_at": datetime.utcnow(),
+            "started_at": datetime.utcnow(),
+            "completed_at": datetime.utcnow(),
+        }
+        defaults.update(kwargs)
+        
+        # Handle string status conversion
+        if isinstance(defaults.get("status"), str):
+            defaults["status"] = OperationStatus(defaults["status"])
+            
+        operation = Operation(**defaults)
+        db_session.add(operation)
+        await db_session.commit()
+        await db_session.refresh(operation)
+        
+        created_operations.append(operation)
+        return operation
+    
+    yield _create_operation
+
+
+@pytest.fixture
+def mock_qdrant_deletion():
+    """Mock Qdrant client specifically for deletion tests."""
+    mock = MagicMock()
+    
+    # Mock get_collections response
+    mock_collections_response = MagicMock()
+    mock_collections_response.collections = []
+    mock.get_collections.return_value = mock_collections_response
+    
+    # Mock other methods
+    mock.delete_collection = AsyncMock()
+    mock.create_collection = AsyncMock()
+    
+    # Patch the qdrant manager
+    import packages.shared.services.qdrant_manager as qdrant_manager
+    original_get_client = qdrant_manager.get_client
+    qdrant_manager.get_client = lambda: mock
+    
+    yield mock
+    
+    # Restore original
+    qdrant_manager.get_client = original_get_client
+
+
+@pytest.fixture
+def mock_celery_for_deletion():
+    """Mock Celery app for deletion tests."""
+    mock_app = MagicMock()
+    mock_app.send_task = MagicMock()
+    
+    # Patch the celery app
+    import packages.webui.celery_app as celery_module
+    original_app = celery_module.celery_app
+    celery_module.celery_app = mock_app
+    
+    yield mock_app
+    
+    # Restore original
+    celery_module.celery_app = original_app

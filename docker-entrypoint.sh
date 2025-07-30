@@ -89,11 +89,20 @@ case "$SERVICE" in
         alembic upgrade head
         
         # Start the WebUI service
-        exec uvicorn webui.main:app \
-            --host 0.0.0.0 \
-            --port "${WEBUI_PORT:-8080}" \
-            --workers "${WEBUI_WORKERS:-1}" \
-            --log-level "${LOG_LEVEL:-info}"
+        if [ "${WEBUI_RELOAD:-false}" = "true" ]; then
+            echo "Starting WebUI in development mode with auto-reload..."
+            exec uvicorn webui.main:app \
+                --host 0.0.0.0 \
+                --port "${WEBUI_PORT:-8080}" \
+                --reload \
+                --log-level "${LOG_LEVEL:-info}"
+        else
+            exec uvicorn webui.main:app \
+                --host 0.0.0.0 \
+                --port "${WEBUI_PORT:-8080}" \
+                --workers "${WEBUI_WORKERS:-1}" \
+                --log-level "${LOG_LEVEL:-info}"
+        fi
         ;;
         
     vecpipe)

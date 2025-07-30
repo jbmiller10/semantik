@@ -377,7 +377,10 @@ class CollectionService:
                     # Continue with database deletion even if Qdrant deletion fails
 
             # Delete from database (cascade will handle operations, documents, etc.)
-            await self.collection_repo.delete(collection.id, user_id)
+            await self.collection_repo.delete(collection_id, user_id)
+
+            # Commit the transaction to persist the deletion
+            await self.db_session.commit()
 
             logger.info(f"Deleted collection {collection_id} and all associated data")
 

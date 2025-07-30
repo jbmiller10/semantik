@@ -359,7 +359,10 @@ class DocumentRepository:
             if not document:
                 raise EntityNotFoundError("document", document_id)
 
-            self.session.delete(document)  # type: ignore[unused-coroutine]
+            # Use async pattern for deletion
+            await self.session.execute(
+                delete(Document).where(Document.id == document.id)
+            )
             await self.session.flush()
 
             logger.info(f"Deleted document {document_id}")

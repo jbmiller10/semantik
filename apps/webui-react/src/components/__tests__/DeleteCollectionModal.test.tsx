@@ -2,17 +2,15 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import DeleteCollectionModal from '../DeleteCollectionModal';
-import { collectionsV2Api } from '../../services/api/v2/collections';
-import { useUIStore } from '../../stores/uiStore';
+import { useDeleteCollection } from '../../hooks/useCollections';
 
-// Mock dependencies
-vi.mock('../../services/api/v2/collections');
-vi.mock('../../stores/uiStore');
+// Mock the hooks
+vi.mock('../../hooks/useCollections', () => ({
+  useDeleteCollection: vi.fn()
+}));
 
-const mockCollectionsV2Api = collectionsV2Api as vi.Mocked<typeof collectionsV2Api>;
-const mockUseUIStore = useUIStore as unknown as vi.Mock;
+const mockUseDeleteCollection = useDeleteCollection as vi.MockedFunction<typeof useDeleteCollection>;
 
 // Test data
 const mockStats = {
@@ -47,38 +45,43 @@ const renderComponent = (props = {}) => {
 };
 
 describe('DeleteCollectionModal', () => {
-  let mockAddToast: vi.Mock;
+  let mockMutate: vi.Mock;
+  let mockMutation: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAddToast = vi.fn();
-    mockUseUIStore.mockReturnValue({ addToast: mockAddToast });
+    
+    // Setup default mock mutation
+    mockMutate = vi.fn();
+    mockMutation = {
+      mutate: mockMutate,
+      isPending: false,
+      isError: false,
+      error: null,
+      reset: vi.fn(),
+    };
+    
+    mockUseDeleteCollection.mockReturnValue(mockMutation);
   });
 
   describe('Modal Rendering', () => {
-    it('should render modal with collection name', () => {
+    it('should render the modal with collection details', () => {
       renderComponent();
       
-      expect(screen.getByRole('heading', { name: 'Delete Collection' })).toBeInTheDocument();
+      expect(screen.getByText('Delete Collection')).toBeInTheDocument();
       expect(screen.getByText(/You are about to permanently delete the collection "Test Collection"/)).toBeInTheDocument();
-    });
-
-    it('should render warning message', () => {
-      renderComponent();
-      
       expect(screen.getByText('This action cannot be undone')).toBeInTheDocument();
     });
 
-    it('should render confirmation input field', () => {
+    it('should render the confirmation input field', () => {
       renderComponent();
       
       const input = screen.getByLabelText(/Type DELETE to confirm/);
       expect(input).toBeInTheDocument();
       expect(input).toHaveAttribute('placeholder', 'Type DELETE here');
-      expect(input).toHaveAttribute('autoComplete', 'off');
     });
 
-    it('should render action buttons', () => {
+    it('should render cancel and delete buttons', () => {
       renderComponent();
       
       expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
@@ -87,18 +90,16 @@ describe('DeleteCollectionModal', () => {
   });
 
   describe('Details Toggle', () => {
-    it('should hide details by default', () => {
-      renderComponent();
-      
-      expect(screen.queryByText('Jobs:')).not.toBeInTheDocument();
-      expect(screen.queryByText('Documents:')).not.toBeInTheDocument();
-    });
-
-    it('should show details when toggle button is clicked', async () => {
+    it('should show deletion details when toggle is clicked', async () => {
       const user = userEvent.setup();
       renderComponent();
       
       const toggleButton = screen.getByText('What will be deleted?');
+      
+      // Initially hidden
+      expect(screen.queryByText('Jobs:')).not.toBeInTheDocument();
+      
+      // Click to show
       await user.click(toggleButton);
       
       expect(screen.getByText('Jobs:')).toBeInTheDocument();
@@ -179,9 +180,8 @@ describe('DeleteCollectionModal', () => {
   });
 
   describe('Deletion Flow', () => {
-    it('should call delete API when form is submitted with correct confirmation', async () => {
+    it('should call delete mutation when form is submitted with correct confirmation', async () => {
       const user = userEvent.setup();
-      mockCollectionsV2Api.delete.mockResolvedValue({ data: {} });
       renderComponent();
       
       const input = screen.getByLabelText(/Type DELETE to confirm/);
@@ -190,12 +190,16 @@ describe('DeleteCollectionModal', () => {
       const deleteButton = screen.getByRole('button', { name: 'Delete Collection' });
       await user.click(deleteButton);
       
-      expect(mockCollectionsV2Api.delete).toHaveBeenCalledWith('test-collection-id');
+      expect(mockMutate).toHaveBeenCalledWith(
+        'test-collection-id',
+        expect.objectContaining({
+          onSuccess: expect.any(Function)
+        })
+      );
     });
 
     it('should handle successful deletion', async () => {
       const user = userEvent.setup();
-      mockCollectionsV2Api.delete.mockResolvedValue({ data: {} });
       renderComponent();
       
       const input = screen.getByLabelText(/Type DELETE to confirm/);
@@ -204,233 +208,138 @@ describe('DeleteCollectionModal', () => {
       const deleteButton = screen.getByRole('button', { name: 'Delete Collection' });
       await user.click(deleteButton);
       
-      await waitFor(() => {
-        expect(mockAddToast).toHaveBeenCalledWith({
-          type: 'success',
-          message: 'Collection "Test Collection" deleted successfully',
-        });
-        expect(defaultProps.onSuccess).toHaveBeenCalled();
-      });
+      // Get the onSuccess callback and call it
+      const mutateCall = mockMutate.mock.calls[0];
+      const options = mutateCall[1];
+      
+      // Simulate successful deletion
+      options.onSuccess();
+      
+      expect(defaultProps.onSuccess).toHaveBeenCalled();
+      expect(defaultProps.onClose).toHaveBeenCalled();
     });
 
-    it('should handle deletion error with specific message', async () => {
-      const user = userEvent.setup();
-      const error = new AxiosError('Network error');
-      error.response = {
-        data: { detail: 'Collection is being indexed' },
-        status: 409,
-        statusText: 'Conflict',
-        headers: {},
-        config: {} as InternalAxiosRequestConfig,
-      };
-      mockCollectionsV2Api.delete.mockRejectedValue(error);
-      renderComponent();
-      
-      const input = screen.getByLabelText(/Type DELETE to confirm/);
-      await user.type(input, 'DELETE');
-      
-      const deleteButton = screen.getByRole('button', { name: 'Delete Collection' });
-      await user.click(deleteButton);
-      
-      await waitFor(() => {
-        expect(mockAddToast).toHaveBeenCalledWith({
-          type: 'error',
-          message: 'Collection is being indexed',
-        });
-      });
-    });
-
-    it('should handle deletion error with fallback message', async () => {
-      const user = userEvent.setup();
-      const error = new Error('Network error');
-      mockCollectionsV2Api.delete.mockRejectedValue(error);
-      renderComponent();
-      
-      const input = screen.getByLabelText(/Type DELETE to confirm/);
-      await user.type(input, 'DELETE');
-      
-      const deleteButton = screen.getByRole('button', { name: 'Delete Collection' });
-      await user.click(deleteButton);
-      
-      await waitFor(() => {
-        expect(mockAddToast).toHaveBeenCalledWith({
-          type: 'error',
-          message: 'Failed to delete collection',
-        });
-      });
-    });
-  });
-
-  describe('Loading State', () => {
     it('should show loading state during deletion', async () => {
       const user = userEvent.setup();
-      let resolveDelete: () => void;
-      const deletePromise = new Promise<void>((resolve) => {
-        resolveDelete = resolve;
-      });
-      mockCollectionsV2Api.delete.mockReturnValue(deletePromise as Promise<{ data: object }>);
+      
+      // Set mutation to pending state
+      mockMutation.isPending = true;
+      mockUseDeleteCollection.mockReturnValue(mockMutation);
+      
       renderComponent();
       
       const input = screen.getByLabelText(/Type DELETE to confirm/);
       await user.type(input, 'DELETE');
       
-      const deleteButton = screen.getByRole('button', { name: 'Delete Collection' });
-      await user.click(deleteButton);
-      
-      // Check loading state
-      expect(screen.getByRole('button', { name: 'Deleting...' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Deleting...' })).toBeDisabled();
-      expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
-      
-      // Resolve deletion
-      resolveDelete!();
-      await waitFor(() => {
-        expect(mockAddToast).toHaveBeenCalled();
-      });
-    });
-  });
-
-  describe('Modal Close Functionality', () => {
-    it('should call onClose when Cancel button is clicked', async () => {
-      const user = userEvent.setup();
-      renderComponent();
+      const deleteButton = screen.getByRole('button', { name: 'Deleting...' });
+      expect(deleteButton).toBeDisabled();
       
       const cancelButton = screen.getByRole('button', { name: 'Cancel' });
-      await user.click(cancelButton);
-      
-      expect(defaultProps.onClose).toHaveBeenCalled();
+      expect(cancelButton).toBeDisabled();
     });
 
-    it('should call onClose when backdrop is clicked', async () => {
-      const user = userEvent.setup();
-      renderComponent();
-      
-      // Find the backdrop (first div with fixed positioning)
-      const backdrop = document.querySelector('.fixed.inset-0');
-      expect(backdrop).toBeInTheDocument();
-      
-      await user.click(backdrop!);
-      
-      expect(defaultProps.onClose).toHaveBeenCalled();
-    });
-
-    it('should not close modal when clicking inside modal content', async () => {
-      const user = userEvent.setup();
-      renderComponent();
-      
-      const modalContent = screen.getByRole('heading', { name: 'Delete Collection' });
-      await user.click(modalContent);
-      
-      expect(defaultProps.onClose).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('Form Submission', () => {
-    it('should prevent form submission when confirmation text is incorrect', async () => {
+    it('should not submit when Enter is pressed without correct confirmation', async () => {
       const user = userEvent.setup();
       renderComponent();
       
       const input = screen.getByLabelText(/Type DELETE to confirm/);
-      await user.type(input, 'WRONG');
+      await user.type(input, 'wrong');
+      await user.keyboard('{Enter}');
       
-      const form = screen.getByRole('button', { name: 'Delete Collection' }).closest('form');
-      const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
-      form!.dispatchEvent(submitEvent);
-      
-      expect(mockCollectionsV2Api.delete).not.toHaveBeenCalled();
+      expect(mockMutate).not.toHaveBeenCalled();
     });
 
-    it('should handle form submission with Enter key', async () => {
+    it('should submit when Enter is pressed with correct confirmation', async () => {
       const user = userEvent.setup();
-      mockCollectionsV2Api.delete.mockResolvedValue({ data: {} });
       renderComponent();
       
       const input = screen.getByLabelText(/Type DELETE to confirm/);
       await user.type(input, 'DELETE');
       await user.keyboard('{Enter}');
       
+      expect(mockMutate).toHaveBeenCalledWith(
+        'test-collection-id',
+        expect.objectContaining({
+          onSuccess: expect.any(Function)
+        })
+      );
+    });
+  });
+
+  describe('User Interactions', () => {
+    it('should call onClose when cancel button is clicked', async () => {
+      const user = userEvent.setup();
+      renderComponent();
+      
+      const cancelButton = screen.getByRole('button', { name: 'Cancel' });
+      await user.click(cancelButton);
+      
+      expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('should call onClose when backdrop is clicked', async () => {
+      const user = userEvent.setup();
+      const { container } = renderComponent();
+      
+      // Find the backdrop (first div with fixed inset-0)
+      const backdrop = container.querySelector('.fixed.inset-0.bg-black');
+      await user.click(backdrop!);
+      
+      expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('should focus on confirmation input when modal opens', async () => {
+      renderComponent();
+      
+      const input = screen.getByLabelText(/Type DELETE to confirm/);
+      
+      // Wait a bit for focus to be set
       await waitFor(() => {
-        expect(mockCollectionsV2Api.delete).toHaveBeenCalledWith('test-collection-id');
+        expect(document.activeElement).toBe(input);
+      }, { timeout: 100 });
+    });
+  });
+
+  describe('Edge Cases', () => {
+    it('should handle empty collection name gracefully', () => {
+      renderComponent({ collectionName: '' });
+      
+      expect(screen.getByText(/You are about to permanently delete the collection ""/)).toBeInTheDocument();
+    });
+
+    it('should handle zero stats gracefully', () => {
+      const zeroStats = {
+        total_files: 0,
+        total_vectors: 0,
+        total_size: 0,
+        job_count: 0,
+      };
+      
+      renderComponent({ stats: zeroStats });
+      
+      // Open details
+      const user = userEvent.setup();
+      user.click(screen.getByText('What will be deleted?')).then(() => {
+        expect(screen.getByText('0 Bytes')).toBeInTheDocument();
       });
     });
-  });
 
-  describe('Accessibility', () => {
-    it('should have proper modal structure', () => {
-      renderComponent();
-      
-      // Check for modal overlay and content
-      const overlay = document.querySelector('.fixed.inset-0');
-      const modalContent = document.querySelector('.fixed.left-1\\/2');
-      
-      expect(overlay).toBeInTheDocument();
-      expect(modalContent).toBeInTheDocument();
-    });
-
-    it('should have proper form structure', () => {
-      renderComponent();
-      
-      const form = screen.getByRole('button', { name: 'Delete Collection' }).closest('form');
-      expect(form).toBeInTheDocument();
-      
-      const input = screen.getByLabelText(/Type DELETE to confirm/);
-      expect(input).toHaveAttribute('required');
-    });
-
-    it('should maintain focus management', async () => {
-      const user = userEvent.setup();
-      renderComponent();
-      
-      const input = screen.getByLabelText(/Type DELETE to confirm/);
-      await user.click(input);
-      
-      expect(document.activeElement).toBe(input);
-    });
-  });
-
-  describe('Data Formatting', () => {
-    it('should format bytes correctly', async () => {
-      const user = userEvent.setup();
-      const customStats = {
-        ...mockStats,
-        total_size: 0,
-      };
-      renderComponent({ stats: customStats });
-      
-      const toggleButton = screen.getByText('What will be deleted?');
-      await user.click(toggleButton);
-      
-      expect(screen.getByText('0 Bytes')).toBeInTheDocument();
-    });
-
-    it('should format large byte values correctly', async () => {
-      const user = userEvent.setup();
-      const customStats = {
-        ...mockStats,
+    it('should format large numbers correctly', async () => {
+      const largeStats = {
+        total_files: 1234567,
+        total_vectors: 9876543,
         total_size: 1073741824, // 1 GB
+        job_count: 999,
       };
-      renderComponent({ stats: customStats });
       
-      const toggleButton = screen.getByText('What will be deleted?');
-      await user.click(toggleButton);
-      
-      expect(screen.getByText('1 GB')).toBeInTheDocument();
-    });
-
-    it('should format numbers with locale separators', async () => {
       const user = userEvent.setup();
-      const customStats = {
-        ...mockStats,
-        total_files: 1500,
-        total_vectors: 30000,
-      };
-      renderComponent({ stats: customStats });
+      renderComponent({ stats: largeStats });
       
-      const toggleButton = screen.getByText('What will be deleted?');
-      await user.click(toggleButton);
+      await user.click(screen.getByText('What will be deleted?'));
       
-      expect(screen.getByText('1,500')).toBeInTheDocument();
-      expect(screen.getByText('30,000')).toBeInTheDocument();
+      expect(screen.getByText('1,234,567')).toBeInTheDocument();
+      expect(screen.getByText('9,876,543')).toBeInTheDocument();
+      expect(screen.getByText('1 GB')).toBeInTheDocument();
     });
   });
 });

@@ -13,7 +13,7 @@ from shared.database.exceptions import (
     ValidationError,
 )
 from shared.database.models import Collection, CollectionStatus, Document
-from sqlalchemy import desc, func, or_, select
+from sqlalchemy import delete, desc, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -377,8 +377,11 @@ class CollectionRepository:
             if collection.owner_id != user_id:
                 raise AccessDeniedError(str(user_id), "collection", collection_uuid)
 
-            # Delete the collection (cascade will handle related records)
-            self.session.delete(collection)  # type: ignore[unused-coroutine]
+            # Delete the collection using SQLAlchemy's delete statement for async
+            # This will cascade delete all related records (operations, documents, etc.)
+            await self.session.execute(
+                delete(Collection).where(Collection.id == collection.id)
+            )
             await self.session.flush()
 
             logger.info(f"Deleted collection {collection_uuid}")
