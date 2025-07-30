@@ -861,9 +861,13 @@ class TestReindexOperation:
 class TestRemoveSourceOperation:
     """Test REMOVE_SOURCE operation processing."""
 
+    @patch("webui.utils.qdrant_manager.qdrant_manager")
+    @patch("packages.webui.tasks.QdrantManager")
     @patch("shared.database.database.AsyncSessionLocal")
-    async def test_process_remove_source_operation_success(self, mock_session_local, mock_updater):
-        """Test successful REMOVE_SOURCE operation."""
+    async def test_process_remove_source_operation_success(
+        self, mock_session_local, mock_qdrant_manager_class, mock_qdrant_global, mock_updater
+    ):
+        """Test successful REMOVE_SOURCE operation with vector deletion."""
         # Setup mocks
         mock_session = AsyncMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -879,6 +883,15 @@ class TestRemoveSourceOperation:
 
         mock_session.begin = Mock(side_effect=begin_sync)
         mock_session_local.return_value = mock_session
+
+        # Setup Qdrant mocks
+        qdrant_client = Mock()
+        qdrant_client.delete = Mock()
+        mock_qdrant_global.get_client.return_value = qdrant_client
+
+        qdrant_manager = Mock()
+        qdrant_manager.collection_exists = AsyncMock(return_value=True)
+        mock_qdrant_manager_class.return_value = qdrant_manager
 
         operation = {
             "id": "op-123",
@@ -944,6 +957,125 @@ class TestRemoveSourceOperation:
         assert result["success"] is True
         assert result["documents_removed"] == 2
         assert result["source_path"] == "/test/old_docs"
+        assert result["vectors_removed"] == 2
+
+        # Verify vector deletion was called
+        assert qdrant_client.delete.call_count == 2  # Once for each document
+
+        # Check that delete was called with correct filters for each doc
+        delete_calls = qdrant_client.delete.call_args_list
+        for call in delete_calls:
+            assert call[1]["collection_name"] == "col_test_123"
+            # Verify the filter structure
+            filter_selector = call[1]["points_selector"]
+            assert hasattr(filter_selector, "filter")
+            assert len(filter_selector.filter.must) == 1
+            assert filter_selector.filter.must[0].key == "doc_id"
+            assert filter_selector.filter.must[0].match.value in ["doc1", "doc2"]
+
+    @patch("webui.utils.qdrant_manager.qdrant_manager")
+    @patch("packages.webui.tasks.QdrantManager")
+    @patch("shared.database.database.AsyncSessionLocal")
+    async def test_process_remove_source_operation_multiple_collections(
+        self, mock_session_local, mock_qdrant_manager_class, mock_qdrant_global, mock_updater
+    ):
+        """Test REMOVE_SOURCE operation with multiple Qdrant collections (blue-green)."""
+        # Setup mocks
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+
+        # Create a proper async context manager for begin()
+        mock_transaction = AsyncMock()
+        mock_transaction.__aenter__ = AsyncMock(return_value=mock_transaction)
+        mock_transaction.__aexit__ = AsyncMock(return_value=None)
+
+        def begin_sync():
+            return mock_transaction
+
+        mock_session.begin = Mock(side_effect=begin_sync)
+        mock_session_local.return_value = mock_session
+
+        # Setup Qdrant mocks
+        qdrant_client = Mock()
+        qdrant_client.delete = Mock()
+        mock_qdrant_global.get_client.return_value = qdrant_client
+
+        qdrant_manager = Mock()
+        # First two collections exist, third doesn't
+        qdrant_manager.collection_exists = AsyncMock(side_effect=[True, True, False])
+        mock_qdrant_manager_class.return_value = qdrant_manager
+
+        operation = {
+            "id": "op-123",
+            "collection_id": "col-123",
+            "type": OperationType.REMOVE_SOURCE,
+            "config": {"source_path": "/test/old_docs"},
+            "user_id": 1,
+        }
+
+        collection = {
+            "id": "col-123",
+            "uuid": "col-123",
+            "name": "Test Collection",
+            "vector_store_name": "col_test_123",
+            "qdrant_collections": ["col_test_123", "col_test_123_v2"],
+            "qdrant_staging": ["col_test_123_staging"],
+            "vector_count": 1000,
+        }
+
+        collection_repo = AsyncMock()
+        document_repo = AsyncMock()
+
+        # Create mock document
+        doc1 = {"id": "doc1", "file_path": "/test/old_docs/doc1.txt"}
+        documents = [doc1]
+        document_repo.list_by_collection_and_source.return_value = documents
+        document_repo.bulk_update_status = AsyncMock()
+        document_repo.get_stats_by_collection.return_value = {
+            "total_documents": 8,
+            "total_chunks": 80,
+            "total_size_bytes": 800000,
+        }
+
+        # Mock the document and collection repos created in transaction
+        with (
+            patch("shared.database.repositories.document_repository.DocumentRepository") as mock_doc_repo_class,
+            patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_col_repo_class,
+        ):
+            mock_doc_repo_tx = AsyncMock()
+            mock_doc_repo_tx.bulk_update_status = AsyncMock()
+            mock_doc_repo_tx.get_stats_by_collection.return_value = {
+                "total_documents": 8,
+                "total_chunks": 80,
+                "total_size_bytes": 800000,
+            }
+            mock_doc_repo_class.return_value = mock_doc_repo_tx
+
+            mock_col_repo_tx = AsyncMock()
+            mock_col_repo_tx.update_stats = AsyncMock()
+            mock_col_repo_class.return_value = mock_col_repo_tx
+
+            # Run operation
+            result = await _process_remove_source_operation(
+                operation, collection, collection_repo, document_repo, mock_updater
+            )
+
+        # Verify success response
+        assert result["success"] is True
+        assert result["documents_removed"] == 1
+        assert result["vectors_removed"] == 1  # Counted once per batch, not per collection
+
+        # Verify vector deletion was called for each existing collection
+        assert qdrant_client.delete.call_count == 2  # Only 2 collections existed
+
+        # Verify collections were checked for existence
+        assert qdrant_manager.collection_exists.call_count == 3
+        collection_exist_calls = qdrant_manager.collection_exists.call_args_list
+        called_collections = [call[0][0] for call in collection_exist_calls]
+        assert "col_test_123" in called_collections
+        assert "col_test_123_v2" in called_collections
+        assert "col_test_123_staging" in called_collections
 
     async def test_process_remove_source_operation_no_documents(self, mock_updater):
         """Test REMOVE_SOURCE operation with no documents found."""
@@ -970,6 +1102,104 @@ class TestRemoveSourceOperation:
         assert result["success"] is True
         assert result["documents_removed"] == 0
         assert result["source_path"] == "/test/empty"
+
+    @patch("webui.utils.qdrant_manager.qdrant_manager")
+    @patch("packages.webui.tasks.QdrantManager")
+    @patch("shared.database.database.AsyncSessionLocal")
+    async def test_process_remove_source_operation_vector_deletion_error(
+        self, mock_session_local, mock_qdrant_manager_class, mock_qdrant_global, mock_updater
+    ):
+        """Test REMOVE_SOURCE operation with vector deletion errors."""
+        # Setup mocks
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+
+        # Create a proper async context manager for begin()
+        mock_transaction = AsyncMock()
+        mock_transaction.__aenter__ = AsyncMock(return_value=mock_transaction)
+        mock_transaction.__aexit__ = AsyncMock(return_value=None)
+
+        def begin_sync():
+            return mock_transaction
+
+        mock_session.begin = Mock(side_effect=begin_sync)
+        mock_session_local.return_value = mock_session
+
+        # Setup Qdrant mocks
+        qdrant_client = Mock()
+        # First delete succeeds, second fails
+        qdrant_client.delete = Mock(side_effect=[None, Exception("Qdrant connection timeout")])
+        mock_qdrant_global.get_client.return_value = qdrant_client
+
+        qdrant_manager = Mock()
+        qdrant_manager.collection_exists = AsyncMock(return_value=True)
+        mock_qdrant_manager_class.return_value = qdrant_manager
+
+        operation = {
+            "id": "op-123",
+            "collection_id": "col-123",
+            "type": OperationType.REMOVE_SOURCE,
+            "config": {"source_path": "/test/old_docs"},
+            "user_id": 1,
+        }
+
+        collection = {
+            "id": "col-123",
+            "uuid": "col-123",
+            "name": "Test Collection",
+            "vector_store_name": "col_test_123",
+            "vector_count": 1000,
+        }
+
+        collection_repo = AsyncMock()
+        document_repo = AsyncMock()
+
+        # Create mock documents
+        doc1 = {"id": "doc1", "file_path": "/test/old_docs/doc1.txt"}
+        doc2 = {"id": "doc2", "file_path": "/test/old_docs/doc2.txt"}
+        documents = [doc1, doc2]
+        document_repo.list_by_collection_and_source.return_value = documents
+        document_repo.bulk_update_status = AsyncMock()
+        document_repo.get_stats_by_collection.return_value = {
+            "total_documents": 8,
+            "total_chunks": 80,
+            "total_size_bytes": 800000,
+        }
+
+        # Mock the document and collection repos created in transaction
+        with (
+            patch("shared.database.repositories.document_repository.DocumentRepository") as mock_doc_repo_class,
+            patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_col_repo_class,
+        ):
+            mock_doc_repo_tx = AsyncMock()
+            mock_doc_repo_tx.bulk_update_status = AsyncMock()
+            mock_doc_repo_tx.get_stats_by_collection.return_value = {
+                "total_documents": 8,
+                "total_chunks": 80,
+                "total_size_bytes": 800000,
+            }
+            mock_doc_repo_class.return_value = mock_doc_repo_tx
+
+            mock_col_repo_tx = AsyncMock()
+            mock_col_repo_tx.update_stats = AsyncMock()
+            mock_col_repo_class.return_value = mock_col_repo_tx
+
+            # Run operation
+            result = await _process_remove_source_operation(
+                operation, collection, collection_repo, document_repo, mock_updater
+            )
+
+        # Verify operation succeeded despite vector deletion error
+        assert result["success"] is True
+        assert result["documents_removed"] == 2
+        assert result["vectors_removed"] == 2  # Still counts attempted deletions
+        assert result["deletion_errors"] is not None
+        assert len(result["deletion_errors"]) > 0
+        assert "Qdrant connection timeout" in result["deletion_errors"][0]
+
+        # Verify documents were still marked as deleted in DB
+        mock_doc_repo_tx.bulk_update_status.assert_called_once_with(["doc1", "doc2"], DocumentStatus.DELETED)
 
 
 class TestReindexValidation:
