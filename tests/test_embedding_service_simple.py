@@ -62,8 +62,8 @@ class TestEmbeddingService(unittest.TestCase):
         """Test adaptive batch size configuration"""
         mock_cuda.return_value = True
 
-        from packages.shared.embedding import EmbeddingService
         from packages.shared.config.vecpipe import VecpipeConfig
+        from packages.shared.embedding import EmbeddingService
 
         # Test with config
         config = VecpipeConfig()
