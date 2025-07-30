@@ -155,7 +155,7 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         with pytest.raises(RuntimeError) as context:
             service._embed_sentence_transformer_texts(texts, batch_size=2, normalize=True, show_progress=False)
 
-        assert "minimum batch size" in str(context.exception)
+        assert "minimum batch size" in str(context.value)
 
     @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")

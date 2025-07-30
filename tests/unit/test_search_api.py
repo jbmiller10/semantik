@@ -45,6 +45,12 @@ def mock_model_manager():
     """Mock model manager."""
     manager = Mock()
     manager.generate_embedding_async = AsyncMock(return_value=[0.1] * 1024)
+    
+    # Make generate_embeddings_batch_async return the correct number of embeddings
+    async def mock_batch_embed(texts, *args, **kwargs):
+        return [[0.1] * 1024 for _ in texts]
+    
+    manager.generate_embeddings_batch_async = AsyncMock(side_effect=mock_batch_embed)
     manager.rerank_async = AsyncMock(return_value=[(0, 0.95), (1, 0.90)])
     manager.get_status = Mock(return_value={"loaded_models": [], "memory_usage": {}})
     manager.shutdown = Mock()
@@ -652,7 +658,7 @@ class TestSearchAPI:
         """Test /embed endpoint with memory error."""
         from packages.vecpipe.memory_utils import InsufficientMemoryError
 
-        mock_model_manager.generate_embedding_async.side_effect = InsufficientMemoryError("Not enough GPU memory")
+        mock_model_manager.generate_embeddings_batch_async.side_effect = InsufficientMemoryError("Not enough GPU memory")
 
         response = test_client_for_search_api.post(
             "/embed", json={"texts": ["text1"], "model_name": "large-model", "quantization": "float32"}
