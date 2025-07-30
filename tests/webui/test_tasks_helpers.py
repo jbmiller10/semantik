@@ -682,10 +682,7 @@ class TestEdgeCases:
 
     def test_cleanup_delay_calculation_edge_cases(self):
         """Test cleanup delay calculation edge cases."""
-        from packages.webui.tasks import (
-            CLEANUP_DELAY_MAX_SECONDS,
-            CLEANUP_DELAY_MIN_SECONDS,
-        )
+        from packages.webui.tasks import CLEANUP_DELAY_MAX_SECONDS, CLEANUP_DELAY_MIN_SECONDS
 
         # Negative vector count should use minimum
         assert calculate_cleanup_delay(-100) == CLEANUP_DELAY_MIN_SECONDS

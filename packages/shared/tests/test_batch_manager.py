@@ -2,7 +2,7 @@
 
 import threading
 import time
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from shared.embedding.batch_manager import AdaptiveBatchSizeManager
@@ -11,7 +11,7 @@ from shared.embedding.batch_manager import AdaptiveBatchSizeManager
 class TestAdaptiveBatchSizeManager:
     """Test suite for AdaptiveBatchSizeManager."""
 
-    def test_initialization(self):
+    def test_initialization(self) -> None:
         """Test manager initialization."""
         # Default initialization
         manager = AdaptiveBatchSizeManager()
@@ -23,12 +23,12 @@ class TestAdaptiveBatchSizeManager:
         assert manager._default_safety_margin == 0.3
 
         # Invalid safety margin
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Safety margin must be between 0 and 0.5"):
             AdaptiveBatchSizeManager(default_safety_margin=0.6)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Safety margin must be between 0 and 0.5"):
             AdaptiveBatchSizeManager(default_safety_margin=-0.1)
 
-    def test_batch_size_operations(self):
+    def test_batch_size_operations(self) -> None:
         """Test basic batch size operations."""
         manager = AdaptiveBatchSizeManager()
 
@@ -49,12 +49,12 @@ class TestAdaptiveBatchSizeManager:
         assert manager.get_current_batch_size("model1", "float32") == 48
 
         # Invalid batch size
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Batch size must be positive"):
             manager.update_batch_size("model1", "float32", 0)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Batch size must be positive"):
             manager.update_batch_size("model1", "float32", -1)
 
-    def test_reset_batch_size(self):
+    def test_reset_batch_size(self) -> None:
         """Test resetting batch sizes."""
         manager = AdaptiveBatchSizeManager()
 
@@ -70,7 +70,7 @@ class TestAdaptiveBatchSizeManager:
         # Reset non-existent (should not raise)
         manager.reset_batch_size("model2", "float32")
 
-    def test_clear_all(self):
+    def test_clear_all(self) -> None:
         """Test clearing all batch sizes."""
         manager = AdaptiveBatchSizeManager()
 
@@ -84,7 +84,7 @@ class TestAdaptiveBatchSizeManager:
         assert manager.get_all_batch_sizes() == {}
 
     @patch("shared.embedding.batch_manager.torch")
-    def test_calculate_initial_batch_size_no_gpu(self, mock_torch):
+    def test_calculate_initial_batch_size_no_gpu(self, mock_torch: Mock) -> None:
         """Test batch size calculation when no GPU is available."""
         mock_torch.cuda.is_available.return_value = False
 
@@ -93,7 +93,7 @@ class TestAdaptiveBatchSizeManager:
         assert batch_size == 1
 
     @patch("shared.embedding.batch_manager.torch")
-    def test_calculate_initial_batch_size_with_gpu(self, mock_torch):
+    def test_calculate_initial_batch_size_with_gpu(self, mock_torch: Mock) -> None:
         """Test batch size calculation with GPU available."""
         # Mock GPU with 8GB total, 6GB free
         mock_torch.cuda.is_available.return_value = True
@@ -116,7 +116,7 @@ class TestAdaptiveBatchSizeManager:
         assert batch_size_large < batch_size
 
     @patch("shared.embedding.batch_manager.torch")
-    def test_calculate_with_different_quantizations(self, mock_torch):
+    def test_calculate_with_different_quantizations(self, mock_torch: Mock) -> None:
         """Test that quantization affects batch size calculation."""
         mock_torch.cuda.is_available.return_value = True
         mock_torch.cuda.mem_get_info.return_value = (
@@ -134,14 +134,14 @@ class TestAdaptiveBatchSizeManager:
 
         assert batch_8 >= batch_16 >= batch_32
 
-    def test_calculate_unknown_model(self):
+    def test_calculate_unknown_model(self) -> None:
         """Test batch size calculation for unknown model."""
         manager = AdaptiveBatchSizeManager()
         batch_size = manager.calculate_initial_batch_size("unknown/model", "float32")
         assert batch_size == 1
 
     @patch("shared.embedding.batch_manager.torch")
-    def test_get_or_calculate_batch_size(self, mock_torch):
+    def test_get_or_calculate_batch_size(self, mock_torch: Mock) -> None:
         """Test the convenience method."""
         mock_torch.cuda.is_available.return_value = True
         mock_torch.cuda.mem_get_info.return_value = (
@@ -161,13 +161,13 @@ class TestAdaptiveBatchSizeManager:
         batch_size2 = manager.get_or_calculate_batch_size(model, "float32")
         assert batch_size2 == batch_size1
 
-    def test_thread_safety(self):
+    def test_thread_safety(self) -> None:
         """Test thread-safe operations."""
         manager = AdaptiveBatchSizeManager()
         results = []
         errors = []
 
-        def update_batch_sizes(thread_id):
+        def update_batch_sizes(thread_id: int) -> None:
             try:
                 for i in range(10):
                     manager.update_batch_size(f"model{thread_id}", "float32", (i + 1) * 10 + thread_id)
@@ -197,7 +197,7 @@ class TestAdaptiveBatchSizeManager:
             assert final_size == 100 + i  # Last update: (9 + 1) * 10 + i = 100 + i
 
     @patch("shared.embedding.batch_manager.torch")
-    def test_safety_margin_effect(self, mock_torch):
+    def test_safety_margin_effect(self, mock_torch: Mock) -> None:
         """Test that safety margin affects calculations."""
         mock_torch.cuda.is_available.return_value = True
         mock_torch.cuda.mem_get_info.return_value = (

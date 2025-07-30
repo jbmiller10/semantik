@@ -19,10 +19,7 @@ from packages.shared.database.exceptions import (
     EntityNotFoundError,
     InvalidStateError,
 )
-from packages.shared.database.models import (
-    Collection,
-    CollectionStatus,
-)
+from packages.shared.database.models import Collection, CollectionStatus
 from packages.webui.services.collection_service import CollectionService
 
 

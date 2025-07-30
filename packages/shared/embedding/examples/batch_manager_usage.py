@@ -7,13 +7,14 @@ manage batch sizes for embedding operations based on available GPU memory.
 """
 
 import logging
+
 from shared.embedding import AdaptiveBatchSizeManager
 
 # Set up logging to see informative messages
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
 
-def main():
+def main() -> None:
     """Demonstrate AdaptiveBatchSizeManager usage."""
 
     # Initialize the manager with default 20% safety margin
@@ -80,15 +81,15 @@ def main():
         """
     # In your embedding service:
     batch_manager = AdaptiveBatchSizeManager()
-    
+
     def embed_documents(texts, model_name, quantization):
         # Get optimal batch size
         batch_size = batch_manager.get_or_calculate_batch_size(
-            model_name, 
+            model_name,
             quantization,
             text_length=sum(len(t) for t in texts) // len(texts)
         )
-        
+
         # Process in batches
         embeddings = []
         for i in range(0, len(texts), batch_size):

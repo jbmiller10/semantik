@@ -20,6 +20,7 @@ import unittest
 from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
+import pytest
 import torch
 
 # Mock the metrics module before importing
@@ -39,7 +40,7 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         for p in self.patches:
             p.stop()
 
-    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda obj, cls: True)
+    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")
     @patch("torch.cuda.empty_cache")
     def test_oom_batch_size_reduction(self, mock_empty_cache, mock_cuda_available, mock_isinstance):
@@ -76,7 +77,7 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
 
         oom_count = 0
 
-        def model_forward(**kwargs):
+        def model_forward(**_kwargs):
             nonlocal oom_count
             if oom_count == 0:
                 oom_count += 1
@@ -95,7 +96,7 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         # First call raises OOM, second succeeds
         encode_call_count = 0
 
-        def encode_with_oom(texts, batch_size, **kwargs):
+        def encode_with_oom(texts, batch_size, **_kwargs):
             nonlocal encode_call_count
             if encode_call_count == 0 and batch_size == 32:
                 encode_call_count += 1
@@ -113,14 +114,14 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         )
 
         # Verify batch size was reduced
-        self.assertEqual(service.current_batch_size, 16)
-        self.assertIsNotNone(embeddings)
-        self.assertEqual(embeddings.shape, (64, 384))
+        assert service.current_batch_size == 16
+        assert embeddings is not None
+        assert embeddings.shape == (64, 384)
 
         # Verify empty_cache was called
         mock_empty_cache.assert_called()
 
-    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda obj, cls: True)
+    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")
     def test_minimum_batch_size_enforcement(self, mock_cuda_available, mock_isinstance):
         """Test that batch size doesn't go below min_batch_size"""
@@ -151,12 +152,12 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
 
         # Test that RuntimeError is raised when min batch size still causes OOM
         texts = ["test"] * 10
-        with self.assertRaises(RuntimeError) as context:
+        with pytest.raises(RuntimeError) as context:
             service._embed_sentence_transformer_texts(texts, batch_size=2, normalize=True, show_progress=False)
 
-        self.assertIn("minimum batch size", str(context.exception))
+        assert "minimum batch size" in str(context.exception)
 
-    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda obj, cls: True)
+    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")
     def test_batch_size_recovery(self, mock_cuda_available, mock_isinstance):
         """Test that batch size increases after successful batches"""
@@ -185,17 +186,17 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         service.is_qwen_model = False
 
         # Run multiple successful batches
-        for i in range(3):
+        for _ in range(3):
             embeddings = service._embed_sentence_transformer_texts(
                 ["test"] * 10, batch_size=8, normalize=True, show_progress=False
             )
-            self.assertIsNotNone(embeddings)
+            assert embeddings is not None
 
         # Verify batch size increased
-        self.assertEqual(service.current_batch_size, 16)
-        self.assertEqual(service.successful_batches, 0)  # Reset after increase
+        assert service.current_batch_size == 16
+        assert service.successful_batches == 0  # Reset after increase
 
-    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda obj, cls: True)
+    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")
     def test_adaptive_sizing_disabled(self, mock_cuda_available, mock_isinstance):
         """Test behavior when adaptive sizing is disabled"""
@@ -221,10 +222,10 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         service.is_qwen_model = False
 
         # Should raise OOM without retry when adaptive sizing is disabled
-        with self.assertRaises(torch.cuda.OutOfMemoryError):
+        with pytest.raises(torch.cuda.OutOfMemoryError):
             service._embed_sentence_transformer_texts(["test"] * 10, batch_size=32, normalize=True, show_progress=False)
 
-    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda obj, cls: True)
+    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")
     def test_cpu_no_adaptive_sizing(self, mock_cuda_available, mock_isinstance):
         """Test that CPU doesn't use adaptive sizing"""
@@ -248,10 +249,10 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         service.is_qwen_model = False
 
         # Should raise error without retry on CPU
-        with self.assertRaises(RuntimeError):
+        with pytest.raises(RuntimeError):
             service._embed_sentence_transformer_texts(["test"] * 10, batch_size=32, normalize=True, show_progress=False)
 
-    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda obj, cls: True)
+    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")
     @patch("torch.cuda.empty_cache")
     def test_qwen_model_oom_handling(self, mock_empty_cache, mock_cuda_available, mock_isinstance):
@@ -278,7 +279,7 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         mock_tokenizer = Mock()
         batch_size_from_tokenizer = []
 
-        def tokenizer_side_effect(texts, **kwargs):
+        def tokenizer_side_effect(texts, **_kwargs):
             batch_size_from_tokenizer.append(len(texts))
             # Create a mock object that has a .to() method
             mock_batch = Mock()
@@ -295,14 +296,14 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         mock_model = Mock()
         call_count = 0
 
-        def model_forward(**kwargs):
+        def model_forward(**_kwargs):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
                 # First call with batch size 16 raises OOM
                 raise torch.cuda.OutOfMemoryError("CUDA out of memory")
             # Subsequent calls succeed
-            batch_size = kwargs["input_ids"].shape[0]
+            batch_size = _kwargs["input_ids"].shape[0]
             mock_output = Mock()
             mock_output.last_hidden_state = torch.randn(batch_size, 10, 1024)
             return mock_output
@@ -315,16 +316,16 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         embeddings = service._embed_qwen_texts(texts, batch_size=16, normalize=True, instruction=None)
 
         # Verify results
-        self.assertIsNotNone(embeddings)
-        self.assertEqual(embeddings.shape, (32, 1024))
+        assert embeddings is not None
+        assert embeddings.shape == (32, 1024)
 
         # Verify batch size was reduced
-        self.assertEqual(service.current_batch_size, 8)
+        assert service.current_batch_size == 8
 
         # Verify empty_cache was called
         mock_empty_cache.assert_called()
 
-    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda obj, cls: True)
+    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")
     def test_batch_size_increase_with_original_limit(self, mock_cuda_available, mock_isinstance):
         """Test that batch size doesn't exceed original when recovering"""
@@ -357,16 +358,16 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
             service._embed_sentence_transformer_texts(["test"] * 10, batch_size=16, normalize=True, show_progress=False)
 
         # Should increase to 32 (original), not beyond
-        self.assertEqual(service.current_batch_size, 32)
+        assert service.current_batch_size == 32
 
         # Run more successful batches
         for _ in range(2):
             service._embed_sentence_transformer_texts(["test"] * 10, batch_size=32, normalize=True, show_progress=False)
 
         # Should stay at 32
-        self.assertEqual(service.current_batch_size, 32)
+        assert service.current_batch_size == 32
 
-    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda obj, cls: True)
+    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")
     def test_adaptive_batch_size_initialization(self, mock_cuda_available, mock_isinstance):
         """Test that adaptive batch size is properly initialized on first use"""
@@ -383,8 +384,8 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         service.is_qwen_model = False
 
         # Initially, these should be None
-        self.assertIsNone(service.original_batch_size)
-        self.assertIsNone(service.current_batch_size)
+        assert service.original_batch_size is None
+        assert service.current_batch_size is None
 
         # Mock model
         from sentence_transformers import SentenceTransformer
@@ -397,10 +398,10 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         service._embed_sentence_transformer_texts(["test"] * 10, batch_size=64, normalize=True, show_progress=False)
 
         # Verify initialization
-        self.assertEqual(service.original_batch_size, 64)
-        self.assertEqual(service.current_batch_size, 64)
+        assert service.original_batch_size == 64
+        assert service.current_batch_size == 64
 
-    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda obj, cls: True)
+    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")
     @patch("torch.cuda.empty_cache")
     def test_multiple_oom_reductions(self, mock_empty_cache, mock_cuda_available, mock_isinstance):
@@ -425,7 +426,7 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
 
         mock_model = Mock(spec=SentenceTransformer)
 
-        def encode_with_size_limit(texts, batch_size, **kwargs):
+        def encode_with_size_limit(texts, batch_size, **_kwargs):
             if batch_size > 16:
                 raise torch.cuda.OutOfMemoryError("CUDA out of memory")
             return np.random.randn(len(texts), 384).astype(np.float32)
@@ -439,11 +440,11 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         )
 
         # Verify final batch size
-        self.assertEqual(service.current_batch_size, 16)
-        self.assertIsNotNone(embeddings)
+        assert service.current_batch_size == 16
+        assert embeddings is not None
 
         # Verify empty_cache was called multiple times
-        self.assertEqual(mock_empty_cache.call_count, 2)  # For 64->32 and 32->16
+        assert mock_empty_cache.call_count == 2  # For 64->32 and 32->16
 
 
 if __name__ == "__main__":

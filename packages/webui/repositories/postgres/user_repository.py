@@ -6,11 +6,7 @@ from typing import Any
 
 from passlib.context import CryptContext
 from shared.database.base import UserRepository
-from shared.database.exceptions import (
-    DatabaseOperationError,
-    EntityAlreadyExistsError,
-    InvalidUserIdError,
-)
+from shared.database.exceptions import DatabaseOperationError, EntityAlreadyExistsError, InvalidUserIdError
 from shared.database.models import User
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError

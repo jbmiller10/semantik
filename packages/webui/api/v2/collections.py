@@ -29,9 +29,7 @@ from packages.webui.api.schemas import (
     OperationResponse,
 )
 from packages.webui.auth import get_current_user
-from packages.webui.dependencies import (
-    get_collection_for_user,
-)
+from packages.webui.dependencies import get_collection_for_user
 from packages.webui.rate_limiter import limiter
 from packages.webui.services.collection_service import CollectionService
 from packages.webui.services.factory import get_collection_service

@@ -13,12 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 
 from packages.shared.database.exceptions import ValidationError
-from packages.webui.api.schemas import (
-    DirectoryScanProgress,
-    DirectoryScanRequest,
-    DirectoryScanResponse,
-    ErrorResponse,
-)
+from packages.webui.api.schemas import DirectoryScanProgress, DirectoryScanRequest, DirectoryScanResponse, ErrorResponse
 from packages.webui.auth import get_current_user, get_current_user_websocket
 from packages.webui.rate_limiter import limiter
 from packages.webui.services.directory_scan_service import DirectoryScanService

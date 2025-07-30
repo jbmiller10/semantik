@@ -18,12 +18,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from packages.shared.database.models import (
-    CollectionStatus,
-    DocumentStatus,
-    OperationStatus,
-    OperationType,
-)
+from packages.shared.database.models import CollectionStatus, DocumentStatus, OperationStatus, OperationType
 from packages.webui.tasks import (
     CeleryTaskWithOperationUpdates,
     _handle_task_failure,

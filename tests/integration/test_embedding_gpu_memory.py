@@ -106,7 +106,7 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
 
         # Load model
         success = service.load_model(model_name, "float32")
-        self.assertTrue(success, "Failed to load model")
+        assert success, "Failed to load model"
 
         # Record memory after loading model
         memory_after_load, _ = get_memory_usage()
@@ -114,7 +114,7 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
         print(f"Memory after model load: {memory_after_load:.1f} MB (model uses {model_memory:.1f} MB)")
 
         # Model should use some memory
-        self.assertGreater(model_memory, 10, "Model should use at least 10MB of memory")
+        assert model_memory > 10, "Model should use at least 10MB of memory"
 
         # Generate embeddings with different batch sizes
         test_texts = ["This is a test sentence for GPU memory monitoring."] * 100
@@ -129,8 +129,8 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
 
             print(f"Batch size {batch_size}: Embedding memory spike: {embedding_memory:.1f} MB")
 
-            self.assertIsNotNone(embeddings)
-            self.assertEqual(len(embeddings), len(test_texts))
+            assert embeddings is not None
+            assert len(embeddings) == len(test_texts)
 
             # Clean up embeddings to free memory
             del embeddings
@@ -146,11 +146,9 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
         print(f"Memory after unload: {memory_after_unload:.1f} MB (freed {memory_freed:.1f} MB)")
 
         # Should free most of the model memory (allow 20% retention for caching)
-        self.assertGreater(
-            memory_freed,
-            model_memory * 0.8,
-            f"Should free at least 80% of model memory, but only freed {memory_freed:.1f}/{model_memory:.1f} MB",
-        )
+        assert (
+            memory_freed > model_memory * 0.8
+        ), f"Should free at least 80% of model memory, but only freed {memory_freed:.1f}/{model_memory:.1f} MB"
 
     def test_adaptive_sizing_with_models(self):
         """Test adaptive batch sizing with different real models if GPU available"""
@@ -194,9 +192,9 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
                     test_texts, model_name=model_name, batch_size=initial_batch_size
                 )
 
-                self.assertIsNotNone(embeddings)
-                self.assertEqual(len(embeddings), len(test_texts))
-                self.assertEqual(len(embeddings[0]), expected_dim)
+                assert embeddings is not None
+                assert len(embeddings) == len(test_texts)
+                assert len(embeddings[0]) == expected_dim
 
                 # Check if batch size was adapted
                 final_batch_size = service.current_batch_size
@@ -224,7 +222,7 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
 
         # Load model
         success = service.load_model(model_name, "float32")
-        self.assertTrue(success)
+        assert success
 
         # Create texts of varying lengths
         base_sentence = "The quick brown fox jumps over the lazy dog. "
@@ -250,7 +248,7 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
             memory_spike = memory_after - memory_before
             max_memory_spike = max(max_memory_spike, memory_spike)
 
-            self.assertEqual(len(embeddings), len(batch))
+            assert len(embeddings) == len(batch)
 
             # Clean up batch embeddings
             del embeddings
@@ -297,9 +295,9 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
             print(f"Recovered {memory_recovered:.1f} MB ({recovery_rate:.1f}% of embeddings memory)")
 
             # Should recover most of the embeddings memory
-            self.assertGreater(
-                recovery_rate, 90, f"Should recover >90% of embeddings memory, but only recovered {recovery_rate:.1f}%"
-            )
+            assert (
+                recovery_rate > 90
+            ), f"Should recover >90% of embeddings memory, but only recovered {recovery_rate:.1f}%"
 
         # Clean up
         service.unload_model()
@@ -315,7 +313,7 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
 
         # Ensure model is loaded
         success = manager.ensure_model_loaded(model_name, "float32")
-        self.assertTrue(success)
+        assert success
 
         # Test texts
         test_texts = [
@@ -376,14 +374,14 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
                     print(f"Thread {result['thread_id']}: Error - {result.get('error', 'Unknown error')}")
 
         # Verify all operations succeeded
-        self.assertEqual(len(errors), 0, f"Some operations failed: {errors}")
-        self.assertEqual(len(results), len(test_texts))
+        assert len(errors) == 0, f"Some operations failed: {errors}"
+        assert len(results) == len(test_texts)
 
         # Check that all embeddings have the same dimension
         embedding_sizes = [r["embedding_size"] for r in results if r["success"]]
-        self.assertTrue(
-            all(size == embedding_sizes[0] for size in embedding_sizes), "All embeddings should have the same dimension"
-        )
+        assert all(
+            size == embedding_sizes[0] for size in embedding_sizes
+        ), "All embeddings should have the same dimension"
 
         # Report memory statistics
         if memory_spikes:
@@ -410,9 +408,9 @@ class TestGPUMemoryUtils(unittest.TestCase):
 
         print(f"\nGPU Memory Info: {free_mb} MB free / {total_mb} MB total")
 
-        self.assertGreater(total_mb, 0, "Total GPU memory should be greater than 0")
-        self.assertGreater(free_mb, 0, "Free GPU memory should be greater than 0")
-        self.assertLessEqual(free_mb, total_mb, "Free memory should not exceed total memory")
+        assert total_mb > 0, "Total GPU memory should be greater than 0"
+        assert free_mb > 0, "Free GPU memory should be greater than 0"
+        assert free_mb <= total_mb, "Free memory should not exceed total memory"
 
     def test_model_memory_estimation(self):
         """Test model memory requirement estimation"""
@@ -429,11 +427,9 @@ class TestGPUMemoryUtils(unittest.TestCase):
 
             # For known models, should match or exceed expected minimum
             if "Qwen" in model_name:
-                self.assertGreaterEqual(
-                    estimated_mb,
-                    expected_min_mb,
-                    f"Estimation for {model_name} should be at least {expected_min_mb} MB",
-                )
+                assert (
+                    estimated_mb >= expected_min_mb
+                ), f"Estimation for {model_name} should be at least {expected_min_mb} MB"
 
 
 if __name__ == "__main__":

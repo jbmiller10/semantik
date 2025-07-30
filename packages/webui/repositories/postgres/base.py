@@ -4,10 +4,7 @@ import logging
 from typing import Any, TypeVar
 
 from asyncpg.exceptions import ForeignKeyViolationError, UniqueViolationError
-from shared.database.exceptions import (
-    DatabaseOperationError,
-    EntityAlreadyExistsError,
-)
+from shared.database.exceptions import DatabaseOperationError, EntityAlreadyExistsError
 from sqlalchemy import func, insert, select
 from sqlalchemy import update as sql_update
 from sqlalchemy.dialects.postgresql import insert as pg_insert

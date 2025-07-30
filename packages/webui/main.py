@@ -28,15 +28,7 @@ from shared.embedding import configure_global_embedding_service
 
 logger = logging.getLogger(__name__)
 
-from .api import (  # noqa: E402
-    auth,
-    health,
-    internal,
-    metrics,
-    models,
-    root,
-    settings,
-)
+from .api import auth, health, internal, metrics, models, root, settings  # noqa: E402
 from .api.v2 import collections as v2_collections  # noqa: E402
 from .api.v2 import directory_scan as v2_directory_scan  # noqa: E402
 from .api.v2 import documents as v2_documents  # noqa: E402

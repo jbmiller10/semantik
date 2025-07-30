@@ -12,7 +12,7 @@ import threading
 try:
     import torch
 except ImportError:
-    torch = None
+    torch = None  # type: ignore[assignment]
 
 from .models import get_model_config
 

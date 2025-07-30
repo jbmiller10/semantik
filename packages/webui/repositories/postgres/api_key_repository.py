@@ -8,11 +8,7 @@ from typing import Any
 from uuid import uuid4
 
 from shared.database.base import ApiKeyRepository
-from shared.database.exceptions import (
-    DatabaseOperationError,
-    EntityNotFoundError,
-    InvalidUserIdError,
-)
+from shared.database.exceptions import DatabaseOperationError, EntityNotFoundError, InvalidUserIdError
 from shared.database.models import ApiKey, User
 from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError

@@ -10,12 +10,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from packages.vecpipe.search_api import (
-    UpsertRequest,
-    app,
-    generate_mock_embedding,
-    get_or_create_metric,
-)
+from packages.vecpipe.search_api import UpsertRequest, app, generate_mock_embedding, get_or_create_metric
 
 
 @pytest.fixture()

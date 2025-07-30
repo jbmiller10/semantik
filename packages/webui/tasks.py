@@ -47,13 +47,7 @@ from typing import Any
 import httpx
 import psutil
 import redis.asyncio as redis
-from qdrant_client.models import (
-    FieldCondition,
-    Filter,
-    FilterSelector,
-    MatchValue,
-    PointStruct,
-)
+from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue, PointStruct
 from shared.config import settings
 from shared.managers.qdrant_manager import QdrantManager
 from shared.metrics.collection_metrics import (

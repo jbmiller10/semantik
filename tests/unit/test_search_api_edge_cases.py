@@ -10,14 +10,8 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from packages.shared.contracts.search import (
-    BatchSearchRequest,
-    SearchRequest,
-)
-from packages.vecpipe.search_api import (
-    app,
-    search_post,
-)
+from packages.shared.contracts.search import BatchSearchRequest, SearchRequest
+from packages.vecpipe.search_api import app, search_post
 
 
 @pytest.fixture()

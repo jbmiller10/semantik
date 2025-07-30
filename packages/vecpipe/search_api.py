@@ -120,7 +120,7 @@ class EmbedRequest(BaseModel):
     model_name: str = Field(..., description="Embedding model name")
     quantization: str = Field("float32", description="Model quantization type: float32, float16, int8")
     instruction: str | None = Field(None, description="Optional instruction for embedding generation")
-    batch_size: int = Field(32, ge=1, le=100, description="Batch size for processing")
+    batch_size: int = Field(32, ge=1, le=256, description="Batch size for processing")
 
 
 class EmbedResponse(BaseModel):
@@ -1323,20 +1323,17 @@ async def embed_texts(request: EmbedRequest = Body(...)) -> EmbedResponse:
             f"model={request.model_name}, quantization={request.quantization}"
         )
 
-        # Process texts in batches
+        # Process texts in batches using true batch processing
         embeddings = []
         batch_count = 0
 
         for i in range(0, len(request.texts), request.batch_size):
             batch_texts = request.texts[i : i + request.batch_size]
-            batch_embeddings = []
 
-            # Generate embeddings for batch
-            for text in batch_texts:
-                embedding = await generate_embedding_async(
-                    text, request.model_name, request.quantization, request.instruction
-                )
-                batch_embeddings.append(embedding)
+            # Generate embeddings for batch using the new batch processing method
+            batch_embeddings = await model_manager.generate_embeddings_batch_async(
+                batch_texts, request.model_name, request.quantization, request.instruction, request.batch_size
+            )
 
             embeddings.extend(batch_embeddings)
             batch_count += 1

@@ -16,10 +16,7 @@ from packages.webui.api.v2.schemas import (
     CollectionSearchResponse,
     SingleCollectionSearchRequest,
 )
-from packages.webui.api.v2.search import (
-    multi_collection_search,
-    single_collection_search,
-)
+from packages.webui.api.v2.search import multi_collection_search, single_collection_search
 
 
 @pytest.fixture()

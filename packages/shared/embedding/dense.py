@@ -15,11 +15,7 @@ import torch.nn.functional as F  # noqa: N812
 from numpy.typing import NDArray
 from sentence_transformers import SentenceTransformer
 from shared.config.vecpipe import VecpipeConfig
-from shared.metrics.prometheus import (
-    record_batch_size_reduction,
-    record_oom_error,
-    update_current_batch_size,
-)
+from shared.metrics.prometheus import record_batch_size_reduction, record_oom_error, update_current_batch_size
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
 from transformers.modeling_utils import PreTrainedModel
@@ -183,14 +179,14 @@ class DenseEmbeddingService(BaseEmbeddingService):
         self.original_batch_size: int | None = None
         self.current_batch_size: int | None = None
         if config is not None:
-            self.min_batch_size: int = config.MIN_BATCH_SIZE
-            self.batch_size_increase_threshold: int = config.BATCH_SIZE_INCREASE_THRESHOLD
-            self.enable_adaptive_batch_size: bool = config.ENABLE_ADAPTIVE_BATCH_SIZE
+            self.min_batch_size = config.MIN_BATCH_SIZE
+            self.batch_size_increase_threshold = config.BATCH_SIZE_INCREASE_THRESHOLD
+            self.enable_adaptive_batch_size = config.ENABLE_ADAPTIVE_BATCH_SIZE
         else:
             # Default values
-            self.min_batch_size: int = 1
-            self.batch_size_increase_threshold: int = 10
-            self.enable_adaptive_batch_size: bool = True
+            self.min_batch_size = 1
+            self.batch_size_increase_threshold = 10
+            self.enable_adaptive_batch_size = True
         self.successful_batches: int = 0
 
     @property
@@ -440,6 +436,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
                     # Consider increasing batch size after threshold successes
                     if (
                         self.successful_batches >= self.batch_size_increase_threshold
+                        and self.original_batch_size is not None
                         and current_batch_size < self.original_batch_size
                     ):
                         new_size = min(current_batch_size * 2, self.original_batch_size)
@@ -535,6 +532,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
                     # Consider increasing batch size after threshold successes
                     if (
                         self.successful_batches >= self.batch_size_increase_threshold
+                        and self.original_batch_size is not None
                         and current_batch_size < self.original_batch_size
                     ):
                         new_size = min(current_batch_size * 2, self.original_batch_size)
