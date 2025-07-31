@@ -247,6 +247,10 @@ export const handlers = [
     return HttpResponse.json(operation)
   }),
 
+  http.delete('/api/v2/collections/:uuid', () => {
+    return HttpResponse.json({ message: 'Collection deleted successfully' })
+  }),
+
   // Search endpoint
   http.post('/api/v2/search', async ({ request }) => {
     const body = await request.json() as { use_reranker?: boolean }

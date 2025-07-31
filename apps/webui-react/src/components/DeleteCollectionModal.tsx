@@ -132,6 +132,7 @@ function DeleteCollectionModal({
                 className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-red-500 focus:border-red-500 sm:text-sm"
                 placeholder="Type DELETE here"
                 autoComplete="off"
+                autoFocus
                 required
               />
             </div>

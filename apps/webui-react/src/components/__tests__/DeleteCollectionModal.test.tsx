@@ -68,7 +68,7 @@ describe('DeleteCollectionModal', () => {
     it('should render the modal with collection details', () => {
       renderComponent();
       
-      expect(screen.getByText('Delete Collection')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Delete Collection' })).toBeInTheDocument();
       expect(screen.getByText(/You are about to permanently delete the collection "Test Collection"/)).toBeInTheDocument();
       expect(screen.getByText('This action cannot be undone')).toBeInTheDocument();
     });
@@ -307,7 +307,7 @@ describe('DeleteCollectionModal', () => {
       expect(screen.getByText(/You are about to permanently delete the collection ""/)).toBeInTheDocument();
     });
 
-    it('should handle zero stats gracefully', () => {
+    it('should handle zero stats gracefully', async () => {
       const zeroStats = {
         total_files: 0,
         total_vectors: 0,
@@ -319,9 +319,9 @@ describe('DeleteCollectionModal', () => {
       
       // Open details
       const user = userEvent.setup();
-      user.click(screen.getByText('What will be deleted?')).then(() => {
-        expect(screen.getByText('0 Bytes')).toBeInTheDocument();
-      });
+      await user.click(screen.getByText('What will be deleted?'));
+      
+      expect(screen.getByText('0 Bytes')).toBeInTheDocument();
     });
 
     it('should format large numbers correctly', async () => {
