@@ -71,7 +71,7 @@ test:
 	poetry run pytest tests -v
 
 test-ci:
-	poetry run pytest tests -v -m "not e2e"
+	poetry run pytest tests -v --ignore=tests/e2e -m "not e2e"
 
 test-e2e:
 	poetry run pytest tests -v -m e2e

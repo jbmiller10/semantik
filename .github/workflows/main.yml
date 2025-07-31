@@ -207,6 +207,7 @@ jobs:
       - name: Run backend tests
         run: |
           poetry run pytest tests/ -v \
+            --ignore=tests/e2e \
             --cov=packages \
             --cov-report=xml \
             --cov-report=term-missing \
