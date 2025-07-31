@@ -379,9 +379,7 @@ class CollectionRepository:
 
             # Delete the collection using SQLAlchemy's delete statement for async
             # This will cascade delete all related records (operations, documents, etc.)
-            await self.session.execute(
-                delete(Collection).where(Collection.id == collection.id)
-            )
+            await self.session.execute(delete(Collection).where(Collection.id == collection.id))
             await self.session.flush()
 
             logger.info(f"Deleted collection {collection_uuid}")

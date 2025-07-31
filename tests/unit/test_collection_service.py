@@ -412,9 +412,9 @@ class TestCollectionService:
         self, mock_qdrant_manager, collection_service, mock_collection_repo, mock_operation_repo
     ):
         """Test successful collection deletion"""
-        # Mock collection - use integer ID
+        # Mock collection - use string UUID
         mock_collection = Mock(spec=Collection)
-        mock_collection.id = 123  # Integer ID
+        mock_collection.id = "collection-123"  # String UUID
         mock_collection.owner_id = 123
         mock_collection.vector_store_name = "collection_123"
 
@@ -446,7 +446,7 @@ class TestCollectionService:
         mock_qdrant_client.delete_collection.assert_called_once_with("collection_123")
 
         # Verify database deletion
-        mock_collection_repo.delete.assert_called_once_with(123, 123)
+        mock_collection_repo.delete.assert_called_once_with("collection-123", 123)
 
     @pytest.mark.asyncio()
     async def test_delete_collection_not_owner(self, collection_service, mock_collection_repo):
@@ -488,7 +488,7 @@ class TestCollectionService:
         """Test collection deletion when Qdrant deletion fails"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
-        mock_collection.id = 123
+        mock_collection.id = "collection-123"
         mock_collection.owner_id = 123
         mock_collection.vector_store_name = "collection_123"
 
@@ -509,7 +509,7 @@ class TestCollectionService:
         mock_logger.error.assert_called()
 
         # Verify database deletion still happened
-        mock_collection_repo.delete.assert_called_once_with(123, 123)
+        mock_collection_repo.delete.assert_called_once_with("collection-123", 123)
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.collection_service.celery_app")

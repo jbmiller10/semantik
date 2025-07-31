@@ -358,23 +358,29 @@ async def db_session():
     """Create a new database session for testing."""
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
     from packages.shared.database.models import Base
-    
-    # Use in-memory SQLite for tests
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-    
+    from packages.shared.config.postgres import postgres_config
+
+    # Use PostgreSQL for tests - get URL from environment or config
+    database_url = os.environ.get("DATABASE_URL")
+    if database_url:
+        # Convert to async URL if needed
+        if database_url.startswith("postgresql://"):
+            database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    else:
+        # Use default test database configuration
+        database_url = postgres_config.async_database_url
+
+    engine = create_async_engine(database_url, echo=False)
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
-    async_session = async_sessionmaker(
-        engine,
-        class_=AsyncSession,
-        expire_on_commit=False
-    )
-    
+
+    async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
     async with async_session() as session:
         yield session
         await session.rollback()
-    
+
     await engine.dispose()
 
 
@@ -383,7 +389,7 @@ async def test_user_db(db_session):
     """Create a test user in the database."""
     from packages.shared.database.models import User
     from datetime import datetime
-    
+
     user = User(
         id=1,
         username="testuser",
@@ -391,7 +397,7 @@ async def test_user_db(db_session):
         email="test@example.com",
         is_active=True,
         created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow()
+        updated_at=datetime.utcnow(),
     )
     db_session.add(user)
     await db_session.commit()
@@ -404,7 +410,7 @@ async def other_user_db(db_session):
     """Create another test user in the database."""
     from packages.shared.database.models import User
     from datetime import datetime
-    
+
     user = User(
         id=2,
         username="otheruser",
@@ -412,7 +418,7 @@ async def other_user_db(db_session):
         email="other@example.com",
         is_active=True,
         created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow()
+        updated_at=datetime.utcnow(),
     )
     db_session.add(user)
     await db_session.commit()
@@ -426,9 +432,9 @@ async def collection_factory(db_session):
     from packages.shared.database.models import Collection, CollectionStatus
     from datetime import datetime
     from uuid import uuid4
-    
+
     created_collections = []
-    
+
     async def _create_collection(**kwargs):
         defaults = {
             "uuid": str(uuid4()),
@@ -449,15 +455,15 @@ async def collection_factory(db_session):
             "updated_at": datetime.utcnow(),
         }
         defaults.update(kwargs)
-        
+
         collection = Collection(**defaults)
         db_session.add(collection)
         await db_session.commit()
         await db_session.refresh(collection)
-        
+
         created_collections.append(collection)
         return collection
-    
+
     yield _create_collection
 
 
@@ -467,9 +473,9 @@ async def document_factory(db_session):
     from packages.shared.database.models import Document, DocumentStatus
     from datetime import datetime
     from uuid import uuid4
-    
+
     created_documents = []
-    
+
     async def _create_document(**kwargs):
         defaults = {
             "collection_id": 1,
@@ -485,15 +491,15 @@ async def document_factory(db_session):
             "updated_at": datetime.utcnow(),
         }
         defaults.update(kwargs)
-        
+
         document = Document(**defaults)
         db_session.add(document)
         await db_session.commit()
         await db_session.refresh(document)
-        
+
         created_documents.append(document)
         return document
-    
+
     yield _create_document
 
 
@@ -503,9 +509,9 @@ async def operation_factory(db_session):
     from packages.shared.database.models import Operation, OperationType, OperationStatus
     from datetime import datetime
     from uuid import uuid4
-    
+
     created_operations = []
-    
+
     async def _create_operation(**kwargs):
         defaults = {
             "uuid": str(uuid4()),
@@ -519,19 +525,19 @@ async def operation_factory(db_session):
             "completed_at": datetime.utcnow(),
         }
         defaults.update(kwargs)
-        
+
         # Handle string status conversion
         if isinstance(defaults.get("status"), str):
             defaults["status"] = OperationStatus(defaults["status"])
-            
+
         operation = Operation(**defaults)
         db_session.add(operation)
         await db_session.commit()
         await db_session.refresh(operation)
-        
+
         created_operations.append(operation)
         return operation
-    
+
     yield _create_operation
 
 
@@ -539,23 +545,24 @@ async def operation_factory(db_session):
 def mock_qdrant_deletion():
     """Mock Qdrant client specifically for deletion tests."""
     mock = MagicMock()
-    
+
     # Mock get_collections response
     mock_collections_response = MagicMock()
     mock_collections_response.collections = []
     mock.get_collections.return_value = mock_collections_response
-    
+
     # Mock other methods
     mock.delete_collection = AsyncMock()
     mock.create_collection = AsyncMock()
-    
+
     # Patch the qdrant manager
     import packages.shared.services.qdrant_manager as qdrant_manager
+
     original_get_client = qdrant_manager.get_client
     qdrant_manager.get_client = lambda: mock
-    
+
     yield mock
-    
+
     # Restore original
     qdrant_manager.get_client = original_get_client
 
@@ -565,13 +572,14 @@ def mock_celery_for_deletion():
     """Mock Celery app for deletion tests."""
     mock_app = MagicMock()
     mock_app.send_task = MagicMock()
-    
+
     # Patch the celery app
     import packages.webui.celery_app as celery_module
+
     original_app = celery_module.celery_app
     celery_module.celery_app = mock_app
-    
+
     yield mock_app
-    
+
     # Restore original
     celery_module.celery_app = original_app

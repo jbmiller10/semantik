@@ -30,8 +30,20 @@ from packages.shared.database.models import (
 
 @pytest.fixture()
 def db_session() -> Generator[Session, None, None]:
-    """Create an in-memory SQLite database for testing."""
-    engine = create_engine("sqlite:///:memory:")
+    """Create a PostgreSQL database session for testing."""
+    import os
+    from packages.shared.config.postgres import postgres_config
+
+    # Use PostgreSQL for tests - get URL from environment or config
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        # Use sync version for non-async tests
+        database_url = postgres_config.sync_database_url
+    elif database_url.startswith("postgresql://"):
+        # Ensure using sync driver
+        database_url = database_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
+    engine = create_engine(database_url)
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     session = session_factory()

@@ -435,7 +435,8 @@ class TestCollectionRepository:
         await repository.delete(sample_collection.id, sample_collection.owner_id)
 
         # Assert
-        mock_session.delete.assert_called_once_with(sample_collection)
+        # The repository uses execute with a delete statement, not session.delete
+        mock_session.execute.assert_called()
         mock_session.flush.assert_called_once()
 
     @pytest.mark.asyncio()

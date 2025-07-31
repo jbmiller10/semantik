@@ -360,9 +360,7 @@ class DocumentRepository:
                 raise EntityNotFoundError("document", document_id)
 
             # Use async pattern for deletion
-            await self.session.execute(
-                delete(Document).where(Document.id == document.id)
-            )
+            await self.session.execute(delete(Document).where(Document.id == document.id))
             await self.session.flush()
 
             logger.info(f"Deleted document {document_id}")
