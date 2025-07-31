@@ -21,26 +21,43 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-testing-only")
 os.environ.setdefault("DEFAULT_COLLECTION", "test_collection")
 os.environ.setdefault("USE_MOCK_EMBEDDINGS", "true")
 os.environ.setdefault("DISABLE_AUTH", "true")
+os.environ.setdefault("DISABLE_RATE_LIMITING", "true")
 
 
 @pytest.fixture()
 def test_client(test_user) -> None:
     """Create a test client for the FastAPI app with auth mocked."""
+    from unittest.mock import AsyncMock, patch, MagicMock
     from packages.webui.auth import get_current_user
     from packages.webui.main import app
+    from packages.shared.database import get_db
+    
+    # Mock the lifespan events to prevent real connections
+    with patch('packages.webui.main.pg_connection_manager') as mock_pg:
+        with patch('packages.webui.main.ws_manager') as mock_ws:
+            # Mock the async methods
+            mock_pg.initialize = AsyncMock()
+            mock_ws.startup = AsyncMock()
+            mock_ws.shutdown = AsyncMock()
+            
+            # Override dependencies
+            async def override_get_current_user():
+                return test_user
+            
+            async def override_get_db():
+                # Return a mock database session
+                mock_db = MagicMock()
+                yield mock_db
 
-    # Override the authentication dependency
-    async def override_get_current_user():
-        return test_user
+            app.dependency_overrides[get_current_user] = override_get_current_user
+            app.dependency_overrides[get_db] = override_get_db
 
-    app.dependency_overrides[get_current_user] = override_get_current_user
+            client = TestClient(app)
 
-    client = TestClient(app)
+            # Ensure we clean up after the test
+            yield client
 
-    # Ensure we clean up after the test
-    yield client
-
-    app.dependency_overrides.clear()
+            app.dependency_overrides.clear()
 
 
 @pytest.fixture()
@@ -372,7 +389,9 @@ async def db_session():
 
     engine = create_async_engine(database_url, echo=False)
 
+    # Drop all tables and recreate for each test to ensure isolation
     async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
     async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -389,12 +408,15 @@ async def test_user_db(db_session):
     """Create a test user in the database."""
     from packages.shared.database.models import User
     from datetime import datetime
+    import random
 
+    # Use random ID to avoid conflicts
+    user_id = random.randint(1000, 9999)
     user = User(
-        id=1,
-        username="testuser",
+        id=user_id,
+        username=f"testuser_{user_id}",
         hashed_password="hashed_password",
-        email="test@example.com",
+        email=f"test_{user_id}@example.com",
         is_active=True,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
@@ -410,12 +432,15 @@ async def other_user_db(db_session):
     """Create another test user in the database."""
     from packages.shared.database.models import User
     from datetime import datetime
+    import random
 
+    # Use random ID to avoid conflicts
+    user_id = random.randint(10000, 19999)
     user = User(
-        id=2,
-        username="otheruser",
+        id=user_id,
+        username=f"otheruser_{user_id}",
         hashed_password="hashed_password",
-        email="other@example.com",
+        email=f"other_{user_id}@example.com",
         is_active=True,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
@@ -437,7 +462,7 @@ async def collection_factory(db_session):
 
     async def _create_collection(**kwargs):
         defaults = {
-            "uuid": str(uuid4()),
+            "id": str(uuid4()),  # Changed from "uuid" to "id"
             "name": f"Test Collection {len(created_collections)}",
             "description": "Test collection description",
             "owner_id": 1,

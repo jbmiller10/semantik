@@ -30,7 +30,7 @@ class TestCollectionDeletion:
         # Arrange
         collection = await collection_factory(owner_id=test_user_db.id)
         collection_id = collection.id
-        collection_uuid = collection.uuid
+        collection_uuid = collection.id
 
         repo = CollectionRepository(db_session)
 
@@ -58,7 +58,7 @@ class TestCollectionDeletion:
         repo = CollectionRepository(db_session)
 
         # Act
-        await repo.delete(collection.uuid, test_user_db.id)
+        await repo.delete(collection.id, test_user_db.id)
         await db_session.commit()
 
         # Assert - all documents should be deleted
@@ -81,7 +81,7 @@ class TestCollectionDeletion:
         repo = CollectionRepository(db_session)
 
         # Act
-        await repo.delete(collection.uuid, test_user_db.id)
+        await repo.delete(collection.id, test_user_db.id)
         await db_session.commit()
 
         # Assert - all operations should be deleted
@@ -101,7 +101,7 @@ class TestCollectionDeletion:
         from packages.shared.database.exceptions import AccessDeniedError
 
         with pytest.raises(AccessDeniedError):
-            await repo.delete(collection.uuid, other_user_db.id)
+            await repo.delete(collection.id, other_user_db.id)
 
     async def test_collection_deletion_via_service_commits_transaction(
         self, db_session: AsyncSession, test_user_db, collection_factory, mock_qdrant_deletion
@@ -110,7 +110,7 @@ class TestCollectionDeletion:
         # Arrange
         collection = await collection_factory(owner_id=test_user_db.id)
         collection_id = collection.id
-        collection_uuid = collection.uuid
+        collection_uuid = collection.id
 
         service = CollectionService(db_session)
 
@@ -136,7 +136,7 @@ class TestCollectionDeletion:
         service = CollectionService(db_session)
 
         # Act - should not raise exception
-        await service.delete_collection(collection.uuid, test_user_db.id)
+        await service.delete_collection(collection.id, test_user_db.id)
 
         # Assert - PostgreSQL collection should still be deleted
         result = await db_session.execute(select(Collection).where(Collection.id == collection.id))
@@ -160,7 +160,7 @@ class TestCollectionDeletion:
         from packages.shared.database.exceptions import InvalidStateError
 
         with pytest.raises(InvalidStateError) as exc_info:
-            await service.delete_collection(collection.uuid, test_user_db.id)
+            await service.delete_collection(collection.id, test_user_db.id)
 
         assert "operations are in progress" in str(exc_info.value)
 
@@ -183,7 +183,7 @@ class TestCollectionDeletion:
         db_session.execute = spy_execute
 
         # Act
-        await repo.delete(collection.uuid, test_user_db.id)
+        await repo.delete(collection.id, test_user_db.id)
         await db_session.commit()
 
         # Assert - should use delete() construct, not session.delete()
@@ -206,7 +206,7 @@ class TestCollectionDeletion:
 class TestCollectionDeletionEdgeCases:
     """Test edge cases and error scenarios for collection deletion."""
 
-    async def test_delete_nonexistent_collection(self, db_session: AsyncSession, test_user):
+    async def test_delete_nonexistent_collection(self, db_session: AsyncSession, test_user_db):
         """Test deleting a collection that doesn't exist."""
         repo = CollectionRepository(db_session)
 
@@ -223,11 +223,11 @@ class TestCollectionDeletionEdgeCases:
         repo = CollectionRepository(db_session)
 
         # First deletion
-        await repo.delete(collection.uuid, test_user_db.id)
+        await repo.delete(collection.id, test_user_db.id)
         await db_session.commit()
 
         # Second deletion should fail
         from packages.shared.database.exceptions import EntityNotFoundError
 
         with pytest.raises(EntityNotFoundError):
-            await repo.delete(collection.uuid, test_user_db.id)
+            await repo.delete(collection.id, test_user_db.id)

@@ -44,11 +44,20 @@ def db_session() -> Generator[Session, None, None]:
         database_url = database_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
     engine = create_engine(database_url)
+    
+    # Drop and recreate all tables for test isolation
+    Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
+    
     session_factory = sessionmaker(bind=engine)
     session = session_factory()
-    yield session
-    session.close()
+    
+    try:
+        yield session
+        session.rollback()
+    finally:
+        session.close()
+        engine.dispose()
 
 
 class TestDateTimeTimezoneAwareness:
