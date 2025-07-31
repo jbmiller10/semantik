@@ -14,6 +14,12 @@ from httpx import AsyncClient
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Load test environment if available
+test_env_path = Path(__file__).parent.parent / ".env.test"
+if test_env_path.exists():
+    from dotenv import load_dotenv
+    load_dotenv(test_env_path, override=True)
+
 # Set required environment variables for tests
 os.environ.setdefault("QDRANT_HOST", "localhost")
 os.environ.setdefault("QDRANT_PORT", "6333")
@@ -46,7 +52,17 @@ def test_client(test_user) -> None:
             
             async def override_get_db():
                 # Return a mock database session
-                mock_db = MagicMock()
+                mock_db = AsyncMock()
+                # Mock common async methods
+                mock_db.execute = AsyncMock()
+                mock_db.scalar = AsyncMock()
+                mock_db.scalars = AsyncMock()
+                mock_db.commit = AsyncMock()
+                mock_db.rollback = AsyncMock()
+                mock_db.flush = AsyncMock()
+                mock_db.refresh = AsyncMock()
+                mock_db.add = MagicMock()
+                mock_db.delete = MagicMock()
                 yield mock_db
 
             app.dependency_overrides[get_current_user] = override_get_current_user
@@ -373,6 +389,8 @@ def websocket_test_client(test_client) -> None:
 @pytest_asyncio.fixture
 async def db_session():
     """Create a new database session for testing."""
+    # Check if we have a test database available
+    import asyncpg
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
     from packages.shared.database.models import Base
     from packages.shared.config.postgres import postgres_config
@@ -386,6 +404,16 @@ async def db_session():
     else:
         # Use default test database configuration
         database_url = postgres_config.async_database_url
+
+    # Try to connect to the database
+    try:
+        # Test connection
+        conn = await asyncpg.connect(database_url.replace("postgresql+asyncpg://", "postgresql://"))
+        await conn.close()
+    except (asyncpg.InvalidPasswordError, OSError) as e:
+        # If we can't connect to a real database, skip these tests
+        pytest.skip(f"PostgreSQL test database not available: {e}")
+        return
 
     engine = create_async_engine(database_url, echo=False)
 
@@ -506,7 +534,6 @@ async def document_factory(db_session):
             "collection_id": 1,
             "file_name": f"test_doc_{len(created_documents)}.txt",
             "file_path": f"/test/path/test_doc_{len(created_documents)}.txt",
-            "source_path": "/test/source",
             "file_size": 1024,
             "mime_type": "text/plain",
             "content_hash": f"hash_{uuid4().hex[:8]}",
@@ -581,7 +608,7 @@ def mock_qdrant_deletion():
     mock.create_collection = AsyncMock()
 
     # Patch the qdrant manager
-    import packages.shared.services.qdrant_manager as qdrant_manager
+    import packages.shared.managers.qdrant_manager as qdrant_manager
 
     original_get_client = qdrant_manager.get_client
     qdrant_manager.get_client = lambda: mock

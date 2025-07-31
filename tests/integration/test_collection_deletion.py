@@ -75,7 +75,7 @@ class TestCollectionDeletion:
         collection_id = collection.id
 
         # Create multiple operations
-        op1 = await operation_factory(collection_id=collection_id, type=OperationType.ADD_SOURCE)
+        op1 = await operation_factory(collection_id=collection_id, type=OperationType.INDEX)
         op2 = await operation_factory(collection_id=collection_id, type=OperationType.REINDEX)
 
         repo = CollectionRepository(db_session)
@@ -151,7 +151,7 @@ class TestCollectionDeletion:
 
         # Create an active operation
         operation = await operation_factory(
-            collection_id=collection.id, type=OperationType.ADD_SOURCE, status="processing"
+            collection_id=collection.id, type=OperationType.INDEX, status="processing"
         )
 
         service = CollectionService(db_session)
