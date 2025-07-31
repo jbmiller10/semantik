@@ -60,6 +60,12 @@ types-redis = "^4.6.0"
 pyfakefs = "^5.3.0"
 websocket-client = "^1.8.0"
 
+[tool.poetry.group.e2e]
+optional = true
+
+[tool.poetry.group.e2e.dependencies]
+pytest-playwright = "^0.6.2"
+
 [tool.ruff]
 line-length = 120
 target-version = "py311"
@@ -126,10 +132,10 @@ check_untyped_defs = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-v --cov=packages.vecpipe --cov=packages.webui --cov-report=html --cov-report=term --cov-report=xml"
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --cov=packages.vecpipe --cov=packages.webui --cov-report=html --cov-report=term"
 pythonpath = ["."]
 asyncio_mode = "auto"
 markers = [
