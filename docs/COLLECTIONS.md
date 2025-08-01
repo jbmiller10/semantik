@@ -1,8 +1,10 @@
-# Collections Management System
+# Collections Architecture & Technical Reference
 
 ## Overview
 
-The Collections Management System in Semantik provides a powerful abstraction for organizing and managing document repositories. Collections are the primary unit of organization, allowing users to create isolated document sets with specific embedding models and search configurations.
+This document provides the technical architecture and implementation details of Semantik's collection system. For user-focused documentation on managing collections, see the [Collection Management Guide](./COLLECTION_MANAGEMENT.md).
+
+Collections in Semantik represent self-contained document repositories with dedicated vector stores, consistent embedding configurations, and unified search capabilities. This document covers the technical implementation, database schema, and advanced features.
 
 ## Architecture
 
@@ -417,43 +419,550 @@ Collection status reflects overall health:
 7. **Export/Import**: Backup and migration tools
 8. **Collection Analytics**: Usage statistics and insights
 
-## Migration from Legacy System
+## Practical Examples
 
-For users migrating from the old job-based system:
-
-1. **Jobs → Collections**: Each job becomes a collection
-2. **Job IDs → Collection UUIDs**: New identifier format
-3. **Files → Documents**: Terminology update
-4. **Processing → Operations**: Async task management
-5. **Search Updates**: Use collection UUIDs instead of job IDs
-
-### Migration Script Example
+### Example 1: Creating a Technical Documentation Collection
 
 ```python
-# Migrate legacy job to new collection
-async def migrate_job_to_collection(job_id: str):
-    # Get legacy job data
-    job = await get_legacy_job(job_id)
+import httpx
+import asyncio
+
+async def setup_tech_docs_collection():
+    """Set up a collection for technical documentation."""
+    client = httpx.AsyncClient()
+    base_url = "http://localhost:8080"
+    headers = {"Authorization": "Bearer YOUR_TOKEN"}
     
-    # Create new collection
-    collection = await create_collection({
-        "name": job["name"],
-        "description": job["description"],
-        "embedding_model": job["model_name"],
-        "quantization": job["quantization"] or "float16",
-        "chunk_size": job["chunk_size"],
-        "chunk_overlap": job["chunk_overlap"]
-    })
+    # Step 1: Create the collection
+    collection_data = {
+        "name": "Technical Documentation",
+        "description": "API docs, architecture guides, and tutorials",
+        "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+        "quantization": "float16",
+        "chunk_size": 1000,
+        "chunk_overlap": 200,
+        "is_public": false
+    }
     
-    # Create indexing operation
-    operation = await create_operation({
-        "collection_id": collection["id"],
-        "type": "index",
-        "config": {
-            "source_path": job["directory_path"],
-            "source_type": "directory"
+    response = await client.post(
+        f"{base_url}/api/v2/collections",
+        json=collection_data,
+        headers=headers
+    )
+    collection = response.json()
+    print(f"Created collection: {collection['id']}")
+    
+    # Step 2: Add multiple source directories
+    sources = [
+        {
+            "path": "/docs/api",
+            "extensions": [".md", ".rst"],
+            "description": "API documentation"
+        },
+        {
+            "path": "/docs/guides",
+            "extensions": [".md", ".pdf"],
+            "description": "User guides and tutorials"
+        },
+        {
+            "path": "/docs/architecture",
+            "extensions": [".md", ".png", ".svg"],
+            "description": "Architecture diagrams and docs"
         }
-    })
+    ]
     
-    return collection, operation
+    operations = []
+    for source in sources:
+        response = await client.post(
+            f"{base_url}/api/v2/collections/{collection['id']}/sources",
+            json={
+                "source_type": "directory",
+                "source_path": source["path"],
+                "filters": {
+                    "extensions": source["extensions"],
+                    "ignore_patterns": ["**/drafts/**", "**/.git/**"]
+                },
+                "config": {
+                    "recursive": true,
+                    "follow_symlinks": false
+                }
+            },
+            headers=headers
+        )
+        operation = response.json()
+        operations.append(operation)
+        print(f"Started indexing {source['description']}: {operation['id']}")
+    
+    # Step 3: Monitor all operations
+    for op in operations:
+        await monitor_operation_completion(client, base_url, headers, op['id'])
+    
+    print("Technical documentation collection ready!")
+    return collection
+
+async def monitor_operation_completion(client, base_url, headers, operation_id):
+    """Monitor an operation until completion."""
+    while True:
+        response = await client.get(
+            f"{base_url}/api/v2/operations/{operation_id}",
+            headers=headers
+        )
+        data = response.json()
+        
+        if data['status'] == 'completed':
+            print(f"Operation {operation_id} completed successfully")
+            break
+        elif data['status'] == 'failed':
+            print(f"Operation {operation_id} failed: {data.get('error_message')}")
+            break
+        
+        if 'progress' in data:
+            print(f"Progress: {data['progress']['percentage']:.1f}%")
+        
+        await asyncio.sleep(2)
+```
+
+### Example 2: Managing a Research Paper Collection
+
+```javascript
+// Frontend example using React and Zustand
+class ResearchPaperManager {
+    constructor(apiClient) {
+        this.api = apiClient;
+    }
+    
+    async createResearchCollection() {
+        // Create a specialized collection for academic papers
+        const collection = await this.api.createCollection({
+            name: "ML Research Papers 2024",
+            description: "Machine learning research papers and preprints",
+            embedding_model: "Qwen/Qwen3-Embedding-4B", // Higher quality for technical content
+            quantization: "float16",
+            chunk_size: 1500, // Larger chunks for academic content
+            chunk_overlap: 300,
+            is_public: false
+        });
+        
+        return collection;
+    }
+    
+    async addPapersBatch(collectionId, paperPaths) {
+        // Add papers with progress tracking
+        const operations = [];
+        
+        for (const path of paperPaths) {
+            const operation = await this.api.addSource(collectionId, {
+                source_type: "file",
+                source_path: path,
+                config: {
+                    extract_metadata: true, // Extract paper metadata
+                    ocr_enabled: true      // For scanned PDFs
+                }
+            });
+            operations.push(operation);
+        }
+        
+        // Monitor all operations
+        return this.monitorBatchOperations(operations);
+    }
+    
+    async monitorBatchOperations(operations) {
+        const results = await Promise.all(
+            operations.map(op => this.monitorOperation(op.id))
+        );
+        
+        const summary = {
+            total: operations.length,
+            successful: results.filter(r => r.status === 'completed').length,
+            failed: results.filter(r => r.status === 'failed').length
+        };
+        
+        return summary;
+    }
+    
+    async searchPapers(collectionId, query, filters = {}) {
+        // Semantic search with filters
+        const results = await this.api.search({
+            collection_ids: [collectionId],
+            query: query,
+            k: 20,
+            filters: {
+                file_type: "pdf",
+                ...filters
+            },
+            use_reranker: true // Better relevance for academic content
+        });
+        
+        return results;
+    }
+}
+
+// Usage in React component
+function ResearchDashboard() {
+    const [collection, setCollection] = useState(null);
+    const [searchResults, setSearchResults] = useState([]);
+    const manager = new ResearchPaperManager(apiClient);
+    
+    const handleCreateCollection = async () => {
+        try {
+            const newCollection = await manager.createResearchCollection();
+            setCollection(newCollection);
+            toast.success("Research collection created!");
+        } catch (error) {
+            toast.error(`Failed to create collection: ${error.message}`);
+        }
+    };
+    
+    const handleSearch = async (query) => {
+        if (!collection) return;
+        
+        try {
+            const results = await manager.searchPapers(collection.id, query);
+            setSearchResults(results);
+        } catch (error) {
+            toast.error(`Search failed: ${error.message}`);
+        }
+    };
+    
+    return (
+        <div className="research-dashboard">
+            {/* UI components */}
+        </div>
+    );
+}
+```
+
+### Example 3: Collection Health Monitoring
+
+```python
+import asyncio
+from datetime import datetime, timedelta
+from typing import List, Dict, Any
+
+class CollectionHealthMonitor:
+    """Monitor and maintain collection health."""
+    
+    def __init__(self, api_client):
+        self.api = api_client
+        
+    async def check_collection_health(self, collection_id: str) -> Dict[str, Any]:
+        """Comprehensive health check for a collection."""
+        collection = await self.api.get_collection(collection_id)
+        operations = await self.api.get_collection_operations(
+            collection_id, 
+            limit=10
+        )
+        
+        health_report = {
+            "collection_id": collection_id,
+            "status": collection["status"],
+            "checks": {},
+            "recommendations": []
+        }
+        
+        # Check 1: Collection status
+        health_report["checks"]["status"] = {
+            "passed": collection["status"] == "ready",
+            "message": f"Collection status: {collection['status']}"
+        }
+        
+        # Check 2: Document processing
+        failed_docs = await self.api.get_documents(
+            collection_id,
+            status="failed"
+        )
+        health_report["checks"]["failed_documents"] = {
+            "passed": len(failed_docs) == 0,
+            "count": len(failed_docs),
+            "message": f"{len(failed_docs)} failed documents"
+        }
+        
+        # Check 3: Recent operations
+        failed_ops = [op for op in operations if op["status"] == "failed"]
+        health_report["checks"]["recent_operations"] = {
+            "passed": len(failed_ops) == 0,
+            "failed_count": len(failed_ops),
+            "message": f"{len(failed_ops)} failed operations in recent history"
+        }
+        
+        # Check 4: Storage efficiency
+        total_size = collection.get("total_size_bytes", 0)
+        doc_count = collection.get("document_count", 0)
+        avg_size = total_size / doc_count if doc_count > 0 else 0
+        
+        health_report["checks"]["storage_efficiency"] = {
+            "passed": avg_size < 10_000_000,  # 10MB average
+            "average_document_size": avg_size,
+            "message": f"Average document size: {avg_size / 1_000_000:.2f}MB"
+        }
+        
+        # Generate recommendations
+        if failed_docs:
+            health_report["recommendations"].append(
+                "Run reindex operation with only_failed=true to retry failed documents"
+            )
+        
+        if failed_ops:
+            health_report["recommendations"].append(
+                "Review failed operation logs to identify and fix issues"
+            )
+        
+        if collection["status"] != "ready":
+            health_report["recommendations"].append(
+                "Wait for current operations to complete or investigate stuck operations"
+            )
+        
+        # Overall health score
+        passed_checks = sum(1 for check in health_report["checks"].values() 
+                          if check["passed"])
+        total_checks = len(health_report["checks"])
+        health_report["health_score"] = (passed_checks / total_checks) * 100
+        
+        return health_report
+    
+    async def auto_maintenance(self, collection_id: str):
+        """Perform automatic maintenance tasks."""
+        health = await self.check_collection_health(collection_id)
+        
+        if health["health_score"] < 80:
+            print(f"Collection {collection_id} needs maintenance")
+            
+            # Auto-fix failed documents
+            if not health["checks"]["failed_documents"]["passed"]:
+                print("Reindexing failed documents...")
+                operation = await self.api.reindex_collection(
+                    collection_id,
+                    config={"only_failed": True}
+                )
+                await self.wait_for_operation(operation["id"])
+            
+            # Clean up old operations
+            await self.cleanup_old_operations(collection_id)
+    
+    async def monitor_collections(self, collection_ids: List[str]):
+        """Monitor multiple collections continuously."""
+        while True:
+            for collection_id in collection_ids:
+                try:
+                    health = await self.check_collection_health(collection_id)
+                    
+                    if health["health_score"] < 90:
+                        print(f"Collection {collection_id}: Health score {health['health_score']:.1f}%")
+                        for rec in health["recommendations"]:
+                            print(f"  - {rec}")
+                    
+                    # Perform maintenance if needed
+                    if health["health_score"] < 80:
+                        await self.auto_maintenance(collection_id)
+                        
+                except Exception as e:
+                    print(f"Error monitoring {collection_id}: {e}")
+            
+            # Wait before next check
+            await asyncio.sleep(300)  # Check every 5 minutes
+
+# Usage
+async def main():
+    monitor = CollectionHealthMonitor(api_client)
+    
+    # One-time health check
+    health = await monitor.check_collection_health("collection-123")
+    print(f"Health Score: {health['health_score']:.1f}%")
+    
+    # Continuous monitoring
+    collections = ["collection-123", "collection-456"]
+    await monitor.monitor_collections(collections)
+```
+
+## Integration Patterns
+
+### Pattern 1: Multi-Tenant Collections
+
+```python
+class MultiTenantCollectionManager:
+    """Manage collections for multiple tenants/organizations."""
+    
+    async def create_tenant_collection(self, tenant_id: str, config: dict):
+        """Create a collection with tenant isolation."""
+        collection_name = f"{tenant_id}_{config['name']}"
+        
+        collection = await self.api.create_collection({
+            "name": collection_name,
+            "description": f"{config['description']} (Tenant: {tenant_id})",
+            "embedding_model": config.get("model", "Qwen/Qwen3-Embedding-0.6B"),
+            "metadata": {
+                "tenant_id": tenant_id,
+                "created_by": config.get("created_by"),
+                "department": config.get("department")
+            },
+            **config
+        })
+        
+        # Set up tenant-specific permissions
+        await self.setup_tenant_permissions(collection["id"], tenant_id)
+        
+        return collection
+```
+
+### Pattern 2: Collection Templates
+
+```javascript
+const collectionTemplates = {
+    legal: {
+        name: "Legal Documents",
+        embedding_model: "Qwen/Qwen3-Embedding-4B",
+        chunk_size: 2000,  // Larger for legal documents
+        chunk_overlap: 400,
+        filters: {
+            extensions: [".pdf", ".docx"],
+            ignore_patterns: ["**/drafts/**"]
+        }
+    },
+    
+    codebase: {
+        name: "Source Code",
+        embedding_model: "Qwen/Qwen3-Embedding-0.6B",
+        chunk_size: 500,   // Smaller for code
+        chunk_overlap: 100,
+        filters: {
+            extensions: [".py", ".js", ".ts", ".java"],
+            ignore_patterns: ["**/node_modules/**", "**/venv/**"]
+        }
+    },
+    
+    knowledge_base: {
+        name: "Knowledge Base",
+        embedding_model: "Qwen/Qwen3-Embedding-0.6B",
+        chunk_size: 1000,
+        chunk_overlap: 200,
+        filters: {
+            extensions: [".md", ".txt", ".pdf", ".html"],
+            ignore_patterns: ["**/archive/**"]
+        }
+    }
+};
+
+async function createFromTemplate(templateName, customizations = {}) {
+    const template = collectionTemplates[templateName];
+    if (!template) {
+        throw new Error(`Unknown template: ${templateName}`);
+    }
+    
+    const collectionConfig = {
+        ...template,
+        ...customizations,
+        name: customizations.name || `${template.name} - ${new Date().toISOString()}`
+    };
+    
+    return await api.createCollection(collectionConfig);
+}
+```
+
+## Performance Tuning Guide
+
+### Optimizing for Different Use Cases
+
+#### High-Volume Document Processing
+```python
+# Configuration for processing large document sets
+high_volume_config = {
+    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",  # Faster model
+    "quantization": "int8",                           # Reduce memory usage
+    "chunk_size": 1500,                               # Larger chunks = fewer vectors
+    "chunk_overlap": 100,                             # Minimal overlap
+    "batch_size": 64,                                 # Large batch processing
+    "parallel_workers": 4                             # Multiple workers
+}
+```
+
+#### High-Accuracy Search
+```python
+# Configuration for maximum search accuracy
+high_accuracy_config = {
+    "embedding_model": "Qwen/Qwen3-Embedding-4B",    # Best model
+    "quantization": "float32",                        # Full precision
+    "chunk_size": 750,                                # Smaller chunks
+    "chunk_overlap": 250,                             # More overlap
+    "use_reranker": true,                             # Enable reranking
+    "reranker_model": "cross-encoder/ms-marco-MiniLM-L-12-v2"
+}
+```
+
+## Migration from Legacy System
+
+The collection-centric architecture replaces the previous job-based system. Key differences:
+
+1. **Terminology Changes**:
+   - Jobs → Collections (persistent entities)
+   - Job execution → Operations (temporary tasks)
+   - Files → Documents
+   - Processing → Operations (index, append, reindex)
+
+2. **Conceptual Shift**:
+   - Collections are long-lived, first-class entities
+   - Operations are temporary tasks that modify collections
+   - Focus on collection lifecycle rather than job execution
+
+3. **API Migration**:
+   - Old: `POST /api/jobs` → New: `POST /api/v2/collections` + operation
+   - Old: `GET /api/jobs/{id}` → New: `GET /api/v2/collections/{id}`
+   - Old: Search by job → New: Search by collection
+
+### Automated Migration Tool
+
+```python
+class LegacyMigrator:
+    """Migrate from job-based to collection-based system."""
+    
+    async def migrate_all_jobs(self):
+        """Migrate all legacy jobs to collections."""
+        legacy_jobs = await self.get_all_legacy_jobs()
+        migration_report = {
+            "total": len(legacy_jobs),
+            "successful": 0,
+            "failed": 0,
+            "mappings": {}
+        }
+        
+        for job in legacy_jobs:
+            try:
+                collection = await self.migrate_single_job(job)
+                migration_report["successful"] += 1
+                migration_report["mappings"][job["id"]] = collection["id"]
+            except Exception as e:
+                migration_report["failed"] += 1
+                print(f"Failed to migrate job {job['id']}: {e}")
+        
+        return migration_report
+    
+    async def migrate_single_job(self, job: dict) -> dict:
+        """Migrate a single job to a collection."""
+        # Create collection from job metadata
+        collection = await self.api.create_collection({
+            "name": job["name"],
+            "description": f"Migrated from job {job['id']}",
+            "embedding_model": job["model_name"],
+            "quantization": job.get("quantization", "float16"),
+            "chunk_size": job.get("chunk_size", 1000),
+            "chunk_overlap": job.get("chunk_overlap", 200),
+            "metadata": {
+                "legacy_job_id": job["id"],
+                "migrated_at": datetime.utcnow().isoformat()
+            }
+        })
+        
+        # Create index operation for job's documents
+        if job.get("directory_path"):
+            operation = await self.api.add_source(collection["id"], {
+                "source_type": "directory",
+                "source_path": job["directory_path"],
+                "config": {
+                    "recursive": True
+                }
+            })
+            
+            # Wait for completion
+            await self.wait_for_operation(operation["id"])
+        
+        return collection
 ```

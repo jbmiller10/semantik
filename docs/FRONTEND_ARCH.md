@@ -2,7 +2,7 @@
 
 ## Overview
 
-The frontend for Semantik is a modern React application built with TypeScript, located in `apps/webui-react/`. It provides a sophisticated user interface for managing document embedding jobs, searching through embedded documents, and monitoring system performance.
+The frontend for Semantik is a modern React application built with TypeScript, located in `apps/webui-react/`. It provides a sophisticated user interface for managing document collections, orchestrating indexing operations, searching through embedded documents, and monitoring system performance.
 
 ### Technology Stack
 
@@ -88,15 +88,22 @@ App
     ├── VerificationPage (unprotected)
     └── Layout (protected)
         ├── HomePage
-        │   ├── CreateJobForm
-        │   ├── JobList
-        │   │   └── JobCard
-        │   └── SearchInterface
+        │   ├── CollectionsDashboard (collections tab)
+        │   │   ├── CollectionList
+        │   │   │   └── CollectionCard
+        │   │   │       └── CollectionOperations
+        │   │   │           └── OperationProgress
+        │   │   ├── CreateCollectionModal
+        │   │   ├── AddDataToCollectionModal
+        │   │   └── ReindexCollectionModal
+        │   ├── ActiveOperationsTab (operations tab)
+        │   │   └── OperationsList
+        │   └── SearchInterface (search tab)
         │       └── SearchResults
         ├── SettingsPage
         ├── Toast
         ├── DocumentViewerModal
-        └── JobMetricsModal
+        └── CollectionDetailsModal
 ```
 
 ### Key Components
@@ -114,27 +121,46 @@ App
 - Prevents entire app crashes
 - Logs errors to console
 
-#### Job Management Components
+#### Collection Management Components
 
-**CreateJobForm.tsx**
-- Complex form for creating embedding jobs
+**CollectionsDashboard.tsx**
+- Main dashboard for managing collections
 - Features:
-  - Directory scanning with WebSocket progress
-  - Model selection from available embedding models
-  - Advanced parameter configuration (chunk size, overlap, etc.)
-  - Real-time scan progress visualization
-- Uses `useDirectoryScanWebSocket` hook for async scanning
+  - Grid/list view of all collections
+  - Create, edit, delete collection actions
+  - Filter and sort capabilities
+  - Real-time status updates via React Query
 
-**JobList.tsx**
-- Displays all jobs with automatic refresh (5-second interval)
-- Groups jobs by status (active, completed, failed)
-- Integrates with React Query for data fetching
+**CollectionCard.tsx**
+- Individual collection display with status indicators
+- Shows document count, vector count, and current status
+- Embedded CollectionOperations component for recent operations
+- Actions: add data, re-index, view details, delete
 
-**JobCard.tsx**
-- Individual job display with status indicators
+**CollectionOperations.tsx**
+- Displays operations history for a collection
 - Real-time progress updates via WebSocket
-- Actions: view metrics, cancel, delete
-- Animated "breathing" effect for running jobs
+- Shows active and recent completed operations
+- Uses `useOperationProgress` hook for WebSocket connections
+
+**CreateCollectionModal.tsx**
+- Form for creating new collections
+- Features:
+  - Collection name and description
+  - Model selection from available embedding models
+  - Advanced parameter configuration (chunk size, overlap, quantization)
+  - Privacy settings (public/private)
+
+**AddDataToCollectionModal.tsx**
+- Interface for adding documents to existing collections
+- Directory scanning with WebSocket progress
+- File filtering and exclusion patterns
+- Real-time scan progress visualization
+
+**ReindexCollectionModal.tsx**
+- Allows re-indexing of collection documents
+- Options for full or incremental re-indexing
+- Parameter adjustments without data loss
 
 #### Search Components
 
@@ -155,16 +181,22 @@ App
 #### Modal Components
 
 **DocumentViewerModal.tsx**
-- Full document viewer with chunk highlighting
-- Supports multiple file types (PDF, text, email)
-- Navigation between chunks
-- Integrated text search
+- Full document viewer with authentication
+- Supports multiple file types:
+  - PDF rendering with pdf.js
+  - DOCX with docx-preview library
+  - Markdown with marked.js
+  - Email (.eml) parsing
+  - Plain text and code files
+- Integrated text search and highlighting
+- Authentication token handling for secure document access
 
-**JobMetricsModal.tsx**
-- Detailed job performance metrics
-- Processing statistics
-- Error logs display
-- Real-time updates for running jobs
+**CollectionDetailsModal.tsx**
+- Detailed collection information and metrics
+- Shows embedding model, parameters, and settings
+- Vector database statistics
+- Operation history with filtering
+- Document management interface
 
 **DocumentViewer.tsx**
 - Core document rendering logic
@@ -189,7 +221,7 @@ App
 
 ### Zustand Stores
 
-The application uses Zustand for global state management with four main stores:
+The application uses Zustand for global UI state management combined with React Query for server state. The architecture follows a clear separation: Zustand handles client-side UI state while React Query manages all server data.
 
 #### authStore.ts
 ```typescript
@@ -204,22 +236,20 @@ interface AuthState {
 - Persisted to localStorage
 - Handles authentication tokens and user data
 - Manages logout with API call
+- Integrated with API interceptors for automatic token injection
 
-#### jobsStore.ts
+#### collectionStore.ts
 ```typescript
-interface JobsState {
-  jobs: Job[];
-  activeJobs: Set<string>;
-  setJobs: (jobs: Job[]) => void;
-  updateJob: (jobId: string, updates: Partial<Job>) => void;
-  addJob: (job: Job) => void;
-  removeJob: (jobId: string) => void;
-  setActiveJob: (jobId: string, active: boolean) => void;
+interface CollectionUIStore {
+  // UI State only - server state managed by React Query
+  selectedCollectionId: string | null;
+  setSelectedCollection: (id: string | null) => void;
+  clearStore: () => void;
 }
 ```
-- Manages job list and individual job updates
-- Tracks active jobs for WebSocket connections
-- No persistence (fetched from server)
+- Manages UI-specific collection state only
+- Server data handled by `useCollections`, `useCollectionOperations` hooks
+- Minimal state to avoid duplication with React Query cache
 
 #### searchStore.ts
 ```typescript
@@ -228,34 +258,45 @@ interface SearchState {
   loading: boolean;
   error: string | null;
   searchParams: SearchParams;
-  collections: string[];
+  collections: Collection[];
+  hybridModeOptions: HybridModeOption[];
+  performSearch: (params: SearchParams) => Promise<void>;
+  setSearchParams: (params: Partial<SearchParams>) => void;
   // ... methods
 }
 ```
 - Manages search state and results
-- Stores search parameters
-- Handles collection list
+- Stores search parameters and configurations
+- Handles hybrid search modes and reranking
+- Integrates with collection status for filtering
 
 #### uiStore.ts
 ```typescript
 interface UIState {
   toasts: Toast[];
-  activeTab: 'create' | 'jobs' | 'search';
-  showJobMetricsModal: string | null;
-  showDocumentViewer: { jobId: string; docId: string; chunkId?: string } | null;
+  activeTab: 'collections' | 'operations' | 'search';
+  showDocumentViewer: DocumentViewerState | null;
+  showCollectionDetails: string | null;
+  activeModals: {
+    createCollection: boolean;
+    addDataToCollection: string | null;
+    reindexCollection: string | null;
+  };
   // ... methods
 }
 ```
 - UI-specific state (modals, toasts, tabs)
-- Auto-dismiss logic for toasts
+- Auto-dismiss logic for toasts with configurable duration
 - Modal visibility management
+- Tab navigation state
 
 ### State Flow Diagram
 
 ```
-User Action → Component → Store Action → State Update → Re-render
-     ↓                         ↓
-     └→ API Call → Response → Store Update
+User Action → Component → React Query Hook → API Call → Cache Update → Re-render
+                    ↓                              ↓
+                Zustand Store              WebSocket Updates
+                (UI State Only)            (Real-time Progress)
 ```
 
 ## State Management Patterns
@@ -380,79 +421,188 @@ const useAuthStore = create<AuthState>()(
 
 ### React Query Integration
 
-#### Query Key Patterns
+React Query (@tanstack/react-query) manages all server state, providing caching, synchronization, and background refetching. The integration follows a consistent pattern across all data types.
+
+#### Query Key Factory Pattern
 ```typescript
-// Consistent query key structure
-export const queryKeys = {
-  jobs: {
-    all: ['jobs'] as const,
-    lists: () => [...queryKeys.jobs.all, 'list'] as const,
-    list: (filters: string) => [...queryKeys.jobs.lists(), { filters }] as const,
-    details: () => [...queryKeys.jobs.all, 'detail'] as const,
-    detail: (id: string) => [...queryKeys.jobs.details(), id] as const,
-  },
-  search: {
-    all: ['search'] as const,
-    results: (params: SearchParams) => [...queryKeys.search.all, params] as const,
-  },
+// Collection query keys
+export const collectionKeys = {
+  all: ['collections'] as const,
+  lists: () => [...collectionKeys.all, 'list'] as const,
+  list: (filters?: unknown) => [...collectionKeys.lists(), filters] as const,
+  details: () => [...collectionKeys.all, 'detail'] as const,
+  detail: (id: string) => [...collectionKeys.details(), id] as const,
+};
+
+// Operation query keys
+export const operationKeys = {
+  all: ['operations'] as const,
+  lists: () => [...operationKeys.all, 'list'] as const,
+  byCollection: (collectionId: string) => [...operationKeys.lists(), 'collection', collectionId] as const,
+  detail: (id: string) => [...operationKeys.all, 'detail', id] as const,
 };
 ```
 
-#### Optimistic Updates
+#### Custom Hooks Architecture
+
+**useCollections.ts**
+- `useCollections()` - Fetch all collections with auto-refetch for active operations
+- `useCollection(id)` - Fetch single collection details
+- `useCreateCollection()` - Create with optimistic updates
+- `useUpdateCollection()` - Update with cache synchronization
+- `useDeleteCollection()` - Delete with cascade cache cleanup
+
+**useCollectionOperations.ts**
+- `useCollectionOperations(collectionId)` - Fetch operations for a collection
+- `useOperation(id)` - Fetch single operation details
+- `useCancelOperation()` - Cancel running operations
+- `useUpdateOperationInCache()` - Utility for WebSocket updates
+
+**useCollectionDocuments.ts**
+- `useCollectionDocuments(collectionId, params)` - Paginated document fetching
+- `useDeleteDocument()` - Remove documents from collection
+- Supports filtering, sorting, and pagination
+
+#### Optimistic Updates Pattern
 ```typescript
-const createJobMutation = useMutation({
-  mutationFn: jobsApi.create,
-  onMutate: async (newJob) => {
-    // Cancel outgoing refetches
-    await queryClient.cancelQueries({ queryKey: queryKeys.jobs.all });
-    
-    // Snapshot previous value
-    const previousJobs = queryClient.getQueryData(queryKeys.jobs.lists());
-    
-    // Optimistically update
-    queryClient.setQueryData(queryKeys.jobs.lists(), (old) => {
-      return [...(old || []), { ...newJob, id: 'temp-id', status: 'created' }];
-    });
-    
-    return { previousJobs };
-  },
-  onError: (err, newJob, context) => {
-    // Rollback on error
-    queryClient.setQueryData(queryKeys.jobs.lists(), context.previousJobs);
-  },
-  onSettled: () => {
-    // Always refetch after error or success
-    queryClient.invalidateQueries({ queryKey: queryKeys.jobs.lists() });
-  },
-});
+export function useCreateCollection() {
+  const queryClient = useQueryClient();
+  const { addToast } = useUIStore();
+
+  return useMutation({
+    mutationFn: collectionsV2Api.create,
+    onMutate: async (newCollection) => {
+      // Cancel in-flight queries
+      await queryClient.cancelQueries({ queryKey: collectionKeys.lists() });
+      
+      // Snapshot for rollback
+      const previousCollections = queryClient.getQueryData<Collection[]>(
+        collectionKeys.lists()
+      );
+      
+      // Optimistic update with temporary data
+      const tempCollection: Collection = {
+        id: `temp-${Date.now()}`,
+        ...newCollection,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+      };
+      
+      queryClient.setQueryData<Collection[]>(
+        collectionKeys.lists(),
+        old => [...(old || []), tempCollection]
+      );
+      
+      return { previousCollections, tempId: tempCollection.id };
+    },
+    onError: (error, _, context) => {
+      // Rollback on failure
+      queryClient.setQueryData(
+        collectionKeys.lists(),
+        context?.previousCollections
+      );
+      addToast({ type: 'error', message: handleApiError(error) });
+    },
+    onSuccess: (data, _, context) => {
+      // Replace temp with real data
+      queryClient.setQueryData<Collection[]>(
+        collectionKeys.lists(),
+        old => old?.map(c => c.id === context?.tempId ? data : c)
+      );
+    },
+    onSettled: () => {
+      // Ensure fresh data
+      queryClient.invalidateQueries({ queryKey: collectionKeys.lists() });
+    },
+  });
+}
+```
+
+#### Cache Invalidation Strategy
+```typescript
+// Cascade invalidation for related data
+export function useDeleteCollection() {
+  return useMutation({
+    mutationFn: collectionsV2Api.delete,
+    onSuccess: (_, collectionId) => {
+      // Remove collection from cache
+      queryClient.removeQueries({ queryKey: collectionKeys.detail(collectionId) });
+      
+      // Remove related data
+      queryClient.removeQueries({ queryKey: operationKeys.byCollection(collectionId) });
+      queryClient.removeQueries({ queryKey: ['collection-documents', collectionId] });
+      
+      // Refresh lists
+      queryClient.invalidateQueries({ queryKey: collectionKeys.lists() });
+    },
+  });
+}
+```
+
+#### Auto-refetch Configuration
+```typescript
+// Smart refetching based on collection status
+export function useCollections() {
+  return useQuery({
+    queryKey: collectionKeys.lists(),
+    queryFn: collectionsV2Api.list,
+    // Refetch if any collection is processing
+    refetchInterval: (query) => {
+      const hasActiveOperations = query.state.data?.some(
+        (c: Collection) => c.status === 'processing' || c.activeOperation
+      );
+      return hasActiveOperations ? 30000 : false;
+    },
+    staleTime: 5000, // Consider stale after 5s
+  });
+}
 ```
 
 ### State Synchronization
 
 #### WebSocket State Updates
 ```typescript
-// Sync WebSocket updates with React Query
-useEffect(() => {
-  const ws = new WebSocket(`ws://localhost:8080/ws/${jobId}`);
+// Operation progress hook with WebSocket integration
+export function useOperationProgress(
+  operationId: string | null,
+  options: UseOperationProgressOptions = {}
+) {
+  const updateOperationInCache = useUpdateOperationInCache();
+  const { addToast } = useUIStore();
   
-  ws.onmessage = (event) => {
-    const update = JSON.parse(event.data);
-    
-    // Update React Query cache
-    queryClient.setQueryData(
-      queryKeys.jobs.detail(jobId),
-      (oldData) => ({
-        ...oldData,
-        ...update,
-      })
-    );
-    
-    // Update Zustand store
-    useJobsStore.getState().updateJob(jobId, update);
-  };
+  const wsUrl = operationId ? operationsV2Api.getWebSocketUrl(operationId) : null;
   
-  return () => ws.close();
-}, [jobId]);
+  const { sendMessage, readyState } = useWebSocket(wsUrl, {
+    onMessage: (event) => {
+      const rawMessage = JSON.parse(event.data);
+      
+      // Handle different message types
+      switch (rawMessage.type) {
+        case 'operation_completed':
+          updateOperationInCache(operationId, { status: 'completed' });
+          options.onComplete?.();
+          break;
+          
+        case 'operation_failed':
+          updateOperationInCache(operationId, { 
+            status: 'failed',
+            error_message: rawMessage.data?.error_message 
+          });
+          options.onError?.(rawMessage.data?.error_message);
+          break;
+          
+        case 'progress_update':
+          updateOperationInCache(operationId, {
+            progress: rawMessage.data?.progress,
+            progress_message: rawMessage.data?.message,
+          });
+          break;
+      }
+    },
+  });
+  
+  return { sendMessage, readyState };
+}
 ```
 
 #### Cross-Tab Synchronization
@@ -503,35 +653,46 @@ api.interceptors.request.use((config) => {
 });
 ```
 
-### API Endpoints
+### API Endpoints (v2)
 
-**jobsApi**
-- `list()` - Get all jobs
-- `create(data)` - Create new job
-- `delete(jobId)` - Delete job
-- `cancel(jobId)` - Cancel running job
-- `getMetrics()` - Get system metrics
-- `getCollectionsStatus()` - Get vector collection statuses
+The application uses a versioned API structure under `/api/v2/` with TypeScript-first client implementations:
 
-**searchApi**
-- `search(params)` - Perform semantic search
+**collectionsV2Api** (`collections.ts`)
+- `list()` - Get all collections with metadata
+- `get(id)` - Get single collection details
+- `create(data)` - Create new collection
+- `update(id, data)` - Update collection metadata
+- `delete(id)` - Delete collection and all data
+- `getStats(id)` - Get collection statistics
 
-**documentsApi**
-- `getDocument(docId)` - Get full document
-- `getChunk(docId, chunkIndex)` - Get specific chunk
+**operationsV2Api** (`operations.ts`)
+- `list(filters)` - Get operations with optional filtering
+- `getByCollection(collectionId)` - Get operations for a collection
+- `get(id)` - Get operation details
+- `cancel(id)` - Cancel running operation
+- `getWebSocketUrl(id)` - Get WebSocket URL for real-time updates
 
-**authApi**
-- `login(credentials)` - User login
-- `register(credentials)` - User registration
-- `me()` - Get current user
-- `logout()` - Logout user
+**documentsV2Api** (`documents.ts`)
+- `list(collectionId, params)` - Paginated document listing
+- `get(collectionId, docId)` - Get document with authentication
+- `delete(collectionId, docId)` - Remove document from collection
+- `search(params)` - Semantic search across collections
+- `getDownloadUrl(collectionId, docId)` - Get authenticated download URL
 
-**modelsApi**
-- `list()` - Get available embedding models
+**authApi** (`auth.ts`)
+- `login(credentials)` - User authentication
+- `register(data)` - New user registration
+- `me()` - Get current user profile
+- `logout()` - End session
 
-**settingsApi**
-- `getStats()` - Get system statistics
-- `resetDatabase()` - Reset database (admin)
+**systemApi** (`system.ts`)
+- `getModels()` - Available embedding models
+- `getStats()` - System metrics and health
+- `checkRerankingSupport()` - Check if reranking is available
+
+**directoryScanApi** (`directoryScan.ts`)
+- `scan(path, options)` - Scan directory for files
+- `getWebSocketUrl(sessionId)` - WebSocket for scan progress
 
 ## Custom Hooks
 
@@ -592,25 +753,72 @@ function ProtectedRoute({ children }) {
 ### Connection Management
 
 WebSocket connections are established for:
-1. **Job Progress** - Real-time job status updates
-2. **Directory Scanning** - Live scan progress
+1. **Operation Progress** - Real-time updates for indexing operations
+2. **Directory Scanning** - Live file discovery during data addition
+3. **Collection Status** - Real-time collection state changes
 
-### Message Flow
+### WebSocket Architecture
 
+**useWebSocket.ts** - Generic WebSocket hook
+```typescript
+interface WebSocketOptions {
+  onOpen?: (event: Event) => void;
+  onMessage?: (event: MessageEvent) => void;
+  onError?: (event: Event) => void;
+  onClose?: (event: CloseEvent) => void;
+  shouldReconnect?: boolean;
+  reconnectInterval?: number;
+  reconnectAttempts?: number;
+}
 ```
-Client                    Server
-  |------ Connect -------->|
-  |<----- Progress --------|
-  |<----- Progress --------|
-  |<----- Complete --------|
-  |------ Close ---------->|
+
+**useOperationProgress.ts** - Operation-specific WebSocket
+- Automatically connects when operation is active
+- Handles message parsing and cache updates
+- Integrates with React Query for state synchronization
+
+**useDirectoryScanWebSocket.ts** - Directory scanning
+- Real-time file discovery progress
+- Filters and exclusion pattern support
+- Progress visualization with file counts
+
+### Message Protocol
+
+```typescript
+// Operation progress messages
+interface OperationMessage {
+  type: 'operation_started' | 'operation_completed' | 'operation_failed' | 
+        'progress_update' | 'current_state';
+  data: {
+    operation_id: string;
+    status?: string;
+    progress?: number;
+    message?: string;
+    error_message?: string;
+    processed_files?: number;
+    total_files?: number;
+  };
+}
+
+// Directory scan messages
+interface ScanMessage {
+  type: 'scan_progress' | 'scan_complete' | 'scan_error';
+  data: {
+    files_found: number;
+    directories_scanned: number;
+    current_directory: string;
+    files?: FileInfo[];
+  };
+}
 ```
 
-### Error Handling
+### Error Handling & Resilience
 
-- Automatic reconnection on disconnect
-- Timeout handling for connection attempts
-- Graceful degradation to polling if WebSocket fails
+- Automatic reconnection with exponential backoff
+- Maximum retry attempts to prevent infinite loops
+- Graceful fallback to polling for critical data
+- Token refresh on authentication errors
+- Connection state tracking for UI feedback
 
 ## Styling and Design System
 
@@ -637,30 +845,230 @@ Client                    Server
 - Responsive grid layouts
 - Scrollable content areas for long lists
 
+## Error Boundaries and Loading States
+
+### Error Boundary Implementation
+
+The application uses React Error Boundaries at multiple levels:
+
+```typescript
+// Global error boundary in App.tsx
+<ErrorBoundary>
+  <QueryClientProvider client={queryClient}>
+    <Router>
+      {/* Application routes */}
+    </Router>
+  </QueryClientProvider>
+</ErrorBoundary>
+
+// Feature-level boundaries in HomePage.tsx
+{activeTab === 'collections' && (
+  <ErrorBoundary>
+    <CollectionsDashboard />
+  </ErrorBoundary>
+)}
+```
+
+### Loading State Patterns
+
+**Skeleton Loading**
+```typescript
+// CollectionList loading skeleton
+if (isLoading) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {[...Array(6)].map((_, i) => (
+        <div key={i} className="animate-pulse">
+          <div className="bg-gray-200 h-48 rounded-lg" />
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+**Suspense Integration**
+```typescript
+// Lazy-loaded components with Suspense
+const DocumentViewer = lazy(() => import('./components/DocumentViewer'));
+
+<Suspense fallback={<DocumentViewerSkeleton />}>
+  <DocumentViewer {...props} />
+</Suspense>
+```
+
+### Error State Management
+
+**API Error Handling**
+```typescript
+// Centralized error handler
+export function handleApiError(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    return error.response?.data?.detail || 
+           error.response?.data?.message || 
+           error.message;
+  }
+  return 'An unexpected error occurred';
+}
+```
+
+**User-Friendly Error Display**
+```typescript
+// Collection error state
+if (error) {
+  return (
+    <div className="text-center py-12">
+      <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+      <h3 className="text-lg font-medium text-gray-900 mb-2">
+        Failed to load collections
+      </h3>
+      <p className="text-gray-600 mb-4">{handleApiError(error)}</p>
+      <button onClick={refetch} className="btn-primary">
+        Try Again
+      </button>
+    </div>
+  );
+}
+```
+
 ## Performance Optimizations
 
 ### Code Splitting
 
 - Route-based splitting via React Router
-- Dynamic imports for heavy components (PDF viewer)
+- Dynamic imports for heavy components (DocumentViewer)
+- Lazy loading of modals and complex forms
 
-### Data Fetching
+### Data Fetching Optimizations
 
-- React Query for caching and background refetching
-- Optimistic updates for better UX
-- Pagination ready (though not implemented)
+- React Query for intelligent caching and background refetching
+- Optimistic updates for instant UI feedback
+- Query deduplication to prevent duplicate requests
+- Stale-while-revalidate pattern for fast initial loads
+- Selective invalidation to minimize unnecessary fetches
 
-### Rendering
+### Rendering Optimizations
 
-- React.memo for expensive components
-- Proper key usage in lists
-- Minimal re-renders through Zustand selectors
+- React.memo for expensive components (CollectionCard, OperationProgress)
+- useMemo for complex computations (search results processing)
+- useCallback for stable function references in dependency arrays
+- Virtual scrolling consideration for large document lists
+- Proper key usage in lists to minimize reconciliation
+
+## Form Handling Patterns
+
+### Form State Management
+
+The application uses controlled components with local state for forms:
+
+**Collection Creation Form**
+```typescript
+function CreateCollectionModal() {
+  const [formData, setFormData] = useState<CreateCollectionRequest>({
+    name: '',
+    description: '',
+    embedding_model: 'Qwen/Qwen3-Embedding-0.6B',
+    chunk_size: 1000,
+    chunk_overlap: 200,
+    quantization: 'float16',
+    is_public: false,
+  });
+  
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {};
+    
+    if (!formData.name.trim()) {
+      newErrors.name = 'Collection name is required';
+    }
+    if (formData.name.length > 100) {
+      newErrors.name = 'Collection name must be less than 100 characters';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+}
+```
+
+### Field Validation Patterns
+
+**Real-time Validation**
+```typescript
+const handleNameChange = (value: string) => {
+  setFormData(prev => ({ ...prev, name: value }));
+  
+  // Clear error when user starts typing
+  if (errors.name) {
+    setErrors(prev => ({ ...prev, name: '' }));
+  }
+  
+  // Validate on blur or after delay
+  if (value && !isValidCollectionName(value)) {
+    setErrors(prev => ({ 
+      ...prev, 
+      name: 'Only letters, numbers, and hyphens allowed' 
+    }));
+  }
+};
+```
+
+### Form Submission Pattern
+
+```typescript
+const { mutate: createCollection, isLoading } = useCreateCollection();
+
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  
+  if (!validateForm()) return;
+  
+  createCollection(formData, {
+    onSuccess: (data) => {
+      onClose(); // Close modal
+      navigate(`/collections/${data.id}`); // Navigate to new collection
+    },
+    onError: (error) => {
+      // API validation errors
+      if (error.response?.data?.errors) {
+        setErrors(error.response.data.errors);
+      }
+    },
+  });
+};
+```
+
+### Directory Scan Form Pattern
+
+```typescript
+// Complex form with WebSocket integration
+function AddDataToCollectionModal({ collectionId }: Props) {
+  const [scanOptions, setScanOptions] = useState({
+    directory_path: '',
+    include_patterns: ['*'],
+    exclude_patterns: ['.git', '__pycache__', 'node_modules'],
+  });
+  
+  const { startScan, scanResults, isScanning, error } = useDirectoryScanWebSocket();
+  
+  const handleScan = () => {
+    startScan({
+      path: scanOptions.directory_path,
+      filters: {
+        include: scanOptions.include_patterns,
+        exclude: scanOptions.exclude_patterns,
+      },
+    });
+  };
+}
+```
 
 ## Testing Strategy
 
-While the codebase currently lacks test files, here's a comprehensive testing strategy for implementing tests:
+The codebase has comprehensive test coverage with a focus on critical user flows and component behavior:
 
-### Testing Stack Recommendations
+### Testing Stack
 
 ```json
 {
@@ -675,6 +1083,28 @@ While the codebase currently lacks test files, here's a comprehensive testing st
   }
 }
 ```
+
+### Test Coverage Areas
+
+**Component Tests**
+- `CollectionOperations.test.tsx` - Operation display and progress updates
+- `CreateCollectionModal.test.tsx` - Form validation and submission
+- `AddDataToCollectionModal.test.tsx` - Directory scanning integration
+
+**Hook Tests**
+- `useCollections.test.tsx` - React Query integration and optimistic updates
+- `useCollectionOperations.test.tsx` - Operation management
+- `useOperationProgress.test.tsx` - WebSocket message handling
+
+**Integration Tests**
+- `CollectionOperations.websocket.test.tsx` - Real-time updates
+- `CollectionOperations.network.test.tsx` - Network error handling
+- `Collections.permission.test.tsx` - Access control
+
+**Store Tests**
+- `authStore.test.ts` - Authentication state management
+- `searchStore.test.ts` - Search functionality and reranking
+- `uiStore.test.ts` - UI state and toast notifications
 
 ### Unit Tests
 
@@ -1490,32 +1920,82 @@ test('JobCard is accessible', async () => {
 
 ## Future Considerations
 
-### Scalability
-- Consider server-side rendering for initial load
-- Implement virtual scrolling for large lists
-- Add pagination to search results
-- Implement request deduplication
+### Scalability Enhancements
+- Implement virtual scrolling for collections with thousands of documents
+- Add server-side pagination for document lists
+- Consider React Server Components for initial page loads
+- Implement request batching for bulk operations
+- Add WebWorker support for heavy computations
 
-### Features
-- Real-time collaboration features
-- Advanced search filters
-- Batch operations on jobs
-- User preferences persistence
+### Feature Roadmap
+- Collection sharing and collaboration features
+- Advanced search with faceted filtering
+- Bulk document management operations
+- Collection templates and presets
+- Export/import collection configurations
 - Multi-language support (i18n)
+- Collection versioning and snapshots
 
 ### Technical Improvements
-- Add comprehensive test coverage
-- Implement error boundaries per feature
-- Add performance monitoring (Web Vitals)
-- Consider micro-frontends for scale
-- Implement service workers for offline support
+- Migrate remaining class components to functional components
+- Implement React 19 features (use, Suspense improvements)
+- Add performance monitoring (Web Vitals, custom metrics)
+- Enhance offline support with service workers
+- Implement request/response compression
+- Add GraphQL for more efficient data fetching
+
+### Developer Experience
+- Add Storybook for component documentation
+- Implement visual regression testing
+- Create CLI tools for common development tasks
+- Add code generation for API client types
+- Enhance error tracking with source maps
 
 ### Accessibility Roadmap
-- Full WCAG 2.1 AA compliance
-- WCAG 3.0 preparation
-- Automated accessibility testing in CI/CD
-- User testing with assistive technology users
+- Full WCAG 2.1 AA compliance audit
+- Keyboard navigation improvements
+- Screen reader optimization
+- High contrast mode support
+- Reduced motion preferences
+- Focus management enhancements
+
+## Architecture Best Practices
+
+### State Management Guidelines
+
+1. **Server State**: Always use React Query for server data
+   - Never duplicate server state in Zustand
+   - Use query invalidation for updates
+   - Implement proper error boundaries
+
+2. **UI State**: Use Zustand for client-only state
+   - Modal visibility
+   - Form drafts
+   - UI preferences
+   - Temporary selections
+
+3. **Form State**: Keep local unless persistence needed
+   - Use controlled components
+   - Validate on blur and submit
+   - Show inline errors
+
+### Component Guidelines
+
+1. **Composition over Inheritance**
+   - Use hooks for shared logic
+   - Compose smaller components
+   - Avoid prop drilling with context
+
+2. **Performance First**
+   - Memoize expensive computations
+   - Use React.memo for pure components
+   - Implement proper loading states
+
+3. **Type Safety**
+   - No `any` types
+   - Proper error types
+   - Strict null checks
 
 ## Conclusion
 
-The Semantik frontend is a well-structured React application that effectively manages complex state, real-time updates, and user interactions. The architecture supports future growth while maintaining clean separation of concerns and type safety throughout.
+The Semantik frontend is a modern React 19 application that leverages the latest patterns in state management, real-time updates, and type safety. The architecture clearly separates concerns between server state (React Query) and UI state (Zustand), while providing a robust foundation for future growth. The collection-centric refactoring has created a more intuitive and scalable system that better serves users' document management needs.

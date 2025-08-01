@@ -2,521 +2,705 @@
 
 ## Overview
 
-Semantik uses a flexible collection system that allows you to organize, manage, and incrementally build document collections for semantic search. Collections provide logical groupings of related documents while maintaining efficient vector storage and search capabilities.
+Semantik organizes your documents into **collections** - powerful, searchable knowledge bases that transform your files into AI-ready semantic search repositories. Each collection maintains its own vector store, embedding configuration, and search settings while providing unified management through an intuitive interface.
 
-## Key Concepts
+This guide covers everything you need to know about creating, managing, and optimizing collections in Semantik.
 
-### What is a Collection?
+## What Are Collections?
 
-A **collection** in Semantik is a logical grouping of documents that:
-- Share the same embedding model and processing settings
-- Can be searched together as a unified dataset
-- Support incremental additions without reprocessing existing documents
-- Maintain consistency through inherited configuration
+A **collection** in Semantik is:
+- A logical grouping of related documents (PDFs, text files, markdown, etc.)
+- A dedicated vector store with consistent embedding settings
+- A searchable knowledge base with semantic understanding
+- A managed entity with access control and operational history
 
-### Collection Architecture
+Think of collections as intelligent folders that not only store your documents but understand their content, enabling powerful semantic search across all files.
+
+## Collection Lifecycle
 
 ```mermaid
-graph TD
-    A[Collection: "technical-docs"] --> B[Job 1: Create Mode]
-    A --> C[Job 2: Append Mode]
-    A --> D[Job 3: Append Mode]
-    
-    B --> E[Qdrant: job_abc123]
-    C --> F[Qdrant: job_def456]
-    D --> G[Qdrant: job_ghi789]
-    
-    H[Search Query] --> I[Search All Sub-collections]
+graph LR
+    A[Create Collection] --> B[Configure Settings]
+    B --> C[Add Sources]
+    C --> D[Index Documents]
+    D --> E[Ready for Search]
+    E --> F[Maintain & Update]
+    F --> G[Add More Sources]
+    G --> D
+    F --> H[Reindex]
+    H --> D
+    F --> I[Remove Sources]
     I --> E
-    I --> F
-    I --> G
 ```
 
-**Key Points**:
-- Each collection consists of one or more jobs
-- Each job creates its own Qdrant collection for isolation
-- Searches aggregate results across all sub-collections
-- All jobs in a collection share the same embedding configuration
+### 1. Creation Phase
+- Define collection name and description
+- Select embedding model and settings
+- Initialize vector store
 
-## Creating Collections
+### 2. Population Phase
+- Add source directories or files
+- Documents are parsed and embedded
+- Vectors stored for semantic search
 
-### Initial Collection Creation
+### 3. Active Phase
+- Collection available for search
+- Monitor usage and performance
+- Add or remove content as needed
 
-Create a new collection by starting an embedding job:
+### 4. Maintenance Phase
+- Reindex for updates
+- Manage sources
+- Optimize performance
+
+## Creating Your First Collection
+
+### Using the Web Interface
+
+1. **Navigate to Collections**
+   - Click "Collections" in the main navigation
+   - Click the "New Collection" button
+
+2. **Configure Basic Settings**
+   - **Name**: Choose a descriptive, unique name
+   - **Description**: Add helpful context about the collection's purpose
+   - **Visibility**: Set to private (default) or public
+
+3. **Select Embedding Model**
+   - **Qwen/Qwen3-Embedding-0.6B**: Fast, lightweight (recommended for most uses)
+   - **Qwen/Qwen3-Embedding-4B**: Higher quality for complex content
+   - **BAAI/bge-large-en-v1.5**: General purpose alternative
+
+4. **Configure Processing Settings**
+   - **Chunk Size**: How many tokens per text chunk (default: 1000)
+   - **Chunk Overlap**: Token overlap between chunks (default: 200)
+   - **Quantization**: Memory optimization (float16 recommended)
+
+5. **Create Collection**
+   - Click "Create" to initialize the collection
+   - Wait for status to change from "pending" to "ready"
+
+### Using the API
 
 ```bash
-POST /api/jobs
-Content-Type: application/json
-
-{
-    "name": "technical-docs",
-    "directory_path": "/documents/technical",
-    "model_name": "Qwen/Qwen3-Embedding-0.6B",
-    "chunk_size": 512,
-    "chunk_overlap": 128,
-    "batch_size": 32,
+curl -X POST http://localhost:8080/api/v2/collections \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Technical Documentation",
+    "description": "All technical docs and API references",
+    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
     "quantization": "float16",
-    "instruction": null
-}
+    "chunk_size": 1000,
+    "chunk_overlap": 200,
+    "is_public": false
+  }'
 ```
 
-**Response**:
+**Response:**
 ```json
 {
-    "job": {
-        "id": "abc123...",
-        "name": "technical-docs",
-        "status": "created",
-        "mode": "create",
-        "model_name": "Qwen/Qwen3-Embedding-0.6B",
-        "directory_path": "/documents/technical",
-        "created_at": "2024-01-15T10:00:00Z"
-    }
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Technical Documentation",
+  "status": "ready",
+  "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+  "created_at": "2024-01-15T10:00:00Z"
 }
 ```
 
-### Collection Settings
+## Understanding Operations
 
-Collections inherit these settings from the initial job:
-- **Embedding Model**: Cannot be changed after creation
-- **Chunk Size**: Token size for document chunking
-- **Chunk Overlap**: Overlap between chunks
-- **Quantization**: Model quantization level
-- **Instruction**: Optional instruction prompt for embeddings
-- **Vector Dimensions**: Determined by the model
+Operations are asynchronous tasks that modify your collections. They run in the background, allowing you to continue working while documents are processed.
+
+### Operation Types
+
+#### INDEX - Initial Document Loading
+The first operation when adding documents to a collection.
+- Scans the specified directory or file
+- Extracts text from supported formats
+- Creates embeddings using the collection's model
+- Stores vectors in the dedicated vector store
+
+#### APPEND - Add More Documents
+Adds new documents to an existing collection.
+- Automatically detects and skips duplicates
+- Maintains consistent settings with the collection
+- Ideal for incremental updates
+
+#### REINDEX - Refresh Embeddings
+Re-processes all or specific documents in a collection.
+- Use when embedding model updates are available
+- Helpful for fixing failed document processing
+- Can target only failed documents for efficiency
+
+#### REMOVE_SOURCE - Clean Up Content
+Removes all documents from a specific source path.
+- Deletes documents and their vectors
+- Maintains collection integrity
+- Useful for removing outdated content
 
 ## Adding Documents to Collections
 
-### Incremental Document Addition
+### Adding Your First Source
 
-Add new documents to an existing collection without reprocessing:
+#### Via Web Interface
+
+1. **Open Collection Details**
+   - Navigate to your collection
+   - Click "Add Source" button
+
+2. **Configure Source**
+   - **Source Type**: Choose "Directory" for folders
+   - **Path**: Enter the full path (e.g., `/documents/technical`)
+   - **Recursive**: Enable to include subdirectories
+   - **File Types**: Select which formats to include
+
+3. **Start Indexing**
+   - Click "Add Source" to begin
+   - Monitor progress in real-time
+   - View processing statistics
+
+#### Via API
 
 ```bash
-POST /api/jobs/add-to-collection
-Content-Type: application/json
-
-{
-    "collection_name": "technical-docs",
-    "directory_path": "/documents/new-technical-docs"
-}
-```
-
-**Key Features**:
-- Automatically inherits all settings from the parent collection
-- **Deduplication**: Skips files already in the collection (by content hash)
-- Creates a new job with `mode: "append"`
-- Maintains consistency across the collection
-
-### Deduplication Process
-
-```mermaid
-flowchart LR
-    A[New Files] --> B{Hash Check}
-    B -->|New Hash| C[Process File]
-    B -->|Duplicate| D[Skip File]
-    C --> E[Add to Collection]
-    D --> F[Log as Duplicate]
-```
-
-**How it works**:
-1. Each file's content is hashed (SHA-256)
-2. Hash is compared against existing files in the collection
-3. Only new files are processed
-4. Duplicate files are logged but skipped
-
-### Handling Duplicate Files
-
-When adding to a collection, the response includes:
-```json
-{
-    "job": {
-        "id": "def456...",
-        "name": "technical-docs",
-        "mode": "append",
-        "parent_job_id": "abc123..."
+curl -X POST http://localhost:8080/api/v2/collections/YOUR_COLLECTION_ID/sources \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_type": "directory",
+    "source_path": "/documents/technical",
+    "filters": {
+      "extensions": [".pdf", ".md", ".txt", ".docx"],
+      "ignore_patterns": ["**/drafts/**", "**/.git/**"]
     },
-    "stats": {
-        "new_files": 45,
-        "duplicate_files": 15,
-        "total_scanned": 60
-    },
-    "duplicates": [
-        {
-            "path": "/documents/new-technical-docs/api.md",
-            "original_path": "/documents/technical/api.md",
-            "hash": "a1b2c3..."
-        }
-    ]
-}
-```
-
-## Viewing Collections
-
-### List All Collections
-
-```bash
-GET /api/collections
-```
-
-**Response**:
-```json
-{
-    "collections": [
-        {
-            "name": "technical-docs",
-            "total_files": 150,
-            "total_vectors": 3245,
-            "model_name": "Qwen/Qwen3-Embedding-0.6B",
-            "created_at": "2024-01-15T10:00:00Z",
-            "updated_at": "2024-01-20T15:30:00Z",
-            "job_count": 3
-        }
-    ]
-}
-```
-
-### Collection Details
-
-Get comprehensive information about a specific collection:
-
-```bash
-GET /api/collections/technical-docs
-```
-
-**Response**:
-```json
-{
-    "name": "technical-docs",
-    "statistics": {
-        "total_files": 150,
-        "total_vectors": 3245,
-        "total_size_mb": 25.6,
-        "processed_files": 150,
-        "failed_files": 0
-    },
-    "configuration": {
-        "model_name": "Qwen/Qwen3-Embedding-0.6B",
-        "chunk_size": 512,
-        "chunk_overlap": 128,
-        "quantization": "float16",
-        "vector_dim": 896,
-        "instruction": null
-    },
-    "source_directories": [
-        "/documents/technical",
-        "/documents/new-technical-docs",
-        "/documents/updates-2024"
-    ],
-    "jobs": [
-        {
-            "id": "abc123...",
-            "mode": "create",
-            "status": "completed",
-            "directory_path": "/documents/technical",
-            "created_at": "2024-01-15T10:00:00Z"
-        }
-    ]
-}
-```
-
-### Collection Files
-
-View all files in a collection (paginated):
-
-```bash
-GET /api/collections/technical-docs/files?offset=0&limit=50
-```
-
-**Response**:
-```json
-{
-    "files": [
-        {
-            "id": 1,
-            "path": "/documents/technical/api.md",
-            "size": 15234,
-            "extension": ".md",
-            "status": "completed",
-            "chunks_created": 12,
-            "vectors_created": 12,
-            "job_id": "abc123..."
-        }
-    ],
-    "total": 150,
-    "offset": 0,
-    "limit": 50
-}
-```
-
-## Modifying Collections
-
-### Renaming a Collection
-
-Change the display name of a collection:
-
-```bash
-PUT /api/collections/technical-docs
-Content-Type: application/json
-
-{
-    "new_name": "engineering-docs"
-}
-```
-
-**Important**:
-- Renames all jobs in the collection
-- Preserves all data and configurations
-- Updates references throughout the system
-- New name must be unique and valid
-
-### Name Validation Rules
-
-Collection names must:
-- Be unique across all collections
-- Contain only letters, numbers, spaces, hyphens, and underscores
-- Not be empty or whitespace-only
-- Be reasonable in length (typically < 100 characters)
-
-## Deleting Collections
-
-### Complete Collection Removal
-
-```bash
-DELETE /api/collections/technical-docs
-```
-
-**Deletion Process**:
-1. Removes all job records from database
-2. Deletes all file records
-3. Removes all Qdrant vector collections
-4. Cleans up filesystem artifacts
-
-**Response**:
-```json
-{
-    "message": "Collection 'technical-docs' deleted successfully",
-    "details": {
-        "jobs_deleted": 3,
-        "files_deleted": 150,
-        "qdrant_collections_deleted": [
-            "job_abc123",
-            "job_def456",
-            "job_ghi789"
-        ],
-        "artifacts_cleaned": true
+    "config": {
+      "recursive": true,
+      "follow_symlinks": false
     }
+  }'
+```
+
+### Supported File Formats
+
+Semantik automatically detects and processes:
+- **Documents**: PDF, DOCX, ODT, RTF
+- **Text**: TXT, MD, RST
+- **Code**: Various programming languages
+- **Data**: CSV, JSON (structured text)
+- **Web**: HTML, XML
+
+### Duplicate Detection
+
+Semantik automatically prevents duplicate documents:
+1. **Content Hashing**: Each file's content is hashed (SHA-256)
+2. **Collection-Wide Check**: Hashes compared across the entire collection
+3. **Smart Skipping**: Duplicates are logged but not reprocessed
+4. **Storage Efficiency**: Saves processing time and vector storage
+
+Example duplicate report:
+```json
+{
+  "operation_id": "op_123456",
+  "statistics": {
+    "total_scanned": 100,
+    "new_documents": 85,
+    "duplicates_skipped": 15
+  }
 }
 ```
 
-**Warning**: Deletion is permanent and cannot be undone!
+## Monitoring Progress
 
-## Searching Collections
+### Real-Time Updates
 
-### Search Within a Collection
+Semantik provides WebSocket connections for live progress monitoring:
 
-Collections are searched by name through the standard search endpoint:
+```javascript
+// Connect to operation progress
+const operationId = 'op_123456';
+const token = localStorage.getItem('authToken');
+const ws = new WebSocket(`ws://localhost:8080/ws/operations/${operationId}?token=${token}`);
 
-```bash
-GET /api/search?q=API+documentation&k=10&collection=technical-docs
+ws.onmessage = (event) => {
+    const update = JSON.parse(event.data);
+    
+    switch(update.type) {
+        case 'file_processing':
+            console.log(`Processing: ${update.current_file}`);
+            console.log(`Progress: ${update.processed_files}/${update.total_files}`);
+            break;
+            
+        case 'operation_completed':
+            console.log('Indexing complete!');
+            break;
+            
+        case 'error':
+            console.error(`Error: ${update.message}`);
+            break;
+    }
+};
 ```
 
-**Search Process**:
-1. Identifies all jobs in the collection
-2. Queries each job's Qdrant collection
-3. Aggregates results across all sub-collections
-4. Returns unified, ranked results
+### Progress Indicators
 
-### Cross-Collection Search
+The UI displays:
+- **Overall Progress**: Percentage and progress bar
+- **Current File**: Which document is being processed
+- **Statistics**: Files processed, failed, remaining
+- **Time Estimates**: Based on processing speed
 
-To search across all collections, omit the collection parameter:
+## Managing Collections
+
+### Viewing Collection Details
+
+Access comprehensive information about your collections:
 
 ```bash
-GET /api/search?q=API+documentation&k=10
+GET /api/v2/collections/YOUR_COLLECTION_ID
 ```
 
-## Collection Metadata
+Returns:
+- Basic metadata (name, description, owner)
+- Configuration (model, chunk settings)
+- Statistics (document count, total size)
+- Sources (directories and files indexed)
+- Recent operations history
 
-### Metadata Storage Locations
+### Updating Collection Information
 
-1. **PostgreSQL Database** (`jobs` and `collections` tables):
-   - User-friendly collection names
-   - Job relationships and hierarchy
-   - Processing statistics
-   - Configuration settings
-   - Collection metadata and ownership
+You can update metadata while preserving content:
 
-2. **Qdrant** (`_collection_metadata`):
-   - Quick access to embedding configurations
-   - Model information for search operations
-   - Vector dimension details
+```bash
+PUT /api/v2/collections/YOUR_COLLECTION_ID
+{
+  "name": "Updated Documentation",
+  "description": "Expanded technical documentation",
+  "is_public": true
+}
+```
 
-### Collection Consistency
+**Note**: Embedding model and chunk settings cannot be changed after creation to maintain consistency.
 
-Semantik ensures consistency by:
-- Inheriting all settings from parent jobs
-- Validating model compatibility
-- Preventing configuration mismatches
-- Maintaining parent-child relationships
+### Collection Statistics
+
+Monitor collection health and usage:
+- **Document Count**: Total files in collection
+- **Chunk Count**: Total text chunks created
+- **Vector Count**: Embedded vectors stored
+- **Storage Size**: Disk space used
+- **Last Updated**: Most recent modification
+
+## Multi-Model Support
+
+### Choosing the Right Model
+
+Different embedding models suit different use cases:
+
+#### Qwen/Qwen3-Embedding-0.6B
+- **Best for**: General documentation, fast processing
+- **Dimensions**: 896
+- **Speed**: Very fast
+- **Quality**: Good for most content
+
+#### Qwen/Qwen3-Embedding-4B
+- **Best for**: Technical content, higher accuracy needs
+- **Dimensions**: 2560
+- **Speed**: Slower but more accurate
+- **Quality**: Excellent semantic understanding
+
+#### Custom Models
+- Support for any HuggingFace-compatible model
+- Configure dimensions and processing requirements
+- Test thoroughly before production use
+
+### Quantization Options
+
+Optimize memory usage vs. quality:
+
+- **float32**: Full precision (highest quality, most memory)
+- **float16**: Half precision (balanced, recommended)
+- **int8**: 8-bit quantization (minimal memory, some quality loss)
+
+## Search Integration
+
+### Searching Within Collections
+
+Collections integrate seamlessly with Semantik's search:
+
+```bash
+# Search specific collection
+GET /api/v2/search?q=docker+configuration&collection_ids=YOUR_COLLECTION_ID
+
+# Search multiple collections
+GET /api/v2/search?q=api+endpoints&collection_ids=ID1,ID2,ID3
+
+# Search all accessible collections
+GET /api/v2/search?q=user+authentication
+```
+
+### Search Features
+- **Semantic Understanding**: Finds conceptually related content
+- **Multi-Collection**: Search across multiple collections
+- **Filtering**: By collection, date, file type
+- **Reranking**: Optional ML-based result optimization
 
 ## Best Practices
 
-### 1. Organizing Collections
+### Collection Organization
 
-**By Topic**:
+#### 1. Logical Grouping
+Create collections based on:
+- **Topic**: "Engineering Docs", "Marketing Materials"
+- **Project**: "Project Alpha", "Q4 Planning"
+- **Team**: "Frontend Team", "DevOps Resources"
+- **Time Period**: "2024 Archives", "Current Quarter"
+
+#### 2. Naming Conventions
+- Use clear, descriptive names
+- Include version or date when relevant
+- Avoid special characters
+- Keep names reasonably short
+
+#### 3. Size Considerations
+- **Small** (< 1,000 documents): Fast, easy to manage
+- **Medium** (1,000 - 10,000): Good performance with proper settings
+- **Large** (> 10,000): May need optimization, consider splitting
+
+### Performance Optimization
+
+#### 1. Chunk Size Selection
+- **Smaller chunks** (500-750): Better for precise queries
+- **Medium chunks** (1000-1500): Balanced approach
+- **Larger chunks** (2000+): Better context retention
+
+#### 2. Model Selection
+- Start with lightweight models
+- Upgrade to larger models only if needed
+- Consider GPU memory constraints
+
+#### 3. Incremental Updates
+- Use APPEND operations for new content
+- Avoid full reindexing unless necessary
+- Schedule updates during low-usage periods
+
+### Maintenance Tips
+
+#### Regular Health Checks
+```python
+# Check collection health
+def check_collection_health(collection_id):
+    details = get_collection_details(collection_id)
+    
+    issues = []
+    if details['status'] != 'ready':
+        issues.append(f"Collection status: {details['status']}")
+    
+    if details['document_count'] == 0:
+        issues.append("No documents in collection")
+    
+    failed_ops = [op for op in details['recent_operations'] 
+                  if op['status'] == 'failed']
+    if failed_ops:
+        issues.append(f"{len(failed_ops)} failed operations")
+    
+    return issues
 ```
-technical-docs/
-├── API documentation
-├── Architecture guides
-└── Developer tutorials
 
-user-manuals/
-├── Getting started guides
-├── Feature documentation
-└── Troubleshooting
-```
+#### Cleanup Procedures
+1. Remove outdated sources periodically
+2. Reindex failed documents
+3. Monitor for orphaned vectors
+4. Archive inactive collections
 
-**By Date**:
-```
-knowledge-base-2023/
-knowledge-base-2024/
-knowledge-base-current/
-```
+## Error Handling and Recovery
 
-### 2. Incremental Updates
+### Common Issues and Solutions
 
-**Recommended Workflow**:
-1. Create initial collection with core documents
-2. Add new documents periodically using add-to-collection
-3. Monitor for duplicates in the response
-4. Keep source directories organized
+#### "Collection name already exists"
+- Collection names must be unique
+- Choose a different name or delete the existing collection
 
-### 3. Collection Sizing
+#### "Model not available"
+- Ensure the embedding model is downloaded
+- Check model name spelling
+- Verify GPU/CPU compatibility
 
-**Guidelines**:
-- **Small Collections**: < 10,000 documents
-  - Fast searches
-  - Easy management
-  
-- **Medium Collections**: 10,000 - 100,000 documents
-  - Good performance with proper indexing
-  - Consider chunking strategy
-  
-- **Large Collections**: > 100,000 documents
-  - May need performance tuning
-  - Consider splitting into sub-collections
+#### "Operation failed"
+- Check operation details for specific errors
+- Common causes: disk space, file permissions, corrupted files
+- Use reindex with `only_failed: true` to retry
 
-### 4. Naming Conventions
+#### "Documents not appearing in search"
+- Verify operation completed successfully
+- Check collection status is "ready"
+- Ensure documents were processed (check statistics)
 
-**Good Examples**:
-- `technical-documentation`
-- `customer-support-2024`
-- `product-specs-v2`
-- `research_papers_ml`
+### Recovery Procedures
 
-**Avoid**:
-- Special characters (except `-` and `_`)
-- Very long names
-- Ambiguous names like `docs` or `files`
+#### Failed Operations
+1. Get operation details to identify the issue
+2. Fix underlying problem (permissions, disk space, etc.)
+3. Retry with appropriate operation type
+4. Monitor progress closely
 
-## Troubleshooting
-
-### Common Issues
-
-#### 1. Cannot Add to Collection
-**Error**: "Parent job configuration not found"
-**Solution**: Ensure the collection exists and you have access
-
-#### 2. Duplicate Files Not Detected
-**Cause**: Files modified between additions
-**Solution**: Deduplication is content-based, not name-based
-
-#### 3. Collection Search Returns No Results
-**Possible Causes**:
-- No completed jobs in collection
-- All jobs failed during processing
-- Incorrect collection name
-
-**Debug Steps**:
-1. Check collection details endpoint
-2. Verify job statuses
-3. Check individual job logs
-
-### Performance Considerations
-
-#### Search Performance
-- More jobs in a collection = slightly slower searches
-- Aggregate across 10+ jobs may add 50-100ms
-- Consider consolidating very fragmented collections
-
-#### Storage Efficiency
-- Each job creates separate Qdrant collection
-- Some overhead for multiple small jobs
-- Balance between flexibility and efficiency
+#### Corrupted Collections
+1. Export document list for reference
+2. Create new collection with same settings
+3. Re-add all sources
+4. Verify document count matches
+5. Delete old collection once verified
 
 ## Advanced Topics
 
 ### Programmatic Collection Management
 
 ```python
-import requests
+import httpx
+import asyncio
+from typing import Dict, List, Optional
 
 class CollectionManager:
-    def __init__(self, base_url, auth_token):
+    def __init__(self, base_url: str, token: str):
         self.base_url = base_url
-        self.headers = {"Authorization": f"Bearer {auth_token}"}
+        self.headers = {"Authorization": f"Bearer {token}"}
+        self.client = httpx.AsyncClient()
     
-    def create_collection(self, name, directory, model="Qwen/Qwen3-Embedding-0.6B"):
-        """Create a new collection"""
-        return requests.post(
-            f"{self.base_url}/api/jobs",
+    async def create_collection(
+        self, 
+        name: str, 
+        description: str,
+        model: str = "Qwen/Qwen3-Embedding-0.6B"
+    ) -> Dict:
+        """Create a new collection with specified settings."""
+        response = await self.client.post(
+            f"{self.base_url}/api/v2/collections",
             json={
                 "name": name,
-                "directory_path": directory,
-                "model_name": model
+                "description": description,
+                "embedding_model": model,
+                "quantization": "float16",
+                "chunk_size": 1000,
+                "chunk_overlap": 200
             },
             headers=self.headers
-        ).json()
+        )
+        return response.json()
     
-    def add_to_collection(self, collection_name, directory):
-        """Add documents to existing collection"""
-        return requests.post(
-            f"{self.base_url}/api/jobs/add-to-collection",
+    async def add_directory(
+        self, 
+        collection_id: str, 
+        directory: str,
+        extensions: List[str] = None
+    ) -> Dict:
+        """Add a directory to the collection."""
+        response = await self.client.post(
+            f"{self.base_url}/api/v2/collections/{collection_id}/sources",
             json={
-                "collection_name": collection_name,
-                "directory_path": directory
+                "source_type": "directory",
+                "source_path": directory,
+                "filters": {
+                    "extensions": extensions or [".pdf", ".md", ".txt"]
+                },
+                "config": {"recursive": True}
             },
             headers=self.headers
-        ).json()
+        )
+        return response.json()
+    
+    async def monitor_operation(
+        self, 
+        operation_id: str,
+        callback: Optional[callable] = None
+    ):
+        """Monitor operation progress with optional callback."""
+        while True:
+            response = await self.client.get(
+                f"{self.base_url}/api/v2/operations/{operation_id}",
+                headers=self.headers
+            )
+            data = response.json()
+            
+            if callback:
+                callback(data)
+            
+            if data["status"] in ["completed", "failed", "cancelled"]:
+                return data
+            
+            await asyncio.sleep(2)
+
+# Usage example
+async def main():
+    manager = CollectionManager("http://localhost:8080", "your-token")
+    
+    # Create collection
+    collection = await manager.create_collection(
+        "Research Papers",
+        "Academic papers and research documents"
+    )
+    
+    # Add documents
+    operation = await manager.add_directory(
+        collection["id"],
+        "/documents/research",
+        [".pdf", ".tex"]
+    )
+    
+    # Monitor progress
+    def progress_callback(data):
+        if "progress" in data:
+            print(f"Progress: {data['progress']['percentage']:.1f}%")
+    
+    result = await manager.monitor_operation(
+        operation["id"], 
+        progress_callback
+    )
+    
+    print(f"Operation completed: {result['status']}")
+
+asyncio.run(main())
 ```
 
-### Collection Monitoring
+### WebSocket Progress Monitoring
 
-Monitor collection health:
-```python
-def check_collection_health(collection_name):
-    details = get_collection_details(collection_name)
+```typescript
+class OperationMonitor {
+    private ws: WebSocket | null = null;
     
-    health_checks = {
-        "has_completed_jobs": any(j["status"] == "completed" for j in details["jobs"]),
-        "has_vectors": details["statistics"]["total_vectors"] > 0,
-        "no_failed_files": details["statistics"]["failed_files"] == 0,
-        "model_available": check_model_exists(details["configuration"]["model_name"])
+    constructor(
+        private baseUrl: string,
+        private token: string
+    ) {}
+    
+    monitorOperation(
+        operationId: string,
+        onProgress: (data: any) => void,
+        onComplete: (data: any) => void,
+        onError: (error: any) => void
+    ) {
+        const wsUrl = `${this.baseUrl.replace('http', 'ws')}/ws/operations/${operationId}?token=${this.token}`;
+        this.ws = new WebSocket(wsUrl);
+        
+        this.ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            switch(data.type) {
+                case 'file_processing':
+                case 'progress_update':
+                    onProgress(data);
+                    break;
+                    
+                case 'operation_completed':
+                    onComplete(data);
+                    this.disconnect();
+                    break;
+                    
+                case 'error':
+                    onError(data);
+                    this.disconnect();
+                    break;
+            }
+        };
+        
+        this.ws.onerror = (error) => {
+            onError({ type: 'connection_error', error });
+            this.disconnect();
+        };
     }
     
-    return all(health_checks.values()), health_checks
+    disconnect() {
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+        }
+    }
+}
+
+// Usage
+const monitor = new OperationMonitor('http://localhost:8080', authToken);
+
+monitor.monitorOperation(
+    operationId,
+    (progress) => {
+        updateProgressBar(progress.percentage);
+        updateCurrentFile(progress.current_file);
+    },
+    (result) => {
+        showSuccessMessage('Indexing completed successfully!');
+        refreshCollectionView();
+    },
+    (error) => {
+        showErrorMessage(`Operation failed: ${error.message}`);
+    }
+);
 ```
 
-## Future Enhancements
+## Security Considerations
 
-Planned improvements for collection management:
+### Access Control
+- Collections are private by default
+- Only owners can modify collections
+- Public collections allow read-only access
+- Future: Granular sharing permissions
 
-1. **Collection Merging**: Combine multiple collections into one
-2. **Collection Templates**: Pre-configured settings for common use cases
-3. **Automatic Synchronization**: Watch directories for changes
-4. **Collection Versioning**: Track changes over time
-5. **Collection Sharing**: Share read-only access with other users
-6. **Bulk Operations**: Process multiple collections at once
+### Data Privacy
+- All processing happens locally
+- No data leaves your infrastructure
+- Embeddings stored in your vector database
+- File content remains on your filesystem
+
+### Best Practices
+1. Regular access audits
+2. Principle of least privilege
+3. Monitor public collection content
+4. Secure API token storage
+
+## Troubleshooting Guide
+
+### Collection Creation Issues
+
+**Problem**: Collection stuck in "pending" status
+- **Check**: Vector database connectivity
+- **Check**: Available disk space
+- **Solution**: Restart vector database service
+
+**Problem**: "Model not found" error
+- **Check**: Model name spelling
+- **Check**: Model downloaded to cache
+- **Solution**: Pre-download model or fix name
+
+### Indexing Problems
+
+**Problem**: Documents not being processed
+- **Check**: File permissions
+- **Check**: Supported file formats
+- **Check**: Operation status and errors
+- **Solution**: Fix permissions, check logs
+
+**Problem**: Slow indexing speed
+- **Check**: GPU availability
+- **Check**: Chunk size settings
+- **Check**: System resources
+- **Solution**: Optimize settings, add resources
+
+### Search Issues
+
+**Problem**: No search results
+- **Check**: Collection status is "ready"
+- **Check**: Documents indexed successfully
+- **Check**: Search permissions
+- **Solution**: Reindex if needed
 
 ## Conclusion
 
-Semantik's collection management system provides a flexible and powerful way to organize and maintain document sets for semantic search. By understanding the collection lifecycle, deduplication process, and best practices, you can build efficient and well-organized knowledge bases that scale with your needs.
+Semantik's collection management system provides a powerful, flexible way to organize and search your documents. By understanding collections, operations, and best practices, you can build efficient knowledge bases that scale with your needs.
+
+Key takeaways:
+- Collections are the foundation of Semantik's search capabilities
+- Operations handle all asynchronous document processing
+- Real-time monitoring keeps you informed of progress
+- Proper organization and maintenance ensure optimal performance
+
+For more information, see:
+- [API Reference](./API_REFERENCE.md) - Complete API documentation
+- [WebSocket API](./WEBSOCKET_API.md) - Real-time updates
+- [Search System](./SEARCH_SYSTEM.md) - Advanced search features

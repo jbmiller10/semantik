@@ -13,6 +13,38 @@ This architecture separates transactional/metadata storage from high-performance
 - All database operations use the **repository pattern** implemented in `packages/shared/database/`
 - The **vecpipe package** has no direct database access - it must use webui API endpoints
 - The **shared package** provides the repository interfaces and implementations used by webui
+- The system has migrated from a **job-centric** to a **collection-centric** architecture for better organization and scalability
+
+## Migration from Job-Centric to Collection-Centric Architecture
+
+### Background
+
+The system originally used a **job-centric** approach where each indexing task was tracked as a "job" with documents associated with specific job runs. This created several limitations:
+- Documents were tied to specific job executions rather than logical collections
+- Difficult to manage document lifecycle across multiple indexing runs
+- No clear organization of related documents
+- Complex tracking of incremental updates
+
+### Collection-Centric Benefits
+
+The new **collection-centric** architecture provides:
+1. **Logical Organization**: Documents belong to collections, not job runs
+2. **Persistent Identity**: Collections maintain identity across operations
+3. **Multi-Model Support**: Each collection can use different embedding models
+4. **Better State Management**: Collection status independent of operation status
+5. **Cleaner Relationships**: Clear ownership and permission models
+
+### Migration Details
+
+The migration replaced the old "jobs" concept with two new concepts:
+- **Collections**: Persistent containers for related documents
+- **Operations**: Temporary tasks performed on collections (index, append, reindex, etc.)
+
+Key changes:
+- `jobs` table → `operations` table
+- Documents now reference `collection_id` instead of job IDs
+- New `collection_sources` table tracks data origins
+- Operation lifecycle is separate from collection lifecycle
 
 ## Database Distribution Strategy
 
@@ -55,10 +87,19 @@ CREATE TABLE collections (
     chunk_size INTEGER NOT NULL DEFAULT 1000,  -- Token size for chunks
     chunk_overlap INTEGER NOT NULL DEFAULT 200,-- Token overlap between chunks
     is_public BOOLEAN NOT NULL DEFAULT FALSE,  -- Public visibility flag
-    status VARCHAR NOT NULL DEFAULT 'pending',  -- pending|ready|processing|error|degraded
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     meta JSON,                                  -- Additional metadata
+    
+    -- Status and metrics fields
+    status ENUM('pending','ready','processing','error','degraded') NOT NULL DEFAULT 'pending',
+    status_message TEXT,                        -- Human-readable status details
+    qdrant_collections JSON,                    -- List of Qdrant collection names
+    qdrant_staging JSON,                        -- Staging collections during reindex
+    document_count INTEGER NOT NULL DEFAULT 0,  -- Total documents in collection
+    vector_count INTEGER NOT NULL DEFAULT 0,    -- Total vectors in Qdrant
+    total_size_bytes INTEGER NOT NULL DEFAULT 0,-- Total storage used
+    
     FOREIGN KEY (owner_id) REFERENCES users(id)
 );
 
@@ -73,7 +114,9 @@ CREATE INDEX idx_collections_status ON collections(status);
 - UUID primary keys for external reference
 - Each collection has its own Qdrant collection with unique name
 - Supports multiple embedding models and quantization strategies
-- Status tracking for collection health monitoring
+- Status tracking with detailed metrics for monitoring
+- Staging support for zero-downtime reindexing
+- Document and vector counts for quick statistics
 
 #### 2. Documents Table
 Tracks individual documents within collections.
@@ -88,7 +131,7 @@ CREATE TABLE documents (
     file_size INTEGER NOT NULL,                 -- File size in bytes
     mime_type VARCHAR,                          -- MIME type if detected
     content_hash VARCHAR NOT NULL,              -- SHA256 hash for deduplication
-    status VARCHAR DEFAULT 'pending',           -- pending|processing|completed|failed
+    status ENUM('pending','processing','completed','failed','deleted') NOT NULL DEFAULT 'pending',
     error_message TEXT,                         -- Error details if failed
     chunk_count INTEGER NOT NULL DEFAULT 0,     -- Number of chunks created
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -103,15 +146,19 @@ CREATE INDEX idx_documents_collection_id ON documents(collection_id);
 CREATE INDEX idx_documents_source_id ON documents(source_id);
 CREATE INDEX idx_documents_content_hash ON documents(content_hash);
 CREATE INDEX idx_documents_status ON documents(status);
+-- Composite unique index for duplicate prevention within collections
+CREATE UNIQUE INDEX idx_documents_collection_content_hash ON documents(collection_id, content_hash);
 ```
 
 **Key Points**:
 - Content hash enables duplicate detection across collections
+- Unique constraint on (collection_id, content_hash) prevents duplicates within a collection
+- Supports soft delete via 'deleted' status for maintaining referential integrity
 - Tracks processing status and chunk creation
 - Cascade delete ensures cleanup when collection is removed
 
 #### 3. Operations Table
-Manages asynchronous operations on collections.
+Manages asynchronous operations on collections (formerly the "jobs" table).
 
 ```sql
 CREATE TABLE operations (
@@ -119,8 +166,8 @@ CREATE TABLE operations (
     uuid VARCHAR UNIQUE NOT NULL,               -- UUID for external reference
     collection_id VARCHAR NOT NULL,             -- Target collection
     user_id INTEGER NOT NULL,                   -- Initiating user
-    type VARCHAR NOT NULL,                      -- index|append|reindex|remove_source|delete
-    status VARCHAR NOT NULL DEFAULT 'pending',  -- pending|processing|completed|failed|cancelled
+    type ENUM('index','append','reindex','remove_source','delete') NOT NULL,
+    status ENUM('pending','processing','completed','failed','cancelled') NOT NULL DEFAULT 'pending',
     task_id VARCHAR,                            -- Celery task ID
     config JSON NOT NULL,                       -- Operation configuration
     error_message TEXT,                         -- Error details if failed
@@ -141,9 +188,11 @@ CREATE INDEX idx_operations_created_at ON operations(created_at);
 ```
 
 **Key Points**:
-- Tracks all async operations with full lifecycle
-- Stores operation configuration for reproducibility
+- Replaces the old "jobs" table in the job-centric architecture
+- Tracks all async operations with full lifecycle (pending → processing → completed/failed)
+- Stores operation configuration for reproducibility and debugging
 - Links to Celery tasks for distributed processing
+- Operations are ephemeral - they track tasks, while collections persist
 
 #### 4. Collection Sources Table
 Tracks data sources for collections.
@@ -211,7 +260,7 @@ CREATE TABLE users (
 **Refresh Tokens Table** - JWT refresh token management:
 ```sql
 CREATE TABLE refresh_tokens (
-    id VARCHAR PRIMARY KEY,
+    id SERIAL PRIMARY KEY,                      -- Auto-increment ID
     user_id INTEGER NOT NULL,
     token_hash VARCHAR UNIQUE NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
@@ -219,6 +268,9 @@ CREATE TABLE refresh_tokens (
     is_revoked BOOLEAN DEFAULT FALSE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- Indexes
+CREATE INDEX idx_refresh_tokens_token_hash ON refresh_tokens(token_hash);
 ```
 
 **API Keys Table** - API key authentication:
@@ -269,13 +321,168 @@ collections (1) ──────< (N) documents
             ├──────< (N) operations
             ├──────< (N) collection_sources
             ├──────< (N) collection_permissions
-            └──────< (N) collection_audit_log
+            ├──────< (N) collection_audit_log
+            └──────< (1) collection_resource_limits
 
 collection_sources (1) ──────< (N) documents
 
 operations (1) ──────< (N) collection_audit_log
            └──────< (N) operation_metrics
+
+api_keys (1) ──────< (N) collection_permissions
 ```
+
+### Naming Conventions
+
+The database follows consistent naming conventions for maintainability:
+
+1. **Tables**: Lowercase with underscores (snake_case)
+   - Plural for entities: `users`, `collections`, `documents`
+   - Singular for relationships: `collection_permission`
+
+2. **Columns**: Lowercase with underscores
+   - Foreign keys: `{table}_id` (e.g., `collection_id`, `user_id`)
+   - Timestamps: `{action}_at` (e.g., `created_at`, `updated_at`)
+   - Booleans: `is_{state}` (e.g., `is_public`, `is_active`)
+
+3. **Indexes**: Descriptive prefixes
+   - `idx_{table}_{column}` for single column indexes
+   - `idx_{table}_{col1}_{col2}` for composite indexes
+   - `uq_{table}_{columns}` for unique constraints
+
+4. **Constraints**: Descriptive names
+   - `fk_{table}_{column}_{ref_table}` for foreign keys
+   - `check_{table}_{description}` for check constraints
+
+5. **Enums**: PascalCase for types, UPPER_CASE for values
+   - Types: `DocumentStatus`, `OperationType`
+   - Values: `PENDING`, `COMPLETED`, `FAILED`
+
+### Operation Lifecycle States
+
+Operations follow a strict state machine for reliability:
+
+```
+┌─────────┐      ┌────────────┐      ┌───────────┐
+│ PENDING │ ───► │ PROCESSING │ ───► │ COMPLETED │
+└─────────┘      └────────────┘      └───────────┘
+                        │                    
+                        ├──────────► ┌─────────┐
+                        │            │ FAILED  │
+                        │            └─────────┘
+                        │
+                        └──────────► ┌───────────┐
+                                    │ CANCELLED │
+                                    └───────────┘
+```
+
+**State Transitions**:
+- `PENDING`: Initial state when operation is created
+- `PROCESSING`: Worker has started the operation
+- `COMPLETED`: Operation finished successfully
+- `FAILED`: Operation encountered an error
+- `CANCELLED`: Operation was cancelled by user
+
+**Operation Types**:
+- `INDEX`: Initial indexing of a collection
+- `APPEND`: Add new documents to existing collection
+- `REINDEX`: Complete re-indexing with new settings
+- `REMOVE_SOURCE`: Remove documents from a specific source
+- `DELETE`: Delete the entire collection
+
+### Soft Delete Implementation
+
+The system implements soft deletes at the document level for data safety:
+
+1. **Document Soft Delete**:
+   - Documents are marked with status='deleted' instead of being removed
+   - Preserves referential integrity and audit trail
+   - Deleted documents are excluded from searches
+   - Vectors are removed from Qdrant but metadata retained
+
+2. **Benefits**:
+   - Recovery possible if deletion was accidental
+   - Maintains historical record for compliance
+   - Prevents orphaned references in audit logs
+   - Enables "undelete" functionality
+
+3. **Hard Delete Scenarios**:
+   - Collections use hard delete (CASCADE) for clean removal
+   - User deletion cascades to owned resources
+   - Expired tokens are hard deleted
+
+### Collection Source Management
+
+Collection sources track the origin of documents:
+
+1. **Source Types**:
+   - `directory`: Local filesystem directory
+   - `file`: Single file upload
+   - `url`: Web URL or API endpoint
+   - `github`: GitHub repository
+
+2. **Source Tracking**:
+   - Each source maintains document count and size
+   - Last indexed timestamp for incremental updates
+   - Source metadata (credentials, options)
+
+3. **Benefits**:
+   - Enables incremental indexing
+   - Tracks data lineage
+   - Supports source-specific removal
+   - Facilitates re-indexing from source
+
+### Transaction Patterns
+
+The system uses specific transaction patterns for data integrity:
+
+1. **Collection Creation Pattern**:
+   ```python
+   async with db.begin():
+       # 1. Create collection record
+       collection = await create_collection(...)
+       
+       # 2. Create resource limits
+       await create_resource_limits(collection.id)
+       
+       # 3. Initialize Qdrant collection
+       await init_vector_store(collection)
+       
+       # 4. Update collection status
+       await update_status(collection.id, "ready")
+   ```
+
+2. **Document Processing Pattern**:
+   ```python
+   async with db.begin():
+       # 1. Update document status
+       await update_document_status(doc_id, "processing")
+       
+       # 2. Process and create chunks
+       chunks = await process_document(doc)
+       
+       # 3. Update chunk count
+       await update_chunk_count(doc_id, len(chunks))
+       
+       # 4. Update collection metrics
+       await increment_collection_vectors(collection_id, len(chunks))
+   ```
+
+3. **Operation Completion Pattern**:
+   ```python
+   async with db.begin():
+       # 1. Update operation status
+       await update_operation_status(op_id, "completed")
+       
+       # 2. Record metrics
+       await record_operation_metrics(op_id, metrics)
+       
+       # 3. Update collection statistics
+       await refresh_collection_stats(collection_id)
+       
+       # 4. Create audit log entry
+       await create_audit_log(collection_id, op_id, "completed")
+   ```
 
 ### Migration Strategy
 
@@ -284,6 +491,7 @@ The system uses Alembic for database migrations:
 2. Automatic migration generation from model changes
 3. Rollback capability for failed migrations
 4. Migration history tracking
+5. Support for enum alterations (with PostgreSQL limitations)
 
 Example migration workflow:
 ```bash
@@ -296,6 +504,13 @@ alembic upgrade head
 # Rollback if needed
 alembic downgrade -1
 ```
+
+**Migration Best Practices**:
+- Always review auto-generated migrations
+- Test migrations on a copy of production data
+- Include both upgrade and downgrade paths
+- Use batch operations for large data migrations
+- Consider zero-downtime deployment strategies
 
 ## Qdrant Vector Database
 
@@ -352,6 +567,64 @@ Qdrant configuration for optimal performance:
 3. **Connection Pooling**: Reusable connections to Qdrant
 4. **Async Operations**: Non-blocking search and updates
 
+## Design Decisions and Rationale
+
+### Why Collection-Centric Architecture?
+
+1. **Logical Organization**:
+   - Documents naturally belong to collections, not job runs
+   - Users think in terms of "my technical docs" not "indexing job #123"
+   - Enables better permission management at the collection level
+
+2. **Multi-Model Support**:
+   - Each collection can use different embedding models
+   - Allows experimentation without affecting other data
+   - Future-proof for model upgrades
+
+3. **Incremental Updates**:
+   - Append operations add to existing collections
+   - Remove operations can target specific sources
+   - Reindex operations maintain service availability
+
+4. **Better State Management**:
+   - Collection status reflects overall health
+   - Operation status tracks individual tasks
+   - Clear separation of concerns
+
+### Document-Collection Relationships
+
+1. **One-to-Many with CASCADE**:
+   - Documents belong to exactly one collection
+   - Deleting a collection removes all documents
+   - Ensures no orphaned documents
+
+2. **Content Hash Strategy**:
+   - SHA256 hash prevents duplicates within collection
+   - Allows same file in different collections
+   - Enables deduplication at query time
+
+3. **Source Tracking**:
+   - Optional source_id links to collection_sources
+   - Enables source-based operations
+   - Maintains data lineage
+
+### Why Soft Deletes for Documents?
+
+1. **Data Safety**:
+   - Accidental deletions are recoverable
+   - Audit trail maintained
+   - Compliance requirements
+
+2. **Performance**:
+   - Avoids expensive CASCADE operations
+   - Vectors removed from Qdrant immediately
+   - Metadata retained for history
+
+3. **Flexibility**:
+   - Enables "trash bin" functionality
+   - Supports undo operations
+   - Allows for data retention policies
+
 ## Data Models (SQLAlchemy/Pydantic)
 
 ### Collection Model
@@ -370,6 +643,12 @@ class Collection(Base):
     chunk_overlap: int = 200
     is_public: bool = False
     status: CollectionStatus
+    status_message: Optional[str]
+    qdrant_collections: Optional[List[str]]
+    qdrant_staging: Optional[List[str]]
+    document_count: int = 0
+    vector_count: int = 0
+    total_size_bytes: int = 0
     created_at: datetime
     updated_at: datetime
     meta: Optional[dict]
@@ -379,6 +658,8 @@ class Collection(Base):
     documents: List[Document]
     operations: List[Operation]
     permissions: List[CollectionPermission]
+    sources: List[CollectionSource]
+    resource_limits: Optional[CollectionResourceLimits]
 ```
 
 ### Operation Model
@@ -546,29 +827,132 @@ async with create_collection_repository() as repo:
 
 ### Query Optimization
 
-**PostgreSQL**:
-- B-tree indexes on UUIDs and foreign keys
-- Partial indexes for status queries
-- Composite indexes for complex filters
-- Query plan analysis and optimization
+**PostgreSQL Optimization Strategies**:
 
-**Qdrant**:
-- Pre-filtering with metadata before vector search
-- Payload indexing for fast filtering
-- Quantization for memory efficiency
-- Batch search for multiple collections
+1. **Index Strategy**:
+   ```sql
+   -- B-tree indexes for equality and range queries
+   CREATE INDEX idx_operations_created_at ON operations(created_at);
+   
+   -- Partial indexes for filtered queries
+   CREATE INDEX idx_operations_pending ON operations(status) 
+   WHERE status = 'pending';
+   
+   -- Composite indexes for multi-column queries
+   CREATE INDEX idx_documents_collection_status ON documents(collection_id, status);
+   
+   -- GIN indexes for JSON queries
+   CREATE INDEX idx_collections_meta ON collections USING GIN(meta);
+   ```
+
+2. **Query Patterns**:
+   ```sql
+   -- Efficient pagination with cursor
+   SELECT * FROM documents 
+   WHERE collection_id = ? AND id > ? 
+   ORDER BY id 
+   LIMIT 100;
+   
+   -- Use EXISTS for existence checks
+   SELECT EXISTS(
+       SELECT 1 FROM documents 
+       WHERE collection_id = ? AND status = 'completed'
+   );
+   
+   -- Aggregate with window functions
+   SELECT collection_id, 
+          COUNT(*) OVER (PARTITION BY collection_id) as total_docs
+   FROM documents;
+   ```
+
+3. **Common Optimizations**:
+   - Use prepared statements to avoid query parsing overhead
+   - Batch INSERT operations for bulk document creation
+   - Use COPY for large data imports
+   - Implement connection pooling with appropriate limits
+   - Regular VACUUM and ANALYZE for statistics
+
+**Qdrant Optimization Strategies**:
+
+1. **Vector Search Optimization**:
+   - Pre-filter by metadata to reduce search space
+   - Use appropriate HNSW parameters (ef, m)
+   - Enable mmap for large collections
+   - Optimize vector dimensions and quantization
+
+2. **Batch Operations**:
+   ```python
+   # Batch vector upload
+   points = [
+       PointStruct(id=str(i), vector=vec, payload=meta)
+       for i, (vec, meta) in enumerate(vectors)
+   ]
+   await client.upsert(collection_name, points, batch_size=100)
+   ```
+
+3. **Payload Indexing**:
+   ```python
+   # Create payload index for fast filtering
+   await client.create_payload_index(
+       collection_name,
+       field_name="document_id",
+       field_type="keyword"
+   )
+   ```
+
+### Query Performance Monitoring
+
+1. **PostgreSQL Monitoring**:
+   ```sql
+   -- Slow query analysis
+   SELECT query, mean_time, calls 
+   FROM pg_stat_statements 
+   ORDER BY mean_time DESC 
+   LIMIT 10;
+   
+   -- Index usage statistics
+   SELECT schemaname, tablename, indexname, idx_scan
+   FROM pg_stat_user_indexes
+   ORDER BY idx_scan;
+   
+   -- Table bloat analysis
+   SELECT schemaname, tablename, 
+          pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size
+   FROM pg_stat_user_tables
+   ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
+   ```
+
+2. **Connection Pool Monitoring**:
+   - Track active vs idle connections
+   - Monitor connection wait times
+   - Adjust pool size based on load
+
+3. **Query Plan Analysis**:
+   ```sql
+   EXPLAIN (ANALYZE, BUFFERS) 
+   SELECT * FROM documents 
+   WHERE collection_id = ? AND status = 'completed';
+   ```
 
 ### Scaling Strategies
 
 **Horizontal Scaling**:
-- Read replicas for PostgreSQL
+- Read replicas for PostgreSQL with streaming replication
 - Qdrant cluster mode for distributed search
 - Multiple Celery workers for parallel processing
+- Load balancing across service instances
 
 **Vertical Scaling**:
-- Increased connection pool sizes
-- Larger Qdrant cache settings
-- More worker processes
+- Increased connection pool sizes (carefully tuned)
+- Larger Qdrant cache settings for frequently accessed vectors
+- More worker processes for CPU-bound operations
+- SSD storage for improved I/O performance
+
+**Caching Strategy**:
+- Redis for frequently accessed metadata
+- Application-level caching for user permissions
+- Query result caching with TTL
+- Qdrant's built-in caching mechanisms
 
 ## Backup and Recovery
 
@@ -635,17 +1019,89 @@ await client.download_snapshot(collection_name, snapshot_name)
 ## Future Enhancements
 
 ### Planned Improvements
-1. **Multi-tenancy**: Database-level isolation
-2. **Sharding**: Partition large collections
-3. **Full-text Search**: PostgreSQL FTS integration
-4. **Vector Versioning**: Track embedding model changes
-5. **Incremental Indexing**: Only process changed documents
-6. **Collection Templates**: Predefined configurations
-7. **Backup Automation**: Managed backup service
-8. **Performance Analytics**: Query performance tracking
+
+1. **Multi-tenancy**: 
+   - Database-level isolation using PostgreSQL schemas
+   - Tenant-specific connection pools
+   - Cross-tenant query prevention
+
+2. **Sharding**: 
+   - Partition large collections by date or hash
+   - Distributed query coordination
+   - Automatic shard rebalancing
+
+3. **Full-text Search**: 
+   - PostgreSQL FTS integration for metadata
+   - Hybrid search combining vectors and keywords
+   - Language-specific stemming and tokenization
+
+4. **Vector Versioning**: 
+   - Track embedding model changes
+   - Support multiple vector representations
+   - Gradual migration between models
+
+5. **Incremental Indexing**: 
+   - File modification detection
+   - Delta processing for large documents
+   - Change data capture (CDC) integration
+
+6. **Collection Templates**: 
+   - Predefined configurations for common use cases
+   - Template marketplace
+   - Custom template creation
+
+7. **Advanced Features**:
+   - Time-based document expiration
+   - Geographic distribution of collections
+   - Real-time collaborative indexing
+   - Webhook notifications for operations
+
+### Technical Debt and Improvements
+
+1. **Schema Refinements**:
+   - Convert string timestamps to proper DateTime types
+   - Standardize UUID handling across tables
+   - Add missing foreign key constraints
+
+2. **Performance Enhancements**:
+   - Implement query result caching
+   - Add database connection pooling metrics
+   - Optimize large JSON column storage
+
+3. **Monitoring and Observability**:
+   - Built-in query performance tracking
+   - Automated index recommendations
+   - Resource usage dashboards
 
 ### Migration Path
-1. **Data Migration Tools**: Scripts for bulk operations
-2. **Version Management**: Track schema versions
-3. **Zero-downtime Updates**: Blue-green deployments
-4. **Rollback Procedures**: Safe version downgrades
+
+1. **Data Migration Tools**: 
+   - Automated scripts for bulk operations
+   - Progress tracking for large migrations
+   - Rollback capabilities
+
+2. **Version Management**: 
+   - Semantic versioning for schema changes
+   - Compatibility matrix maintenance
+   - Automated migration testing
+
+3. **Zero-downtime Updates**: 
+   - Blue-green deployment support
+   - Online schema changes
+   - Gradual rollout strategies
+
+4. **Backward Compatibility**:
+   - API versioning for schema changes
+   - Deprecation warnings
+   - Migration guides and tooling
+
+## Conclusion
+
+The Semantik database architecture provides a robust foundation for semantic search with:
+- Clear separation between metadata (PostgreSQL) and vectors (Qdrant)
+- Collection-centric design for better organization
+- Comprehensive audit and permission systems
+- Scalable architecture supporting growth
+- Safe migration paths and data integrity guarantees
+
+The transition from job-centric to collection-centric architecture has created a more intuitive and maintainable system that better aligns with user mental models and supports future enhancements.

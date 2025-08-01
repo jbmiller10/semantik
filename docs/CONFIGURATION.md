@@ -1,6 +1,6 @@
 # Configuration Guide
 
-This guide covers all configuration options for the Document Embedding System.
+This guide covers all configuration options for Semantik, including environment variables, service configurations, and runtime settings.
 
 ## Docker Configuration (Recommended)
 
@@ -17,875 +17,442 @@ When using Docker Compose, configuration is simplified through the `.env` file a
 
 3. Start services:
    ```bash
-   docker compose up -d
+   make docker-up
    ```
 
-### Docker-Specific Settings
+### Interactive Setup Wizard
 
-When running with Docker Compose, the following settings are handled automatically:
+For automated configuration:
+```bash
+make wizard
+```
 
-- **Service URLs**: Services communicate using Docker service names (e.g., `qdrant`, `vecpipe`)
-- **Volumes**: Data persistence is managed through Docker volumes
-- **Networking**: All services are on the same Docker network
-- **Health Checks**: Built-in health monitoring for all services
+The wizard will:
+- Detect GPU availability
+- Generate secure passwords
+- Configure optimal settings
+- Create necessary directories
 
 ## Environment Variables
 
-The system uses environment variables for configuration. When using Docker, copy `.env.docker.example` to `.env`. For manual installation, use `.env.example`.
-
 ### Core Settings
 
-#### Qdrant Configuration
+#### Environment Configuration
 ```bash
-# Qdrant vector database connection
-QDRANT_HOST=localhost          # Qdrant server hostname/IP
-QDRANT_PORT=6333              # Qdrant server port
-DEFAULT_COLLECTION=work_docs   # Default collection name
-```
+# Environment mode
+ENVIRONMENT=development        # Options: development, staging, production
 
-#### Embedding Model Configuration
-```bash
-# Embedding service settings
-USE_MOCK_EMBEDDINGS=false     # Use mock embeddings for testing (true/false)
-DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B  # Default model
-DEFAULT_QUANTIZATION=float16  # Quantization mode: float32, float16, int8
-MODEL_UNLOAD_AFTER_SECONDS=300  # Unload models after N seconds of inactivity (default: 300)
-```
+# Logging
+LOG_LEVEL=INFO                # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
-#### Authentication
-```bash
-# JWT authentication for Web UI
-JWT_SECRET_KEY=your-secret-key-here  # Generate with: openssl rand -hex 32
-JWT_ALGORITHM=HS256                   # JWT signing algorithm (default: HS256)
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30    # Access token expiration (default: 30)
-JWT_REFRESH_TOKEN_EXPIRE_DAYS=30      # Refresh token expiration (default: 30)
-DISABLE_AUTH=false                    # Disable authentication (development only!)
-```
-
-### Complete Environment Variables Reference
-
-Here's a comprehensive list of all environment variables with their defaults:
-
-#### Application Settings
-```bash
-# General
-ENVIRONMENT=development               # Environment: development, staging, production
-LOG_LEVEL=INFO                       # Logging level: DEBUG, INFO, WARNING, ERROR
-DEBUG=false                          # Enable debug mode (default: false)
-
-# Service Ports
-SEARCH_API_PORT=8000                 # Search API port (default: 8000)
-WEBUI_PORT=8080                      # WebUI port (default: 8080)
-
-# Service URLs (for Docker/production)
-SEARCH_API_URL=http://localhost:8000 # Search API URL for WebUI proxy
+# CORS Configuration
+CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173  # Comma-separated list
 ```
 
 #### Database Configuration
-```bash
-# PostgreSQL
-DATABASE_URL=postgresql://user:password@localhost:5432/semantik  # PostgreSQL connection string
-# Alternative PostgreSQL configuration (if not using DATABASE_URL):
-POSTGRES_HOST=localhost             # PostgreSQL host (default: localhost)
-POSTGRES_PORT=5432                  # PostgreSQL port (default: 5432)
-POSTGRES_DB=semantik                # Database name (default: semantik)
-POSTGRES_USER=postgres              # Database user
-POSTGRES_PASSWORD=password          # Database password
 
-# Qdrant
-QDRANT_HOST=localhost               # Qdrant host (default: localhost)
-QDRANT_PORT=6333                    # Qdrant port (default: 6333)
-QDRANT_API_KEY=                     # Qdrant API key (optional, for secured instances)
-QDRANT_USE_TLS=false                # Use TLS for Qdrant connection (default: false)
+##### PostgreSQL (Required)
+```bash
+# Connection string (overrides individual settings if provided)
+DATABASE_URL=postgresql://semantik:password@postgres:5432/semantik
+
+# Individual connection parameters
+POSTGRES_HOST=postgres        # PostgreSQL host (container name in Docker)
+POSTGRES_PORT=5432           # PostgreSQL port
+POSTGRES_DB=semantik         # Database name
+POSTGRES_USER=semantik       # Database user
+POSTGRES_PASSWORD=CHANGE_THIS_TO_A_STRONG_PASSWORD  # Database password
+
+# Connection pool settings
+DB_POOL_SIZE=20              # Connection pool size
+DB_MAX_OVERFLOW=40           # Maximum overflow connections
+DB_POOL_TIMEOUT=30           # Pool timeout in seconds
+DB_POOL_RECYCLE=3600         # Connection recycle time in seconds
+DB_POOL_PRE_PING=true        # Test connections before use
 ```
 
-#### Model and Processing Configuration
+##### Qdrant (Vector Database)
 ```bash
-# Embedding Models
-DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B  # Default: Qwen/Qwen3-Embedding-0.6B
-DEFAULT_QUANTIZATION=float16                       # Default: float16
-USE_MOCK_EMBEDDINGS=false                         # Default: false
-MODEL_UNLOAD_AFTER_SECONDS=300                    # Default: 300 (5 minutes)
-FORCE_CPU=false                                   # Force CPU mode (default: false)
-
-# Processing Settings
-MAX_WORKERS=4                       # Parallel processing workers (default: 4)
-BATCH_SIZE=32                       # Embedding batch size (default: 32)
-CHUNK_SIZE=512                      # Document chunk size in tokens (default: 512)
-CHUNK_OVERLAP=128                   # Chunk overlap in tokens (default: 128)
-MAX_FILE_SIZE_MB=100                # Maximum file size to process (default: 100)
-
-# Reranking Configuration
-USE_RERANKER=false                  # Enable reranking by default (default: false)
-RERANK_CANDIDATE_MULTIPLIER=5       # Retrieve k*5 candidates (default: 5)
-RERANK_MIN_CANDIDATES=20            # Minimum candidates (default: 20)
-RERANK_MAX_CANDIDATES=200           # Maximum candidates (default: 200)
+# Qdrant connection
+QDRANT_HOST=qdrant           # Qdrant host (container name in Docker)
+QDRANT_PORT=6333             # Qdrant HTTP port
+DEFAULT_COLLECTION=work_docs  # Default collection name
 ```
 
-#### Storage and Paths
+##### Redis (Message Broker)
 ```bash
+# Redis connection
+REDIS_URL=redis://redis:6379/0              # Redis connection URL
+CELERY_BROKER_URL=redis://redis:6379/0      # Celery broker URL
+CELERY_RESULT_BACKEND=redis://redis:6379/0  # Celery result backend
+```
+
+#### Authentication & Security
+```bash
+# JWT Configuration
+JWT_SECRET_KEY=CHANGE_THIS_TO_A_STRONG_SECRET_KEY  # Generate: openssl rand -hex 32
+JWT_ALGORITHM=HS256                                 # JWT signing algorithm
+ACCESS_TOKEN_EXPIRE_MINUTES=1440                    # Access token expiration (24 hours)
+
+# Security
+DISABLE_AUTH=false           # Disable authentication (NEVER in production!)
+```
+
+### Model Configuration
+
+#### Embedding Models
+```bash
+# Model Selection
+DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B  # Default embedding model
+USE_MOCK_EMBEDDINGS=false                          # Use mock embeddings for testing
+
+# Available models:
+# - Qwen/Qwen3-Embedding-0.6B (default, 1024 dims)
+# - Qwen/Qwen3-Embedding-4B (2560 dims)
+# - BAAI/bge-large-en-v1.5 (1024 dims)
+# - sentence-transformers/all-MiniLM-L6-v2 (384 dims)
+```
+
+#### Quantization & Performance
+```bash
+# Quantization modes
+DEFAULT_QUANTIZATION=float16  # Options: float32, float16, int8
+
+# Memory usage by quantization:
+# float32: Full precision (highest quality, most memory)
+# float16: Half precision (recommended, good balance)
+# int8: 8-bit quantization (lowest memory, requires CUDA build)
+
+# Model Management
+MODEL_UNLOAD_AFTER_SECONDS=300  # Auto-unload models after inactivity
+```
+
+#### GPU Configuration
+```bash
+# GPU Selection
+CUDA_VISIBLE_DEVICES=0       # GPU device ID (comma-separated for multiple)
+MODEL_MAX_MEMORY_GB=8        # GPU memory limit
+
+# HuggingFace Settings
+HF_HOME=/app/.cache/huggingface  # Model cache directory
+HF_HUB_OFFLINE=false             # Use offline mode after models downloaded
+```
+
+### Storage & Paths
+
+#### Volume Paths (Host Machine)
+```bash
+# Document Storage
+DOCUMENT_PATH=./documents    # Source documents directory
+
+# Model Cache
+HF_CACHE_DIR=./models       # HuggingFace model cache
+```
+
+#### Operation Paths (Inside Containers)
+```bash
+# Processing Directories (collection-centric)
+EXTRACT_DIR=/app/operations/extract  # Document extraction directory
+INGEST_DIR=/app/operations/ingest    # Document ingestion directory
+
 # Data Directories
-DATA_DIR=/app/data                  # Main data directory
-MODELS_DIR=/app/models              # Model cache directory
-LOGS_DIR=/app/logs                  # Log files directory
-UPLOAD_DIR=/app/uploads             # Temporary upload directory
-DOCUMENTS_DIR=/documents            # Source documents directory
-
-# Job Processing Paths
-EXTRACT_DIR=/app/jobs/extract       # Extraction working directory
-INGEST_DIR=/app/jobs/ingest         # Ingestion working directory
-OUTPUT_DIR=/app/output              # Output directory for processed files
+DATA_DIR=/app/data          # Application data
+LOGS_DIR=/app/logs          # Log files
+UPLOAD_DIR=/app/uploads     # Temporary uploads
 ```
 
-#### Performance and Resource Management
+### Service Configuration
+
+#### API Services
 ```bash
-# GPU Configuration
-CUDA_VISIBLE_DEVICES=0              # GPU device IDs (comma-separated)
-GPU_MEMORY_FRACTION=0.9             # Fraction of GPU memory to use (default: 0.9)
-PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512  # PyTorch memory config
+# WebUI Service
+WEBUI_PORT=8080             # WebUI port
+WEBUI_WORKERS=1             # Number of worker processes
 
-# Memory Management
-MIN_BATCH_SIZE=4                    # Minimum batch size on OOM (default: 4)
-BATCH_RESTORE_THRESHOLD=5           # Batches before size increase (default: 5)
-ADAPTIVE_BATCH_SIZING=true          # Enable adaptive batching (default: true)
+# Search API Service
+SEARCH_API_PORT=8000        # Search API port
+SEARCH_API_URL=http://vecpipe:8000  # Internal URL for WebUI
+SEARCH_API_HOST=vecpipe     # Search API hostname
+
+# Service Discovery
+WAIT_FOR_QDRANT=true        # Wait for Qdrant on startup
+WAIT_FOR_SEARCH_API=true    # Wait for Search API on startup
 ```
 
-#### Security Settings
+#### Processing Configuration
 ```bash
-# Authentication
-JWT_SECRET_KEY=                     # Required: Generate with openssl rand -hex 32
-JWT_ALGORITHM=HS256                 # JWT algorithm (default: HS256)
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30  # Access token lifetime (default: 30)
-JWT_REFRESH_TOKEN_EXPIRE_DAYS=30    # Refresh token lifetime (default: 30)
-DISABLE_AUTH=false                  # Disable auth - NEVER in production!
+# Document Processing
+MAX_WORKERS=4               # Parallel processing workers
+BATCH_SIZE=32              # Embedding batch size
+CHUNK_SIZE=512             # Document chunk size in tokens
+CHUNK_OVERLAP=128          # Chunk overlap in tokens
+MAX_FILE_SIZE_MB=100       # Maximum file size to process
 
-# CORS
-CORS_ALLOWED_ORIGINS=*              # Allowed origins (default: *)
-CORS_ALLOW_CREDENTIALS=true         # Allow credentials (default: true)
-
-# Security Headers
-SECURE_HEADERS_ENABLED=true         # Enable security headers (default: true)
-HSTS_MAX_AGE=31536000              # HSTS max age in seconds (default: 1 year)
+# Adaptive Batch Sizing
+MIN_BATCH_SIZE=4           # Minimum batch size on OOM
+BATCH_RESTORE_THRESHOLD=5  # Batches before size increase
+ADAPTIVE_BATCH_SIZING=true # Enable adaptive batching
 ```
 
-#### Monitoring and Metrics
+#### Reranking Configuration
+```bash
+# Reranking Settings
+USE_RERANKER=false                 # Enable reranking by default
+RERANK_CANDIDATE_MULTIPLIER=5      # Retrieve k*5 candidates
+RERANK_MIN_CANDIDATES=20           # Minimum candidates
+RERANK_MAX_CANDIDATES=200          # Maximum candidates
+DEFAULT_RERANKER_MODEL=Qwen/Qwen3-Reranker-0.6B  # Reranker model
+```
+
+### Monitoring & Metrics
+
 ```bash
 # Prometheus Metrics
-METRICS_ENABLED=true                # Enable metrics collection (default: true)
-METRICS_PORT=9091                   # Metrics port (default: 9091)
-METRICS_PATH=/metrics               # Metrics endpoint path (default: /metrics)
+METRICS_ENABLED=true        # Enable metrics collection
+METRICS_PORT=9091          # Metrics port
+METRICS_PATH=/metrics      # Metrics endpoint path
 
 # Health Checks
-HEALTH_CHECK_ENABLED=true           # Enable health checks (default: true)
-HEALTH_CHECK_INTERVAL=30            # Check interval in seconds (default: 30)
+HEALTH_CHECK_ENABLED=true   # Enable health checks
+HEALTH_CHECK_INTERVAL=30    # Check interval in seconds
+
+# Flower (Task Monitoring)
+FLOWER_PORT=5555           # Flower web UI port
+FLOWER_BASIC_AUTH=admin:admin  # Basic auth for Flower
 ```
 
-### Optional Path Configuration
+## Configuration Files
 
-These paths have sensible defaults but can be overridden:
+### Docker Environment Files
 
+1. **`.env.docker.example`** - Template for Docker deployments
+2. **`.env.example`** - Template for manual deployments
+3. **`.env`** - Your actual configuration (git-ignored)
+
+### Service Configuration Examples
+
+#### Development Configuration
 ```bash
-# Data directories
-FILE_TRACKING_DB=/var/embeddings/file_tracking.json
-EXTRACT_DIR=/opt/semantik/extract
-INGEST_DIR=/var/embeddings/ingest
-LOADED_DIR=/var/embeddings/loaded
-REJECT_DIR=/var/embeddings/rejects
-
-# File lists and logs
-MANIFEST_FILE=/var/embeddings/filelist.null
-ERROR_LOG=/var/embeddings/error_extract.log
-CLEANUP_LOG=/var/embeddings/cleanup.log
+# .env.development
+ENVIRONMENT=development
+LOG_LEVEL=DEBUG
+USE_MOCK_EMBEDDINGS=false
+DEFAULT_QUANTIZATION=float16
+DISABLE_AUTH=true
 ```
 
-## Model Configuration
+#### Production Configuration
+```bash
+# .env.production
+ENVIRONMENT=production
+LOG_LEVEL=INFO
+USE_MOCK_EMBEDDINGS=false
+DEFAULT_QUANTIZATION=int8
+DISABLE_AUTH=false
+JWT_SECRET_KEY=${SECURE_JWT_SECRET}
+POSTGRES_PASSWORD=${SECURE_DB_PASSWORD}
+```
 
-### Available Models
+## Model Configuration Details
 
-The system supports various embedding models:
+### Task-Specific Instructions
 
-| Model | Environment Variable | Dimensions | Notes |
-|-------|---------------------|------------|-------|
-| BAAI/bge-large-en-v1.5 | `DEFAULT_EMBEDDING_MODEL` | 1024 | High quality, general purpose |
-| BAAI/bge-base-en-v1.5 | `DEFAULT_EMBEDDING_MODEL` | 768 | Balanced performance |
-| Qwen/Qwen3-Embedding-0.6B | `DEFAULT_EMBEDDING_MODEL` | 1024 | Fast, good quality (default) |
-| Qwen/Qwen3-Embedding-4B | `DEFAULT_EMBEDDING_MODEL` | 2560 | Higher quality, slower |
-| Qwen/Qwen3-Embedding-8B | `DEFAULT_EMBEDDING_MODEL` | 4096 | Best quality, requires more GPU |
-| sentence-transformers/all-MiniLM-L6-v2 | `DEFAULT_EMBEDDING_MODEL` | 384 | Very fast, lower quality |
-| sentence-transformers/all-mpnet-base-v2 | `DEFAULT_EMBEDDING_MODEL` | 768 | Good balance |
-
-### Quantization Modes
-
-Control memory usage and performance:
-
-- `float32`: Full precision (best quality, highest memory use)
-- `float16`: Half precision (recommended - good balance)
-- `int8`: 8-bit quantization (lowest memory, slight quality loss)
-
-### Task Instructions
-
-For Qwen3 models, use task-specific instructions:
+For Qwen3 models, use appropriate task instructions:
 
 ```python
 # Document indexing
-"Represent this document for retrieval:"
+instruction = "Represent this document for retrieval:"
 
 # Search queries
-"Represent this sentence for searching relevant passages:"
+instruction = "Represent this sentence for searching relevant passages:"
 
-# Q&A scenarios
-"Represent this question for retrieving supporting answers:"
+# Question answering
+instruction = "Represent this question for retrieving supporting answers:"
 ```
 
-## Service Configuration
+### Memory Requirements by Model
 
-### Search API
-
-The Search API (`vecpipe/search_api.py`) uses these environment variables:
-
-- `QDRANT_HOST`, `QDRANT_PORT`: Database connection
-- `DEFAULT_COLLECTION`: Default search collection
-- `USE_MOCK_EMBEDDINGS`: Enable mock mode
-- `DEFAULT_EMBEDDING_MODEL`: Model for query embeddings
-- `DEFAULT_QUANTIZATION`: Quantization mode
-
-### Web UI
-
-The Web UI (`webui/main.py`) additionally uses:
-
-- `JWT_SECRET_KEY`: Required for authentication
-- `ACCESS_TOKEN_EXPIRE_MINUTES`: Session duration
-- Database paths for job management
+| Model | float32 | float16 | int8 |
+|-------|---------|---------|------|
+| Qwen3-0.6B | ~2.4GB | ~1.2GB | ~0.6GB |
+| Qwen3-4B | ~16GB | ~8GB | ~4GB |
+| BGE-large | ~1.4GB | ~0.7GB | ~0.35GB |
+| MiniLM | ~0.5GB | ~0.25GB | ~0.125GB |
 
 ## Runtime Configuration
 
-### Embedding Service Options
+### Collection Operations
 
-When creating jobs or using the API, you can override defaults:
+When creating collections or indexing documents:
 
-```python
+```json
 {
-  "model_name": "Qwen/Qwen3-Embedding-4B",
-  "quantization": "int8",
-  "batch_size": 32,
-  "instruction": "Custom instruction"
+  "name": "my_collection",
+  "model_name": "Qwen/Qwen3-Embedding-0.6B",
+  "quantization": "float16",
+  "chunk_size": 512,
+  "chunk_overlap": 128
 }
 ```
 
-### Search Options
+### Search Configuration
 
 Configure search behavior per request:
 
-```python
+```json
 {
-  "search_type": "semantic",  # or "question", "code", "hybrid"
-  "include_content": true,    # Include full text in results
-  "metadata_filter": {},      # Filter by metadata fields
-  "score_threshold": 0.7      # Minimum similarity score
+  "query": "search text",
+  "collection_id": "uuid",
+  "limit": 10,
+  "score_threshold": 0.7,
+  "search_type": "semantic",
+  "include_content": true,
+  "use_reranker": true
 }
 ```
 
-### Hybrid Search Modes
-
-- `filter`: Use keywords as pre-filter (faster)
-- `rerank`: Retrieve more candidates and re-score (more accurate)
-
 ## Performance Tuning
 
-### GPU Configuration
-
-The system automatically detects and uses available GPUs. For specific GPU selection:
+### GPU Optimization
 
 ```bash
-# Select specific GPU
-CUDA_VISIBLE_DEVICES=0 python vecpipe/search_api.py
+# Memory Management
+PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+GPU_MEMORY_FRACTION=0.9
 
-# Use CPU only
-CUDA_VISIBLE_DEVICES="" python vecpipe/search_api.py
+# Performance
+TORCH_CUDNN_V8_API_ENABLED=1
+USE_AMP=true  # Automatic Mixed Precision
 ```
 
-### Batch Sizes
+### Batch Size Guidelines
 
-Adjust based on available memory:
+| GPU Memory | Recommended Batch Size |
+|------------|----------------------|
+| 4GB | 16-32 |
+| 8GB | 32-64 |
+| 16GB | 64-128 |
+| 24GB+ | 128-256 |
 
-- GPU with 8GB VRAM: batch_size=96
-- GPU with 4GB VRAM: batch_size=32
-- CPU mode: batch_size=8
+### CPU-Only Configuration
 
-### Adaptive Batch Sizing
+```bash
+# Force CPU mode
+FORCE_CPU=true
+CUDA_VISIBLE_DEVICES=""
 
-The embedding service automatically adjusts batch size on OOM errors. Configure:
-
-```python
-# In webui/embedding_service.py
-MIN_BATCH_SIZE = 4          # Minimum batch size
-BATCH_RESTORE_THRESHOLD = 5  # Successful batches before increasing size
+# Optimize for CPU
+DEFAULT_QUANTIZATION=int8
+BATCH_SIZE=8
+MAX_WORKERS=16
+DEFAULT_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 ```
+
+## Security Configuration
+
+### Production Security Checklist
+
+1. **Generate Secure Keys**
+   ```bash
+   # JWT Secret
+   export JWT_SECRET_KEY=$(openssl rand -hex 32)
+   
+   # Database Password
+   export POSTGRES_PASSWORD=$(openssl rand -hex 32)
+   ```
+
+2. **Enable Security Features**
+   ```bash
+   ENVIRONMENT=production
+   DISABLE_AUTH=false
+   SECURE_HEADERS_ENABLED=true
+   HSTS_MAX_AGE=31536000
+   ```
+
+3. **Network Security**
+   ```bash
+   # Restrict CORS origins
+   CORS_ORIGINS=https://yourdomain.com
+   
+   # Use internal networks
+   QDRANT_HOST=qdrant.internal
+   POSTGRES_HOST=postgres.internal
+   ```
 
 ## Logging Configuration
 
 ### Log Levels
 
-Set logging verbosity:
-
 ```bash
-# In Python scripts
-import logging
-logging.basicConfig(level=logging.INFO)  # or DEBUG, WARNING, ERROR
-```
+# Development
+LOG_LEVEL=DEBUG
 
-### Log Files
-
-Services write to these log files:
-
-- `search_api.log`: Search API logs
-- `webui.log`: Web UI logs
-- `data/jobs/job_*/output.log`: Individual job logs
-
-## Docker Volume Configuration
-
-When using Docker Compose, the following volumes are created:
-
-### Named Volumes
-- `qdrant_storage`: Qdrant vector database storage (persistent)
-
-### Bind Mounts
-- `./data`: Application data (jobs, processed files)
-- `./logs`: Application logs
-- `${DOCUMENT_PATH}`: Your documents directory (read-only)
-
-### Managing Docker Volumes
-
-```bash
-# List volumes
-docker volume ls
-
-# Inspect a volume
-docker volume inspect semantik_qdrant_storage
-
-# Clean up unused volumes
-docker volume prune
-```
-
-## Docker Networking
-
-Services communicate through the Docker network `semantik-network`:
-
-- WebUI → Search API: `http://vecpipe:8000`
-- Services → Qdrant: `qdrant:6333`
-
-To inspect the network:
-```bash
-docker network inspect semantik-network
-```
-
-## Security Configuration
-
-### Authentication
-
-1. **Generate secure JWT secret**:
-   ```bash
-   openssl rand -hex 32
-   ```
-
-2. **Set in .env**:
-   ```bash
-   JWT_SECRET_KEY=your-generated-secret
-   ```
-
-3. **Configure token expiration**:
-   ```bash
-   ACCESS_TOKEN_EXPIRE_MINUTES=1440  # 24 hours
-   ```
-
-### CORS Settings
-
-Configure allowed origins in `webui/main.py`:
-
-```python
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Add your origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-```
-
-## Development Configuration
-
-### Mock Mode
-
-For testing without GPU:
-
-```bash
-# Enable mock embeddings
-USE_MOCK_EMBEDDINGS=true
-
-# Or use CLI flag
-python vecpipe/embed_chunks_unified.py --mock
-```
-
-### Debug Mode
-
-Enable detailed logging:
-
-```bash
-# Set log level to DEBUG
-export LOG_LEVEL=DEBUG
-
-# Enable FastAPI debug mode
-export DEBUG=true
-```
-
-## Production Configuration Examples
-
-### Production Environment File
-
-Here's a complete production `.env` example:
-
-```bash
-# Environment
-ENVIRONMENT=production
+# Production
 LOG_LEVEL=INFO
-DEBUG=false
 
-# Database
-DATABASE_URL=postgresql://semantik:secure-password@postgres-server:5432/semantik_prod
-QDRANT_HOST=qdrant.internal.company.com
-QDRANT_PORT=6333
-QDRANT_API_KEY=your-qdrant-api-key
-QDRANT_USE_TLS=true
-
-# Authentication (CRITICAL - Generate new secrets!)
-JWT_SECRET_KEY=<generate-with-openssl-rand-hex-32>
-JWT_ALGORITHM=HS256
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
-JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
-DISABLE_AUTH=false
-
-# Models and Processing
-DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-4B
-DEFAULT_QUANTIZATION=float16
-MODEL_UNLOAD_AFTER_SECONDS=600
-FORCE_CPU=false
-MAX_WORKERS=8
-BATCH_SIZE=64
-CHUNK_SIZE=512
-CHUNK_OVERLAP=128
-
-# Reranking
-USE_RERANKER=true
-RERANK_CANDIDATE_MULTIPLIER=5
-
-# Storage
-DATA_DIR=/data/semantik/data
-MODELS_DIR=/data/semantik/models
-LOGS_DIR=/var/log/semantik
-DOCUMENTS_DIR=/mnt/documents
-
-# Performance
-CUDA_VISIBLE_DEVICES=0,1
-GPU_MEMORY_FRACTION=0.9
-PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
-
-# Security
-CORS_ALLOWED_ORIGINS=https://semantik.company.com
-CORS_ALLOW_CREDENTIALS=true
-SECURE_HEADERS_ENABLED=true
-
-# Monitoring
-METRICS_ENABLED=true
-METRICS_PORT=9091
+# Troubleshooting
+LOG_LEVEL=DEBUG
+SQLALCHEMY_ECHO=true  # Database query logging
 ```
 
-### Production Docker Compose Override
+### Log Outputs
 
-Create `docker-compose.prod.yml`:
+Services write to these locations:
+- WebUI: `/app/logs/webui.log`
+- Vecpipe: `/app/logs/vecpipe.log`
+- Worker: `/app/logs/worker.log`
+- Operations: `/app/logs/operations/`
+
+## Docker-Specific Configuration
+
+### Volume Configuration
 
 ```yaml
-version: '3.8'
-
-services:
-  qdrant:
-    restart: always
-    deploy:
-      resources:
-        limits:
-          memory: 8G
-        reservations:
-          memory: 4G
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "5"
-
-  vecpipe:
-    image: semantik:latest
-    restart: always
-    deploy:
-      resources:
-        limits:
-          memory: 16G
-        reservations:
-          memory: 8G
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "10"
-
-  webui:
-    image: semantik:latest
-    restart: always
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-        reservations:
-          memory: 2G
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "10"
-
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-    depends_on:
-      - webui
-      - vecpipe
-```
-
-## Performance Tuning Guide
-
-### GPU Memory Optimization
-
-#### Model Selection by GPU Memory
-```bash
-# 6GB GPU (RTX 3060, RTX 2060)
-DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
-DEFAULT_QUANTIZATION=float16
-BATCH_SIZE=32
-
-# 8-12GB GPU (RTX 3070, RTX 4060)
-DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
-DEFAULT_QUANTIZATION=float16
-BATCH_SIZE=64
-
-# 16-24GB GPU (RTX 4080, RTX 4090)
-DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-4B
-DEFAULT_QUANTIZATION=float16
-BATCH_SIZE=128
-
-# Multi-GPU Setup
-CUDA_VISIBLE_DEVICES=0,1  # Use multiple GPUs
-```
-
-#### Memory Management Strategies
-
-```bash
-# Conservative Memory Settings
-MODEL_UNLOAD_AFTER_SECONDS=60      # Aggressive unloading
-GPU_MEMORY_FRACTION=0.8            # Leave headroom
-PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:256
-
-# Maximum Performance Settings
-MODEL_UNLOAD_AFTER_SECONDS=3600    # Keep models loaded
-GPU_MEMORY_FRACTION=0.95           # Use most memory
-PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:1024
-```
-
-### CPU Optimization
-
-For CPU-only deployments:
-
-```bash
-# CPU Settings
-FORCE_CPU=true
-USE_MOCK_EMBEDDINGS=false  # Use real models on CPU
-DEFAULT_QUANTIZATION=int8  # Smallest size
-BATCH_SIZE=8               # Small batches
-MAX_WORKERS=16             # More parallel workers
-
-# Use CPU-optimized models
-DEFAULT_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
-```
-
-### Storage Performance
-
-#### SSD vs HDD Configuration
-```bash
-# SSD (fast storage)
-BATCH_SIZE=128             # Larger batches
-MAX_WORKERS=8              # More parallelism
-
-# HDD (slow storage)
-BATCH_SIZE=32              # Smaller batches
-MAX_WORKERS=4              # Less parallelism
-```
-
-#### Qdrant Performance Tuning
-```yaml
-# qdrant_config.yaml
-service:
-  max_request_size_mb: 512
-  max_workers: 0  # Use all CPU cores
-
-storage:
-  # Storage options
-  storage_path: ./storage
-  # Performance options
-  on_disk_payload: false  # Keep payloads in memory
+volumes:
+  # Named volumes (persistent)
+  - postgres_data:/var/lib/postgresql/data
+  - qdrant_storage:/qdrant/storage
+  - redis_data:/data
   
-  # HNSW index config
-  hnsw_index:
-    # Higher = better recall, slower
-    m: 16
-    # Higher = better quality, slower indexing
-    ef_construct: 200
-    # Higher = slower building, faster search
-    full_scan_threshold: 20000
-
-  # Optimization
-  optimizers_config:
-    # Segment optimization
-    default_segment_number: 8
-    indexing_threshold: 20000
+  # Bind mounts (host directories)
+  - ./data:/app/data
+  - ./models:/app/.cache/huggingface
+  - ./logs:/app/logs
+  - ${DOCUMENT_PATH}:/mnt/docs:ro
 ```
 
-### Network Optimization
+### Network Configuration
 
+Services communicate via Docker network:
+- WebUI → Vecpipe: `http://vecpipe:8000`
+- Services → PostgreSQL: `postgres:5432`
+- Services → Qdrant: `qdrant:6333`
+- Services → Redis: `redis:6379`
+
+## Migration from Legacy Configuration
+
+If migrating from the old job-based system:
+
+### Path Updates
 ```bash
-# For high-latency networks
-REQUEST_TIMEOUT=120        # Longer timeouts
-CONNECTION_POOL_SIZE=100   # More connections
+# Old (job-based)
+EXTRACT_DIR=/app/jobs/extract
+INGEST_DIR=/app/jobs/ingest
 
-# For low-latency networks
-REQUEST_TIMEOUT=30         # Shorter timeouts
-CONNECTION_POOL_SIZE=20    # Fewer connections
+# New (operation-based)
+EXTRACT_DIR=/app/operations/extract
+INGEST_DIR=/app/operations/ingest
 ```
 
-## Security Hardening Guide
-
-### Authentication Security
-
+### Database Migration
 ```bash
-# Generate secure keys
-JWT_SECRET_KEY=$(openssl rand -hex 64)  # 512-bit key
-DATABASE_ENCRYPTION_KEY=$(openssl rand -hex 32)
-
-# Strict token settings
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES=15  # Short-lived access
-JWT_REFRESH_TOKEN_EXPIRE_DAYS=7     # Reasonable refresh
-JWT_ALGORITHM=HS512                  # Stronger algorithm
+# Run migrations after updating configuration
+docker compose run --rm webui alembic upgrade head
 ```
 
-### Network Security
+## Troubleshooting Configuration
 
-#### Nginx SSL Configuration
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name semantik.company.com;
-    
-    # SSL Configuration
-    ssl_certificate /etc/letsencrypt/live/semantik.company.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/semantik.company.com/privkey.pem;
-    
-    # Modern SSL settings
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
-    ssl_prefer_server_ciphers off;
-    
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Strict-Transport-Security "max-age=31536000" always;
-    
-    # Rate limiting
-    limit_req_zone $binary_remote_addr zone=api:10m rate=100r/s;
-    limit_req zone=api burst=20 nodelay;
-    
-    location / {
-        proxy_pass http://webui:8080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-### Container Security
-
-```yaml
-# docker-compose.security.yml
-services:
-  webui:
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
-    read_only: true
-    tmpfs:
-      - /tmp
-      - /app/uploads
-```
-
-### File System Security
-
-```bash
-# Restrict file permissions
-chmod 600 .env
-chmod 700 data/
-chmod 755 logs/
-
-# Create dedicated user
-useradd -r -s /bin/false semantik
-chown -R semantik:semantik /app
-```
-
-### Environment Variable Security
-
-```bash
-# Use Docker secrets for sensitive data
-echo "$JWT_SECRET_KEY" | docker secret create jwt_secret -
-
-# Reference in docker-compose.yml
-services:
-  webui:
-    secrets:
-      - jwt_secret
-    environment:
-      JWT_SECRET_KEY_FILE: /run/secrets/jwt_secret
-```
-
-## Monitoring and Alerting
-
-### Prometheus Configuration
-
-```yaml
-# prometheus.yml
-global:
-  scrape_interval: 15s
-
-scrape_configs:
-  - job_name: 'semantik'
-    static_configs:
-      - targets: 
-        - 'webui:9091'
-        - 'vecpipe:9091'
-    metrics_path: '/metrics'
-```
-
-### Grafana Dashboard
-
-Import dashboard with key metrics:
-- Search latency (p50, p95, p99)
-- Embedding generation rate
-- GPU memory usage
-- Model load/unload frequency
-- Error rates by endpoint
-- Active WebSocket connections
-
-### Health Check Configuration
-
-```bash
-# Advanced health checks
-HEALTH_CHECK_ENABLED=true
-HEALTH_CHECK_INTERVAL=30
-HEALTH_CHECK_TIMEOUT=5
-HEALTH_CHECK_RETRIES=3
-
-# Custom health check endpoints
-HEALTH_CHECK_SEARCH_ENABLED=true    # Test search functionality
-HEALTH_CHECK_EMBEDDING_ENABLED=true  # Test embedding generation
-HEALTH_CHECK_QDRANT_ENABLED=true    # Test Qdrant connection
-```
-
-### Log Aggregation
-
-```yaml
-# docker-compose with logging
-services:
-  webui:
-    logging:
-      driver: "syslog"
-      options:
-        syslog-address: "tcp://logstash.company.com:5514"
-        syslog-format: "rfc5424"
-        tag: "semantik-webui"
-```
-
-## Backup and Recovery
-
-### Automated Backups
-
-```bash
-#!/bin/bash
-# backup.sh
-BACKUP_DIR="/backups/semantik/$(date +%Y%m%d_%H%M%S)"
-mkdir -p "$BACKUP_DIR"
-
-# Backup PostgreSQL database
-pg_dump -h $POSTGRES_HOST -U $POSTGRES_USER -d $POSTGRES_DB -f "$BACKUP_DIR/semantik.sql"
-# Or using DATABASE_URL:
-# pg_dump $DATABASE_URL -f "$BACKUP_DIR/semantik.sql"
-
-# Backup Qdrant
-curl -X POST "http://qdrant:6333/snapshots" \
-  -H "api-key: $QDRANT_API_KEY" \
-  -d '{"wait": true}'
-
-# Backup configuration
-cp .env "$BACKUP_DIR/"
-cp docker-compose*.yml "$BACKUP_DIR/"
-
-# Compress and encrypt
-tar czf - "$BACKUP_DIR" | \
-  openssl enc -aes-256-cbc -salt -pass pass:$BACKUP_PASSWORD \
-  > "$BACKUP_DIR.tar.gz.enc"
-
-# Upload to S3 (optional)
-aws s3 cp "$BACKUP_DIR.tar.gz.enc" s3://backups/semantik/
-```
-
-### Recovery Procedure
-
-```bash
-# Restore from backup
-openssl enc -d -aes-256-cbc -pass pass:$BACKUP_PASSWORD \
-  -in backup.tar.gz.enc | tar xzf -
-
-# Restore PostgreSQL database
-psql -h $POSTGRES_HOST -U $POSTGRES_USER -d $POSTGRES_DB < backup/semantik.sql
-# Or using DATABASE_URL:
-# psql $DATABASE_URL < backup/semantik.sql
-
-# Restore Qdrant snapshot
-curl -X PUT "http://qdrant:6333/collections/work_docs/snapshots/upload" \
-  -H "api-key: $QDRANT_API_KEY" \
-  -F "snapshot=@backup/qdrant_snapshot.tar"
-```
-
-## Troubleshooting Configuration Issues
-
-### Common Problems and Solutions
+### Common Issues
 
 1. **JWT Secret Not Set**
    ```bash
@@ -894,28 +461,66 @@ curl -X PUT "http://qdrant:6333/collections/work_docs/snapshots/upload" \
    export JWT_SECRET_KEY=$(openssl rand -hex 32)
    ```
 
-2. **Qdrant Connection Failed**
+2. **Database Connection Failed**
    ```bash
-   # Check Qdrant is running
-   docker compose ps qdrant
+   # Check PostgreSQL is running
+   docker compose ps postgres
    
-   # Test connection
-   curl http://localhost:6333/health
+   # Verify connection string
+   echo $DATABASE_URL
    ```
 
 3. **GPU Not Available**
    ```bash
-   # Check CUDA setup
+   # Check CUDA configuration
    nvidia-smi
    docker run --rm --gpus all nvidia/cuda:11.8.0-base nvidia-smi
    ```
 
-4. **Out of Memory**
+4. **Model Download Issues**
    ```bash
-   # Reduce memory usage
-   DEFAULT_QUANTIZATION=int8
-   BATCH_SIZE=16
-   MODEL_UNLOAD_AFTER_SECONDS=60
+   # Enable offline mode after download
+   HF_HUB_OFFLINE=true
+   
+   # Check cache directory
+   ls -la ./models
    ```
 
-For more troubleshooting tips, see the main [README.md](../README.md#troubleshooting-common-issues).
+### Debug Configuration
+
+```bash
+# Enable all debug options
+ENVIRONMENT=development
+LOG_LEVEL=DEBUG
+DEBUG=true
+SQLALCHEMY_ECHO=true
+```
+
+## Configuration Best Practices
+
+1. **Use Environment Files**
+   - Keep `.env` files out of version control
+   - Use `.env.example` as templates
+   - Store secrets securely
+
+2. **Resource Limits**
+   - Set appropriate batch sizes for your hardware
+   - Configure connection pools based on load
+   - Monitor memory usage
+
+3. **Security**
+   - Always change default passwords
+   - Use strong JWT secrets
+   - Enable HTTPS in production
+   - Restrict CORS origins
+
+4. **Performance**
+   - Use GPU when available
+   - Enable quantization for memory savings
+   - Configure appropriate worker counts
+   - Use SSD for model cache
+
+For more detailed information, see:
+- [DOCKER.md](./DOCKER.md) for Docker-specific configuration
+- [DEPLOYMENT.md](./DEPLOYMENT.md) for production settings
+- [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) for architecture details

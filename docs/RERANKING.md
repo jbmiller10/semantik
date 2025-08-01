@@ -4,6 +4,13 @@
 
 Semantik implements a sophisticated two-stage retrieval system that combines fast vector search with accurate cross-encoder reranking. This approach delivers significantly improved search relevance (20%+ improvement in metrics) while maintaining reasonable latency.
 
+**Key Benefits**:
+- Improved search relevance by 20-30% on average
+- Better handling of complex, nuanced queries
+- Automatic model selection based on collection configuration
+- Memory-aware loading prevents system instability
+- Graceful fallback to vector-only search on errors
+
 ## How Reranking Works
 
 ### Two-Stage Retrieval Process
@@ -11,11 +18,18 @@ Semantik implements a sophisticated two-stage retrieval system that combines fas
 ```mermaid
 graph LR
     A[User Query] --> B[Stage 1: Vector Search]
-    B --> C[Retrieve k*5 Candidates]
+    B --> C[Retrieve k*multiplier Candidates]
     C --> D[Stage 2: Cross-Encoder]
     D --> E[Rerank & Score]
     E --> F[Return Top k Results]
 ```
+
+**Process Flow**:
+1. User submits query with `use_reranker=true`
+2. System retrieves more candidates than requested (configurable multiplier)
+3. Cross-encoder scores each query-document pair
+4. Results are reordered by relevance scores
+5. Top k results returned to user
 
 #### Stage 1: Fast Vector Retrieval
 - Uses the same embedding model that indexed the documents
@@ -61,11 +75,11 @@ Qwen/Qwen3-Embedding-8B  → Qwen/Qwen3-Reranker-8B
 
 ### Model Characteristics
 
-| Model | Parameters | Memory (float16) | Memory (int8) | Batch Size | Speed |
-|-------|------------|------------------|---------------|------------|-------|
-| Qwen3-Reranker-0.6B | 0.6B | ~1.2GB | ~600MB | 64-256 | Fast |
-| Qwen3-Reranker-4B | 4B | ~8GB | ~4GB | 16-64 | Medium |
-| Qwen3-Reranker-8B | 8B | ~16GB | ~8GB | 8-32 | Slow |
+| Model | Parameters | Memory (float16) | Memory (int8) | Batch Size | Speed | Use Case |
+|-------|------------|------------------|---------------|------------|-------|----------|
+| Qwen3-Reranker-0.6B | 0.6B | ~1.2GB | ~600MB | 64-256 | Fast | General search, real-time applications |
+| Qwen3-Reranker-4B | 4B | ~8GB | ~4GB | 16-64 | Medium | Complex queries, knowledge work |
+| Qwen3-Reranker-8B | 8B | ~16GB | ~8GB | 8-32 | Slow | Research, legal, medical domains |
 
 ### Selection Logic
 
@@ -190,10 +204,16 @@ Batch sizes are automatically configured based on model and quantization:
 The reranker uses a specific format for optimal performance:
 
 ```
-<Instruct>: Given the query and document, determine if the document is relevant to the query.
+<Instruct>: {instruction}
 <Query>: {user_query}
 <Document>: {document_content}
 ```
+
+**Format Requirements**:
+- Instructions are task-specific (see templates below)
+- Query is the user's search query
+- Document is the full text content of the chunk
+- Format mimics Qwen3's training data for best results
 
 ### Instruction Templates
 
@@ -210,10 +230,25 @@ INSTRUCTION_TEMPLATES = {
 
 ### Score Computation
 
-The reranker outputs probabilities for "yes" and "no" tokens:
-- **Score** = P(yes|query,document)
-- **Range**: 0.0 to 1.0
-- **Higher is better**: More relevant documents score higher
+The reranker uses a unique scoring mechanism based on token probabilities:
+
+```python
+# Extract logits for "Yes" and "No" tokens
+last_token_logits = model_output.logits[:, -1, :]
+yes_logits = last_token_logits[:, yes_token_id]
+no_logits = last_token_logits[:, no_token_id]
+
+# Compute probability using softmax
+yes_no_logits = torch.stack([no_logits, yes_logits], dim=1)
+probs = torch.nn.functional.softmax(yes_no_logits, dim=1)
+relevance_score = probs[:, 1]  # P(yes)
+```
+
+**Score Properties**:
+- **Range**: 0.0 to 1.0 (probability)
+- **Interpretation**: Higher = more relevant
+- **Calibration**: Well-calibrated probabilities
+- **Comparison**: Scores comparable across queries
 
 ### Error Handling
 
@@ -401,6 +436,41 @@ results_b = search(query, use_reranker=True)
 # Compare relevance metrics
 ```
 
+## Recent Optimizations
+
+### Flash Attention Support
+
+The reranker automatically detects and uses Flash Attention when available:
+```python
+# Automatic detection in reranker.py
+if importlib.util.find_spec("flash_attn") is not None:
+    logger.info("Flash Attention detected and will be used")
+```
+
+**Benefits**:
+- 2-3x faster inference for long documents
+- Reduced memory usage
+- Better handling of max sequence length
+
+### Collection-Specific Configuration
+
+Reranking now integrates with collection metadata:
+```python
+# Automatic configuration from collection
+metadata = get_collection_metadata(client, collection_name)
+if metadata:
+    embedding_model = metadata["model_name"]
+    reranker_model = get_reranker_for_embedding_model(embedding_model)
+```
+
+### Performance Monitoring
+
+New metrics track reranking performance:
+- `reranking_time_ms`: Time spent in reranking
+- `reranker_model`: Model used for reranking
+- `candidates_retrieved`: Number of candidates fetched
+- `memory_fallback_count`: Times fallen back due to memory
+
 ## Conclusion
 
 Cross-encoder reranking significantly improves search relevance in Semantik by combining the speed of vector search with the accuracy of cross-encoder models. With proper configuration and model selection, you can achieve excellent search quality while maintaining acceptable performance for your use case.
@@ -410,8 +480,56 @@ Key takeaways:
 - Automatic model selection simplifies configuration
 - Memory management prevents system instability
 - Graceful fallbacks ensure reliability
+- Collection-aware configuration maintains consistency
+- Performance monitoring enables optimization
 
-For implementation details, see the source code in:
-- `packages/vecpipe/search_api.py`
-- `packages/webui/qwen3_search_config.py`
-- `packages/webui/embedding_service.py`
+## Implementation Architecture
+
+### Core Components
+
+1. **CrossEncoderReranker** (`packages/vecpipe/reranker.py`):
+   - Manages model lifecycle (loading/unloading)
+   - Handles batch processing for efficiency
+   - Implements Qwen3-specific scoring logic
+   - Thread-safe model management
+
+2. **ModelManager** (`packages/vecpipe/model_manager.py`):
+   - Coordinates embedding and reranker models
+   - Implements memory-aware loading
+   - Handles automatic unloading after inactivity
+   - Provides unified interface for all models
+
+3. **Search API Integration** (`packages/vecpipe/search_api.py`):
+   - Seamless reranking in search endpoints
+   - Automatic candidate retrieval adjustment
+   - Performance metrics collection
+   - Error handling and fallbacks
+
+### Memory Management Strategy
+
+```python
+# Memory check before loading
+available_memory = get_available_gpu_memory()
+required_memory = estimate_model_memory(model_name, quantization)
+
+if available_memory < required_memory * 1.2:  # 20% buffer
+    raise InsufficientMemoryError(
+        f"Need {required_memory}MB, only {available_memory}MB available"
+    )
+```
+
+### Thread Safety
+
+The reranker uses thread locks to ensure safe concurrent access:
+```python
+with self._lock:
+    if self.model is None:
+        self.load_model()
+    scores = self.compute_scores(...)
+```
+
+For detailed implementation, see the source code in:
+- `packages/vecpipe/reranker.py` - Core reranking logic
+- `packages/vecpipe/search_api.py` - API integration
+- `packages/vecpipe/qwen3_search_config.py` - Model configuration
+- `packages/vecpipe/memory_utils.py` - Memory management

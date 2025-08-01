@@ -3,14 +3,14 @@
 ## Table of Contents
 
 1. [Infrastructure Overview](#infrastructure-overview)
-2. [Development Environment](#development-environment)
-3. [Testing Framework](#testing-framework)
-4. [Build System](#build-system)
-5. [Service Management](#service-management)
-6. [Deployment Architecture](#deployment-architecture)
-7. [Monitoring and Logging](#monitoring-and-logging)
-8. [Development Scripts](#development-scripts)
-9. [Configuration Management](#configuration-management)
+2. [Service Architecture](#service-architecture)
+3. [Development Environment](#development-environment)
+4. [Docker Infrastructure](#docker-infrastructure)
+5. [Testing Framework](#testing-framework)
+6. [Build System](#build-system)
+7. [Service Management](#service-management)
+8. [Networking](#networking)
+9. [Monitoring and Logging](#monitoring-and-logging)
 10. [Security & Operations](#security--operations)
 11. [CI/CD Pipeline](#cicd-pipeline)
 12. [Troubleshooting Guide](#troubleshooting-guide)
@@ -24,127 +24,273 @@
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Document Sources                          │
-│                    (/mnt/docs, /var/embeddings)                   │
+│                    (/mnt/docs, ${DOCUMENT_PATH})                  │
 └─────────────────────────────────────────────────────────────────┘
                                    │
                                    ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Semantik Engine                            │
+│                      Semantik Services                            │
 │  ┌─────────────┐  ┌─────────────┐  ┌──────────────────────┐     │
-│  │   Extract   │──│   Embed     │──│   Ingest to Qdrant   │     │
-│  │   Chunks    │  │   Service   │  │                      │     │
+│  │   WebUI     │  │  Vecpipe    │  │   Celery Worker      │     │
+│  │  Port 8080  │  │  Port 8000  │  │   Background Tasks   │     │
 │  └─────────────┘  └─────────────┘  └──────────────────────┘     │
 └─────────────────────────────────────────────────────────────────┘
                                    │
                                    ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Search API (Port 8000)                       │
-│                    FastAPI Search Service                         │
-└─────────────────────────────────────────────────────────────────┘
-                                   │
-                                   ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      WebUI (Port 8080)                            │
-│         ┌────────────────┐    ┌─────────────────────┐           │
-│         │  React Frontend │    │   FastAPI Backend   │           │
-│         │  (Port 5173)    │    │   (Auth, Jobs API)  │           │
-│         └────────────────┘    └─────────────────────┘           │
+│                        Data Layer                                 │
+│  ┌────────────┐  ┌──────────────┐  ┌──────────────────────┐     │
+│  │ PostgreSQL │  │    Qdrant    │  │      Redis         │     │
+│  │ Port 5432  │  │  Port 6333   │  │    Port 6379       │     │
+│  └────────────┘  └──────────────┘  └──────────────────────┘     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ### System Requirements
 
-- **Operating System**: Linux (Ubuntu 20.04+ recommended)
-- **Python**: 3.12+
+- **Operating System**: Linux (Ubuntu 20.04+ recommended), macOS, Windows (WSL2)
+- **Docker**: 20.10+ with Docker Compose 2.0+
+- **Python**: 3.12+ (for local development)
 - **Node.js**: 18.0+ (for frontend development)
 - **GPU**: NVIDIA GPU with CUDA support (optional but recommended)
 - **RAM**: Minimum 16GB, 32GB+ recommended
 - **Storage**: SSD with at least 100GB free space
 
+---
+
+## Service Architecture
+
+### Core Services
+
+#### 1. **WebUI** (Port 8080)
+- **Purpose**: Web interface and REST API
+- **Technology**: FastAPI, React
+- **Responsibilities**:
+  - User authentication and authorization
+  - Collection management
+  - Operation orchestration
+  - WebSocket connections for real-time updates
+  - Search API proxy
+
+#### 2. **Vecpipe** (Port 8000)
+- **Purpose**: Search and embedding service
+- **Technology**: FastAPI, PyTorch
+- **Responsibilities**:
+  - Document embedding generation
+  - Semantic search operations
+  - Model management
+  - Vector operations with Qdrant
+
+#### 3. **Worker** (No exposed port)
+- **Purpose**: Background task processing
+- **Technology**: Celery
+- **Responsibilities**:
+  - Document indexing
+  - Collection reindexing
+  - Asynchronous operations
+  - File processing
+
+#### 4. **Flower** (Port 5555)
+- **Purpose**: Task monitoring dashboard
+- **Technology**: Flower (Celery monitoring)
+- **Profile**: backend
+- **Access**: http://localhost:5555 (admin:admin)
+
+### Data Layer Services
+
+#### 1. **PostgreSQL** (Port 5432)
+- **Purpose**: Relational database
+- **Version**: 16-alpine
+- **Data**: Users, collections, operations, metadata
+
+#### 2. **Qdrant** (Port 6333, 6334)
+- **Purpose**: Vector database
+- **Ports**: 6333 (HTTP), 6334 (gRPC)
+- **Data**: Document embeddings, vector indices
+
+#### 3. **Redis** (Port 6379)
+- **Purpose**: Message broker and cache
+- **Version**: 7-alpine
+- **Usage**: Celery task queue, WebSocket pub/sub
+
 ### Service Dependencies
 
-- **Qdrant**: Vector database (v1.9.0+)
-- **PostgreSQL**: Required for data persistence (users, jobs, collections)
-- **Redis**: Optional for caching and rate limiting
-- **Prometheus**: Metrics collection (optional)
+```mermaid
+graph TB
+    subgraph "Frontend"
+        A[React App<br/>Port 5173]
+    end
+    
+    subgraph "Backend Services"
+        B[WebUI<br/>Port 8080]
+        C[Vecpipe<br/>Port 8000]
+        D[Worker<br/>Celery]
+        E[Flower<br/>Port 5555]
+    end
+    
+    subgraph "Data Layer"
+        F[PostgreSQL<br/>Port 5432]
+        G[Qdrant<br/>Port 6333]
+        H[Redis<br/>Port 6379]
+    end
+    
+    A -->|API Calls| B
+    B -->|Search Proxy| C
+    B -->|Task Queue| H
+    B -->|User Data| F
+    C -->|Vectors| G
+    D -->|Task Queue| H
+    D -->|Vectors| G
+    D -->|Metadata| F
+    E -->|Monitor| H
+```
 
 ---
 
 ## Development Environment
 
-### Poetry Configuration
-
-The project uses Poetry for Python dependency management. Configuration is defined in `pyproject.toml`:
-
-```toml
-[tool.poetry]
-name = "document-embedding-system"
-version = "2.0.0"
-packages = [{include = "vecpipe", from = "packages"}, {include = "webui", from = "packages"}]
-
-[tool.poetry.dependencies]
-python = "^3.12"
-qdrant-client = "^1.9.0"
-sentence-transformers = "^2.5.1"
-fastapi = "^0.110.0"
-uvicorn = "^0.27.1"
-# ... additional dependencies
-```
-
 ### Package Structure
 
 ```
-packages/
-├── vecpipe/              # Core embedding engine
-│   ├── extract_chunks.py # Document parsing
-│   ├── embedding_service.py # Embedding generation
-│   ├── search_api.py     # Search API service
-│   └── config.py         # Configuration
-├── webui/                # Web interface
-│   ├── main.py          # FastAPI app
-│   ├── api/             # API routers
-│   ├── database.py      # Database connection management
-│   └── static/          # Frontend assets
+semantik/
+├── packages/
+│   ├── shared/              # Shared library
+│   │   ├── database/        # Database models and connections
+│   │   ├── config/          # Configuration management
+│   │   └── utils/           # Shared utilities
+│   ├── vecpipe/             # Search and embedding service
+│   │   ├── search_api.py    # FastAPI search service
+│   │   ├── embedding/       # Embedding generation
+│   │   └── models/          # Model management
+│   └── webui/               # Web interface backend
+│       ├── main.py          # FastAPI application
+│       ├── api/             # API routers
+│       ├── services/        # Business logic
+│       ├── repositories/    # Data access layer
+│       └── tasks.py         # Celery tasks
+├── apps/
+│   └── webui-react/         # React frontend
+│       ├── src/
+│       │   ├── components/  # React components
+│       │   ├── stores/      # Zustand state management
+│       │   ├── services/    # API clients
+│       │   └── pages/       # Page components
+│       └── package.json
+├── docker-compose.yml       # Main Docker configuration
+├── Dockerfile              # Multi-stage Dockerfile
+├── pyproject.toml          # Python dependencies
+└── Makefile                # Development commands
+```
+
+### Poetry Configuration
+
+```toml
+[tool.poetry]
+name = "semantik"
+version = "2.0.0"
+packages = [
+    {include = "shared", from = "packages"},
+    {include = "vecpipe", from = "packages"},
+    {include = "webui", from = "packages"}
+]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.110.0"
+uvicorn = "^0.27.1"
+sqlalchemy = "^2.0.25"
+asyncpg = "^0.29.0"
+qdrant-client = "^1.9.0"
+celery = {extras = ["redis"], version = "^5.3.4"}
+redis = "^5.0.1"
+transformers = "^4.36.2"
+torch = "^2.1.2"
 ```
 
 ### Development Dependencies
 
-Key development tools:
 - **Black**: Code formatting
 - **Ruff**: Fast Python linter
 - **Mypy**: Static type checking
 - **Pytest**: Testing framework
 - **Coverage**: Test coverage reporting
 
-### Make Commands
+---
 
-The `Makefile` provides convenient development commands:
+## Docker Infrastructure
 
-```bash
-# Installation
-make install         # Install production dependencies
-make dev-install     # Install development dependencies
+### Docker Compose Services
 
-# Code Quality
-make format          # Format code with Black and isort
-make lint           # Run Ruff linter
-make type-check     # Run Mypy type checking
-make check          # Run all checks (lint, type-check, test)
-
-# Testing
-make test           # Run all tests
-make test-coverage  # Run tests with coverage report
-
-# Frontend Development
-make frontend-install  # Install frontend dependencies
-make frontend-build   # Build frontend for production
-make frontend-dev     # Start frontend dev server
-make frontend-test    # Run frontend tests
-
-# Development
-make dev            # Start development environment
-make clean          # Clean generated files
+```yaml
+services:
+  # Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports: ["6333:6333", "6334:6334"]
+    volumes: ["qdrant_storage:/qdrant/storage"]
+    
+  # Relational Database
+  postgres:
+    image: postgres:16-alpine
+    ports: ["5432:5432"]
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    
+  # Message Broker
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    volumes: ["redis_data:/data"]
+    
+  # Search API
+  vecpipe:
+    build: .
+    ports: ["8000:8000"]
+    depends_on: [postgres, qdrant, redis]
+    
+  # Web Interface
+  webui:
+    build: .
+    ports: ["8080:8080"]
+    depends_on: [postgres, vecpipe, redis]
+    
+  # Background Worker
+  worker:
+    build: .
+    profiles: ["backend"]
+    depends_on: [postgres, redis, qdrant]
+    
+  # Task Monitor
+  flower:
+    build: .
+    ports: ["5555:5555"]
+    profiles: ["backend"]
+    depends_on: [redis]
 ```
+
+### Volume Management
+
+#### Named Volumes
+- `qdrant_storage`: Vector database persistence
+- `postgres_data`: PostgreSQL database files
+- `redis_data`: Redis persistence (AOF enabled)
+
+#### Bind Mounts
+- `./data`: Application data and operations
+- `./models`: HuggingFace model cache
+- `./logs`: Service logs
+- `${DOCUMENT_PATH}`: User documents (read-only)
+
+### Docker Profiles
+
+1. **Default Profile**: Core services only
+   ```bash
+   docker compose up -d
+   ```
+
+2. **Backend Profile**: Includes Worker and Flower
+   ```bash
+   docker compose --profile backend up -d
+   ```
 
 ---
 
@@ -154,257 +300,214 @@ make clean          # Clean generated files
 
 ```
 tests/
-├── conftest.py           # Shared fixtures and configuration
-├── test_auth.py         # Authentication tests
-├── test_document_api.py # Document API tests
-├── test_search.py       # Search functionality tests
-├── test_metrics.py      # Metrics collection tests
-└── debug/              # Debug utilities
-    ├── debug_metrics.py
-    └── update_metrics_loop.py
+├── unit/                    # Unit tests
+│   ├── test_models.py
+│   ├── test_services.py
+│   └── test_repositories.py
+├── integration/             # Integration tests
+│   ├── test_search_api.py
+│   ├── test_websockets.py
+│   └── test_celery_tasks.py
+├── e2e/                     # End-to-end tests
+│   ├── test_collection_flow.py
+│   └── test_search_flow.py
+├── conftest.py              # Shared fixtures
+└── docker-compose.test.yml  # Test infrastructure
 ```
 
-### Key Test Fixtures (conftest.py)
+### Key Test Fixtures
 
 ```python
 @pytest.fixture
-def test_client(test_user):
-    """FastAPI test client with authentication"""
+async def test_db():
+    """Test database session"""
     
 @pytest.fixture
-def mock_qdrant_client():
-    """Mock Qdrant client for testing"""
+def test_client():
+    """FastAPI test client with auth"""
     
 @pytest.fixture
-def mock_embedding_service():
-    """Mock embedding service"""
-```
-
-### Mock Mode Testing
-
-The system supports testing without GPU through mock embeddings:
-
-```bash
-# Enable mock mode for testing
-export USE_MOCK_EMBEDDINGS=true
-```
-
-### Coverage Configuration
-
-```toml
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "-v --cov=packages.vecpipe --cov=packages.webui --cov-report=html --cov-report=term"
+def mock_qdrant():
+    """Mock Qdrant client"""
+    
+@pytest.fixture
+def celery_worker():
+    """Test Celery worker"""
 ```
 
 ### Running Tests
 
 ```bash
 # Run all tests
-poetry run pytest
+make test
 
 # Run with coverage
-poetry run pytest --cov
+make test-coverage
 
-# Run specific test file
-poetry run pytest tests/test_search.py
+# Run specific test category
+poetry run pytest tests/unit -v
+poetry run pytest tests/integration -v
+poetry run pytest tests/e2e -v
 
-# Run with verbose output
-poetry run pytest -v
+# Run frontend tests
+make frontend-test
 ```
 
 ---
 
 ## Build System
 
-### Frontend Build Process
+### Docker Build Process
 
-The `scripts/build.sh` script handles the frontend build:
+The `Dockerfile` uses a multi-stage build:
+
+```dockerfile
+# Stage 1: Dependencies
+FROM python:3.12-slim as dependencies
+WORKDIR /app
+COPY pyproject.toml poetry.lock ./
+RUN pip install poetry && poetry export -f requirements.txt > requirements.txt
+
+# Stage 2: Builder
+FROM python:3.12-slim as builder
+COPY --from=dependencies /app/requirements.txt .
+RUN pip install --user -r requirements.txt
+
+# Stage 3: Runtime
+FROM python:3.12-slim as runtime
+COPY --from=builder /root/.local /root/.local
+COPY packages/ /app/packages/
+ENV PATH=/root/.local/bin:$PATH
+```
+
+### Frontend Build
 
 ```bash
-#!/bin/bash
-# Build React frontend
+# Development build
 cd apps/webui-react
 npm install
+npm run dev
+
+# Production build
 npm run build
-# Assets are output to packages/webui/static/
+# Output: packages/webui/static/
 ```
 
-### Build Manifest Generation
-
-The `scripts/build_manifest.sh` creates file lists for processing:
+### Make Commands
 
 ```bash
-#!/bin/bash
-# Configuration
-ROOTS=(
-    "/mnt/zfs/docs/dirA"
-    "/mnt/zfs/docs/dirB" 
-    "/mnt/zfs/docs/dirC"
-)
-OUTPUT_FILE="/var/embeddings/filelist.null"
+# Docker commands
+make wizard              # Interactive setup wizard
+make docker-up          # Start all services
+make docker-down        # Stop services
+make docker-logs        # View logs
+make docker-build-fresh # Rebuild without cache
 
-# Find eligible files (PDF, DOCX, TXT, etc.)
-find "${ROOTS[@]}" -type f \
-    \( -iname '*.pdf' -o -iname '*.docx' -o -iname '*.txt' \) \
-    -print0 > "$OUTPUT_FILE"
-```
+# Development commands
+make dev-install        # Install dependencies
+make format            # Format code
+make lint              # Run linters
+make test              # Run tests
+make check             # Run all checks
 
-### Python Package Building
-
-```bash
-# Build Python packages
-poetry build
-
-# Output:
-# dist/
-#   document_embedding_system-2.0.0.tar.gz
-#   document_embedding_system-2.0.0-py3-none-any.whl
+# Frontend commands
+make frontend-install   # Install frontend deps
+make frontend-build    # Build frontend
+make frontend-dev      # Start dev server
+make frontend-test     # Run frontend tests
 ```
 
 ---
 
 ## Service Management
 
-### Service Start Script (`start_all_services.sh`)
+### Health Checks
 
-```bash
-#!/bin/bash
-# Check if ports are available
-lsof -Pi :8000 -sTCP:LISTEN -t >/dev/null && exit 1
-lsof -Pi :8080 -sTCP:LISTEN -t >/dev/null && exit 1
+All services include health checks:
 
-# Start Search API
-poetry run python -m packages.vecpipe.search_api > search_api.log 2>&1 &
-SEARCH_PID=$!
-
-# Start WebUI
-poetry run uvicorn packages.webui.app:app --host 0.0.0.0 --port 8080 > webui.log 2>&1 &
-WEBUI_PID=$!
-
-# Save PIDs for shutdown
-echo $SEARCH_PID > .search_api.pid
-echo $WEBUI_PID > .webui.pid
+```yaml
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:8080/api/health/readyz"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 60s
 ```
 
-### Service Stop Script (`stop_all_services.sh`)
-
-```bash
-#!/bin/bash
-# Stop services by PID files
-stop_service "Search API" ".search_api.pid"
-stop_service "WebUI" ".webui.pid"
-
-# Also check ports
-kill $(lsof -t -i:8000 -sTCP:LISTEN) 2>/dev/null
-kill $(lsof -t -i:8080 -sTCP:LISTEN) 2>/dev/null
-```
-
-### Service Status Check (`status_services.sh`)
-
-```bash
-#!/bin/bash
-# Check service status
-check_service "Search API (port 8000)" 8000 ".search_api.pid"
-check_service "WebUI (port 8080)" 8080 ".webui.pid"
-
-# Display logs if available
-[ -f "search_api.log" ] && echo "Search API log: $(wc -l < search_api.log) lines"
-[ -f "webui.log" ] && echo "WebUI log: $(wc -l < webui.log) lines"
-```
+#### Health Endpoints
+- WebUI: `http://localhost:8080/api/health/readyz`
+- Vecpipe: `http://localhost:8000/health`
+- Qdrant: `http://localhost:6333/health`
+- PostgreSQL: `pg_isready` command
+- Redis: `redis-cli ping`
 
 ### Service Orchestration
 
-Services are started in order with health checks:
+Services start in dependency order:
+1. Data layer (PostgreSQL, Qdrant, Redis)
+2. Search API (Vecpipe)
+3. Web interface (WebUI)
+4. Background services (Worker, Flower)
 
-1. **Search API** starts first (port 8000)
-2. Wait for Search API to be healthy
-3. **WebUI** starts second (port 8080)
-4. Both services log to separate files
+### Resource Limits
+
+```yaml
+deploy:
+  resources:
+    limits:
+      cpus: '2'
+      memory: 4G
+    reservations:
+      cpus: '1'
+      memory: 2G
+      devices:
+        - driver: nvidia
+          count: 1
+          capabilities: [gpu]
+```
 
 ---
 
-## Deployment Architecture
+## Networking
 
-### Production Deployment
+### Docker Network
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Load Balancer                          │
-│                   (Nginx/HAProxy)                         │
-└─────────────────────────────────────────────────────────┘
-                            │
-        ┌───────────────────┴───────────────────┐
-        │                                       │
-┌───────▼────────┐                    ┌────────▼────────┐
-│   WebUI Node 1 │                    │  WebUI Node 2   │
-│   Port 8080    │                    │   Port 8080     │
-└────────────────┘                    └─────────────────┘
-        │                                       │
-        └───────────────────┬───────────────────┘
-                            │
-┌─────────────────────────────────────────────────────────┐
-│                    Search API Cluster                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │ Search API 1 │  │ Search API 2 │  │ Search API 3 │  │
-│  │  Port 8000   │  │  Port 8000   │  │  Port 8000   │  │
-│  └──────────────┘  └──────────────┘  └──────────────┘  │
-└─────────────────────────────────────────────────────────┘
-                            │
-┌─────────────────────────────────────────────────────────┐
-│                    Qdrant Cluster                         │
-│                 (Distributed Mode)                        │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Docker Deployment (Planned)
-
-While Docker configuration is not yet implemented, the planned structure is:
+All services communicate through `semantik-network`:
 
 ```yaml
-# docker-compose.yml (planned)
-version: '3.8'
-services:
-  qdrant:
-    image: qdrant/qdrant:latest
-    ports:
-      - "6333:6333"
-    volumes:
-      - qdrant_storage:/qdrant/storage
-
-  search-api:
-    build: ./docker/search-api
-    ports:
-      - "8000:8000"
-    environment:
-      - QDRANT_HOST=qdrant
-      - USE_MOCK_EMBEDDINGS=false
-    depends_on:
-      - qdrant
-
-  webui:
-    build: ./docker/webui
-    ports:
-      - "8080:8080"
-    environment:
-      - SEARCH_API_URL=http://search-api:8000
-    depends_on:
-      - search-api
+networks:
+  default:
+    name: semantik-network
+    driver: bridge
 ```
 
-### Environment Configuration
+### Service Discovery
 
-Production environment variables:
+Internal service communication:
+- `postgres:5432` - PostgreSQL
+- `qdrant:6333` - Qdrant HTTP
+- `redis:6379` - Redis
+- `vecpipe:8000` - Search API
+- `webui:8080` - Web interface
 
-```bash
-# Production settings
-QDRANT_HOST=qdrant-cluster.internal
-QDRANT_PORT=6333
-DEFAULT_COLLECTION=production_docs
-USE_MOCK_EMBEDDINGS=false
-JWT_SECRET_KEY=${SECURE_JWT_SECRET}
-ACCESS_TOKEN_EXPIRE_MINUTES=1440
-```
+### Port Mappings
+
+| Service | Internal | External | Purpose |
+|---------|----------|----------|---------|
+| WebUI | 8080 | 8080 | Web interface |
+| Vecpipe | 8000 | 8000 | Search API |
+| Qdrant | 6333 | 6333 | Vector DB HTTP |
+| Qdrant | 6334 | 6334 | Vector DB gRPC |
+| PostgreSQL | 5432 | 5432 | Database |
+| Redis | 6379 | 6379 | Message broker |
+| Flower | 5555 | 5555 | Task monitor |
+
+### WebSocket Configuration
+
+WebUI supports WebSocket connections for real-time updates:
+- Endpoint: `ws://localhost:8080/api/v2/ws`
+- Protocol: JSON messages
+- Authentication: JWT token required
 
 ---
 
@@ -412,190 +515,121 @@ ACCESS_TOKEN_EXPIRE_MINUTES=1440
 
 ### Prometheus Metrics
 
-The system exposes Prometheus metrics on port 9090:
+Services expose metrics on internal ports:
 
 ```python
-# Available metrics (packages/vecpipe/metrics.py)
-- embedding_jobs_created_total
-- embedding_jobs_completed_total
-- embedding_jobs_failed_total
-- embedding_job_duration_seconds
-- embedding_files_processed_total
-- embedding_chunks_created_total
-- embedding_gpu_memory_used_bytes
-- embedding_cpu_utilization_percent
+# Metrics endpoints
+- WebUI: http://localhost:9091/metrics
+- Vecpipe: http://localhost:9091/metrics
 ```
+
+Key metrics:
+- Request latency
+- Active operations
+- Model loading time
+- GPU memory usage
+- Queue lengths
 
 ### Logging Configuration
 
-Logs are written to separate files:
+Services use structured logging:
 
-```
-logs/
-├── search_api.log      # Search API logs
-├── webui.log          # WebUI application logs
-├── error_extract.log  # Document extraction errors
-└── cleanup.log        # Cleanup service logs
-```
-
-### Log Rotation
-
-Configure logrotate for production:
-
-```
-/var/embeddings/*.log {
-    daily
-    rotate 7
-    compress
-    delaycompress
-    missingok
-    notifempty
-    create 0644 app app
+```python
+LOGGING_CONFIG = {
+    "version": 1,
+    "formatters": {
+        "default": {
+            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        },
+        "json": {
+            "class": "pythonjsonlogger.jsonlogger.JsonFormatter"
+        }
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "default"
+        },
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": "/app/logs/service.log",
+            "maxBytes": 10485760,  # 10MB
+            "backupCount": 5,
+            "formatter": "json"
+        }
+    }
 }
 ```
 
-### Performance Monitoring
+### Log Aggregation
 
-Key metrics to monitor:
+For production, use centralized logging:
 
-1. **GPU Utilization**: Track memory usage and compute utilization
-2. **API Response Times**: Monitor search latency
-3. **Queue Lengths**: Track processing backlogs
-4. **Error Rates**: Monitor failed document processing
-
----
-
-## Development Scripts
-
-### Development Server (`scripts/dev.sh`)
-
-```bash
-#!/bin/bash
-# Start development environment
-# Runs backend and frontend with hot reloading
-
-# Backend (port 8080)
-cd packages/webui && python main.py &
-
-# Frontend dev server (port 5173)
-cd apps/webui-react && npm run dev &
-
-# Trap exit to clean up processes
-trap cleanup EXIT INT TERM
+```yaml
+logging:
+  driver: "fluentd"
+  options:
+    fluentd-address: "localhost:24224"
+    tag: "semantik.{{.Name}}"
 ```
-
-### Debug Utilities
-
-```bash
-# Debug memory usage
-scripts/debug_memory_usage.py
-
-# Benchmark embedding models
-scripts/benchmark_qwen3.py
-
-# Test cleanup service
-scripts/test_cleanup_service.py
-
-# Clean up temporary images
-scripts/cleanup_temp_images.py
-```
-
----
-
-## Configuration Management
-
-### Environment Variables
-
-Core configuration is managed through environment variables:
-
-```python
-# packages/vecpipe/config.py
-class Settings(BaseSettings):
-    # Qdrant Configuration
-    QDRANT_HOST: str
-    QDRANT_PORT: int = 6333
-    DEFAULT_COLLECTION: str = "work_docs"
-    
-    # Model Configuration
-    USE_MOCK_EMBEDDINGS: bool = False
-    DEFAULT_EMBEDDING_MODEL: str = "Qwen/Qwen3-Embedding-0.6B"
-    DEFAULT_QUANTIZATION: str = "float16"
-    
-    # Paths
-    PROJECT_ROOT: Path = Path(__file__).parent.parent.resolve()
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://localhost/semantik")
-    JOBS_DIR: Path = PROJECT_ROOT / "data" / "jobs"
-```
-
-### Configuration Files
-
-- `.env`: Local environment configuration
-- `pyproject.toml`: Python project configuration
-- `package.json`: Frontend dependencies
-- `vite.config.ts`: Frontend build configuration
 
 ---
 
 ## Security & Operations
 
-### Security Configuration
+### Container Security
 
-1. **JWT Authentication**:
-   ```bash
-   # Generate secure secret key
-   openssl rand -hex 32
-   ```
+```yaml
+security_opt:
+  - no-new-privileges:true
+cap_drop:
+  - ALL
+cap_add:
+  - NET_BIND_SERVICE
+```
 
-2. **Input Validation**:
-   - File path sanitization
-   - SQL injection prevention
-   - XSS protection in frontend
+### User Permissions
 
-3. **Rate Limiting**:
-   - API rate limiting with SlowAPI
-   - Configurable limits per endpoint
+Containers run as non-root (UID 1000):
+
+```dockerfile
+RUN useradd -m -u 1000 semantik
+USER semantik
+```
+
+### Secret Management
+
+```bash
+# Create Docker secrets
+echo "$JWT_SECRET" | docker secret create jwt_secret -
+echo "$DB_PASSWORD" | docker secret create db_password -
+
+# Use in compose
+services:
+  webui:
+    secrets:
+      - jwt_secret
+      - db_password
+```
 
 ### Backup Procedures
 
 ```bash
-# Backup PostgreSQL database
-pg_dump $DATABASE_URL > data/semantik_backup.sql
+#!/bin/bash
+# Daily backup script
 
-# Backup Qdrant data
-qdrant-backup --url http://localhost:6333 --output /backup/qdrant
+# Backup PostgreSQL
+docker compose exec -T postgres pg_dump -U semantik semantik > backup.sql
 
-# Backup job metadata
-tar -czf jobs-backup.tar.gz data/jobs/
+# Backup Qdrant
+curl -X POST "http://localhost:6333/snapshots"
+
+# Backup volumes
+docker run --rm \
+  -v semantik_postgres_data:/data \
+  -v ./backups:/backup \
+  alpine tar czf /backup/postgres.tar.gz /data
 ```
-
-### Update Process
-
-1. **Pull latest code**:
-   ```bash
-   git pull origin main
-   ```
-
-2. **Update dependencies**:
-   ```bash
-   poetry install
-   cd apps/webui-react && npm install
-   ```
-
-3. **Run migrations** (if any):
-   ```bash
-   python scripts/migrate.py
-   ```
-
-4. **Rebuild frontend**:
-   ```bash
-   make frontend-build
-   ```
-
-5. **Restart services**:
-   ```bash
-   ./stop_all_services.sh
-   ./start_all_services.sh
-   ```
 
 ---
 
@@ -603,32 +637,43 @@ tar -czf jobs-backup.tar.gz data/jobs/
 
 ### GitHub Actions Workflow
 
-The CI/CD pipeline (`.github/workflows/ci.yml`) includes:
-
-1. **Lint Stage**:
-   - Black formatting check
-   - Ruff linting
-   - Mypy type checking
-
-2. **Test Stage**:
-   - Unit tests with pytest
-   - Integration tests with Qdrant
-   - Coverage reporting to Codecov
-
-3. **Build Stage** (planned):
-   - Docker image building
-   - Frontend asset compilation
-   - Package publishing
-
-### CI Environment
-
 ```yaml
-services:
-  qdrant:
-    image: qdrant/qdrant:latest
-    ports:
-      - 6333:6333
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+      qdrant:
+        image: qdrant/qdrant
+      redis:
+        image: redis:7
+    
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+      - run: pip install poetry
+      - run: poetry install
+      - run: make check
+      - run: make test-coverage
 ```
+
+### Build Pipeline
+
+1. **Lint & Format**: Black, Ruff, ESLint
+2. **Type Check**: Mypy, TypeScript
+3. **Unit Tests**: Jest, Pytest
+4. **Integration Tests**: API and service tests
+5. **Build Images**: Docker multi-stage build
+6. **Security Scan**: Trivy, Snyk
 
 ---
 
@@ -636,117 +681,135 @@ services:
 
 ### Common Issues
 
-1. **Port Already in Use**:
-   ```bash
-   # Find process using port
-   lsof -i :8080
-   # Kill process
-   kill -9 <PID>
-   ```
-
-2. **GPU Memory Errors**:
-   ```bash
-   # Check GPU usage
-   nvidia-smi
-   # Clear GPU cache
-   python -c "import torch; torch.cuda.empty_cache()"
-   ```
-
-3. **Database Connection Failed**:
-   ```bash
-   # Check Qdrant status
-   curl http://localhost:6333/
-   # Restart Qdrant
-   docker restart qdrant
-   ```
-
-4. **Search API Not Responding**:
-   ```bash
-   # Check logs
-   tail -f search_api.log
-   # Check process
-   ps aux | grep search_api
-   ```
-
-### Debug Commands
-
+#### Service Won't Start
 ```bash
-# Check system resources
-htop
+# Check logs
+docker compose logs webui
+
+# Verify ports
+sudo lsof -i :8080
+
+# Check environment
+docker compose config
+```
+
+#### Database Connection Failed
+```bash
+# Test PostgreSQL
+docker compose exec postgres psql -U semantik -c "SELECT 1"
+
+# Check Redis
+docker compose exec redis redis-cli ping
+
+# Verify Qdrant
+curl http://localhost:6333/health
+```
+
+#### GPU Not Available
+```bash
+# Check NVIDIA runtime
 nvidia-smi
-df -h
+docker run --rm --gpus all nvidia/cuda:11.8.0-base nvidia-smi
 
-# Check service logs
-tail -f logs/*.log
+# Install nvidia-container-toolkit
+sudo apt-get install nvidia-container-toolkit
+sudo systemctl restart docker
+```
 
-# Test API endpoints
-curl http://localhost:8000/
-curl http://localhost:8080/api/health
+#### Memory Issues
+```bash
+# Check container stats
+docker stats
 
-# Database queries
-psql $DATABASE_URL -c "SELECT * FROM jobs;"
+# Adjust batch size
+export BATCH_SIZE=16
+export DEFAULT_QUANTIZATION=int8
+```
+
+### Debug Mode
+
+Enable debug logging:
+```bash
+LOG_LEVEL=DEBUG
+DEBUG=true
+SQLALCHEMY_ECHO=true
 ```
 
 ### Performance Tuning
 
-1. **GPU Memory Optimization**:
-   ```python
-   # Adjust batch sizes
-   EMBEDDING_BATCH_SIZE = 32  # Reduce if OOM
-   
-   # Enable model unloading
-   MODEL_UNLOAD_AFTER_SECONDS = 300
+1. **Database Optimization**
+   ```sql
+   ALTER SYSTEM SET shared_buffers = '256MB';
+   ALTER SYSTEM SET work_mem = '16MB';
    ```
 
-2. **API Performance**:
-   ```python
-   # Increase workers
-   uvicorn main:app --workers 4
-   
-   # Enable connection pooling
-   QDRANT_CONNECTION_POOL_SIZE = 10
+2. **Redis Optimization**
+   ```
+   maxmemory 2gb
+   maxmemory-policy allkeys-lru
    ```
 
-3. **Frontend Optimization**:
+3. **GPU Optimization**
    ```bash
-   # Production build with optimizations
-   npm run build -- --minify
+   PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+   USE_AMP=true
    ```
 
 ---
 
-## Maintenance Schedule
+## Maintenance
 
-### Daily Tasks
-- Monitor service logs for errors
-- Check disk space usage
-- Verify backup completion
+### Regular Tasks
 
-### Weekly Tasks
-- Review metrics dashboards
-- Clean up old job files
-- Update file manifests
+#### Daily
+- Monitor service logs
+- Check disk usage
+- Verify backups
 
-### Monthly Tasks
+#### Weekly
+- Review metrics
+- Clean operation files
+- Update images
+
+#### Monthly
 - Security updates
-- Performance analysis
+- Performance review
 - Capacity planning
 
-### Quarterly Tasks
-- Dependency updates
-- Architecture review
-- Disaster recovery testing
+### Update Procedure
+
+```bash
+# 1. Backup
+./backup.sh
+
+# 2. Pull updates
+git pull origin main
+
+# 3. Update dependencies
+poetry update
+cd apps/webui-react && npm update
+
+# 4. Rebuild
+docker compose build
+
+# 5. Apply migrations
+docker compose run --rm webui alembic upgrade head
+
+# 6. Restart
+docker compose down
+docker compose up -d
+
+# 7. Verify
+./health-check.sh
+```
 
 ---
 
-## Contact and Support
+## Support
 
 For infrastructure issues:
-1. Check this documentation first
-2. Review logs in `/logs/` directory
-3. Check GitHub issues
-4. Contact the development team
-
-For emergency support:
-- Infrastructure alerts: [monitoring system]
-- On-call rotation: [team schedule]
+1. Check logs: `docker compose logs -f [service]`
+2. Review metrics: http://localhost:9091/metrics
+3. Monitor tasks: http://localhost:5555
+4. Check documentation
+5. Submit GitHub issue
