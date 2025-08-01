@@ -97,7 +97,7 @@ class TestCollectionDeletion:
         repo = CollectionRepository(db_session)
 
         # Act & Assert
-        from packages.shared.database.exceptions import AccessDeniedError
+        from shared.database.exceptions import AccessDeniedError
 
         with pytest.raises(AccessDeniedError):
             await repo.delete(collection.id, other_user_db.id)
@@ -156,7 +156,7 @@ class TestCollectionDeletion:
         service = create_collection_service(db_session)
 
         # Act & Assert
-        from packages.shared.database.exceptions import InvalidStateError
+        from shared.database.exceptions import InvalidStateError
 
         with pytest.raises(InvalidStateError) as exc_info:
             await service.delete_collection(collection.id, test_user_db.id)
@@ -208,7 +208,7 @@ class TestCollectionDeletionEdgeCases:
         """Test deleting a collection that doesn't exist."""
         repo = CollectionRepository(db_session)
 
-        from packages.shared.database.exceptions import EntityNotFoundError
+        from shared.database.exceptions import EntityNotFoundError
 
         with pytest.raises(EntityNotFoundError):
             await repo.delete("nonexistent-uuid", test_user_db.id)
@@ -225,7 +225,7 @@ class TestCollectionDeletionEdgeCases:
         await db_session.commit()
 
         # Second deletion should fail
-        from packages.shared.database.exceptions import EntityNotFoundError
+        from shared.database.exceptions import EntityNotFoundError
 
         with pytest.raises(EntityNotFoundError):
             await repo.delete(collection.id, test_user_db.id)
