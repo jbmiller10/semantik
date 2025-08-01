@@ -250,7 +250,7 @@ Authorization: Bearer {token}
 
 ##### Update Collection
 ```http
-PATCH /api/v2/collections/{collection_id}
+PUT /api/v2/collections/{collection_uuid}
 Authorization: Bearer {token}
 Content-Type: application/json
 
@@ -294,16 +294,47 @@ Content-Type: application/json
 **Response (202):**
 ```json
 {
-  "operation_id": "op_123e4567-e89b-12d3-a456-426614174000",
-  "operation_type": "append",
+  "id": "op_123e4567-e89b-12d3-a456-426614174000",
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "type": "append",
   "status": "pending",
-  "message": "Source addition operation started"
+  "config": {
+    "source_path": "/docs/api",
+    "recursive": true
+  },
+  "created_at": "2024-01-15T10:00:00Z",
+  "started_at": null,
+  "completed_at": null,
+  "error_message": null
+}
+```
+
+##### Remove Source from Collection
+```http
+DELETE /api/v2/collections/{collection_uuid}/sources?source_path=/docs/api
+Authorization: Bearer {token}
+```
+
+**Response (202):**
+```json
+{
+  "id": "op_789e0123-e89b-12d3-a456-426614174002",
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "type": "remove_source",
+  "status": "pending",
+  "config": {
+    "source_path": "/docs/api"
+  },
+  "created_at": "2024-01-15T11:00:00Z",
+  "started_at": null,
+  "completed_at": null,
+  "error_message": null
 }
 ```
 
 ##### List Collection Documents
 ```http
-GET /api/v2/collections/{collection_id}/documents?page=1&per_page=50&status=completed
+GET /api/v2/collections/{collection_uuid}/documents?page=1&per_page=50&status=completed
 Authorization: Bearer {token}
 ```
 
@@ -340,7 +371,7 @@ Authorization: Bearer {token}
 
 ##### Reindex Collection
 ```http
-POST /api/v2/collections/{collection_id}/reindex
+POST /api/v2/collections/{collection_uuid}/reindex
 Authorization: Bearer {token}
 Content-Type: application/json
 
@@ -355,11 +386,48 @@ Content-Type: application/json
 **Response (202):**
 ```json
 {
-  "operation_id": "op_456e7890-e89b-12d3-a456-426614174001",
-  "operation_type": "reindex",
+  "id": "op_456e7890-e89b-12d3-a456-426614174001",
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "type": "reindex",
   "status": "pending",
-  "message": "Reindex operation started"
+  "config": {},
+  "created_at": "2024-01-15T12:00:00Z",
+  "started_at": null,
+  "completed_at": null,
+  "error_message": null
 }
+```
+
+##### List Collection Operations
+```http
+GET /api/v2/collections/{collection_uuid}/operations?status=processing&type=index&page=1&per_page=50
+Authorization: Bearer {token}
+```
+
+**Query Parameters:**
+- `status` (optional): Filter by status (pending, processing, completed, failed, cancelled)
+- `type` (optional): Filter by operation type (index, append, reindex, remove_source, delete)
+- `page` (optional): Page number (default: 1)
+- `per_page` (optional): Items per page (default: 50, max: 100)
+
+**Response (200):**
+```json
+[
+  {
+    "id": "op_123e4567-e89b-12d3-a456-426614174000",
+    "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+    "type": "index",
+    "status": "completed",
+    "config": {
+      "source_path": "/docs/technical",
+      "recursive": true
+    },
+    "created_at": "2024-01-15T10:00:00Z",
+    "started_at": "2024-01-15T10:01:00Z",
+    "completed_at": "2024-01-15T10:30:00Z",
+    "error_message": null
+  }
+]
 ```
 
 #### Operation Management Endpoints
@@ -400,16 +468,15 @@ Authorization: Bearer {token}
 
 ##### List Operations
 ```http
-GET /api/v2/operations?collection_id={collection_id}&status=processing&type=index
+GET /api/v2/operations?status=processing,pending&operation_type=index&page=1&per_page=50
 Authorization: Bearer {token}
 ```
 
 **Query Parameters:**
-- `collection_id` (optional): Filter by collection UUID
-- `status` (optional): Filter by status (pending, processing, completed, failed, cancelled)
-- `type` (optional): Filter by type (index, append, reindex, remove_source, delete)
+- `status` (optional): Filter by status - comma-separated for multiple values (pending, processing, completed, failed, cancelled)
+- `operation_type` (optional): Filter by type (index, append, reindex, remove_source, delete)
 - `page` (optional): Page number (default: 1)
-- `per_page` (optional): Items per page (default: 20)
+- `per_page` (optional): Items per page (default: 50, max: 100)
 
 **Response (200):**
 ```json
@@ -434,16 +501,22 @@ Authorization: Bearer {token}
 
 ##### Cancel Operation
 ```http
-POST /api/v2/operations/{operation_uuid}/cancel
+DELETE /api/v2/operations/{operation_uuid}
 Authorization: Bearer {token}
 ```
 
 **Response (200):**
 ```json
 {
-  "message": "Operation cancellation requested",
-  "operation_id": "op_123e4567-e89b-12d3-a456-426614174000",
-  "status": "cancelled"
+  "id": "op_123e4567-e89b-12d3-a456-426614174000",
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "type": "index",
+  "status": "cancelled",
+  "config": {},
+  "error_message": "Cancelled by user",
+  "created_at": "2024-01-15T10:00:00Z",
+  "started_at": "2024-01-15T10:01:00Z",
+  "completed_at": "2024-01-15T10:05:00Z"
 }
 ```
 
@@ -527,55 +600,67 @@ Content-Type: application/json
 }
 ```
 
+##### Single Collection Search
+```http
+POST /api/v2/search/single
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "query": "How to implement authentication?",
+  "k": 10,
+  "search_type": "semantic",
+  "use_reranker": false,
+  "score_threshold": 0.7,
+  "metadata_filter": {
+    "mime_type": "text/markdown"
+  },
+  "include_content": true
+}
+```
+
+**Parameters:**
+- `collection_id` (required): Collection UUID to search
+- `query` (required): Search query text
+- `k` (optional): Number of results (default: 10, max: 100)
+- `search_type` (optional): Type of search (semantic, question, code, hybrid)
+- `use_reranker` (optional): Enable cross-encoder reranking (default: false)
+- `score_threshold` (optional): Minimum score threshold (0.0-1.0)
+- `metadata_filter` (optional): Filter results by metadata
+- `include_content` (optional): Include chunk content (default: true)
+
+**Response (200):** Same format as multi-collection search
+
+**Note:** This endpoint is optimized for single collection searches and has higher rate limits than the multi-collection endpoint.
+
 #### Document Access Endpoints
 
 ##### Get Document Content
 ```http
-GET /api/v2/documents/{document_id}
+GET /api/v2/collections/{collection_uuid}/documents/{document_uuid}/content
 Authorization: Bearer {token}
-Range: bytes=0-1023 (optional)
 ```
 
 **Response:**
 - Binary file content with appropriate Content-Type
-- Supports range requests for partial content (HTTP 206)
+- Does not support range requests in the current implementation
+- Enforces strict access control - user must have access to the collection
+- Document must belong to the specified collection
 
 **Response Headers:**
 ```http
 Content-Type: application/pdf
-Content-Length: 1048576
-Accept-Ranges: bytes
-Content-Range: bytes 0-1023/1048576
 Content-Disposition: inline; filename="document.pdf"
 Cache-Control: private, max-age=3600
-ETag: "1705315200-1048576"
-Last-Modified: Mon, 15 Jan 2024 10:00:00 GMT
 ```
 
-##### Get Document Metadata
-```http
-GET /api/v2/documents/{document_id}/metadata
-Authorization: Bearer {token}
-```
+**Error Responses:**
+- `404 Not Found`: Document not found or file not on disk
+- `403 Forbidden`: Document doesn't belong to collection or access denied
+- `500 Internal Server Error`: File access error
 
-**Response (200):**
-```json
-{
-  "id": "doc_123e4567-e89b-12d3-a456-426614174000",
-  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
-  "file_path": "/docs/api/endpoints.md",
-  "file_name": "endpoints.md",
-  "file_size": 15420,
-  "mime_type": "text/markdown",
-  "content_hash": "sha256:abcd...",
-  "status": "completed",
-  "chunk_count": 28,
-  "created_at": "2024-01-15T10:15:00Z",
-  "updated_at": "2024-01-15T10:16:00Z",
-  "collection_name": "Technical Documentation",
-  "owner_id": 1
-}
-```
+**Note:** Document metadata is included when listing documents through `/api/v2/collections/{collection_uuid}/documents`. There is no separate metadata endpoint in the v2 API.
 
 #### Directory Scanning Endpoints
 
@@ -629,14 +714,14 @@ Content-Type: application/json
 
 #### Operation Progress
 ```
-WS /api/v2/operations/{operation_uuid}/ws
+WS /api/v2/operations/{operation_uuid}/ws?token={jwt_token}
 ```
 
-Real-time operation progress updates via WebSocket.
+Real-time operation progress updates via WebSocket. Authentication is done via token query parameter.
 
 **Connection Example (JavaScript):**
 ```javascript
-const ws = new WebSocket(`ws://localhost:8080/api/v2/operations/${operationId}/ws`);
+const ws = new WebSocket(`ws://localhost:8080/api/v2/operations/${operationId}/ws?token=${jwtToken}`);
 
 ws.onmessage = (event) => {
     const message = JSON.parse(event.data);
@@ -725,33 +810,16 @@ GET /api/health
 
 #### Metrics
 ```http
-GET /api/metrics
-Authorization: Bearer {token}
+GET /metrics
 ```
 
 **Response:** Prometheus-formatted metrics
 
-#### Settings
+**Note:** Metrics endpoints are typically exposed on separate ports:
+- WebUI metrics: Port 9092
+- Search API metrics: Port 9091
 
-##### Get Database Statistics
-```http
-GET /api/settings/stats
-Authorization: Bearer {token}
-```
-
-**Response (200):**
-```json
-{
-  "total_collections": 15,
-  "total_documents": 1250,
-  "total_operations": 45,
-  "total_users": 3,
-  "database_size_mb": 125.4,
-  "vector_storage_size_mb": 2048.5,
-  "oldest_collection": "2024-01-01T00:00:00Z",
-  "newest_collection": "2024-01-15T10:30:00Z"
-}
-```
+**Note:** Statistics endpoints are not currently implemented in the v2 API. Use the collection and operation list endpoints with appropriate counting logic for statistics.
 
 ## Search API
 

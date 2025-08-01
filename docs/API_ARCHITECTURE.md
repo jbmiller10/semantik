@@ -42,6 +42,8 @@ Semantik follows a clean three-package architecture with two main services:
 - **JWT Authentication**: Secure token-based auth for WebUI
 - **Real-time Updates**: WebSocket support for operation progress
 - **Metrics Integration**: Prometheus metrics for monitoring
+- **Collection-Centric**: All operations are organized around collections, not jobs
+- **Async Operations**: Long-running tasks are handled through operations that can be tracked
 
 ## Vecpipe Search API (vecpipe/search_api.py)
 
@@ -570,7 +572,7 @@ Authorization: Bearer {access_token}
 
 #### 4. Update Collection
 ```http
-PATCH /api/v2/collections/{collection_id}
+PUT /api/v2/collections/{collection_uuid}
 Authorization: Bearer {access_token}
 Content-Type: application/json
 ```
@@ -586,7 +588,7 @@ Content-Type: application/json
 
 #### 5. Delete Collection
 ```http
-DELETE /api/v2/collections/{collection_id}
+DELETE /api/v2/collections/{collection_uuid}
 Authorization: Bearer {access_token}
 ```
 
@@ -594,7 +596,7 @@ Authorization: Bearer {access_token}
 
 #### 6. Add Source to Collection
 ```http
-POST /api/v2/collections/{collection_id}/sources
+POST /api/v2/collections/{collection_uuid}/sources
 Authorization: Bearer {access_token}
 Content-Type: application/json
 ```
@@ -618,16 +620,47 @@ Content-Type: application/json
 **Response:**
 ```json
 {
-  "operation_id": "op_123e4567-e89b-12d3-a456-426614174000",
-  "operation_type": "append",
+  "id": "op_123e4567-e89b-12d3-a456-426614174000",
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "type": "append",
   "status": "pending",
-  "message": "Source addition operation started"
+  "config": {
+    "source_path": "/docs/technical",
+    "recursive": true
+  },
+  "created_at": "2024-01-15T10:00:00Z",
+  "started_at": null,
+  "completed_at": null,
+  "error_message": null
 }
 ```
 
-#### 7. List Collection Documents
+#### 7. Remove Source from Collection
 ```http
-GET /api/v2/collections/{collection_id}/documents
+DELETE /api/v2/collections/{collection_uuid}/sources?source_path=/docs/api
+Authorization: Bearer {access_token}
+```
+
+**Response:**
+```json
+{
+  "id": "op_789e0123-e89b-12d3-a456-426614174002",
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "type": "remove_source",
+  "status": "pending",
+  "config": {
+    "source_path": "/docs/api"
+  },
+  "created_at": "2024-01-15T11:00:00Z",
+  "started_at": null,
+  "completed_at": null,
+  "error_message": null
+}
+```
+
+#### 8. List Collection Documents
+```http
+GET /api/v2/collections/{collection_uuid}/documents
 Authorization: Bearer {access_token}
 ```
 
@@ -662,9 +695,9 @@ Authorization: Bearer {access_token}
 }
 ```
 
-#### 8. Reindex Collection
+#### 9. Reindex Collection
 ```http
-POST /api/v2/collections/{collection_id}/reindex
+POST /api/v2/collections/{collection_uuid}/reindex
 Authorization: Bearer {access_token}
 Content-Type: application/json
 ```
@@ -682,11 +715,48 @@ Content-Type: application/json
 **Response:**
 ```json
 {
-  "operation_id": "op_456e7890-e89b-12d3-a456-426614174001",
-  "operation_type": "reindex",
+  "id": "op_456e7890-e89b-12d3-a456-426614174001",
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "type": "reindex",
   "status": "pending",
-  "message": "Reindex operation started"
+  "config": {},
+  "created_at": "2024-01-15T10:00:00Z",
+  "started_at": null,
+  "completed_at": null,
+  "error_message": null
 }
+```
+
+#### 10. List Collection Operations
+```http
+GET /api/v2/collections/{collection_uuid}/operations?status=processing&type=index&page=1&per_page=50
+Authorization: Bearer {access_token}
+```
+
+**Query Parameters:**
+- `status` (optional): Filter by status (pending, processing, completed, failed, cancelled)
+- `type` (optional): Filter by operation type (index, append, reindex, remove_source, delete)
+- `page` (optional): Page number (default: 1)
+- `per_page` (optional): Items per page (default: 50, max: 100)
+
+**Response:**
+```json
+[
+  {
+    "id": "op_123e4567-e89b-12d3-a456-426614174000",
+    "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+    "type": "index",
+    "status": "completed",
+    "config": {
+      "source_path": "/docs/technical",
+      "recursive": true
+    },
+    "created_at": "2024-01-15T10:00:00Z",
+    "started_at": "2024-01-15T10:01:00Z",
+    "completed_at": "2024-01-15T10:30:00Z",
+    "error_message": null
+  }
+]
 ```
 
 ### Operation Management Endpoints
@@ -734,24 +804,29 @@ Authorization: Bearer {access_token}
 ```
 
 **Query Parameters:**
-- `collection_id` (optional): Filter by collection
-- `status` (optional): Filter by status
-- `type` (optional): Filter by operation type
+- `status` (optional): Filter by status - comma-separated for multiple values
+- `operation_type` (optional): Filter by operation type
 - `page` (optional): Page number
 - `per_page` (optional): Items per page
 
 #### 3. Cancel Operation
 ```http
-POST /api/v2/operations/{operation_uuid}/cancel
+DELETE /api/v2/operations/{operation_uuid}
 Authorization: Bearer {access_token}
 ```
 
 **Response:**
 ```json
 {
-  "message": "Operation cancellation requested",
-  "operation_id": "op_123e4567-e89b-12d3-a456-426614174000",
-  "status": "cancelled"
+  "id": "op_123e4567-e89b-12d3-a456-426614174000",
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "type": "index",
+  "status": "cancelled",
+  "config": {},
+  "error_message": "Cancelled by user",
+  "created_at": "2024-01-15T10:00:00Z",
+  "started_at": "2024-01-15T10:01:00Z",
+  "completed_at": "2024-01-15T10:05:00Z"
 }
 ```
 
@@ -824,43 +899,48 @@ Content-Type: application/json
 }
 ```
 
+#### 2. Single Collection Search
+```http
+POST /api/v2/search/single
+Authorization: Bearer {access_token}
+Content-Type: application/json
+```
+
+**Request:**
+```json
+{
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "query": "How to implement authentication?",
+  "k": 10,
+  "search_type": "semantic",
+  "use_reranker": false,
+  "score_threshold": 0.7,
+  "metadata_filter": {
+    "mime_type": "text/markdown"
+  },
+  "include_content": true
+}
+```
+
+**Response:** Same format as multi-collection search
+
+**Note:** This endpoint is optimized for single collection searches and has higher rate limits (60/minute vs 30/minute) than the multi-collection endpoint.
+
 ### Document Access Endpoints
 
 #### 1. Get Document Content
 ```http
-GET /api/v2/documents/{document_id}
+GET /api/v2/collections/{collection_uuid}/documents/{document_uuid}/content
 Authorization: Bearer {access_token}
-Range: bytes=0-1023 (optional)
 ```
 
 **Response:**
 - Binary file content with appropriate Content-Type
-- Supports range requests for partial content (HTTP 206)
+- Does not support range requests in the current implementation
+- Enforces strict access control - user must have access to the collection
+- Document must belong to the specified collection
 
-#### 2. Get Document Metadata
-```http
-GET /api/v2/documents/{document_id}/metadata
-Authorization: Bearer {access_token}
-```
-
-**Response:**
-```json
-{
-  "id": "doc_123e4567-e89b-12d3-a456-426614174000",
-  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
-  "file_path": "/docs/api/endpoints.md",
-  "file_name": "endpoints.md",
-  "file_size": 15420,
-  "mime_type": "text/markdown",
-  "content_hash": "sha256:abcd...",
-  "status": "completed",
-  "chunk_count": 28,
-  "created_at": "2024-01-15T10:15:00Z",
-  "updated_at": "2024-01-15T10:16:00Z",
-  "collection_name": "Technical Documentation",
-  "owner_id": 1
-}
-```
+**Note:** Document metadata is included when listing documents through `/api/v2/collections/{collection_uuid}/documents`. There is no separate metadata endpoint in the v2 API.
 
 ### Directory Scanning Endpoints
 
@@ -921,6 +1001,8 @@ The WebUI service exposes internal API endpoints for the vecpipe maintenance ser
 ```http
 GET /internal/api/collections
 ```
+
+**Note:** Internal endpoints are for service-to-service communication only.
 
 **Response:**
 ```json
@@ -1249,14 +1331,16 @@ async def test_multi_collection_search():
 ### Operation Progress WebSocket
 
 ```
-ws://localhost:8080/api/v2/operations/{operation_uuid}/ws
+ws://localhost:8080/api/v2/operations/{operation_uuid}/ws?token={jwt_token}
 ```
 
 **Connection Flow**:
 1. Create operation via REST API
-2. Connect WebSocket with operation UUID
+2. Connect WebSocket with operation UUID and JWT token as query parameter
 3. Receive real-time progress updates
 4. Connection closes on completion
+
+**Authentication**: JWT token must be provided as a query parameter `?token={jwt_token}` in the WebSocket URL.
 
 **Message Types**:
 ```json
@@ -1296,11 +1380,7 @@ ws://localhost:8080/api/v2/operations/{operation_uuid}/ws
 }
 ```
 
-### Directory Scan WebSocket
-
-```
-ws://localhost:8080/api/v2/directory-scan/{scan_id}/ws
-```
+**Note:** Directory scan WebSocket endpoint is not currently implemented in the v2 API. Use the REST endpoint for directory scanning.
 
 **Client Messages**:
 ```json

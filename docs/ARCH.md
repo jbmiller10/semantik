@@ -179,6 +179,114 @@ Common components and utilities used by both webui and vecpipe packages. This pa
 
 For detailed documentation, see [DATABASE_ARCH.md](./DATABASE_ARCH.md)
 
+## Collection-Centric Architecture Benefits
+
+The collection-centric architecture represents a fundamental improvement over the previous job-centric design:
+
+### Key Advantages
+
+1. **Better Organization**: Collections provide a logical grouping of related documents with shared configuration
+2. **Multi-Model Support**: Each collection can use different embedding models and configurations
+3. **Incremental Updates**: Add or remove documents without re-processing the entire dataset
+4. **Resource Efficiency**: Operations are scoped to collections, reducing unnecessary reprocessing
+5. **Clear Ownership**: Collections have explicit ownership and access control
+6. **Flexible Source Management**: Collections can aggregate documents from multiple sources
+
+### Collection Lifecycle Management
+
+Collections progress through several states during their lifecycle:
+
+1. **Creation**: Collection initialized with embedding configuration
+2. **Initial Indexing**: First operation populates the collection with documents
+3. **Active Management**: Ongoing operations to append, remove, or reindex documents
+4. **Maintenance**: Periodic reindexing to incorporate model improvements
+5. **Archival/Deletion**: Clean removal of collection and associated resources
+
+### Operation Types and Purposes
+
+The system supports four primary operation types, each serving a specific purpose:
+
+#### INDEX Operation
+- **Purpose**: Initial population of a new collection
+- **Use Case**: First-time document processing after collection creation
+- **Process**: Scans sources, extracts text, generates embeddings, stores in Qdrant
+- **Result**: Collection ready for search with initial document set
+
+#### APPEND Operation
+- **Purpose**: Add new documents to an existing collection
+- **Use Case**: Incremental updates as new documents become available
+- **Process**: Scans only new sources, deduplicates against existing documents
+- **Result**: Collection expanded with new documents without disrupting existing ones
+
+#### REINDEX Operation
+- **Purpose**: Regenerate all embeddings for a collection
+- **Use Case**: Model upgrades, configuration changes, or quality improvements
+- **Process**: Re-processes all documents with current model configuration
+- **Result**: Updated embeddings reflecting latest model capabilities
+
+#### REMOVE_SOURCE Operation
+- **Purpose**: Remove all documents from a specific source path
+- **Use Case**: Clean up outdated documents or remove specific directories
+- **Process**: Identifies and removes documents matching the source path
+- **Result**: Collection updated with documents from specified source removed
+
+### Collection Source Management
+
+Collections support flexible source management to aggregate documents from multiple locations:
+
+```
+Collection
+    ├── Source 1: /data/technical-docs/
+    │   ├── manual.pdf
+    │   └── guide.md
+    ├── Source 2: /data/api-docs/
+    │   └── openapi.yaml
+    └── Source 3: /shared/knowledge-base/
+        ├── faq.md
+        └── troubleshooting.pdf
+```
+
+**Source Features**:
+- Add sources incrementally without reprocessing existing documents
+- Remove specific sources while preserving others
+- Track source metadata for document provenance
+- Support for directories, individual files, and glob patterns
+- Automatic deduplication based on content hash
+
+### Multi-Model Support Architecture
+
+The architecture enables sophisticated multi-model deployments:
+
+```
+User Search Query
+        ↓
+┌─────────────────────────────────────┐
+│   Collection 1: Technical Docs      │
+│   Model: BAAI/bge-large-en-v1.5     │
+│   Quantization: float16             │
+└─────────────────────────────────────┘
+        ↓
+┌─────────────────────────────────────┐
+│   Collection 2: Code Documentation  │
+│   Model: Qwen/Qwen3-0.6B           │
+│   Quantization: int8                │
+└─────────────────────────────────────┘
+        ↓
+┌─────────────────────────────────────┐
+│   Collection 3: Research Papers     │
+│   Model: sentence-transformers/...  │
+│   Quantization: float32             │
+└─────────────────────────────────────┘
+        ↓
+    Unified Search Results
+```
+
+**Multi-Model Benefits**:
+- Optimal model selection per document type
+- Resource optimization through quantization choices
+- Parallel search across heterogeneous collections
+- Model-specific reranking for best relevance
+
 ## Data Flow
 
 ### Collection Creation and Document Processing
@@ -249,6 +357,46 @@ For detailed documentation, see [DATABASE_ARCH.md](./DATABASE_ARCH.md)
 - `/api/v2/operations` - Operation tracking and management
 - `/api/v2/search` - Multi-collection semantic search
 - `/api/v2/documents` - Document access and metadata
+
+### Collection-Centric API Examples
+
+The v2 API design reflects the collection-centric architecture:
+
+```python
+# Create a new collection with specific embedding configuration
+POST /api/v2/collections
+{
+    "name": "Technical Documentation",
+    "embedding_model": "BAAI/bge-large-en-v1.5",
+    "embedding_size": 1024,
+    "quantization": "float16",
+    "chunk_size": 512,
+    "chunk_overlap": 50
+}
+
+# Add a source to the collection (triggers APPEND operation)
+POST /api/v2/collections/{collection_id}/sources
+{
+    "source_path": "/data/docs/api-reference/"
+}
+
+# Search across multiple collections
+POST /api/v2/search
+{
+    "query": "How to authenticate API requests?",
+    "collection_ids": ["uuid-1", "uuid-2", "uuid-3"],
+    "limit": 10,
+    "search_type": "hybrid",
+    "rerank": true
+}
+
+# Monitor operation progress
+GET /api/v2/operations/{operation_id}
+WebSocket: /ws/operations/{operation_id}/progress
+
+# Reindex a collection with updated configuration
+POST /api/v2/collections/{collection_id}/reindex
+```
 
 For complete API documentation, see [API_ARCHITECTURE.md](./API_ARCHITECTURE.md)
 
@@ -377,30 +525,73 @@ cp .env.example .env
 
 ## Future Enhancements
 
-### Planned Features
-1. **Horizontal Scaling**
-   - Distributed operation processing
-   - Multi-instance WebUI with session affinity
-   - Qdrant cluster support for large deployments
+### Collection-Centric Evolution
 
-2. **Enhanced Search**
-   - Cross-lingual search with multilingual models
-   - Faceted search with metadata filtering
-   - Query expansion and suggestion
-   - Collection federation for enterprise deployments
+The collection-centric architecture provides a foundation for advanced features:
 
-3. **Advanced Collection Features**
-   - Collection versioning and snapshots
-   - Incremental document updates
-   - Real-time indexing for live data sources
-   - Collection sharing with fine-grained permissions
-   - Custom model fine-tuning per collection
+#### Advanced Collection Management
+1. **Collection Templates**
+   - Pre-configured templates for common use cases (legal docs, code, research papers)
+   - Shareable configuration profiles across organizations
+   - Automatic model recommendations based on content type
+
+2. **Collection Relationships**
+   - Hierarchical collections with inheritance
+   - Cross-collection linking and references
+   - Collection groups for unified search contexts
+
+3. **Smart Operations**
+   - Intelligent operation scheduling based on resource availability
+   - Batch operation optimization across multiple collections
+   - Predictive reindexing based on model updates
+   - Operation templates for complex workflows
+
+#### Enhanced Search Capabilities
+1. **Collection-Aware Search**
+   - Dynamic collection selection based on query intent
+   - Collection-specific ranking algorithms
+   - Inter-collection result fusion strategies
+   - Collection authority scoring
+
+2. **Advanced Features**
+   - Real-time collection updates with streaming ingestion
+   - Collection-specific knowledge graphs
+   - Multi-stage retrieval pipelines per collection
+   - Collection-based query routing
+
+#### Enterprise Features
+1. **Collection Governance**
+   - Collection lifecycle policies
+   - Automated collection archival and retention
+   - Collection compliance tracking
+   - Usage analytics per collection
+
+2. **Scalability**
+   - Collection sharding for massive datasets
+   - Federated search across distributed collections
+   - Collection-level resource quotas
+   - Dynamic collection migration
 
 ### Architecture Evolution
-- Microservices decomposition for scalability
-- Event-driven architecture with message queuing
-- Cloud-native deployment with Kubernetes operators
-- Multi-tenant support with resource isolation
+
+The collection-centric design enables future architectural improvements:
+
+1. **Collection Microservices**
+   - Dedicated services per high-volume collection
+   - Collection-specific optimization strategies
+   - Independent scaling per collection type
+
+2. **Event-Driven Collections**
+   - Collection state change events
+   - Operation completion notifications
+   - Real-time collection synchronization
+   - Event sourcing for collection history
+
+3. **Cloud-Native Collections**
+   - Kubernetes operators for collection management
+   - Collection-as-a-Service (CaaS) abstractions
+   - Serverless operation processing
+   - Multi-region collection replication
 
 ## Related Documentation
 
@@ -416,4 +607,13 @@ For deep dives into specific components:
 
 ## Conclusion
 
-Semantik demonstrates a well-architected system with clear separation of concerns, robust error handling, and excellent performance characteristics. The modular design enables both standalone usage of the search engine and full-featured operation through the web interface, making it suitable for a wide range of deployment scenarios from development laptops to production servers.
+Semantik's collection-centric architecture represents a significant advancement in semantic search system design. By organizing documents into collections with dedicated configurations, the system provides:
+
+- **Flexibility**: Each collection can be optimized for its specific content type and use case
+- **Scalability**: Operations are scoped to collections, enabling efficient resource utilization
+- **Maintainability**: Clear separation between collections simplifies management and troubleshooting
+- **Extensibility**: The architecture naturally supports advanced features like multi-model search and incremental updates
+
+The transition from a job-centric to collection-centric design has transformed Semantik from a simple document processing pipeline into a sophisticated knowledge management platform. The modular architecture, combined with the collection-based organization, enables deployment scenarios ranging from personal knowledge bases on development laptops to enterprise-scale semantic search infrastructure.
+
+This architecture positions Semantik as a production-ready solution for organizations that value data privacy, require fine-grained control over their search infrastructure, and need the flexibility to optimize for diverse document types and use cases.

@@ -4,601 +4,436 @@
 
 This guide provides comprehensive documentation for running Semantik with Docker, including architecture details, configuration options, and best practices for both development and production environments.
 
+## Quick Start
+
+### Using the Interactive Wizard (Recommended)
+
+The easiest way to get started is using the interactive setup wizard:
+
+```bash
+make wizard
+# or
+python wizard_launcher.py
+```
+
+The wizard will:
+- Configure GPU/CPU deployment
+- Auto-generate secure PostgreSQL password
+- Auto-generate secure JWT secret key
+- Set up document directories
+- Create optimized .env configuration
+
+### Manual Setup
+
+1. Copy the Docker environment template:
+   ```bash
+   cp .env.docker.example .env
+   ```
+
+2. Start all services:
+   ```bash
+   make docker-up
+   ```
+
+3. Access the application at http://localhost:8080
+
 ## Docker Architecture
 
 ### Container Structure
 ```
 semantik/
-├── docker-compose.yml          # Development configuration
+├── docker-compose.yml          # Main configuration with all services
+├── docker-compose.cuda.yml     # GPU/CUDA override configuration
+├── docker-compose.dev.yml      # Development configuration
 ├── docker-compose.prod.yml     # Production configuration
-├── docker-compose.cuda.yml     # GPU-enabled configuration
-├── Dockerfile                  # Standard CPU image
-├── Dockerfile.cuda            # CUDA-enabled image
-└── docker-entrypoint.sh      # Container entrypoint script
+├── Dockerfile                  # Multi-stage Dockerfile
+├── docker-entrypoint.sh        # Container entrypoint script
+└── .env.docker.example         # Environment template
 ```
 
 ### Service Architecture
 ```mermaid
 graph TB
     subgraph "Docker Network: semantik-network"
-        A[Qdrant Container<br/>Vector Database<br/>Port: 6333]
-        B[Vecpipe Container<br/>Search Engine<br/>Port: 8000]
-        C[WebUI Container<br/>Control Plane<br/>Port: 8080]
+        A[Qdrant Container<br/>Vector Database<br/>Port: 6333, 6334]
+        B[PostgreSQL Container<br/>Relational Database<br/>Port: 5432]
+        C[Redis Container<br/>Message Broker<br/>Port: 6379]
+        D[Vecpipe Container<br/>Search Engine<br/>Port: 8000]
+        E[WebUI Container<br/>Control Plane<br/>Port: 8080]
+        F[Worker Container<br/>Celery Worker<br/>No exposed port]
+        G[Flower Container<br/>Task Monitor<br/>Port: 5555]
         
-        C -->|Search Proxy| B
-        B -->|Vector Ops| A
-        C -->|Collection Mgmt| A
+        E -->|Search Proxy| D
+        D -->|Vector Operations| A
+        E -->|Collection Management| A
+        E -->|User/Collection Data| B
+        E -->|Task Queue| C
+        F -->|Task Queue| C
+        F -->|Vector Operations| A
+        F -->|Database Access| B
+        G -->|Monitor| C
     end
     
-    D[Host Machine] -->|User Access| C
+    H[Host Machine] -->|User Access| E
+    H -->|Task Monitoring| G
     
     subgraph "Volumes"
-        E[data/<br/>Job Files]
-        F[models/<br/>ML Models]
-        G[logs/<br/>App Logs]
-        H[documents/<br/>User Files]
-        I[postgres/<br/>PostgreSQL Data]
+        I[./data<br/>Operations Data]
+        J[./models<br/>ML Models]
+        K[./logs<br/>App Logs]
+        L[./documents<br/>User Files]
+        M[postgres_data<br/>PostgreSQL Data]
+        N[qdrant_storage<br/>Vector Data]
+        O[redis_data<br/>Redis Data]
     end
     
     subgraph "Volume Access"
-        C -->|RW| E
-        B -.->|RO| E
-        B -->|RW| F
-        C -->|RW| F
-        B -->|RW| G
-        C -->|RW| G
-        B -.->|RO| H
-        C -.->|RO| H
-        J[PostgreSQL Container] -->|RW| I
-        C -->|TCP| J
+        E -->|RW| I
+        D -->|RW| J
+        E -->|RW| J
+        F -->|RW| J
+        D -->|RW| K
+        E -->|RW| K
+        F -->|RW| K
+        E -->|RO| L
+        F -->|RO| L
+        B -->|RW| M
+        A -->|RW| N
+        C -->|RW| O
     end
     
-    style C fill:#f9f,stroke:#333,stroke-width:2px
-    style B fill:#9ff,stroke:#333,stroke-width:2px
+    style E fill:#f9f,stroke:#333,stroke-width:2px
+    style D fill:#9ff,stroke:#333,stroke-width:2px
+    style F fill:#ff9,stroke:#333,stroke-width:2px
 ```
 
-## Docker Images
+## Docker Services
 
-### Base Image Structure
+### Core Services
 
-#### CPU Image (Dockerfile)
-```dockerfile
-FROM python:3.12-slim
+#### 1. Qdrant (Vector Database)
+- **Image**: `qdrant/qdrant:latest`
+- **Ports**: 6333 (HTTP), 6334 (gRPC)
+- **Volume**: `qdrant_storage:/qdrant/storage`
+- **Health Check**: HTTP endpoint on port 6333
+- **Resource Limits**: 2 CPUs, 4GB memory
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+#### 2. PostgreSQL (Relational Database)
+- **Image**: `postgres:16-alpine`
+- **Port**: 5432
+- **Volume**: `postgres_data:/var/lib/postgresql/data`
+- **Health Check**: `pg_isready` command
+- **Resource Limits**: 2 CPUs, 2GB memory
+- **Configuration**: UTF-8 encoding, en_US.utf8 locale
 
-# Set working directory
-WORKDIR /app
+#### 3. Redis (Message Broker)
+- **Image**: `redis:7-alpine`
+- **Port**: 6379
+- **Volume**: `redis_data:/data`
+- **Health Check**: `redis-cli ping`
+- **Resource Limits**: 0.5 CPUs, 512MB memory
+- **Configuration**: AOF persistence enabled
 
-# Install Poetry
-RUN pip install poetry
+#### 4. Vecpipe (Search API Service)
+- **Build**: From Dockerfile
+- **Port**: 8000
+- **Depends On**: PostgreSQL (healthy), Qdrant, Redis
+- **GPU Support**: Optional (via deploy.resources)
+- **Resource Limits**: 2 CPUs, 4GB memory
+- **Health Check**: HTTP endpoint on port 8000
 
-# Copy dependency files
-COPY pyproject.toml poetry.lock ./
+#### 5. WebUI (Web Interface & API)
+- **Build**: From Dockerfile
+- **Port**: 8080
+- **Depends On**: PostgreSQL (healthy), Vecpipe, Redis
+- **Resource Limits**: 1 CPU, 2GB memory
+- **Health Check**: HTTP endpoint on port 8080/api/health/readyz
 
-# Install dependencies
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi
+#### 6. Worker (Celery Background Tasks)
+- **Build**: From Dockerfile
+- **Profile**: backend
+- **Depends On**: PostgreSQL (healthy), Redis, Qdrant
+- **Resource Limits**: 2 CPUs, 4GB memory
+- **Health Check**: Celery inspect ping
 
-# Copy application code
-COPY packages/ packages/
-COPY scripts/ scripts/
+#### 7. Flower (Task Monitoring)
+- **Build**: From Dockerfile
+- **Profile**: backend
+- **Port**: 5555
+- **Depends On**: Redis
+- **Resource Limits**: 0.5 CPUs, 512MB memory
+- **Health Check**: HTTP endpoint on port 5555
 
-# Set environment variables
-ENV PYTHONPATH=/app:$PYTHONPATH
-ENV PYTHONUNBUFFERED=1
+## Docker Profiles
 
-# Create non-root user
-RUN useradd -m -u 1000 semantik \
-    && chown -R semantik:semantik /app
-
-USER semantik
-
-# Default command
-CMD ["python", "-m", "webui.main"]
-```
-
-#### CUDA Image (Dockerfile.cuda)
-```dockerfile
-FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
-
-# Install Python and system dependencies
-RUN apt-get update && apt-get install -y \
-    python3.12 \
-    python3.12-dev \
-    python3-pip \
-    build-essential \
-    curl \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set Python 3.12 as default
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1
-
-WORKDIR /app
-
-# Install Poetry
-RUN pip install poetry
-
-# Copy and install dependencies
-COPY pyproject.toml poetry.lock ./
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi
-
-# Install PyTorch with CUDA support
-RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-
-# Copy application
-COPY packages/ packages/
-COPY scripts/ scripts/
-
-# Environment setup
-ENV PYTHONPATH=/app:$PYTHONPATH
-ENV PYTHONUNBUFFERED=1
-ENV CUDA_VISIBLE_DEVICES=0
-
-# Create user
-RUN useradd -m -u 1000 semantik \
-    && chown -R semantik:semantik /app
-
-USER semantik
-
-CMD ["python", "-m", "webui.main"]
-```
-
-### Building Images
+### Default Profile
+Runs core services: Qdrant, PostgreSQL, Redis, Vecpipe, and WebUI
 
 ```bash
-# Build CPU image
-docker build -t semantik:latest .
-
-# Build CUDA image
-docker build -f Dockerfile.cuda -t semantik:cuda .
-
-# Build with specific Python version
-docker build --build-arg PYTHON_VERSION=3.12 -t semantik:py312 .
-
-# Multi-platform build
-docker buildx build --platform linux/amd64,linux/arm64 -t semantik:multi .
+docker compose up -d
 ```
 
-## Docker Compose Configurations
+### Backend Profile
+Includes Worker and Flower services for full background task processing
 
-### Development Configuration (docker-compose.yml)
-```yaml
-version: '3.8'
-
-services:
-  # Vector Database
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: semantik-qdrant
-    restart: unless-stopped
-    ports:
-      - "6333:6333"
-      - "6334:6334"  # gRPC port
-    volumes:
-      - qdrant_storage:/qdrant/storage
-      - ./qdrant_config.yaml:/qdrant/config/config.yaml:ro
-    environment:
-      - QDRANT__SERVICE__HTTP_PORT=6333
-      - QDRANT__SERVICE__GRPC_PORT=6334
-      - QDRANT__LOG_LEVEL=INFO
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:6333/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  # Core Search Engine (Vecpipe)
-  vecpipe:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: semantik:latest
-    container_name: semantik-vecpipe
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-      - "9091:9091"  # Metrics port
-    volumes:
-      - ./data:/app/data:ro  # Read-only access to job files
-      - ./models:/app/models
-      - ./logs:/app/logs
-      - ./documents:/documents:ro
-      - ./packages:/app/packages:ro  # Hot reload in dev
-    environment:
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
-      - USE_MOCK_EMBEDDINGS=${USE_MOCK_EMBEDDINGS:-false}
-      - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
-      - DEFAULT_QUANTIZATION=${DEFAULT_QUANTIZATION:-float16}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - METRICS_PORT=9091
-    depends_on:
-      qdrant:
-        condition: service_healthy
-    command: ["python", "-m", "vecpipe.search_api"]
-    networks:
-      - semantik-network
-
-  # Control Plane and UI (WebUI)
-  webui:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: semantik:latest
-    container_name: semantik-webui
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-      - "9092:9092"  # Metrics port
-    volumes:
-      - ./data:/app/data  # Full access to job files
-      - ./models:/app/models
-      - ./logs:/app/logs
-      - ./documents:/documents:ro
-      - ./packages:/app/packages:ro  # Hot reload in dev
-    environment:
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
-      - VECPIPE_API_URL=http://vecpipe:8000
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-secret-key}
-      - DISABLE_AUTH=${DISABLE_AUTH:-false}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - METRICS_PORT=9092
-    depends_on:
-      - vecpipe
-      - qdrant
-    command: ["python", "-m", "webui.main"]
-    networks:
-      - semantik-network
-
-volumes:
-  qdrant_storage:
-    driver: local
-
-networks:
-  semantik-network:
-    driver: bridge
-```
-
-### Production Configuration (docker-compose.prod.yml)
-```yaml
-version: '3.8'
-
-services:
-  # Vector Database
-  qdrant:
-    image: qdrant/qdrant:v1.8.0
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-        reservations:
-          memory: 2G
-    volumes:
-      - /opt/semantik/qdrant:/qdrant/storage
-    environment:
-      - QDRANT__SERVICE__HTTP_PORT=6333
-      - QDRANT__SERVICE__ENABLE_TLS=true
-      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "5"
-
-  # Core Search Engine (Vecpipe) - Can scale independently
-  vecpipe:
-    image: semantik:cuda
-    deploy:
-      replicas: 2  # Scale search independently
-      resources:
-        limits:
-          memory: 8G
-        reservations:
-          memory: 4G
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    volumes:
-      - /opt/semantik/data:/app/data:ro  # Read-only job file access
-      - /opt/semantik/models:/app/models
-      - /opt/semantik/logs/vecpipe:/app/logs
-      - /mnt/documents:/documents:ro
-    environment:
-      - ENVIRONMENT=production
-      - SERVICE_NAME=vecpipe
-      - USE_MOCK_EMBEDDINGS=false
-      - CUDA_VISIBLE_DEVICES=0
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "10"
-
-  # Control Plane (WebUI) - Can scale independently
-  webui:
-    image: semantik:latest
-    deploy:
-      replicas: 2  # Scale UI independently
-      resources:
-        limits:
-          memory: 4G
-        reservations:
-          memory: 2G
-    volumes:
-      - /opt/semantik/data:/app/data  # Full access (owns DB)
-      - /opt/semantik/logs/webui:/app/logs
-      - /opt/semantik/models:/app/models:ro  # Read-only models
-    environment:
-      - ENVIRONMENT=production
-      - SERVICE_NAME=webui
-      - VECPIPE_API_URL=http://vecpipe:8000
-      - JWT_SECRET_KEY_FILE=/run/secrets/jwt_secret
-    secrets:
-      - jwt_secret
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "10"
-
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-    depends_on:
-      - webui
-      - search-api
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-
-secrets:
-  jwt_secret:
-    external: true
-```
-
-### GPU Configuration (docker-compose.cuda.yml)
-```yaml
-version: '3.8'
-
-services:
-  search-api:
-    build:
-      context: .
-      dockerfile: Dockerfile.cuda
-    runtime: nvidia
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+```bash
+docker compose --profile backend up -d
 ```
 
 ## Volume Management
 
-### Volume Types and Purposes
+### Named Volumes
 
-1. **Data Volume** (`/app/data`)
-   - Job processing files
-   - Temporary extraction data
+1. **qdrant_storage**: Vector database storage
+   - Persistent across container restarts
+   - Contains all vector indices and collections
+
+2. **postgres_data**: PostgreSQL database files
+   - Contains user data, collections metadata, operations history
+   - Critical for data persistence
+
+3. **redis_data**: Redis persistence files
+   - Contains task queue data
+   - Can be recreated if lost
+
+### Bind Mounts
+
+1. **./data**: Application data directory
+   - Operation files (extract, ingest)
    - Processing state files
-   - **Persistence**: Required
-   - **Backup**: Critical
 
-2. **Models Volume** (`/app/models`)
+2. **./models**: HuggingFace model cache
    - Downloaded embedding models
-   - Model cache
-   - **Persistence**: Recommended
-   - **Backup**: Optional (can re-download)
+   - Reused across container restarts
 
-3. **Logs Volume** (`/app/logs`)
-   - Application logs
-   - Error logs
-   - **Persistence**: Recommended
-   - **Backup**: Optional
+3. **./logs**: Application logs
+   - Service logs from all containers
+   - Rotated automatically
 
-4. **Documents Volume** (`/documents`)
-   - Source documents
-   - Read-only mount
-   - **Persistence**: External
-   - **Backup**: User responsibility
+4. **${DOCUMENT_PATH}**: User documents
+   - Mounted read-only
+   - Source documents for processing
 
-### Volume Configuration
+### Volume Configuration Examples
+
 ```yaml
+# Create volumes with specific drivers
 volumes:
-  # Named volumes (managed by Docker)
-  semantik_data:
+  qdrant_storage:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/semantik/data
-  
-  # Bind mounts (direct host paths)
-  - type: bind
-    source: ./data
-    target: /app/data
-    read_only: false
-  
-  # Temporary volumes
-  - type: tmpfs
-    target: /tmp
-    tmpfs:
-      size: 1G
+      device: /mnt/fast-ssd/qdrant
+
+# Set volume permissions
+volumes:
+  - ./data:/app/data:rw
+  - ./documents:/mnt/docs:ro
 ```
 
-### Volume Permissions
-```bash
-# Fix ownership issues
-docker exec semantik-webui chown -R 1000:1000 /app/data
+## GPU Configuration
 
-# Create volumes with correct permissions
-mkdir -p data models logs
-chmod 755 data models logs
-chown 1000:1000 data models logs
-```
+### Enabling GPU Support
 
-## Network Configuration
+#### Standard Configuration (docker-compose.yml)
+The main docker-compose.yml includes basic GPU support:
 
-### Default Network
 ```yaml
-networks:
-  semantik-network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
+deploy:
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: 1
+          capabilities: [gpu]
 ```
 
-### Service Discovery
-Services can communicate using container names:
-- `qdrant:6333` - Vector database
-- `vecpipe:8000` - Core search engine API
-- `webui:8080` - Control plane and web interface
+#### CUDA-Optimized Configuration
+For INT8 quantization support, use the CUDA override:
 
-**Communication Flow**:
-- WebUI → Vecpipe: Search requests (HTTP)
-- WebUI → Qdrant: Collection management
-- Vecpipe → Qdrant: Vector search operations
-- WebUI → PostgreSQL: All relational data operations
-- WebUI owns PostgreSQL database exclusively
-
-### External Access
-```yaml
-# Expose only necessary ports
-ports:
-  - "8080:8080"  # WebUI - User-facing interface
-  
-# Internal services (not exposed externally)
-expose:
-  - "8000"  # Vecpipe API (internal only)
-  - "6333"  # Qdrant (internal only)
-  - "9091"  # Vecpipe metrics (internal)
-  - "9092"  # WebUI metrics (internal)
-```
-
-## Environment Variables
-
-### Container Environment
 ```bash
-# .env file for docker-compose
-COMPOSE_PROJECT_NAME=semantik
-DOCKER_BUILDKIT=1
+docker compose -f docker-compose.yml -f docker-compose.cuda.yml up -d --build
+```
 
-# Application settings
+The CUDA override adds:
+- Proper CUDA library paths
+- Bitsandbytes compilation support
+- C/C++ compiler configuration
+
+### GPU Environment Variables
+
+```bash
+# Select GPU device
+CUDA_VISIBLE_DEVICES=0
+
+# GPU memory limit
+MODEL_MAX_MEMORY_GB=8
+
+# Quantization mode
+DEFAULT_QUANTIZATION=float16  # or int8 with CUDA build
+```
+
+### GPU Memory Requirements
+
+| Model | float32 | float16 | int8 |
+|-------|---------|---------|------|
+| Qwen3-Embedding-0.6B | ~2.4GB | ~1.2GB | ~0.6GB |
+| Qwen3-Embedding-4B | ~16GB | ~8GB | ~4GB |
+
+## Environment Configuration
+
+### Essential Variables
+
+```bash
+# Authentication (auto-generated by make docker-up if using defaults)
+JWT_SECRET_KEY=CHANGE_THIS_TO_A_STRONG_SECRET_KEY
+POSTGRES_PASSWORD=CHANGE_THIS_TO_A_STRONG_PASSWORD
+
+# Model Configuration
 DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
 DEFAULT_QUANTIZATION=float16
 USE_MOCK_EMBEDDINGS=false
 
-# Security
-JWT_SECRET_KEY=your-secret-key-here
-
-# Resources
-MAX_WORKERS=4
-BATCH_SIZE=32
+# Collection Settings
+DEFAULT_COLLECTION=work_docs
 
 # Paths
-DOCUMENTS_DIR=/path/to/documents
+DOCUMENT_PATH=./documents
+HF_CACHE_DIR=./models
 ```
 
-### Runtime Configuration
-```bash
-# Override at runtime
-docker-compose run -e LOG_LEVEL=DEBUG webui
+### Complete Environment Reference
 
-# Using env file
-docker-compose --env-file .env.prod up
-```
+See [CONFIGURATION.md](./CONFIGURATION.md) for a complete list of environment variables.
 
 ## Health Checks
 
-### Service Health Checks
+All services include health checks for reliability:
+
 ```yaml
 healthcheck:
-  test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+  test: ["CMD", "curl", "-f", "http://localhost:8080/api/health/readyz"]
   interval: 30s
   timeout: 10s
   retries: 3
-  start_period: 40s
+  start_period: 60s
 ```
 
-### Custom Health Check Script
+### Checking Service Health
+
 ```bash
-#!/bin/bash
-# healthcheck.sh
+# Check all services
+docker compose ps
 
-# Check WebUI
-curl -f http://localhost:8080/health || exit 1
+# Check specific service health
+docker inspect semantik-webui | jq '.[0].State.Health'
 
-# Check Search API
-curl -f http://localhost:8000/ || exit 1
-
-# Check Qdrant
-curl -f http://localhost:6333/health || exit 1
-
-echo "All services healthy"
+# View health check logs
+docker compose logs webui | grep health
 ```
 
-## Docker Commands
+## Networking
 
-### Basic Operations
+### Default Network
+All services communicate through the `semantik-network` bridge network.
+
+### Service Discovery
+Services communicate using container names:
+- `postgres:5432` - PostgreSQL database
+- `qdrant:6333` - Vector database
+- `redis:6379` - Message broker
+- `vecpipe:8000` - Search API
+- `webui:8080` - Web interface
+
+### Port Mappings
+
+| Service | Internal Port | External Port | Purpose |
+|---------|--------------|---------------|---------|
+| WebUI | 8080 | 8080 | Web interface |
+| Vecpipe | 8000 | 8000 | Search API |
+| Qdrant | 6333 | 6333 | Vector DB HTTP |
+| Qdrant | 6334 | 6334 | Vector DB gRPC |
+| PostgreSQL | 5432 | 5432 | Database |
+| Redis | 6379 | 6379 | Message broker |
+| Flower | 5555 | 5555 | Task monitor |
+
+## Security Configuration
+
+### Container Security
+
+All containers run with security restrictions:
+
+```yaml
+security_opt:
+  - no-new-privileges:true
+cap_drop:
+  - ALL
+cap_add:
+  - NET_BIND_SERVICE
+```
+
+### User Permissions
+
+Containers run as non-root user (UID 1000):
+
+```dockerfile
+USER 1000:1000
+```
+
+### Secret Management
+
+Sensitive data should use Docker secrets or environment files:
+
+```bash
+# Generate secure keys
+openssl rand -hex 32 > jwt_secret.txt
+docker secret create jwt_secret jwt_secret.txt
+```
+
+## Common Docker Commands
+
+### Service Management
+
 ```bash
 # Start all services
-docker-compose up -d
+make docker-up
 
 # Stop all services
-docker-compose down
+make docker-down
 
-# Restart specific service
-docker-compose restart webui
+# Restart services
+make docker-restart
 
 # View logs
-docker-compose logs -f search-api
+make docker-logs
 
-# Execute command in container
-docker-compose exec webui python -m pytest
+# View specific service logs
+docker compose logs -f webui
+docker compose logs -f vecpipe
 ```
 
 ### Maintenance Commands
+
 ```bash
+# Rebuild images without cache
+make docker-build-fresh
+
 # Remove unused images
 docker image prune -a
 
 # Clean build cache
 docker builder prune
 
-# Remove all stopped containers
-docker container prune
-
-# Full cleanup (careful!)
+# Full system cleanup (careful!)
 docker system prune -a --volumes
 ```
 
 ### Debugging Commands
+
 ```bash
-# Interactive shell
-docker-compose run --rm webui bash
+# Access container shell
+docker compose exec webui /bin/bash
 
 # Check resource usage
 docker stats
@@ -606,233 +441,222 @@ docker stats
 # Inspect container
 docker inspect semantik-webui
 
-# View container processes
-docker-compose top
-
 # Copy files from container
 docker cp semantik-webui:/app/logs/error.log ./
 ```
 
-## Development Workflow
+## Development with Docker
 
-### Hot Reload Setup
-```yaml
-# Mount source code for development
-volumes:
-  - ./packages:/app/packages:ro
-  - ./apps:/app/apps:ro
+### Local Development Setup
 
-# Enable reload
-environment:
-  - RELOAD=true
+For local development with hot reload:
+
+```bash
+# Start only backend services
+make docker-dev-up
+
+# Run webui locally
+make dev-local
 ```
 
-### Local Development
+### Testing in Containers
+
 ```bash
-# Build and run with local changes
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-
 # Run tests in container
-docker-compose run --rm webui pytest
+docker compose run --rm webui pytest
 
-# Access container shell for debugging
-docker-compose exec webui bash
+# Run specific test
+docker compose run --rm webui pytest tests/test_search.py
 ```
 
 ## Production Deployment
 
-### Security Hardening
-```dockerfile
-# Run as non-root user
-USER 1000:1000
+### Production Environment File
 
-# Read-only root filesystem
-RUN chmod -R 755 /app
+Create a production `.env`:
 
-# No new privileges
-security_opt:
-  - no-new-privileges:true
+```bash
+# Environment
+ENVIRONMENT=production
+
+# Security (generate new values!)
+JWT_SECRET_KEY=$(openssl rand -hex 32)
+POSTGRES_PASSWORD=$(openssl rand -hex 32)
+
+# Disable debug features
+USE_MOCK_EMBEDDINGS=false
+DISABLE_AUTH=false
+
+# Performance
+DEFAULT_QUANTIZATION=int8
+MODEL_UNLOAD_AFTER_SECONDS=600
 ```
 
-### Resource Limits
-```yaml
-deploy:
-  resources:
-    limits:
-      cpus: '2.0'
-      memory: 4G
-    reservations:
-      cpus: '1.0'
-      memory: 2G
+### Production Docker Compose Override
+
+Use docker-compose.prod.yml for production settings:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
-### Logging Configuration
-```yaml
-logging:
-  driver: "json-file"
-  options:
-    max-size: "100m"
-    max-file: "5"
-    labels: "service"
-    env: "ENVIRONMENT,LOG_LEVEL"
+### Backup Procedures
+
+```bash
+# Backup PostgreSQL
+make docker-postgres-backup
+
+# Backup Qdrant
+docker exec semantik-qdrant \
+  curl -X POST "http://localhost:6333/snapshots"
+
+# Backup volumes
+docker run --rm \
+  -v semantik_postgres_data:/data \
+  -v $(pwd)/backups:/backup \
+  alpine tar czf /backup/postgres-backup.tar.gz -C /data .
 ```
 
 ## Troubleshooting
 
-### Common Issues
+### Container Won't Start
 
-1. **Container Won't Start**
-   ```bash
-   # Check logs
-   docker-compose logs webui
-   
-   # Check exit code
-   docker-compose ps
-   ```
-
-2. **Permission Denied**
-   ```bash
-   # Fix ownership
-   docker-compose exec webui chown -R semantik:semantik /app/data
-   ```
-
-3. **Out of Memory**
-   ```bash
-   # Check memory usage
-   docker stats
-   
-   # Increase limits
-   docker-compose -f docker-compose.yml -f docker-compose.mem.yml up
-   ```
-
-4. **GPU Not Available**
-   ```bash
-   # Check NVIDIA runtime
-   docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
-   
-   # Install nvidia-docker2
-   sudo apt-get install nvidia-docker2
-   ```
-
-### Debug Mode
-```yaml
-# docker-compose.debug.yml
-services:
-  webui:
-    environment:
-      - DEBUG=true
-      - LOG_LEVEL=DEBUG
-    stdin_open: true
-    tty: true
-```
-
-## Best Practices
-
-### Image Optimization
-1. Use multi-stage builds
-2. Minimize layer count
-3. Order commands by change frequency
-4. Use .dockerignore file
-
-### Security
-1. Don't run as root
-2. Use secrets for sensitive data
-3. Scan images for vulnerabilities
-4. Keep base images updated
-
-### Performance
-1. Use BuildKit for faster builds
-2. Leverage build cache
-3. Optimize layer caching
-4. Use appropriate resource limits
-
-### Maintenance
-1. Tag images properly
-2. Clean up unused resources
-3. Monitor disk usage
-4. Regular backups
-
-## Docker Swarm Deployment
-
-### Initialize Swarm
 ```bash
-# Initialize swarm
-docker swarm init
+# Check logs
+docker compose logs webui
 
-# Deploy stack
-docker stack deploy -c docker-compose.prod.yml semantik
+# Check for port conflicts
+lsof -i :8080
 
-# Scale service
-docker service scale semantik_webui=3
-
-# Update service
-docker service update --image semantik:v2.0 semantik_webui
+# Verify environment
+docker compose config
 ```
 
-### Service Configuration
-```yaml
-deploy:
-  replicas: 3
-  update_config:
-    parallelism: 1
-    delay: 10s
-    failure_action: rollback
-  restart_policy:
-    condition: on-failure
-    delay: 5s
-    max_attempts: 3
+### Permission Denied
+
+```bash
+# Fix volume permissions
+sudo chown -R 1000:1000 ./data ./models ./logs
+
+# Or using docker
+docker compose run --rm webui chown -R 1000:1000 /app/data
 ```
 
-## Kubernetes Migration
+### Out of Memory
 
-### Basic Deployment
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: semantik-webui
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: semantik-webui
-  template:
-    metadata:
-      labels:
-        app: semantik-webui
-    spec:
-      containers:
-      - name: webui
-        image: semantik:latest
-        ports:
-        - containerPort: 8080
-        env:
-        - name: QDRANT_HOST
-          value: "qdrant-service"
+```bash
+# Check memory usage
+docker stats
+
+# Reduce memory usage
+export DEFAULT_QUANTIZATION=int8
+export BATCH_SIZE=16
+```
+
+### GPU Not Available
+
+```bash
+# Check NVIDIA runtime
+docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
+
+# Install nvidia-container-toolkit
+sudo apt-get install nvidia-container-toolkit
+sudo systemctl restart docker
+```
+
+### Database Connection Issues
+
+```bash
+# Check PostgreSQL logs
+docker compose logs postgres
+
+# Test connection
+docker compose exec postgres psql -U semantik -d semantik
+
+# Reset database password
+docker compose down
+rm -rf postgres_data
+make docker-up
 ```
 
 ## Monitoring
 
-### Prometheus Integration
-```yaml
-services:
-  prometheus:
-    image: prom/prometheus
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-    ports:
-      - "9090:9090"
-```
+### Viewing Metrics
 
-### Container Metrics
+Metrics are exposed on port 9091 (not exposed by default):
+
 ```bash
-# CPU and memory usage
-docker stats --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}"
-
-# Disk usage
-docker system df
+# Access metrics
+docker compose exec webui curl http://localhost:9091/metrics
 ```
 
-## Conclusion
+### Using Flower for Task Monitoring
 
-Docker provides a robust, scalable platform for deploying Semantik. This guide covers essential concepts and configurations for both development and production use. Always test configurations thoroughly before deploying to production, and maintain regular backups of your data volumes.
+```bash
+# Start with backend profile
+docker compose --profile backend up -d
+
+# Access Flower UI
+open http://localhost:5555
+# Default auth: admin:admin
+```
+
+### Container Resource Monitoring
+
+```bash
+# Real-time stats
+docker stats
+
+# Detailed resource usage
+docker compose top
+```
+
+## Best Practices
+
+### Image Management
+
+1. **Use specific image tags** in production
+2. **Regularly update base images** for security
+3. **Clean unused images** to save space
+4. **Use multi-stage builds** to minimize image size
+
+### Security
+
+1. **Always change default passwords**
+2. **Use secrets for sensitive data**
+3. **Keep containers updated**
+4. **Limit container capabilities**
+5. **Use read-only mounts** where possible
+
+### Performance
+
+1. **Use SSD storage** for volumes
+2. **Configure appropriate resource limits**
+3. **Enable GPU for better performance**
+4. **Use INT8 quantization** to reduce memory usage
+
+### Maintenance
+
+1. **Regular backups** of persistent data
+2. **Monitor disk usage**
+3. **Rotate logs** to prevent disk fill
+4. **Update dependencies** monthly
+
+## Migration from Legacy Setup
+
+If migrating from the old job-based system:
+
+1. **Backup existing data**
+2. **Update environment variables** (job → operation paths)
+3. **Run database migrations** if needed
+4. **Update volume mounts** to new structure
+5. **Test thoroughly** before switching production
+
+## Support
+
+For Docker-related issues:
+1. Check container logs first
+2. Verify environment configuration
+3. Ensure all dependencies are running
+4. Consult the [troubleshooting section](#troubleshooting)
+5. Check GitHub issues for similar problems
