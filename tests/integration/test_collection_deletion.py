@@ -156,7 +156,7 @@ class TestCollectionDeletion:
         service = create_collection_service(db_session)
 
         # Act & Assert
-        from shared.database.exceptions import InvalidStateError
+        from packages.shared.database.exceptions import InvalidStateError
 
         with pytest.raises(InvalidStateError) as exc_info:
             await service.delete_collection(collection.id, test_user_db.id)

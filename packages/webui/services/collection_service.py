@@ -6,11 +6,11 @@ from typing import Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.database.exceptions import AccessDeniedError, EntityAlreadyExistsError, InvalidStateError
-from shared.database.models import Collection, CollectionStatus, OperationType
-from shared.database.repositories.collection_repository import CollectionRepository
-from shared.database.repositories.document_repository import DocumentRepository
-from shared.database.repositories.operation_repository import OperationRepository
+from packages.shared.database.exceptions import AccessDeniedError, EntityAlreadyExistsError, InvalidStateError
+from packages.shared.database.models import Collection, CollectionStatus, OperationType
+from packages.shared.database.repositories.collection_repository import CollectionRepository
+from packages.shared.database.repositories.document_repository import DocumentRepository
+from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.webui.celery_app import celery_app
 from packages.webui.utils.qdrant_manager import qdrant_manager
 
