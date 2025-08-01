@@ -17,7 +17,7 @@ function CollectionOperations({
   const { data: operations = [], refetch } = useCollectionOperations(collection.id);
   
   // Sort operations by creation date (newest first)
-  const sortedOperations = [...operations].sort((a, b) => 
+  const sortedOperations = [...(operations || [])].sort((a, b) => 
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
   
