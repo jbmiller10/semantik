@@ -1,5 +1,6 @@
 import apiClient from './client';
 import type { DocumentResponse } from './types';
+import { useAuthStore } from '../../../stores/authStore';
 
 /**
  * V2 Documents API client
@@ -14,7 +15,9 @@ export const documentsV2Api = {
     // For file downloads/viewing, we need to construct the URL directly
     // as axios would try to parse the response as JSON by default
     const baseURL = apiClient.defaults.baseURL || '';
-    const token = localStorage.getItem('access_token');
+    // Get token from auth store
+    const state = useAuthStore.getState();
+    const token = state.token;
     
     // Construct the full URL for the document content endpoint
     const url = `${baseURL}/api/v2/collections/${collectionUuid}/documents/${documentUuid}/content`;
