@@ -17,6 +17,7 @@ from packages.shared.database.models import (
 )
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.webui.services.collection_service import CollectionService
+from packages.webui.services.factory import create_collection_service
 
 
 @pytest.mark.asyncio
@@ -75,8 +76,8 @@ class TestCollectionDeletion:
         collection_id = collection.id
 
         # Create multiple operations
-        op1 = await operation_factory(collection_id=collection_id, type=OperationType.INDEX)
-        op2 = await operation_factory(collection_id=collection_id, type=OperationType.REINDEX)
+        op1 = await operation_factory(collection_id=collection_id, user_id=test_user_db.id, type=OperationType.INDEX)
+        op2 = await operation_factory(collection_id=collection_id, user_id=test_user_db.id, type=OperationType.REINDEX)
 
         repo = CollectionRepository(db_session)
 
@@ -112,7 +113,7 @@ class TestCollectionDeletion:
         collection_id = collection.id
         collection_uuid = collection.id
 
-        service = CollectionService(db_session)
+        service = create_collection_service(db_session)
 
         # Act
         await service.delete_collection(collection_uuid, test_user_db.id)
@@ -133,7 +134,7 @@ class TestCollectionDeletion:
         # Mock Qdrant to throw exception
         mock_qdrant_deletion.delete_collection.side_effect = Exception("Collection not found")
 
-        service = CollectionService(db_session)
+        service = create_collection_service(db_session)
 
         # Act - should not raise exception
         await service.delete_collection(collection.id, test_user_db.id)
@@ -151,10 +152,10 @@ class TestCollectionDeletion:
 
         # Create an active operation
         operation = await operation_factory(
-            collection_id=collection.id, type=OperationType.INDEX, status="processing"
+            collection_id=collection.id, user_id=test_user_db.id, type=OperationType.INDEX, status="processing"
         )
 
-        service = CollectionService(db_session)
+        service = create_collection_service(db_session)
 
         # Act & Assert
         from packages.shared.database.exceptions import InvalidStateError

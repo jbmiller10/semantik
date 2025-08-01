@@ -489,11 +489,14 @@ async def collection_factory(db_session):
     created_collections = []
 
     async def _create_collection(**kwargs):
+        # owner_id must be provided - no default
+        if "owner_id" not in kwargs:
+            raise ValueError("owner_id must be provided when creating a collection")
+            
         defaults = {
             "id": str(uuid4()),  # Changed from "uuid" to "id"
             "name": f"Test Collection {len(created_collections)}",
             "description": "Test collection description",
-            "owner_id": 1,
             "vector_store_name": f"col_{uuid4().hex[:16]}",
             "embedding_model": "test-model",
             "quantization": "float16",
@@ -566,10 +569,13 @@ async def operation_factory(db_session):
     created_operations = []
 
     async def _create_operation(**kwargs):
+        # user_id must be provided - no default
+        if "user_id" not in kwargs:
+            raise ValueError("user_id must be provided when creating an operation")
+        
         defaults = {
             "uuid": str(uuid4()),
             "collection_id": 1,
-            "user_id": 1,
             "type": OperationType.INDEX,
             "status": OperationStatus.COMPLETED,
             "config": {},

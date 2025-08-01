@@ -370,10 +370,13 @@ class CollectionRepository:
             AccessDeniedError: If user doesn't own the collection
         """
         try:
-            # Get collection with permission check
-            collection = await self.get_by_uuid_with_permission_check(collection_uuid, user_id)
+            # Get collection without permission check first
+            collection = await self.get_by_uuid(collection_uuid)
+            
+            if not collection:
+                raise EntityNotFoundError("collection", collection_uuid)
 
-            # Only owner can delete
+            # Check if user is the owner (only owners can delete)
             if collection.owner_id != user_id:
                 raise AccessDeniedError(str(user_id), "collection", collection_uuid)
 
