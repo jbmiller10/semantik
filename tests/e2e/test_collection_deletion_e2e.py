@@ -240,7 +240,7 @@ def other_user_collection(create_collection_for_other_user):
 @pytest.fixture
 def collection_with_active_operation(create_collection_with_active_operation):
     """Create a collection with an active operation."""
-    return create_collection_with_active_operation(name="Collection with Active Op", operation_type="add_source")
+    return create_collection_with_active_operation(name="Collection with Active Op", operation_type="index")
 
 
 @pytest.fixture

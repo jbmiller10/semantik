@@ -531,6 +531,7 @@ async def document_factory(db_session):
 
     async def _create_document(**kwargs):
         defaults = {
+            "id": str(uuid4()),  # Add UUID for document ID
             "collection_id": 1,
             "file_name": f"test_doc_{len(created_documents)}.txt",
             "file_path": f"/test/path/test_doc_{len(created_documents)}.txt",
@@ -569,7 +570,7 @@ async def operation_factory(db_session):
             "uuid": str(uuid4()),
             "collection_id": 1,
             "user_id": 1,
-            "type": OperationType.ADD_SOURCE,
+            "type": OperationType.INDEX,
             "status": OperationStatus.COMPLETED,
             "config": {},
             "created_at": datetime.utcnow(),
@@ -608,7 +609,7 @@ def mock_qdrant_deletion():
     mock.create_collection = AsyncMock()
 
     # Patch the qdrant manager
-    import packages.shared.managers.qdrant_manager as qdrant_manager
+    from packages.webui.utils.qdrant_manager import qdrant_manager
 
     original_get_client = qdrant_manager.get_client
     qdrant_manager.get_client = lambda: mock
