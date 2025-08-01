@@ -10,9 +10,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jwt.exceptions import InvalidTokenError
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, field_validator
 
@@ -129,7 +130,7 @@ def verify_token(token: str, token_type: str = "access") -> str | None:
         if username is None or token_type_claim != token_type:
             return None
         return username
-    except JWTError:
+    except InvalidTokenError:
         return None
 
 
