@@ -46,7 +46,12 @@ const renderComponent = (props = {}) => {
 
 describe('DeleteCollectionModal', () => {
   let mockMutate: vi.Mock;
-  let mockMutation: any;
+  let mockMutation: {
+    mutate: vi.Mock;
+    isPending: boolean;
+    isError: boolean;
+    error: Error | null;
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();

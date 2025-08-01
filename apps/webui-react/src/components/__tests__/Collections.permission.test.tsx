@@ -17,7 +17,6 @@ import {
 } from '../../tests/mocks/errorHandlers'
 import { server } from '../../tests/mocks/server'
 import { handlers } from '../../tests/mocks/handlers'
-import { collectionsV2Api } from '../../services/api/v2/collections'
 import { useDeleteCollection } from '../../hooks/useCollections'
 
 // Mock navigation
@@ -464,7 +463,7 @@ describe('Collections - Permission Error Handling', () => {
     it('should prevent deletion of collections user doesnt own', async () => {
       // Mock the delete mutation to fail with 403 error
       const mockDeleteMutation = {
-        mutate: vi.fn((id) => {
+        mutate: vi.fn(() => {
           // Simulate React Query calling the hook's onError directly
           // The hook's onError calls handleApiError and addToast
           const error = {
