@@ -24,6 +24,10 @@ declare global {
     emlformat: {
       parse: (emlContent: string) => { html: string; headers: Record<string, string> };
     };
+    docx: {
+      renderAsync: (data: Blob | ArrayBuffer, container: HTMLElement, styleContainer?: HTMLElement | null, options?: Record<string, unknown>) => Promise<void>;
+      defaultOptions?: Record<string, unknown>;
+    };
   }
 }
 
@@ -45,9 +49,62 @@ interface DocumentViewerProps {
   onClose: () => void;
 }
 
+// Script configurations with SRI hashes for security
+const SCRIPT_CONFIGS = {
+  jszip: {
+    url: 'https://unpkg.com/jszip@3.10.1/dist/jszip.min.js',
+    integrity: 'sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG',
+    crossOrigin: 'anonymous' as const
+  },
+  docxPreview: {
+    url: 'https://unpkg.com/docx-preview@0.3.2/dist/docx-preview.min.js',
+    integrity: 'sha384-WbeDqP/pDz1XLGS3CK6UwoSPLG1dRLX4FQqEEWWBMc4j8KM3s5eojZQGdW9Of0xV',
+    crossOrigin: 'anonymous' as const
+  }
+};
+
+// Helper function to dynamically load scripts with SRI
+const loadScript = (config: typeof SCRIPT_CONFIGS[keyof typeof SCRIPT_CONFIGS]): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    // Check if script is already loaded
+    const existingScript = document.querySelector(`script[src="${config.url}"]`);
+    if (existingScript) {
+      resolve();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = config.url;
+    script.integrity = config.integrity;
+    script.crossOrigin = config.crossOrigin;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Failed to load script: ${config.url}`));
+    document.head.appendChild(script);
+  });
+};
+
+// DOCX rendering options
+const DOCX_RENDER_OPTIONS = {
+  className: 'docx',
+  inWrapper: true,
+  ignoreWidth: false,
+  ignoreHeight: false,
+  ignoreFonts: false,
+  breakPages: true,
+  ignoreLastRenderedPageBreak: true,
+  experimental: false,
+  trimXmlDeclaration: true,
+  useBase64URL: false,
+  renderHeaders: true,
+  renderFooters: true,
+  renderFootnotes: true,
+  renderEndnotes: true,
+} as const;
+
 function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
 
   const contentRef = useRef<HTMLDivElement>(null);
   const markInstanceRef = useRef<InstanceType<typeof window.Mark> | null>(null);
@@ -60,32 +117,144 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
         setLoading(true);
         setError(null);
 
-        // Get the document content URL
-        const { url } = documentsV2Api.getContent(collectionId, docId);
+        // Get the document content URL and headers
+        const { url, headers } = documentsV2Api.getContent(collectionId, docId);
 
-        // For now, we'll display the document in an iframe
-        // TODO: In the future, add specific handlers for different file types:
-        // - PDF: Use pdf.js for better rendering and text selection
-        // - DOCX: Use mammoth.js to convert to HTML
-        // - TXT/Markdown: Fetch and display as text with syntax highlighting
-        // - Images: Display directly with zoom controls
-        // This will require fetching document metadata first to determine file type
+        // Fetch the document with authentication headers
+        const response = await fetch(url, { 
+          headers: headers.Authorization ? headers : undefined 
+        });
         
-        if (contentRef.current) {
-          // Create iframe for document display
-          const iframe = document.createElement('iframe');
-          iframe.src = url;
-          iframe.style.width = '100%';
-          iframe.style.height = '100%';
-          iframe.style.border = 'none';
-          iframe.style.minHeight = '600px';
+        if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error('Authentication required. Please log in again.');
+          } else if (response.status === 403) {
+            throw new Error('You do not have permission to view this document.');
+          } else if (response.status === 404) {
+            throw new Error('Document not found.');
+          } else {
+            const errorData = await response.json().catch(() => null);
+            throw new Error(errorData?.detail || `Failed to load document (${response.status})`);
+          }
+        }
+
+        // Get content type from response headers
+        const contentType = response.headers.get('content-type') || 'application/octet-stream';
+
+        // Handle different content types
+        if (contentType.includes('text/') || contentType.includes('application/json')) {
+          // Text-based content - read as text
+          const text = await response.text();
           
-          // Set sandbox attributes for security
-          iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts');
+          if (contentRef.current) {
+            // Display text content directly
+            if (contentType.includes('text/html')) {
+              // Sanitize HTML content for security
+              contentRef.current.innerHTML = window.DOMPurify ? 
+                window.DOMPurify.sanitize(text) : text;
+            } else if (contentType.includes('text/markdown')) {
+              // Parse markdown if marked.js is available
+              const html = window.marked ? window.marked.parse(text) : `<pre>${text}</pre>`;
+              contentRef.current.innerHTML = window.DOMPurify ? 
+                window.DOMPurify.sanitize(html) : html;
+            } else {
+              // Display plain text or JSON
+              contentRef.current.innerHTML = `<pre style="white-space: pre-wrap; word-wrap: break-word;">${text}</pre>`;
+            }
+          }
+        } else if (contentType.includes('image/')) {
+          // Images - create blob URL
+          const blob = await response.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          setBlobUrl(objectUrl);
           
-          // Clear existing content and add iframe
-          contentRef.current.innerHTML = '';
-          contentRef.current.appendChild(iframe);
+          if (contentRef.current) {
+            contentRef.current.innerHTML = `
+              <div style="text-align: center;">
+                <img src="${objectUrl}" alt="Document" style="max-width: 100%; height: auto;" />
+              </div>
+            `;
+          }
+        } else if (contentType.includes('application/pdf')) {
+          // PDFs - create blob URL for PDF.js or fallback display
+          const blob = await response.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          setBlobUrl(objectUrl);
+          
+          if (contentRef.current) {
+            // If PDF.js is available, use it; otherwise use object tag
+            if (window.pdfjsLib) {
+              // TODO: Implement PDF.js rendering
+              contentRef.current.innerHTML = `
+                <object data="${objectUrl}" type="application/pdf" style="width: 100%; height: 600px;">
+                  <p>Unable to display PDF. <a href="${objectUrl}" download>Download PDF</a></p>
+                </object>
+              `;
+            } else {
+              // Fallback to object tag
+              contentRef.current.innerHTML = `
+                <object data="${objectUrl}" type="application/pdf" style="width: 100%; height: 600px;">
+                  <p>Unable to display PDF. <a href="${objectUrl}" download>Download PDF</a></p>
+                </object>
+              `;
+            }
+          }
+        } else if (
+          contentType.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document') ||
+          contentType.includes('application/msword')
+        ) {
+          // DOCX files - render using docx-preview library
+          const blob = await response.blob();
+          
+          if (contentRef.current) {
+            try {
+              // Load required libraries with SRI for security
+              await loadScript(SCRIPT_CONFIGS.jszip);
+              await loadScript(SCRIPT_CONFIGS.docxPreview);
+              
+              // Clear container and create a wrapper div for docx content
+              contentRef.current.innerHTML = '';
+              const docxContainer = document.createElement('div');
+              docxContainer.className = 'docx-wrapper';
+              contentRef.current.appendChild(docxContainer);
+              
+              // Render DOCX
+              if (window.docx) {
+                await window.docx.renderAsync(blob, docxContainer, null, DOCX_RENDER_OPTIONS);
+              } else {
+                throw new Error('DOCX preview library failed to load');
+              }
+            } catch (docxError) {
+              console.error('Failed to render DOCX:', docxError);
+              // Fallback to download
+              const objectUrl = URL.createObjectURL(blob);
+              setBlobUrl(objectUrl);
+              contentRef.current.innerHTML = `
+                <div style="text-align: center; padding: 2rem;">
+                  <p style="margin-bottom: 1rem;">Unable to preview this Word document.</p>
+                  <a href="${objectUrl}" download class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
+                    Download Document
+                  </a>
+                </div>
+              `;
+            }
+          }
+        } else {
+          // Other binary content - provide download link
+          const blob = await response.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          setBlobUrl(objectUrl);
+          
+          if (contentRef.current) {
+            contentRef.current.innerHTML = `
+              <div style="text-align: center; padding: 2rem;">
+                <p style="margin-bottom: 1rem;">This file type cannot be displayed directly.</p>
+                <a href="${objectUrl}" download class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
+                  Download File
+                </a>
+              </div>
+            `;
+          }
         }
 
         setLoading(false);
@@ -104,40 +273,59 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
     // Disabled until document content can be loaded
   }, []);
 
-  const handleDownload = () => {
-    // Get the document content URL and headers
-    const { url, headers } = documentsV2Api.getContent(collectionId, docId);
-    
-    // Create a temporary anchor element to trigger download
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = ''; // This will use the filename from the server response
-    
-    // If we have auth headers, we need to fetch the file first
-    if (headers.Authorization) {
-      fetch(url, { headers })
-        .then(response => response.blob())
-        .then(blob => {
-          const blobUrl = URL.createObjectURL(blob);
-          link.href = blobUrl;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(blobUrl);
-        })
-        .catch(err => {
-          console.error('Download failed:', err);
-          alert('Failed to download document. Please try again.');
-        });
-    } else {
-      // No auth required, direct download
+  const handleDownload = async () => {
+    try {
+      // Get the document content URL and headers
+      const { url, headers } = documentsV2Api.getContent(collectionId, docId);
+      
+      // Always fetch with auth headers for consistency
+      const response = await fetch(url, { 
+        headers: headers.Authorization ? headers : undefined 
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to download document');
+      }
+      
+      // Get the filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('content-disposition');
+      let filename = 'document';
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (match && match[1]) {
+          filename = match[1];
+        }
+      }
+      
+      // Create blob and trigger download
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      
+      // Clean up blob URL
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+    } catch (err) {
+      console.error('Download failed:', err);
+      alert('Failed to download document. Please try again.');
     }
   };
 
-  // Cleanup
+  // Cleanup blob URLs
+  useEffect(() => {
+    return () => {
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
+      }
+    };
+  }, [blobUrl]);
+
+  // Cleanup on unmount
   useEffect(() => {
     // Copy ref values to local variables to avoid React hooks warnings
     const markInstance = markInstanceRef.current;
