@@ -4,15 +4,19 @@
 
 Semantik is a production-ready, high-performance document embedding and vector search system designed for technical users who prioritize performance and control. The system features a clean three-package architecture with clear separation between its core search engine (vecpipe), control plane (webui), and shared components. This modular design enables both standalone usage and user-friendly management through a modern React interface.
 
+The system has undergone a major architectural refactoring, transitioning from a job-centric model to a collection-centric architecture. This new design provides better organization, scalability, and multi-model support through collections that group related documents with shared embedding configurations.
+
 ### Key Features
-- 🚀 High-performance vector search powered by Qdrant
-- 🤖 Support for multiple embedding models with quantization (float32, float16, int8)
-- 🎯 Hybrid search combining vector similarity and keyword matching
-- 🌐 Full-featured web interface with real-time progress tracking
-- 🔧 Comprehensive REST API for programmatic access
-- 🔐 JWT-based authentication system
-- 📊 Prometheus metrics for monitoring
-- 🧪 Mock mode for testing without GPU resources
+- High-performance vector search powered by Qdrant
+- Collection-based document organization with multi-model support
+- Support for multiple embedding models with quantization (float32, float16, int8)
+- Hybrid search combining vector similarity and keyword matching
+- Full-featured web interface with real-time progress tracking
+- Comprehensive REST API v2 for programmatic access
+- JWT-based authentication system with refresh tokens
+- Prometheus metrics for monitoring
+- Async operations with WebSocket progress updates
+- Mock mode for testing without GPU resources
 
 ## System Architecture Overview
 
@@ -25,9 +29,10 @@ Semantik is a production-ready, high-performance document embedding and vector s
 ┌────────────────────────────────┴───────────────────────────────────────┐
 │                        WebUI Package (Port 8080)                        │
 │                         FastAPI Control Plane                           │
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐  ┌─────────────┐ │
-│  │Auth Service │  │Job Management│  │Search Proxy │  │ WebSockets  │ │
-│  └─────────────┘  └──────────────┘  └─────────────┘  └─────────────┘ │
+│  ┌─────────────┐  ┌─────────────────┐  ┌─────────────┐  ┌──────────┐ │
+│  │Auth Service │  │Collection Mgmt  │  │Search Proxy │  │WebSockets│ │
+│  │   (JWT)     │  │& Operations     │  │   (v2 API)  │  │(Progress)│ │
+│  └─────────────┘  └─────────────────┘  └─────────────┘  └──────────┘ │
 └────────┬──────────────────────────────┬────────────────────────────────┘
          │                              │
          │                              │ HTTP Proxy
@@ -43,15 +48,17 @@ Semantik is a production-ready, high-performance document embedding and vector s
          │ │  └──────────────┘  └──────────────┘  └───────────────┘  │
          │ └────────────────────────────────────────────────────────────┘
          │                              │
-┌────────┴─────────┐                   │
-│   SQLite DB      │                   │
-│  (WebUI-owned)   │                   │
-│  Jobs, Files,    │                   │
+┌────────┴─────────┐                   │            ┌─────────────────┐
+│  PostgreSQL DB   │                   │            │   Celery Worker │
+│  (WebUI-owned)   │                   │            │  (Background    │
+│  Collections,    │                   │            │   Operations)   │
+│  Operations,     │←──────────────────┼────────────┤                 │
+│  Documents,      │                   │            └─────────────────┘
 │  Users, Tokens   │                   │
 └──────────────────┘                   │
                                       │
 ┌──────────────────────────────────────┴─────────────────────────────────┐
-│                         VecPipe Package (Port 8000)                    │
+│                         VecPipe Package (Port 8001)                    │
 │                          Search & Processing API                        │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐  ┌────────────┐  │
 │  │  Extract    │  │  Maintenance │  │   Ingest    │  │   Search   │  │
@@ -63,6 +70,7 @@ Semantik is a production-ready, high-performance document embedding and vector s
 ┌───────────────────────────┴────────────────────────────────────────────┐
 │                         Qdrant Vector Database                          │
 │                     Vector Storage & Similarity Search                  │
+│                 (Collection naming: {uuid}_{model}_{quant})             │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -70,7 +78,7 @@ Semantik is a production-ready, high-performance document embedding and vector s
 
 ### 1. VecPipe Package (`packages/vecpipe/`)
 
-The headless data processing and search API that forms the heart of the system. This package is completely independent and has no dependencies on the webui package.
+The headless data processing and search API that forms the heart of the system. This package is completely independent and has no dependencies on the webui package. Operates on port 8001 in the refactored architecture.
 
 **Key Services:**
 - **Extract Service** (`extract_service.py`): Document parsing and intelligent chunking
@@ -85,31 +93,35 @@ The headless data processing and search API that forms the heart of the system. 
 
 **Design Principles:**
 - Completely standalone operation
-- No awareness of users, jobs, or authentication
-- Direct interaction with Qdrant vector database
+- No awareness of users, collections, or authentication
+- Direct interaction with Qdrant vector database using collection naming convention
 - Resource-efficient GPU memory management
+- Supports multiple concurrent collections with different embedding models
 
 ### 2. WebUI Package (`packages/webui/`)
 
-User-facing application providing authentication, job management, and search interface. Owns and manages the SQLite database containing user data, jobs, and files.
+User-facing application providing authentication, collection management, and search interface. Owns and manages the PostgreSQL database containing user data, collections, operations, and documents.
 
 **Backend Components:**
 - **main.py**: FastAPI application with modular router architecture
-- **api/**: RESTful API routers for auth, jobs, search, files, metrics
-- **auth.py**: JWT-based authentication system
-- **job_processing.py**: Orchestrates document processing pipeline
+- **api/v2/**: Modern RESTful API routers for collections, operations, documents, search
+- **api/auth/**: JWT-based authentication with refresh tokens
+- **services/**: Service layer with business logic (collection_service, operation_service)
+- **worker/**: Celery worker for asynchronous operation processing
 
 **Frontend (React):**
 - Modern React 19 with TypeScript
 - Zustand for state management
-- Real-time WebSocket updates
+- Real-time WebSocket updates for operation progress
 - Tailwind CSS for styling
+- React Query for data fetching
 
 **Key Responsibilities:**
 - User authentication and authorization
-- Job creation and management
-- File tracking and status updates
-- Search request proxying with authentication
+- Collection lifecycle management
+- Operation orchestration and tracking
+- Document management and deduplication
+- Search request proxying with multi-collection support
 - Real-time progress updates via WebSocket
 
 ### 3. Shared Package (`packages/shared/`)
@@ -120,14 +132,16 @@ Common components and utilities used by both webui and vecpipe packages. This pa
 
 **Database Module (`shared/database/`):**
 - **Repository Pattern**: Clean data access layer with type-safe interfaces
-- **SQLite Implementation**: Concrete implementations of repository interfaces
-- **Legacy Wrappers**: Deprecated direct database functions for backward compatibility
+- **PostgreSQL Implementation**: Concrete implementations of repository interfaces
+- **Models**: SQLAlchemy models for collections, operations, documents, users
 - **Schema Management**: Centralized database schema definitions
+- **Exceptions**: Custom database exceptions for error handling
 
 **Contracts Module (`shared/contracts/`):**
 - **API Models**: Pydantic models for request/response validation
 - **Search Models**: Unified search request and response structures
-- **Job Models**: Shared job and file status definitions
+- **Collection Models**: Shared collection and operation status definitions
+- **Document Models**: Document metadata and status tracking
 
 **Config Module (`shared/config/`):**
 - **Settings Management**: Environment-based configuration
@@ -147,65 +161,242 @@ Common components and utilities used by both webui and vecpipe packages. This pa
 ### 4. Database Architecture
 
 **Hybrid Database Design:**
-- **SQLite**: Relational data (jobs, files, users, auth tokens)
+- **PostgreSQL**: Relational data (collections, operations, documents, users, auth tokens)
 - **Qdrant**: Vector storage and similarity search
 
+**Collection-Centric Schema:**
+- **Collections**: Primary organizational unit with UUID identifiers
+- **Operations**: Async tasks (index, reindex, append, remove_source)
+- **Documents**: Individual files within collections
+- **Sources**: Data sources that provide documents to collections
+
 **Key Design Decisions:**
+- UUID-based identifiers for collections and documents
 - Clear separation between metadata and vectors
-- Optimized for single-instance deployments
+- Operation tracking for async task management
+- Content hash-based duplicate detection
 - Comprehensive indexing for performance
 
 For detailed documentation, see [DATABASE_ARCH.md](./DATABASE_ARCH.md)
 
+## Collection-Centric Architecture Benefits
+
+The collection-centric architecture represents a fundamental improvement over the previous job-centric design:
+
+### Key Advantages
+
+1. **Better Organization**: Collections provide a logical grouping of related documents with shared configuration
+2. **Multi-Model Support**: Each collection can use different embedding models and configurations
+3. **Incremental Updates**: Add or remove documents without re-processing the entire dataset
+4. **Resource Efficiency**: Operations are scoped to collections, reducing unnecessary reprocessing
+5. **Clear Ownership**: Collections have explicit ownership and access control
+6. **Flexible Source Management**: Collections can aggregate documents from multiple sources
+
+### Collection Lifecycle Management
+
+Collections progress through several states during their lifecycle:
+
+1. **Creation**: Collection initialized with embedding configuration
+2. **Initial Indexing**: First operation populates the collection with documents
+3. **Active Management**: Ongoing operations to append, remove, or reindex documents
+4. **Maintenance**: Periodic reindexing to incorporate model improvements
+5. **Archival/Deletion**: Clean removal of collection and associated resources
+
+### Operation Types and Purposes
+
+The system supports four primary operation types, each serving a specific purpose:
+
+#### INDEX Operation
+- **Purpose**: Initial population of a new collection
+- **Use Case**: First-time document processing after collection creation
+- **Process**: Scans sources, extracts text, generates embeddings, stores in Qdrant
+- **Result**: Collection ready for search with initial document set
+
+#### APPEND Operation
+- **Purpose**: Add new documents to an existing collection
+- **Use Case**: Incremental updates as new documents become available
+- **Process**: Scans only new sources, deduplicates against existing documents
+- **Result**: Collection expanded with new documents without disrupting existing ones
+
+#### REINDEX Operation
+- **Purpose**: Regenerate all embeddings for a collection
+- **Use Case**: Model upgrades, configuration changes, or quality improvements
+- **Process**: Re-processes all documents with current model configuration
+- **Result**: Updated embeddings reflecting latest model capabilities
+
+#### REMOVE_SOURCE Operation
+- **Purpose**: Remove all documents from a specific source path
+- **Use Case**: Clean up outdated documents or remove specific directories
+- **Process**: Identifies and removes documents matching the source path
+- **Result**: Collection updated with documents from specified source removed
+
+### Collection Source Management
+
+Collections support flexible source management to aggregate documents from multiple locations:
+
+```
+Collection
+    ├── Source 1: /data/technical-docs/
+    │   ├── manual.pdf
+    │   └── guide.md
+    ├── Source 2: /data/api-docs/
+    │   └── openapi.yaml
+    └── Source 3: /shared/knowledge-base/
+        ├── faq.md
+        └── troubleshooting.pdf
+```
+
+**Source Features**:
+- Add sources incrementally without reprocessing existing documents
+- Remove specific sources while preserving others
+- Track source metadata for document provenance
+- Support for directories, individual files, and glob patterns
+- Automatic deduplication based on content hash
+
+### Multi-Model Support Architecture
+
+The architecture enables sophisticated multi-model deployments:
+
+```
+User Search Query
+        ↓
+┌─────────────────────────────────────┐
+│   Collection 1: Technical Docs      │
+│   Model: BAAI/bge-large-en-v1.5     │
+│   Quantization: float16             │
+└─────────────────────────────────────┘
+        ↓
+┌─────────────────────────────────────┐
+│   Collection 2: Code Documentation  │
+│   Model: Qwen/Qwen3-0.6B           │
+│   Quantization: int8                │
+└─────────────────────────────────────┘
+        ↓
+┌─────────────────────────────────────┐
+│   Collection 3: Research Papers     │
+│   Model: sentence-transformers/...  │
+│   Quantization: float32             │
+└─────────────────────────────────────┘
+        ↓
+    Unified Search Results
+```
+
+**Multi-Model Benefits**:
+- Optimal model selection per document type
+- Resource optimization through quantization choices
+- Parallel search across heterogeneous collections
+- Model-specific reranking for best relevance
+
 ## Data Flow
 
-### Document Processing Pipeline
+### Collection Creation and Document Processing
 
 ```
-1. User uploads documents via WebUI
+1. User creates collection with embedding configuration
    ↓
-2. WebUI creates job record in SQLite
+2. WebUI creates collection record in PostgreSQL
    ↓
-3. Directory scan identifies processable files
+3. Qdrant collection created with deterministic naming
    ↓
-4. Extract service chunks documents by tokens
+4. User adds source (directory/file) to collection
    ↓
-5. Embed service generates vectors (with batching)
+5. Operation created and queued to Celery worker
    ↓
-6. Ingest service stores vectors in Qdrant
+6. Worker scans source and creates document records
    ↓
-7. WebSocket updates UI with progress
+7. Extract service chunks documents by tokens
+   ↓
+8. Embed service generates vectors (with batching)
+   ↓
+9. Ingest service stores vectors in Qdrant
+   ↓
+10. WebSocket updates UI with real-time progress
 ```
 
-### Search Flow
+### Multi-Collection Search Flow
 
 ```
-1. User enters search query in UI
+1. User selects collections and enters search query
    ↓
-2. WebUI proxies request to Search API
+2. WebUI validates access permissions
    ↓
-3. Search API generates query embedding
+3. Request proxied to Search API with collection UUIDs
    ↓
-4. Qdrant performs similarity search
+4. Search API maps UUIDs to Qdrant collection names
    ↓
-5. Results enriched with metadata
+5. Query embedding generated for each model type
    ↓
-6. Response returned through proxy
+6. Parallel search across multiple Qdrant collections
+   ↓
+7. Results normalized and optionally reranked
+   ↓
+8. Response enriched with collection metadata
+   ↓
+9. Results returned through proxy with scores
 ```
 
 ## API Architecture
 
-### Search API (Port 8000)
+### Search API (Port 8001)
 - Pure REST API for vector/hybrid search
 - No authentication required
-- Supports batch operations
+- Supports batch operations and multi-collection search
 - Model lazy-loading for efficiency
+- Collection-aware with Qdrant naming convention
 
-### WebUI API (Port 8080)
-- JWT-authenticated endpoints
-- Job management and monitoring
-- Search proxy with authentication
-- WebSocket for real-time updates
+### WebUI API v2 (Port 8080)
+- JWT-authenticated endpoints with refresh tokens
+- Collection lifecycle management
+- Operation tracking and monitoring
+- Document management with deduplication
+- Search proxy with multi-collection support
+- WebSocket for real-time operation progress
+
+**Key v2 API Endpoints:**
+- `/api/v2/collections` - Collection CRUD operations
+- `/api/v2/operations` - Operation tracking and management
+- `/api/v2/search` - Multi-collection semantic search
+- `/api/v2/documents` - Document access and metadata
+
+### Collection-Centric API Examples
+
+The v2 API design reflects the collection-centric architecture:
+
+```python
+# Create a new collection with specific embedding configuration
+POST /api/v2/collections
+{
+    "name": "Technical Documentation",
+    "embedding_model": "BAAI/bge-large-en-v1.5",
+    "embedding_size": 1024,
+    "quantization": "float16",
+    "chunk_size": 512,
+    "chunk_overlap": 50
+}
+
+# Add a source to the collection (triggers APPEND operation)
+POST /api/v2/collections/{collection_id}/sources
+{
+    "source_path": "/data/docs/api-reference/"
+}
+
+# Search across multiple collections
+POST /api/v2/search
+{
+    "query": "How to authenticate API requests?",
+    "collection_ids": ["uuid-1", "uuid-2", "uuid-3"],
+    "limit": 10,
+    "search_type": "hybrid",
+    "rerank": true
+}
+
+# Monitor operation progress
+GET /api/v2/operations/{operation_id}
+WebSocket: /ws/operations/{operation_id}/progress
+
+# Reindex a collection with updated configuration
+POST /api/v2/collections/{collection_id}/reindex
+```
 
 For complete API documentation, see [API_ARCHITECTURE.md](./API_ARCHITECTURE.md)
 
@@ -334,26 +525,73 @@ cp .env.example .env
 
 ## Future Enhancements
 
-### Planned Features
-1. **Horizontal Scaling**
-   - Distributed job processing
-   - Multi-instance WebUI
-   - Qdrant cluster support
+### Collection-Centric Evolution
 
-2. **Enhanced Search**
-   - Cross-lingual search
-   - Faceted search
-   - Query expansion
+The collection-centric architecture provides a foundation for advanced features:
 
-3. **Advanced Features**
-   - Incremental updates
-   - Real-time indexing
-   - Custom model fine-tuning
+#### Advanced Collection Management
+1. **Collection Templates**
+   - Pre-configured templates for common use cases (legal docs, code, research papers)
+   - Shareable configuration profiles across organizations
+   - Automatic model recommendations based on content type
+
+2. **Collection Relationships**
+   - Hierarchical collections with inheritance
+   - Cross-collection linking and references
+   - Collection groups for unified search contexts
+
+3. **Smart Operations**
+   - Intelligent operation scheduling based on resource availability
+   - Batch operation optimization across multiple collections
+   - Predictive reindexing based on model updates
+   - Operation templates for complex workflows
+
+#### Enhanced Search Capabilities
+1. **Collection-Aware Search**
+   - Dynamic collection selection based on query intent
+   - Collection-specific ranking algorithms
+   - Inter-collection result fusion strategies
+   - Collection authority scoring
+
+2. **Advanced Features**
+   - Real-time collection updates with streaming ingestion
+   - Collection-specific knowledge graphs
+   - Multi-stage retrieval pipelines per collection
+   - Collection-based query routing
+
+#### Enterprise Features
+1. **Collection Governance**
+   - Collection lifecycle policies
+   - Automated collection archival and retention
+   - Collection compliance tracking
+   - Usage analytics per collection
+
+2. **Scalability**
+   - Collection sharding for massive datasets
+   - Federated search across distributed collections
+   - Collection-level resource quotas
+   - Dynamic collection migration
 
 ### Architecture Evolution
-- Microservices decomposition
-- Event-driven architecture
-- Cloud-native deployment
+
+The collection-centric design enables future architectural improvements:
+
+1. **Collection Microservices**
+   - Dedicated services per high-volume collection
+   - Collection-specific optimization strategies
+   - Independent scaling per collection type
+
+2. **Event-Driven Collections**
+   - Collection state change events
+   - Operation completion notifications
+   - Real-time collection synchronization
+   - Event sourcing for collection history
+
+3. **Cloud-Native Collections**
+   - Kubernetes operators for collection management
+   - Collection-as-a-Service (CaaS) abstractions
+   - Serverless operation processing
+   - Multi-region collection replication
 
 ## Related Documentation
 
@@ -369,4 +607,13 @@ For deep dives into specific components:
 
 ## Conclusion
 
-Semantik demonstrates a well-architected system with clear separation of concerns, robust error handling, and excellent performance characteristics. The modular design enables both standalone usage of the search engine and full-featured operation through the web interface, making it suitable for a wide range of deployment scenarios from development laptops to production servers.
+Semantik's collection-centric architecture represents a significant advancement in semantic search system design. By organizing documents into collections with dedicated configurations, the system provides:
+
+- **Flexibility**: Each collection can be optimized for its specific content type and use case
+- **Scalability**: Operations are scoped to collections, enabling efficient resource utilization
+- **Maintainability**: Clear separation between collections simplifies management and troubleshooting
+- **Extensibility**: The architecture naturally supports advanced features like multi-model search and incremental updates
+
+The transition from a job-centric to collection-centric design has transformed Semantik from a simple document processing pipeline into a sophisticated knowledge management platform. The modular architecture, combined with the collection-based organization, enables deployment scenarios ranging from personal knowledge bases on development laptops to enterprise-scale semantic search infrastructure.
+
+This architecture positions Semantik as a production-ready solution for organizations that value data privacy, require fine-grained control over their search infrastructure, and need the flexibility to optimize for diverse document types and use cases.

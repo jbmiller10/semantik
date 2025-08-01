@@ -1,10 +1,10 @@
 import { http, HttpResponse } from 'msw'
+import type { Collection, Operation } from '../../types/collection'
 
 export const handlers = [
   // Auth endpoints
   http.post('/api/auth/login', async ({ request }) => {
-    const body = await request.json() as any
-    const { username, password } = body as { username: string; password: string }
+    const { username, password } = await request.json() as { username: string; password: string }
     
     if (username === 'testuser' && password === 'testpass') {
       return HttpResponse.json({
@@ -42,74 +42,6 @@ export const handlers = [
     return HttpResponse.json({ message: 'Logged out successfully' })
   }),
 
-  // Jobs endpoints
-  http.get('/api/jobs', () => {
-    return HttpResponse.json([
-      {
-        id: '1',
-        name: 'Test Collection',
-        directory_path: '/test/path',
-        collection_name: 'test-collection',
-        status: 'completed',
-        progress: 100,
-        total_files: 10,
-        total_documents: 10,
-        processed_files: 10,
-        processed_documents: 10,
-        failed_files: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      {
-        id: '2',
-        name: 'Test Collection 2',
-        directory_path: '/test/path2',
-        collection_name: 'test-collection-2',
-        status: 'completed',
-        progress: 100,
-        total_files: 20,
-        total_documents: 20,
-        processed_files: 20,
-        processed_documents: 20,
-        failed_files: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-    ])
-  }),
-
-  http.post('/api/jobs', async ({ request }) => {
-    const body = await request.json() as any
-    
-    return HttpResponse.json({
-      id: '2',
-      name: body.name || 'New Job',
-      directory_path: body.directory_path,
-      collection_name: body.name,
-      status: 'pending',
-      progress: 0,
-      total_files: 0,
-      total_documents: 0,
-      processed_files: 0,
-      processed_documents: 0,
-      failed_files: 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-  }),
-
-  http.delete('/api/jobs/:jobId', ({ params }) => {
-    return HttpResponse.json({ 
-      message: `Job ${params.jobId} deleted successfully` 
-    })
-  }),
-
-  http.post('/api/jobs/:jobId/cancel', ({ params }) => {
-    return HttpResponse.json({ 
-      message: `Job ${params.jobId} cancellation requested` 
-    })
-  }),
-
   // Collections endpoints
   http.get('/api/collections', () => {
     return HttpResponse.json([
@@ -120,7 +52,6 @@ export const handlers = [
         model_name: 'Qwen/Qwen3-Embedding-0.6B',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        job_count: 2,
       }
     ])
   }),
@@ -137,8 +68,8 @@ export const handlers = [
   }),
 
   http.put('/api/collections/:name', async ({ params, request }) => {
-    const body = await request.json() as any
-    const { new_name } = body as { new_name: string }
+    const body = await request.json() as { new_name: string }
+    const { new_name } = body
     
     return HttpResponse.json({
       message: `Collection ${params.name} renamed to ${new_name}`,
@@ -159,7 +90,7 @@ export const handlers = [
 
   // Search endpoints
   http.post('/api/search', async ({ request }) => {
-    const body = await request.json() as any
+    const body = await request.json() as { query: string; collection?: string; search_type?: string }
     
     return HttpResponse.json({
       results: [
@@ -195,27 +126,10 @@ export const handlers = [
       ]
     })
   }),
-  
-  // Collections status endpoint
-  http.get('/api/jobs/collections-status', () => {
-    return HttpResponse.json({
-      '1': {
-        exists: true,
-        point_count: 100,
-        status: 'completed',
-      },
-      '2': {
-        exists: true,
-        point_count: 200,
-        status: 'completed',
-      },
-    })
-  }),
 
   // Settings endpoints
   http.get('/api/settings/stats', () => {
     return HttpResponse.json({
-      job_count: 10,
       file_count: 100,
       database_size_mb: 50,
       parquet_files_count: 10,
@@ -225,5 +139,142 @@ export const handlers = [
 
   http.post('/api/settings/reset-database', () => {
     return HttpResponse.json({ message: 'Database reset successfully' })
+  }),
+
+  // V2 API endpoints
+  // System status
+  http.get('/api/v2/system/status', () => {
+    return HttpResponse.json({
+      healthy: true,
+      version: '2.0.0',
+      services: {
+        database: 'healthy',
+        redis: 'healthy',
+        qdrant: 'healthy',
+      },
+      reranking_available: true,
+      gpu_available: true,
+      gpu_memory_mb: 8192,
+    })
+  }),
+
+  // Collections
+  http.get('/api/v2/collections', () => {
+    return HttpResponse.json({
+      collections: [
+        {
+          id: '123e4567-e89b-12d3-a456-426614174000',
+          name: 'Test Collection 1',
+          description: 'Test collection',
+          owner_id: 1,
+          vector_store_name: 'test_collection_vectors',
+          embedding_model: 'Qwen/Qwen3-Embedding-0.6B',
+          quantization: 'float32',
+          chunk_size: 1000,
+          chunk_overlap: 200,
+          is_public: false,
+          status: 'ready',
+          document_count: 10,
+          vector_count: 100,
+          total_size_bytes: 1048576,
+          created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-01-01T00:00:00Z',
+        },
+        {
+          id: '456e7890-e89b-12d3-a456-426614174001',
+          name: 'Test Collection 2',
+          description: 'Another test collection',
+          owner_id: 1,
+          vector_store_name: 'test_collection_2_vectors',
+          embedding_model: 'BAAI/bge-small-en-v1.5',
+          quantization: 'float32',
+          chunk_size: 512,
+          chunk_overlap: 50,
+          is_public: false,
+          status: 'ready',
+          document_count: 20,
+          vector_count: 200,
+          total_size_bytes: 2097152,
+          created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-01-01T00:00:00Z',
+        }
+      ],
+      total: 2,
+      page: 1,
+      page_size: 10,
+    })
+  }),
+
+  http.get('/api/v2/collections/:uuid', ({ params }) => {
+    const collection: Collection = {
+      id: params.uuid as string,
+      name: 'Test Collection',
+      description: 'Test description',
+      owner_id: 1,
+      vector_store_name: 'test_collection_vectors',
+      embedding_model: 'text-embedding-ada-002',
+      quantization: 'float32',
+      chunk_size: 1000,
+      chunk_overlap: 200,
+      is_public: false,
+      status: 'ready',
+      document_count: 150,
+      vector_count: 2500,
+      total_size_bytes: 1048576,
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: '2025-01-01T00:00:00Z',
+    }
+    return HttpResponse.json(collection)
+  }),
+
+  http.post('/api/v2/collections/:uuid/reindex', ({ params }) => {
+    const operation: Operation = {
+      id: 'op-' + Date.now(),
+      collection_id: params.uuid as string,
+      operation_type: 'reindex',
+      status: 'pending',
+      started_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      config: {},
+      progress: {
+        current: 0,
+        total: 100,
+        percentage: 0,
+        message: 'Starting reindex operation',
+      },
+    }
+    return HttpResponse.json(operation)
+  }),
+
+  http.delete('/api/v2/collections/:uuid', () => {
+    return HttpResponse.json({ message: 'Collection deleted successfully' })
+  }),
+
+  // Search endpoint
+  http.post('/api/v2/search', async ({ request }) => {
+    const body = await request.json() as { use_reranker?: boolean }
+    
+    return HttpResponse.json({
+      results: [
+        {
+          document_id: 'doc_1',
+          chunk_id: 'chunk_1',
+          score: body.use_reranker ? 0.95 : 0.85,
+          text: body.use_reranker ? 'Test result with reranking' : 'Test result without reranking',
+          file_path: '/test.txt',
+          file_name: 'test.txt',
+          collection_id: body.collection_uuids?.[0] || '123e4567-e89b-12d3-a456-426614174000',
+          collection_name: 'Test Collection 1',
+        }
+      ],
+      total_results: 1,
+      reranking_used: body.use_reranker || false,
+      reranker_model: body.use_reranker ? (body.rerank_model || 'Qwen/Qwen3-Reranker-0.6B') : null,
+      reranking_time_ms: body.use_reranker ? 50 : undefined,
+      search_time_ms: body.use_reranker ? 100 : 50,
+      total_time_ms: body.use_reranker ? 150 : 50,
+      partial_failure: false,
+    })
   }),
 ]

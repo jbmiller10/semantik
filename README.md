@@ -4,9 +4,14 @@
 
 While we will do our best to avoid any breaking changes, we do not gurantee backwards compatibility between releases at this time. This is in the interest of providing the strongest long-term foundation for Semantik by the time of release.
 
+**📚 Documentation Update (2025-08-01):** We've completed a comprehensive documentation overhaul! Check out the new [Documentation Index](docs/DOCUMENTATION_INDEX.md) for organized access to 29+ detailed guides covering architecture, APIs, deployment, and migration from older versions.
+
 🚨🚨🚨
 
-# Semantik 🔎 - Easy, Private, and Powerful Document Search
+---
+
+
+# Semantik - Easy, Private, and Powerful Document Search
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
@@ -53,7 +58,7 @@ Semantik is built for users who want to be in the driver's seat.
 A powerful backend deserves a clean frontend.
 <ul>
   <li><b>Intuitive UI:</b> Easily create and manage your search collections.</li>
-  <li><b>Real-time Monitoring:</b> Watch your documents get processed with a detailed job monitor.</li>
+  <li><b>Real-time Monitoring:</b> Watch your documents get processed with detailed operation tracking.</li>
   <li><b>Document Viewer:</b> Preview your search results directly in the app.</li>
 </ul>
 </details>
@@ -99,7 +104,7 @@ Semantik can run on both CPU and GPU, but a CUDA-compatible GPU is **strongly re
 
 ## Quick Start
 
-### Option 1: Interactive Setup Wizard (Recommended) 🧙‍♂️
+### Option 1: Interactive Setup Wizard (Recommended)
 <details>
 <summary>The easiest way to get started is using our interactive setup wizard.</summary>
 
@@ -136,12 +141,12 @@ The setup wizard guides you through the entire configuration process with an int
    - All security keys are generated automatically
 
 4. **That's it!** The wizard will:
-   - ✅ Check system requirements
-   - ✅ Configure GPU or CPU mode automatically
-   - ✅ Set up your document directories
-   - ✅ Generate secure configurations
-   - ✅ Start all services
-   - ✅ Provide a service monitor for ongoing management
+   - Check system requirements
+   - Configure GPU or CPU mode automatically
+   - Set up your document directories
+   - Generate secure configurations
+   - Start all services
+   - Provide a service monitor for ongoing management
 
 > ** Tip:** If you've already configured Semantik, running `make wizard` again will take you directly to the service monitor where you can start, stop, and manage your services.
 
@@ -178,7 +183,7 @@ The setup wizard guides you through the entire configuration process with an int
 
 That's it!  Semantik is now running with:
 - **WebUI** on port 8080
-- **Search API** on port 8000
+- **Search API** on port 8001
 - **Qdrant** vector database on port 6333
 
 **Additional Docker Options:**
@@ -220,6 +225,30 @@ That's it!  Semantik is now running with:
 
 
 
+
+## 📖 Documentation
+
+Semantik includes comprehensive documentation for all aspects of the system:
+
+- **[Documentation Index](docs/DOCUMENTATION_INDEX.md)** - Start here! Complete guide to all documentation
+- **[API Reference](docs/API_REFERENCE.md)** - Full REST and WebSocket API documentation
+- **[Architecture Guide](docs/ARCH.md)** - System design and component relationships
+- **[Migration Guide](docs/MIGRATION_GUIDE.md)** - Upgrading from older versions
+- **[Configuration Guide](docs/CONFIGURATION.md)** - All environment variables and settings
+
+### Quick Links by Role
+
+**For Users:**
+- [Collection Management](docs/COLLECTION_MANAGEMENT.md) - Creating and managing document collections
+- [Search Guide](docs/SEARCH_SYSTEM.md) - Advanced search features and optimization
+
+**For Developers:**
+- [Local Development](docs/local-development.md) - Setting up your development environment
+- [Testing Guide](docs/TESTING.md) - Writing and running tests
+
+**For Operations:**
+- [Deployment Guide](docs/DEPLOYMENT.md) - Production deployment best practices
+- [Monitoring Guide](docs/HEALTH_MONITORING.md) - System health and performance monitoring
 
 ##  Troubleshooting Common Issues
 
@@ -286,7 +315,7 @@ curl http://localhost:6333/collections/work_docs
 **Solutions**:
 1. Check browser console for WebSocket errors
 2. Ensure no proxy is blocking WebSocket connections
-3. Verify ports 8080 and 8000 are accessible
+3. Verify ports 8080 and 8001 are accessible
 4. Try disabling browser extensions
 
 ```javascript
@@ -297,7 +326,7 @@ ws.onerror = (e) => console.error('Error:', e);
 ```
 </details>
 
-For more troubleshooting tips, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+For more troubleshooting tips, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 
 ##  License

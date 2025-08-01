@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 from shared.config.vecpipe import VecpipeConfig
 
 from .base import BaseEmbeddingService
@@ -121,7 +122,7 @@ def get_embedding_service_sync(config: VecpipeConfig | None = None) -> BaseEmbed
 
 
 # Export convenience functions for common operations
-async def embed_texts(texts: list[str], model_name: str, batch_size: int = 32, **kwargs: Any) -> np.ndarray:
+async def embed_texts(texts: list[str], model_name: str, batch_size: int = 32, **kwargs: Any) -> NDArray[np.float32]:
     """Convenience function to embed texts with a specific model.
 
     This will initialize the service if needed.
@@ -146,7 +147,7 @@ async def embed_texts(texts: list[str], model_name: str, batch_size: int = 32, *
         raise RuntimeError(f"Failed to embed texts with model {model_name}: {e}") from e
 
 
-async def embed_single(text: str, model_name: str, **kwargs: Any) -> np.ndarray:
+async def embed_single(text: str, model_name: str, **kwargs: Any) -> NDArray[np.float32]:
     """Convenience function to embed a single text with a specific model.
 
     This will initialize the service if needed.

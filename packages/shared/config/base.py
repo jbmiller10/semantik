@@ -47,10 +47,6 @@ class BaseConfig(BaseSettings):
         return self.data_dir / "file_tracking.json"
 
     @property
-    def webui_db(self) -> Path:
-        return self.data_dir / "webui.db"
-
-    @property
     def extract_dir(self) -> Path:
         return self.data_dir / "extract"
 

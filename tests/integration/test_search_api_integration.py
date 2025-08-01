@@ -28,7 +28,7 @@ class TestSearchAPIIntegration:
     """Test the integration between search_api and embedding_service."""
 
     @pytest.fixture(autouse=True)
-    def _setup_env(self):
+    def _setup_env(self) -> None:
         """Set up environment variables for the test."""
         # Save original values
         original_values = {}
@@ -58,7 +58,7 @@ class TestSearchAPIIntegration:
     @patch("packages.vecpipe.search_api.generate_mock_embedding")
     @patch("packages.vecpipe.search_api.generate_embedding_async")
     @patch("packages.vecpipe.search_utils.AsyncQdrantClient")
-    @patch("shared.embedding.EmbeddingService")
+    @patch("packages.shared.embedding.EmbeddingService")
     @patch("httpx.AsyncClient.get")
     @patch("httpx.AsyncClient.post")
     def test_search_endpoint_uses_embedding_service(
@@ -69,11 +69,11 @@ class TestSearchAPIIntegration:
         mock_qdrant_client_class,
         mock_generate_embedding_async,
         mock_generate_mock_embedding,
-    ):
+    ) -> None:
         """Test that the /search endpoint correctly uses the embedding service."""
         # Import settings to check which mode we're in
 
-        from shared.config import settings
+        from packages.shared.config import settings
 
         # Set up mocks
         # Mock the embedding service instance
@@ -214,7 +214,7 @@ class TestSearchAPIIntegration:
     @patch("packages.vecpipe.search_api.generate_mock_embedding")
     @patch("packages.vecpipe.search_api.generate_embedding_async")
     @patch("packages.vecpipe.search_utils.AsyncQdrantClient")
-    @patch("shared.embedding.EmbeddingService")
+    @patch("packages.shared.embedding.EmbeddingService")
     @patch("httpx.AsyncClient.get")
     @patch("httpx.AsyncClient.post")
     def test_search_with_custom_model_params(
@@ -225,11 +225,11 @@ class TestSearchAPIIntegration:
         mock_qdrant_client_class,
         mock_generate_embedding_async,
         mock_generate_mock_embedding,
-    ):
+    ) -> None:
         """Test search with custom model name and quantization parameters."""
         # Import settings to check which mode we're in
 
-        from shared.config import settings
+        from packages.shared.config import settings
 
         # Set up mocks
         mock_embedding_instance = mock_embedding_service_class.return_value

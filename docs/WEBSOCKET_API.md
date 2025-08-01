@@ -2,22 +2,25 @@
 
 ## Overview
 
-Semantik provides WebSocket endpoints for real-time updates during job processing and directory scanning. This enables responsive user interfaces that show live progress without polling.
+Semantik provides WebSocket endpoints for real-time updates during operation processing and directory scanning. This enables responsive user interfaces that show live progress without polling.
 
 ## WebSocket Endpoints
 
-### 1. Job Progress WebSocket
+### 1. Operation Progress WebSocket
 
-**Endpoint**: `ws://localhost:8080/ws/{job_id}`
+**Endpoint**: `ws://localhost:8080/ws/operations/{operation_id}`
 
-Provides real-time updates during embedding job processing.
+Provides real-time updates during operation processing (indexing, reindexing, etc.).
+
+**Authentication**: Pass JWT token as query parameter: `?token=<jwt_token>`
 
 **Connection Example**:
 ```javascript
-const ws = new WebSocket('ws://localhost:8080/ws/abc123-job-id');
+const token = localStorage.getItem('authToken');
+const ws = new WebSocket(`ws://localhost:8080/ws/operations/abc123-operation-id?token=${token}`);
 
 ws.onopen = () => {
-    console.log('Connected to job progress');
+    console.log('Connected to operation progress');
 };
 
 ws.onmessage = (event) => {
@@ -49,14 +52,16 @@ ws.onopen = () => {
 
 ## Message Formats
 
-### Job Progress Messages
+### Operation Progress Messages
 
 #### Server → Client Messages
 
-**Job Started**
+**Operation Started**
 ```json
 {
-    "type": "job_started",
+    "type": "operation_started",
+    "operation_id": "abc123-operation-id",
+    "operation_type": "index",
     "total_files": 42
 }
 ```
@@ -81,11 +86,13 @@ ws.onopen = () => {
 }
 ```
 
-**Job Completed**
+**Operation Completed**
 ```json
 {
-    "type": "job_completed",
-    "message": "Job completed successfully"
+    "type": "operation_completed",
+    "operation_id": "abc123-operation-id",
+    "status": "completed",
+    "message": "Operation completed successfully"
 }
 ```
 
@@ -160,14 +167,19 @@ ws.onopen = () => {
 ### JavaScript/TypeScript Example
 
 ```typescript
-class JobProgressClient {
+class OperationProgressClient {
     private ws: WebSocket | null = null;
     private reconnectAttempts = 0;
     private maxReconnectAttempts = 5;
     private reconnectDelay = 3000;
+    private token: string;
 
-    connect(jobId: string) {
-        const wsUrl = `ws://localhost:8080/ws/${jobId}`;
+    constructor(token: string) {
+        this.token = token;
+    }
+
+    connect(operationId: string) {
+        const wsUrl = `ws://localhost:8080/ws/operations/${operationId}?token=${this.token}`;
         
         try {
             this.ws = new WebSocket(wsUrl);
@@ -206,8 +218,8 @@ class JobProgressClient {
 
     private handleMessage(data: any) {
         switch (data.type) {
-            case 'job_started':
-                console.log(`Job started: ${data.total_files} files to process`);
+            case 'operation_started':
+                console.log(`Operation started: ${data.total_files} files to process`);
                 break;
             
             case 'file_processing':
@@ -218,13 +230,13 @@ class JobProgressClient {
                 console.log(`Progress: ${data.processed_files}/${data.total_files}`);
                 break;
             
-            case 'job_completed':
-                console.log('Job completed!');
+            case 'operation_completed':
+                console.log('Operation completed!');
                 this.disconnect();
                 break;
             
             case 'error':
-                console.error('Job error:', data.message);
+                console.error('Operation error:', data.message);
                 break;
         }
     }
@@ -234,7 +246,7 @@ class JobProgressClient {
         console.log(`Reconnecting... (attempt ${this.reconnectAttempts})`);
         
         setTimeout(() => {
-            this.connect(jobId);
+            this.connect(operationId);
         }, this.reconnectDelay);
     }
 
@@ -251,7 +263,7 @@ class JobProgressClient {
 ```tsx
 import { useEffect, useRef, useState } from 'react';
 
-interface JobProgress {
+interface OperationProgress {
     currentFile?: string;
     processedFiles: number;
     totalFiles: number;
@@ -259,8 +271,8 @@ interface JobProgress {
     error?: string;
 }
 
-export function useJobProgress(jobId: string): JobProgress {
-    const [progress, setProgress] = useState<JobProgress>({
+export function useOperationProgress(operationId: string, token: string): OperationProgress {
+    const [progress, setProgress] = useState<OperationProgress>({
         processedFiles: 0,
         totalFiles: 0,
         status: 'connecting'
@@ -269,16 +281,16 @@ export function useJobProgress(jobId: string): JobProgress {
     const wsRef = useRef<WebSocket | null>(null);
     
     useEffect(() => {
-        if (!jobId) return;
+        if (!operationId || !token) return;
         
-        const ws = new WebSocket(`ws://localhost:8080/ws/${jobId}`);
+        const ws = new WebSocket(`ws://localhost:8080/ws/operations/${operationId}?token=${token}`);
         wsRef.current = ws;
         
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
             
             switch (data.type) {
-                case 'job_started':
+                case 'operation_started':
                     setProgress(prev => ({
                         ...prev,
                         totalFiles: data.total_files,
@@ -295,7 +307,7 @@ export function useJobProgress(jobId: string): JobProgress {
                     });
                     break;
                 
-                case 'job_completed':
+                case 'operation_completed':
                     setProgress(prev => ({
                         ...prev,
                         status: 'completed'
@@ -325,7 +337,7 @@ export function useJobProgress(jobId: string): JobProgress {
                 ws.close();
             }
         };
-    }, [jobId]);
+    }, [operationId, token]);
     
     return progress;
 }
@@ -338,69 +350,126 @@ export function useJobProgress(jobId: string): JobProgress {
 The server uses a `ConnectionManager` class to handle multiple WebSocket connections:
 
 ```python
-class ConnectionManager:
+class WebSocketManager:
     def __init__(self):
         self.active_connections: dict[str, list[WebSocket]] = {}
     
-    async def connect(self, websocket: WebSocket, job_id: str):
+    async def connect(self, websocket: WebSocket, channel_id: str, user_id: str):
         await websocket.accept()
-        if job_id not in self.active_connections:
-            self.active_connections[job_id] = []
-        self.active_connections[job_id].append(websocket)
+        connection_key = f"{user_id}:{channel_id}"
+        if connection_key not in self.active_connections:
+            self.active_connections[connection_key] = []
+        self.active_connections[connection_key].append(websocket)
     
-    def disconnect(self, websocket: WebSocket, job_id: str):
-        if job_id in self.active_connections:
-            self.active_connections[job_id].remove(websocket)
-            if not self.active_connections[job_id]:
-                del self.active_connections[job_id]
+    def disconnect(self, websocket: WebSocket, channel_id: str, user_id: str):
+        connection_key = f"{user_id}:{channel_id}"
+        if connection_key in self.active_connections:
+            self.active_connections[connection_key].remove(websocket)
+            if not self.active_connections[connection_key]:
+                del self.active_connections[connection_key]
     
-    async def send_update(self, job_id: str, message: dict[str, Any]):
-        if job_id in self.active_connections:
-            disconnected = []
-            for connection in self.active_connections[job_id]:
-                try:
-                    await connection.send_json(message)
-                except Exception:
-                    disconnected.append(connection)
-            
-            # Clean up disconnected clients
-            for conn in disconnected:
-                self.disconnect(conn, job_id)
+    async def send_update(self, channel_id: str, message_type: str, data: dict[str, Any]):
+        # Send to all connections subscribed to this channel
+        for key in self.active_connections:
+            if channel_id in key:
+                disconnected = []
+                for connection in self.active_connections[key]:
+                    try:
+                        await connection.send_json({
+                            "type": message_type,
+                            **data
+                        })
+                    except Exception:
+                        disconnected.append(connection)
+                
+                # Clean up disconnected clients
+                for conn in disconnected:
+                    user_id = key.split(":")[0]
+                    self.disconnect(conn, channel_id, user_id)
 ```
 
 ### Sending Updates During Processing
 
-Updates are sent at key points during job processing:
+The Celery tasks send updates via the CeleryTaskWithOperationUpdates context manager:
 
 ```python
-# Job started
-await manager.send_update(job_id, {
-    "type": "job_started",
-    "total_files": total_files
-})
-
-# Processing each file
-await manager.send_update(job_id, {
-    "type": "file_processing",
-    "current_file": file_path,
-    "processed_files": processed_count,
-    "total_files": total_files,
-    "status": "Processing"
-})
-
-# File completed
-await manager.send_update(job_id, {
-    "type": "file_completed",
-    "processed_files": processed_count,
-    "total_files": total_files
-})
-
-# Job completed
-await manager.send_update(job_id, {
-    "type": "job_completed",
-    "message": "Job completed successfully"
-})
+# From tasks.py - example of sending updates during indexing
+async with CeleryTaskWithOperationUpdates(operation_id) as updater:
+    # Operation started
+    await updater.send_update(
+        "operation_started", 
+        {"status": "processing", "type": operation_type}
+    )
+    
+    # Scanning documents
+    await updater.send_update(
+        "scanning_documents", 
+        {"status": "scanning", "source_path": source_path}
+    )
+    
+    # Scan completed
+    await updater.send_update(
+        "scanning_completed",
+        {
+            "status": "scanning_completed",
+            "total_files_found": scan_stats["total_documents_found"],
+            "new_documents_registered": scan_stats["new_documents_registered"],
+            "scan_duration": scan_duration
+        }
+    )
+    
+    # Processing documents
+    await updater.send_update(
+        "document_processed",
+        {
+            "processed": processed_count,
+            "failed": failed_count,
+            "total": len(documents),
+            "current_file": document.file_path,
+            "progress_percent": (processed_count / len(documents)) * 100
+        }
+    )
+    
+    # Operation completed
+    await updater.send_update(
+        "operation_completed", 
+        {"status": "completed", "result": result}
+    )
 ```
+
+**Update Flow Architecture**:
+
+1. **Celery Task** → Sends update via `updater.send_update()`
+2. **Redis Stream** → Message stored in `operation-progress:{operation_id}` stream
+3. **WebSocket Manager** → Consumes from Redis stream
+4. **WebSocket Clients** → Receive real-time updates
+
+This architecture ensures:
+- Updates persist even if WebSocket disconnects temporarily
+- Multiple WebSocket connections can receive the same updates
+- Updates are delivered in order
+- System can scale horizontally
+
+### WebSocket Endpoint Registration
+
+The WebSocket endpoint is registered at the FastAPI application level, not in the router:
+
+```python
+# In main.py or app initialization
+from packages.webui.api.v2.operations import operation_websocket
+
+# Register WebSocket endpoint directly on the app
+app.add_api_websocket_route(
+    "/ws/operations/{operation_id}",
+    operation_websocket,
+    name="operation_progress_ws"
+)
+```
+
+This is important because:
+- WebSocket routes must be registered at the app level, not in APIRouter
+- The endpoint handles its own authentication via query parameters
+- The route is outside the `/api/v2` prefix used by REST endpoints
 
 ## Connection Management
 
@@ -434,40 +503,47 @@ Both client and server handle various error scenarios:
 
 ## Security Considerations
 
-⚠️ **Important**: The current WebSocket implementation does not include authentication checks. Consider these security improvements:
+✅ **Security Update**: The operation WebSocket endpoint now includes authentication via JWT tokens passed as query parameters.
 
 ### Recommended Security Enhancements
 
-1. **Add Authentication**:
+1. **Authentication (Already Implemented)**:
 ```python
-@app.websocket("/ws/{job_id}")
-async def job_websocket(websocket: WebSocket, job_id: str, token: str = Query(...)):
-    # Verify JWT token before accepting connection
-    user = verify_token(token)
-    if not user:
-        await websocket.close(code=1008, reason="Unauthorized")
-        return
-    
-    # Check if user has access to this job
-    if not user_can_access_job(user, job_id):
-        await websocket.close(code=1008, reason="Forbidden")
-        return
-    
-    await websocket_endpoint(websocket, job_id)
+# Extract token from query parameters
+token = websocket.query_params.get("token")
+
+try:
+    # Authenticate the user
+    user = await get_current_user_websocket(token)
+    user_id = str(user["id"])
+except ValueError as e:
+    # Authentication failed
+    await websocket.close(code=1008, reason=str(e))
+    return
+
+# Verify user has permission to access this operation
+try:
+    operation = await repo.get_by_uuid_with_permission_check(
+        operation_uuid=operation_id,
+        user_id=int(user["id"]),
+    )
+except EntityNotFoundError:
+    await websocket.close(code=1008, reason=f"Operation '{operation_id}' not found")
+    return
+except AccessDeniedError:
+    await websocket.close(code=1008, reason="You don't have access to this operation")
+    return
 ```
 
-2. **Connection Limits**:
+2. **Connection Limits (Available in WebSocketManager)**:
 ```python
-MAX_CONNECTIONS_PER_USER = 10
-MAX_CONNECTIONS_PER_JOB = 50
+# The WebSocketManager includes built-in connection limits:
+MAX_USER_CONNECTIONS = 10  # Per user limit
+MAX_OPERATION_CONNECTIONS = 100  # Per operation limit
 
-async def connect(self, websocket: WebSocket, job_id: str, user_id: str):
-    # Check connection limits
-    if self.count_user_connections(user_id) >= MAX_CONNECTIONS_PER_USER:
-        raise ConnectionLimitExceeded("User connection limit reached")
-    
-    if len(self.active_connections.get(job_id, [])) >= MAX_CONNECTIONS_PER_JOB:
-        raise ConnectionLimitExceeded("Job connection limit reached")
+# Automatically enforced when connecting:
+await ws_manager.connect(websocket, channel_id, user_id)
+# Raises ConnectionLimitExceeded if limits are exceeded
 ```
 
 3. **Message Validation**:
@@ -514,14 +590,67 @@ For high-scale deployments:
 3. **Add WebSocket compression** for large messages
 4. **Monitor connection metrics** (connections/job, message rates)
 
+## Operation Lifecycle and Progress Tracking
+
+### Operation Types and Their Progress Stages
+
+**INDEX Operation**:
+1. `scanning_documents` - Finding files in the source directory
+2. `scanning_completed` - Document registration complete
+3. `processing_embeddings` - Generating embeddings
+4. `document_processed` - Individual document progress
+5. `index_completed` - Collection ready
+
+**APPEND Operation**:
+1. `scanning_documents` - Finding new files
+2. `scanning_completed` - New documents identified
+3. `document_processed` - Processing new documents
+4. `append_completed` - New documents added
+
+**REINDEX Operation**:
+1. `reindex_preflight` - Analyzing current state
+2. `staging_created` - New collection created
+3. `reprocessing_progress` - Reprocessing all documents
+4. `validation_complete` - Quality checks passed
+5. `reindex_completed` - Collection switched
+
+**REMOVE_SOURCE Operation**:
+1. `removing_documents` - Removing documents from source
+2. `remove_source_completed` - Source removed
+
+### Progress Calculation
+
+Progress percentage is calculated differently for each operation type:
+
+```javascript
+// For document processing
+const progressPercent = (processedFiles / totalFiles) * 100;
+
+// For reindexing (includes validation)
+const reindexProgress = {
+    scanning: 10,
+    staging: 20,
+    reprocessing: 70,  // Main work
+    validation: 90,
+    switching: 100
+};
+```
+
 ## Testing WebSocket Connections
 
-### Manual Testing
+### Manual Testing with wscat
 
-Use the built-in test page:
 ```bash
-# Open in browser
-http://localhost:8080/tests/websocket-tests.html
+# Install wscat
+npm install -g wscat
+
+# Get auth token first
+TOKEN=$(curl -s -X POST http://localhost:8080/api/v2/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"test@example.com","password":"password"}' | jq -r .access_token)
+
+# Connect to operation WebSocket
+wscat -c "ws://localhost:8080/ws/operations/YOUR_OPERATION_ID?token=$TOKEN"
 ```
 
 ### Automated Testing
@@ -530,33 +659,139 @@ http://localhost:8080/tests/websocket-tests.html
 import asyncio
 import websockets
 import json
+from datetime import datetime
 
-async def test_job_progress():
-    uri = "ws://localhost:8080/ws/test-job-id"
+async def test_operation_progress():
+    # First, get auth token
+    import httpx
+    async with httpx.AsyncClient() as client:
+        auth_response = await client.post(
+            "http://localhost:8080/api/v2/auth/login",
+            json={"username": "test@example.com", "password": "password"}
+        )
+        token = auth_response.json()["access_token"]
+        
+        # Create a new operation (e.g., index a collection)
+        collection_response = await client.post(
+            "http://localhost:8080/api/v2/collections",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "name": "Test Collection",
+                "description": "WebSocket test",
+                "source_path": "/test/documents"
+            }
+        )
+        operation_id = collection_response.json()["operation_id"]
+    
+    # Connect to WebSocket
+    uri = f"ws://localhost:8080/ws/operations/{operation_id}?token={token}"
+    
+    messages_received = []
     
     async with websockets.connect(uri) as websocket:
-        # Wait for connection
-        await asyncio.sleep(0.1)
+        # Collect messages for 30 seconds or until completion
+        start_time = datetime.now()
         
-        # Should receive updates
-        message = await websocket.recv()
-        data = json.loads(message)
+        while (datetime.now() - start_time).seconds < 30:
+            try:
+                message = await asyncio.wait_for(websocket.recv(), timeout=1.0)
+                data = json.loads(message)
+                messages_received.append(data)
+                
+                print(f"[{data['timestamp']}] {data['type']}: {data.get('data', {})}")
+                
+                # Check for completion
+                if data["type"] == "status_update" and data["data"]["status"] in ["completed", "failed"]:
+                    break
+                    
+            except asyncio.TimeoutError:
+                # Send ping to keep connection alive
+                await websocket.send(json.dumps({"type": "ping"}))
         
-        assert data["type"] in ["job_started", "file_processing", "error"]
-        print(f"Received: {data}")
+    # Verify message sequence
+    message_types = [msg["type"] for msg in messages_received]
+    assert "current_state" in message_types, "Should receive current state on connect"
+    assert "operation_started" in message_types or "scanning_documents" in message_types
+    
+    print(f"\nReceived {len(messages_received)} messages")
+    print(f"Message types: {message_types}")
 
 # Run test
-asyncio.run(test_job_progress())
+asyncio.run(test_operation_progress())
+```
+
+### Browser-based Testing
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Operation Progress Test</title>
+</head>
+<body>
+    <h1>Operation Progress WebSocket Test</h1>
+    <div id="status">Disconnected</div>
+    <div id="messages"></div>
+    
+    <script>
+        // Get auth token from localStorage or prompt
+        const token = localStorage.getItem('authToken') || prompt('Enter auth token:');
+        const operationId = prompt('Enter operation ID:');
+        
+        if (token && operationId) {
+            const ws = new WebSocket(`ws://localhost:8080/ws/operations/${operationId}?token=${token}`);
+            const statusEl = document.getElementById('status');
+            const messagesEl = document.getElementById('messages');
+            
+            ws.onopen = () => {
+                statusEl.textContent = 'Connected';
+                statusEl.style.color = 'green';
+            };
+            
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                const messageEl = document.createElement('div');
+                messageEl.innerHTML = `
+                    <strong>${message.type}</strong> (${new Date(message.timestamp).toLocaleTimeString()})<br>
+                    <pre>${JSON.stringify(message.data, null, 2)}</pre>
+                    <hr>
+                `;
+                messagesEl.appendChild(messageEl);
+                
+                // Auto-scroll to bottom
+                messagesEl.scrollTop = messagesEl.scrollHeight;
+            };
+            
+            ws.onerror = (error) => {
+                statusEl.textContent = 'Error';
+                statusEl.style.color = 'red';
+            };
+            
+            ws.onclose = (event) => {
+                statusEl.textContent = `Disconnected (${event.code}: ${event.reason})`;
+                statusEl.style.color = 'orange';
+            };
+            
+            // Keep-alive ping every 30 seconds
+            setInterval(() => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'ping' }));
+                }
+            }, 30000);
+        }
+    </script>
+</body>
+</html>
 ```
 
 ### Load Testing
 
 ```python
-async def load_test_websockets(num_connections: int):
+async def load_test_websockets(num_connections: int, token: str):
     tasks = []
     for i in range(num_connections):
-        job_id = f"load-test-{i}"
-        task = asyncio.create_task(maintain_connection(job_id))
+        operation_id = f"load-test-{i}"
+        task = asyncio.create_task(maintain_connection(operation_id, token))
         tasks.append(task)
     
     # Run all connections for 60 seconds
@@ -585,9 +820,10 @@ logging.getLogger("uvicorn.access").setLevel(logging.DEBUG)
    - Check for CORS issues
 
 2. **No Messages Received**
-   - Ensure job is actually processing
-   - Check ConnectionManager has connection registered
+   - Ensure operation is actually processing
+   - Check WebSocketManager has connection registered
    - Verify message sending code is reached
+   - Check Redis pub/sub is working correctly
 
 3. **Messages Delayed or Batched**
    - Check for blocking operations in message handler
@@ -607,6 +843,128 @@ Planned improvements for the WebSocket API:
 7. **Presence System**: Track online users per job
 8. **Message History**: Allow replay of recent messages
 
+## Best Practices
+
+### Client Implementation
+
+1. **Always implement reconnection logic** - Network interruptions are common
+2. **Handle all message types gracefully** - Unknown message types should be logged, not cause errors
+3. **Implement exponential backoff** - Don't hammer the server with rapid reconnection attempts
+4. **Send periodic pings** - Keep connections alive through proxies and load balancers
+5. **Clean up on unmount** - Always close connections when components unmount
+
+### Server Implementation
+
+1. **Use structured message format** - Consistent timestamp, type, and data fields
+2. **Send initial state on connection** - Clients should know the current state immediately
+3. **Implement connection limits** - Prevent DOS attacks and resource exhaustion
+4. **Use Redis Streams for persistence** - Ensures message delivery even after disconnections
+5. **Clean up completed operations** - Remove Redis streams after operations complete
+
+### Error Handling
+
+```javascript
+// Comprehensive error handling example
+class RobustOperationClient {
+    handleError(error: any, context: string) {
+        console.error(`Error in ${context}:`, error);
+        
+        // Notify user appropriately
+        if (error.code === 1008) {
+            this.notifyUser('Authentication failed. Please log in again.');
+        } else if (error.code === 1011) {
+            this.notifyUser('Server error. Please try again later.');
+        } else if (error.message?.includes('network')) {
+            this.notifyUser('Network connection lost. Reconnecting...');
+        } else {
+            this.notifyUser('An unexpected error occurred.');
+        }
+        
+        // Log to monitoring service
+        this.logToMonitoring({
+            error: error.message || 'Unknown error',
+            context,
+            operationId: this.operationId,
+            timestamp: new Date().toISOString()
+        });
+    }
+}
+```
+
+## Monitoring and Observability
+
+### Key Metrics to Track
+
+1. **Connection Metrics**:
+   - Active connections per operation
+   - Connection duration
+   - Reconnection frequency
+   - Authentication failures
+
+2. **Message Metrics**:
+   - Messages sent per second
+   - Message size distribution
+   - Message type frequency
+   - Failed message deliveries
+
+3. **Operation Metrics**:
+   - Operation duration by type
+   - Success/failure rates
+   - Progress update frequency
+   - Resource usage per operation
+
+### Example Monitoring Implementation
+
+```python
+from prometheus_client import Counter, Histogram, Gauge
+
+# Metrics
+ws_connections_total = Counter(
+    'websocket_connections_total',
+    'Total WebSocket connections',
+    ['operation_type', 'status']
+)
+
+ws_active_connections = Gauge(
+    'websocket_active_connections',
+    'Currently active WebSocket connections',
+    ['operation_type']
+)
+
+ws_message_duration = Histogram(
+    'websocket_message_duration_seconds',
+    'Time to process WebSocket messages',
+    ['message_type']
+)
+
+# Track in your WebSocket handler
+async def track_connection(operation_type: str):
+    ws_connections_total.labels(
+        operation_type=operation_type,
+        status='connected'
+    ).inc()
+    
+    ws_active_connections.labels(
+        operation_type=operation_type
+    ).inc()
+    
+    try:
+        yield
+    finally:
+        ws_active_connections.labels(
+            operation_type=operation_type
+        ).dec()
+```
+
 ## Conclusion
 
-The WebSocket API provides efficient real-time updates for job processing and directory scanning. While the current implementation is functional, adding authentication and enhanced connection management would improve security and reliability for production deployments.
+The WebSocket API provides efficient real-time updates for collection operations in Semantik's collection-centric architecture. Key features include:
+
+- **Secure authentication** via JWT tokens with permission verification
+- **Persistent message delivery** through Redis Streams
+- **Comprehensive progress tracking** for all operation types
+- **Automatic reconnection support** with exponential backoff
+- **Horizontal scalability** through Redis-based message distribution
+- **Resource limits** to prevent abuse and ensure stability
+
+The API is designed to provide a smooth user experience with real-time feedback during long-running operations while maintaining security and reliability at scale.

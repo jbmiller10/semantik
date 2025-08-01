@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide covers the testing philosophy, practices, and procedures for the Semantik codebase. We maintain a comprehensive test suite to ensure reliability, performance, and maintainability.
+This guide covers the testing philosophy, practices, and procedures for the Semantik codebase. We maintain a comprehensive test suite to ensure reliability, performance, and maintainability across our collection-centric architecture.
 
 ## Testing Philosophy
 
@@ -41,8 +41,8 @@ Create a `.env.test` file for test-specific configuration:
 # Use mock embeddings to avoid GPU requirements
 USE_MOCK_EMBEDDINGS=true
 
-# Use test database
-WEBUI_DB=data/test.db
+# Use test database (PostgreSQL required)
+DATABASE_URL=postgresql://test_user:test_pass@localhost:5432/semantik_test
 
 # Disable authentication for API tests
 DISABLE_AUTH=true
@@ -50,6 +50,24 @@ DISABLE_AUTH=true
 # Use local test Qdrant
 QDRANT_HOST=localhost
 QDRANT_PORT=6333
+
+# Disable rate limiting for tests
+DISABLE_RATE_LIMITING=true
+
+# Redis configuration for WebSocket testing
+REDIS_URL=redis://localhost:6379/0
+
+# JWT secret for auth tests
+JWT_SECRET_KEY=test-secret-key-for-testing-only
+```
+
+### PostgreSQL Test Database Setup
+```bash
+# Create test database
+createdb semantik_test
+
+# Run migrations on test database
+DATABASE_URL=postgresql://test_user:test_pass@localhost:5432/semantik_test poetry run alembic upgrade head
 ```
 
 ## Running Tests
@@ -108,23 +126,64 @@ open htmlcov/index.html
 
 ## Test Structure
 
-### Directory Organization
+### Backend Test Organization
 ```
 tests/
-├── conftest.py          # Shared fixtures and configuration
-├── unit/                # Unit tests
+├── conftest.py                    # Root test configuration
+├── unit/                          # Unit tests
+│   ├── test_collection_service.py
+│   ├── test_collection_repository.py
+│   ├── test_operation_service.py
+│   ├── test_operation_repository.py
+│   ├── test_document_repository.py
 │   ├── test_extract_chunks.py
-│   ├── test_embedding_service.py
-│   └── test_model_manager.py
-├── integration/         # Integration tests
-│   ├── test_search_api.py
-│   ├── test_job_processing.py
-│   └── test_qdrant_integration.py
-├── e2e/                 # End-to-end tests
-│   └── test_full_pipeline.py
-└── fixtures/            # Test data and fixtures
-    ├── documents/
-    └── embeddings/
+│   ├── test_model_manager.py
+│   └── test_websocket_manager.py
+├── integration/                   # Integration tests
+│   ├── test_search_api_integration.py
+│   ├── test_collection_persistence.py
+│   ├── test_websocket_redis_integration.py
+│   └── test_embedding_gpu_memory.py
+├── e2e/                          # End-to-end tests
+│   ├── test_collection_deletion_e2e.py
+│   ├── test_websocket_integration.py
+│   ├── test_websocket_reindex.py
+│   └── test_refactoring_validation.py
+├── webui/                        # WebUI specific tests
+│   ├── conftest.py               # WebUI test configuration
+│   ├── api/v2/                   # API endpoint tests
+│   │   ├── test_collections.py
+│   │   ├── test_operations.py
+│   │   ├── test_documents.py
+│   │   └── test_search.py
+│   └── services/                 # Service layer tests
+│       ├── test_collection_service.py
+│       └── test_search_service.py
+└── api/                          # API integration tests
+    └── test_collection_deletion_endpoint.py
+```
+
+### Frontend Test Organization
+```
+apps/webui-react/
+├── src/
+│   ├── components/__tests__/     # Component tests
+│   │   ├── CollectionCard.test.tsx
+│   │   ├── CollectionOperations.test.tsx
+│   │   ├── CreateCollectionModal.test.tsx
+│   │   └── SearchInterface.test.tsx
+│   ├── hooks/__tests__/          # Hook tests
+│   │   ├── useCollections.test.tsx
+│   │   ├── useCollectionOperations.test.tsx
+│   │   └── useWebSocket.error.test.tsx
+│   ├── stores/__tests__/         # Store tests
+│   │   ├── authStore.test.ts
+│   │   └── searchStore.test.ts
+│   └── utils/__tests__/          # Utility tests
+│       └── errorUtils.test.ts
+└── tests/                        # Test utilities
+    └── utils/
+        └── test-utils.tsx
 ```
 
 ### Test File Naming
@@ -134,89 +193,267 @@ tests/
 
 ## Writing Tests
 
-### Unit Test Example
-```python
-"""Unit tests for document chunking"""
-import pytest
-from vecpipe.extract_chunks import chunk_text
+### Backend Unit Test Examples
 
-class TestChunkText:
-    """Test the chunk_text function"""
+#### Testing Collection Service
+```python
+"""Unit tests for collection service"""
+import pytest
+from unittest.mock import AsyncMock, Mock
+from datetime import datetime, UTC
+
+from packages.shared.database.models import Collection, CollectionStatus, OperationType
+from packages.shared.database.exceptions import EntityAlreadyExistsError, InvalidStateError
+from packages.webui.services.collection_service import CollectionService
+
+class TestCollectionService:
+    """Test CollectionService implementation"""
     
-    def test_chunk_text_basic(self):
-        """Test basic text chunking"""
-        text = "This is a test. " * 100
-        chunks = chunk_text(text, chunk_size=50, overlap=10)
+    @pytest.fixture
+    def mock_session(self):
+        """Create a mock AsyncSession"""
+        session = AsyncMock()
+        session.commit = AsyncMock()
+        return session
+    
+    @pytest.fixture
+    def collection_service(self, mock_session, mock_collection_repo, mock_operation_repo):
+        """Create CollectionService with mocked dependencies"""
+        return CollectionService(
+            db_session=mock_session,
+            collection_repo=mock_collection_repo,
+            operation_repo=mock_operation_repo,
+            document_repo=mock_document_repo,
+        )
+    
+    async def test_create_collection_success(self, collection_service, mock_collection_repo):
+        """Test successful collection creation"""
+        # Arrange
+        collection_data = {
+            "name": "Test Collection",
+            "description": "A test collection",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+        }
+        mock_collection_repo.get_by_name.return_value = None
         
-        assert len(chunks) > 1
-        assert all(len(chunk) <= 50 for chunk in chunks)
+        # Act
+        result = await collection_service.create_collection(
+            user_id=1,
+            **collection_data
+        )
         
-    def test_chunk_text_empty(self):
-        """Test chunking empty text"""
-        chunks = chunk_text("", chunk_size=50, overlap=10)
-        assert chunks == []
-        
-    @pytest.mark.parametrize("chunk_size,overlap", [
-        (100, 20),
-        (500, 50),
-        (1000, 100),
-    ])
-    def test_chunk_text_sizes(self, chunk_size, overlap):
-        """Test various chunk sizes"""
-        text = "word " * 1000
-        chunks = chunk_text(text, chunk_size=chunk_size, overlap=overlap)
-        assert all(len(chunk) <= chunk_size for chunk in chunks)
+        # Assert
+        assert result is not None
+        mock_collection_repo.create.assert_called_once()
 ```
 
-### Integration Test Example
+#### Testing Operations Repository
 ```python
-"""Integration tests for search API"""
+"""Unit tests for operation repository"""
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from packages.shared.database.models import Operation, OperationType, OperationStatus
+from packages.webui.repositories.operation_repository import OperationRepository
+
+class TestOperationRepository:
+    """Test OperationRepository implementation"""
+    
+    @pytest.fixture
+    async def operation_repo(self, async_session: AsyncSession):
+        """Create OperationRepository instance"""
+        return OperationRepository(async_session)
+    
+    async def test_create_operation(self, operation_repo, test_collection):
+        """Test creating an operation"""
+        # Create operation
+        operation = await operation_repo.create(
+            collection_id=test_collection.id,
+            type=OperationType.INDEX,
+            parameters={"batch_size": 100}
+        )
+        
+        assert operation.id is not None
+        assert operation.type == OperationType.INDEX
+        assert operation.status == OperationStatus.PENDING
+        assert operation.collection_id == test_collection.id
+```
+
+### Integration Test Examples
+
+#### API Endpoint Integration Test
+```python
+"""Integration tests for collections API v2"""
 import pytest
 from httpx import AsyncClient
-from vecpipe.search_api import app
+from sqlalchemy.ext.asyncio import AsyncSession
 
-@pytest.mark.asyncio
-async def test_search_integration():
-    """Test search API with real Qdrant"""
-    async with AsyncClient(app=app, base_url="http://test") as client:
-        # Perform search
-        response = await client.get("/search", params={
-            "q": "machine learning",
-            "k": 5
-        })
+from packages.shared.database.models import User, Collection
+
+class TestCollectionsAPIV2:
+    """Test collections API v2 endpoints"""
+    
+    @pytest.mark.asyncio
+    async def test_create_collection(self, async_client: AsyncClient, test_user: User):
+        """Test creating a collection via API"""
+        response = await async_client.post(
+            "/api/v2/collections",
+            json={
+                "name": "Test Collection",
+                "description": "Integration test collection",
+                "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+                "chunk_size": 512,
+                "chunk_overlap": 50,
+            }
+        )
         
-        assert response.status_code == 200
+        assert response.status_code == 201
         data = response.json()
-        assert "results" in data
-        assert len(data["results"]) <= 5
+        assert data["name"] == "Test Collection"
+        assert data["status"] == "empty"
+        assert data["owner_id"] == test_user.id
 ```
 
-### Using Fixtures
+#### WebSocket Integration Test
 ```python
-"""Fixtures for testing"""
+"""Integration tests for WebSocket operations"""
 import pytest
-from pathlib import Path
+import asyncio
+from fastapi.testclient import TestClient
+from packages.webui.main import app
+
+class TestWebSocketIntegration:
+    """Test WebSocket integration with operations"""
+    
+    @pytest.mark.asyncio
+    async def test_operation_progress_updates(self, test_client: TestClient, test_collection):
+        """Test receiving operation progress via WebSocket"""
+        with test_client.websocket_connect("/ws") as websocket:
+            # Start an operation
+            response = test_client.post(
+                f"/api/v2/collections/{test_collection.id}/reindex"
+            )
+            operation_id = response.json()["id"]
+            
+            # Listen for updates
+            updates = []
+            for _ in range(5):  # Collect up to 5 updates
+                data = websocket.receive_json()
+                if data["type"] == "operation_update":
+                    updates.append(data)
+                    if data["data"]["status"] in ["completed", "failed"]:
+                        break
+            
+            assert len(updates) > 0
+            assert updates[-1]["data"]["status"] in ["completed", "failed"]
+```
+
+### Common Test Fixtures
+
+#### Backend Fixtures (conftest.py)
+```python
+"""Common fixtures for backend tests"""
+import pytest
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from fastapi.testclient import TestClient
+
+from packages.shared.database import Base, User, Collection
+from packages.webui.main import app
+
+@pytest_asyncio.fixture
+async def async_session():
+    """Create async database session for tests"""
+    engine = create_async_engine(
+        "postgresql+asyncpg://test_user:test_pass@localhost:5432/semantik_test"
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
+    async with AsyncSession(engine) as session:
+        yield session
+        await session.rollback()
 
 @pytest.fixture
-def sample_pdf():
-    """Provide sample PDF for testing"""
-    return Path("tests/fixtures/documents/sample.pdf")
+def test_user(async_session: AsyncSession) -> User:
+    """Create a test user"""
+    user = User(
+        username="testuser",
+        email="test@example.com",
+        hashed_password="hashed_password"
+    )
+    async_session.add(user)
+    await async_session.commit()
+    return user
 
 @pytest.fixture
-def mock_embedding_service(monkeypatch):
-    """Mock embedding service for tests"""
-    def mock_embed(text):
-        return [0.1] * 384  # Mock 384-dim embedding
+def test_collection(async_session: AsyncSession, test_user: User) -> Collection:
+    """Create a test collection"""
+    collection = Collection(
+        name="Test Collection",
+        owner_id=test_user.id,
+        embedding_model="Qwen/Qwen3-Embedding-0.6B",
+        status=CollectionStatus.READY,
+        vector_store_name="test_collection_vectors"
+    )
+    async_session.add(collection)
+    await async_session.commit()
+    return collection
+
+@pytest.fixture
+def mock_celery_task(monkeypatch):
+    """Mock Celery task execution"""
+    from unittest.mock import MagicMock
+    
+    mock_task = MagicMock()
+    mock_task.delay.return_value.id = "mock-task-id"
     
     monkeypatch.setattr(
-        "webui.embedding_service.EmbeddingService.embed",
-        mock_embed
+        "packages.webui.tasks.index_collection",
+        mock_task
     )
+    return mock_task
+```
 
-def test_with_fixtures(sample_pdf, mock_embedding_service):
-    """Test using fixtures"""
-    assert sample_pdf.exists()
-    # Test continues...
+#### Frontend Test Utilities
+```typescript
+// apps/webui-react/tests/utils/test-utils.tsx
+import { render, RenderOptions } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { vi } from 'vitest'
+
+// Create a custom render function that includes providers
+export function renderWithProviders(
+  ui: React.ReactElement,
+  options?: RenderOptions
+) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
+  
+  return render(
+    <QueryClientProvider client={queryClient}>
+      {ui}
+    </QueryClientProvider>,
+    options
+  )
+}
+
+// Mock collection factory
+export function createMockCollection(overrides = {}): Collection {
+  return {
+    id: 'test-collection-id',
+    name: 'Test Collection',
+    status: 'ready',
+    document_count: 10,
+    vector_count: 100,
+    created_at: new Date().toISOString(),
+    ...overrides,
+  }
+}
 ```
 
 ## Testing Best Practices
@@ -286,57 +523,80 @@ Focus on individual functions and classes:
 
 ### Integration Tests
 Test component interactions:
-- API endpoint functionality
-- Database transactions
-- Qdrant operations
-- Authentication flow
-- Job processing pipeline
+- API endpoint functionality with collections
+- Database transactions and rollbacks
+- Qdrant vector operations
+- Authentication and authorization flows
+- Operation processing pipeline
+- WebSocket message flow
+- Redis pub/sub for real-time updates
 
 ### End-to-End Tests
 Test complete workflows:
-- Upload documents → Process → Search
-- User registration → Login → Create job
-- Collection management lifecycle
+- Create collection → Add documents → Index → Search
+- User registration → Login → Create collection → Manage operations
+- Collection lifecycle: Create → Index → Search → Reindex → Delete
+- Real-time operation tracking via WebSocket
+- Multi-user collection sharing and permissions
 
-#### Refactoring Validation E2E Test
-We maintain a special E2E test that captures the exact current behavior of the system. This test is critical for ensuring no regressions are introduced during the refactoring initiative.
+#### Collection-Centric E2E Tests
 
-**Location**: `tests/e2e/test_refactoring_validation.py`
+##### WebSocket Operation Tracking
+**Location**: `tests/e2e/test_websocket_integration.py`
 
-**Purpose**: This test serves as a "golden master" that validates the entire document processing and search pipeline via the public API.
-
-**Running the test with Docker Compose**:
-```bash
-# Start the application with docker compose
-docker compose up -d
-
-# Set the API endpoint (defaults to http://localhost:8080)
-export API_BASE_URL=http://localhost:8080
-
-# Run the E2E validation test
-poetry run pytest tests/e2e/test_refactoring_validation.py -v
-
-# Or run with a custom endpoint
-API_BASE_URL=http://localhost:3000 poetry run pytest tests/e2e/test_refactoring_validation.py
+```python
+@pytest.mark.e2e
+async def test_collection_indexing_with_websocket():
+    """Test complete indexing flow with WebSocket updates"""
+    async with AsyncClient(base_url=API_BASE_URL) as client:
+        # Create collection
+        collection_response = await client.post(
+            "/api/v2/collections",
+            json={"name": "E2E Test Collection", "embedding_model": "Qwen/Qwen3-Embedding-0.6B"}
+        )
+        collection_id = collection_response.json()["id"]
+        
+        # Connect WebSocket
+        async with client.websocket_connect("/ws") as websocket:
+            # Add documents
+            add_response = await client.post(
+                f"/api/v2/collections/{collection_id}/add",
+                json={"path": "/test/data", "recursive": True}
+            )
+            operation_id = add_response.json()["id"]
+            
+            # Track operation progress
+            completed = False
+            while not completed:
+                msg = await websocket.receive_json()
+                if msg["type"] == "operation_update" and msg["data"]["id"] == operation_id:
+                    if msg["data"]["status"] == "completed":
+                        completed = True
 ```
 
-**What the test validates**:
-1. Creates a job with test documents from `test_data/` directory
-2. Waits for the job to complete (with timeout)
-3. Performs a search to verify embeddings were created correctly
-4. Cleans up all created resources (job and Qdrant collection)
+##### Collection Deletion E2E Test
+**Location**: `tests/e2e/test_collection_deletion_e2e.py`
 
-**Requirements**:
-- Running instance of the application (via docker compose or locally)
-- Test data files in `test_data/` directory
-- Network access to the API endpoint
+**Purpose**: Validates complete collection deletion including:
+1. Removing collection from PostgreSQL
+2. Deleting vectors from Qdrant
+3. Canceling any running operations
+4. Cleaning up orphaned documents
 
-**Note**: This test makes real HTTP calls to a running instance and is intentionally not mocked. It should pass identically before and after any refactoring.
+**Running E2E tests**:
+```bash
+# Start all services
+make docker-up
 
-**Important**: When running with Docker Compose, the test uses `/mnt/docs` directory which contains production documents. This can make the test take 1-2 minutes to complete. For faster testing in CI/CD, consider:
-- Creating a smaller test dataset mounted at a specific path
-- Using the `test_data/` directory when running locally without Docker
-- Setting a job size limit for test environments
+# Run all E2E tests
+make test-e2e
+
+# Run specific E2E test
+poetry run pytest tests/e2e/test_collection_deletion_e2e.py -v
+
+# With custom endpoint
+API_BASE_URL=http://localhost:8000 poetry run pytest tests/e2e/ -v
+```
 
 **CI/CD Integration**:
 The E2E test is marked with `@pytest.mark.e2e` and automatically skips if the service is not available. To exclude E2E tests in CI:
@@ -359,27 +619,135 @@ pytest tests -v -m e2e
 
 ## Continuous Integration
 
-### GitHub Actions Workflow
+### Test Commands
+
+```bash
+# Backend tests
+make test              # Run all tests
+make test-ci           # Run tests excluding E2E (for CI)
+make test-e2e          # Run only E2E tests
+make test-coverage     # Generate coverage report
+
+# Frontend tests
+make frontend-test     # Run all frontend tests
+cd apps/webui-react && npm run test:coverage  # With coverage
+
+# Full test suite
+make check            # Format, lint, and test everything
+```
+
+### GitHub Actions Workflows
+
+#### Backend Tests (`.github/workflows/test-backend.yml`)
 ```yaml
-name: Tests
+name: Backend Tests
 on: [push, pull_request]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: test_pass
+          POSTGRES_DB: semantik_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.12'
+          python-version: '3.11'
       - name: Install dependencies
         run: |
           pip install poetry
           poetry install
-      - name: Run tests (excluding E2E)
+      - name: Run migrations
+        run: |
+          poetry run alembic upgrade head
+        env:
+          DATABASE_URL: postgresql://postgres:test_pass@localhost:5432/semantik_test
+      - name: Run tests
         run: |
           make test-ci
+        env:
+          DATABASE_URL: postgresql://postgres:test_pass@localhost:5432/semantik_test
+          REDIS_URL: redis://localhost:6379/0
+```
+
+#### Frontend Tests (`.github/workflows/test-frontend.yml`)
+```yaml
+name: Frontend Tests
+on: 
+  push:
+    paths:
+      - 'apps/webui-react/**'
+      - '.github/workflows/test-frontend.yml'
+  pull_request:
+    paths:
+      - 'apps/webui-react/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Install dependencies
+        working-directory: apps/webui-react
+        run: npm ci
+      - name: Run linter
+        working-directory: apps/webui-react
+        run: npm run lint
+      - name: Run tests
+        working-directory: apps/webui-react
+        run: npm test -- --coverage
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          directory: apps/webui-react/coverage
+```
+
+### Pre-commit Hooks
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: local
+    hooks:
+      - id: backend-tests
+        name: Backend Tests
+        entry: poetry run pytest tests/unit -x
+        language: system
+        pass_filenames: false
+        files: \.(py)$
+      
+      - id: frontend-tests
+        name: Frontend Tests
+        entry: bash -c "cd apps/webui-react && npm test -- --run --passWithNoTests"
+        language: system
+        pass_filenames: false
+        files: \.(tsx?|jsx?)$
 ```
 
 ## Performance Testing
@@ -461,11 +829,14 @@ tests/fixtures/
     └── qdrant_responses.json
 ```
 
-### Factory Pattern
+### Test Data Factories
+
+#### Backend Factory Pattern
 ```python
 # tests/factories.py
 import factory
-from shared.database import User
+from datetime import datetime, UTC
+from packages.shared.database.models import User, Collection, Operation, Document
 
 class UserFactory(factory.Factory):
     class Meta:
@@ -473,77 +844,464 @@ class UserFactory(factory.Factory):
     
     username = factory.Sequence(lambda n: f"user{n}")
     email = factory.LazyAttribute(lambda obj: f"{obj.username}@example.com")
+    is_active = True
+
+class CollectionFactory(factory.Factory):
+    class Meta:
+        model = Collection
     
+    name = factory.Sequence(lambda n: f"Collection {n}")
+    owner_id = factory.SubFactory(UserFactory)
+    embedding_model = "Qwen/Qwen3-Embedding-0.6B"
+    status = "ready"
+    vector_store_name = factory.LazyAttribute(lambda obj: f"{obj.name.lower().replace(' ', '_')}_vectors")
+    created_at = factory.LazyFunction(lambda: datetime.now(UTC))
+
+class OperationFactory(factory.Factory):
+    class Meta:
+        model = Operation
+    
+    collection_id = factory.SubFactory(CollectionFactory)
+    type = "index"
+    status = "pending"
+    parameters = {"batch_size": 100}
+    created_at = factory.LazyFunction(lambda: datetime.now(UTC))
+
 # Usage in tests
-def test_user_creation():
-    user = UserFactory()
-    assert user.username.startswith("user")
+def test_collection_with_operations():
+    collection = CollectionFactory()
+    operations = OperationFactory.create_batch(3, collection_id=collection.id)
+    assert len(operations) == 3
+    assert all(op.collection_id == collection.id for op in operations)
 ```
 
-## Coverage Goals
+#### Frontend Mock Data Builders
+```typescript
+// tests/builders/collection.builder.ts
+export class CollectionBuilder {
+  private collection: Partial<Collection> = {
+    id: 'default-id',
+    name: 'Default Collection',
+    status: 'ready',
+    document_count: 0,
+    vector_count: 0,
+    created_at: new Date().toISOString(),
+  }
+  
+  withId(id: string): this {
+    this.collection.id = id
+    return this
+  }
+  
+  withName(name: string): this {
+    this.collection.name = name
+    return this
+  }
+  
+  withDocuments(count: number): this {
+    this.collection.document_count = count
+    this.collection.vector_count = count * 10 // Assume 10 chunks per doc
+    return this
+  }
+  
+  withStatus(status: CollectionStatus): this {
+    this.collection.status = status
+    return this
+  }
+  
+  build(): Collection {
+    return this.collection as Collection
+  }
+}
 
-### Target Coverage
-- Overall: 80%+
-- Critical paths: 90%+
-- New features: 85%+
-
-### Coverage Exclusions
-```python
-# pragma: no cover - for untestable code
-if __name__ == "__main__":  # pragma: no cover
-    main()
+// Usage
+const testCollection = new CollectionBuilder()
+  .withName('Test Collection')
+  .withDocuments(50)
+  .withStatus('indexing')
+  .build()
 ```
 
-### Monitoring Coverage
+## Test Coverage
+
+### Coverage Goals
+- Overall: 80%+ (backend), 80%+ (frontend)
+- Critical paths: 90%+ (auth, collections, operations)
+- New features: 85%+ before merging
+- API endpoints: 95%+ coverage required
+
+### Backend Coverage
 ```bash
-# Check coverage locally
-make test-coverage
+# Generate coverage report
+poetry run pytest --cov=packages --cov-report=html --cov-report=term-missing
 
-# Generate badge for README
-coverage-badge -o coverage.svg
+# View coverage in browser
+open htmlcov/index.html
+
+# Coverage by package
+poetry run pytest --cov=packages.webui --cov=packages.vecpipe --cov=packages.shared
+```
+
+### Frontend Coverage
+```bash
+# Generate coverage report
+cd apps/webui-react
+npm run test:coverage
+
+# View coverage report
+open coverage/lcov-report/index.html
+```
+
+### Coverage Configuration
+
+#### Backend (.coveragerc)
+```ini
+[run]
+source = packages
+omit = 
+    */tests/*
+    */migrations/*
+    */__pycache__/*
+    */venv/*
+    */.venv/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+```
+
+#### Frontend (vite.config.ts)
+```typescript
+export default defineConfig({
+  test: {
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules/',
+        'src/tests/',
+        '**/*.d.ts',
+        '**/*.config.*',
+        '**/mockServiceWorker.js',
+      ],
+    },
+  },
+})
 ```
 
 ## Troubleshooting
 
-### Common Issues
+### Common Backend Test Issues
 
-1. **GPU Tests Failing**
-   ```bash
-   # Run without GPU
-   export CUDA_VISIBLE_DEVICES=""
-   poetry run pytest
-   ```
-
-2. **Database Lock Errors**
-   ```bash
-   # Use separate test database
-   export WEBUI_DB=data/test.db
-   rm data/test.db
-   poetry run pytest
-   ```
-
-3. **Import Errors**
-   ```bash
-   # Ensure proper Python path
-   export PYTHONPATH=$PYTHONPATH:$(pwd)
-   poetry run pytest
-   ```
-
-4. **Async Test Issues**
+1. **Async Test Failures**
    ```python
-   # Use pytest-asyncio
+   # Ensure proper async test setup
    @pytest.mark.asyncio
-   async def test_async_function():
-       result = await async_function()
-       assert result is not None
+   async def test_async_operation():
+       # Use async fixtures
+       async with AsyncSession() as session:
+           result = await operation
+           assert result is not None
+   ```
+
+2. **Database Migration Errors**
+   ```bash
+   # Reset test database
+   dropdb semantik_test
+   createdb semantik_test
+   DATABASE_URL=postgresql://test_user:test_pass@localhost:5432/semantik_test \
+     poetry run alembic upgrade head
+   ```
+
+3. **WebSocket Test Timeouts**
+   ```python
+   # Increase timeout for WebSocket tests
+   @pytest.mark.timeout(30)  # 30 second timeout
+   async def test_websocket_operation():
+       # Test code
+   ```
+
+4. **Mock Service Issues**
+   ```python
+   # Ensure mocks are properly reset
+   @pytest.fixture(autouse=True)
+   def reset_mocks():
+       yield
+       mock.reset_mock()
+   ```
+
+### Common Frontend Test Issues
+
+1. **Act() Warnings**
+   ```typescript
+   // Wrap state updates in act()
+   await act(async () => {
+     await user.click(button)
+   })
+   ```
+
+2. **Timer Issues**
+   ```typescript
+   // Use fake timers for time-dependent tests
+   beforeEach(() => {
+     vi.useFakeTimers()
+   })
+   
+   afterEach(() => {
+     vi.runOnlyPendingTimers()
+     vi.useRealTimers()
+   })
+   ```
+
+3. **Unhandled Promise Rejections**
+   ```typescript
+   // Always handle async errors in tests
+   it('handles errors gracefully', async () => {
+     const error = new Error('Test error')
+     mockApi.create.mockRejectedValueOnce(error)
+     
+     render(<Component />)
+     // Test error handling
+   })
+   ```
+
+## Frontend Testing
+
+### Frontend Test Structure
+
+Frontend tests are organized by feature and test type, co-located with the code they test:
+
+```
+apps/webui-react/src/
+├── components/__tests__/          # Component tests
+│   ├── *.test.tsx                # Standard component tests
+│   ├── *.network.test.tsx        # Network/API interaction tests
+│   ├── *.websocket.test.tsx      # WebSocket specific tests
+│   └── *.validation.test.tsx     # Input validation tests
+├── hooks/__tests__/              # Custom hook tests
+├── stores/__tests__/             # Zustand store tests
+└── utils/__tests__/              # Utility function tests
+```
+
+### Component Test Coverage
+
+Comprehensive test coverage for collection and operation components:
+
+| Component | Test Files | Coverage Areas |
+|-----------|------------|----------------|
+| CollectionCard | CollectionCard.test.tsx | Display, interactions, status badges |
+| CreateCollectionModal | CreateCollectionModal.test.tsx<br>CreateCollectionModal.network.test.tsx | Form validation, API calls, error handling |
+| CollectionOperations | CollectionOperations.test.tsx<br>CollectionOperations.websocket.test.tsx | Operation tracking, WebSocket updates |
+| CollectionsDashboard | CollectionsDashboard.test.tsx<br>CollectionsDashboard.network.test.tsx | Collection listing, filtering, pagination |
+| SearchInterface | SearchInterface.test.tsx<br>SearchInterface.reranking.test.tsx | Search functionality, reranking options |
+
+### Running Frontend Tests
+
+```bash
+# Change to frontend directory
+cd apps/webui-react
+
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run with coverage
+npm run test:coverage
+
+# Run specific test file
+npm test -- CreateCollectionModal
+
+# Using the test script
+./scripts/test-frontend.sh --collections
+./scripts/test-frontend.sh --coverage --collections
+./scripts/test-frontend.sh --watch
+./scripts/test-frontend.sh --file CreateCollectionModal
+```
+
+### Frontend Test Guidelines
+
+#### Test Patterns
+
+1. **Component Testing with Vitest**
+   ```typescript
+   import { describe, it, expect, vi, beforeEach } from 'vitest'
+   import { render, screen, waitFor } from '@/tests/utils/test-utils'
+   import userEvent from '@testing-library/user-event'
+   ```
+
+2. **Mock Management**
+   ```typescript
+   // Mock hooks
+   vi.mock('@/hooks/useCollections', () => ({
+     useCollections: vi.fn(() => ({
+       data: mockCollections,
+       isLoading: false,
+       error: null,
+       refetch: vi.fn(),
+     })),
+   }))
+   
+   // Mock API calls
+   vi.mock('@/api/collectionsV2', () => ({
+     collectionsV2Api: {
+       create: vi.fn(),
+       update: vi.fn(),
+       delete: vi.fn(),
+     },
+   }))
+   ```
+
+3. **WebSocket Testing**
+   ```typescript
+   // Mock WebSocket connection
+   const mockWebSocket = {
+     send: vi.fn(),
+     close: vi.fn(),
+     addEventListener: vi.fn(),
+     removeEventListener: vi.fn(),
+   }
+   
+   beforeEach(() => {
+     global.WebSocket = vi.fn(() => mockWebSocket)
+   })
+   ```
+
+4. **Async Testing Patterns**
+   ```typescript
+   it('should handle async operations', async () => {
+     const user = userEvent.setup()
+     render(<CreateCollectionModal />)
+     
+     await user.type(screen.getByLabelText('Name'), 'Test Collection')
+     await user.click(screen.getByRole('button', { name: 'Create' }))
+     
+     await waitFor(() => {
+       expect(mockCreateCollection).toHaveBeenCalledWith({
+         name: 'Test Collection',
+       })
+     })
+   })
+   ```
+
+### CI/CD Integration
+
+The project includes GitHub Actions workflows for automated testing:
+
+1. **`frontend-tests.yml`**: Runs on every push/PR affecting frontend code
+   - Linting
+   - Unit tests with multiple Node.js versions
+   - Coverage reports
+   - Build verification
+
+2. **`test-all.yml`**: Comprehensive test suite
+   - Backend tests with PostgreSQL and Redis
+   - Frontend tests in parallel groups
+   - Integration tests
+   - Linting and formatting checks
+
+3. **`pr-checks.yml`**: Pull request specific checks
+   - Verify test coverage for changed files
+   - Run affected tests
+   - Generate coverage reports
+
+### Test Script Usage
+
+A convenience script is provided for running frontend tests:
+
+```bash
+# Show help
+./scripts/test-frontend.sh --help
+
+# Run collection component tests (default)
+./scripts/test-frontend.sh
+
+# Run all frontend tests
+./scripts/test-frontend.sh --all
+
+# Run with coverage
+./scripts/test-frontend.sh --coverage --collections
+
+# Watch mode for development
+./scripts/test-frontend.sh --watch
+
+# Run specific test file
+./scripts/test-frontend.sh --file CreateCollectionModal
+```
+
+## Best Practices
+
+### Testing Collections and Operations
+
+1. **Always Test State Transitions**
+   ```python
+   async def test_collection_state_transitions():
+       # Test: empty -> indexing -> ready
+       # Test: ready -> reindexing -> ready
+       # Test: any -> deleting -> (deleted)
+   ```
+
+2. **Test Concurrent Operations**
+   ```python
+   async def test_concurrent_operations_prevented():
+       # Ensure only one operation per collection at a time
+       operation1 = await start_indexing(collection_id)
+       operation2 = await start_reindexing(collection_id)
+       assert operation2 is None  # Should be rejected
+   ```
+
+3. **Test WebSocket Updates**
+   ```python
+   async def test_operation_progress_broadcast():
+       # Verify all connected clients receive updates
+       # Test reconnection handling
+       # Test message ordering
+   ```
+
+### Mocking External Services
+
+1. **Qdrant Mocking**
+   ```python
+   @pytest.fixture
+   def mock_qdrant_client():
+       client = AsyncMock()
+       client.create_collection.return_value = True
+       client.search.return_value = SearchResult(...)
+       return client
+   ```
+
+2. **Redis Mocking**
+   ```python
+   @pytest.fixture
+   def mock_redis():
+       redis = AsyncMock()
+       redis.publish.return_value = 1  # Number of subscribers
+       return redis
+   ```
+
+3. **Celery Task Mocking**
+   ```python
+   @pytest.fixture
+   def mock_celery_app(monkeypatch):
+       mock_task = MagicMock()
+       mock_task.delay.return_value.id = "task-123"
+       monkeypatch.setattr("celery.current_app.send_task", mock_task)
+       return mock_task
    ```
 
 ## Next Steps
 
-1. **Expand Test Coverage**: Focus on untested modules
-2. **Add Property-Based Tests**: Use hypothesis for edge cases
-3. **Implement Mutation Testing**: Ensure test quality
-4. **Create Test Templates**: Standardize test patterns
-5. **Add Visual Regression Tests**: For frontend components
+1. **Improve WebSocket Test Coverage**: Add tests for connection drops, reconnection, and message ordering
+2. **Add Performance Benchmarks**: Track operation processing times and search latencies
+3. **Implement Contract Testing**: Ensure API compatibility between services
+4. **Add Load Testing**: Test system behavior under concurrent operations
+5. **Create Integration Test Suites**: For complete user workflows
+6. **Add Security Testing**: Test authorization, rate limiting, and input validation
 
-Remember: Good tests are an investment in code quality and developer confidence. Write tests that you'll thank yourself for later!
+Remember: Tests are living documentation. Keep them clean, focused, and meaningful. A well-tested codebase is a maintainable codebase!

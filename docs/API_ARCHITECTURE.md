@@ -3,7 +3,7 @@
 ## Table of Contents
 1. [API Architecture Overview](#api-architecture-overview)
 2. [Search API (vecpipe/search_api.py)](#search-api-vecpipesearch_apipy)
-3. [WebUI API Endpoints](#webui-api-endpoints)
+3. [WebUI API v2 Endpoints](#webui-api-v2-endpoints)
 4. [Request/Response Patterns](#requestresponse-patterns)
 5. [Authentication & Authorization](#authentication--authorization)
 6. [API Integration Patterns](#api-integration-patterns)
@@ -25,10 +25,10 @@ Semantik follows a clean three-package architecture with two main services:
    - Prometheus metrics on port 9091
 
 2. **WebUI Service** (`webui/main.py`) - Control plane and user interface
-   - Port: 8000 (default)
-   - REST API + WebSocket support
-   - User authentication and job management
-   - Owns and manages the SQLite database
+   - Port: 8080 (default)
+   - REST API v2 + WebSocket support
+   - User authentication and collection management
+   - Owns and manages the PostgreSQL database
    - Proxies search requests to Vecpipe API
    - Uses shared package for embeddings and database operations
 
@@ -36,16 +36,18 @@ Semantik follows a clean three-package architecture with two main services:
 
 - **Clean Architecture**: Three packages - vecpipe (search), webui (control plane), shared (utilities)
 - **No Circular Dependencies**: Both services depend on shared, but not on each other
-- **Database Ownership**: WebUI exclusively owns the SQLite database
+- **Database Ownership**: WebUI exclusively owns the PostgreSQL database
 - **RESTful Design**: Standard HTTP methods and status codes
 - **Stateless Search**: All search state stored in Qdrant
 - **JWT Authentication**: Secure token-based auth for WebUI
-- **Real-time Updates**: WebSocket support for job progress
+- **Real-time Updates**: WebSocket support for operation progress
 - **Metrics Integration**: Prometheus metrics for monitoring
+- **Collection-Centric**: All operations are organized around collections, not jobs
+- **Async Operations**: Long-running tasks are handled through operations that can be tracked
 
 ## Vecpipe Search API (vecpipe/search_api.py)
 
-The Vecpipe service is the core search engine, providing high-performance vector similarity and hybrid search capabilities. It operates independently and has no knowledge of users, authentication, or job management.
+The Vecpipe service is the core search engine, providing high-performance vector similarity and hybrid search capabilities. It operates independently and has no knowledge of users, authentication, or collection management.
 
 ### Base URL
 ```
@@ -146,7 +148,7 @@ Content-Type: application/json
     ]
   },
   "include_content": true,
-  "collection": "job_123"
+  "collection": "coll_550e8400_qwen06b_f16"
 }
 ```
 
@@ -211,7 +213,7 @@ Content-Type: application/json
   "k": 5,
   "search_type": "semantic",
   "model_name": "Qwen/Qwen3-Embedding-0.6B",
-  "collection": "work_docs"
+  "collection": "coll_550e8400_qwen06b_f16"
 }
 ```
 
@@ -257,7 +259,7 @@ GET /collection/info
 **Response:**
 ```json
 {
-  "name": "work_docs",
+  "name": "coll_550e8400_qwen06b_f16",
   "status": "ready",
   "points_count": 5432,
   "indexed_vectors_count": 5432,
@@ -360,13 +362,13 @@ GET /embedding/info
 }
 ```
 
-## WebUI API Endpoints
+## WebUI API v2 Endpoints
 
-The WebUI service provides user-facing APIs for authentication, job management, and search proxying.
+The WebUI service provides user-facing APIs for authentication, collection management, and search proxying. The v2 API introduces a collection-centric architecture replacing the legacy job-based system.
 
 ### Base URL
 ```
-http://localhost:8000
+http://localhost:8080
 ```
 
 ### Authentication Endpoints
@@ -478,11 +480,11 @@ Authorization: Bearer {access_token}
 }
 ```
 
-### Job Management Endpoints
+### Collection Management Endpoints
 
-#### 1. Create Job
+#### 1. Create Collection
 ```http
-POST /api/jobs
+POST /api/v2/collections
 Authorization: Bearer {access_token}
 Content-Type: application/json
 ```
@@ -491,184 +493,348 @@ Content-Type: application/json
 ```json
 {
   "name": "Technical Documentation",
-  "description": "Embedding technical docs",
-  "directory_path": "/path/to/docs",
-  "model_name": "Qwen/Qwen3-Embedding-0.6B",
-  "chunk_size": 600,
+  "description": "Company technical documentation",
+  "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+  "quantization": "float16",
+  "chunk_size": 1000,
   "chunk_overlap": 200,
-  "batch_size": 96,
-  "vector_dim": 1024,
-  "quantization": "float32",
-  "instruction": "Represent this technical document for searching:",
-  "job_id": "optional-pre-generated-id"
+  "is_public": false
 }
 ```
 
 **Response:**
 ```json
 {
-  "id": "job_123",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
   "name": "Technical Documentation",
-  "status": "created",
+  "description": "Company technical documentation",
+  "owner_id": 1,
+  "vector_store_name": "coll_550e8400_qwen06b_f16",
+  "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+  "quantization": "float16",
+  "chunk_size": 1000,
+  "chunk_overlap": 200,
+  "is_public": false,
+  "status": "pending",
   "created_at": "2024-01-15T10:00:00Z",
   "updated_at": "2024-01-15T10:00:00Z",
-  "total_files": 42,
-  "processed_files": 0,
-  "failed_files": 0,
-  "model_name": "Qwen/Qwen3-Embedding-0.6B",
-  "directory_path": "/path/to/docs",
-  "quantization": "float32",
-  "batch_size": 96,
-  "chunk_size": 600,
-  "chunk_overlap": 200
+  "document_count": 0,
+  "total_chunks": 0,
+  "total_size_bytes": 0
 }
 ```
 
-#### 2. List Jobs
+#### 2. List Collections
 ```http
-GET /api/jobs
+GET /api/v2/collections
 Authorization: Bearer {access_token}
 ```
+
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+- `per_page` (optional): Items per page (default: 20)
+- `search` (optional): Search by name
+- `sort_by` (optional): Sort field
+- `sort_order` (optional): Sort order (asc/desc)
+
+**Response:**
+```json
+{
+  "collections": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "Technical Documentation",
+      "description": "Company technical documentation",
+      "owner_id": 1,
+      "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+      "status": "ready",
+      "document_count": 150,
+      "total_chunks": 3420,
+      "total_size_bytes": 45678900,
+      "created_at": "2024-01-15T10:00:00Z",
+      "updated_at": "2024-01-15T14:30:00Z"
+    }
+  ],
+  "total": 5,
+  "page": 1,
+  "per_page": 20,
+  "pages": 1
+}
+```
+
+#### 3. Get Collection Details
+```http
+GET /api/v2/collections/{collection_id}
+Authorization: Bearer {access_token}
+```
+
+**Response:** Detailed collection information including sources and recent operations
+
+#### 4. Update Collection
+```http
+PUT /api/v2/collections/{collection_uuid}
+Authorization: Bearer {access_token}
+Content-Type: application/json
+```
+
+**Request:**
+```json
+{
+  "name": "Technical Documentation v2",
+  "description": "Updated documentation",
+  "is_public": true
+}
+```
+
+#### 5. Delete Collection
+```http
+DELETE /api/v2/collections/{collection_uuid}
+Authorization: Bearer {access_token}
+```
+
+**Response:** 204 No Content
+
+#### 6. Add Source to Collection
+```http
+POST /api/v2/collections/{collection_uuid}/sources
+Authorization: Bearer {access_token}
+Content-Type: application/json
+```
+
+**Request:**
+```json
+{
+  "source_type": "directory",
+  "source_path": "/docs/api",
+  "filters": {
+    "extensions": [".md", ".txt", ".pdf"],
+    "ignore_patterns": ["**/node_modules/**"]
+  },
+  "config": {
+    "recursive": true,
+    "follow_symlinks": false
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "id": "op_123e4567-e89b-12d3-a456-426614174000",
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "type": "append",
+  "status": "pending",
+  "config": {
+    "source_path": "/docs/technical",
+    "recursive": true
+  },
+  "created_at": "2024-01-15T10:00:00Z",
+  "started_at": null,
+  "completed_at": null,
+  "error_message": null
+}
+```
+
+#### 7. Remove Source from Collection
+```http
+DELETE /api/v2/collections/{collection_uuid}/sources?source_path=/docs/api
+Authorization: Bearer {access_token}
+```
+
+**Response:**
+```json
+{
+  "id": "op_789e0123-e89b-12d3-a456-426614174002",
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "type": "remove_source",
+  "status": "pending",
+  "config": {
+    "source_path": "/docs/api"
+  },
+  "created_at": "2024-01-15T11:00:00Z",
+  "started_at": null,
+  "completed_at": null,
+  "error_message": null
+}
+```
+
+#### 8. List Collection Documents
+```http
+GET /api/v2/collections/{collection_uuid}/documents
+Authorization: Bearer {access_token}
+```
+
+**Query Parameters:**
+- `page` (optional): Page number
+- `per_page` (optional): Items per page
+- `status` (optional): Filter by status
+- `source_id` (optional): Filter by source
+
+**Response:**
+```json
+{
+  "documents": [
+    {
+      "id": "doc_123e4567-e89b-12d3-a456-426614174000",
+      "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+      "file_path": "/docs/api/endpoints.md",
+      "file_name": "endpoints.md",
+      "file_size": 15420,
+      "mime_type": "text/markdown",
+      "content_hash": "sha256:abcd...",
+      "status": "completed",
+      "chunk_count": 28,
+      "created_at": "2024-01-15T10:15:00Z",
+      "updated_at": "2024-01-15T10:16:00Z"
+    }
+  ],
+  "total": 150,
+  "page": 1,
+  "per_page": 50,
+  "pages": 3
+}
+```
+
+#### 9. Reindex Collection
+```http
+POST /api/v2/collections/{collection_uuid}/reindex
+Authorization: Bearer {access_token}
+Content-Type: application/json
+```
+
+**Request:**
+```json
+{
+  "config": {
+    "force": false,
+    "only_failed": false
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "id": "op_456e7890-e89b-12d3-a456-426614174001",
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "type": "reindex",
+  "status": "pending",
+  "config": {},
+  "created_at": "2024-01-15T10:00:00Z",
+  "started_at": null,
+  "completed_at": null,
+  "error_message": null
+}
+```
+
+#### 10. List Collection Operations
+```http
+GET /api/v2/collections/{collection_uuid}/operations?status=processing&type=index&page=1&per_page=50
+Authorization: Bearer {access_token}
+```
+
+**Query Parameters:**
+- `status` (optional): Filter by status (pending, processing, completed, failed, cancelled)
+- `type` (optional): Filter by operation type (index, append, reindex, remove_source, delete)
+- `page` (optional): Page number (default: 1)
+- `per_page` (optional): Items per page (default: 50, max: 100)
 
 **Response:**
 ```json
 [
   {
-    "id": "job_123",
-    "name": "Technical Documentation",
+    "id": "op_123e4567-e89b-12d3-a456-426614174000",
+    "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+    "type": "index",
     "status": "completed",
+    "config": {
+      "source_path": "/docs/technical",
+      "recursive": true
+    },
     "created_at": "2024-01-15T10:00:00Z",
-    "updated_at": "2024-01-15T10:30:00Z",
-    "total_files": 42,
-    "processed_files": 42,
-    "failed_files": 0,
-    "model_name": "Qwen/Qwen3-Embedding-0.6B",
-    "directory_path": "/path/to/docs"
+    "started_at": "2024-01-15T10:01:00Z",
+    "completed_at": "2024-01-15T10:30:00Z",
+    "error_message": null
   }
 ]
 ```
 
-#### 3. Get Job Details
-```http
-GET /api/jobs/{job_id}
-Authorization: Bearer {access_token}
-```
+### Operation Management Endpoints
 
-**Response:** Same structure as single job in list
+Operations represent asynchronous tasks performed on collections (indexing, reindexing, etc.).
 
-#### 4. Cancel Job
+#### 1. Get Operation Details
 ```http
-POST /api/jobs/{job_id}/cancel
+GET /api/v2/operations/{operation_uuid}
 Authorization: Bearer {access_token}
 ```
 
 **Response:**
 ```json
 {
-  "message": "Job cancellation requested"
-}
-```
-
-#### 5. Delete Job
-```http
-DELETE /api/jobs/{job_id}
-Authorization: Bearer {access_token}
-```
-
-**Response:**
-```json
-{
-  "message": "Job deleted successfully"
-}
-```
-
-#### 6. Get New Job ID
-```http
-GET /api/jobs/new-id
-Authorization: Bearer {access_token}
-```
-
-**Response:**
-```json
-{
-  "job_id": "550e8400-e29b-41d4-a716-446655440000"
-}
-```
-
-#### 7. Check Collection Exists
-```http
-GET /api/jobs/{job_id}/collection-exists
-Authorization: Bearer {access_token}
-```
-
-**Response:**
-```json
-{
-  "exists": true,
-  "collection_name": "job_123",
-  "point_count": 5432
-}
-```
-
-#### 8. Check All Collections Status
-```http
-GET /api/jobs/collections-status
-Authorization: Bearer {access_token}
-```
-
-**Response:**
-```json
-{
-  "job_123": {
-    "exists": true,
-    "point_count": 5432,
-    "status": "completed"
+  "id": 1,
+  "uuid": "op_123e4567-e89b-12d3-a456-426614174000",
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "user_id": 1,
+  "type": "index",
+  "status": "processing",
+  "task_id": "celery_task_12345",
+  "config": {
+    "source_path": "/docs/technical",
+    "recursive": true
   },
-  "job_456": {
-    "exists": false,
-    "point_count": 0,
-    "status": "failed"
+  "created_at": "2024-01-15T10:00:00Z",
+  "started_at": "2024-01-15T10:01:00Z",
+  "completed_at": null,
+  "error_message": null,
+  "progress": {
+    "total_files": 150,
+    "processed_files": 45,
+    "failed_files": 2,
+    "current_file": "api/endpoints.md",
+    "percentage": 30.0
   }
 }
 ```
 
-### File Operations Endpoints
-
-#### 1. Scan Directory
+#### 2. List Operations
 ```http
-POST /api/scan-directory
+GET /api/v2/operations
 Authorization: Bearer {access_token}
-Content-Type: application/json
 ```
 
-**Request:**
-```json
-{
-  "path": "/path/to/documents",
-  "recursive": true
-}
+**Query Parameters:**
+- `status` (optional): Filter by status - comma-separated for multiple values
+- `operation_type` (optional): Filter by operation type
+- `page` (optional): Page number
+- `per_page` (optional): Items per page
+
+#### 3. Cancel Operation
+```http
+DELETE /api/v2/operations/{operation_uuid}
+Authorization: Bearer {access_token}
 ```
 
 **Response:**
 ```json
 {
-  "files": [
-    {
-      "path": "/path/to/documents/doc1.pdf",
-      "size": 1048576,
-      "modified": "2024-01-15T09:00:00Z",
-      "extension": ".pdf"
-    }
-  ],
-  "count": 42
+  "id": "op_123e4567-e89b-12d3-a456-426614174000",
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "type": "index",
+  "status": "cancelled",
+  "config": {},
+  "error_message": "Cancelled by user",
+  "created_at": "2024-01-15T10:00:00Z",
+  "started_at": "2024-01-15T10:01:00Z",
+  "completed_at": "2024-01-15T10:05:00Z"
 }
 ```
 
 ### Search Endpoints
 
-#### 1. Unified Search (Proxies to Search API)
+#### 1. Multi-Collection Search
 ```http
-POST /api/search
+POST /api/v2/search
 Authorization: Bearer {access_token}
 Content-Type: application/json
 ```
@@ -676,12 +842,19 @@ Content-Type: application/json
 **Request:**
 ```json
 {
-  "query": "machine learning",
-  "collection": "job_123",
-  "job_id": "123",
-  "top_k": 10,
+  "collection_uuids": [
+    "550e8400-e29b-41d4-a716-446655440000",
+    "660f9511-f29c-52e5-b827-557755551111"
+  ],
+  "query": "How to implement authentication?",
+  "k": 20,
+  "search_type": "semantic",
+  "use_reranker": true,
   "score_threshold": 0.5,
-  "search_type": "hybrid",
+  "metadata_filter": {
+    "mime_type": "text/markdown"
+  },
+  "include_content": true,
   "hybrid_alpha": 0.7,
   "hybrid_mode": "rerank",
   "keyword_mode": "any"
@@ -691,34 +864,44 @@ Content-Type: application/json
 **Response:**
 ```json
 {
-  "query": "machine learning",
+  "query": "How to implement authentication?",
   "results": [
     {
-      "doc_id": "doc_456",
-      "chunk_id": "chunk_789",
-      "score": 0.89,
-      "content": "Machine learning is...",
-      "file_path": "/docs/ml_guide.pdf",
-      "file_name": "ml_guide.pdf",
-      "chunk_index": 3,
-      "total_chunks": 15,
-      "job_id": "123",
-      "matched_keywords": ["machine", "learning"],
-      "keyword_score": 0.85,
-      "combined_score": 0.87
+      "document_id": "doc_123e4567-e89b-12d3-a456-426614174000",
+      "chunk_id": "chunk_456",
+      "score": 0.95,
+      "original_score": 0.85,
+      "reranked_score": 0.95,
+      "text": "To implement authentication, you can use JWT tokens...",
+      "metadata": {
+        "page": 1,
+        "section": "Authentication"
+      },
+      "file_name": "auth_guide.md",
+      "file_path": "/docs/auth_guide.md",
+      "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+      "collection_name": "Technical Documentation",
+      "embedding_model": "Qwen/Qwen3-Embedding-0.6B"
     }
   ],
-  "collection": "job_123",
-  "num_results": 10,
-  "search_type": "hybrid",
-  "keywords_extracted": ["machine", "learning"],
-  "search_mode": "rerank"
+  "total_results": 15,
+  "collections_searched": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "Technical Documentation",
+      "embedding_model": "Qwen/Qwen3-Embedding-0.6B"
+    }
+  ],
+  "search_type": "semantic",
+  "reranking_used": true,
+  "reranker_model": "Qwen/Qwen3-Reranker-0.6B",
+  "search_time_ms": 245.5
 }
 ```
 
-#### 2. Hybrid Search (Legacy)
+#### 2. Single Collection Search
 ```http
-POST /api/hybrid_search
+POST /api/v2/search/single
 Authorization: Bearer {access_token}
 Content-Type: application/json
 ```
@@ -726,140 +909,87 @@ Content-Type: application/json
 **Request:**
 ```json
 {
-  "query": "python async",
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "query": "How to implement authentication?",
   "k": 10,
-  "job_id": "123",
-  "mode": "filter",
-  "keyword_mode": "all",
-  "score_threshold": 0.5
+  "search_type": "semantic",
+  "use_reranker": false,
+  "score_threshold": 0.7,
+  "metadata_filter": {
+    "mime_type": "text/markdown"
+  },
+  "include_content": true
 }
 ```
 
-**Response:** Similar to Search API hybrid search response
+**Response:** Same format as multi-collection search
 
-### Document Serving Endpoints
+**Note:** This endpoint is optimized for single collection searches and has higher rate limits (60/minute vs 30/minute) than the multi-collection endpoint.
 
-#### 1. Get Document
+### Document Access Endpoints
+
+#### 1. Get Document Content
 ```http
-GET /api/documents/{job_id}/{doc_id}
+GET /api/v2/collections/{collection_uuid}/documents/{document_uuid}/content
 Authorization: Bearer {access_token}
-Range: bytes=0-1023 (optional)
 ```
 
 **Response:**
 - Binary file content with appropriate Content-Type
-- Supports range requests for partial content (HTTP 206)
-- Special handling for PPTX files (converts to Markdown)
+- Does not support range requests in the current implementation
+- Enforces strict access control - user must have access to the collection
+- Document must belong to the specified collection
 
-**Response Headers:**
-```http
-Content-Type: application/pdf
-Content-Length: 1048576
-Accept-Ranges: bytes
-Content-Range: bytes 0-1023/1048576
-Content-Disposition: inline; filename="document.pdf"
-Cache-Control: private, max-age=3600
-ETag: "1705315200-1048576"
-Last-Modified: Mon, 15 Jan 2024 10:00:00 GMT
-```
+**Note:** Document metadata is included when listing documents through `/api/v2/collections/{collection_uuid}/documents`. There is no separate metadata endpoint in the v2 API.
 
-#### 2. Get Document Info
+### Directory Scanning Endpoints
+
+#### 1. Scan Directory
 ```http
-GET /api/documents/{job_id}/{doc_id}/info
+POST /api/v2/directory-scan
 Authorization: Bearer {access_token}
+Content-Type: application/json
 ```
 
-**Response:**
+**Request:**
 ```json
 {
-  "doc_id": "doc_456",
-  "filename": "ml_guide.pdf",
-  "path": "/docs/ml_guide.pdf",
-  "size": 1048576,
-  "extension": ".pdf",
-  "modified": "2024-01-15T09:00:00Z",
-  "supported": true
+  "path": "/docs/technical",
+  "recursive": true,
+  "follow_symlinks": false,
+  "filters": {
+    "extensions": [".md", ".txt", ".pdf"],
+    "ignore_patterns": ["**/node_modules/**", "**/.git/**"],
+    "min_size": 100,
+    "max_size": 104857600
+  }
 }
 ```
 
-#### 3. Get Temporary Image
-```http
-GET /api/documents/temp-images/{session_id}/{filename}
-```
-
-**Note:** Used for serving images extracted from PPTX conversions
-
-### Model Management Endpoints
-
-#### 1. List Available Models
-```http
-GET /api/models
-Authorization: Bearer {access_token}
-```
-
 **Response:**
 ```json
 {
-  "models": {
-    "Qwen/Qwen3-Embedding-0.6B": {
-      "description": "Lightweight Chinese-English embedding model",
-      "dim": 1024,
-      "supports_quantization": true,
-      "recommended_quantization": "float32"
+  "scan_id": "scan_123e4567",
+  "path": "/docs/technical",
+  "files": [
+    {
+      "path": "/docs/technical/api/endpoints.md",
+      "name": "endpoints.md",
+      "size": 15420,
+      "mime_type": "text/markdown",
+      "modified": "2024-01-15T09:00:00Z"
+    }
+  ],
+  "summary": {
+    "total_files": 150,
+    "total_size_bytes": 45678900,
+    "by_extension": {
+      ".md": 120,
+      ".txt": 20,
+      ".pdf": 10
     }
   },
-  "current_device": "cuda",
-  "using_real_embeddings": true
-}
-```
-
-### Metrics Endpoints
-
-#### 1. Get Metrics
-```http
-GET /api/metrics
-Authorization: Bearer {access_token}
-```
-
-**Response:**
-```json
-{
-  "available": true,
-  "metrics_port": 9092,
-  "data": "# HELP python_gc_objects_collected_total...\n# TYPE python_gc_objects_collected_total counter\n..."
-}
-```
-
-### Settings Endpoints
-
-#### 1. Reset Database
-```http
-POST /api/settings/reset-database
-Authorization: Bearer {access_token}
-```
-
-**Response:**
-```json
-{
-  "status": "success",
-  "message": "Database reset successfully"
-}
-```
-
-#### 2. Get Database Stats
-```http
-GET /api/settings/stats
-Authorization: Bearer {access_token}
-```
-
-**Response:**
-```json
-{
-  "job_count": 15,
-  "file_count": 342,
-  "database_size_mb": 12.5,
-  "parquet_files_count": 5,
-  "parquet_size_mb": 156.8
+  "errors": []
 }
 ```
 
@@ -867,69 +997,61 @@ Authorization: Bearer {access_token}
 
 The WebUI service exposes internal API endpoints for the vecpipe maintenance service. These endpoints do not require authentication and are designed for service-to-service communication.
 
-#### 1. List All Jobs (Internal)
+#### 1. List All Collections (Internal)
 ```http
-GET /internal/api/jobs
+GET /internal/api/collections
 ```
+
+**Note:** Internal endpoints are for service-to-service communication only.
 
 **Response:**
 ```json
 {
-  "jobs": [
+  "collections": [
     {
-      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "id": "550e8400-e29b-41d4-a716-446655440000",
       "name": "Technical Documentation",
-      "status": "completed",
-      "created_at": "2024-01-15T10:00:00Z",
-      "updated_at": "2024-01-15T10:30:00Z",
-      "model_name": "Qwen/Qwen3-Embedding-0.6B",
-      "directory_path": "/docs",
-      "total_files": 50,
-      "processed_files": 50,
-      "failed_files": 0,
-      "user_id": 1
+      "vector_store_name": "coll_550e8400_qwen06b_f16",
+      "status": "ready",
+      "owner_id": 1,
+      "document_count": 150,
+      "total_chunks": 3420
     }
   ]
 }
 ```
 
-#### 2. Get Job Files (Internal)
+#### 2. Get Collection Documents (Internal)
 ```http
-GET /internal/api/jobs/{job_id}/files
+GET /internal/api/collections/{collection_id}/documents
 ```
 
 **Response:**
 ```json
 {
-  "files": [
+  "documents": [
     {
-      "id": 1,
-      "job_id": "123e4567-e89b-12d3-a456-426614174000",
-      "path": "/docs/guide.pdf",
-      "size": 1048576,
-      "modified": "2024-01-15T09:00:00Z",
-      "extension": ".pdf",
-      "hash": "abc123...",
-      "doc_id": "def456",
+      "id": "doc_123e4567-e89b-12d3-a456-426614174000",
+      "file_path": "/docs/guide.pdf",
+      "content_hash": "sha256:abc123...",
       "status": "completed",
-      "chunks_created": 15,
-      "vectors_created": 15
+      "chunk_count": 15
     }
   ]
 }
 ```
 
-#### 3. Delete Collection Data (Internal)
+#### 3. Delete Vector Store (Internal)
 ```http
-DELETE /internal/api/jobs/{job_id}/collection
+DELETE /internal/api/collections/{collection_id}/vector-store
 ```
 
 **Response:**
 ```json
 {
   "status": "success",
-  "message": "Collection data deleted",
-  "points_deleted": 500
+  "message": "Vector store deleted",
+  "points_deleted": 3420
 }
 ```
 
@@ -962,14 +1084,15 @@ All error responses follow RFC 7807 Problem Details:
   "status": 400,
   "title": "Bad Request",
   "type": "about:blank",
-  "instance": "/api/jobs/invalid-id"
+  "instance": "/api/v2/collections/invalid-id"
 }
 ```
 
 ### Common HTTP Status Codes
 
-- **200 OK**: Successful GET, PUT
+- **200 OK**: Successful GET, PUT, PATCH
 - **201 Created**: Successful POST creating resource
+- **202 Accepted**: Async operation started
 - **204 No Content**: Successful DELETE
 - **206 Partial Content**: Range request response
 - **400 Bad Request**: Invalid request data
@@ -987,7 +1110,7 @@ All error responses follow RFC 7807 Problem Details:
 
 ### Pagination
 
-While not currently implemented, the API structure supports pagination:
+API endpoints support pagination:
 ```json
 {
   "results": [...],
@@ -1062,9 +1185,9 @@ Search endpoints support Qdrant filter syntax:
 All endpoints except the following require authentication:
 - `GET /` (root)
 - `GET /login`
-- `GET /api/auth/register`
-- `GET /api/auth/login`
-- `GET /api/documents/temp-images/*` (session-based)
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /internal/api/*` (internal endpoints)
 
 ### Authorization Header
 
@@ -1078,7 +1201,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 The WebUI service acts as a control plane and proxy for search requests:
 
-1. **Client** → WebUI: Authenticated request with job context
+1. **Client** → WebUI: Authenticated request with collection context
 2. **WebUI** → Vecpipe API: Transform and forward request
 3. **Vecpipe** → Qdrant: Execute vector search using shared embedding service
 4. **Response flows back** with transformed format
@@ -1094,7 +1217,7 @@ The WebUI service acts as a control plane and proxy for search requests:
 graph TD
     Client[Client] --> WebUI[WebUI Service<br/>Control Plane]
     WebUI --> Vecpipe[Vecpipe Service<br/>Search Engine]
-    WebUI --> SQLite[(SQLite DB<br/>Owned by WebUI)]
+    WebUI --> PostgreSQL[(PostgreSQL DB<br/>Owned by WebUI)]
     Vecpipe --> Qdrant[(Qdrant<br/>Vector DB)]
     
     WebUI -.->|uses| Shared[Shared Package]
@@ -1114,12 +1237,11 @@ For inter-service communication:
 
 ### Collection Metadata Synchronization
 
-When creating a job:
-1. WebUI creates job in SQLite via JobRepository
-2. WebUI processes documents using shared.text_processing
-3. WebUI generates embeddings using shared.embedding
-4. WebUI stores vectors in Qdrant
-5. Vecpipe reads collection metadata to determine correct model for search
+When creating a collection:
+1. WebUI creates collection in PostgreSQL via CollectionRepository
+2. WebUI initializes Qdrant collection with unique name
+3. Collection status updated to 'ready'
+4. Vecpipe reads collection by vector_store_name for search
 
 ## Batch Operations
 
@@ -1151,7 +1273,7 @@ results = await asyncio.gather(*search_tasks)
 
 ### Batch Document Processing
 
-Job processing handles documents in batches:
+Operation processing handles documents in batches:
 - Chunk batching: Process multiple chunks together
 - Upload batching: Upload to Qdrant in batches of 100
 - Memory management: Force garbage collection between files
@@ -1168,31 +1290,34 @@ apps/webui-react/tests/api_test_suite.py
 
 1. **Health Checks**: API availability
 2. **Authentication**: Login, registration, token refresh
-3. **Job Management**: Create, status, cancel, delete
-4. **Search**: Vector, hybrid, batch search
-5. **WebSocket**: Real-time updates
-6. **Error Handling**: Invalid requests, edge cases
+3. **Collection Management**: Create, update, delete, list
+4. **Operation Management**: Create, monitor, cancel
+5. **Search**: Vector, hybrid, batch search
+6. **WebSocket**: Real-time updates
+7. **Error Handling**: Invalid requests, edge cases
 
 ### Running Tests
 
 ```bash
-python api_test_suite.py --base-url http://localhost:8000 --auth-token <token>
+python api_test_suite.py --base-url http://localhost:8080 --auth-token <token>
 ```
 
 ### Example Test Request
 
 ```python
-async def test_vector_search():
+async def test_multi_collection_search():
     async with aiohttp.ClientSession() as session:
         payload = {
+            "collection_uuids": [
+                "550e8400-e29b-41d4-a716-446655440000"
+            ],
             "query": "machine learning",
-            "top_k": 10,
-            "search_type": "vector",
-            "job_id": "test_job"
+            "k": 10,
+            "use_reranker": True
         }
         
         async with session.post(
-            f"{base_url}/api/search",
+            f"{base_url}/api/v2/search",
             json=payload,
             headers={"Authorization": f"Bearer {token}"}
         ) as response:
@@ -1203,60 +1328,59 @@ async def test_vector_search():
 
 ## WebSocket Endpoints
 
-### Job Progress WebSocket
+### Operation Progress WebSocket
 
 ```
-ws://localhost:8000/ws/{job_id}
+ws://localhost:8080/api/v2/operations/{operation_uuid}/ws?token={jwt_token}
 ```
 
 **Connection Flow**:
-1. Generate job_id via `/api/jobs/new-id`
-2. Connect WebSocket with job_id
-3. Create job with same job_id
-4. Receive real-time updates
+1. Create operation via REST API
+2. Connect WebSocket with operation UUID and JWT token as query parameter
+3. Receive real-time progress updates
+4. Connection closes on completion
+
+**Authentication**: JWT token must be provided as a query parameter `?token={jwt_token}` in the WebSocket URL.
 
 **Message Types**:
 ```json
-// Job started
+// Progress update
 {
-  "type": "job_started",
-  "total_files": 42
+  "type": "progress",
+  "percentage": 45.5,
+  "processed_files": 68,
+  "total_files": 150,
+  "current_file": "api/authentication.md"
 }
 
-// File processing
+// File processed
 {
-  "type": "file_processing",
-  "current_file": "/path/to/file.pdf",
-  "processed_files": 10,
-  "total_files": 42,
-  "status": "Processing"
-}
-
-// File completed
-{
-  "type": "file_completed",
-  "processed_files": 11,
-  "total_files": 42
-}
-
-// Job completed
-{
-  "type": "job_completed",
-  "message": "Job completed successfully"
+  "type": "file_processed",
+  "file_path": "/docs/api/authentication.md",
+  "chunks_created": 15,
+  "status": "completed"
 }
 
 // Error
 {
   "type": "error",
-  "message": "Failed to process file: ..."
+  "message": "Failed to process file",
+  "file_path": "/docs/corrupted.pdf",
+  "error_code": "PARSE_ERROR"
+}
+
+// Completed
+{
+  "type": "completed",
+  "total_files": 150,
+  "processed_files": 148,
+  "failed_files": 2,
+  "total_chunks": 3420,
+  "duration_seconds": 125.5
 }
 ```
 
-### Directory Scan WebSocket
-
-```
-ws://localhost:8000/ws/scan/{scan_id}
-```
+**Note:** Directory scan WebSocket endpoint is not currently implemented in the v2 API. Use the REST endpoint for directory scanning.
 
 **Client Messages**:
 ```json
@@ -1264,7 +1388,10 @@ ws://localhost:8000/ws/scan/{scan_id}
 {
   "action": "scan",
   "path": "/path/to/directory",
-  "recursive": true
+  "recursive": true,
+  "filters": {
+    "extensions": [".md", ".txt", ".pdf"]
+  }
 }
 
 // Cancel scan
@@ -1363,20 +1490,20 @@ For authentication/authorization failures:
 
 - **Model caching**: Models kept in memory for 5 minutes
 - **Document caching**: 1-hour cache headers for documents
-- **Image caching**: Temporary images cached for 1 hour
+- **Search results**: Client-side caching recommended
 
 ### Timeouts
 
 - **Search requests**: 30 seconds
-- **Embedding generation**: 5 minutes per file
+- **Embedding generation**: 5 minutes per operation
 - **WebSocket idle**: No timeout (kept alive)
-- **File extraction**: 5 minutes per file
+- **Document extraction**: 5 minutes per file
 
 ### Resource Limits
 
 - **Max search results**: 100 per query
 - **Max batch queries**: Unlimited (memory permitting)
-- **Max file size**: 500 MB for preview
+- **Max file size**: 500 MB for processing
 - **Max chunk size**: 50,000 tokens
 - **Upload batch size**: 100 points per batch
 
@@ -1390,14 +1517,14 @@ Key metrics:
 - `search_api_latency_seconds`: Search request latency
 - `search_api_requests_total`: Total requests by endpoint
 - `embedding_generation_duration_seconds`: Embedding time
-- `job_processing_duration_seconds`: Job completion time
+- `operation_processing_duration_seconds`: Operation completion time
 - `active_websocket_connections`: Current WebSocket connections
 
 ## API Versioning
 
 Currently, the API uses URL-based versioning:
-- Search API: `/v1/` prefix planned
-- WebUI API: `/api/` prefix (v1 implied)
+- WebUI API: `/api/v2/` prefix for new endpoints
+- Search API: No versioning (stable interface)
 
 Future versions will maintain backward compatibility or provide migration guides.
 
@@ -1405,6 +1532,6 @@ Future versions will maintain backward compatibility or provide migration guides
 
 Both services provide OpenAPI documentation:
 - Search API: `http://localhost:8001/docs`
-- WebUI: `http://localhost:8000/docs`
+- WebUI: `http://localhost:8080/docs`
 
 The interactive documentation allows testing endpoints directly in the browser.

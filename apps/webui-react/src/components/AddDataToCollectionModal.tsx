@@ -1,54 +1,62 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { collectionsApi } from '../services/api';
+import { useAddSource } from '../hooks/useCollectionOperations';
 import { useUIStore } from '../stores/uiStore';
-
-interface Configuration {
-  model_name: string;
-  chunk_size: number;
-  chunk_overlap: number;
-  quantization: string;
-  vector_dim: number | null;
-  instruction: string | null;
-}
+import { useNavigate } from 'react-router-dom';
+import { getInputClassName } from '../utils/formStyles';
+import type { Collection } from '../types/collection';
 
 interface AddDataToCollectionModalProps {
-  collectionName: string;
-  configuration: Configuration;
+  collection: Collection;
   onClose: () => void;
   onSuccess: () => void;
 }
 
 function AddDataToCollectionModal({
-  collectionName,
-  configuration,
+  collection,
   onClose,
   onSuccess,
 }: AddDataToCollectionModalProps) {
+  const addSourceMutation = useAddSource();
   const { addToast } = useUIStore();
-  const [directory, setDirectory] = useState('');
-  const [description, setDescription] = useState('');
+  const navigate = useNavigate();
+  const [sourcePath, setSourcePath] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const mutation = useMutation({
-    mutationFn: async () => {
-      return collectionsApi.addData(collectionName, directory, description);
-    },
-    onSuccess: () => {
-      onSuccess();
-    },
-    onError: (error: any) => {
-      const message = error.response?.data?.detail || 'Failed to create job';
-      addToast({ type: 'error', message });
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!directory.trim()) {
+    if (!sourcePath.trim()) {
       addToast({ type: 'error', message: 'Please enter a directory path' });
       return;
     }
-    mutation.mutate();
+    
+    setIsSubmitting(true);
+    
+    try {
+      await addSourceMutation.mutateAsync({
+        collectionId: collection.id,
+        sourcePath: sourcePath.trim(),
+        config: {
+          chunk_size: collection.chunk_size,
+          chunk_overlap: collection.chunk_overlap,
+        }
+      });
+      
+      // Navigate to collection detail page to show operation progress
+      navigate(`/collections/${collection.id}`);
+      // Toast is already shown by the mutation
+      onSuccess();
+    } catch (error) {
+      // Error handling is already done by the mutation
+      // This catch block is for any unexpected errors
+      if (!addSourceMutation.isError) {
+        addToast({
+          message: error instanceof Error ? error.message : 'Failed to add data source',
+          type: 'error'
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -58,72 +66,56 @@ function AddDataToCollectionModal({
         <div className="px-6 py-4 border-b">
           <h3 className="text-lg font-medium text-gray-900">Add Data to Collection</h3>
           <p className="mt-1 text-sm text-gray-500">
-            Add new documents to "{collectionName}" using the same settings
+            Add new documents to "{collection.name}" using the same settings
           </p>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="px-6 py-4 space-y-4">
-            {/* Directory Input */}
+            {/* Source Path Input */}
             <div>
-              <label htmlFor="directory" className="block text-sm font-medium text-gray-700">
-                Directory Path
+              <label htmlFor="sourcePath" className="block text-sm font-medium text-gray-700">
+                Source Directory Path
               </label>
               <input
                 type="text"
-                id="directory"
-                value={directory}
-                onChange={(e) => setDirectory(e.target.value)}
+                id="sourcePath"
+                value={sourcePath}
+                onChange={(e) => setSourcePath(e.target.value)}
                 placeholder="/path/to/documents"
-                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                className={getInputClassName(false, isSubmitting)}
                 required
+                autoFocus
               />
               <p className="mt-1 text-xs text-gray-500">
                 All files in this directory will be scanned and added to the collection
               </p>
             </div>
 
-            {/* Description Input */}
-            <div>
-              <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                Description (Optional)
-              </label>
-              <textarea
-                id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={2}
-                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="Brief description of what you're adding..."
-              />
-            </div>
-
             {/* Settings Summary */}
             <div className="bg-gray-50 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-gray-900 mb-2">Inherited Settings</h4>
+              <h4 className="text-sm font-medium text-gray-900 mb-2">Collection Settings</h4>
               <dl className="text-xs space-y-1">
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Model:</dt>
-                  <dd className="text-gray-900">{configuration.model_name}</dd>
+                  <dt className="text-gray-500">Embedding Model:</dt>
+                  <dd className="text-gray-900 font-mono text-xs">{collection.embedding_model}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-gray-500">Chunk Size:</dt>
-                  <dd className="text-gray-900">{configuration.chunk_size} tokens</dd>
+                  <dd className="text-gray-900">{collection.chunk_size} characters</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-gray-500">Chunk Overlap:</dt>
-                  <dd className="text-gray-900">{configuration.chunk_overlap} tokens</dd>
+                  <dd className="text-gray-900">{collection.chunk_overlap} characters</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Quantization:</dt>
-                  <dd className="text-gray-900">{configuration.quantization}</dd>
+                  <dt className="text-gray-500">Status:</dt>
+                  <dd className="text-gray-900 capitalize">{collection.status}</dd>
                 </div>
-                {configuration.vector_dim && (
-                  <div className="flex justify-between">
-                    <dt className="text-gray-500">Vector Dimensions:</dt>
-                    <dd className="text-gray-900">{configuration.vector_dim}</dd>
-                  </div>
-                )}
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Documents:</dt>
+                  <dd className="text-gray-900">{collection.document_count}</dd>
+                </div>
               </dl>
             </div>
 
@@ -148,16 +140,16 @@ function AddDataToCollectionModal({
               type="button"
               onClick={onClose}
               className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-              disabled={mutation.isPending}
+              disabled={isSubmitting || addSourceMutation.isPending}
             >
               Cancel
             </button>
             <button
               type="submit"
               className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={mutation.isPending}
+              disabled={isSubmitting || addSourceMutation.isPending}
             >
-              {mutation.isPending ? 'Creating Job...' : 'Add Data'}
+              {isSubmitting || addSourceMutation.isPending ? 'Adding Source...' : 'Add Data'}
             </button>
           </div>
         </form>

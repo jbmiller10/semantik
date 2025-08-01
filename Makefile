@@ -3,6 +3,9 @@
 .PHONY: help install dev-install format lint type-check test test-coverage clean
 .PHONY: frontend-install frontend-build frontend-dev frontend-test build dev
 .PHONY: docker-up docker-down docker-logs docker-build-fresh docker-ps docker-restart
+.PHONY: docker-postgres-up docker-postgres-down docker-postgres-logs docker-shell-postgres
+.PHONY: docker-postgres-backup docker-postgres-restore
+.PHONY: dev-local docker-dev-up docker-dev-down docker-dev-logs
 
 help:
 	@echo "Available commands:"
@@ -19,12 +22,18 @@ help:
 	@echo ""
 	@echo "Docker commands:"
 	@echo "  wizard            Interactive Docker setup wizard (TUI)"
-	@echo "  docker-up         Start all services with docker-compose"
+	@echo "  docker-up         Start all services with PostgreSQL"
 	@echo "  docker-down       Stop and remove all containers"
 	@echo "  docker-logs       View logs from all services"
 	@echo "  docker-build-fresh Rebuild images without cache"
 	@echo "  docker-ps         Show status of all containers"
 	@echo "  docker-restart    Restart all services"
+	@echo ""
+	@echo "PostgreSQL specific commands:"
+	@echo "  docker-postgres-logs   View PostgreSQL container logs"
+	@echo "  docker-shell-postgres  Access PostgreSQL shell"
+	@echo "  docker-postgres-backup Create database backup"
+	@echo "  docker-postgres-restore Restore database from backup"
 	@echo ""
 	@echo "Frontend commands:"
 	@echo "  frontend-install  Install frontend dependencies"
@@ -35,6 +44,12 @@ help:
 	@echo "Integrated commands:"
 	@echo "  build          Build entire project"
 	@echo "  dev            Start development environment"
+	@echo ""
+	@echo "Local development (webui runs locally with hot reload):"
+	@echo "  dev-local      Start webui locally + services in Docker"
+	@echo "  docker-dev-up  Start only supporting services in Docker"
+	@echo "  docker-dev-down Stop Docker development services"
+	@echo "  docker-dev-logs View logs from development services"
 
 install:
 	poetry install --no-dev
@@ -43,26 +58,26 @@ dev-install:
 	poetry install
 
 format:
-	black packages/vecpipe packages/webui packages/shared tests
-	isort packages/vecpipe packages/webui packages/shared tests
+	poetry run black packages/vecpipe packages/webui packages/shared tests
+	poetry run isort packages/vecpipe packages/webui packages/shared tests
 
 lint:
-	ruff check packages/vecpipe packages/webui packages/shared tests
+	poetry run ruff check packages/vecpipe packages/webui packages/shared tests
 
 type-check:
-	mypy packages/vecpipe packages/webui packages/shared --ignore-missing-imports
+	poetry run mypy packages/vecpipe packages/webui packages/shared --ignore-missing-imports
 
 test:
-	pytest tests -v
+	poetry run pytest tests -v
 
 test-ci:
-	pytest tests -v -m "not e2e"
+	poetry run pytest tests -v --ignore=tests/e2e -m "not e2e"
 
 test-e2e:
-	pytest tests -v -m e2e
+	poetry run pytest tests -v -m e2e
 
 test-coverage:
-	pytest tests -v --cov=packages.vecpipe --cov=packages.webui --cov=packages.shared --cov-report=html --cov-report=term
+	poetry run pytest tests -v --cov=packages.vecpipe --cov=packages.webui --cov=packages.shared --cov-report=html --cov-report=term
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
@@ -71,6 +86,12 @@ clean:
 	rm -rf *.egg-info dist build
 
 # Docker commands for the new setup
+# Interactive wizard for setting up Semantik with Docker
+# - Configures GPU/CPU deployment
+# - Auto-generates secure PostgreSQL password
+# - Auto-generates secure JWT secret key
+# - Sets up document directories
+# - Creates optimized .env configuration
 wizard:
 	@python wizard_launcher.py
 
@@ -117,6 +138,16 @@ docker-up:
 			fi; \
 		fi; \
 	fi
+	@if [ ! -f .env ] || ! grep -q "^POSTGRES_PASSWORD=" .env || [ "$$(grep '^POSTGRES_PASSWORD=' .env | cut -d'=' -f2)" = "" ]; then \
+		echo "Generating secure POSTGRES_PASSWORD..."; \
+		POSTGRES_PWD=$$(openssl rand -hex 32 2>/dev/null || echo "CHANGE_THIS_TO_A_STRONG_PASSWORD"); \
+		if [ "$$(uname)" = "Darwin" ]; then \
+			sed -i '' "s/POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$$POSTGRES_PWD/" .env; \
+		else \
+			sed -i "s/POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$$POSTGRES_PWD/" .env; \
+		fi; \
+		echo "✓ Generated secure POSTGRES_PASSWORD"; \
+	fi
 	docker compose up -d
 	@echo "Services started! Access the application at http://localhost:8080"
 
@@ -140,20 +171,43 @@ docker-restart:
 
 # Quick commands for individual services
 docker-logs-webui:
-	docker-compose logs -f webui
+	docker compose logs -f webui
 
 docker-logs-vecpipe:
-	docker-compose logs -f vecpipe
+	docker compose logs -f vecpipe
 
 docker-logs-qdrant:
-	docker-compose logs -f qdrant
+	docker compose logs -f qdrant
 
 # Shell access to containers
 docker-shell-webui:
-	docker-compose exec webui /bin/bash
+	docker compose exec webui /bin/bash
 
 docker-shell-vecpipe:
-	docker-compose exec vecpipe /bin/bash
+	docker compose exec vecpipe /bin/bash
+
+# PostgreSQL commands
+docker-postgres-logs:
+	docker compose logs -f postgres
+
+docker-shell-postgres:
+	docker compose exec postgres psql -U semantik -d semantik
+
+docker-postgres-backup:
+	@echo "Creating PostgreSQL backup..."
+	@mkdir -p ./backups
+	@BACKUP_FILE="./backups/semantik_backup_$$(date +%Y%m%d_%H%M%S).sql" && \
+	docker compose exec -T postgres pg_dump -U semantik semantik > $$BACKUP_FILE && \
+	echo "✓ Backup created: $$BACKUP_FILE"
+
+docker-postgres-restore:
+	@if [ -z "$(BACKUP_FILE)" ]; then \
+		echo "ERROR: Please specify BACKUP_FILE=path/to/backup.sql"; \
+		exit 1; \
+	fi
+	@echo "Restoring PostgreSQL from $(BACKUP_FILE)..."
+	@docker compose exec -T postgres psql -U semantik -d semantik < $(BACKUP_FILE)
+	@echo "✓ Database restored from $(BACKUP_FILE)"
 
 # Development shortcuts
 .PHONY: fix check run
@@ -183,3 +237,24 @@ build: frontend-build
 
 dev:
 	./scripts/dev.sh
+
+# Local development commands - Run webui locally with hot reload
+dev-local:
+	./scripts/dev-local.sh
+
+docker-dev-up:
+	@echo "Starting development services in Docker (backend only, for local webui development)..."
+	@mkdir -p ./models ./data ./logs
+	@if [ ! -f .env ]; then \
+		echo "Creating .env file from .env.docker.example..."; \
+		cp .env.docker.example .env; \
+	fi
+	docker compose --profile backend up -d
+	@echo "Backend services started! Configure .env.local and run 'make run' to start webui locally"
+
+docker-dev-down:
+	@echo "Stopping development services..."
+	docker compose --profile backend down
+
+docker-dev-logs:
+	docker compose --profile backend logs -f

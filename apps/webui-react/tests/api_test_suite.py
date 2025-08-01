@@ -11,7 +11,7 @@ import time
 from datetime import UTC, datetime
 
 import aiohttp
-import websockets
+import websockets.client
 
 
 class APITestSuite:
@@ -23,9 +23,9 @@ class APITestSuite:
         if auth_token:
             self.headers["Authorization"] = f"Bearer {auth_token}"
 
-        self.test_results = []
+        self.test_results: list[dict] = []
 
-    async def run_all_tests(self):
+    async def run_all_tests(self) -> None:
         """Run all test categories"""
         print("🚀 Starting Comprehensive API Test Suite")
         print(f"Base URL: {self.base_url}")
@@ -63,7 +63,7 @@ class APITestSuite:
         # Print summary
         self.print_summary()
 
-    def log_test(self, test_name: str, success: bool, message: str, details: dict | None = None):
+    def log_test(self, test_name: str, success: bool, message: str, details: dict | None = None) -> None:
         """Log test result"""
         result = {
             "test": test_name,
@@ -79,7 +79,7 @@ class APITestSuite:
         if details and not success:
             print(f"   Details: {json.dumps(details, indent=2)}")
 
-    async def test_health_check(self):
+    async def test_health_check(self) -> None:
         """Test health check endpoint"""
         print("\n🏥 Testing Health Check...")
         async with aiohttp.ClientSession() as session:
@@ -111,15 +111,18 @@ class APITestSuite:
                     if resp.status in [200, 201]:
                         data = await resp.json()
                         job_id = data.get("job_id")
-                        self.log_test("Job Creation", True, f"Created job {job_id}", data)
-                        return job_id
+                        if job_id is not None:
+                            self.log_test("Job Creation", True, f"Created job {job_id}", data)
+                            return str(job_id)
+                        self.log_test("Job Creation", False, "No job_id in response", data)
+                        return None
                     text = await resp.text()
                     self.log_test("Job Creation", False, f"HTTP {resp.status}", {"response": text})
             except Exception as e:
                 self.log_test("Job Creation", False, str(e))
         return None
 
-    async def test_job_status(self, job_id: str):
+    async def test_job_status(self, job_id: str) -> None:
         """Test job status endpoint"""
         print(f"\n📊 Testing Job Status for {job_id}...")
         async with aiohttp.ClientSession() as session:
@@ -133,13 +136,13 @@ class APITestSuite:
             except Exception as e:
                 self.log_test("Job Status", False, str(e))
 
-    async def test_job_websocket(self, job_id: str):
+    async def test_job_websocket(self, job_id: str) -> None:
         """Test job progress WebSocket"""
         print(f"\n🔌 Testing Job Progress WebSocket for {job_id}...")
         ws_url = f"{self.ws_base_url}/ws/{job_id}"
 
         try:
-            async with websockets.connect(ws_url) as websocket:
+            async with websockets.client.connect(ws_url) as websocket:
                 # Wait for a message or timeout
                 try:
                     message = await asyncio.wait_for(websocket.recv(), timeout=5.0)
@@ -150,7 +153,7 @@ class APITestSuite:
         except Exception as e:
             self.log_test("Job WebSocket", False, f"Connection failed: {str(e)}")
 
-    async def test_job_cancellation(self, job_id: str):
+    async def test_job_cancellation(self, job_id: str) -> None:
         """Test job cancellation"""
         print(f"\n🛑 Testing Job Cancellation for {job_id}...")
         async with aiohttp.ClientSession() as session:
@@ -163,7 +166,7 @@ class APITestSuite:
             except Exception as e:
                 self.log_test("Job Cancellation", False, str(e))
 
-    async def test_directory_scan(self):
+    async def test_directory_scan(self) -> None:
         """Test directory scan endpoint"""
         print("\n📂 Testing Directory Scan...")
         async with aiohttp.ClientSession() as session:
@@ -187,13 +190,13 @@ class APITestSuite:
             except Exception as e:
                 self.log_test("Directory Scan", False, str(e))
 
-    async def test_directory_scan_websocket(self):
+    async def test_directory_scan_websocket(self) -> None:
         """Test directory scan WebSocket"""
         print("\n🔌 Testing Directory Scan WebSocket...")
         ws_url = f"{self.ws_base_url}/ws/scan/test-scan-id"
 
         try:
-            async with websockets.connect(ws_url) as websocket:
+            async with websockets.client.connect(ws_url) as websocket:
                 # Send scan request
                 await websocket.send(json.dumps({"path": "/tmp"}))
 
@@ -207,7 +210,7 @@ class APITestSuite:
         except Exception as e:
             self.log_test("Directory Scan WebSocket", False, f"Connection failed: {str(e)}")
 
-    async def test_vector_search(self):
+    async def test_vector_search(self) -> None:
         """Test vector search"""
         print("\n🔍 Testing Vector Search...")
         async with aiohttp.ClientSession() as session:
@@ -230,7 +233,7 @@ class APITestSuite:
             except Exception as e:
                 self.log_test("Vector Search", False, str(e))
 
-    async def test_hybrid_search(self):
+    async def test_hybrid_search(self) -> None:
         """Test hybrid search capability"""
         print("\n🔍 Testing Hybrid Search...")
 
@@ -268,7 +271,7 @@ class APITestSuite:
             if not hybrid_available:
                 self.log_test("Hybrid Search", False, "Hybrid search not available or not working")
 
-    async def test_search_filters(self):
+    async def test_search_filters(self) -> None:
         """Test search with filters"""
         print("\n🔍 Testing Search Filters...")
         async with aiohttp.ClientSession() as session:
@@ -297,7 +300,7 @@ class APITestSuite:
             except Exception as e:
                 self.log_test("Search Filters", False, str(e))
 
-    async def test_search_performance(self):
+    async def test_search_performance(self) -> None:
         """Test search performance"""
         print("\n⚡ Testing Search Performance...")
         async with aiohttp.ClientSession() as session:
@@ -333,7 +336,11 @@ class APITestSuite:
             try:
                 responses = await asyncio.gather(*tasks, return_exceptions=True)
                 elapsed = (time.time() - start) * 1000  # ms
-                success_count = sum(1 for r in responses if not isinstance(r, Exception) and r.status == 200)
+                success_count = sum(
+                    1
+                    for r in responses
+                    if not isinstance(r, BaseException) and hasattr(r, "status") and r.status == 200
+                )
 
                 self.log_test(
                     "Concurrent Search", success_count == 5, f"{success_count}/5 successful in {elapsed:.2f}ms"
@@ -341,7 +348,7 @@ class APITestSuite:
             except Exception as e:
                 self.log_test("Concurrent Search", False, str(e))
 
-    async def test_document_preview(self):
+    async def test_document_preview(self) -> None:
         """Test document preview endpoint"""
         print("\n📄 Testing Document Preview...")
         # This would need a valid file path
@@ -362,7 +369,7 @@ class APITestSuite:
             except Exception as e:
                 self.log_test("Document Preview", False, str(e))
 
-    async def test_settings(self):
+    async def test_settings(self) -> None:
         """Test settings endpoint"""
         print("\n⚙️ Testing Settings...")
         async with aiohttp.ClientSession() as session:
@@ -376,7 +383,7 @@ class APITestSuite:
             except Exception as e:
                 self.log_test("Settings", False, str(e))
 
-    async def test_error_handling(self):
+    async def test_error_handling(self) -> None:
         """Test error handling"""
         print("\n🚨 Testing Error Handling...")
 
@@ -403,7 +410,7 @@ class APITestSuite:
         except Exception as e:
             self.log_test("Error Handling - Invalid Search", False, str(e))
 
-    def print_summary(self):
+    def print_summary(self) -> None:
         """Print test summary"""
         print("\n" + "=" * 50)
         print("📊 TEST SUMMARY")
@@ -442,7 +449,7 @@ class APITestSuite:
             print(f"  {feature}: {status}")
 
 
-async def main():
+async def main() -> None:
     parser = argparse.ArgumentParser(description="Semantik API Test Suite")
     parser.add_argument("--url", default="http://localhost:8000", help="Base URL for API")
     parser.add_argument("--token", help="Authentication token")

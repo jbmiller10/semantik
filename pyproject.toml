@@ -10,7 +10,7 @@ packages = [{include = "vecpipe", from = "packages"}, {include = "webui", from =
 python = ">=3.11,<3.13"
 qdrant-client = "^1.9.0"
 sentence-transformers = "^3.0.0"
-fastapi = "^0.110.0"
+fastapi = "^0.116.0"
 uvicorn = "^0.27.1"
 pyarrow = "^15.0.0"
 pandas = "^2.2.0"
@@ -24,14 +24,14 @@ pypdf = "^5.0.0"
 python-docx = "^1.1.0"
 websockets = "^11.0.3"
 unstructured = {extras = ["all-docs"], version = "^0.18.1"}
-python-multipart = "^0.0.9"
+python-multipart = "^0.0.18"
 python-dotenv = "^1.0.1"
 torch = "*"
 transformers = "^4.51.0"
 bitsandbytes = "^0.46.0"
 accelerate = ">=0.26.0"
 passlib = {extras = ["bcrypt"], version = "^1.7.4"}
-python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+pyjwt = {extras = ["crypto"], version = "^2.10.1"}
 email-validator = "^2.1.0"
 numpy = "<2"
 pydantic-settings = "^2.10.1"
@@ -41,9 +41,11 @@ questionary = "^2.0.1"
 rich = "^13.0.0"
 alembic = "^1.13.1"
 sqlalchemy = "^2.0.23"
+psycopg2-binary = "^2.9.9"
 celery = {extras = ["redis"], version = "^5.3.0"}
 redis = "^5.0.0"
 flower = "^2.0.0"
+asyncpg = "^0.30.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
@@ -56,6 +58,13 @@ isort = "^5.13.0"
 types-requests = "^2.31.0"
 types-redis = "^4.6.0"
 pyfakefs = "^5.3.0"
+websocket-client = "^1.8.0"
+
+[tool.poetry.group.e2e]
+optional = true
+
+[tool.poetry.group.e2e.dependencies]
+pytest-playwright = "^0.6.2"
 
 [tool.ruff]
 line-length = 120
@@ -102,6 +111,7 @@ line_length = 120
 
 [tool.mypy]
 python_version = "3.11"
+plugins = ["pydantic.mypy"]
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -114,13 +124,20 @@ warn_no_return = true
 follow_imports = "normal"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-v --cov=packages.vecpipe --cov=packages.webui --cov-report=html --cov-report=term --cov-report=xml"
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --cov=packages.vecpipe --cov=packages.webui --cov-report=html --cov-report=term"
 pythonpath = ["."]
+asyncio_mode = "auto"
 markers = [
     "e2e: End-to-end tests that require a running instance (deselect with '-m \"not e2e\"')",
 ]

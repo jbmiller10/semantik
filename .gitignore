@@ -18,6 +18,7 @@ eggs/
 lib/
 lib64/
 parts/
+*test-results.json
 sdist/
 var/
 wheels/
@@ -116,6 +117,7 @@ dmypy.json
 *.swp
 *.swo
 *~
+.serena*
 
 # OS
 .DS_Store
@@ -131,6 +133,7 @@ Thumbs.db
 *.db
 logs/
 data/
+images/
 models/
 repopackpy-output.txt
 
@@ -152,6 +155,9 @@ apps/*/.vite/
 
 # React/Vite specific
 *.local
+
+# Test coverage
+apps/*/coverage/
 
 # Production builds
 packages/webui/static/assets/
@@ -178,3 +184,24 @@ dev-debug.log
 # Task files
 tasks.json
 tasks/ 
+TICKET*
+ticket_*
+CODEBASE_*
+images/*
+.serena/*
+*.pkl
+
+# Temporary development files
+*_TEST_REPORT.md
+*_investigation_notes.md
+*_DIAGNOSTICS.md
+*_DEBUG.md
+*_ANALYSIS.md
+*_SUMMARY.md
+*.backup
+test_*.png
+*.tmp
+page_content.html
+screenshot*.png
+login*.png
+collections*.png

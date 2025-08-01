@@ -14,7 +14,7 @@ class TestProcessParquetFile:
     """Test suite for process_parquet_file function"""
 
     @patch("packages.vecpipe.ingest_qdrant.pq.read_table")
-    def test_process_parquet_file_success(self, mock_read_table):
+    def test_process_parquet_file_success(self, mock_read_table) -> None:
         """Test successful processing of a parquet file"""
         # Create mock table with column structure
         mock_table = MagicMock()
@@ -70,7 +70,7 @@ class TestProcessParquetFile:
         assert points[0].id == "id3"
 
     @patch("packages.vecpipe.ingest_qdrant.pq.read_table")
-    def test_process_parquet_file_empty_file(self, mock_read_table):
+    def test_process_parquet_file_empty_file(self, mock_read_table) -> None:
         """Test processing an empty parquet file"""
         # Create mock table with empty columns
         mock_table = MagicMock()
@@ -101,7 +101,7 @@ class TestProcessParquetFile:
         mock_client.upsert.assert_not_called()
 
     @patch("packages.vecpipe.ingest_qdrant.pq.read_table")
-    def test_process_parquet_file_missing_columns(self, mock_read_table):
+    def test_process_parquet_file_missing_columns(self, mock_read_table) -> None:
         """Test handling of parquet file with missing required columns"""
         # Create mock table that raises KeyError for missing column
         mock_table = MagicMock()
@@ -112,7 +112,7 @@ class TestProcessParquetFile:
         payload_column = MagicMock()
         payload_column.to_pylist.return_value = [{"text": "doc1"}]
 
-        def mock_column(name):
+        def mock_column(name) -> None:
             if name == "vector":
                 raise KeyError("Column 'vector' not found")
             return {"id": id_column, "payload": payload_column}[name]
@@ -129,7 +129,7 @@ class TestProcessParquetFile:
 
     @patch("packages.vecpipe.ingest_qdrant.pq.read_table")
     @patch("packages.vecpipe.ingest_qdrant.time.sleep")
-    def test_process_parquet_file_with_retries(self, mock_sleep, mock_read_table):
+    def test_process_parquet_file_with_retries(self, mock_sleep, mock_read_table) -> None:
         """Test retry logic when upsert fails"""
         # Setup mock table
         mock_table = MagicMock()
@@ -172,7 +172,7 @@ class TestProcessParquetFile:
 
     @patch("packages.vecpipe.ingest_qdrant.pq.read_table")
     @patch("packages.vecpipe.ingest_qdrant.time.sleep")
-    def test_process_parquet_file_max_retries_exceeded(self, mock_sleep, mock_read_table):
+    def test_process_parquet_file_max_retries_exceeded(self, mock_sleep, mock_read_table) -> None:
         """Test failure when max retries are exceeded"""
         # Setup mock table
         mock_table = MagicMock()
@@ -205,7 +205,7 @@ class TestProcessParquetFile:
         assert mock_client.upsert.call_count == 5  # Initial + 4 retries
 
     @patch("packages.vecpipe.ingest_qdrant.pq.read_table")
-    def test_process_parquet_file_read_error(self, mock_read_table):
+    def test_process_parquet_file_read_error(self, mock_read_table) -> None:
         """Test handling of parquet read errors"""
         mock_read_table.side_effect = Exception("Corrupt file")
         mock_client = MagicMock()
@@ -219,7 +219,7 @@ class TestProcessParquetFile:
 class TestMoveFile:
     """Test suite for move_file function"""
 
-    def test_move_file_success(self):
+    def test_move_file_success(self) -> None:
         """Test successful file move"""
         source = "/source/file.parquet"
         dest_dir = "/dest"
@@ -238,7 +238,7 @@ class TestMoveFile:
             actual_dst = mock_rename.call_args[0][0]
             assert str(actual_dst) == str(expected_dst)
 
-    def test_move_file_creates_directory(self):
+    def test_move_file_creates_directory(self) -> None:
         """Test that destination directory is created if it doesn't exist"""
         source = "/source/file.parquet"
         dest_dir = "/dest"
@@ -252,7 +252,7 @@ class TestMoveFile:
             # Verify rename was called
             mock_rename.assert_called_once()
 
-    def test_move_file_handles_error(self):
+    def test_move_file_handles_error(self) -> None:
         """Test error handling during file move"""
         source = "/source/file.parquet"
         dest_dir = "/dest"
@@ -271,7 +271,7 @@ class TestFileHandlingIntegration:
 
     @patch("packages.vecpipe.ingest_qdrant.pq.read_table")
     @patch("packages.vecpipe.ingest_qdrant.move_file")
-    def test_successful_processing_moves_to_loaded(self, mock_move_file, mock_read_table):
+    def test_successful_processing_moves_to_loaded(self, mock_move_file, mock_read_table) -> None:
         """Test that successfully processed files are moved to loaded directory"""
         # Setup successful processing
         mock_df = pd.DataFrame({"id": ["id1"], "vector": [[0.1, 0.2]], "payload": [{"text": "doc1"}]})
@@ -294,7 +294,7 @@ class TestFileHandlingIntegration:
 
     @patch("packages.vecpipe.ingest_qdrant.pq.read_table")
     @patch("packages.vecpipe.ingest_qdrant.move_file")
-    def test_failed_processing_moves_to_rejects(self, mock_move_file, mock_read_table):
+    def test_failed_processing_moves_to_rejects(self, mock_move_file, mock_read_table) -> None:
         """Test that failed files would be moved to rejects directory"""
         # Setup failed processing
         mock_read_table.side_effect = Exception("Read error")

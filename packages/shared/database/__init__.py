@@ -1,34 +1,34 @@
 """
-Shared database utilities and abstractions.
+Shared database utilities and abstractions using PostgreSQL.
 
 This module provides database-related functionality that's shared across
 the vecpipe and webui packages.
 
 The repository pattern provides an abstraction layer over the database,
-making it easier to switch between different storage backends (SQLite, PostgreSQL, etc).
+using PostgreSQL as the primary storage backend.
 
 Import Organization:
-- Repository Pattern (Recommended): Interfaces, implementations, and factories
-- Legacy Functions (Deprecated): Direct database functions with deprecation warnings
-- Utilities: Database initialization, password hashing, and metadata management
+- Repository Pattern: Interfaces, implementations, and factories
+- Database Session Management: PostgreSQL async session support
+- Utilities: Password hashing, user ID parsing, and metadata management
 """
 
-from .base import (
-    AuthRepository,
-    BaseRepository,
-    CollectionRepository,
-    FileRepository,
-    JobRepository,
-    UserRepository,
-)
+# Password hashing context
+from passlib.context import CryptContext
+
+from .base import ApiKeyRepository, AuthRepository, BaseRepository, CollectionRepository, UserRepository
 from .collection_metadata import ensure_metadata_collection, store_collection_metadata
 from .collection_metadata import get_collection_metadata as get_collection_metadata_qdrant
+
+# Async database session management
+from .database import AsyncSessionLocal, get_db
 from .exceptions import (
     AccessDeniedError,
     ConcurrencyError,
     DatabaseOperationError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
+    InvalidStateError,
     InvalidUserIdError,
     RepositoryError,
     TransactionError,
@@ -36,138 +36,62 @@ from .exceptions import (
 )
 from .factory import (
     create_all_repositories,
+    create_api_key_repository,
     create_auth_repository,
     create_collection_repository,
-    create_file_repository,
-    create_job_repository,
+    create_document_repository,
+    create_operation_repository,
     create_user_repository,
+    get_db_session,
 )
 
-# Import database management functions directly (these don't need the repository pattern)
-# Import database constants directly
-# Legacy function imports for backward compatibility
-# TODO: Migrate tests and code to use repository pattern instead
-from .sqlite_implementation import (
-    DB_PATH,
-    add_files_to_job,
-    create_job,
-    create_user,
-    delete_collection,
-    delete_job,
-    get_collection_details,
-    get_collection_files,
-    get_collection_metadata,
-    get_database_stats,
-    get_duplicate_files_in_collection,
-    get_job,
-    get_job_files,
-    get_job_total_vectors,
-    get_user,
-    get_user_by_id,
-    init_db,
-    list_collections,
-    list_jobs,
-    pwd_context,
-    rename_collection,
-    reset_database,
-    revoke_refresh_token,
-    save_refresh_token,
-    update_file_status,
-    update_job,
-    update_user_last_login,
-    verify_refresh_token,
-)
-from .sqlite_repository import (
-    SQLiteAuthRepository,
-    SQLiteCollectionRepository,
-    SQLiteFileRepository,
-    SQLiteJobRepository,
-    SQLiteUserRepository,
-)
-from .transaction import RepositoryTransaction, async_sqlite_transaction, sqlite_transaction
+# PostgreSQL database management
+from .postgres_database import check_postgres_connection, get_postgres_db, pg_connection_manager
+
+# Utilities
 from .utils import parse_user_id
 
-# Connection pooling for workers
-try:
-    from .connection_pool import get_connection_pool, get_db_connection
-except ImportError:
-    # Connection pool is optional
-    get_connection_pool = None  # type: ignore
-    get_db_connection = None  # type: ignore
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 __all__ = [
     # Repository interfaces
     "BaseRepository",
-    "JobRepository",
     "UserRepository",
-    "FileRepository",
     "CollectionRepository",
     "AuthRepository",
-    # Repository implementations
-    "SQLiteJobRepository",
-    "SQLiteUserRepository",
-    "SQLiteFileRepository",
-    "SQLiteCollectionRepository",
-    "SQLiteAuthRepository",
+    "ApiKeyRepository",
     # Factory functions
     "create_all_repositories",
-    "create_job_repository",
     "create_user_repository",
-    "create_file_repository",
     "create_collection_repository",
     "create_auth_repository",
+    "create_api_key_repository",
+    "create_operation_repository",
+    "create_document_repository",
+    "get_db_session",
     # Domain exceptions
     "AccessDeniedError",
     "ConcurrencyError",
     "DatabaseOperationError",
     "EntityAlreadyExistsError",
     "EntityNotFoundError",
+    "InvalidStateError",
     "InvalidUserIdError",
     "RepositoryError",
     "TransactionError",
     "ValidationError",
-    # Transaction support
-    "RepositoryTransaction",
-    "async_sqlite_transaction",
-    "sqlite_transaction",
     # Collection metadata functions
     "ensure_metadata_collection",
     "get_collection_metadata_qdrant",
     "store_collection_metadata",
-    # Database management functions (for admin operations)
-    "init_db",
-    "reset_database",
-    "get_database_stats",
-    "DB_PATH",
-    "pwd_context",
     # Utility functions
     "parse_user_id",
-    # Connection pooling (optional, for workers)
-    "get_connection_pool",
-    "get_db_connection",
-    # Legacy function exports (for backward compatibility)
-    # TODO: Remove these once all code is migrated to repository pattern
-    "create_job",
-    "get_job",
-    "update_job",
-    "delete_job",
-    "list_jobs",
-    "add_files_to_job",
-    "update_file_status",
-    "get_job_files",
-    "get_job_total_vectors",
-    "get_duplicate_files_in_collection",
-    "create_user",
-    "get_user",
-    "get_user_by_id",
-    "update_user_last_login",
-    "get_collection_metadata",
-    "list_collections",
-    "get_collection_details",
-    "get_collection_files",
-    "rename_collection",
-    "delete_collection",
-    "save_refresh_token",
-    "verify_refresh_token",
-    "revoke_refresh_token",
+    "pwd_context",
+    # Async database session management
+    "AsyncSessionLocal",
+    "get_db",
+    "get_postgres_db",
+    # PostgreSQL connection management
+    "pg_connection_manager",
+    "check_postgres_connection",
 ]

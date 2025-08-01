@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import api from '../services/api';
+import { directoryScanV2Api, generateScanId } from '../services/api/v2/directoryScan';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface ScanResult {
   files: string[];
@@ -7,10 +8,11 @@ interface ScanResult {
   total_size: number;
 }
 
-export function useDirectoryScan(_scanId?: string) {
+export function useDirectoryScan(scanId?: string) {
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const currentScanId = scanId || generateScanId();
 
   const startScan = useCallback(
     async (directory: string) => {
@@ -24,32 +26,31 @@ export function useDirectoryScan(_scanId?: string) {
       setScanning(true);
 
       try {
-        const response = await api.post('/api/scan-directory', {
+        const response = await directoryScanV2Api.preview({
           path: directory,
-          recursive: true
+          scan_id: currentScanId,
+          recursive: true,
         });
 
-        const { files, count } = response.data;
-        
-        // Calculate total size
-        const totalSize = files.reduce((sum: number, file: any) => sum + file.size, 0);
-        
+        // Convert response to legacy format for compatibility
         setScanResult({
-          files: files.map((f: any) => f.path),
-          total_files: count,
-          total_size: totalSize,
+          files: response.files.map(f => f.file_path),
+          total_files: response.total_files,
+          total_size: response.total_size,
         });
-        setError(null);
-      } catch (err: any) {
-        console.error('Scan error:', err);
-        const errorMessage = err.response?.data?.detail || err.message || 'Failed to scan directory';
-        setError(errorMessage);
+
+        // If there are warnings in the response, show the first one as an error
+        if (response.warnings.length > 0 && response.warnings[0] !== 'Scan in progress - connect to WebSocket for real-time updates') {
+          setError(response.warnings[0]);
+        }
+      } catch (err) {
+        setError(getErrorMessage(err));
         setScanResult(null);
       } finally {
         setScanning(false);
       }
     },
-    []
+    [currentScanId]
   );
 
   const reset = useCallback(() => {

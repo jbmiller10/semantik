@@ -4,6 +4,7 @@ This module provides embedding generation capabilities for the system.
 """
 
 from .base import BaseEmbeddingService
+from .batch_manager import AdaptiveBatchSizeManager
 from .context import ManagedEmbeddingService, embedding_service_context, temporary_embedding_service
 from .dense import (
     DenseEmbeddingService,
@@ -36,6 +37,8 @@ __all__ = [
     "DenseEmbeddingService",
     "EmbeddingService",
     "EmbeddingServiceProtocol",
+    # Batch management
+    "AdaptiveBatchSizeManager",
     # Service functions
     "get_embedding_service",
     "get_embedding_service_sync",

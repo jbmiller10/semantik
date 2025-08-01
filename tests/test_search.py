@@ -9,7 +9,9 @@ print("Testing search API directly...")
 try:
     start = time.time()
     response = requests.post(
-        "http://localhost:8000/search", json={"query": "test", "collection_name": "job_33", "k": 10}, timeout=10
+        "http://localhost:8000/search",
+        json={"query": "test", "collection_name": "test_collection", "k": 10},
+        timeout=10,
     )
     elapsed = time.time() - start
     print(f"Search API response in {elapsed:.2f}s: {response.status_code}")
@@ -35,7 +37,7 @@ try:
             "http://localhost:8080/api/search",
             json={
                 "query": "test",
-                "collection": "job_33",
+                "collection": "test_collection",
                 "top_k": 10,
                 "score_threshold": 0.5,
                 "search_type": "vector",

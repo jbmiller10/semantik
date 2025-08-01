@@ -10,17 +10,18 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jwt.exceptions import InvalidTokenError
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, field_validator
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 # Import database module
-from shared import database
 from shared.config import settings
+from shared.database import create_auth_repository, create_user_repository, get_db_session
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -129,23 +130,28 @@ def verify_token(token: str, token_type: str = "access") -> str | None:
         if username is None or token_type_claim != token_type:
             return None
         return username
-    except JWTError:
+    except InvalidTokenError:
         return None
 
 
-def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
+async def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
     """Authenticate a user"""
-    user = database.get_user(username)
-    if not user:
-        return None
-    if not verify_password(password, user["hashed_password"]):
-        return None
+    async for session in get_db_session():
+        user_repo = create_user_repository(session)
+        auth_repo = create_auth_repository(session)
 
-    # Update last login
-    database.update_user_last_login(user["id"])
+        user = await user_repo.get_user_by_username(username)
+        if not user:
+            return None
+        if not verify_password(password, user["hashed_password"]):
+            return None
 
-    # Type cast to satisfy mypy - we've verified user is not None
-    return cast(dict[str, Any], user)
+        # Update last login
+        await auth_repo.update_user_last_login(str(user["id"]))
+
+        # Type cast to satisfy mypy - we've verified user is not None
+        return cast(dict[str, Any], user)
+    return None
 
 
 # FastAPI dependency
@@ -182,19 +188,24 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials | None = De
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user = database.get_user(username)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    async for session in get_db_session():
+        user_repo = create_user_repository(session)
+        user = await user_repo.get_user_by_username(username)
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
-    if not user.get("is_active", True):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
+        if not user.get("is_active", True):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
 
-    # Type cast to satisfy mypy - we know user is not None here
-    return cast(dict[str, Any], user)
+        # Type cast to satisfy mypy - we know user is not None here
+        return cast(dict[str, Any], user)
+
+    # This should never be reached, but satisfies the type checker
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database connection failed")
 
 
 # Removed unused function: get_current_admin_user
@@ -235,11 +246,16 @@ async def get_current_user_websocket(token: str | None) -> dict[str, Any]:
     if username is None:
         raise ValueError("Invalid authentication token")
 
-    user = database.get_user(username)
-    if user is None:
-        raise ValueError("User not found")
+    async for session in get_db_session():
+        user_repo = create_user_repository(session)
+        user = await user_repo.get_user_by_username(username)
+        if user is None:
+            raise ValueError("User not found")
 
-    if not user.get("is_active", True):
-        raise ValueError("User account is inactive")
+        if not user.get("is_active", True):
+            raise ValueError("User account is inactive")
 
-    return cast(dict[str, Any], user)
+        return cast(dict[str, Any], user)
+
+    # This should never be reached, but satisfies the type checker
+    raise ValueError("Database connection failed")
