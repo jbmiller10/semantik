@@ -7,10 +7,10 @@ Tests JWT authentication, password hashing, and user authentication flows
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
+import jwt
 import pytest
 from fastapi import HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
-import jwt
 from webui.auth import (
     REFRESH_TOKEN_EXPIRE_DAYS,
     UserCreate,
