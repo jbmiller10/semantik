@@ -7,17 +7,14 @@ import { useUIStore } from '@/stores/uiStore'
 vi.mock('@/stores/uiStore')
 
 // Mock the components
-vi.mock('@/components/CreateJobForm', () => ({
-  default: () => <div data-testid="create-job-form">Create Job Form</div>,
-}))
-vi.mock('@/components/JobList', () => ({
-  default: () => <div data-testid="job-list">Job List</div>,
-}))
 vi.mock('@/components/SearchInterface', () => ({
   default: () => <div data-testid="search-interface">Search Interface</div>,
 }))
-vi.mock('@/components/CollectionList', () => ({
-  default: () => <div data-testid="collection-list">Collection List</div>,
+vi.mock('@/components/CollectionsDashboard', () => ({
+  default: () => <div data-testid="collections-dashboard">Collections Dashboard</div>,
+}))
+vi.mock('@/components/ActiveOperationsTab', () => ({
+  default: () => <div data-testid="active-operations-tab">Active Operations Tab</div>,
 }))
 
 describe('HomePage', () => {
@@ -25,36 +22,8 @@ describe('HomePage', () => {
     vi.clearAllMocks()
   })
 
-  it('renders CreateJobForm when activeTab is create', () => {
-    ;(useUIStore as any).mockImplementation((selector: any) => {
-      const state = { activeTab: 'create' }
-      return selector ? selector(state) : state
-    })
-
-    render(<HomePage />)
-    
-    expect(screen.getByTestId('create-job-form')).toBeInTheDocument()
-    expect(screen.queryByTestId('job-list')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('search-interface')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('collection-list')).not.toBeInTheDocument()
-  })
-
-  it('renders JobList when activeTab is jobs', () => {
-    ;(useUIStore as any).mockImplementation((selector: any) => {
-      const state = { activeTab: 'jobs' }
-      return selector ? selector(state) : state
-    })
-
-    render(<HomePage />)
-    
-    expect(screen.getByTestId('job-list')).toBeInTheDocument()
-    expect(screen.queryByTestId('create-job-form')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('search-interface')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('collection-list')).not.toBeInTheDocument()
-  })
-
   it('renders SearchInterface when activeTab is search', () => {
-    ;(useUIStore as any).mockImplementation((selector: any) => {
+    ;(useUIStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (state: { activeTab: string }) => string | { activeTab: string }) => {
       const state = { activeTab: 'search' }
       return selector ? selector(state) : state
     })
@@ -62,27 +31,38 @@ describe('HomePage', () => {
     render(<HomePage />)
     
     expect(screen.getByTestId('search-interface')).toBeInTheDocument()
-    expect(screen.queryByTestId('create-job-form')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('job-list')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('collection-list')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('collections-dashboard')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('active-operations-tab')).not.toBeInTheDocument()
   })
 
-  it('renders CollectionList when activeTab is collections', () => {
-    ;(useUIStore as any).mockImplementation((selector: any) => {
+  it('renders CollectionsDashboard when activeTab is collections', () => {
+    ;(useUIStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (state: { activeTab: string }) => string | { activeTab: string }) => {
       const state = { activeTab: 'collections' }
       return selector ? selector(state) : state
     })
 
     render(<HomePage />)
     
-    expect(screen.getByTestId('collection-list')).toBeInTheDocument()
-    expect(screen.queryByTestId('create-job-form')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('job-list')).not.toBeInTheDocument()
+    expect(screen.getByTestId('collections-dashboard')).toBeInTheDocument()
     expect(screen.queryByTestId('search-interface')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('active-operations-tab')).not.toBeInTheDocument()
+  })
+
+  it('renders ActiveOperationsTab when activeTab is operations', () => {
+    ;(useUIStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (state: { activeTab: string }) => string | { activeTab: string }) => {
+      const state = { activeTab: 'operations' }
+      return selector ? selector(state) : state
+    })
+
+    render(<HomePage />)
+    
+    expect(screen.getByTestId('active-operations-tab')).toBeInTheDocument()
+    expect(screen.queryByTestId('search-interface')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('collections-dashboard')).not.toBeInTheDocument()
   })
 
   it('renders nothing when activeTab is an unknown value', () => {
-    ;(useUIStore as any).mockImplementation((selector: any) => {
+    ;(useUIStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (state: { activeTab: string }) => string | { activeTab: string }) => {
       const state = { activeTab: 'unknown' }
       return selector ? selector(state) : state
     })
@@ -91,18 +71,17 @@ describe('HomePage', () => {
     
     // HomePage renders a React Fragment, so when empty, container.firstChild is null
     expect(container.firstChild).toBeNull()
-    expect(screen.queryByTestId('create-job-form')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('job-list')).not.toBeInTheDocument()
     expect(screen.queryByTestId('search-interface')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('collection-list')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('collections-dashboard')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('active-operations-tab')).not.toBeInTheDocument()
   })
 
   it('uses the correct store selector', () => {
-    ;(useUIStore as any).mockImplementation((selector: any) => selector({ activeTab: 'create' }))
+    ;(useUIStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (state: { activeTab: string }) => string) => selector({ activeTab: 'search' }))
 
     render(<HomePage />)
     
     // Verify the component renders correctly with the selector
-    expect(screen.getByTestId('create-job-form')).toBeInTheDocument()
+    expect(screen.getByTestId('search-interface')).toBeInTheDocument()
   })
 })

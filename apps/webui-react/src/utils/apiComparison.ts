@@ -9,7 +9,7 @@ export interface APICall {
   method: string;
   url: string;
   headers?: Record<string, string>;
-  body?: any;
+  body?: BodyInit | null;
   timestamp: number;
 }
 
@@ -44,9 +44,9 @@ export class APIMonitor {
 
     // Also intercept XMLHttpRequest for WebSocket upgrade requests
     const originalXHROpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function(method: string, url: string) {
+    XMLHttpRequest.prototype.open = function(method: string, url: string, ...args: unknown[]) {
       console.log('XHR:', method, url);
-      return originalXHROpen.apply(this, arguments as any);
+      return originalXHROpen.apply(this, [method, url, ...args] as Parameters<typeof originalXHROpen>);
     };
   }
 
@@ -94,7 +94,7 @@ export class APIMonitor {
     };
   }
 
-  compareWithVanilla(vanillaData: any) {
+  compareWithVanilla(vanillaData: { summary: { uniqueEndpoints: string[] } }) {
     const vanillaEndpoints = new Set<string>(vanillaData.summary.uniqueEndpoints);
     const reactEndpoints = new Set(this.getSummary().uniqueEndpoints);
 
@@ -108,7 +108,7 @@ export class APIMonitor {
   }
 }
 
-// Expected API endpoints from vanilla implementation
+// Expected API endpoints from v2 implementation
 export const EXPECTED_ENDPOINTS = {
   auth: [
     'GET /api/auth/me',
@@ -117,14 +117,14 @@ export const EXPECTED_ENDPOINTS = {
     'POST /api/auth/register',
     'POST /api/auth/refresh',
   ],
-  jobs: [
-    'GET /api/jobs',
-    'POST /api/jobs',
-    'DELETE /api/jobs/{id}',
-    'GET /api/jobs/new-id',
-    'POST /api/jobs/{id}/cancel',
-    'GET /api/jobs/collections-status',
-    'POST /api/jobs/scan/{scanId}',
+  collections: [
+    'GET /api/v2/collections',
+    'POST /api/v2/collections',
+    'GET /api/v2/collections/{id}',
+    'PUT /api/v2/collections/{id}',
+    'DELETE /api/v2/collections/{id}',
+    'POST /api/v2/collections/{id}/add',
+    'POST /api/v2/collections/{id}/reindex',
   ],
   search: [
     'POST /api/search',
@@ -132,8 +132,8 @@ export const EXPECTED_ENDPOINTS = {
     'GET /api/search/collections',
   ],
   documents: [
-    'GET /api/documents/{jobId}/{docId}/info',
-    'GET /api/documents/{jobId}/{docId}',
+    'GET /api/documents/{collectionId}/{docId}/info',
+    'GET /api/documents/{collectionId}/{docId}',
   ],
   models: [
     'GET /api/models',
@@ -141,9 +141,8 @@ export const EXPECTED_ENDPOINTS = {
   metrics: [
     'GET /api/metrics',
   ],
-  websockets: [
-    'WS /ws/{jobId}',
-    'WS /ws/scan/{scanId}',
+  operations: [
+    'GET /api/operations',
   ],
 };
 

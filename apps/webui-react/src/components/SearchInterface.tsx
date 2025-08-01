@@ -1,121 +1,159 @@
-import { useEffect, useState, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useRef, useCallback } from 'react';
 import { useSearchStore } from '../stores/searchStore';
 import { useUIStore } from '../stores/uiStore';
-import { searchApi, jobsApi } from '../services/api';
+import { useCollections } from '../hooks/useCollections';
+import { searchV2Api } from '../services/api/v2/collections';
 import SearchResults from './SearchResults';
-
-interface CollectionStatus {
-  exists: boolean;
-  point_count: number;
-  status: string;
-}
+import { CollectionMultiSelect } from './CollectionMultiSelect';
+import { isAxiosError, getErrorMessage, getInsufficientMemoryErrorDetails } from '../utils/errorUtils';
+import { RerankingConfiguration } from './RerankingConfiguration';
+import { DEFAULT_VALIDATION_RULES } from '../utils/searchValidation';
+import { useRerankingAvailability } from '../hooks/useRerankingAvailability';
 
 function SearchInterface() {
   const {
     searchParams,
+    loading,
     updateSearchParams,
+    validateAndUpdateSearchParams,
     setResults,
     setLoading,
     setError,
-    setCollections,
-    collections,
     setRerankingMetrics,
+    setFailedCollections,
+    setPartialFailure,
+    hasValidationErrors,
+    getValidationError,
   } = useSearchStore();
   const addToast = useUIStore((state) => state.addToast);
+  
+  // Use React Query hook to fetch collections
+  const { data: collections = [], refetch: refetchCollections } = useCollections();
+  
+  // Check reranking availability
+  useRerankingAvailability();
 
-  const [collectionStatuses, setCollectionStatuses] = useState<Record<string, CollectionStatus>>({});
   const statusUpdateIntervalRef = useRef<number | null>(null);
 
-  // Fetch collections (jobs)
-  const { data: jobsData } = useQuery({
-    queryKey: ['jobs'],
-    queryFn: async () => {
-      const response = await jobsApi.list();
-      return response.data;
-    },
-  });
-
-  // Fetch collection statuses
-  const fetchCollectionStatuses = async () => {
-    try {
-      const response = await jobsApi.getCollectionsStatus();
-      setCollectionStatuses(response.data);
-      
-      // Check if any collections are processing
-      const hasProcessing = Object.values(response.data as Record<string, CollectionStatus>).some(
-        (status) => status.status === 'processing' || status.status === 'created'
-      );
-      
-      // Set up periodic updates if collections are processing
-      if (hasProcessing && !statusUpdateIntervalRef.current) {
-        statusUpdateIntervalRef.current = window.setInterval(fetchCollectionStatuses, 5000);
-      } else if (!hasProcessing && statusUpdateIntervalRef.current) {
-        window.clearInterval(statusUpdateIntervalRef.current);
-        statusUpdateIntervalRef.current = null;
-      }
-    } catch (error) {
-      console.error('Failed to fetch collection statuses:', error);
-    }
-  };
-
-  // Initial fetch of collection statuses
+  // Check if any collections are processing and set up auto-refresh
   useEffect(() => {
-    fetchCollectionStatuses();
-    
-    // Cleanup interval on unmount
+    const hasProcessing = collections.some(
+      (col) => col.status === 'processing' || col.status === 'pending'
+    );
+
+    if (hasProcessing && !statusUpdateIntervalRef.current) {
+      statusUpdateIntervalRef.current = window.setInterval(() => {
+        refetchCollections();
+      }, 5000);
+    } else if (!hasProcessing && statusUpdateIntervalRef.current) {
+      window.clearInterval(statusUpdateIntervalRef.current);
+      statusUpdateIntervalRef.current = null;
+    }
+
     return () => {
       if (statusUpdateIntervalRef.current) {
         window.clearInterval(statusUpdateIntervalRef.current);
       }
     };
-  }, []);
+  }, [collections, refetchCollections]);
 
-  useEffect(() => {
-    if (jobsData) {
-      const collections = jobsData.map((job: any) => `job_${job.id}`);
-      setCollections(collections);
-      // Set first collection as default if none selected
-      if (!searchParams.collection && collections.length > 0) {
-        updateSearchParams({ collection: collections[0] });
-      }
+  const handleSelectSmallerModel = useCallback((model: string) => {
+    if (model === 'disabled') {
+      // Disable reranking entirely
+      updateSearchParams({ useReranker: false });
+      setError(null);
+      delete (window as Window & { __gpuMemoryError?: unknown }).__gpuMemoryError;
+      addToast({ 
+        type: 'info', 
+        message: 'Reranking disabled. Try searching again.' 
+      });
+    } else {
+      // Switch to a smaller model
+      updateSearchParams({ rerankModel: model });
+      setError(null);
+      delete (window as Window & { __gpuMemoryError?: unknown }).__gpuMemoryError;
+      addToast({ 
+        type: 'info', 
+        message: `Switched to ${model.split('/').pop()}. Try searching again.` 
+      });
     }
-  }, [jobsData, searchParams.collection, setCollections, updateSearchParams]);
+  }, [updateSearchParams, setError, addToast]);
+
+  // Make the handler available globally for SearchResults
+  useEffect(() => {
+    (window as Window & { __handleSelectSmallerModel?: typeof handleSelectSmallerModel }).__handleSelectSmallerModel = handleSelectSmallerModel;
+    return () => {
+      delete (window as Window & { __handleSelectSmallerModel?: unknown }).__handleSelectSmallerModel;
+    };
+  }, [handleSelectSmallerModel]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate before search
+    if (hasValidationErrors()) {
+      addToast({ type: 'error', message: 'Please fix validation errors before searching' });
+      return;
+    }
 
     if (!searchParams.query.trim()) {
       addToast({ type: 'error', message: 'Please enter a search query' });
       return;
     }
 
-    if (!searchParams.collection) {
-      addToast({ type: 'error', message: 'Please select a collection' });
+    if (searchParams.selectedCollections.length === 0) {
+      addToast({ type: 'error', message: 'Please select at least one collection' });
       return;
     }
 
-    // No need to check if collection is ready since we only show ready collections
-
     setLoading(true);
     setError(null);
+    setFailedCollections([]);
+    setPartialFailure(false);
 
     try {
-      const response = await searchApi.search({
+      // Use v2 search API with multiple collections
+      const response = await searchV2Api.search({
         query: searchParams.query,
-        collection: searchParams.collection,
-        top_k: searchParams.topK,
+        collection_uuids: searchParams.selectedCollections,
+        k: searchParams.topK,
         score_threshold: searchParams.scoreThreshold,
         search_type: searchParams.searchType,
-        rerank_model: searchParams.rerankModel,
-        rerank_quantization: searchParams.rerankQuantization,
         use_reranker: searchParams.useReranker,
-        hybrid_alpha: searchParams.hybridAlpha,
-        hybrid_mode: searchParams.hybridMode,
-        keyword_mode: searchParams.keywordMode,
+        rerank_model: searchParams.useReranker ? searchParams.rerankModel : null,
+        hybrid_alpha: searchParams.searchType === 'hybrid' ? searchParams.hybridAlpha : undefined,
+        hybrid_mode: searchParams.searchType === 'hybrid' ? searchParams.hybridMode : undefined,
+        keyword_mode: searchParams.searchType === 'hybrid' ? searchParams.keywordMode : undefined,
       });
 
-      setResults(response.data.results);
+      // Map results to match the search store's SearchResult type
+      const mappedResults = response.data.results.map((result) => ({
+        doc_id: result.document_id,
+        chunk_id: result.chunk_id,
+        score: result.score,
+        content: result.text,
+        file_path: result.file_path,
+        file_name: result.file_name,
+        chunk_index: result.chunk_index,
+        total_chunks: (typeof result.metadata?.total_chunks === 'number' ? result.metadata.total_chunks : 1),
+        collection_id: result.collection_id,
+        collection_name: result.collection_name,
+      }));
+
+      setResults(mappedResults);
+      
+      // Handle partial failures
+      if (response.data.partial_failure) {
+        setPartialFailure(true);
+        setFailedCollections(response.data.failed_collections || []);
+        
+        // Show warning toast for partial failures
+        const failedCount = response.data.failed_collections?.length || 0;
+        addToast({ 
+          type: 'warning', 
+          message: `Search completed with ${failedCount} collection(s) failing. Check the results for details.` 
+        });
+      }
       
       // Store reranking metrics if present
       if (response.data.reranking_used !== undefined) {
@@ -127,25 +165,28 @@ function SearchInterface() {
       } else {
         setRerankingMetrics(null);
       }
-    } catch (error: any) {
-      const errorDetail = error.response?.data?.detail;
+    } catch (error) {
+      const memoryErrorDetails = getInsufficientMemoryErrorDetails(error);
       
-      // Handle insufficient memory error specifically
-      if (error.response?.status === 507 && typeof errorDetail === 'object' && errorDetail.error === 'insufficient_memory') {
-        const errorMessage = errorDetail.message || 'Insufficient GPU memory for reranking';
-        const suggestion = errorDetail.suggestion || 'Try using a smaller model or different quantization';
-        
-        setError(`${errorMessage}\n\n${suggestion}`);
+      if (memoryErrorDetails) {
+        // Handle insufficient memory error specifically
+        // Store a special error marker that SearchResults can detect
+        setError('GPU_MEMORY_ERROR');
+        // Store the memory error details in a way SearchResults can access
+        (window as Window & { __gpuMemoryError?: { message: string; suggestion: string; currentModel: string } }).__gpuMemoryError = {
+          message: memoryErrorDetails.message,
+          suggestion: memoryErrorDetails.suggestion,
+          currentModel: searchParams.rerankModel || ''
+        };
         addToast({ 
           type: 'error', 
-          message: 'Insufficient GPU memory for reranking. Check the error message for suggestions.' 
+          message: 'Insufficient GPU memory for reranking. See below for options.' 
         });
       } else {
         // Handle other errors
-        const errorMessage = typeof errorDetail === 'string' ? errorDetail : 
-                           errorDetail?.message || 'Search failed';
+        const errorMessage = getErrorMessage(error);
         setError(errorMessage);
-        addToast({ type: 'error', message: 'Search failed' });
+        addToast({ type: 'error', message: isAxiosError(error) ? 'Search failed' : errorMessage });
       }
     } finally {
       setLoading(false);
@@ -157,21 +198,51 @@ function SearchInterface() {
       {/* Search Form */}
       <div className="bg-white rounded-lg shadow-md p-6">
         <h2 className="text-2xl font-semibold mb-6">Search Documents</h2>
+        {hasValidationErrors() && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md" role="alert">
+            <p className="text-sm text-red-700 font-medium">Please fix the following errors:</p>
+            <ul className="mt-2 text-sm text-red-600 space-y-1">
+              {getValidationError('query') && <li>• {getValidationError('query')}</li>}
+              {getValidationError('collections') && <li>• {getValidationError('collections')}</li>}
+              {getValidationError('topK') && <li>• {getValidationError('topK')}</li>}
+              {getValidationError('scoreThreshold') && <li>• {getValidationError('scoreThreshold')}</li>}
+              {getValidationError('hybridAlpha') && <li>• {getValidationError('hybridAlpha')}</li>}
+            </ul>
+          </div>
+        )}
         <form onSubmit={handleSearch} className="space-y-4">
           {/* Search Query */}
           <div>
             <label htmlFor="query" className="block text-sm font-medium text-gray-700 mb-2">
               Search Query
+              {searchParams.query && (
+                <span className="ml-2 text-xs text-gray-500">
+                  ({searchParams.query.length}/{DEFAULT_VALIDATION_RULES.query.maxLength})
+                </span>
+              )}
             </label>
             <input
               type="text"
               id="query"
               value={searchParams.query}
-              onChange={(e) => updateSearchParams({ query: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => validateAndUpdateSearchParams({ query: e.target.value })}
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+                getValidationError('query') 
+                  ? 'border-red-500 focus:ring-red-500' 
+                  : 'border-gray-300 focus:ring-blue-500'
+              }`}
               placeholder="Enter your search query..."
+              aria-label="Search query"
+              aria-required="true"
+              aria-invalid={!!getValidationError('query')}
+              aria-describedby={getValidationError('query') ? 'query-error' : 'query-tips'}
             />
-            <div className="mt-2 text-xs text-gray-600">
+            {getValidationError('query') && (
+              <p id="query-error" className="mt-1 text-sm text-red-600" role="alert">
+                {getValidationError('query')}
+              </p>
+            )}
+            <div id="query-tips" className="mt-2 text-xs text-gray-600" role="note">
               <p className="font-medium">Search Tips:</p>
               <ul className="list-disc list-inside space-y-1 text-gray-500">
                 <li>Use descriptive keywords for better results</li>
@@ -185,48 +256,34 @@ function SearchInterface() {
           <div className="grid grid-cols-2 gap-4">
             {/* Collection Selection */}
             <div>
-              <label htmlFor="collection" className="block text-sm font-medium text-gray-700 mb-2">
-                Collection
+              <label id="collections-label" className="block text-sm font-medium text-gray-700 mb-2">
+                Collections
                 <button
                   type="button"
-                  onClick={() => fetchCollectionStatuses()}
+                  onClick={() => refetchCollections()}
                   className="ml-2 text-blue-600 hover:text-blue-800 text-xs"
+                  aria-label="Refresh collections list"
                 >
                   (refresh)
                 </button>
               </label>
-              <select
-                id="collection"
-                value={searchParams.collection}
-                onChange={(e) => updateSearchParams({ collection: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Select a collection</option>
-                {collections
-                  .filter((collection) => {
-                    const jobId = collection.replace('job_', '');
-                    const status = collectionStatuses[jobId];
-                    // Only show collections that are ready (completed with vectors)
-                    return status?.status === 'completed' && status?.point_count > 0;
-                  })
-                  .map((collection) => {
-                    const jobId = collection.replace('job_', '');
-                    const job = jobsData?.find((j: any) => j.id === jobId);
-                    const status = collectionStatuses[jobId];
-                    
-                    return (
-                      <option 
-                        key={collection} 
-                        value={collection}
-                      >
-                        {job?.name || collection} ({status.point_count.toLocaleString()} vectors)
-                      </option>
-                    );
-                  })}
-              </select>
-              <p className="mt-1 text-xs text-gray-500">
-                Collections are created from your jobs
-              </p>
+              <div role="group" aria-labelledby="collections-label" aria-describedby="collections-help">
+                <CollectionMultiSelect
+                  collections={collections}
+                  selectedCollections={searchParams.selectedCollections}
+                  onChange={(selected) => validateAndUpdateSearchParams({ selectedCollections: selected })}
+                  placeholder="Select collections to search..."
+                />
+              </div>
+              {getValidationError('collections') ? (
+                <p id="collections-error" className="mt-1 text-sm text-red-600" role="alert">
+                  {getValidationError('collections')}
+                </p>
+              ) : (
+                <p id="collections-help" className="mt-1 text-xs text-gray-500">
+                  Search across multiple collections simultaneously
+                </p>
+              )}
             </div>
 
             {/* Number of Results */}
@@ -234,16 +291,76 @@ function SearchInterface() {
               <label htmlFor="topK" className="block text-sm font-medium text-gray-700 mb-2">
                 Number of Results
               </label>
+              <span id="topK-help" className="sr-only">Specify how many search results to return, between 1 and 100</span>
               <input
                 type="number"
                 id="topK"
                 min="1"
                 max="100"
                 value={searchParams.topK}
-                onChange={(e) => updateSearchParams({ topK: parseInt(e.target.value) })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={(e) => {
+                  const value = parseInt(e.target.value);
+                  if (!isNaN(value)) {
+                    validateAndUpdateSearchParams({ topK: value });
+                  }
+                }}
+                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+                  getValidationError('topK')
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-blue-500'
+                }`}
+                aria-label="Number of search results"
+                aria-describedby={getValidationError('topK') ? 'topK-error' : 'topK-help'}
+                aria-invalid={!!getValidationError('topK')}
               />
+              {getValidationError('topK') && (
+                <p id="topK-error" className="mt-1 text-sm text-red-600" role="alert">
+                  {getValidationError('topK')}
+                </p>
+              )}
             </div>
+          </div>
+
+          {/* Score Threshold */}
+          <div>
+            <label htmlFor="scoreThreshold" className="block text-sm font-medium text-gray-700 mb-2">
+              Minimum Score Threshold
+            </label>
+            <div className="flex items-center space-x-2">
+              <input
+                type="number"
+                id="scoreThreshold"
+                min="0"
+                max="1"
+                step="0.1"
+                value={searchParams.scoreThreshold}
+                onChange={(e) => {
+                  const value = parseFloat(e.target.value);
+                  if (!isNaN(value)) {
+                    validateAndUpdateSearchParams({ scoreThreshold: value });
+                  }
+                }}
+                className={`w-32 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+                  getValidationError('scoreThreshold')
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-blue-500'
+                }`}
+                aria-label="Minimum score threshold (0-1)"
+                aria-describedby={getValidationError('scoreThreshold') ? 'scoreThreshold-error' : 'scoreThreshold-help'}
+                aria-invalid={!!getValidationError('scoreThreshold')}
+              />
+              <span className="text-sm text-gray-600">
+                (0.0 = Show all, 1.0 = Perfect matches only)
+              </span>
+            </div>
+            {getValidationError('scoreThreshold') && (
+              <p id="scoreThreshold-error" className="mt-1 text-sm text-red-600" role="alert">
+                {getValidationError('scoreThreshold')}
+              </p>
+            )}
+            <p id="scoreThreshold-help" className="mt-1 text-xs text-gray-500">
+              Only show results with similarity scores above this threshold
+            </p>
           </div>
 
           {/* Search Mode Toggle */}
@@ -254,8 +371,9 @@ function SearchInterface() {
                   type="checkbox"
                   id="use-hybrid-search"
                   checked={searchParams.searchType === 'hybrid'}
-                  onChange={(e) => updateSearchParams({ searchType: e.target.checked ? 'hybrid' : 'vector' })}
+                  onChange={(e) => validateAndUpdateSearchParams({ searchType: e.target.checked ? 'hybrid' : 'semantic' })}
                   className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                  aria-describedby="hybrid-search-description"
                 />
                 <span className="text-sm text-gray-700">
                   Use Hybrid Search (combines vector similarity with keyword matching)
@@ -274,12 +392,13 @@ function SearchInterface() {
                     </label>
                     <select
                       id="hybrid-mode"
-                      value={searchParams.hybridMode || 'rerank'}
-                      onChange={(e) => updateSearchParams({ hybridMode: e.target.value as 'rerank' | 'filter' })}
+                      value={searchParams.hybridMode || 'reciprocal_rank'}
+                      onChange={(e) => validateAndUpdateSearchParams({ hybridMode: e.target.value as 'reciprocal_rank' | 'relative_score' })}
                       className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      aria-label="Hybrid search mode"
                     >
-                      <option value="rerank">Rerank (More Accurate)</option>
-                      <option value="filter">Filter (Faster)</option>
+                      <option value="reciprocal_rank">Reciprocal Rank Fusion</option>
+                      <option value="relative_score">Relative Score Fusion</option>
                     </select>
                   </div>
 
@@ -290,100 +409,81 @@ function SearchInterface() {
                     </label>
                     <select
                       id="keyword-mode"
-                      value={searchParams.keywordMode || 'any'}
-                      onChange={(e) => updateSearchParams({ keywordMode: e.target.value as 'any' | 'all' })}
+                      value={searchParams.keywordMode || 'bm25'}
+                      onChange={(e) => validateAndUpdateSearchParams({ keywordMode: e.target.value as 'bm25' })}
                       className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      aria-label="Keyword matching algorithm"
                     >
-                      <option value="any">Any Keywords</option>
-                      <option value="all">All Keywords</option>
+                      <option value="bm25">BM25 Ranking</option>
                     </select>
                   </div>
                 </div>
 
-                <p className="text-xs text-gray-500">
-                  <strong>Rerank:</strong> Searches with vectors first, then uses keywords to reorder results.
+                {/* Hybrid Alpha Slider */}
+                <div className="mt-3">
+                  <label htmlFor="hybrid-alpha" className="block text-xs font-medium text-gray-600 mb-1">
+                    Hybrid Alpha (Vector vs Keyword Weight): {searchParams.hybridAlpha || 0.7}
+                  </label>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs text-gray-500">Keyword</span>
+                    <input
+                      type="range"
+                      id="hybrid-alpha"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      value={searchParams.hybridAlpha || 0.7}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value);
+                        if (!isNaN(value)) {
+                          validateAndUpdateSearchParams({ hybridAlpha: value });
+                        }
+                      }}
+                      className="flex-1"
+                      aria-label="Hybrid search alpha value"
+                      aria-valuemin={0}
+                      aria-valuemax={1}
+                      aria-valuenow={searchParams.hybridAlpha || 0.7}
+                    />
+                    <span className="text-xs text-gray-500">Vector</span>
+                  </div>
+                  {getValidationError('hybridAlpha') && (
+                    <p id="hybrid-alpha-error" className="mt-1 text-sm text-red-600" role="alert">
+                      {getValidationError('hybridAlpha')}
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-400 mt-1">
+                    0.0 = Pure keyword search, 1.0 = Pure vector search, 0.7 = Balanced
+                  </p>
+                </div>
+
+                <p id="hybrid-search-description" className="text-xs text-gray-500 mt-3" role="note">
+                  <strong>Reciprocal Rank:</strong> Combines rankings from both methods.
                   <br />
-                  <strong>Filter:</strong> Uses keywords to narrow down the search space before vector matching.
+                  <strong>Relative Score:</strong> Combines normalized scores from both methods.
                 </p>
               </div>
             )}
           </div>
 
           {/* Reranking Options */}
-          <div className="mb-4">
-            <div className="bg-gray-50 rounded-lg p-4">
-              <label className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  checked={searchParams.useReranker}
-                  onChange={(e) => updateSearchParams({ useReranker: e.target.checked })}
-                  className="w-4 h-4 text-blue-600 rounded"
-                />
-                <span className="text-sm font-medium text-gray-700">
-                  Enable Cross-Encoder Reranking
-                </span>
-              </label>
-              
-              {searchParams.useReranker && (
-                <div className="mt-3 ml-6">
-                  <p className="text-xs text-gray-600 mb-3">
-                    Reranking uses a more sophisticated model to re-score the top search results, 
-                    improving accuracy at the cost of slightly increased latency.
-                  </p>
-                  
-                  <div className="space-y-3">
-                    {/* Reranker Model Selection */}
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs text-gray-700 mb-1">
-                          Reranker Model
-                        </label>
-                        <select
-                          value={searchParams.rerankModel || 'auto'}
-                          onChange={(e) => updateSearchParams({ 
-                            rerankModel: e.target.value === 'auto' ? undefined : e.target.value 
-                          })}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        >
-                          <option value="auto">Auto-select</option>
-                          <option value="Qwen/Qwen3-Reranker-0.6B">0.6B (Fastest)</option>
-                          <option value="Qwen/Qwen3-Reranker-4B">4B (Balanced)</option>
-                          <option value="Qwen/Qwen3-Reranker-8B">8B (Most Accurate)</option>
-                        </select>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs text-gray-700 mb-1">
-                          Quantization
-                        </label>
-                        <select
-                          value={searchParams.rerankQuantization || 'auto'}
-                          onChange={(e) => updateSearchParams({ 
-                            rerankQuantization: e.target.value === 'auto' ? undefined : e.target.value 
-                          })}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        >
-                          <option value="auto">Auto (match embedding)</option>
-                          <option value="float32">Float32 (Full precision)</option>
-                          <option value="float16">Float16 (Balanced)</option>
-                          <option value="int8">Int8 (Low memory)</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+          <RerankingConfiguration
+            enabled={searchParams.useReranker}
+            model={searchParams.rerankModel}
+            quantization={searchParams.rerankQuantization}
+            onChange={validateAndUpdateSearchParams}
+          />
 
           {/* Submit Button */}
           <div className="pt-2">
             <button
               type="submit"
-              disabled={!searchParams.collection}
+              disabled={loading || searchParams.selectedCollections.length === 0 || hasValidationErrors()}
               className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Perform search"
+              aria-disabled={loading || searchParams.selectedCollections.length === 0 || hasValidationErrors()}
             >
-              Search
+              {loading ? 'Searching...' : 'Search'}
             </button>
           </div>
         </form>

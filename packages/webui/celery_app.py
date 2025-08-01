@@ -1,8 +1,14 @@
 """Celery application configuration."""
 
+import logging
 import os
+from typing import Any
 
 from celery import Celery
+from celery.signals import worker_process_init
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Create Celery instance
 celery_app = Celery(
@@ -57,3 +63,10 @@ celery_app.conf.update(
 
 # Auto-discover tasks
 celery_app.autodiscover_tasks(["webui"])
+
+
+# Worker initialization
+@worker_process_init.connect
+def init_worker_process(**kwargs: Any) -> None:  # noqa: ARG001
+    """Initialize worker process - prepare for database connections."""
+    logger.info("Worker process initialized - database will be initialized per task")

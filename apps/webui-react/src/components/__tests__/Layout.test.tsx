@@ -28,9 +28,6 @@ vi.mock('../Toast', () => ({
 vi.mock('../DocumentViewerModal', () => ({
   default: () => <div data-testid="document-viewer-modal">DocumentViewerModal</div>,
 }))
-vi.mock('../JobMetricsModal', () => ({
-  default: () => <div data-testid="job-metrics-modal">JobMetricsModal</div>,
-}))
 vi.mock('../CollectionDetailsModal', () => ({
   default: () => <div data-testid="collection-details-modal">CollectionDetailsModal</div>,
 }))
@@ -43,18 +40,18 @@ describe('Layout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     
-    ;(useNavigate as any).mockReturnValue(mockNavigate)
-    ;(useLocation as any).mockReturnValue({
+    ;(useNavigate as ReturnType<typeof vi.fn>).mockReturnValue(mockNavigate)
+    ;(useLocation as ReturnType<typeof vi.fn>).mockReturnValue({
       pathname: '/',
     })
     
-    ;(useAuthStore as any).mockReturnValue({
+    ;(useAuthStore as ReturnType<typeof vi.fn>).mockReturnValue({
       user: { username: 'testuser' },
       logout: mockLogout,
     })
     
-    ;(useUIStore as any).mockReturnValue({
-      activeTab: 'create',
+    ;(useUIStore as ReturnType<typeof vi.fn>).mockReturnValue({
+      activeTab: 'collections',
       setActiveTab: mockSetActiveTab,
     })
   })
@@ -74,14 +71,11 @@ describe('Layout', () => {
   it('renders navigation tabs on home page', () => {
     render(<Layout />)
     
-    expect(screen.getByRole('button', { name: 'Create Job' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Jobs' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Collections' })).toBeInTheDocument()
   })
 
   it('highlights active tab correctly', () => {
-    ;(useUIStore as any).mockReturnValue({
+    ;(useUIStore as ReturnType<typeof vi.fn>).mockReturnValue({
       activeTab: 'search',
       setActiveTab: mockSetActiveTab,
     })
@@ -90,9 +84,6 @@ describe('Layout', () => {
     
     const searchTab = screen.getByRole('button', { name: 'Search' })
     expect(searchTab).toHaveClass('border-blue-500', 'text-blue-600')
-    
-    const createTab = screen.getByRole('button', { name: 'Create Job' })
-    expect(createTab).toHaveClass('border-transparent', 'text-gray-500')
   })
 
   it('handles tab switching', async () => {
@@ -100,10 +91,32 @@ describe('Layout', () => {
     
     render(<Layout />)
     
-    const jobsTab = screen.getByRole('button', { name: 'Jobs' })
-    await user.click(jobsTab)
+    const searchTab = screen.getByRole('button', { name: 'Search' })
+    await user.click(searchTab)
     
-    expect(mockSetActiveTab).toHaveBeenCalledWith('jobs')
+    expect(mockSetActiveTab).toHaveBeenCalledWith('search')
+  })
+
+  it('handles logout click', async () => {
+    const user = userEvent.setup()
+    
+    render(<Layout />)
+    
+    const logoutButton = screen.getByRole('button', { name: /logout/i })
+    await user.click(logoutButton)
+    
+    expect(mockLogout).toHaveBeenCalled()
+    expect(mockNavigate).toHaveBeenCalledWith('/login')
+  })
+
+  it('does not show navigation tabs on non-home pages', () => {
+    ;(useLocation as ReturnType<typeof vi.fn>).mockReturnValue({
+      pathname: '/settings',
+    })
+    
+    render(<Layout />)
+    
+    expect(screen.queryByRole('button', { name: 'Search' })).not.toBeInTheDocument()
   })
 
   it('renders all modals and toast', () => {
@@ -111,7 +124,6 @@ describe('Layout', () => {
     
     expect(screen.getByTestId('toast')).toBeInTheDocument()
     expect(screen.getByTestId('document-viewer-modal')).toBeInTheDocument()
-    expect(screen.getByTestId('job-metrics-modal')).toBeInTheDocument()
     expect(screen.getByTestId('collection-details-modal')).toBeInTheDocument()
   })
 
@@ -121,18 +133,16 @@ describe('Layout', () => {
     expect(screen.getByTestId('outlet')).toBeInTheDocument()
   })
 
-  it('handles logout', async () => {
-    const user = userEvent.setup()
+  it('shows back link on settings page', () => {
+    ;(useLocation as ReturnType<typeof vi.fn>).mockReturnValue({
+      pathname: '/settings',
+    })
     
     render(<Layout />)
     
-    const logoutButton = screen.getByRole('button', { name: 'Logout' })
-    await user.click(logoutButton)
-    
-    expect(mockLogout).toHaveBeenCalled()
-    await vi.waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/login')
-    })
+    const backLink = screen.getByText('← Back')
+    expect(backLink).toBeInTheDocument()
+    expect(backLink).toHaveAttribute('href', '/')
   })
 
   it('shows settings link on home page', () => {
@@ -143,83 +153,14 @@ describe('Layout', () => {
     expect(settingsLink).toHaveAttribute('href', '/settings')
   })
 
-  it('shows back link on settings page', () => {
-    ;(useLocation as any).mockReturnValue({
-      pathname: '/settings',
-    })
-    
-    render(<Layout />)
-    
-    const backLink = screen.getByRole('link', { name: '← Back' })
-    expect(backLink).toBeInTheDocument()
-    expect(backLink).toHaveAttribute('href', '/')
-  })
-
-  it('hides navigation tabs on settings page', () => {
-    ;(useLocation as any).mockReturnValue({
-      pathname: '/settings',
-    })
-    
-    render(<Layout />)
-    
-    expect(screen.queryByRole('button', { name: 'Create Job' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Jobs' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Search' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Collections' })).not.toBeInTheDocument()
-  })
-
-  it('shows verification link in development mode', () => {
-    // Mock import.meta.env.DEV to be true
-    vi.stubEnv('DEV', true)
-    
-    render(<Layout />)
-    
-    const verificationLink = screen.getByRole('link', { name: 'Verification' })
-    expect(verificationLink).toBeInTheDocument()
-    expect(verificationLink).toHaveAttribute('href', '/verification')
-    
-    vi.unstubAllEnvs()
-  })
-
-  it('hides verification link in production mode', () => {
-    // Mock import.meta.env.DEV to be false
-    vi.stubEnv('DEV', false)
-    
-    render(<Layout />)
-    
-    expect(screen.queryByRole('link', { name: 'Verification' })).not.toBeInTheDocument()
-    
-    vi.unstubAllEnvs()
-  })
-
   it('handles all tab clicks correctly', async () => {
     const user = userEvent.setup()
     
     render(<Layout />)
     
-    // Test Create Job tab
-    await user.click(screen.getByRole('button', { name: 'Create Job' }))
-    expect(mockSetActiveTab).toHaveBeenCalledWith('create')
+    const searchTab = screen.getByRole('button', { name: 'Search' })
+    await user.click(searchTab)
     
-    // Test Jobs tab
-    await user.click(screen.getByRole('button', { name: 'Jobs' }))
-    expect(mockSetActiveTab).toHaveBeenCalledWith('jobs')
-    
-    // Test Search tab
-    await user.click(screen.getByRole('button', { name: 'Search' }))
-    expect(mockSetActiveTab).toHaveBeenCalledWith('search')
-    
-    // Test Collections tab
-    await user.click(screen.getByRole('button', { name: 'Collections' }))
-    expect(mockSetActiveTab).toHaveBeenCalledWith('collections')
-  })
-
-  it('renders with correct layout structure', () => {
-    render(<Layout />)
-    
-    // Check main layout structure
-    expect(document.querySelector('.min-h-screen.bg-gray-100')).toBeInTheDocument()
-    expect(document.querySelector('header.bg-white.shadow-sm.border-b')).toBeInTheDocument()
-    expect(document.querySelector('main.max-w-7xl.mx-auto')).toBeInTheDocument()
+    expect(mockSetActiveTab).toHaveBeenLastCalledWith('search')
   })
 })

@@ -1,387 +1,342 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
-import api from '../services/api';
+import { useEffect, useState, useRef } from 'react';
+import { documentsV2Api } from '../services/api/v2';
+import { getErrorMessage } from '../utils/errorUtils';
 
 // Declare global types for external libraries
 declare global {
   interface Window {
-    pdfjsLib: any;
-    mammoth: any;
-    marked: any;
-    DOMPurify: any;
-    Mark: any;
-    emlformat: any;
+    pdfjsLib: {
+      getDocument: (url: string) => { promise: Promise<PDFDocumentProxy> };
+    };
+    mammoth: {
+      convertToHtml: (options: { arrayBuffer: ArrayBuffer }) => Promise<{ value: string }>;
+    };
+    marked: {
+      parse: (markdown: string) => string;
+    };
+    DOMPurify: {
+      sanitize: (dirty: string) => string;
+    };
+    Mark: new (element: HTMLElement) => {
+      mark: (term: string, options?: Record<string, unknown>) => void;
+      unmark: () => void;
+    };
+    emlformat: {
+      parse: (emlContent: string) => { html: string; headers: Record<string, string> };
+    };
+    docx: {
+      renderAsync: (data: Blob | ArrayBuffer, container: HTMLElement, styleContainer?: HTMLElement | null, options?: Record<string, unknown>) => Promise<void>;
+      defaultOptions?: Record<string, unknown>;
+    };
   }
 }
 
-interface DocumentInfo {
-  doc_id: string;
-  filename: string;
-  path: string;
-  size: number;
-  extension: string;
-  modified: string;
-  supported: boolean;
+interface PDFDocumentProxy {
+  numPages: number;
+  getPage: (pageNumber: number) => Promise<PDFPageProxy>;
+  destroy: () => void;
+}
+
+interface PDFPageProxy {
+  getViewport: (options: { scale: number }) => { width: number; height: number };
+  render: (params: { canvasContext: CanvasRenderingContext2D; viewport: unknown }) => { promise: Promise<void> };
 }
 
 interface DocumentViewerProps {
-  jobId: string;
+  collectionId: string;
   docId: string;
   query?: string;
   onClose: () => void;
 }
 
-const LIBRARY_URLS = {
-  pdfjs: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
-  pdfjsWorker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
-  mammoth: 'https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js',
-  marked: 'https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js',
-  dompurify: 'https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js',
-  markjs: 'https://cdnjs.cloudflare.com/ajax/libs/mark.js/8.11.1/mark.min.js',
-  emlformat: '/static/libs/eml-format.browser.min.js',
+// Script configurations with SRI hashes for security
+const SCRIPT_CONFIGS = {
+  jszip: {
+    url: 'https://unpkg.com/jszip@3.10.1/dist/jszip.min.js',
+    integrity: 'sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG',
+    crossOrigin: 'anonymous' as const
+  },
+  docxPreview: {
+    url: 'https://unpkg.com/docx-preview@0.3.2/dist/docx-preview.min.js',
+    integrity: 'sha384-WbeDqP/pDz1XLGS3CK6UwoSPLG1dRLX4FQqEEWWBMc4j8KM3s5eojZQGdW9Of0xV',
+    crossOrigin: 'anonymous' as const
+  }
 };
 
-function DocumentViewer({ jobId, docId, query, onClose }: DocumentViewerProps) {
+// Helper function to dynamically load scripts with SRI
+const loadScript = (config: typeof SCRIPT_CONFIGS[keyof typeof SCRIPT_CONFIGS]): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    // Check if script is already loaded
+    const existingScript = document.querySelector(`script[src="${config.url}"]`);
+    if (existingScript) {
+      resolve();
+      return;
+    }
 
+    const script = document.createElement('script');
+    script.src = config.url;
+    script.integrity = config.integrity;
+    script.crossOrigin = config.crossOrigin;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Failed to load script: ${config.url}`));
+    document.head.appendChild(script);
+  });
+};
+
+// DOCX rendering options
+const DOCX_RENDER_OPTIONS = {
+  className: 'docx',
+  inWrapper: true,
+  ignoreWidth: false,
+  ignoreHeight: false,
+  ignoreFonts: false,
+  breakPages: true,
+  ignoreLastRenderedPageBreak: true,
+  experimental: false,
+  trimXmlDeclaration: true,
+  useBase64URL: false,
+  renderHeaders: true,
+  renderFooters: true,
+  renderFootnotes: true,
+  renderEndnotes: true,
+} as const;
+
+function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [documentInfo, setDocumentInfo] = useState<DocumentInfo | null>(null);
-  const [content, setContent] = useState<string>('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [highlights, setHighlights] = useState<Element[]>([]);
-  const [currentHighlight, setCurrentHighlight] = useState(0);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
 
   const contentRef = useRef<HTMLDivElement>(null);
-  const markInstanceRef = useRef<any>(null);
-  const pdfDocRef = useRef<any>(null);
-  const pdfPageRef = useRef<any>(null);
+  const markInstanceRef = useRef<InstanceType<typeof window.Mark> | null>(null);
+  const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
 
-  // Dynamic library loading
-  const loadLibrary = useCallback(async (name: keyof typeof LIBRARY_URLS): Promise<void> => {
-    const url = LIBRARY_URLS[name];
-    const fallbackUrl = url.replace('https://cdnjs.cloudflare.com', '/static/libs')
-      .replace('https://cdn.jsdelivr.net', '/static/libs');
-
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = url;
-      script.onload = () => resolve();
-      script.onerror = () => {
-        // Try fallback
-        script.src = fallbackUrl;
-        script.onload = () => resolve();
-        script.onerror = () => reject(new Error(`Failed to load ${name}`));
-      };
-      document.head.appendChild(script);
-    });
-  }, []);
-
-  // Load document info
+  // Load document content
   useEffect(() => {
-    const loadDocumentInfo = async () => {
-      try {
-        const response = await api.get(`/api/documents/${jobId}/${docId}/info`);
-        setDocumentInfo(response.data);
-      } catch (err: any) {
-        setError(err.response?.data?.detail || 'Failed to load document info');
-        setLoading(false);
-      }
-    };
-
-    loadDocumentInfo();
-  }, [jobId, docId]);
-
-  // Load and render document
-  useEffect(() => {
-    if (!documentInfo) return;
-
     const loadDocument = async () => {
       try {
-        const fileExt = documentInfo.filename.split('.').pop()?.toLowerCase() || '';
+        setLoading(true);
+        setError(null);
+
+        // Get the document content URL and headers
+        const { url, headers } = documentsV2Api.getContent(collectionId, docId);
+
+        // Fetch the document with authentication headers
+        const response = await fetch(url, { 
+          headers: headers.Authorization ? headers : undefined 
+        });
         
-        switch (fileExt) {
-          case 'pdf':
-            await loadPDF();
-            break;
-          case 'docx':
-            await loadDOCX();
-            break;
-          case 'pptx':
-            await loadPPTX();
-            break;
-          case 'txt':
-            await loadTXT();
-            break;
-          case 'md':
-            await loadMarkdown();
-            break;
-          case 'html':
-          case 'htm':
-            await loadHTML();
-            break;
-          case 'eml':
-            await loadEML();
-            break;
-          case 'doc':
-            setError('Legacy .doc format - download only');
-            break;
-          default:
-            setError(`Unsupported file type: ${fileExt}`);
+        if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error('Authentication required. Please log in again.');
+          } else if (response.status === 403) {
+            throw new Error('You do not have permission to view this document.');
+          } else if (response.status === 404) {
+            throw new Error('Document not found.');
+          } else {
+            const errorData = await response.json().catch(() => null);
+            throw new Error(errorData?.detail || `Failed to load document (${response.status})`);
+          }
         }
-      } catch (err: any) {
-        setError(err.message || 'Failed to load document');
-      } finally {
+
+        // Get content type from response headers
+        const contentType = response.headers.get('content-type') || 'application/octet-stream';
+
+        // Handle different content types
+        if (contentType.includes('text/') || contentType.includes('application/json')) {
+          // Text-based content - read as text
+          const text = await response.text();
+          
+          if (contentRef.current) {
+            // Display text content directly
+            if (contentType.includes('text/html')) {
+              // Sanitize HTML content for security
+              contentRef.current.innerHTML = window.DOMPurify ? 
+                window.DOMPurify.sanitize(text) : text;
+            } else if (contentType.includes('text/markdown')) {
+              // Parse markdown if marked.js is available
+              const html = window.marked ? window.marked.parse(text) : `<pre>${text}</pre>`;
+              contentRef.current.innerHTML = window.DOMPurify ? 
+                window.DOMPurify.sanitize(html) : html;
+            } else {
+              // Display plain text or JSON
+              contentRef.current.innerHTML = `<pre style="white-space: pre-wrap; word-wrap: break-word;">${text}</pre>`;
+            }
+          }
+        } else if (contentType.includes('image/')) {
+          // Images - create blob URL
+          const blob = await response.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          setBlobUrl(objectUrl);
+          
+          if (contentRef.current) {
+            contentRef.current.innerHTML = `
+              <div style="text-align: center;">
+                <img src="${objectUrl}" alt="Document" style="max-width: 100%; height: auto;" />
+              </div>
+            `;
+          }
+        } else if (contentType.includes('application/pdf')) {
+          // PDFs - create blob URL for PDF.js or fallback display
+          const blob = await response.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          setBlobUrl(objectUrl);
+          
+          if (contentRef.current) {
+            // If PDF.js is available, use it; otherwise use object tag
+            if (window.pdfjsLib) {
+              // TODO: Implement PDF.js rendering
+              contentRef.current.innerHTML = `
+                <object data="${objectUrl}" type="application/pdf" style="width: 100%; height: 600px;">
+                  <p>Unable to display PDF. <a href="${objectUrl}" download>Download PDF</a></p>
+                </object>
+              `;
+            } else {
+              // Fallback to object tag
+              contentRef.current.innerHTML = `
+                <object data="${objectUrl}" type="application/pdf" style="width: 100%; height: 600px;">
+                  <p>Unable to display PDF. <a href="${objectUrl}" download>Download PDF</a></p>
+                </object>
+              `;
+            }
+          }
+        } else if (
+          contentType.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document') ||
+          contentType.includes('application/msword')
+        ) {
+          // DOCX files - render using docx-preview library
+          const blob = await response.blob();
+          
+          if (contentRef.current) {
+            try {
+              // Load required libraries with SRI for security
+              await loadScript(SCRIPT_CONFIGS.jszip);
+              await loadScript(SCRIPT_CONFIGS.docxPreview);
+              
+              // Clear container and create a wrapper div for docx content
+              contentRef.current.innerHTML = '';
+              const docxContainer = document.createElement('div');
+              docxContainer.className = 'docx-wrapper';
+              contentRef.current.appendChild(docxContainer);
+              
+              // Render DOCX
+              if (window.docx) {
+                await window.docx.renderAsync(blob, docxContainer, null, DOCX_RENDER_OPTIONS);
+              } else {
+                throw new Error('DOCX preview library failed to load');
+              }
+            } catch (docxError) {
+              console.error('Failed to render DOCX:', docxError);
+              // Fallback to download
+              const objectUrl = URL.createObjectURL(blob);
+              setBlobUrl(objectUrl);
+              contentRef.current.innerHTML = `
+                <div style="text-align: center; padding: 2rem;">
+                  <p style="margin-bottom: 1rem;">Unable to preview this Word document.</p>
+                  <a href="${objectUrl}" download class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
+                    Download Document
+                  </a>
+                </div>
+              `;
+            }
+          }
+        } else {
+          // Other binary content - provide download link
+          const blob = await response.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          setBlobUrl(objectUrl);
+          
+          if (contentRef.current) {
+            contentRef.current.innerHTML = `
+              <div style="text-align: center; padding: 2rem;">
+                <p style="margin-bottom: 1rem;">This file type cannot be displayed directly.</p>
+                <a href="${objectUrl}" download class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
+                  Download File
+                </a>
+              </div>
+            `;
+          }
+        }
+
+        setLoading(false);
+      } catch (err) {
+        console.error('Failed to load document:', err);
+        setError(getErrorMessage(err));
         setLoading(false);
       }
     };
 
     loadDocument();
-  }, [documentInfo]);
+  }, [collectionId, docId]);
 
   // Apply highlights when content or query changes
   useEffect(() => {
-    if (!query || !content || !contentRef.current) return;
+    // Disabled until document content can be loaded
+  }, []);
 
-    const applyHighlights = async () => {
-      if (!window.Mark) {
-        await loadLibrary('markjs');
-      }
-
-      // Clear previous marks
-      if (markInstanceRef.current) {
-        markInstanceRef.current.unmark();
-      }
-
-      // Create new mark instance
-      markInstanceRef.current = new window.Mark(contentRef.current);
+  const handleDownload = async () => {
+    try {
+      // Get the document content URL and headers
+      const { url, headers } = documentsV2Api.getContent(collectionId, docId);
       
-      // Apply highlights
-      markInstanceRef.current.mark(query, {
-        separateWordSearch: false,
-        done: () => {
-          const marks = contentRef.current?.querySelectorAll('mark') || [];
-          setHighlights(Array.from(marks));
-          if (marks.length > 0) {
-            marks[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-        },
+      // Always fetch with auth headers for consistency
+      const response = await fetch(url, { 
+        headers: headers.Authorization ? headers : undefined 
       });
-    };
-
-    applyHighlights();
-  }, [content, query, loadLibrary]);
-
-  const loadPDF = async () => {
-    await loadLibrary('pdfjs');
-    
-    if (!window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = LIBRARY_URLS.pdfjsWorker;
-    }
-
-    const response = await api.get(`/api/documents/${jobId}/${docId}`, {
-      responseType: 'arraybuffer',
-    });
-
-    const loadingTask = window.pdfjsLib.getDocument({
-      data: response.data,
-      cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
-      cMapPacked: true,
-    });
-
-    pdfDocRef.current = await loadingTask.promise;
-    setTotalPages(pdfDocRef.current.numPages);
-    await renderPDFPage(1);
-  };
-
-  const renderPDFPage = async (pageNum: number) => {
-    if (!pdfDocRef.current || !contentRef.current) return;
-
-    const page = await pdfDocRef.current.getPage(pageNum);
-    pdfPageRef.current = page;
-
-    const viewport = page.getViewport({ scale: 1.5 });
-    
-    // Clear previous content
-    contentRef.current.innerHTML = '';
-
-    // Create canvas
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    canvas.height = viewport.height;
-    canvas.width = viewport.width;
-    contentRef.current.appendChild(canvas);
-
-    // Render PDF
-    await page.render({
-      canvasContext: context,
-      viewport: viewport,
-    }).promise;
-
-    // Create text layer
-    const textLayer = document.createElement('div');
-    textLayer.className = 'textLayer';
-    textLayer.style.position = 'absolute';
-    textLayer.style.left = '0';
-    textLayer.style.top = '0';
-    textLayer.style.right = '0';
-    textLayer.style.bottom = '0';
-    contentRef.current.appendChild(textLayer);
-
-    // Get text content
-    const textContent = await page.getTextContent();
-    
-    // Render text layer
-    window.pdfjsLib.renderTextLayer({
-      textContent: textContent,
-      container: textLayer,
-      viewport: viewport,
-      textDivs: [],
-    });
-
-    setContent(textContent.items.map((item: any) => item.str).join(' '));
-  };
-
-  const loadDOCX = async () => {
-    await loadLibrary('mammoth');
-    
-    const response = await api.get(`/api/documents/${jobId}/${docId}`, {
-      responseType: 'arraybuffer',
-    });
-
-    const result = await window.mammoth.convertToHtml({ arrayBuffer: response.data });
-    setContent(result.value);
-    if (contentRef.current) {
-      contentRef.current.innerHTML = result.value;
-    }
-  };
-
-  const loadPPTX = async () => {
-    const response = await api.get(`/api/documents/${jobId}/${docId}`, {
-      headers: {
-        'Accept': 'text/markdown',
-      },
-    });
-
-    if (response.headers['content-type']?.includes('markdown')) {
-      await loadLibrary('marked');
-      await loadLibrary('dompurify');
       
-      const html = window.marked.parse(response.data);
-      const clean = window.DOMPurify.sanitize(html);
-      setContent(clean);
-      if (contentRef.current) {
-        contentRef.current.innerHTML = clean;
+      if (!response.ok) {
+        throw new Error('Failed to download document');
       }
-    } else {
-      setError('PPTX preview not available - download only');
+      
+      // Get the filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('content-disposition');
+      let filename = 'document';
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (match && match[1]) {
+          filename = match[1];
+        }
+      }
+      
+      // Create blob and trigger download
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up blob URL
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+    } catch (err) {
+      console.error('Download failed:', err);
+      alert('Failed to download document. Please try again.');
     }
   };
 
-  const loadTXT = async () => {
-    const response = await api.get(`/api/documents/${jobId}/${docId}`, {
-      responseType: 'text',
-    });
-    
-    const text = response.data;
-    setContent(text);
-    if (contentRef.current) {
-      contentRef.current.textContent = text;
-    }
-  };
-
-  const loadMarkdown = async () => {
-    await loadLibrary('marked');
-    await loadLibrary('dompurify');
-    
-    const response = await api.get(`/api/documents/${jobId}/${docId}`, {
-      responseType: 'text',
-    });
-    
-    const html = window.marked.parse(response.data);
-    const clean = window.DOMPurify.sanitize(html);
-    setContent(clean);
-    if (contentRef.current) {
-      contentRef.current.innerHTML = clean;
-    }
-  };
-
-  const loadHTML = async () => {
-    await loadLibrary('dompurify');
-    
-    const response = await api.get(`/api/documents/${jobId}/${docId}`, {
-      responseType: 'text',
-    });
-    
-    const clean = window.DOMPurify.sanitize(response.data);
-    setContent(clean);
-    if (contentRef.current) {
-      contentRef.current.innerHTML = clean;
-    }
-  };
-
-  const loadEML = async () => {
-    await loadLibrary('emlformat');
-    
-    const response = await api.get(`/api/documents/${jobId}/${docId}`, {
-      responseType: 'text',
-    });
-    
-    const email = window.emlformat.parse(response.data);
-    const html = `
-      <div class="email-content">
-        <div class="email-headers">
-          <p><strong>From:</strong> ${email.headers.from || ''}</p>
-          <p><strong>To:</strong> ${email.headers.to || ''}</p>
-          <p><strong>Subject:</strong> ${email.headers.subject || ''}</p>
-          <p><strong>Date:</strong> ${email.headers.date || ''}</p>
-        </div>
-        <hr/>
-        <div class="email-body">${email.body || ''}</div>
-      </div>
-    `;
-    
-    setContent(html);
-    if (contentRef.current) {
-      contentRef.current.innerHTML = html;
-    }
-  };
-
-  const handlePageChange = (newPage: number) => {
-    if (newPage >= 1 && newPage <= totalPages) {
-      setCurrentPage(newPage);
-      renderPDFPage(newPage);
-    }
-  };
-
-  const handleHighlightNavigation = (direction: 'prev' | 'next') => {
-    if (highlights.length === 0) return;
-
-    let newIndex = currentHighlight;
-    if (direction === 'next') {
-      newIndex = (currentHighlight + 1) % highlights.length;
-    } else {
-      newIndex = currentHighlight === 0 ? highlights.length - 1 : currentHighlight - 1;
-    }
-
-    setCurrentHighlight(newIndex);
-    highlights[newIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
-  };
-
-  const handleDownload = () => {
-    const link = document.createElement('a');
-    link.href = `/api/documents/${jobId}/${docId}`;
-    link.download = documentInfo?.filename || 'document';
-    link.click();
-  };
-
-  // Cleanup
+  // Cleanup blob URLs
   useEffect(() => {
     return () => {
-      if (markInstanceRef.current) {
-        markInstanceRef.current.unmark();
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
       }
-      if (pdfDocRef.current) {
-        pdfDocRef.current.destroy();
+    };
+  }, [blobUrl]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    // Copy ref values to local variables to avoid React hooks warnings
+    const markInstance = markInstanceRef.current;
+    const pdfDoc = pdfDocRef.current;
+    
+    return () => {
+      if (markInstance) {
+        markInstance.unmark();
+      }
+      if (pdfDoc) {
+        pdfDoc.destroy();
       }
     };
   }, []);
@@ -395,34 +350,10 @@ function DocumentViewer({ jobId, docId, query, onClose }: DocumentViewerProps) {
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b">
             <h3 className="text-lg font-medium text-gray-900">
-              {documentInfo?.filename || 'Document Viewer'}
+              Document Viewer
             </h3>
             
             <div className="flex items-center space-x-2">
-              {highlights.length > 0 && (
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => handleHighlightNavigation('prev')}
-                    className="p-1 text-gray-600 hover:text-gray-900"
-                  >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                  </button>
-                  <span className="text-sm text-gray-600">
-                    {currentHighlight + 1} / {highlights.length}
-                  </span>
-                  <button
-                    onClick={() => handleHighlightNavigation('next')}
-                    className="p-1 text-gray-600 hover:text-gray-900"
-                  >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                </div>
-              )}
-              
               <button
                 onClick={handleDownload}
                 className="p-2 text-gray-600 hover:text-gray-900"
@@ -464,29 +395,6 @@ function DocumentViewer({ jobId, docId, query, onClose }: DocumentViewerProps) {
               style={{ minHeight: '400px' }}
             />
           </div>
-
-          {/* Footer - PDF Navigation */}
-          {documentInfo?.filename.endsWith('.pdf') && totalPages > 1 && (
-            <div className="flex items-center justify-center p-4 border-t">
-              <button
-                onClick={() => handlePageChange(currentPage - 1)}
-                disabled={currentPage === 1}
-                className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Previous
-              </button>
-              <span className="mx-4 text-sm text-gray-700">
-                Page {currentPage} of {totalPages}
-              </span>
-              <button
-                onClick={() => handlePageChange(currentPage + 1)}
-                disabled={currentPage === totalPages}
-                className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Next
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </div>

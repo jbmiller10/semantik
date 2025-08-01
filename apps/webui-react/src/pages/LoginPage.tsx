@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useUIStore } from '../stores/uiStore';
-import api from '../services/api';
+import { authApi } from '../services/api/v2';
+import { getErrorMessage } from '../utils/errorUtils';
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -21,39 +22,61 @@ function LoginPage() {
     setLoading(true);
 
     try {
-      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
-      const payload = isLogin 
-        ? { username, password }
-        : { username, email, password, full_name: fullName || undefined };
-      const response = await api.post(endpoint, payload);
-      
-      if (isLogin && response.data.access_token) {
-        // Login flow - expects tokens
-        const userResponse = await api.get('/api/auth/me', {
-          headers: { Authorization: `Bearer ${response.data.access_token}` }
+      if (isLogin) {
+        // Login flow
+        const response = await authApi.login({ username, password });
+        
+        if (response.data.access_token) {
+          // First set the auth token so subsequent API calls work
+          // We'll use a temporary user object and update it after
+          setAuth(response.data.access_token, {
+            id: 0,
+            username: username,
+            email: '',
+            is_active: true,
+            created_at: new Date().toISOString()
+          }, response.data.refresh_token);
+          
+          // Now get the actual user info
+          try {
+            const userResponse = await authApi.me();
+            // Update with real user data
+            setAuth(response.data.access_token, userResponse.data, response.data.refresh_token);
+          } catch (error) {
+            console.error('Failed to fetch user details:', error);
+            // Continue with login even if user details fetch fails
+          }
+          
+          addToast({
+            type: 'success',
+            message: 'Logged in successfully',
+          });
+          navigate('/');
+        }
+      } else {
+        // Registration flow
+        const response = await authApi.register({ 
+          username, 
+          email, 
+          password, 
+          full_name: fullName || undefined 
         });
         
-        setAuth(response.data.access_token, userResponse.data, response.data.refresh_token);
-        addToast({
-          type: 'success',
-          message: 'Logged in successfully',
-        });
-        navigate('/');
-      } else if (!isLogin && response.data.id) {
-        // Registration flow - only returns user data
-        addToast({
-          type: 'success',
-          message: 'Registration successful! Please log in with your credentials.',
-        });
-        // Switch to login mode and clear password
-        setIsLogin(true);
-        setPassword('');
-        // Keep username filled for convenience
+        if (response.data.id) {
+          addToast({
+            type: 'success',
+            message: 'Registration successful! Please log in with your credentials.',
+          });
+          // Switch to login mode and clear password
+          setIsLogin(true);
+          setPassword('');
+          // Keep username filled for convenience
+        }
       }
-    } catch (error: any) {
+    } catch (error) {
       addToast({
         type: 'error',
-        message: error.response?.data?.detail || 'Authentication failed',
+        message: getErrorMessage(error),
       });
     } finally {
       setLoading(false);

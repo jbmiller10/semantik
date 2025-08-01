@@ -23,26 +23,20 @@ from starlette.responses import Response
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from shared.config import settings as shared_settings
+from shared.database import pg_connection_manager
 from shared.embedding import configure_global_embedding_service
 
 logger = logging.getLogger(__name__)
 
-from .api import (  # noqa: E402
-    auth,
-    collections,
-    documents,
-    files,
-    health,
-    internal,
-    jobs,
-    metrics,
-    models,
-    root,
-    search,
-    settings,
-)
-from .api.files import scan_websocket  # noqa: E402
-from .api.jobs import websocket_endpoint  # noqa: E402
+from .api import auth, health, internal, metrics, models, root, settings  # noqa: E402
+from .api.v2 import collections as v2_collections  # noqa: E402
+from .api.v2 import directory_scan as v2_directory_scan  # noqa: E402
+from .api.v2 import documents as v2_documents  # noqa: E402
+from .api.v2 import operations as v2_operations  # noqa: E402
+from .api.v2 import search as v2_search  # noqa: E402
+from .api.v2 import system as v2_system  # noqa: E402
+from .api.v2.directory_scan import directory_scan_websocket  # noqa: E402
+from .api.v2.operations import operation_websocket  # noqa: E402
 from .rate_limiter import limiter  # noqa: E402
 from .websocket_manager import ws_manager  # noqa: E402
 
@@ -130,8 +124,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     # Startup
     logger.info("Starting up WebUI application...")
 
+    # Initialize PostgreSQL connection
+    logger.info("Initializing PostgreSQL connection...")
+    await pg_connection_manager.initialize()
+    logger.info("PostgreSQL connection initialized")
+
     # Initialize WebSocket manager
+    logger.info("Initializing WebSocket manager...")
     await ws_manager.startup()
+    logger.info("WebSocket manager initialization complete")
 
     # Configure global embedding service
     _configure_embedding_service()
@@ -145,7 +146,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     logger.info("Shutting down WebUI application...")
 
     # Clean up WebSocket manager
+    logger.info("Shutting down WebSocket manager...")
     await ws_manager.shutdown()
+    logger.info("WebSocket manager shutdown complete")
+
+    # Close PostgreSQL connection
+    logger.info("Closing PostgreSQL connection...")
+    await pg_connection_manager.close()
+    logger.info("PostgreSQL connection closed")
 
 
 def create_app() -> FastAPI:
@@ -184,33 +192,21 @@ def create_app() -> FastAPI:
 
     # Include routers with their specific prefixes
     app.include_router(auth.router)
-    app.include_router(jobs.router)
-    app.include_router(files.router)
-    app.include_router(collections.router)
     app.include_router(metrics.router)
     app.include_router(settings.router)
     app.include_router(models.router)
-    app.include_router(search.router)
-    app.include_router(documents.router)
     app.include_router(health.router)
     app.include_router(internal.router)
-    app.include_router(root.router)  # No prefix for static + root
 
-    # Mount WebSocket endpoints at the app level
-    @app.websocket("/ws/{job_id}")
-    async def job_websocket(websocket: WebSocket, job_id: str) -> None:
-        await websocket_endpoint(websocket, job_id)
+    # Include v2 API routers
+    app.include_router(v2_collections.router)
+    app.include_router(v2_directory_scan.router)
+    app.include_router(v2_documents.router)
+    app.include_router(v2_operations.router)
+    app.include_router(v2_search.router)
+    app.include_router(v2_system.router)
 
-    @app.websocket("/ws/scan/{scan_id}")
-    async def scan_ws(websocket: WebSocket, scan_id: str) -> None:
-        await scan_websocket(websocket, scan_id)
-
-    # Add health check endpoint
-    @app.get("/health")
-    async def health_check() -> dict[str, str]:
-        """Health check endpoint for Docker health monitoring"""
-        return {"status": "healthy", "service": "webui"}
-
+    # Mount static files BEFORE catch-all route
     # Mount static files with proper path resolution
     base_dir = Path(__file__).resolve().parent
     static_dir = base_dir / "static"
@@ -225,6 +221,24 @@ def create_app() -> FastAPI:
 
     # Mount static files
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+    # Include root router AFTER static file mounts to ensure catch-all doesn't intercept static files
+    app.include_router(root.router)  # No prefix for static + root
+
+    # Mount WebSocket endpoints at the app level
+    @app.websocket("/ws/operations/{operation_id}")
+    async def operation_ws(websocket: WebSocket, operation_id: str) -> None:
+        await operation_websocket(websocket, operation_id)
+
+    @app.websocket("/ws/directory-scan/{scan_id}")
+    async def directory_scan_ws(websocket: WebSocket, scan_id: str) -> None:
+        await directory_scan_websocket(websocket, scan_id)
+
+    # Add health check endpoint
+    @app.get("/health")
+    async def health_check() -> dict[str, str]:
+        """Health check endpoint for Docker health monitoring"""
+        return {"status": "healthy", "service": "webui"}
 
     return app
 

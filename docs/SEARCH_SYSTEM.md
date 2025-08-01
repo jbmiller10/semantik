@@ -22,8 +22,8 @@ Semantik implements a sophisticated search architecture that combines vector sim
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Frontend UI   │────▶│  WebUI Search   │────▶│  Search API     │
-│  (JavaScript)   │     │    Proxy        │     │  (FastAPI)      │
+│   Frontend UI   │────▶│  WebUI Search   │────▶│  Search API v2  │
+│  (React 19)     │     │    Service      │     │  (FastAPI)      │
 └─────────────────┘     └─────────────────┘     └────────┬────────┘
                                                           │
                                                           ▼
@@ -39,35 +39,54 @@ Semantik implements a sophisticated search architecture that combines vector sim
                                           │
                                           ▼
                         ┌─────────────────────────────────────────┐
+                        │      Reranking & Model Management      │
+                        ├─────────────────────────────────────────┤
+                        │ - Cross-Encoder Reranker               │
+                        │ - Model Manager (Lazy Loading)         │
+                        │ - Memory-Aware Loading                 │
+                        │ - Auto-Unloading After 5min            │
+                        └─────────────────────────────────────────┘
+                                          │
+                                          ▼
+                        ┌─────────────────────────────────────────┐
                         │         Embedding Service              │
                         ├─────────────────────────────────────────┤
-                        │ - Model Manager (Lazy Loading)         │
-                        │ - Quantization Support                 │
+                        │ - Multi-Model Support                  │
+                        │ - Quantization (float32/16, int8)     │
                         │ - Qwen3 Optimization                   │
-                        │ - Adaptive Batching                    │
+                        │ - Batch Processing                     │
                         └─────────────────────────────────────────┘
                                           │
                                           ▼
                         ┌─────────────────────────────────────────┐
                         │         Qdrant Vector DB               │
+                        ├─────────────────────────────────────────┤
+                        │ - Collection-Based Organization        │
+                        │ - HNSW Index (Optimized)              │
+                        │ - Blue-Green Deployments              │
+                        │ - Metadata Storage                    │
                         └─────────────────────────────────────────┘
 ```
 
 ### Key Features
 
-- **High Performance**: Optimized for low-latency search with caching and lazy model loading
-- **Flexible Search Types**: Vector, hybrid, and keyword-only search
+- **High Performance**: Optimized for low-latency search with lazy model loading and connection pooling
+- **Flexible Search Types**: Vector, hybrid, keyword-only, and cross-encoder reranked search
 - **Model Agnostic**: Support for multiple embedding models with automatic selection
 - **Quantization Support**: float32, float16, and int8 quantization for memory efficiency
+- **Collection-Centric**: Each collection maintains its own embedding model metadata
+- **Reranking**: Optional two-stage retrieval with cross-encoder reranking for 20%+ relevance improvement
 - **Monitoring**: Comprehensive Prometheus metrics for observability
 
 ### Performance Characteristics
 
 - Vector search latency: ~50-200ms (depending on collection size)
 - Hybrid search latency: ~100-300ms (with keyword filtering)
+- Reranked search latency: ~200-1200ms (model dependent)
 - Batch search: Up to 256 queries in parallel
-- Model loading: 5-30 seconds (cached after first load)
+- Model loading: 2-30 seconds (cached after first load)
 - Automatic model unloading after 5 minutes of inactivity
+- Memory-aware loading prevents OOM errors
 
 ## 2. Unified Search Implementation
 
@@ -175,6 +194,78 @@ async def batch_search(request: BatchSearchRequest):
 - **Error Handling**: Comprehensive error responses with fallbacks
 - **Metrics**: Prometheus metrics for all operations
 - **Mock Mode**: Development mode with simulated embeddings
+
+## 3.5. Search API v2 Endpoints
+
+The Search API v2 provides enhanced functionality for collection-based search operations.
+
+### Core Endpoints
+
+#### POST `/api/v2/search/collections/{collection_id}`
+Enhanced search with reranking support:
+```python
+{
+    "query": "search query",
+    "top_k": 10,
+    "search_type": "semantic",  # semantic, question, code, hybrid
+    "filters": {
+        "metadata_field": "value"
+    },
+    "use_reranker": true,
+    "rerank_model": "auto",  # auto-selects based on embedding model
+    "include_content": true,
+    "score_threshold": 0.5
+}
+```
+
+#### POST `/api/v2/search/hybrid/{collection_id}`
+Hybrid search with keyword and vector matching:
+```python
+{
+    "query": "machine learning algorithms",
+    "top_k": 20,
+    "hybrid_mode": "filter",  # filter or rerank
+    "keyword_mode": "any",    # any or all
+    "hybrid_alpha": 0.7,      # weight for vector score (0-1)
+    "use_reranker": false
+}
+```
+
+#### POST `/api/v2/search/batch`
+Batch search across multiple queries:
+```python
+{
+    "collection_id": "uuid-here",
+    "queries": [
+        {"query": "query1", "top_k": 5},
+        {"query": "query2", "top_k": 10}
+    ],
+    "search_type": "semantic",
+    "model_override": null  # uses collection's model
+}
+```
+
+### New Features in v2
+
+1. **Collection-Aware Search**:
+   - Automatically uses the embedding model the collection was created with
+   - Warns if searching with a different model than indexed
+   - Maintains search consistency
+
+2. **Reranking Integration**:
+   - Seamless cross-encoder reranking
+   - Auto-selects appropriate reranker model
+   - Memory-aware loading prevents OOM
+
+3. **Enhanced Metadata**:
+   - Returns collection metadata with results
+   - Includes model information
+   - Provides performance metrics
+
+4. **Improved Error Handling**:
+   - Detailed error messages
+   - Fallback strategies
+   - Resource limit warnings
 
 ## 4. Hybrid Search
 
@@ -427,15 +518,27 @@ SEARCH_API_PORT=8000
 Collections store metadata about their creation:
 ```python
 {
-    "collection_name": "job_123",
+    "collection_name": "collection_<uuid>",
     "model_name": "Qwen/Qwen3-Embedding-0.6B",
     "quantization": "float16",
     "vector_dim": 1024,
     "chunk_size": 1000,
     "chunk_overlap": 200,
-    "instruction": "Represent this document for retrieval:"
+    "instruction": "Represent this document for retrieval:",
+    "created_at": "2025-01-20T10:30:00Z",
+    "distance_metric": "cosine",
+    "optimizer_config": {
+        "indexing_threshold": 20000,
+        "memmap_threshold": 0
+    }
 }
 ```
+
+### Collection Naming Conventions
+
+- **Production Collections**: `collection_<uuid>` - Main collections for document storage
+- **Staging Collections**: `staging_collection_<uuid>_<timestamp>` - Used during blue-green reindexing
+- **Legacy Collections**: May contain `work_docs` or operation-specific names
 
 ### Search Parameters
 
@@ -445,6 +548,99 @@ Collections store metadata about their creation:
 - **include_content**: Return chunk content
 - **model_name**: Override default model
 - **quantization**: Override default quantization
+- **use_reranker**: Enable cross-encoder reranking
+- **rerank_model**: Override reranker model selection
+- **rerank_quantization**: Override reranker quantization
+
+## 9.5. Qdrant Configuration Best Practices
+
+### HNSW Index Configuration
+
+```python
+# Optimal HNSW parameters for different collection sizes
+{
+    "small_collection": {  # < 100K vectors
+        "hnsw_config": {
+            "m": 16,
+            "ef_construct": 100,
+            "ef": 100,
+            "full_scan_threshold": 10000
+        }
+    },
+    "medium_collection": {  # 100K - 1M vectors
+        "hnsw_config": {
+            "m": 32,
+            "ef_construct": 200,
+            "ef": 150,
+            "full_scan_threshold": 20000
+        }
+    },
+    "large_collection": {  # > 1M vectors
+        "hnsw_config": {
+            "m": 64,
+            "ef_construct": 400,
+            "ef": 200,
+            "full_scan_threshold": 40000
+        }
+    }
+}
+```
+
+### Memory Configuration
+
+```python
+# Optimizer configuration for performance
+{
+    "optimizers_config": {
+        "indexing_threshold": 20000,  # Build index after this many vectors
+        "memmap_threshold": 0,        # Always use memory-mapped storage
+        "max_segment_size": 200_000,  # Maximum vectors per segment
+        "default_segment_number": 4   # Parallel segments for better performance
+    }
+}
+```
+
+### Storage Configuration
+
+```python
+# On-disk vs in-memory configuration
+{
+    "on_disk": True,  # Store vectors on disk for large collections
+    "wal_config": {
+        "wal_capacity_mb": 32,
+        "wal_segments_ahead": 0
+    },
+    "quantization_config": {
+        "scalar": {
+            "type": "int8",
+            "quantile": 0.99,
+            "always_ram": True  # Keep quantized vectors in RAM
+        }
+    }
+}
+```
+
+### Performance Tuning Tips
+
+1. **Index Building**:
+   - Set `indexing_threshold` based on expected collection size
+   - Higher `ef_construct` improves recall but increases indexing time
+   - Balance `m` parameter: higher values = better recall, more memory
+
+2. **Search Performance**:
+   - Adjust `ef` parameter at search time for speed/accuracy tradeoff
+   - Use `full_scan_threshold` to bypass index for small result sets
+   - Enable quantization for large collections to reduce memory usage
+
+3. **Memory Management**:
+   - Use `memmap_threshold` to control memory-mapped file usage
+   - Enable `on_disk` storage for collections > available RAM
+   - Configure `always_ram` for frequently accessed data
+
+4. **Concurrent Operations**:
+   - Use multiple segments for better parallel performance
+   - Configure appropriate `wal_capacity_mb` for write-heavy workloads
+   - Consider read replicas for high-query loads
 
 ## 10. Search Validation
 

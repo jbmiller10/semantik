@@ -16,8 +16,8 @@ class SearchRequest(BaseModel):
     quantization: str | None = Field(None, description="Override quantization: float32, float16, int8")
     filters: dict[str, Any] | None = Field(None, description="Metadata filters for search")
     include_content: bool = Field(False, description="Include chunk content in results")
-    collection: str | None = Field(None, description="Collection name (e.g., job_123)")
-    job_id: str | None = Field(None, description="Job ID for collection inference")
+    collection: str | None = Field(None, description="Collection name (e.g., operation_123)")
+    operation_uuid: str | None = Field(None, description="Operation UUID for collection inference")
     use_reranker: bool = Field(False, description="Enable cross-encoder reranking")
     rerank_model: str | None = Field(None, description="Override reranker model")
     rerank_quantization: str | None = Field(None, description="Override reranker quantization: float32, float16, int8")
@@ -83,7 +83,7 @@ class SearchResult(BaseModel):
     file_name: str | None = Field(None, max_length=255)
     chunk_index: int | None = None
     total_chunks: int | None = None
-    job_id: str | None = Field(None, max_length=200)
+    operation_uuid: str | None = Field(None, max_length=200)
 
 
 class SearchResponse(BaseModel):
@@ -113,7 +113,7 @@ class SearchResponse(BaseModel):
                         "score": 0.95,
                         "path": "/data/quantum_intro.pdf",
                         "content": "Quantum computing leverages quantum mechanics...",
-                        "metadata": {"source": "quantum_intro.pdf", "page": 1, "job_id": "job_456"},
+                        "metadata": {"source": "quantum_intro.pdf", "page": 1, "operation_uuid": "operation_456"},
                     }
                 ],
                 "num_results": 1,
@@ -186,7 +186,7 @@ class HybridSearchRequest(BaseModel):
 
     query: str = Field(..., min_length=1, max_length=1000)
     k: int = Field(default=10, ge=1, le=100)
-    job_id: str | None = Field(None, max_length=200)
+    operation_uuid: str | None = Field(None, max_length=200)
     mode: str = Field(default="filter", max_length=20, description="Hybrid search mode: 'filter' or 'rerank'")
     keyword_mode: str = Field(default="any", max_length=20, description="Keyword matching: 'any' or 'all'")
     score_threshold: float | None = None

@@ -35,7 +35,7 @@ def backup_database(db_path: str) -> str:
         sys.exit(1)
 
 
-def main():
+def main() -> None:
     """Main function."""
     if len(sys.argv) < 2:
         print("Usage: python backup_before_migration.py <database_path>")

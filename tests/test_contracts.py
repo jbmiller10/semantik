@@ -1,37 +1,37 @@
 """Unit tests for shared API contracts."""
 
-from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
-from shared.contracts.errors import (
+
+from packages.shared.contracts.errors import (
     ErrorResponse,
     create_insufficient_memory_error,
     create_not_found_error,
     create_validation_error,
 )
-from shared.contracts.jobs import CreateJobRequest, JobResponse
-from shared.contracts.search import SearchRequest, SearchResult
+from packages.shared.contracts.search import SearchRequest, SearchResult
 
 
 class TestSearchContracts:
     """Test search-related contracts."""
 
-    def test_search_request_with_k(self):
+    def test_search_request_with_k(self) -> None:
         """Test SearchRequest with canonical field 'k'."""
         req = SearchRequest(query="test query", k=5)
         assert req.query == "test query"
         assert req.k == 5
         assert req.search_type == "semantic"  # default
 
-    def test_search_request_with_top_k_alias(self):
+    def test_search_request_with_top_k_alias(self) -> None:
         """Test SearchRequest with alias field 'top_k'."""
-        req_data = {"query": "test query", "top_k": 10}
+        req_data: dict[str, Any] = {"query": "test query", "top_k": 10}
         req = SearchRequest(**req_data)
         assert req.query == "test query"
         assert req.k == 10  # alias mapped to canonical field
 
-    def test_search_request_query_validation(self):
+    def test_search_request_query_validation(self) -> None:
         """Test query field validation."""
         # Empty query should fail
         with pytest.raises(ValidationError) as exc_info:
@@ -43,7 +43,7 @@ class TestSearchContracts:
             SearchRequest(query="x" * 1001)
         assert "at most 1000 characters" in str(exc_info.value)
 
-    def test_search_request_search_type_mapping(self):
+    def test_search_request_search_type_mapping(self) -> None:
         """Test search_type validation and mapping."""
         # 'vector' should be mapped to 'semantic'
         req = SearchRequest(query="test", search_type="vector")
@@ -54,7 +54,7 @@ class TestSearchContracts:
             SearchRequest(query="test", search_type="invalid")
         assert "Invalid search_type" in str(exc_info.value)
 
-    def test_search_result_optional_fields(self):
+    def test_search_result_optional_fields(self) -> None:
         """Test SearchResult with optional fields."""
         result = SearchResult(doc_id="doc123", chunk_id="chunk456", score=0.95, path="/data/test.txt")
         assert result.content is None
@@ -62,115 +62,10 @@ class TestSearchContracts:
         assert result.file_name is None
 
 
-class TestJobContracts:
-    """Test job-related contracts."""
-
-    def test_create_job_request_defaults(self):
-        """Test CreateJobRequest with default values."""
-        req = CreateJobRequest(name="Test Job", directory_path="/data/test")
-        assert req.name == "Test Job"
-        assert req.directory_path == "/data/test"
-        assert req.chunk_size == 600
-        assert req.chunk_overlap == 200
-        assert req.model_name == "Qwen/Qwen3-Embedding-0.6B"
-
-    def test_chunk_size_validation(self):
-        """Test chunk_size validation."""
-        # Too small (Field validation happens before custom validator)
-        with pytest.raises(ValidationError) as exc_info:
-            CreateJobRequest(name="Test", directory_path="/test", chunk_size=50)
-        assert "greater than or equal to 100" in str(exc_info.value)
-
-        # Too large (Field validation happens before custom validator)
-        with pytest.raises(ValidationError) as exc_info:
-            CreateJobRequest(name="Test", directory_path="/test", chunk_size=60000)
-        assert "less than or equal to 50000" in str(exc_info.value)
-
-    def test_chunk_overlap_validation(self):
-        """Test chunk_overlap validation."""
-        # Negative overlap (Field validation happens before custom validator)
-        with pytest.raises(ValidationError) as exc_info:
-            CreateJobRequest(name="Test", directory_path="/test", chunk_overlap=-10)
-        assert "greater than or equal to 0" in str(exc_info.value)
-
-        # Overlap >= chunk_size (custom validator)
-        with pytest.raises(ValidationError) as exc_info:
-            CreateJobRequest(name="Test", directory_path="/test", chunk_size=500, chunk_overlap=500)
-        assert "must be less than chunk_size" in str(exc_info.value)
-
-    def test_directory_path_security_validation(self):
-        """Test directory path security validation."""
-        # Path traversal attempt with ..
-        with pytest.raises(ValidationError) as exc_info:
-            CreateJobRequest(name="Test", directory_path="/data/../etc/passwd")
-        assert "Path traversal not allowed" in str(exc_info.value)
-
-        # Path starting with ~
-        with pytest.raises(ValidationError) as exc_info:
-            CreateJobRequest(name="Test", directory_path="~/sensitive")
-        assert "Path traversal not allowed" in str(exc_info.value)
-
-        # Empty path
-        with pytest.raises(ValidationError) as exc_info:
-            CreateJobRequest(name="Test", directory_path="   ")
-        assert "Directory path cannot be empty" in str(exc_info.value)
-
-        # Relative path (should fail)
-        with pytest.raises(ValidationError) as exc_info:
-            CreateJobRequest(name="Test", directory_path="relative/path")
-        assert "Only absolute paths are allowed" in str(exc_info.value)
-
-    def test_quantization_normalization(self):
-        """Test quantization field normalization."""
-        # fp32 should be normalized to float32
-        req = CreateJobRequest(name="Test", directory_path="/test", quantization="fp32")
-        assert req.quantization == "float32"
-
-        # fp16 should be normalized to float16
-        req = CreateJobRequest(name="Test", directory_path="/test", quantization="fp16")
-        assert req.quantization == "float16"
-
-        # Invalid quantization
-        with pytest.raises(ValidationError) as exc_info:
-            CreateJobRequest(name="Test", directory_path="/test", quantization="invalid")
-        assert "Invalid quantization" in str(exc_info.value)
-
-    def test_job_response_aliasing(self):
-        """Test JobResponse field aliasing."""
-        # Test with 'id' field
-        resp = JobResponse(
-            id="job123",
-            name="Test Job",
-            status="running",
-            created_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC),
-            directory_path="/test",
-            model_name="test-model",
-        )
-        assert resp.id == "job123"
-
-        # Test to_dict includes both id and job_id
-        resp_dict = resp.to_dict()
-        assert resp_dict["id"] == "job123"
-        assert resp_dict["job_id"] == "job123"
-
-        # Test with 'job_id' alias
-        resp2 = JobResponse(
-            job_id="job456",
-            name="Test Job 2",
-            status="completed",
-            created_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC),
-            directory_path="/test2",
-            model_name="test-model2",
-        )
-        assert resp2.id == "job456"
-
-
 class TestErrorContracts:
     """Test error-related contracts."""
 
-    def test_basic_error_response(self):
+    def test_basic_error_response(self) -> None:
         """Test basic ErrorResponse."""
         error = ErrorResponse(error="TestError", message="Something went wrong", status_code=500)
         assert error.error == "TestError"
@@ -178,7 +73,7 @@ class TestErrorContracts:
         assert error.status_code == 500
         assert error.details is None
 
-    def test_create_validation_error(self):
+    def test_create_validation_error(self) -> None:
         """Test create_validation_error helper."""
         errors = [("field1", "Field 1 is required"), ("field2", "Field 2 must be positive")]
         error = create_validation_error(errors)
@@ -190,17 +85,17 @@ class TestErrorContracts:
         assert error.details[0].field == "field1"
         assert error.details[0].message == "Field 1 is required"
 
-    def test_create_not_found_error(self):
+    def test_create_not_found_error(self) -> None:
         """Test create_not_found_error helper."""
-        error = create_not_found_error("Job", "job123")
+        error = create_not_found_error("Collection", "collection123")
 
         assert error.error == "NotFoundError"
-        assert error.message == "Job not found"
-        assert error.resource_type == "Job"
-        assert error.resource_id == "job123"
+        assert error.message == "Collection not found"
+        assert error.resource_type == "Collection"
+        assert error.resource_id == "collection123"
         assert error.status_code == 404
 
-    def test_create_insufficient_memory_error(self):
+    def test_create_insufficient_memory_error(self) -> None:
         """Test create_insufficient_memory_error helper."""
         error = create_insufficient_memory_error(
             required="4GB", available="2GB", suggestion="Try using a smaller model"
@@ -218,20 +113,20 @@ class TestErrorContracts:
 class TestSearchContractsExtended:
     """Extended tests for search contracts including edge cases."""
 
-    def test_search_result_required_doc_id(self):
+    def test_search_result_required_doc_id(self) -> None:
         """Test that doc_id is required in SearchResult."""
         # Should fail without doc_id
         with pytest.raises(ValidationError) as exc_info:
-            SearchResult(chunk_id="chunk1", score=0.95, path="/test.txt")
+            SearchResult(chunk_id="chunk1", score=0.95, path="/test.txt")  # type: ignore[call-arg]
         assert "doc_id" in str(exc_info.value)
 
-    def test_hybrid_search_result_required_doc_id(self):
+    def test_hybrid_search_result_required_doc_id(self) -> None:
         """Test that doc_id is required in HybridSearchResult."""
-        from shared.contracts.search import HybridSearchResult
+        from packages.shared.contracts.search import HybridSearchResult
 
         # Should fail without doc_id
         with pytest.raises(ValidationError) as exc_info:
-            HybridSearchResult(path="/test.txt", chunk_id="chunk1", score=0.95)
+            HybridSearchResult(path="/test.txt", chunk_id="chunk1", score=0.95)  # type: ignore[call-arg]
         assert "doc_id" in str(exc_info.value)
 
         # Should succeed with doc_id
@@ -247,9 +142,9 @@ class TestSearchContractsExtended:
         assert result.doc_id == "doc123"
         assert result.matched_keywords == ["test", "keyword"]
 
-    def test_batch_search_request(self):
+    def test_batch_search_request(self) -> None:
         """Test BatchSearchRequest validation."""
-        from shared.contracts.search import BatchSearchRequest
+        from packages.shared.contracts.search import BatchSearchRequest
 
         # Valid batch request
         batch = BatchSearchRequest(queries=["query1", "query2", "query3"], k=5, search_type="semantic")
@@ -266,9 +161,9 @@ class TestSearchContractsExtended:
             BatchSearchRequest(queries=["q"] * 101)
         assert "at most 100 items" in str(exc_info.value)
 
-    def test_hybrid_search_request(self):
+    def test_hybrid_search_request(self) -> None:
         """Test HybridSearchRequest validation."""
-        from shared.contracts.search import HybridSearchRequest
+        from packages.shared.contracts.search import HybridSearchRequest
 
         req = HybridSearchRequest(query="test query", k=15, mode="rerank", keyword_mode="all", score_threshold=0.7)
         assert req.query == "test query"
@@ -276,9 +171,9 @@ class TestSearchContractsExtended:
         assert req.mode == "rerank"
         assert req.keyword_mode == "all"
 
-    def test_preload_model_request_response(self):
+    def test_preload_model_request_response(self) -> None:
         """Test PreloadModelRequest and Response."""
-        from shared.contracts.search import PreloadModelRequest, PreloadModelResponse
+        from packages.shared.contracts.search import PreloadModelRequest, PreloadModelResponse
 
         # Request
         req = PreloadModelRequest(model_name="sentence-transformers/all-MiniLM-L6-v2", quantization="float16")
@@ -289,9 +184,9 @@ class TestSearchContractsExtended:
         resp = PreloadModelResponse(status="success", message="Model preloaded successfully")
         assert resp.status == "success"
 
-    def test_search_response(self):
+    def test_search_response(self) -> None:
         """Test SearchResponse model."""
-        from shared.contracts.search import SearchResponse
+        from packages.shared.contracts.search import SearchResponse
 
         response = SearchResponse(
             query="test query",
@@ -312,9 +207,9 @@ class TestSearchContractsExtended:
         assert response.embedding_time_ms == 10.5
         assert response.reranking_used is True
 
-    def test_populate_by_name_behavior(self):
+    def test_populate_by_name_behavior(self) -> None:
         """Test that populate_by_name allows both field names."""
-        from shared.contracts.search import SearchRequest
+        from packages.shared.contracts.search import SearchRequest
 
         # Should accept both 'k' and 'top_k'
         req1 = SearchRequest.model_validate({"query": "test", "k": 5})
@@ -327,154 +222,12 @@ class TestSearchContractsExtended:
             SearchRequest.model_validate({"query": "test", "random_field": "value"})
 
 
-class TestJobContractsExtended:
-    """Extended tests for job contracts."""
-
-    def test_job_list_response(self):
-        """Test JobListResponse model."""
-        from shared.contracts.jobs import JobListResponse
-
-        response = JobListResponse(
-            jobs=[
-                JobResponse(
-                    id="job1",
-                    name="Job 1",
-                    status="completed",
-                    created_at=datetime.now(UTC),
-                    updated_at=datetime.now(UTC),
-                    directory_path="/data",
-                    model_name="test-model",
-                )
-            ],
-            total=1,
-            page=1,
-            page_size=100,
-            has_more=False,
-        )
-        assert len(response.jobs) == 1
-        assert response.total == 1
-        assert response.has_more is False
-
-    def test_job_metrics(self):
-        """Test JobMetrics model."""
-        from shared.contracts.jobs import JobMetrics
-
-        metrics = JobMetrics(
-            embeddings_generated=1000,
-            tokens_processed=50000,
-            processing_time_seconds=120.5,
-            average_chunk_size=250.0,
-            files_per_second=2.5,
-        )
-        assert metrics.embeddings_generated == 1000
-        assert metrics.processing_time_seconds == 120.5
-
-    def test_job_update_request(self):
-        """Test JobUpdateRequest validation."""
-        from shared.contracts.jobs import JobMetrics, JobUpdateRequest
-
-        # Valid update with metrics
-        update = JobUpdateRequest(
-            status="processing",
-            progress=0.75,
-            processed_files=75,
-            failed_files=2,
-            current_file="/data/file75.txt",
-            metrics=JobMetrics(embeddings_generated=750),
-        )
-        assert update.progress == 0.75
-        assert update.processed_files == 75
-
-        # Invalid progress (> 1.0)
-        with pytest.raises(ValidationError) as exc_info:
-            JobUpdateRequest(progress=1.5)
-        assert "less than or equal to 1" in str(exc_info.value)
-
-        # Invalid progress (< 0.0)
-        with pytest.raises(ValidationError) as exc_info:
-            JobUpdateRequest(progress=-0.1)
-        assert "greater than or equal to 0" in str(exc_info.value)
-
-    def test_job_filter(self):
-        """Test JobFilter model."""
-        from shared.contracts.jobs import JobFilter
-
-        filter_obj = JobFilter(
-            status="completed",
-            user_id="user123",
-            created_after=datetime(2024, 1, 1, tzinfo=UTC),
-            created_before=datetime(2024, 12, 31, tzinfo=UTC),
-            name_contains="embedding",
-            model_name="Qwen/Qwen3-Embedding-0.6B",
-        )
-        assert filter_obj.status == "completed"
-        assert filter_obj.name_contains == "embedding"
-
-    def test_create_job_request_name_validation(self):
-        """Test name field constraints for CreateJobRequest."""
-        # Test max length for name (255 character limit)
-        long_name = "x" * 255  # Max allowed name length
-        req = CreateJobRequest(name=long_name, directory_path="/test")
-        assert req.name == long_name
-
-        # Test exceeding max length should fail
-        too_long_name = "x" * 256
-        with pytest.raises(ValidationError) as exc_info:
-            CreateJobRequest(name=too_long_name, directory_path="/test")
-        assert "at most 255 characters" in str(exc_info.value)
-
-        # Empty name should fail
-        with pytest.raises(ValidationError) as exc_info:
-            CreateJobRequest(name="", directory_path="/test")
-        assert "at least 1 character" in str(exc_info.value)
-
-    def test_create_job_request_field_edge_cases(self):
-        """Test edge cases for CreateJobRequest fields."""
-        # Test batch_size boundaries
-        req1 = CreateJobRequest(name="Test", directory_path="/test", batch_size=1)
-        assert req1.batch_size == 1
-
-        req2 = CreateJobRequest(name="Test", directory_path="/test", batch_size=500)
-        assert req2.batch_size == 500
-
-        # Test file_extensions field (which exists instead of include/exclude patterns)
-        req3 = CreateJobRequest(
-            name="Test",
-            directory_path="/test",
-            file_extensions=[".txt", ".md", "py"],  # Should normalize py to .py
-        )
-        assert len(req3.file_extensions) == 3
-        assert req3.file_extensions == [".txt", ".md", ".py"]
-
-    def test_file_extensions_validation(self):
-        """Test file_extensions validation."""
-        # Valid extensions with and without dots
-        req = CreateJobRequest(name="Test", directory_path="/test", file_extensions=[".txt", "md", ".py", "json"])
-        # All should be normalized to lowercase with dots
-        assert req.file_extensions == [".txt", ".md", ".py", ".json"]
-
-        # Empty extension should fail
-        with pytest.raises(ValidationError) as exc_info:
-            CreateJobRequest(name="Test", directory_path="/test", file_extensions=["."])
-        assert "Invalid file extension" in str(exc_info.value)
-
-        # Too long extension should fail
-        with pytest.raises(ValidationError) as exc_info:
-            CreateJobRequest(name="Test", directory_path="/test", file_extensions=[".verylongext"])
-        assert "File extension too long" in str(exc_info.value)
-
-        # Invalid characters should fail
-        with pytest.raises(ValidationError) as exc_info:
-            CreateJobRequest(name="Test", directory_path="/test", file_extensions=[".txt!", ".py@"])
-        assert "Invalid characters in file extension" in str(exc_info.value)
-
-
 class TestErrorContractsExtended:
     """Extended tests for error contracts."""
 
-    def test_validation_error_response(self):
+    def test_validation_error_response(self) -> None:
         """Test ValidationErrorResponse model."""
-        from shared.contracts.errors import ErrorDetail, ValidationErrorResponse
+        from packages.shared.contracts.errors import ErrorDetail, ValidationErrorResponse
 
         error = ValidationErrorResponse(
             error="ValidationError",
@@ -488,23 +241,23 @@ class TestErrorContractsExtended:
         assert len(error.details) == 2
         assert error.details[0].field == "name"
 
-    def test_not_found_error_response(self):
+    def test_not_found_error_response(self) -> None:
         """Test NotFoundErrorResponse model."""
-        from shared.contracts.errors import NotFoundErrorResponse
+        from packages.shared.contracts.errors import NotFoundErrorResponse
 
         error = NotFoundErrorResponse(
             error="NotFoundError",
             message="Resource not found",
             status_code=404,
-            resource_type="Job",
-            resource_id="job123",
+            resource_type="Collection",
+            resource_id="collection123",
         )
-        assert error.resource_type == "Job"
-        assert error.resource_id == "job123"
+        assert error.resource_type == "Collection"
+        assert error.resource_id == "collection123"
 
-    def test_insufficient_resources_error(self):
+    def test_insufficient_resources_error(self) -> None:
         """Test InsufficientResourcesErrorResponse model."""
-        from shared.contracts.errors import InsufficientResourcesErrorResponse
+        from packages.shared.contracts.errors import InsufficientResourcesErrorResponse
 
         error = InsufficientResourcesErrorResponse(
             error="InsufficientResourcesError",
@@ -522,7 +275,7 @@ class TestErrorContractsExtended:
 class TestStringLengthValidation:
     """Test max_length validation for string fields to prevent DoS attacks."""
 
-    def test_search_result_max_length_validation(self):
+    def test_search_result_max_length_validation(self) -> None:
         """Test that string fields in SearchResult respect max_length."""
         # Valid lengths
         result = SearchResult(
@@ -532,7 +285,7 @@ class TestStringLengthValidation:
             path="/" + "p" * 4095,  # Max length 4096
             content="x" * 10000,  # Max length 10000
             file_name="f" * 255,  # Max length 255
-            job_id="j" * 200,  # Max length 200
+            operation_id="o" * 200,  # Max length 200
         )
         assert len(result.doc_id) == 200
         assert len(result.path) == 4096
@@ -547,32 +300,9 @@ class TestStringLengthValidation:
             SearchResult(doc_id="doc1", chunk_id="chunk1", score=0.95, path="/" + "p" * 4096)  # 4097 chars, exceeds max
         assert "at most 4096 characters" in str(exc_info.value)
 
-    def test_create_job_request_max_length_validation(self):
-        """Test max_length validation for CreateJobRequest fields."""
-        # Valid lengths
-        req = CreateJobRequest(
-            name="n" * 255,  # Max length 255
-            description="d" * 1000,  # Max length 1000
-            directory_path="/" + "p" * 4095,  # Max length 4096
-            model_name="m" * 500,  # Max length 500
-            instruction="i" * 1000,  # Max length 1000
-        )
-        assert len(req.name) == 255
-        assert len(req.description) == 1000
-
-        # Name exceeding max length
-        with pytest.raises(ValidationError) as exc_info:
-            CreateJobRequest(name="n" * 256, directory_path="/test")  # Exceeds max length
-        assert "at most 255 characters" in str(exc_info.value)
-
-        # Model name exceeding max length
-        with pytest.raises(ValidationError) as exc_info:
-            CreateJobRequest(name="Test", directory_path="/test", model_name="m" * 501)  # Exceeds max length
-        assert "at most 500 characters" in str(exc_info.value)
-
-    def test_batch_search_request_query_validation(self):
+    def test_batch_search_request_query_validation(self) -> None:
         """Test that each query in BatchSearchRequest respects max length."""
-        from shared.contracts.search import BatchSearchRequest
+        from packages.shared.contracts.search import BatchSearchRequest
 
         # Valid queries
         batch = BatchSearchRequest(queries=["q" * 1000, "short query", "x" * 500])
@@ -583,7 +313,7 @@ class TestStringLengthValidation:
             BatchSearchRequest(queries=["valid query", "x" * 1001])  # Second query exceeds max
         assert "Each query must not exceed 1000 characters" in str(exc_info.value)
 
-    def test_error_response_max_length_validation(self):
+    def test_error_response_max_length_validation(self) -> None:
         """Test max_length validation for error response models."""
         # Valid lengths
         error = ErrorResponse(

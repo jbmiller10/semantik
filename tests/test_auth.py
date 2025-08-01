@@ -9,7 +9,7 @@ import requests
 BASE_URL = "http://localhost:8080"
 
 
-def test_auth():
+def test_auth() -> None:
     # Check if server is running
     try:
         requests.get(f"{BASE_URL}/", timeout=1)

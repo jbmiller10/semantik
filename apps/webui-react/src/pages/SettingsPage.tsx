@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { settingsApi } from '../services/api';
-import { useJobsStore } from '../stores/jobsStore';
+import { useQueryClient } from '@tanstack/react-query';
+import { settingsApi } from '../services/api/v2';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface DatabaseStats {
-  job_count: number;
+  collection_count: number;
   file_count: number;
   database_size_mb: number;
   parquet_files_count: number;
@@ -13,12 +14,12 @@ interface DatabaseStats {
 
 function SettingsPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [stats, setStats] = useState<DatabaseStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmText, setConfirmText] = useState('');
   const [resetting, setResetting] = useState(false);
-  const { setJobs } = useJobsStore();
 
   // Load statistics on component mount
   useEffect(() => {
@@ -48,19 +49,22 @@ function SettingsPage() {
       setResetting(true);
       await settingsApi.resetDatabase();
       
-      // Clear all jobs from the store
-      setJobs([]);
+      // Clear all React Query caches
+      queryClient.clear();
       
       // Show success message and redirect
       alert('Database reset successfully!');
       setShowConfirmDialog(false);
       setConfirmText('');
       
-      // Redirect to jobs page
+      // Redirect to home page
       navigate('/');
     } catch (error) {
       console.error('Failed to reset database:', error);
-      alert('Failed to reset database. Check console for details.');
+      
+      const errorMessage = getErrorMessage(error);
+      
+      alert(`Failed to reset database: ${errorMessage}`);
     } finally {
       setResetting(false);
     }
@@ -109,10 +113,10 @@ function SettingsPage() {
                   <svg className="h-5 w-5 text-gray-400 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
                   </svg>
-                  <div className="text-sm text-gray-600">Total Jobs</div>
+                  <div className="text-sm text-gray-600">Total Collections</div>
                 </div>
                 <div className="text-2xl font-semibold mt-1">
-                  {formatNumber(stats.job_count)}
+                  {formatNumber(stats.collection_count)}
                 </div>
               </div>
               
@@ -185,7 +189,7 @@ function SettingsPage() {
           <div>
             <h4 className="font-medium mb-2">Reset Database</h4>
             <p className="text-sm text-gray-600 mb-3">
-              This will delete all jobs, files, and associated data from the database. 
+              This will delete all collections, files, and associated data from the database. 
               All Qdrant collections and parquet files will also be removed. This action cannot be undone.
             </p>
             <button
@@ -216,7 +220,7 @@ function SettingsPage() {
               </h3>
               <div className="mt-2 px-7 py-3">
                 <p className="text-sm text-gray-500">
-                  Are you sure you want to reset the database? This will permanently delete all jobs, files, and embeddings.
+                  Are you sure you want to reset the database? This will permanently delete all collections, files, and embeddings.
                 </p>
                 <p className="text-sm text-red-600 font-semibold mt-2">
                   Type "RESET" to confirm:

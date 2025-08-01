@@ -8,8 +8,6 @@
 # - Ensure all secrets are properly managed (consider Docker secrets)
 # - Review and adjust resource limits based on your hardware
 
-version: '3.8'
-
 services:
   # Production configuration for Qdrant
   qdrant:

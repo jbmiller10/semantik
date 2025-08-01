@@ -84,15 +84,25 @@ case "$SERVICE" in
             wait_for_service "$SEARCH_HOST" 8000 "Search API"
         fi
         
-        # Run database migrations if needed
-        echo "Setting up database..."
-        python -c "from shared.database import init_db; init_db()"
+        # Run database migrations using Alembic
+        echo "Running database migrations..."
+        alembic upgrade head
         
         # Start the WebUI service
-        exec uvicorn webui.main:app \
-            --host 0.0.0.0 \
-            --port "${WEBUI_PORT:-8080}" \
-            --workers "${WEBUI_WORKERS:-1}"
+        if [ "${WEBUI_RELOAD:-false}" = "true" ]; then
+            echo "Starting WebUI in development mode with auto-reload..."
+            exec uvicorn webui.main:app \
+                --host 0.0.0.0 \
+                --port "${WEBUI_PORT:-8080}" \
+                --reload \
+                --log-level "${LOG_LEVEL:-info}"
+        else
+            exec uvicorn webui.main:app \
+                --host 0.0.0.0 \
+                --port "${WEBUI_PORT:-8080}" \
+                --workers "${WEBUI_WORKERS:-1}" \
+                --log-level "${LOG_LEVEL:-info}"
+        fi
         ;;
         
     vecpipe)

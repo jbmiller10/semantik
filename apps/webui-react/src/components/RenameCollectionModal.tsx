@@ -1,15 +1,18 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { collectionsApi } from '../services/api';
+import { AxiosError } from 'axios';
+import { collectionsV2Api } from '../services/api/v2/collections';
 import { useUIStore } from '../stores/uiStore';
 
 interface RenameCollectionModalProps {
+  collectionId: string;
   currentName: string;
   onClose: () => void;
   onSuccess: (newName: string) => void;
 }
 
 function RenameCollectionModal({
+  collectionId,
   currentName,
   onClose,
   onSuccess,
@@ -23,13 +26,18 @@ function RenameCollectionModal({
       if (newName === currentName) {
         throw new Error('New name must be different from current name');
       }
-      return collectionsApi.rename(currentName, newName);
+      return collectionsV2Api.update(collectionId, { name: newName });
     },
     onSuccess: () => {
       onSuccess(newName);
     },
-    onError: (error: any) => {
-      const message = error.response?.data?.detail || error.message || 'Failed to rename collection';
+    onError: (error: Error | AxiosError) => {
+      let message = 'Failed to rename collection';
+      if (error instanceof AxiosError && error.response?.data?.detail) {
+        message = error.response.data.detail;
+      } else if (error instanceof Error) {
+        message = error.message;
+      }
       setError(message);
       addToast({ type: 'error', message });
     },

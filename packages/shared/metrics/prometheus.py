@@ -12,6 +12,59 @@ import GPUtil
 import psutil
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, Info, start_http_server
 
+# Re-export prometheus_client types for convenience
+__all__ = [
+    "Counter",
+    "Gauge",
+    "Histogram",
+    "MetricsCollector",
+    "TimingContext",
+    "registry",
+    "system_info",
+    "operations_created",
+    "operations_completed",
+    "operations_failed",
+    "operation_duration",
+    "files_processed",
+    "files_failed",
+    "chunks_created",
+    "embeddings_generated",
+    "queue_length",
+    "processing_lag",
+    "extraction_duration",
+    "chunking_duration",
+    "embedding_batch_duration",
+    "ingestion_duration",
+    "gpu_memory_used",
+    "gpu_memory_total",
+    "gpu_utilization",
+    "cpu_utilization",
+    "memory_utilization",
+    "memory_used",
+    "memory_total",
+    "qdrant_points",
+    "qdrant_upload_errors",
+    "embedding_oom_errors_total",
+    "embedding_batch_size_reductions_total",
+    "embedding_current_batch_size",
+    "gpu_memory_usage_bytes",
+    "metrics_collector",
+    "record_operation_started",
+    "record_operation_completed",
+    "record_operation_failed",
+    "record_file_processed",
+    "record_file_failed",
+    "record_chunks_created",
+    "record_embeddings_generated",
+    "update_queue_length",
+    "update_processing_lag",
+    "record_oom_error",
+    "record_batch_size_reduction",
+    "update_current_batch_size",
+    "update_gpu_memory_usage",
+    "start_metrics_server",
+]
+
 # Create custom registry
 registry = CollectorRegistry()
 
@@ -19,13 +72,17 @@ registry = CollectorRegistry()
 system_info = Info("embedding_system", "Document embedding system information", registry=registry)
 system_info.info({"version": "2.0", "pipeline": "tiktoken_parallel"})
 
-# Job Metrics
-jobs_created = Counter("embedding_jobs_created_total", "Total number of jobs created", registry=registry)
-jobs_completed = Counter("embedding_jobs_completed_total", "Total number of jobs completed", registry=registry)
-jobs_failed = Counter("embedding_jobs_failed_total", "Total number of jobs failed", registry=registry)
-job_duration = Histogram(
-    "embedding_job_duration_seconds",
-    "Job processing duration",
+# Operation Metrics
+operations_created = Counter(
+    "embedding_operations_created_total", "Total number of operations created", registry=registry
+)
+operations_completed = Counter(
+    "embedding_operations_completed_total", "Total number of operations completed", registry=registry
+)
+operations_failed = Counter("embedding_operations_failed_total", "Total number of operations failed", registry=registry)
+operation_duration = Histogram(
+    "embedding_operation_duration_seconds",
+    "Operation processing duration",
     buckets=(60, 300, 600, 1800, 3600, 7200),
     registry=registry,
 )
@@ -80,6 +137,31 @@ memory_total = Gauge("embedding_memory_total_bytes", "System memory total", regi
 # Qdrant Metrics
 qdrant_points = Gauge("embedding_qdrant_points_total", "Total points in Qdrant", ["collection"], registry=registry)
 qdrant_upload_errors = Counter("embedding_qdrant_upload_errors_total", "Qdrant upload errors", registry=registry)
+
+# Adaptive Batch Sizing Metrics
+embedding_oom_errors_total = Counter(
+    "embedding_oom_errors_total",
+    "Total out of memory errors during embedding generation",
+    ["model", "quantization"],
+    registry=registry,
+)
+embedding_batch_size_reductions_total = Counter(
+    "embedding_batch_size_reductions_total",
+    "Total batch size reductions due to OOM errors",
+    ["model", "quantization"],
+    registry=registry,
+)
+embedding_current_batch_size = Gauge(
+    "embedding_current_batch_size",
+    "Current batch size being used for embeddings",
+    ["model", "quantization"],
+    registry=registry,
+)
+gpu_memory_usage_bytes = Gauge(
+    "gpu_memory_usage_bytes",
+    "Current GPU memory usage in bytes",
+    registry=registry,
+)
 
 
 class MetricsCollector:
@@ -175,20 +257,20 @@ class TimingContext:
 
 
 # Helper functions
-def record_job_started() -> None:
-    """Record that a job has started"""
-    jobs_created.inc()
+def record_operation_started() -> None:
+    """Record that an operation has started"""
+    operations_created.inc()
 
 
-def record_job_completed(duration_seconds: float) -> None:
-    """Record that a job has completed"""
-    jobs_completed.inc()
-    job_duration.observe(duration_seconds)
+def record_operation_completed(duration_seconds: float) -> None:
+    """Record that an operation has completed"""
+    operations_completed.inc()
+    operation_duration.observe(duration_seconds)
 
 
-def record_job_failed() -> None:
-    """Record that a job has failed"""
-    jobs_failed.inc()
+def record_operation_failed() -> None:
+    """Record that an operation has failed"""
+    operations_failed.inc()
 
 
 def record_file_processed(stage: str) -> None:
@@ -225,6 +307,26 @@ def update_processing_lag(stage: str, lag_seconds: float) -> None:
 # These were defined but never called in the codebase
 
 
+def record_oom_error(model: str, quantization: str) -> None:
+    """Record an out of memory error during embedding generation"""
+    embedding_oom_errors_total.labels(model=model, quantization=quantization).inc()
+
+
+def record_batch_size_reduction(model: str, quantization: str) -> None:
+    """Record a batch size reduction due to OOM error"""
+    embedding_batch_size_reductions_total.labels(model=model, quantization=quantization).inc()
+
+
+def update_current_batch_size(model: str, quantization: str, size: int) -> None:
+    """Update the current batch size being used for embeddings"""
+    embedding_current_batch_size.labels(model=model, quantization=quantization).set(size)
+
+
+def update_gpu_memory_usage(bytes_used: int) -> None:
+    """Update the current GPU memory usage in bytes"""
+    gpu_memory_usage_bytes.set(bytes_used)
+
+
 def start_metrics_server(port: int = 9090) -> None:
     """Start Prometheus metrics server"""
     start_http_server(port, registry=registry)
@@ -242,14 +344,14 @@ if __name__ == "__main__":
         # Update resource metrics
         metrics_collector.update_resource_metrics()
 
-        # Simulate job metrics
+        # Simulate operation metrics
         if random.random() < 0.1:
-            record_job_started()
+            record_operation_started()
 
             if random.random() < 0.9:
-                record_job_completed(random.uniform(300, 3600))
+                record_operation_completed(random.uniform(300, 3600))
             else:
-                record_job_failed()
+                record_operation_failed()
 
         # Simulate file processing
         if random.random() < 0.3:

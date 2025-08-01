@@ -12,7 +12,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 # Mock metrics before importing
-sys.modules["shared.metrics.prometheus"] = MagicMock()
+sys.modules["packages.shared.metrics.prometheus"] = MagicMock()
 
 
 class TestThreadSafety(unittest.TestCase):
@@ -20,7 +20,7 @@ class TestThreadSafety(unittest.TestCase):
 
     def test_singleton_thread_safety(self) -> None:
         """Test that singleton is thread-safe."""
-        from shared.embedding import get_embedding_service_sync
+        from packages.shared.embedding import get_embedding_service_sync
 
         services: set[int] = set()
         lock = threading.Lock()
@@ -43,7 +43,7 @@ class TestThreadSafety(unittest.TestCase):
 
     def test_concurrent_model_loading(self) -> None:
         """Test concurrent model loading doesn't cause issues."""
-        from shared.embedding import EmbeddingService
+        from packages.shared.embedding import EmbeddingService
 
         results = []
         errors = []
@@ -72,7 +72,7 @@ class TestThreadSafety(unittest.TestCase):
 
     def test_concurrent_embedding_generation(self) -> None:
         """Test concurrent embedding generation is safe."""
-        from shared.embedding import EmbeddingService
+        from packages.shared.embedding import EmbeddingService
 
         service = EmbeddingService(mock_mode=True)
         service.load_model("test-model")
@@ -107,7 +107,7 @@ class TestThreadSafety(unittest.TestCase):
 
     def test_async_singleton_thread_safety(self) -> None:
         """Test async singleton is thread-safe across event loops."""
-        from shared.embedding import get_embedding_service
+        from packages.shared.embedding import get_embedding_service
 
         services: set[int] = set()
         lock = threading.Lock()
@@ -135,7 +135,7 @@ class TestThreadSafety(unittest.TestCase):
 
     def test_race_condition_in_initialization(self) -> None:
         """Test no race conditions during service initialization."""
-        from shared.embedding import cleanup, get_embedding_service
+        from packages.shared.embedding import cleanup, get_embedding_service
 
         async def test_concurrent_init() -> None:
             # Clean up any existing service
@@ -157,7 +157,7 @@ class TestThreadSafety(unittest.TestCase):
 
     def test_cleanup_during_active_requests(self) -> None:
         """Test cleanup behavior with active requests."""
-        from shared.embedding import EmbeddingService
+        from packages.shared.embedding import EmbeddingService
 
         service = EmbeddingService(mock_mode=True)
         service.load_model("test-model")
@@ -206,7 +206,7 @@ class TestAsyncConcurrency(unittest.TestCase):
         """Test concurrent async embedding generation."""
 
         async def run_test() -> None:
-            from shared.embedding import get_embedding_service, initialize_embedding_service
+            from packages.shared.embedding import get_embedding_service, initialize_embedding_service
 
             # Initialize service
             await initialize_embedding_service("test-model", mock_mode=True)
@@ -237,11 +237,11 @@ class TestAsyncConcurrency(unittest.TestCase):
         """Test that exceptions in one request don't affect others."""
 
         async def run_test() -> None:
-            from shared.embedding import get_embedding_service, initialize_embedding_service
+            from packages.shared.embedding import get_embedding_service, initialize_embedding_service
 
             # Create a custom service that sometimes fails
             class FailingService:
-                def __init__(self, service: Any):
+                def __init__(self, service: Any) -> None:
                     self.service = service
                     self.call_count = 0
 

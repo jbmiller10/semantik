@@ -1,0 +1,48 @@
+name: 'Run Frontend Tests'
+description: 'Reusable action for running frontend tests with proper path resolution'
+
+inputs:
+  test-pattern:
+    description: 'Test file pattern to run'
+    required: false
+    default: ''
+  working-directory:
+    description: 'Working directory for tests'
+    required: false
+    default: './apps/webui-react'
+  coverage:
+    description: 'Run with coverage'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run tests
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        if [ "${{ inputs.coverage }}" == "true" ]; then
+          TEST_CMD="npm run test:coverage -- --run"
+        else
+          TEST_CMD="npm test -- --run --reporter=verbose"
+        fi
+        
+        if [ -n "${{ inputs.test-pattern }}" ]; then
+          # Convert pattern to proper format for vitest
+          PATTERN="${{ inputs.test-pattern }}"
+          
+          # If pattern contains multiple files, split and quote each
+          if [[ "$PATTERN" == *" "* ]]; then
+            IFS=' ' read -ra FILES <<< "$PATTERN"
+            FORMATTED_PATTERN=""
+            for file in "${FILES[@]}"; do
+              FORMATTED_PATTERN="$FORMATTED_PATTERN '$file'"
+            done
+            eval "$TEST_CMD $FORMATTED_PATTERN"
+          else
+            $TEST_CMD "$PATTERN"
+          fi
+        else
+          $TEST_CMD
+        fi

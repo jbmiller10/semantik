@@ -2,7 +2,18 @@
 
 ## Overview
 
-This guide covers deploying Semantik in various environments, from development to production. Semantik can be deployed using Docker, systemd services, or manual process management.
+This guide covers deploying Semantik in various environments, from development to production. Semantik is designed as a containerized microservices architecture using Docker Compose for orchestration.
+
+## Architecture Overview
+
+Semantik consists of the following services:
+- **Qdrant**: Vector database for semantic search
+- **PostgreSQL**: Relational database for user data and metadata
+- **Redis**: Message broker for Celery task queue
+- **Vecpipe**: Search API service for embeddings and search
+- **WebUI**: Web interface and REST API
+- **Worker**: Celery worker for background tasks
+- **Flower**: Task monitoring dashboard
 
 ## Deployment Options
 
@@ -11,374 +22,325 @@ This guide covers deploying Semantik in various environments, from development t
 - **Benefits**: Isolated dependencies, easy scaling, reproducible builds
 - **Requirements**: Docker 20.10+, Docker Compose 2.0+
 
-### 2. Systemd Services
-- **Best for**: Linux servers, automatic restart, system integration
-- **Benefits**: OS-level management, logging integration, resource limits
-- **Requirements**: systemd-based Linux distribution
+### 2. Kubernetes Deployment
+- **Best for**: Large-scale production, auto-scaling
+- **Benefits**: Orchestration, self-healing, rolling updates
+- **Requirements**: Kubernetes 1.24+, Helm 3.0+
 
 ### 3. Manual Deployment
 - **Best for**: Development, debugging, custom setups
-- **Benefits**: Direct control, easy debugging, flexible configuration
+- **Benefits**: Direct control, easy debugging
 - **Requirements**: Python 3.12+, CUDA toolkit (optional)
 
 ## Quick Start
 
-### Using Docker Compose
+### Using the Setup Wizard (Recommended)
+
+```bash
+# Interactive setup wizard
+make wizard
+```
+
+The wizard will:
+- Detect GPU availability
+- Generate secure passwords
+- Configure environment
+- Create necessary directories
+- Start all services
+
+### Manual Docker Deployment
+
 ```bash
 # Clone the repository
 git clone https://github.com/your-org/semantik.git
 cd semantik
 
-# Copy environment template
-cp .env.example .env
-
-# Edit configuration
-nano .env
+# Copy and configure environment
+cp .env.docker.example .env
+# Edit .env with your settings
 
 # Start all services
-docker-compose up -d
+make docker-up
 
-# Check status
-docker-compose ps
-
-# View logs
-docker-compose logs -f
-```
-
-### Using Shell Scripts
-```bash
-# Install dependencies
-poetry install
-
-# Initialize database
-poetry run python -c "from shared.database import init_db; init_db()"
-
-# Start all services
-./start_all_services.sh
-
-# Check status
-./status_services.sh
+# Verify deployment
+docker compose ps
 ```
 
 ## Environment Variables
 
 ### Core Configuration
+
 ```bash
-# Application Settings
+# Environment Settings
 ENVIRONMENT=production              # development, staging, production
 LOG_LEVEL=INFO                     # DEBUG, INFO, WARNING, ERROR
 
-# Database Configuration
-WEBUI_DB=data/webui.db            # SQLite database path
-QDRANT_HOST=localhost             # Qdrant vector database host
+# Security (REQUIRED - Generate new values!)
+JWT_SECRET_KEY=                    # Generate: openssl rand -hex 32
+POSTGRES_PASSWORD=                 # Generate: openssl rand -hex 32
+ACCESS_TOKEN_EXPIRE_MINUTES=1440   # 24 hours
+
+# Service URLs (Docker handles internally)
+QDRANT_HOST=qdrant                # Qdrant container name
 QDRANT_PORT=6333                  # Qdrant port
-
-# API Configuration
-SEARCH_API_PORT=8000              # Search API port
-WEBUI_PORT=8080                   # WebUI port
-
-# Model Configuration
-DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
-DEFAULT_QUANTIZATION=float16      # float32, float16, int8
-USE_MOCK_EMBEDDINGS=false         # Use mock embeddings (no GPU)
-MODEL_UNLOAD_AFTER_SECONDS=300    # Auto-unload inactive models
-
-# Authentication
-JWT_SECRET_KEY=your-secret-key-here  # Change in production!
-JWT_ALGORITHM=HS256
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
-JWT_REFRESH_TOKEN_EXPIRE_DAYS=30
-DISABLE_AUTH=false                # Disable auth (development only)
-
-# Performance
-MAX_WORKERS=4                     # Parallel processing workers
-BATCH_SIZE=32                     # Embedding batch size
-CHUNK_SIZE=512                    # Document chunk size
-CHUNK_OVERLAP=128                 # Chunk overlap tokens
-
-# Monitoring
-METRICS_PORT=9091                 # Prometheus metrics port
-ENABLE_METRICS=true               # Enable metrics collection
+POSTGRES_HOST=postgres            # PostgreSQL container name
+POSTGRES_PORT=5432                # PostgreSQL port
+REDIS_URL=redis://redis:6379/0    # Redis connection URL
 ```
 
-### GPU Configuration
-```bash
-# CUDA Settings
-CUDA_VISIBLE_DEVICES=0            # GPU device ID (comma-separated)
-PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+### Model Configuration
 
-# Memory Management
-GPU_MEMORY_FRACTION=0.9           # Fraction of GPU memory to use
-FORCE_CPU=false                   # Force CPU mode
+```bash
+# Embedding Models
+DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
+DEFAULT_QUANTIZATION=float16      # float32, float16, int8
+USE_MOCK_EMBEDDINGS=false         # Use mock embeddings (testing)
+MODEL_UNLOAD_AFTER_SECONDS=300    # Auto-unload inactive models
+
+# GPU Configuration
+CUDA_VISIBLE_DEVICES=0            # GPU device ID
+MODEL_MAX_MEMORY_GB=8             # GPU memory limit
 ```
 
 ### Storage Configuration
-```bash
-# Data Directories
-DATA_DIR=/app/data                # Main data directory
-MODELS_DIR=/app/models            # Model cache directory
-LOGS_DIR=/app/logs                # Log files directory
-UPLOAD_DIR=/app/uploads           # Temporary upload directory
 
-# Volume Mounts (Docker)
-DOCUMENTS_DIR=/documents          # Document source directory
+```bash
+# Volume Paths
+DOCUMENT_PATH=./documents         # Source documents directory
+HF_CACHE_DIR=./models            # Model cache directory
+
+# Operation Paths (inside containers)
+EXTRACT_DIR=/app/operations/extract
+INGEST_DIR=/app/operations/ingest
+```
+
+### Database Configuration
+
+```bash
+# PostgreSQL
+POSTGRES_DB=semantik
+POSTGRES_USER=semantik
+POSTGRES_PASSWORD=${SECURE_PASSWORD}
+
+# Connection Pool Settings
+DB_POOL_SIZE=20
+DB_MAX_OVERFLOW=40
+DB_POOL_TIMEOUT=30
+DB_POOL_RECYCLE=3600
+DB_POOL_PRE_PING=true
+
+# Redis
+CELERY_BROKER_URL=redis://redis:6379/0
+CELERY_RESULT_BACKEND=redis://redis:6379/0
 ```
 
 ## Docker Deployment
 
+### Service Dependencies
+
+```mermaid
+graph LR
+    A[PostgreSQL] --> B[WebUI]
+    C[Redis] --> B
+    D[Qdrant] --> B
+    D --> E[Vecpipe]
+    A --> E
+    C --> F[Worker]
+    D --> F
+    A --> F
+    C --> G[Flower]
+```
+
+### Docker Compose Profiles
+
+#### Default Profile
+Core services for basic functionality:
+```bash
+docker compose up -d
+# Starts: PostgreSQL, Redis, Qdrant, Vecpipe, WebUI
+```
+
+#### Backend Profile
+Includes background task processing:
+```bash
+docker compose --profile backend up -d
+# Additionally starts: Worker, Flower
+```
+
 ### Production Docker Compose
+
+Create `docker-compose.prod.yml`:
+
 ```yaml
 version: '3.8'
 
 services:
+  # Apply production settings to all services
   qdrant:
-    image: qdrant/qdrant:latest
-    restart: unless-stopped
-    ports:
-      - "6333:6333"
-    volumes:
-      - qdrant_storage:/qdrant/storage
-    environment:
-      - QDRANT__SERVICE__HTTP_PORT=6333
-      - QDRANT__SERVICE__ENABLE_TLS=false
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
 
-  search-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: semantik:latest
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./data:/app/data
-      - ./models:/app/models
-      - ./logs:/app/logs
-      - ${DOCUMENTS_DIR}:/documents:ro
+  postgres:
+    restart: always
     environment:
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
-      - USE_MOCK_EMBEDDINGS=${USE_MOCK_EMBEDDINGS:-false}
-      - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL}
-      - DEFAULT_QUANTIZATION=${DEFAULT_QUANTIZATION}
-      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
-    depends_on:
-      qdrant:
-        condition: service_healthy
-    command: ["python", "-m", "vecpipe.search_api"]
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+      - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
+    secrets:
+      - postgres_password
 
   webui:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: semantik:latest
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./data:/app/data
-      - ./models:/app/models
-      - ./logs:/app/logs
-      - ${DOCUMENTS_DIR}:/documents:ro
+    restart: always
     environment:
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
-      - SEARCH_API_URL=http://search-api:8000
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - DISABLE_AUTH=${DISABLE_AUTH:-false}
-    depends_on:
-      - search-api
-      - qdrant
-    command: ["python", "-m", "webui.main"]
+      - ENVIRONMENT=production
+      - JWT_SECRET_KEY_FILE=/run/secrets/jwt_secret
+    secrets:
+      - jwt_secret
 
-volumes:
-  qdrant_storage:
-    driver: local
+  vecpipe:
+    restart: always
+    deploy:
+      replicas: 2  # Scale for performance
 
-networks:
-  default:
-    name: semantik-network
+secrets:
+  postgres_password:
+    external: true
+  jwt_secret:
+    external: true
 ```
 
-### Building Docker Images
+Deploy with:
 ```bash
-# Build standard image
-docker build -t semantik:latest .
-
-# Build with CUDA support
-docker build -f Dockerfile.cuda -t semantik:cuda .
-
-# Build with specific Python version
-docker build --build-arg PYTHON_VERSION=3.12 -t semantik:py312 .
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
-### Docker Health Checks
-```dockerfile
-# In Dockerfile
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:8080/health || exit 1
+### Health Checks
+
+All services include health checks:
+
+```yaml
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:8080/api/health/readyz"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 60s
+```
+
+Monitor health:
+```bash
+# Check all services
+docker compose ps
+
+# Detailed health status
+docker inspect semantik-webui --format='{{.State.Health.Status}}'
+```
+
+## Service Management
+
+### Starting Services
+
+```bash
+# Start all services
+make docker-up
+
+# Start with GPU support
+docker compose -f docker-compose.yml -f docker-compose.cuda.yml up -d
+
+# Start specific service
+docker compose up -d webui
+```
+
+### Stopping Services
+
+```bash
+# Stop all services (preserves data)
+make docker-down
+
+# Stop and remove volumes (CAUTION: deletes data)
+docker compose down -v
+```
+
+### Scaling Services
+
+```bash
+# Scale search API
+docker compose up -d --scale vecpipe=3
+
+# Scale workers
+docker compose --profile backend up -d --scale worker=5
 ```
 
 ## Volume Management
 
-### Required Volumes
-1. **Data Volume**: SQLite database and job data
-   ```bash
-   ./data:/app/data
-   ```
+### Persistent Volumes
 
-2. **Models Volume**: Cached embedding models
-   ```bash
-   ./models:/app/models
-   ```
+1. **postgres_data**: PostgreSQL database
+   - Critical user and collection data
+   - Must be backed up regularly
 
-3. **Logs Volume**: Application logs
-   ```bash
-   ./logs:/app/logs
-   ```
+2. **qdrant_storage**: Vector indices
+   - Can be rebuilt from source documents
+   - Large size, consider SSD storage
 
-4. **Documents Volume**: Source documents (read-only)
-   ```bash
-   /path/to/documents:/documents:ro
-   ```
+3. **redis_data**: Task queue data
+   - Can be recreated if lost
+   - Small size, temporary data
 
-### Volume Permissions
+### Bind Mounts
+
 ```bash
-# Set correct permissions
-sudo chown -R 1000:1000 ./data ./models ./logs
+# Create required directories
+mkdir -p ./data ./models ./logs ./documents
 
-# Create directories if needed
-mkdir -p data models logs
+# Set permissions
+sudo chown -R 1000:1000 ./data ./models ./logs
 ```
 
 ### Backup Strategy
+
 ```bash
-# Backup script
 #!/bin/bash
-BACKUP_DIR="/backups/semantik"
-DATE=$(date +%Y%m%d_%H%M%S)
+# backup.sh
 
-# Stop services
-docker-compose stop webui
+BACKUP_DIR="/backups/semantik/$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$BACKUP_DIR"
 
-# Backup database
-cp data/webui.db "$BACKUP_DIR/webui_${DATE}.db"
+# Backup PostgreSQL
+docker compose exec -T postgres pg_dump -U semantik semantik > "$BACKUP_DIR/postgres.sql"
 
 # Backup Qdrant
-docker exec qdrant qdrant-backup create /qdrant/backup
-docker cp qdrant:/qdrant/backup "$BACKUP_DIR/qdrant_${DATE}"
+docker compose exec qdrant curl -X POST "http://localhost:6333/snapshots" \
+  -H "Content-Type: application/json" \
+  -d '{"wait": true}'
 
-# Restart services
-docker-compose start webui
-```
+# Backup configuration
+cp .env docker-compose*.yml "$BACKUP_DIR/"
 
-## Service Dependencies
-
-### Startup Order
-```mermaid
-graph LR
-    A[Qdrant] --> B[Search API]
-    B --> C[WebUI]
-    A --> C
-```
-
-### Service Dependencies
-1. **Qdrant**: Must be healthy before other services start
-2. **Search API**: Requires Qdrant, provides embedding/search
-3. **WebUI**: Requires both Qdrant and Search API
-
-### Dependency Configuration
-```yaml
-depends_on:
-  qdrant:
-    condition: service_healthy
-  search-api:
-    condition: service_started
-```
-
-## Health Checks and Monitoring
-
-### Application Health Endpoints
-```bash
-# WebUI health check
-curl http://localhost:8080/health
-
-# Search API health check
-curl http://localhost:8000/
-
-# Qdrant health check
-curl http://localhost:6333/health
-```
-
-### Prometheus Metrics
-```yaml
-# prometheus.yml
-global:
-  scrape_interval: 15s
-
-scrape_configs:
-  - job_name: 'semantik'
-    static_configs:
-      - targets: 
-        - 'webui:9091'
-        - 'search-api:9091'
-```
-
-### Logging Configuration
-```python
-# Structured logging
-LOGGING_CONFIG = {
-    "version": 1,
-    "formatters": {
-        "default": {
-            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        },
-        "json": {
-            "class": "pythonjsonlogger.jsonlogger.JsonFormatter"
-        }
-    },
-    "handlers": {
-        "file": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": "/app/logs/semantik.log",
-            "maxBytes": 10485760,  # 10MB
-            "backupCount": 5,
-            "formatter": "json"
-        }
-    }
-}
+# Compress
+tar czf "$BACKUP_DIR.tar.gz" "$BACKUP_DIR"
+rm -rf "$BACKUP_DIR"
 ```
 
 ## Production Configuration
 
 ### Nginx Reverse Proxy
-```nginx
-server {
-    listen 80;
-    server_name semantik.example.com;
-    
-    # Redirect to HTTPS
-    return 301 https://$server_name$request_uri;
-}
 
+```nginx
 server {
     listen 443 ssl http2;
     server_name semantik.example.com;
     
-    ssl_certificate /etc/ssl/certs/semantik.crt;
-    ssl_certificate_key /etc/ssl/private/semantik.key;
+    ssl_certificate /etc/letsencrypt/live/semantik.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/semantik.example.com/privkey.pem;
+    
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
     
     # WebUI
     location / {
@@ -392,10 +354,11 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
+        proxy_read_timeout 86400;
     }
     
-    # Search API
-    location /api/search {
+    # Search API (optional direct access)
+    location /api/v1/search {
         proxy_pass http://localhost:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -404,22 +367,56 @@ server {
 ```
 
 ### Security Hardening
+
+#### 1. Generate Secure Secrets
+
 ```bash
-# Environment variables
-JWT_SECRET_KEY=$(openssl rand -hex 32)
-DATABASE_ENCRYPTION_KEY=$(openssl rand -hex 32)
+# Generate secrets
+JWT_SECRET=$(openssl rand -hex 32)
+POSTGRES_PASSWORD=$(openssl rand -hex 32)
+FLOWER_PASSWORD=$(openssl rand -hex 16)
 
-# File permissions
-chmod 600 .env
-chmod 700 data/
+# Store in Docker secrets
+echo "$JWT_SECRET" | docker secret create jwt_secret -
+echo "$POSTGRES_PASSWORD" | docker secret create postgres_password -
+```
 
-# Network isolation
-docker network create --internal semantik-internal
+#### 2. Network Isolation
+
+```yaml
+# docker-compose.prod.yml
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true
+
+services:
+  webui:
+    networks:
+      - frontend
+      - backend
+  
+  postgres:
+    networks:
+      - backend
+```
+
+#### 3. Read-Only Containers
+
+```yaml
+services:
+  vecpipe:
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/tmp
 ```
 
 ### Resource Limits
+
 ```yaml
-# Docker Compose resource limits
 services:
   webui:
     deploy:
@@ -430,269 +427,296 @@ services:
         reservations:
           cpus: '1'
           memory: 2G
+
+  vecpipe:
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 ```
 
-## Systemd Service Files
+## Monitoring and Logging
 
-### Search API Service
-```ini
-# /etc/systemd/system/semantik-search.service
-[Unit]
-Description=Semantik Search API
-After=network.target
+### Prometheus Metrics
 
-[Service]
-Type=simple
-User=semantik
-Group=semantik
-WorkingDirectory=/opt/semantik
-Environment="PATH=/opt/semantik/.venv/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/opt/semantik/.venv/bin/python -m vecpipe.search_api
-Restart=always
-RestartSec=10
+Services expose metrics on internal ports:
 
-[Install]
-WantedBy=multi-user.target
+```yaml
+# prometheus.yml
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'semantik'
+    static_configs:
+      - targets:
+        - 'webui:9091'
+        - 'vecpipe:9091'
 ```
 
-### WebUI Service
-```ini
-# /etc/systemd/system/semantik-webui.service
-[Unit]
-Description=Semantik WebUI
-After=network.target semantik-search.service
-Requires=semantik-search.service
+### Centralized Logging
 
-[Service]
-Type=simple
-User=semantik
-Group=semantik
-WorkingDirectory=/opt/semantik
-Environment="PATH=/opt/semantik/.venv/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/opt/semantik/.venv/bin/python -m webui.main
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
+```yaml
+# docker-compose.prod.yml
+services:
+  webui:
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: "localhost:24224"
+        tag: "semantik.webui"
 ```
 
-### Service Management
+### Health Monitoring
+
 ```bash
-# Enable services
-sudo systemctl enable semantik-search semantik-webui
+#!/bin/bash
+# health-check.sh
 
-# Start services
-sudo systemctl start semantik-search semantik-webui
+# Check all services
+services=("webui:8080" "vecpipe:8000" "qdrant:6333" "postgres:5432" "redis:6379")
 
-# Check status
-sudo systemctl status semantik-*
-
-# View logs
-sudo journalctl -u semantik-search -f
+for service in "${services[@]}"; do
+    name="${service%%:*}"
+    port="${service##*:}"
+    
+    if docker compose exec $name nc -z localhost $port; then
+        echo "✓ $name is healthy"
+    else
+        echo "✗ $name is unhealthy"
+        exit 1
+    fi
+done
 ```
 
 ## Scaling Strategies
 
 ### Horizontal Scaling
-```yaml
-# Docker Swarm deployment
-version: '3.8'
 
-services:
-  search-api:
-    image: semantik:latest
-    deploy:
-      replicas: 3
-      update_config:
-        parallelism: 1
-        delay: 10s
-      restart_policy:
-        condition: on-failure
+#### 1. Stateless Services (WebUI, Vecpipe)
+```bash
+# Scale WebUI
+docker compose up -d --scale webui=3
+
+# Scale Search API
+docker compose up -d --scale vecpipe=5
+```
+
+#### 2. Worker Scaling
+```bash
+# Scale Celery workers
+docker compose --profile backend up -d --scale worker=10
+
+# Monitor with Flower
+open http://localhost:5555
 ```
 
 ### Load Balancing
+
+Use Docker Swarm or Kubernetes for built-in load balancing, or configure Nginx:
+
 ```nginx
-upstream search_api {
+upstream webui_backend {
     least_conn;
-    server search-api-1:8000;
-    server search-api-2:8000;
-    server search-api-3:8000;
+    server localhost:8080;
+    server localhost:8081;
+    server localhost:8082;
+}
+
+server {
+    location / {
+        proxy_pass http://webui_backend;
+    }
 }
 ```
 
 ## Troubleshooting
 
-### Common Issues
+### Service Won't Start
 
-1. **GPU Not Detected**
-   ```bash
-   # Check NVIDIA driver
-   nvidia-smi
-   
-   # Check Docker GPU support
-   docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
-   ```
-
-2. **Permission Denied**
-   ```bash
-   # Fix volume permissions
-   sudo chown -R $(id -u):$(id -g) ./data ./models ./logs
-   ```
-
-3. **Out of Memory**
-   ```bash
-   # Reduce batch size
-   export BATCH_SIZE=16
-   
-   # Use quantization
-   export DEFAULT_QUANTIZATION=int8
-   ```
-
-4. **Service Won't Start**
-   ```bash
-   # Check logs
-   docker-compose logs search-api
-   
-   # Verify dependencies
-   docker-compose ps
-   ```
-
-### Debug Mode
 ```bash
-# Enable debug logging
-export LOG_LEVEL=DEBUG
+# Check logs
+docker compose logs webui
 
-# Run in foreground
-docker-compose up search-api
+# Verify configuration
+docker compose config
 
-# Interactive shell
-docker-compose run --rm search-api bash
+# Check port availability
+sudo lsof -i :8080
+```
+
+### Database Connection Issues
+
+```bash
+# Test PostgreSQL connection
+docker compose exec postgres psql -U semantik -d semantik -c "SELECT 1"
+
+# Check Redis
+docker compose exec redis redis-cli ping
+
+# Verify Qdrant
+curl http://localhost:6333/health
+```
+
+### Memory Issues
+
+```bash
+# Check container resources
+docker stats
+
+# Adjust limits in docker-compose.yml
+# Reduce batch size
+export BATCH_SIZE=16
+export DEFAULT_QUANTIZATION=int8
+```
+
+### GPU Not Available
+
+```bash
+# Verify NVIDIA runtime
+docker run --rm --gpus all nvidia/cuda:11.8.0-base nvidia-smi
+
+# Check Docker GPU support
+docker compose exec vecpipe nvidia-smi
 ```
 
 ## Maintenance
 
 ### Regular Tasks
-1. **Log Rotation**: Configure logrotate or use Docker's json-file driver
-2. **Database Backup**: Daily backups of SQLite and Qdrant
-3. **Model Cache Cleanup**: Remove unused models periodically
-4. **Security Updates**: Regular updates of base images and dependencies
+
+#### Daily
+- Monitor service logs for errors
+- Check disk usage
+- Verify backup completion
+
+#### Weekly
+- Review performance metrics
+- Clean old operation files
+- Update container images
+
+#### Monthly
+- Security updates
+- Performance optimization
+- Capacity planning
 
 ### Update Procedure
+
 ```bash
-# Pull latest changes
+# 1. Backup current state
+./backup.sh
+
+# 2. Pull latest changes
 git pull origin main
 
-# Rebuild images
-docker-compose build
+# 3. Update images
+docker compose pull
 
-# Stop services
-docker-compose down
+# 4. Rebuild custom images
+docker compose build
 
-# Start with new images
-docker-compose up -d
+# 5. Apply database migrations
+docker compose run --rm webui alembic upgrade head
 
-# Verify health
-./check_health.sh
+# 6. Restart services
+docker compose down
+docker compose up -d
+
+# 7. Verify health
+./health-check.sh
 ```
 
-## Performance Tuning
+## Disaster Recovery
 
-### GPU Optimization
+### Backup Restoration
+
 ```bash
-# Use TensorRT for inference
-export USE_TENSORRT=true
+# 1. Stop services
+docker compose down
 
-# Optimize memory allocation
-export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+# 2. Restore PostgreSQL
+docker compose up -d postgres
+docker compose exec -T postgres psql -U semantik -d postgres < backup/postgres.sql
 
-# Enable mixed precision
-export USE_AMP=true
+# 3. Restore Qdrant
+docker compose up -d qdrant
+# Upload snapshot through Qdrant API
+
+# 4. Start remaining services
+docker compose up -d
 ```
 
-### Database Optimization
-```sql
--- SQLite optimizations
-PRAGMA journal_mode=WAL;
-PRAGMA synchronous=NORMAL;
-PRAGMA cache_size=10000;
-PRAGMA temp_store=MEMORY;
-```
+### Rollback Procedure
 
-### Caching Strategy
-```yaml
-# Redis cache for search results
-redis:
-  image: redis:alpine
-  command: redis-server --maxmemory 2gb --maxmemory-policy allkeys-lru
-```
+```bash
+# Tag current version
+docker tag semantik:latest semantik:rollback
 
-## Monitoring and Alerting
-
-### Grafana Dashboard
-```json
-{
-  "dashboard": {
-    "title": "Semantik Monitoring",
-    "panels": [
-      {
-        "title": "Search Latency",
-        "targets": [{
-          "expr": "histogram_quantile(0.95, search_api_latency_seconds_bucket)"
-        }]
-      },
-      {
-        "title": "GPU Memory Usage",
-        "targets": [{
-          "expr": "gpu_memory_used_mb / gpu_memory_total_mb * 100"
-        }]
-      }
-    ]
-  }
-}
-```
-
-### Alert Rules
-```yaml
-groups:
-  - name: semantik
-    rules:
-      - alert: HighSearchLatency
-        expr: histogram_quantile(0.95, search_api_latency_seconds_bucket) > 2
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High search latency detected"
-          
-      - alert: ServiceDown
-        expr: up{job="semantik"} == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Semantik service is down"
+# Deploy previous version
+docker compose down
+docker tag semantik:v1.0.0 semantik:latest
+docker compose up -d
 ```
 
 ## Security Checklist
 
-- [ ] Change default JWT secret key
+- [ ] Change all default passwords
+- [ ] Generate new JWT secret key
 - [ ] Enable HTTPS with valid certificates
 - [ ] Configure firewall rules
-- [ ] Set up authentication for all endpoints
+- [ ] Implement rate limiting
 - [ ] Enable audit logging
 - [ ] Regular security updates
-- [ ] Implement rate limiting
-- [ ] Configure CORS properly
-- [ ] Validate all file uploads
 - [ ] Encrypt sensitive data at rest
+- [ ] Use Docker secrets for credentials
+- [ ] Implement network segmentation
 
-## Next Steps
+## Performance Tuning
 
-1. **Production Readiness**: Complete security hardening
-2. **High Availability**: Set up redundant services
-3. **Disaster Recovery**: Implement backup/restore procedures
-4. **Performance Testing**: Load test your deployment
-5. **Monitoring Setup**: Configure comprehensive monitoring
+### Database Optimization
 
-For additional deployment scenarios or enterprise features, consult the advanced deployment guide or contact support.
+```sql
+-- PostgreSQL tuning
+ALTER SYSTEM SET shared_buffers = '256MB';
+ALTER SYSTEM SET work_mem = '16MB';
+ALTER SYSTEM SET maintenance_work_mem = '64MB';
+ALTER SYSTEM SET effective_cache_size = '1GB';
+```
+
+### Redis Optimization
+
+```bash
+# Redis configuration
+maxmemory 2gb
+maxmemory-policy allkeys-lru
+save ""  # Disable RDB saves for performance
+```
+
+### GPU Optimization
+
+```bash
+# Memory optimization
+PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+
+# Use TensorCores
+TORCH_CUDNN_V8_API_ENABLED=1
+
+# Enable mixed precision
+USE_AMP=true
+```
+
+## Support
+
+For deployment issues:
+1. Check service logs first
+2. Verify environment configuration
+3. Review this deployment guide
+4. Check GitHub issues
+5. Contact support team

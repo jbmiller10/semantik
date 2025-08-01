@@ -1,241 +1,152 @@
-You should **NEVER** mention Claude or Anthropic in your PR or Commit messages.
+<role>
+    You are an expert-level, full-stack software engineer with deep expertise in Python (FastAPI, SQLAlchemy, Celery), TypeScript (React 19, Zustand), and modern DevOps practices (Docker, PostgreSQL). Your primary responsibility is to contribute high-quality, secure, and well-tested code to the Semantik project. You write clean, maintainable code, follow architectural patterns, and prioritize security and stability. You are meticulous, detail-oriented, and always think through the implications of your changes.
+</role>
 
+  <overview>
+    <name>Semantik</name>
+    <tagline>A self-hosted semantic search engine.</tagline>
+    <mission>To transform private file servers into powerful, AI-powered knowledge bases without data ever leaving the user's hardware.</mission>
+    <status>Pre-release, undergoing a critical refactoring from a "job-centric" to a "collection-centric" architecture.</status>
+    <motivation>
+      The core motivation for your work is to build a secure, stable, and user-friendly application. The target audience is technically proficient users who value data privacy and control. Therefore, all code must be robust, and security cannot be an afterthought. The current refactoring is critical for long-term maintainability and scalability.
+    </motivation>
+  </overview>
 
-# CLAUDE.md
+  <architecture>
+    <tech_stack>
+      <backend>Python 3.11+, FastAPI, SQLAlchemy (with PostgreSQL), Celery, Redis</backend>
+      <frontend>React 19, TypeScript, Vite, Zustand, React Query, TailwindCSS</frontend>
+      <database>PostgreSQL (metadata), Qdrant (vectors)</database>
+      <devops>Docker, Docker Compose, Alembic (migrations)</devops>
+    </tech_stack>
+    <components>
+      <component name="webui">FastAPI backend handling user auth, collection management, and serving the frontend.</component>
+      <component name="vecpipe">A dedicated FastAPI service for the heavy lifting: document parsing, embedding, and search queries against Qdrant.</component>
+      <component name="worker">A Celery worker for all asynchronous background tasks like indexing and re-indexing collections.</component>
+      <component name="webui-react">The React single-page application providing the user interface.</component>
+      <component name="shared">A shared Python library containing database models, configurations, and core utilities used by other services.</component>
+    </components>
+  </architecture>
+</project_context>
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+<instructions>
+  <general_principles>
+    1.  **Prioritize Security and Stability:** Before writing any code, consider the security implications. Sanitize all user inputs, validate data, and avoid insecure patterns.
+    2.  **Follow the Architecture:** Adhere to the established separation of concerns defined in the `<codebase_map>`.
+    3.  **Complete the Refactor:** Your primary directive is to advance the "collection-centric" architecture. Systematically remove and replace all legacy "job-centric" code and terminology.
+    4.  **Test Your Work:** No feature or fix is complete without corresponding tests. All new backend logic must have integration tests, and new frontend components must have unit tests.
+    5.  **Be Explicit:** Never mention your identity as "Claude" or "an AI." Your commit messages, PR descriptions, and code comments should be written from the perspective of a human software engineer on the team.
+  </general_principles>
 
-## Project Overview
+  <task_workflow>
+    <chain_of_thought>
+      For any complex task, you must first outline your plan in a `<thinking>` block before writing code.
+    </chain_of_thought>
+    <self_correction>
+      After generating any code, you MUST perform a self-review. In a `<review>` block, critically evaluate your own code against the principles in this document (security, testing, architecture, anti-patterns). If you find any issues, provide a corrected version of the code in a `<corrected_code>` block.
+    </self_correction>
+  </task_workflow>
+  
+</instructions>
 
-**Semantik** is a self-hosted semantic search engine (pre-release) that transforms file servers into powerful, private knowledge bases using AI-powered document search. It uses vector embeddings and transformer models to enable semantic search across documents.
+<reference_information>
+  <key_commands>
+    <!-- NOTE: The Docker commands are being simplified per TICKET-001. -->
+    <command context="Full Application Startup (Docker)">
+      `make docker-up`
+    </command>
+    <command context="Local Development (Backend Services Only)">
+      `make docker-dev-up` or `docker compose --profile backend up -d`
+    </command>
+    <command context="Code Quality & Testing">
+      `make check` (runs format, lint, and test)
+    </command>
+    <command context="Database Migrations">
+      `poetry run alembic upgrade head`
+    </command>
+  </key_commands>
 
-## Essential Commands
+  <codebase_map>
+    <directory path="packages/webui/api/">
+      <rule>API Routers ONLY. Contains FastAPI routers. No business logic or direct database calls are allowed here. Logic must be delegated to a service.</rule>
+    </directory>
+    <directory path="packages/webui/services/">
+      <rule>Business Logic ONLY. Orchestrates calls between repositories and other services. All database transactions should be managed here.</rule>
+    </directory>
+    <directory path="apps/webui-react/src/stores/">
+      <rule>Zustand Stores ONLY. All client-side state management lives here. API calls should be initiated from store actions to handle state updates (loading, success, error).</rule>
+    </directory>
+  </codebase_map>
 
-### Quick Start & Development
+  <anti_patterns>
+    <anti_pattern name="Direct DB Calls from API Routers">
+      <description>Business logic and database calls should not be made directly from an API endpoint function. This violates separation of concerns.</description>
+      <bad_example>
+        @router.post("/")
+        async def create_collection(request: Request, db: AsyncSession = Depends(get_db)):
+          new_collection = CollectionModel(**request.dict())
+          db.add(new_collection)
+          await db.commit() // BAD: Business logic in router
+          return new_collection
+      </bad_example>
+      <good_example>
+        @router.post("/")
+        async def create_collection(request: Request, service: CollectionService = Depends(get_collection_service)):
+          collection = await service.create_collection(request.dict()) // GOOD: Delegated to service
+          return collection
+      </good_example>
+    </anti_pattern>
+  </anti_patterns>
 
-```bash
-# Interactive setup wizard (recommended for first-time setup)
-make wizard
+  <examples_of_good_practice>
+    <example name="Secure Database Query">
+      <description>Using parameterized queries with SQLAlchemy to prevent SQL injection.</description>
+      <code>
+        from sqlalchemy import select
+        
+        async def get_user_by_username(db: AsyncSession, username: str) -> User | None:
+          stmt = select(User).where(User.username == username)
+          result = await db.execute(stmt)
+          return result.scalar_one_or_none()
+      </code>
+    </example>
+    <example name="Correct API Error Handling">
+      <description>Catching specific service-layer exceptions and mapping them to appropriate HTTP status codes.</description>
+      <code>
+        from shared.database import EntityNotFoundError, InvalidStateError
+        
+        @router.post("/{collection_id}/reindex")
+        async def reindex_collection(...):
+          try:
+            # ... call service method ...
+          except EntityNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+          except InvalidStateError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+      </code>
+    </example>
+    <example name="Frontend State Update">
+      <description>Using Zustand for optimistic UI updates while handling potential API failures.</description>
+      <code>
+        // GOOD: Optimistic update with error handling
+        updateCollection: async (id, updates) => {
+          get().optimisticUpdateCollection(id, updates);
+          try {
+            await collectionsV2Api.update(id, updates);
+            await get().fetchCollectionById(id); // Re-fetch canonical state
+          } catch (error) {
+            await get().fetchCollectionById(id); // Revert on failure
+            // ... handle and display error ...
+          }
+        },
+      </code>
+    </example>
+  </examples_of_good_practice>
 
-# Start full development environment
-make dev                          # Runs backend + frontend dev servers
-./scripts/dev.sh                  # Alternative: manual dev server startup
-
-# Docker operations
-make docker-up                    # Start all services
-make docker-down                  # Stop all services
-make docker-logs                  # View container logs
-make docker-ps                    # Show container status
-make docker-build-fresh           # Rebuild without cache
-```
-
-### Code Quality & Testing
-
-```bash
-# Python code quality
-make format                       # Format with black & isort
-make lint                         # Lint with ruff
-make type-check                   # Type check with mypy
-make test                         # Run all tests
-make test-ci                      # Tests excluding E2E
-make test-coverage                # Generate coverage report
-make check                        # Run all checks (format, lint, type-check)
-
-# Frontend
-make frontend-test                # Run React tests
-cd apps/webui-react && npm test   # Alternative
-
-# Specific test types
-pytest tests/unit                 # Unit tests only
-pytest tests/integration          # Integration tests
-pytest tests/e2e                  # E2E tests (requires services running)
-pytest -m "not e2e"              # All tests except E2E
-```
-
-### Building & Installation
-
-```bash
-# Backend setup
-make install                      # Install production dependencies
-make dev-install                  # Install development dependencies
-poetry install                    # Direct Poetry install
-
-# Frontend setup
-make frontend-install             # Install frontend dependencies
-make frontend-build               # Production build
-make frontend-dev                 # Development server
-
-# Database migrations
-alembic upgrade head              # Apply migrations
-alembic revision --autogenerate -m "description"  # Create new migration
-```
-
-## High-Level Architecture
-
-### Core Components
-
-1. **Vector Pipeline** (`packages/vecpipe/`)
-   - Document extraction and chunking
-   - Embedding generation using transformer models
-   - Vector storage in Qdrant database
-   - Search API with semantic/hybrid search
-
-2. **Web Application** (`packages/webui/`)
-   - FastAPI backend with JWT authentication
-   - Job queue system using Celery + Redis
-   - Collection management and search API proxy
-   - User management and API key generation
-
-3. **Frontend** (`apps/webui-react/`)
-   - React 19 with TypeScript
-   - TailwindCSS for styling
-   - Zustand for state management
-   - React Query for data fetching
-
-4. **Shared Components** (`packages/shared/`)
-   - Database models (SQLAlchemy)
-   - Embedding service manager
-   - Model management utilities
-   - Common configuration
-
-### Service Architecture
-
-```
-┌─────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Frontend  │────▶│   WebUI API  │────▶│  Search API  │
-│  (React)    │     │  (FastAPI)   │     │  (FastAPI)   │
-└─────────────┘     └──────────────┘     └──────────────┘
-                            │                      │
-                            ▼                      ▼
-                    ┌──────────────┐      ┌──────────────┐
-                    │    Redis     │      │   Qdrant     │
-                    │   (Queue)    │      │  (Vectors)   │
-                    └──────────────┘      └──────────────┘
-                            │
-                            ▼
-                    ┌──────────────┐
-                    │   Workers    │
-                    │  (Celery)    │
-                    └──────────────┘
-```
-
-### Key API Endpoints
-
-**Search API (port 8000)**
-- `GET/POST /search` - Semantic search
-- `GET /hybrid_search` - Combined vector/keyword search
-- `POST /search/batch` - Batch search operations
-
-**WebUI API (port 8080)**
-- `/api/auth/*` - Authentication (login, register, refresh)
-- `/api/collections/*` - Collection CRUD operations
-- `/api/jobs/*` - Job queue management
-- `/api/search/*` - Search proxy to Search API
-- `/api/admin/*` - Admin operations (requires superuser)
-
-### Model & Embedding System
-
-- Default model: `Qwen/Qwen3-Embedding-0.6B` (small, efficient)
-- Auto-downloads models from HuggingFace on first use
-- Supports GPU acceleration (CUDA) with automatic detection
-- Models stored in `/models` volume (persisted)
-- Automatic model unloading after 5 minutes of inactivity
-
-## Key Configuration
-
-### Environment Variables
-
-Create `.env` file:
-
-```bash
-# Core settings
-QDRANT_HOST=localhost
-QDRANT_PORT=6333
-DEFAULT_COLLECTION=work_docs
-
-# Model configuration
-DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
-DEFAULT_QUANTIZATION=float16
-MODEL_UNLOAD_AFTER_SECONDS=300
-
-# Authentication (generate with: openssl rand -hex 32)
-JWT_SECRET_KEY=your-secret-key-here
-DISABLE_AUTH=false  # Set true for development
-
-# Redis configuration
-REDIS_URL=redis://localhost:6379/0
-```
-
-### Docker Compose Profiles
-
-```bash
-# Standard deployment (auto-detects GPU/CPU)
-docker compose up -d
-
-# Production deployment
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-
-# Force CUDA GPU support
-docker compose -f docker-compose.yml -f docker-compose.cuda.yml up -d
-
-# CPU-only deployment
-docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
-```
-
-## Development Workflows
-
-### Adding New Features
-
-1. **Backend Feature**:
-   - Add models to `packages/shared/database/models/`
-   - Create service in `packages/webui/services/`
-   - Add API endpoint in `packages/webui/api/`
-   - Create Alembic migration: `alembic revision --autogenerate`
-   - Add tests in `tests/`
-
-2. **Frontend Feature**:
-   - Components in `apps/webui-react/src/components/`
-   - API clients in `apps/webui-react/src/lib/api/`
-   - State management in `apps/webui-react/src/stores/`
-   - Add tests alongside components
-
-### Database Operations
-
-```bash
-# Apply migrations
-alembic upgrade head
-
-# Create new migration
-alembic revision --autogenerate -m "Add user preferences"
-
-# Rollback migration
-alembic downgrade -1
-
-# View migration history
-alembic history
-```
-
-### Testing Strategies
-
-1. **Unit Tests**: Test individual functions/classes in isolation
-2. **Integration Tests**: Test service interactions with real databases
-3. **E2E Tests**: Test full workflows including API calls
-4. **Frontend Tests**: Component tests with React Testing Library
-
-Always run `make check` before committing to ensure code quality.
-
-## Common Issues & Solutions
-
-1. **Model Download Failures**: Check internet connection and HuggingFace availability
-2. **GPU Not Detected**: Ensure NVIDIA drivers and CUDA toolkit are installed
-3. **Port Conflicts**: Default ports are 8000 (search), 8080 (webui), 6333 (qdrant)
-4. **Migration Errors**: Ensure database is running before applying migrations
-5. **Redis Connection**: Check Redis is running on port 6379
-
-## Security Considerations
-
-- JWT tokens expire after 30 minutes (configurable)
-- Passwords hashed with bcrypt
-- CORS configured for frontend development
-- API key authentication for programmatic access
-- Superuser required for admin operations
+  <common_pitfalls_to_avoid>
+    - **Mixing Sync/Async:** Do not call synchronous, blocking I/O operations inside an `async` function.
+    - **Incomplete Refactoring:** Do not introduce new code that uses the old "job" terminology. All new features must use "operation" and "collection".
+    - **Ignoring Tests:** Do not submit code without corresponding tests.
+    - **Hardcoding Secrets:** Never place passwords, API keys, or secret keys directly in the code.
+  </common_pitfalls_to_avoid>
+</reference_information>

@@ -15,9 +15,16 @@ describe('Toast', () => {
   })
 
   it('renders nothing when there are no toasts', () => {
-    ;(useUIStore as any).mockReturnValue({
+    vi.mocked(useUIStore).mockReturnValue({
       toasts: [],
       removeToast: mockRemoveToast,
+      activeTab: 'collections',
+      showDocumentViewer: null,
+      showCollectionDetailsModal: null,
+      addToast: vi.fn(),
+      setActiveTab: vi.fn(),
+      setShowDocumentViewer: vi.fn(),
+      setShowCollectionDetailsModal: vi.fn()
     })
 
     const { container } = render(<Toast />)
@@ -26,7 +33,7 @@ describe('Toast', () => {
   })
 
   it('renders error toast correctly', () => {
-    ;(useUIStore as any).mockReturnValue({
+    vi.mocked(useUIStore).mockReturnValue({
       toasts: [
         {
           id: '1',
@@ -35,6 +42,13 @@ describe('Toast', () => {
         },
       ],
       removeToast: mockRemoveToast,
+      activeTab: 'collections',
+      showDocumentViewer: null,
+      showCollectionDetailsModal: null,
+      addToast: vi.fn(),
+      setActiveTab: vi.fn(),
+      setShowDocumentViewer: vi.fn(),
+      setShowCollectionDetailsModal: vi.fn()
     })
 
     render(<Toast />)
@@ -49,7 +63,7 @@ describe('Toast', () => {
   })
 
   it('renders success toast correctly', () => {
-    ;(useUIStore as any).mockReturnValue({
+    vi.mocked(useUIStore).mockReturnValue({
       toasts: [
         {
           id: '2',
@@ -58,6 +72,13 @@ describe('Toast', () => {
         },
       ],
       removeToast: mockRemoveToast,
+      activeTab: 'collections',
+      showDocumentViewer: null,
+      showCollectionDetailsModal: null,
+      addToast: vi.fn(),
+      setActiveTab: vi.fn(),
+      setShowDocumentViewer: vi.fn(),
+      setShowCollectionDetailsModal: vi.fn()
     })
 
     render(<Toast />)
@@ -72,7 +93,7 @@ describe('Toast', () => {
   })
 
   it('renders warning toast correctly', () => {
-    ;(useUIStore as any).mockReturnValue({
+    vi.mocked(useUIStore).mockReturnValue({
       toasts: [
         {
           id: '3',
@@ -81,6 +102,13 @@ describe('Toast', () => {
         },
       ],
       removeToast: mockRemoveToast,
+      activeTab: 'collections',
+      showDocumentViewer: null,
+      showCollectionDetailsModal: null,
+      addToast: vi.fn(),
+      setActiveTab: vi.fn(),
+      setShowDocumentViewer: vi.fn(),
+      setShowCollectionDetailsModal: vi.fn()
     })
 
     render(<Toast />)
@@ -95,7 +123,7 @@ describe('Toast', () => {
   })
 
   it('renders info toast correctly', () => {
-    ;(useUIStore as any).mockReturnValue({
+    vi.mocked(useUIStore).mockReturnValue({
       toasts: [
         {
           id: '4',
@@ -104,6 +132,13 @@ describe('Toast', () => {
         },
       ],
       removeToast: mockRemoveToast,
+      activeTab: 'collections',
+      showDocumentViewer: null,
+      showCollectionDetailsModal: null,
+      addToast: vi.fn(),
+      setActiveTab: vi.fn(),
+      setShowDocumentViewer: vi.fn(),
+      setShowCollectionDetailsModal: vi.fn()
     })
 
     render(<Toast />)
@@ -118,7 +153,7 @@ describe('Toast', () => {
   })
 
   it('renders multiple toasts', () => {
-    ;(useUIStore as any).mockReturnValue({
+    vi.mocked(useUIStore).mockReturnValue({
       toasts: [
         {
           id: '1',
@@ -137,6 +172,13 @@ describe('Toast', () => {
         },
       ],
       removeToast: mockRemoveToast,
+      activeTab: 'collections',
+      showDocumentViewer: null,
+      showCollectionDetailsModal: null,
+      addToast: vi.fn(),
+      setActiveTab: vi.fn(),
+      setShowDocumentViewer: vi.fn(),
+      setShowCollectionDetailsModal: vi.fn()
     })
 
     render(<Toast />)
@@ -152,7 +194,7 @@ describe('Toast', () => {
   it('calls removeToast when close button is clicked', async () => {
     const user = userEvent.setup()
     
-    ;(useUIStore as any).mockReturnValue({
+    vi.mocked(useUIStore).mockReturnValue({
       toasts: [
         {
           id: 'toast-1',
@@ -161,6 +203,13 @@ describe('Toast', () => {
         },
       ],
       removeToast: mockRemoveToast,
+      activeTab: 'collections',
+      showDocumentViewer: null,
+      showCollectionDetailsModal: null,
+      addToast: vi.fn(),
+      setActiveTab: vi.fn(),
+      setShowDocumentViewer: vi.fn(),
+      setShowCollectionDetailsModal: vi.fn()
     })
 
     render(<Toast />)
@@ -175,7 +224,7 @@ describe('Toast', () => {
   it('handles multiple close buttons correctly', async () => {
     const user = userEvent.setup()
     
-    ;(useUIStore as any).mockReturnValue({
+    vi.mocked(useUIStore).mockReturnValue({
       toasts: [
         {
           id: 'toast-1',
@@ -189,6 +238,13 @@ describe('Toast', () => {
         },
       ],
       removeToast: mockRemoveToast,
+      activeTab: 'collections',
+      showDocumentViewer: null,
+      showCollectionDetailsModal: null,
+      addToast: vi.fn(),
+      setActiveTab: vi.fn(),
+      setShowDocumentViewer: vi.fn(),
+      setShowCollectionDetailsModal: vi.fn()
     })
 
     render(<Toast />)
@@ -205,7 +261,7 @@ describe('Toast', () => {
   })
 
   it('renders with correct positioning classes', () => {
-    ;(useUIStore as any).mockReturnValue({
+    vi.mocked(useUIStore).mockReturnValue({
       toasts: [
         {
           id: '1',
@@ -214,6 +270,13 @@ describe('Toast', () => {
         },
       ],
       removeToast: mockRemoveToast,
+      activeTab: 'collections',
+      showDocumentViewer: null,
+      showCollectionDetailsModal: null,
+      addToast: vi.fn(),
+      setActiveTab: vi.fn(),
+      setShowDocumentViewer: vi.fn(),
+      setShowCollectionDetailsModal: vi.fn()
     })
 
     render(<Toast />)
@@ -224,7 +287,7 @@ describe('Toast', () => {
   })
 
   it('renders toast with all expected classes', () => {
-    ;(useUIStore as any).mockReturnValue({
+    vi.mocked(useUIStore).mockReturnValue({
       toasts: [
         {
           id: '1',
@@ -233,6 +296,13 @@ describe('Toast', () => {
         },
       ],
       removeToast: mockRemoveToast,
+      activeTab: 'collections',
+      showDocumentViewer: null,
+      showCollectionDetailsModal: null,
+      addToast: vi.fn(),
+      setActiveTab: vi.fn(),
+      setShowDocumentViewer: vi.fn(),
+      setShowCollectionDetailsModal: vi.fn()
     })
 
     render(<Toast />)

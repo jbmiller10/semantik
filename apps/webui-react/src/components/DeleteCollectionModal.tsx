@@ -1,7 +1,5 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { collectionsApi } from '../services/api';
-import { useUIStore } from '../stores/uiStore';
+import { useDeleteCollection } from '../hooks/useCollections';
 
 interface CollectionStats {
   total_files: number;
@@ -11,6 +9,7 @@ interface CollectionStats {
 }
 
 interface DeleteCollectionModalProps {
+  collectionId: string;
   collectionName: string;
   stats: CollectionStats;
   onClose: () => void;
@@ -18,42 +17,26 @@ interface DeleteCollectionModalProps {
 }
 
 function DeleteCollectionModal({
+  collectionId,
   collectionName,
   stats,
   onClose,
   onSuccess,
 }: DeleteCollectionModalProps) {
-  const { addToast } = useUIStore();
   const [confirmText, setConfirmText] = useState('');
   const [showDetails, setShowDetails] = useState(false);
 
-  const mutation = useMutation({
-    mutationFn: async () => {
-      return collectionsApi.delete(collectionName);
-    },
-    onSuccess: (response) => {
-      const errors = response.data.errors;
-      
-      if (errors.qdrant_failures?.length > 0 || errors.artifact_failures?.length > 0) {
-        addToast({
-          type: 'warning',
-          message: `Collection deleted with some cleanup errors. Check logs for details.`,
-          duration: 10000,
-        });
-      }
-      
-      onSuccess();
-    },
-    onError: (error: any) => {
-      const message = error.response?.data?.detail || 'Failed to delete collection';
-      addToast({ type: 'error', message });
-    },
-  });
+  const deleteCollectionMutation = useDeleteCollection();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (confirmText === 'DELETE') {
-      mutation.mutate();
+      deleteCollectionMutation.mutate(collectionId, {
+        onSuccess: () => {
+          onSuccess();
+          onClose();
+        },
+      });
     }
   };
 
@@ -149,6 +132,7 @@ function DeleteCollectionModal({
                 className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-red-500 focus:border-red-500 sm:text-sm"
                 placeholder="Type DELETE here"
                 autoComplete="off"
+                autoFocus
                 required
               />
             </div>
@@ -159,16 +143,16 @@ function DeleteCollectionModal({
               type="button"
               onClick={onClose}
               className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-              disabled={mutation.isPending}
+              disabled={deleteCollectionMutation.isPending}
             >
               Cancel
             </button>
             <button
               type="submit"
               className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={mutation.isPending || confirmText !== 'DELETE'}
+              disabled={deleteCollectionMutation.isPending || confirmText !== 'DELETE'}
             >
-              {mutation.isPending ? 'Deleting...' : 'Delete Collection'}
+              {deleteCollectionMutation.isPending ? 'Deleting...' : 'Delete Collection'}
             </button>
           </div>
         </form>

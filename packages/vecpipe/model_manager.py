@@ -190,6 +190,75 @@ class ModelManager:
             self.executor, self.embedding_service.generate_single_embedding, text, model_name, quantization, instruction
         )
 
+    async def generate_embeddings_batch_async(
+        self, texts: list[str], model_name: str, quantization: str, instruction: str | None = None, batch_size: int = 32
+    ) -> list[list[float]]:
+        """
+        Generate embeddings for multiple texts with lazy model loading using batch processing
+
+        Args:
+            texts: List of texts to embed
+            model_name: Model to use
+            quantization: Quantization type
+            instruction: Optional instruction for the model
+            batch_size: Initial batch size for processing (will be adapted based on GPU memory)
+
+        Returns:
+            List of embedding vectors
+
+        Raises:
+            RuntimeError: If model loading fails
+        """
+        # Ensure model is loaded
+        if not self.ensure_model_loaded(model_name, quantization):
+            raise RuntimeError(f"Failed to load model {model_name}")
+
+        # Schedule unloading
+        await self._schedule_unload()
+
+        # Generate embeddings
+        if self.is_mock_mode:
+            # Use mock embeddings for all texts
+            import hashlib
+
+            embeddings = []
+            for text in texts:
+                hash_bytes = hashlib.sha256(text.encode()).digest()
+                values = []
+                for i in range(0, len(hash_bytes), 4):
+                    chunk = hash_bytes[i : i + 4]
+                    if len(chunk) == 4:
+                        val = int.from_bytes(chunk, byteorder="big") / (2**32)
+                        values.append(val * 2 - 1)
+                # Pad to standard size
+                while len(values) < 256:
+                    values.append(0.0)
+                embeddings.append(values[:1024])  # Standard mock size
+            return embeddings
+
+        # Use real embedding service with batch processing
+        loop = asyncio.get_event_loop()
+        assert self.embedding_service is not None  # Already checked in ensure_model_loaded
+
+        # Call the batch processing method
+        embeddings_array = await loop.run_in_executor(
+            self.executor,
+            self.embedding_service.generate_embeddings,
+            texts,
+            model_name,
+            quantization,
+            batch_size,  # Initial batch size - the service will handle adaptive sizing
+            False,  # show_progress
+            instruction,
+        )
+
+        if embeddings_array is None:
+            raise RuntimeError("Failed to generate embeddings")
+
+        # Convert numpy array to list of lists
+        result: list[list[float]] = embeddings_array.tolist()
+        return result
+
     def ensure_reranker_loaded(self, model_name: str, quantization: str) -> bool:
         """
         Ensure the specified reranker model is loaded

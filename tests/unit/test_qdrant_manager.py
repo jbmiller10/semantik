@@ -13,7 +13,7 @@ from webui.utils.retry import exponential_backoff_retry
 class TestExponentialBackoffRetry:
     """Test suite for the exponential_backoff_retry decorator"""
 
-    def test_sync_function_success_first_try(self):
+    def test_sync_function_success_first_try(self) -> None:
         """Test that sync function succeeds on first try"""
         mock_func = Mock(return_value="success")
         decorated = exponential_backoff_retry(max_retries=3)(mock_func)
@@ -23,7 +23,7 @@ class TestExponentialBackoffRetry:
         assert result == "success"
         assert mock_func.call_count == 1
 
-    def test_sync_function_retry_then_success(self):
+    def test_sync_function_retry_then_success(self) -> None:
         """Test sync function that fails twice then succeeds"""
         mock_func = Mock(side_effect=[ConnectionError("Network error"), TimeoutError("Timeout"), "success"])
 
@@ -41,7 +41,7 @@ class TestExponentialBackoffRetry:
         assert delays[0] == 0.1  # initial_delay
         assert delays[1] == 0.2  # initial_delay * 2
 
-    def test_sync_function_max_retries_exceeded(self):
+    def test_sync_function_max_retries_exceeded(self) -> None:
         """Test sync function that exceeds max retries"""
         mock_func = Mock(side_effect=ConnectionError("Persistent error"))
 
@@ -53,7 +53,7 @@ class TestExponentialBackoffRetry:
         assert mock_func.call_count == 3  # Initial + 2 retries
 
     @pytest.mark.asyncio()
-    async def test_async_function_success_first_try(self):
+    async def test_async_function_success_first_try(self) -> None:
         """Test that async function succeeds on first try"""
         mock_func = AsyncMock(return_value="async success")
         decorated = exponential_backoff_retry(max_retries=3)(mock_func)
@@ -64,7 +64,7 @@ class TestExponentialBackoffRetry:
         assert mock_func.call_count == 1
 
     @pytest.mark.asyncio()
-    async def test_async_function_retry_then_success(self):
+    async def test_async_function_retry_then_success(self) -> None:
         """Test async function that fails twice then succeeds"""
         mock_func = AsyncMock(side_effect=[ConnectionError("Network error"), TimeoutError("Timeout"), "async success"])
 
@@ -79,7 +79,7 @@ class TestExponentialBackoffRetry:
         # Verify exponential backoff delays
         assert mock_sleep.call_count == 2
 
-    def test_decorator_with_different_configurations(self):
+    def test_decorator_with_different_configurations(self) -> None:
         """Test decorator with various configuration parameters"""
         mock_func = Mock(side_effect=[Exception("Error 1"), Exception("Error 2"), Exception("Error 3"), "success"])
 
@@ -99,7 +99,7 @@ class TestExponentialBackoffRetry:
         assert delays[1] == 1.5  # 0.5 * 3
         assert delays[2] == 2.0  # Would be 4.5 but capped at max_delay
 
-    def test_decorator_preserves_function_metadata(self):
+    def test_decorator_preserves_function_metadata(self) -> None:
         """Test that decorator preserves the original function's metadata"""
 
         def test_function(x: int, y: str) -> str:
@@ -115,18 +115,18 @@ class TestExponentialBackoffRetry:
 class TestQdrantConnectionManager:
     """Test suite for QdrantConnectionManager class"""
 
-    def test_singleton_pattern(self):
+    def test_singleton_pattern(self) -> None:
         """Test that QdrantConnectionManager follows singleton pattern"""
         manager1 = QdrantConnectionManager()
         manager2 = QdrantConnectionManager()
 
         assert manager1 is manager2
 
-    def test_thread_safe_singleton(self):
+    def test_thread_safe_singleton(self) -> None:
         """Test that singleton is thread-safe"""
         managers = []
 
-        def create_manager():
+        def create_manager() -> None:
             managers.append(QdrantConnectionManager())
 
         threads = [threading.Thread(target=create_manager) for _ in range(10)]
@@ -141,7 +141,7 @@ class TestQdrantConnectionManager:
         assert all(m is managers[0] for m in managers)
 
     @patch("webui.utils.qdrant_manager.QdrantClient")
-    def test_get_client_creates_new_client(self, mock_qdrant_client_class):
+    def test_get_client_creates_new_client(self, mock_qdrant_client_class: Mock) -> None:
         """Test get_client creates a new client when none exists"""
         # Reset singleton
         QdrantConnectionManager._instance = None
@@ -161,7 +161,7 @@ class TestQdrantConnectionManager:
         mock_client.get_collections.assert_called_once()  # Verify connection check
 
     @patch("webui.utils.qdrant_manager.QdrantClient")
-    def test_get_client_reuses_existing_client(self, mock_qdrant_client_class):
+    def test_get_client_reuses_existing_client(self, mock_qdrant_client_class: Mock) -> None:
         """Test get_client reuses existing valid client"""
         # Reset singleton
         QdrantConnectionManager._instance = None
@@ -179,7 +179,7 @@ class TestQdrantConnectionManager:
         assert mock_qdrant_client_class.call_count == 1  # Only created once
 
     @patch("webui.utils.qdrant_manager.QdrantClient")
-    def test_get_client_recreates_on_connection_failure(self, mock_qdrant_client_class):
+    def test_get_client_recreates_on_connection_failure(self, mock_qdrant_client_class: Mock) -> None:
         """Test get_client creates new client when existing one fails verification"""
         # Reset singleton
         QdrantConnectionManager._instance = None
@@ -207,7 +207,7 @@ class TestQdrantConnectionManager:
         assert mock_qdrant_client_class.call_count == 1  # Only one new client creation
 
     @patch("webui.utils.qdrant_manager.QdrantClient")
-    def test_get_client_retry_on_creation_failure(self, mock_qdrant_client_class):
+    def test_get_client_retry_on_creation_failure(self, mock_qdrant_client_class: Mock) -> None:
         """Test get_client retries when client creation fails"""
         # Reset singleton
         QdrantConnectionManager._instance = None
@@ -227,7 +227,7 @@ class TestQdrantConnectionManager:
         assert mock_qdrant_client_class.call_count == 3
 
     @patch("webui.utils.qdrant_manager.QdrantClient")
-    def test_create_collection_success(self, mock_qdrant_client_class):
+    def test_create_collection_success(self, mock_qdrant_client_class: Mock) -> None:
         """Test successful collection creation"""
         # Reset singleton
         QdrantConnectionManager._instance = None
@@ -250,7 +250,7 @@ class TestQdrantConnectionManager:
         assert call_args.kwargs["vectors_config"].size == 768
 
     @patch("webui.utils.qdrant_manager.QdrantClient")
-    def test_create_collection_with_retry(self, mock_qdrant_client_class):
+    def test_create_collection_with_retry(self, mock_qdrant_client_class: Mock) -> None:
         """Test collection creation with retry on failure"""
         # Reset singleton
         QdrantConnectionManager._instance = None
@@ -276,7 +276,7 @@ class TestQdrantConnectionManager:
         assert mock_client.create_collection.call_count == 3
 
     @patch("webui.utils.qdrant_manager.QdrantClient")
-    def test_verify_collection_exists(self, mock_qdrant_client_class):
+    def test_verify_collection_exists(self, mock_qdrant_client_class: Mock) -> None:
         """Test verify_collection when collection exists"""
         # Reset singleton
         QdrantConnectionManager._instance = None
@@ -295,7 +295,7 @@ class TestQdrantConnectionManager:
         mock_client.get_collection.assert_called_once_with("test_collection")
 
     @patch("webui.utils.qdrant_manager.QdrantClient")
-    def test_verify_collection_not_exists(self, mock_qdrant_client_class):
+    def test_verify_collection_not_exists(self, mock_qdrant_client_class: Mock) -> None:
         """Test verify_collection when collection doesn't exist"""
         # Reset singleton
         QdrantConnectionManager._instance = None
@@ -310,7 +310,7 @@ class TestQdrantConnectionManager:
         with pytest.raises(Exception, match="Collection not found"):
             manager.verify_collection("test_collection")
 
-    def test_close_connection(self):
+    def test_close_connection(self) -> None:
         """Test closing the connection"""
         # Reset singleton
         QdrantConnectionManager._instance = None
@@ -329,7 +329,7 @@ class TestIntegrationScenarios:
     """Test realistic integration scenarios"""
 
     @patch("webui.utils.qdrant_manager.QdrantClient")
-    def test_connection_recovery_scenario(self, mock_qdrant_client_class):
+    def test_connection_recovery_scenario(self, mock_qdrant_client_class: Mock) -> None:
         """Test that manager recovers from connection failures"""
         # Reset singleton
         QdrantConnectionManager._instance = None
