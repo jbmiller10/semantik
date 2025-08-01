@@ -210,3 +210,35 @@ collections*.png
 **/test-results.txt
 EDGE_CASE_TEST_FIXES.md
 .github/workflows/backup-*/
+
+# Root level test scripts
+/test_*.py
+/test_*.sh
+/check_*.py
+/run_*_tests.py
+fix_*.py
+fix_*.sh
+
+# One-off utility scripts (in root only)
+/create_superuser.py
+/create_test_user.py
+/manual_embed_*.py
+
+# Service scripts (use Makefile instead)
+start_all_services*.sh
+stop_all_services.sh
+status_services.sh
+restart_all_services*.sh
+run_webui.sh
+cleanup_logs.sh
+
+# Output files
+mypy_output.txt
+coverage.xml
+*_rerank.json
+
+# Coverage reports
+htmlcov/
+
+# Config examples
+nginx.conf.example
