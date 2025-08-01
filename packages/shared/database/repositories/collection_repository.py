@@ -372,7 +372,7 @@ class CollectionRepository:
         try:
             # Get collection without permission check first
             collection = await self.get_by_uuid(collection_uuid)
-            
+
             if not collection:
                 raise EntityNotFoundError("collection", collection_uuid)
 

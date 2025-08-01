@@ -33,23 +33,24 @@ os.environ.setdefault("DISABLE_RATE_LIMITING", "true")
 @pytest.fixture()
 def test_client(test_user) -> None:
     """Create a test client for the FastAPI app with auth mocked."""
-    from unittest.mock import AsyncMock, patch, MagicMock
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from packages.shared.database import get_db
     from packages.webui.auth import get_current_user
     from packages.webui.main import app
-    from packages.shared.database import get_db
-    
+
     # Mock the lifespan events to prevent real connections
-    with patch('packages.webui.main.pg_connection_manager') as mock_pg:
-        with patch('packages.webui.main.ws_manager') as mock_ws:
+    with patch('packages.webui.main.pg_connection_manager') as mock_pg, \
+         patch('packages.webui.main.ws_manager') as mock_ws:
             # Mock the async methods
             mock_pg.initialize = AsyncMock()
             mock_ws.startup = AsyncMock()
             mock_ws.shutdown = AsyncMock()
-            
+
             # Override dependencies
             async def override_get_current_user():
                 return test_user
-            
+
             async def override_get_db():
                 # Return a mock database session
                 mock_db = AsyncMock()
@@ -392,8 +393,9 @@ async def db_session():
     # Check if we have a test database available
     import asyncpg
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-    from packages.shared.database.models import Base
+
     from packages.shared.config.postgres import postgres_config
+    from packages.shared.database.models import Base
 
     # Use PostgreSQL for tests - get URL from environment or config
     database_url = os.environ.get("DATABASE_URL")
@@ -434,9 +436,10 @@ async def db_session():
 @pytest_asyncio.fixture
 async def test_user_db(db_session):
     """Create a test user in the database."""
-    from packages.shared.database.models import User
-    from datetime import datetime
     import random
+    from datetime import datetime
+
+    from packages.shared.database.models import User
 
     # Use random ID to avoid conflicts
     user_id = random.randint(1000, 9999)
@@ -446,8 +449,8 @@ async def test_user_db(db_session):
         hashed_password="hashed_password",
         email=f"test_{user_id}@example.com",
         is_active=True,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     db_session.add(user)
     await db_session.commit()
@@ -458,9 +461,10 @@ async def test_user_db(db_session):
 @pytest_asyncio.fixture
 async def other_user_db(db_session):
     """Create another test user in the database."""
-    from packages.shared.database.models import User
-    from datetime import datetime
     import random
+    from datetime import datetime
+
+    from packages.shared.database.models import User
 
     # Use random ID to avoid conflicts
     user_id = random.randint(10000, 19999)
@@ -470,8 +474,8 @@ async def other_user_db(db_session):
         hashed_password="hashed_password",
         email=f"other_{user_id}@example.com",
         is_active=True,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     db_session.add(user)
     await db_session.commit()
@@ -482,9 +486,10 @@ async def other_user_db(db_session):
 @pytest_asyncio.fixture
 async def collection_factory(db_session):
     """Factory for creating test collections."""
-    from packages.shared.database.models import Collection, CollectionStatus
     from datetime import datetime
     from uuid import uuid4
+
+    from packages.shared.database.models import Collection, CollectionStatus
 
     created_collections = []
 
@@ -492,7 +497,7 @@ async def collection_factory(db_session):
         # owner_id must be provided - no default
         if "owner_id" not in kwargs:
             raise ValueError("owner_id must be provided when creating a collection")
-            
+
         defaults = {
             "id": str(uuid4()),  # Changed from "uuid" to "id"
             "name": f"Test Collection {len(created_collections)}",
@@ -507,8 +512,8 @@ async def collection_factory(db_session):
             "document_count": 0,
             "vector_count": 0,
             "total_size_bytes": 0,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
         }
         defaults.update(kwargs)
 
@@ -526,9 +531,10 @@ async def collection_factory(db_session):
 @pytest_asyncio.fixture
 async def document_factory(db_session):
     """Factory for creating test documents."""
-    from packages.shared.database.models import Document, DocumentStatus
     from datetime import datetime
     from uuid import uuid4
+
+    from packages.shared.database.models import Document, DocumentStatus
 
     created_documents = []
 
@@ -543,8 +549,8 @@ async def document_factory(db_session):
             "content_hash": f"hash_{uuid4().hex[:8]}",
             "status": DocumentStatus.COMPLETED,
             "chunk_count": 10,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
         }
         defaults.update(kwargs)
 
@@ -562,9 +568,10 @@ async def document_factory(db_session):
 @pytest_asyncio.fixture
 async def operation_factory(db_session):
     """Factory for creating test operations."""
-    from packages.shared.database.models import Operation, OperationType, OperationStatus
     from datetime import datetime
     from uuid import uuid4
+
+    from packages.shared.database.models import Operation, OperationStatus, OperationType
 
     created_operations = []
 
@@ -572,16 +579,16 @@ async def operation_factory(db_session):
         # user_id must be provided - no default
         if "user_id" not in kwargs:
             raise ValueError("user_id must be provided when creating an operation")
-        
+
         defaults = {
             "uuid": str(uuid4()),
             "collection_id": 1,
             "type": OperationType.INDEX,
             "status": OperationStatus.COMPLETED,
             "config": {},
-            "created_at": datetime.utcnow(),
-            "started_at": datetime.utcnow(),
-            "completed_at": datetime.utcnow(),
+            "created_at": datetime.now(UTC),
+            "started_at": datetime.now(UTC),
+            "completed_at": datetime.now(UTC),
         }
         defaults.update(kwargs)
 
@@ -600,7 +607,7 @@ async def operation_factory(db_session):
     yield _create_operation
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_qdrant_deletion():
     """Mock Qdrant client specifically for deletion tests."""
     mock = MagicMock()
@@ -626,7 +633,7 @@ def mock_qdrant_deletion():
     qdrant_manager.get_client = original_get_client
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_celery_for_deletion():
     """Mock Celery app for deletion tests."""
     mock_app = MagicMock()

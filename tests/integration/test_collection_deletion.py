@@ -12,15 +12,13 @@ from packages.shared.database.models import (
     Collection,
     Document,
     Operation,
-    CollectionStatus,
     OperationType,
 )
 from packages.shared.database.repositories.collection_repository import CollectionRepository
-from packages.webui.services.collection_service import CollectionService
 from packages.webui.services.factory import create_collection_service
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 class TestCollectionDeletion:
     """Test suite for collection deletion functionality."""
 
@@ -52,9 +50,9 @@ class TestCollectionDeletion:
         collection_id = collection.id
 
         # Create multiple documents
-        doc1 = await document_factory(collection_id=collection_id)
-        doc2 = await document_factory(collection_id=collection_id)
-        doc3 = await document_factory(collection_id=collection_id)
+        await document_factory(collection_id=collection_id)
+        await document_factory(collection_id=collection_id)
+        await document_factory(collection_id=collection_id)
 
         repo = CollectionRepository(db_session)
 
@@ -76,8 +74,8 @@ class TestCollectionDeletion:
         collection_id = collection.id
 
         # Create multiple operations
-        op1 = await operation_factory(collection_id=collection_id, user_id=test_user_db.id, type=OperationType.INDEX)
-        op2 = await operation_factory(collection_id=collection_id, user_id=test_user_db.id, type=OperationType.REINDEX)
+        await operation_factory(collection_id=collection_id, user_id=test_user_db.id, type=OperationType.INDEX)
+        await operation_factory(collection_id=collection_id, user_id=test_user_db.id, type=OperationType.REINDEX)
 
         repo = CollectionRepository(db_session)
 
@@ -151,7 +149,7 @@ class TestCollectionDeletion:
         collection = await collection_factory(owner_id=test_user_db.id)
 
         # Create an active operation
-        operation = await operation_factory(
+        await operation_factory(
             collection_id=collection.id, user_id=test_user_db.id, type=OperationType.INDEX, status="processing"
         )
 
@@ -169,7 +167,6 @@ class TestCollectionDeletion:
         """Test that the repository uses correct async SQLAlchemy delete pattern."""
         # Arrange
         collection = await collection_factory(owner_id=test_user_db.id)
-        collection_id = collection.id
 
         repo = CollectionRepository(db_session)
 
@@ -203,7 +200,7 @@ class TestCollectionDeletion:
         db_session.execute = original_execute
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 class TestCollectionDeletionEdgeCases:
     """Test edge cases and error scenarios for collection deletion."""
 

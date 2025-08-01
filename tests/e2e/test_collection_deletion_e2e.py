@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from packages.shared.database.models import Collection, Document, Operation
 
 
-@pytest.mark.e2e
+@pytest.mark.e2e()
 class TestCollectionDeletionE2E:
     """End-to-end tests for collection deletion."""
 
@@ -78,7 +78,7 @@ class TestCollectionDeletionE2E:
         # Verify deletion
         expect(page.locator("text=Collection deleted successfully")).to_be_visible(timeout=5000)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_delete_collection_database_cleanup(
         self, page: Page, db_session: AsyncSession, test_collection_with_data
     ):
@@ -225,25 +225,25 @@ class TestCollectionDeletionE2E:
 
 
 # Playwright fixtures for e2e tests
-@pytest.fixture
+@pytest.fixture()
 def test_collection_with_data(create_test_collection_with_documents):
     """Create a test collection with some documents."""
     return create_test_collection_with_documents(name="E2E Test Collection", document_count=5)
 
 
-@pytest.fixture
+@pytest.fixture()
 def other_user_collection(create_collection_for_other_user):
     """Create a collection owned by another user."""
     return create_collection_for_other_user(name="Other User Collection", is_public=False)
 
 
-@pytest.fixture
+@pytest.fixture()
 def collection_with_active_operation(create_collection_with_active_operation):
     """Create a collection with an active operation."""
     return create_collection_with_active_operation(name="Collection with Active Op", operation_type="index")
 
 
-@pytest.fixture
+@pytest.fixture()
 def multiple_test_collections(create_test_collection_with_documents):
     """Create multiple test collections."""
     collections = []
