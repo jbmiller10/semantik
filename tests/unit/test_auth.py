@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
-from jose import jwt
+import jwt
 from webui.auth import (
     REFRESH_TOKEN_EXPIRE_DAYS,
     UserCreate,
