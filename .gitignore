@@ -110,6 +110,7 @@ dmypy.json
 
 # Claude
 .claude/
+.claude-trace/
 
 # IDE
 .vscode/
@@ -205,3 +206,7 @@ page_content.html
 screenshot*.png
 login*.png
 collections*.png
+.perm_test
+**/test-results.txt
+EDGE_CASE_TEST_FIXES.md
+.github/workflows/backup-*/
