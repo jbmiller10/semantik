@@ -204,7 +204,7 @@ describe('CollectionOperations - WebSocket Real-time Updates', () => {
     expect(screen.getByTestId('operation-op-1-progress')).toHaveTextContent('Progress: 0%')
 
     // Simulate rapid updates
-    for (let progress of [20, 40, 60, 80, 100]) {
+    for (const progress of [20, 40, 60, 80, 100]) {
       const updatedOp = { ...operation, progress }
       ;(useCollectionOperations as MockedFunction<typeof useCollectionOperations>).mockReturnValue({
         data: [updatedOp],

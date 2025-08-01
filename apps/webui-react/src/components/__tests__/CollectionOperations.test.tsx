@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import React from 'react'
-import { render, screen, waitFor } from '@/tests/utils/test-utils'
+import { render, screen } from '@/tests/utils/test-utils'
 import CollectionOperations from '../CollectionOperations'
 import { useCollectionOperations } from '@/hooks/useCollectionOperations'
 import type { Collection, Operation, OperationType, OperationStatus } from '@/types/collection'
