@@ -96,7 +96,9 @@ class TestCollectionDeletionEndpoint:
         from packages.webui.services.factory import get_collection_service
 
         mock_service = AsyncMock()
-        mock_service.delete_collection = AsyncMock(side_effect=InvalidStateError("Cannot delete collection while operations are in progress"))
+        mock_service.delete_collection = AsyncMock(
+            side_effect=InvalidStateError("Cannot delete collection while operations are in progress")
+        )
 
         app.dependency_overrides[get_collection_service] = lambda: mock_service
 

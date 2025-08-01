@@ -33,7 +33,13 @@ class TestAsyncSQLAlchemyPatterns:
 
             # Look for session.delete() calls
             for node in ast.walk(tree):
-                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "delete" and isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "session":
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "delete"
+                    and isinstance(node.func.value, ast.Attribute)
+                    and node.func.value.attr == "session"
+                ):
                     # Get the line number and content
                     line_num = node.lineno
                     line = content.split("\n")[line_num - 1].strip()
@@ -135,10 +141,10 @@ class TestAsyncSQLAlchemyPatterns:
                 and "self.db_session" in content
                 and "commit()" not in content
             ):
-                    # Some services might be read-only, so only fail if they have write operations
-                    write_ops = ["create_", "update_", "delete_", "add_", "remove_"]
-                    if any(f"async def {op}" in content for op in write_ops):
-                        pytest.fail(f"{py_file.name} has write operations but doesn't commit transactions")
+                # Some services might be read-only, so only fail if they have write operations
+                write_ops = ["create_", "update_", "delete_", "add_", "remove_"]
+                if any(f"async def {op}" in content for op in write_ops):
+                    pytest.fail(f"{py_file.name} has write operations but doesn't commit transactions")
 
     def test_no_type_ignore_for_async_operations(self):
         """Ensure we're not suppressing warnings for async operations."""

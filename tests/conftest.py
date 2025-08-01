@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 test_env_path = Path(__file__).parent.parent / ".env.test"
 if test_env_path.exists():
     from dotenv import load_dotenv
+
     load_dotenv(test_env_path, override=True)
 
 # Set required environment variables for tests
@@ -40,41 +41,43 @@ def test_client(test_user) -> None:
     from packages.webui.main import app
 
     # Mock the lifespan events to prevent real connections
-    with patch('packages.webui.main.pg_connection_manager') as mock_pg, \
-         patch('packages.webui.main.ws_manager') as mock_ws:
-            # Mock the async methods
-            mock_pg.initialize = AsyncMock()
-            mock_ws.startup = AsyncMock()
-            mock_ws.shutdown = AsyncMock()
+    with (
+        patch("packages.webui.main.pg_connection_manager") as mock_pg,
+        patch("packages.webui.main.ws_manager") as mock_ws,
+    ):
+        # Mock the async methods
+        mock_pg.initialize = AsyncMock()
+        mock_ws.startup = AsyncMock()
+        mock_ws.shutdown = AsyncMock()
 
-            # Override dependencies
-            async def override_get_current_user():
-                return test_user
+        # Override dependencies
+        async def override_get_current_user():
+            return test_user
 
-            async def override_get_db():
-                # Return a mock database session
-                mock_db = AsyncMock()
-                # Mock common async methods
-                mock_db.execute = AsyncMock()
-                mock_db.scalar = AsyncMock()
-                mock_db.scalars = AsyncMock()
-                mock_db.commit = AsyncMock()
-                mock_db.rollback = AsyncMock()
-                mock_db.flush = AsyncMock()
-                mock_db.refresh = AsyncMock()
-                mock_db.add = MagicMock()
-                mock_db.delete = MagicMock()
-                yield mock_db
+        async def override_get_db():
+            # Return a mock database session
+            mock_db = AsyncMock()
+            # Mock common async methods
+            mock_db.execute = AsyncMock()
+            mock_db.scalar = AsyncMock()
+            mock_db.scalars = AsyncMock()
+            mock_db.commit = AsyncMock()
+            mock_db.rollback = AsyncMock()
+            mock_db.flush = AsyncMock()
+            mock_db.refresh = AsyncMock()
+            mock_db.add = MagicMock()
+            mock_db.delete = MagicMock()
+            yield mock_db
 
-            app.dependency_overrides[get_current_user] = override_get_current_user
-            app.dependency_overrides[get_db] = override_get_db
+        app.dependency_overrides[get_current_user] = override_get_current_user
+        app.dependency_overrides[get_db] = override_get_db
 
-            client = TestClient(app)
+        client = TestClient(app)
 
-            # Ensure we clean up after the test
-            yield client
+        # Ensure we clean up after the test
+        yield client
 
-            app.dependency_overrides.clear()
+        app.dependency_overrides.clear()
 
 
 @pytest.fixture()
