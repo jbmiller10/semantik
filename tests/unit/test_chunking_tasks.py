@@ -13,10 +13,8 @@ import pytest
 from redis import Redis
 
 from packages.shared.database.models import OperationStatus, OperationType
-from packages.shared.text_processing.base_chunker import ChunkResult
 from packages.webui.api.chunking_exceptions import (
     ChunkingMemoryError,
-    ChunkingPartialFailureError,
     ChunkingResourceLimitError,
     ResourceType,
 )
