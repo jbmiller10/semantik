@@ -148,7 +148,7 @@ For more complex scenarios...
         return configs.get(strategy, configs["recursive"])
 
     @pytest.mark.parametrize("strategy", ALL_STRATEGIES)
-    @pytest.mark.parametrize("edge_case_name,text", EDGE_CASES.items())
+    @pytest.mark.parametrize(("edge_case_name", "text"), EDGE_CASES.items())
     async def test_edge_cases(
         self,
         strategy: str,
