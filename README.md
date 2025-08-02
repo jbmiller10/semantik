@@ -4,7 +4,6 @@
 
 While we will do our best to avoid any breaking changes, we do not gurantee backwards compatibility between releases at this time. This is in the interest of providing the strongest long-term foundation for Semantik by the time of release.
 
-**📚 Documentation Update (2025-08-01):** We've completed a comprehensive documentation overhaul! Check out the new [Documentation Index](docs/DOCUMENTATION_INDEX.md) for organized access to 29+ detailed guides covering architecture, APIs, deployment, and migration from older versions.
 
 🚨🚨🚨
 
