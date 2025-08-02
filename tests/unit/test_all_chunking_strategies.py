@@ -25,7 +25,7 @@ os.environ["TESTING"] = "true"
 class TestChunkingStrategies:
     """Comprehensive tests for all strategies."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_embed_model(self) -> MockEmbedding:
         """Mock embedding model for semantic chunking tests."""
         return MockEmbedding(embed_dim=384)
@@ -59,10 +59,10 @@ class TestChunkingStrategies:
 
 class Calculator:
     """Simple calculator class."""
-    
+
     def add(self, a, b):
         return a + b
-        
+
     def multiply(self, a, b):
         return a * b
 ''',
@@ -425,16 +425,16 @@ For more complex scenarios...
         for i in range(len(chunks) - 1):
             assert chunks[i].end_offset <= chunks[i + 1].end_offset
 
-    @pytest.mark.integration
+    @pytest.mark.integration()
     async def test_code_file_optimization(self) -> None:
         """Test code files get optimized parameters."""
         code_file = """
 def fibonacci(n):
     \"\"\"Calculate fibonacci number recursively.
-    
+
     Args:
         n: The position in fibonacci sequence
-        
+
     Returns:
         The fibonacci number at position n
     \"\"\"
@@ -447,29 +447,29 @@ def fibonacci(n):
 
 class Calculator:
     \"\"\"A simple calculator class with basic operations.\"\"\"
-    
+
     def __init__(self):
         \"\"\"Initialize the calculator.\"\"\"
         self.history = []
-    
+
     def add(self, a, b):
         \"\"\"Add two numbers and store in history.\"\"\"
         result = a + b
         self.history.append(f"{a} + {b} = {result}")
         return result
-        
+
     def multiply(self, a, b):
         \"\"\"Multiply two numbers and store in history.\"\"\"
         result = a * b
         self.history.append(f"{a} * {b} = {result}")
         return result
-        
+
     def subtract(self, a, b):
         \"\"\"Subtract b from a and store in history.\"\"\"
         result = a - b
         self.history.append(f"{a} - {b} = {result}")
         return result
-        
+
     def divide(self, a, b):
         \"\"\"Divide a by b and store in history.\"\"\"
         if b == 0:
@@ -477,11 +477,11 @@ class Calculator:
         result = a / b
         self.history.append(f"{a} / {b} = {result}")
         return result
-        
+
     def get_history(self):
         \"\"\"Get the calculation history.\"\"\"
         return self.history.copy()
-        
+
     def clear_history(self):
         \"\"\"Clear the calculation history.\"\"\"
         self.history.clear()
