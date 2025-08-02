@@ -227,12 +227,9 @@ That's it!  Semantik is now running with:
 
 ## 📖 Documentation
 
-Semantik includes comprehensive documentation for all aspects of the system:
-
 - **[Documentation Index](docs/DOCUMENTATION_INDEX.md)** - Start here! Complete guide to all documentation
 - **[API Reference](docs/API_REFERENCE.md)** - Full REST and WebSocket API documentation
 - **[Architecture Guide](docs/ARCH.md)** - System design and component relationships
-- **[Migration Guide](docs/MIGRATION_GUIDE.md)** - Upgrading from older versions
 - **[Configuration Guide](docs/CONFIGURATION.md)** - All environment variables and settings
 
 ### Quick Links by Role
