@@ -5,6 +5,8 @@ Unit tests for ChunkingErrorHandler.
 This module tests the error handling framework for chunking operations.
 """
 
+from typing import Any
+
 import pytest
 
 from packages.shared.text_processing.base_chunker import ChunkResult
@@ -45,10 +47,9 @@ class TestChunkingErrorHandler:
     def test_classify_error_encoding(self, error_handler: ChunkingErrorHandler) -> None:
         """Test classification of encoding errors."""
         # UnicodeDecodeError
-        try:
+        with pytest.raises(UnicodeDecodeError) as exc_info:
             b"\xff".decode("utf-8")
-        except UnicodeDecodeError as e:
-            assert error_handler.classify_error(e) == ChunkingErrorType.INVALID_ENCODING
+        assert error_handler.classify_error(exc_info.value) == ChunkingErrorType.INVALID_ENCODING
 
         # String contains "encoding"
         error = Exception("Invalid encoding detected")
@@ -258,7 +259,9 @@ class TestChunkingErrorHandler:
         assert result.processed_count == 2
         assert result.failed_count == 3
         assert result.recovery_operation_id is not None
+        assert result.recommendations is not None
         assert len(result.recommendations) > 0
+        assert result.error_details is not None
         assert result.error_details["failure_analysis"]["most_common"] == "memory_error"
 
     def test_analyze_failures(self, error_handler: ChunkingErrorHandler) -> None:
@@ -299,10 +302,10 @@ class TestChunkingErrorHandler:
         assert strategy.fallback_strategy == "character"
 
         # Without most common error
-        failure_analysis = {"most_common": None}
+        failure_analysis_no_common: dict[str, Any] = {"most_common": None}
 
         strategy = error_handler.create_recovery_strategy(
-            failure_analysis,
+            failure_analysis_no_common,
             ["doc1", "doc2"],
         )
 
