@@ -42,9 +42,7 @@ class ChunkingSecurityValidator:
             if not isinstance(chunk_size, int):
                 raise ValidationError(f"chunk_size must be an integer, got {type(chunk_size).__name__}")
 
-            if not (ChunkingSecurityValidator.MIN_CHUNK_SIZE <=
-                    chunk_size <=
-                    ChunkingSecurityValidator.MAX_CHUNK_SIZE):
+            if not (ChunkingSecurityValidator.MIN_CHUNK_SIZE <= chunk_size <= ChunkingSecurityValidator.MAX_CHUNK_SIZE):
                 raise ValidationError(
                     f"chunk_size must be between {ChunkingSecurityValidator.MIN_CHUNK_SIZE} "
                     f"and {ChunkingSecurityValidator.MAX_CHUNK_SIZE}, got {chunk_size}"
@@ -54,9 +52,7 @@ class ChunkingSecurityValidator:
         chunk_overlap = params.get("chunk_overlap")
         if chunk_overlap is not None:
             if not isinstance(chunk_overlap, int):
-                raise ValidationError(
-                    f"chunk_overlap must be an integer, got {type(chunk_overlap).__name__}"
-                )
+                raise ValidationError(f"chunk_overlap must be an integer, got {type(chunk_overlap).__name__}")
 
             if chunk_overlap < 0:
                 raise ValidationError(f"chunk_overlap must be non-negative, got {chunk_overlap}")
@@ -64,8 +60,7 @@ class ChunkingSecurityValidator:
             # Validate overlap against chunk size
             if chunk_size and chunk_overlap >= chunk_size:
                 raise ValidationError(
-                    f"chunk_overlap ({chunk_overlap}) must be less than "
-                    f"chunk_size ({chunk_size})"
+                    f"chunk_overlap ({chunk_overlap}) must be less than " f"chunk_size ({chunk_size})"
                 )
 
         # Validate other parameters based on strategy
@@ -74,22 +69,16 @@ class ChunkingSecurityValidator:
             threshold = params["breakpoint_percentile_threshold"]
             if not isinstance(threshold, int | float):
                 raise ValidationError(
-                    f"breakpoint_percentile_threshold must be a number, "
-                    f"got {type(threshold).__name__}"
+                    f"breakpoint_percentile_threshold must be a number, " f"got {type(threshold).__name__}"
                 )
             if not 0 <= threshold <= 100:
-                raise ValidationError(
-                    f"breakpoint_percentile_threshold must be between 0 and 100, "
-                    f"got {threshold}"
-                )
+                raise ValidationError(f"breakpoint_percentile_threshold must be between 0 and 100, " f"got {threshold}")
 
         # For hierarchical chunking
         if "chunk_sizes" in params:
             chunk_sizes = params["chunk_sizes"]
             if not isinstance(chunk_sizes, list):
-                raise ValidationError(
-                    f"chunk_sizes must be a list, got {type(chunk_sizes).__name__}"
-                )
+                raise ValidationError(f"chunk_sizes must be a list, got {type(chunk_sizes).__name__}")
             if not all(isinstance(size, int) and size > 0 for size in chunk_sizes):
                 raise ValidationError("All chunk_sizes must be positive integers")
             if len(chunk_sizes) > 5:
@@ -108,15 +97,14 @@ class ChunkingSecurityValidator:
         Raises:
             ValidationError: If document is too large
         """
-        max_size = (ChunkingSecurityValidator.MAX_PREVIEW_SIZE if is_preview
-                   else ChunkingSecurityValidator.MAX_DOCUMENT_SIZE)
+        max_size = (
+            ChunkingSecurityValidator.MAX_PREVIEW_SIZE if is_preview else ChunkingSecurityValidator.MAX_DOCUMENT_SIZE
+        )
 
         if size > max_size:
             size_mb = size / (1024 * 1024)
             max_size_mb = max_size / (1024 * 1024)
-            raise ValidationError(
-                f"Document too large: {size_mb:.1f}MB exceeds maximum of {max_size_mb:.1f}MB"
-            )
+            raise ValidationError(f"Document too large: {size_mb:.1f}MB exceeds maximum of {max_size_mb:.1f}MB")
 
         logger.debug(f"Validated document size: {size} bytes")
 
@@ -133,16 +121,12 @@ class ChunkingSecurityValidator:
         # Allow only alphanumeric and underscore
         if not strategy.replace("_", "").isalnum():
             raise ValidationError(
-                f"Invalid strategy name: {strategy}. "
-                "Only alphanumeric characters and underscores allowed."
+                f"Invalid strategy name: {strategy}. " "Only alphanumeric characters and underscores allowed."
             )
 
         # Check length
         if len(strategy) > 50:
-            raise ValidationError(
-                f"Strategy name too long: {len(strategy)} characters "
-                "(maximum 50 allowed)"
-            )
+            raise ValidationError(f"Strategy name too long: {len(strategy)} characters " "(maximum 50 allowed)")
 
     @staticmethod
     def validate_file_paths(file_paths: list[str]) -> None:
@@ -158,10 +142,7 @@ class ChunkingSecurityValidator:
             raise ValidationError("file_paths must be a list")
 
         if len(file_paths) > 1000:
-            raise ValidationError(
-                f"Too many file paths: {len(file_paths)} "
-                "(maximum 1000 allowed)"
-            )
+            raise ValidationError(f"Too many file paths: {len(file_paths)} " "(maximum 1000 allowed)")
 
         for path in file_paths:
             if not isinstance(path, str):
@@ -170,16 +151,12 @@ class ChunkingSecurityValidator:
             # Check for directory traversal attempts
             if ".." in path or path.startswith("/"):
                 raise ValidationError(
-                    f"Invalid file path: {path}. "
-                    "Absolute paths and parent directory references not allowed."
+                    f"Invalid file path: {path}. " "Absolute paths and parent directory references not allowed."
                 )
 
             # Check length
             if len(path) > 1000:
-                raise ValidationError(
-                    f"File path too long: {len(path)} characters "
-                    "(maximum 1000 allowed)"
-                )
+                raise ValidationError(f"File path too long: {len(path)} characters " "(maximum 1000 allowed)")
 
     @staticmethod
     def sanitize_text_for_preview(text: str, max_length: int = 200) -> str:
@@ -194,7 +171,8 @@ class ChunkingSecurityValidator:
         """
         # Remove any potential HTML/script tags
         import re
-        text = re.sub(r'<[^>]+>', '', text)
+
+        text = re.sub(r"<[^>]+>", "", text)
 
         # Limit length
         if len(text) > max_length:

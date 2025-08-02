@@ -15,11 +15,44 @@ class FileTypeDetector:
 
     # Code file extensions
     CODE_EXTENSIONS = {
-        ".py", ".js", ".ts", ".java", ".cpp", ".c", ".h", ".hpp",
-        ".cs", ".rb", ".go", ".rs", ".php", ".swift", ".kt", ".scala",
-        ".r", ".m", ".mm", ".lua", ".dart", ".jsx", ".tsx", ".vue",
-        ".sql", ".sh", ".bash", ".zsh", ".ps1", ".yaml", ".yml",
-        ".json", ".xml", ".html", ".css", ".scss", ".sass", ".less",
+        ".py",
+        ".js",
+        ".ts",
+        ".java",
+        ".cpp",
+        ".c",
+        ".h",
+        ".hpp",
+        ".cs",
+        ".rb",
+        ".go",
+        ".rs",
+        ".php",
+        ".swift",
+        ".kt",
+        ".scala",
+        ".r",
+        ".m",
+        ".mm",
+        ".lua",
+        ".dart",
+        ".jsx",
+        ".tsx",
+        ".vue",
+        ".sql",
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".ps1",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".xml",
+        ".html",
+        ".css",
+        ".scss",
+        ".sass",
+        ".less",
     }
 
     # Markdown file extensions
@@ -27,8 +60,17 @@ class FileTypeDetector:
 
     # Document file extensions
     DOCUMENT_EXTENSIONS = {
-        ".txt", ".pdf", ".doc", ".docx", ".odt", ".rtf",
-        ".tex", ".latex", ".rst", ".asciidoc", ".org",
+        ".txt",
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".odt",
+        ".rtf",
+        ".tex",
+        ".latex",
+        ".rst",
+        ".asciidoc",
+        ".org",
     }
 
     # All supported extensions
@@ -58,7 +100,7 @@ class FileTypeDetector:
             True if file is a code file
         """
         # Handle both full paths and just extensions
-        if file_path.startswith('.') and '/' not in file_path:
+        if file_path.startswith(".") and "/" not in file_path:
             ext = file_path.lower()
         else:
             ext = Path(file_path.lower()).suffix
@@ -75,7 +117,7 @@ class FileTypeDetector:
             True if file is a markdown file
         """
         # Handle both full paths and just extensions
-        if file_path.startswith('.') and '/' not in file_path:
+        if file_path.startswith(".") and "/" not in file_path:
             ext = file_path.lower()
         else:
             ext = Path(file_path.lower()).suffix
@@ -92,7 +134,7 @@ class FileTypeDetector:
             Optimal chunking configuration
         """
         # Handle both full paths and just extensions
-        if file_path.startswith('.') and '/' not in file_path:
+        if file_path.startswith(".") and "/" not in file_path:
             # It's just an extension
             ext = file_path.lower()
         else:
@@ -118,12 +160,12 @@ class FileTypeDetector:
 
         # Default for documents and unknown files
         return {
-                "strategy": "recursive",
-                "params": {
-                    "chunk_size": 300,
-                    "chunk_overlap": 50,
-                },
-            }
+            "strategy": "recursive",
+            "params": {
+                "chunk_size": 300,
+                "chunk_overlap": 50,
+            },
+        }
 
     @classmethod
     def get_file_category(cls, file_path: str) -> str:

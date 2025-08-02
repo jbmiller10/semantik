@@ -142,6 +142,7 @@ class ChunkingService:
 
         # Create chunker and process
         import time
+
         start_time = time.time()
 
         # Prepare metadata for chunker
@@ -167,9 +168,7 @@ class ChunkingService:
         ]
 
         # Check if any chunk indicates it's a code file from metadata
-        is_code_from_metadata = any(
-            chunk.metadata.get("is_code_file", False) for chunk in chunks
-        )
+        is_code_from_metadata = any(chunk.metadata.get("is_code_file", False) for chunk in chunks)
         # Also check file type detection
         is_code_from_file_type = FileTypeDetector.is_code_file(file_type) if file_type else False
 
@@ -307,10 +306,12 @@ class ChunkingService:
             )
             total_estimated_chunks += estimated_chunks
 
-            sample_results.append({
-                "document_name": doc.file_name,
-                "estimated_chunks": estimated_chunks,
-            })
+            sample_results.append(
+                {
+                    "document_name": doc.file_name,
+                    "estimated_chunks": estimated_chunks,
+                }
+            )
 
         # Check for warnings
         if total_estimated_chunks > ChunkingSecurityValidator.MAX_CHUNKS_PER_DOCUMENT:
@@ -474,28 +475,23 @@ class ChunkingService:
         chunk_sizes = [len(chunk.text) for chunk in chunks]
         avg_size = sum(chunk_sizes) / len(chunk_sizes)
         variance = sum((size - avg_size) ** 2 for size in chunk_sizes) / len(chunk_sizes)
-        std_dev = variance ** 0.5
+        std_dev = variance**0.5
 
         # Check if standard deviation is more than 50% of average
         if std_dev > avg_size * 0.5:
             recommendations.append(
-                "High variance in chunk sizes detected. "
-                "Consider using a different strategy for more uniform chunks."
+                "High variance in chunk sizes detected. " "Consider using a different strategy for more uniform chunks."
             )
 
         # Check for very small chunks
         small_chunks = [size for size in chunk_sizes if size < 100]
         if len(small_chunks) > len(chunks) * 0.2:
-            recommendations.append(
-                "Many small chunks detected. "
-                "Consider increasing chunk_size parameter."
-            )
+            recommendations.append("Many small chunks detected. " "Consider increasing chunk_size parameter.")
 
         # File type specific recommendations
         if file_type and FileTypeDetector.is_code_file(file_type) and avg_size > 500:
             recommendations.append(
-                "Code files typically benefit from smaller chunk sizes. "
-                "Consider reducing chunk_size to 400."
+                "Code files typically benefit from smaller chunk sizes. " "Consider reducing chunk_size to 400."
             )
 
         return recommendations
