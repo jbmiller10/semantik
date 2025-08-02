@@ -6,7 +6,7 @@ Tests the new production features including correlation ID support,
 state management, resource tracking, and advanced recovery strategies.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -230,14 +230,14 @@ class TestCreateErrorReport:
         # Add some error history
         error_handler._error_history[operation_id] = [
             {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(tz=UTC).isoformat(),
                 "correlation_id": "corr_1",
                 "error_type": "memory_error",
                 "error_message": "Out of memory",
                 "error_class": "MemoryError",
             },
             {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(tz=UTC).isoformat(),
                 "correlation_id": "corr_2",
                 "error_type": "timeout_error",
                 "error_message": "Operation timed out",

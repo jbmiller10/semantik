@@ -194,18 +194,20 @@ class TestProcessChunkingOperation:
         mock_chunking_service = AsyncMock()
         mock_chunking_service.process_documents.return_value = []
 
-        with patch("packages.webui.chunking_tasks.OperationRepository", return_value=mock_op_repo):
-            with patch("packages.webui.chunking_tasks.CollectionRepository", return_value=mock_coll_repo):
-                with patch("packages.webui.chunking_tasks.ChunkingService", return_value=mock_chunking_service):
-                    # Create task mock
-                    celery_task = Mock(spec=ChunkingTask)
-                    celery_task._graceful_shutdown = False
+        with (
+            patch("packages.webui.chunking_tasks.OperationRepository", return_value=mock_op_repo),
+            patch("packages.webui.chunking_tasks.CollectionRepository", return_value=mock_coll_repo),
+            patch("packages.webui.chunking_tasks.ChunkingService", return_value=mock_chunking_service),
+        ):
+            # Create task mock
+            celery_task = Mock(spec=ChunkingTask)
+            celery_task._graceful_shutdown = False
 
-                    result = await _process_chunking_operation_async(
-                        operation_id="op-123",
-                        correlation_id="corr-123",
-                        celery_task=celery_task,
-                    )
+            result = await _process_chunking_operation_async(
+                operation_id="op-123",
+                correlation_id="corr-123",
+                celery_task=celery_task,
+            )
 
         assert result["status"] == "success"
         assert result["operation_id"] == "op-123"
@@ -235,18 +237,20 @@ class TestProcessChunkingOperation:
         mock_session = MagicMock()
         mock_session.return_value = mock_session_instance
 
-        with patch("packages.webui.chunking_tasks.pg_connection_manager") as mock_pg:
+        with (
+            patch("packages.webui.chunking_tasks.pg_connection_manager") as mock_pg,
+            patch("packages.webui.chunking_tasks.AsyncSessionLocal", mock_session),
+            patch("packages.webui.chunking_tasks.OperationRepository", return_value=mock_op_repo),
+            patch("packages.webui.chunking_tasks.get_redis_client"),
+        ):
             mock_pg._sessionmaker = True  # Simulate already initialized
-            with patch("packages.webui.chunking_tasks.AsyncSessionLocal", mock_session):
-                with patch("packages.webui.chunking_tasks.OperationRepository", return_value=mock_op_repo):
-                    with patch("packages.webui.chunking_tasks.get_redis_client"):
-                        celery_task = Mock(spec=ChunkingTask)
+            celery_task = Mock(spec=ChunkingTask)
 
-                        result = await _process_chunking_operation_async(
-                            operation_id="op-123",
-                            correlation_id="corr-123",
-                            celery_task=celery_task,
-                        )
+            result = await _process_chunking_operation_async(
+                operation_id="op-123",
+                correlation_id="corr-123",
+                celery_task=celery_task,
+            )
 
         assert result["status"] == "already_completed"
         assert result["chunks_created"] == 100
@@ -307,22 +311,24 @@ class TestProcessChunkingOperation:
         mock_coll_repo = AsyncMock()
         mock_coll_repo.get_by_id.return_value = Mock(id="coll-123")
 
-        with patch("packages.webui.chunking_tasks.pg_connection_manager") as mock_pg:
+        with (
+            patch("packages.webui.chunking_tasks.pg_connection_manager") as mock_pg,
+            patch("packages.webui.chunking_tasks.AsyncSessionLocal", mock_session),
+            patch("packages.webui.chunking_tasks.OperationRepository", return_value=mock_op_repo),
+            patch("packages.webui.chunking_tasks.CollectionRepository", return_value=mock_coll_repo),
+            patch("packages.webui.chunking_tasks.ChunkingService", return_value=mock_chunking_service),
+            patch("packages.webui.chunking_tasks.get_redis_client"),
+            patch("packages.webui.chunking_tasks._calculate_batch_size", return_value=10),
+        ):
             mock_pg._sessionmaker = True  # Simulate already initialized
-            with patch("packages.webui.chunking_tasks.AsyncSessionLocal", mock_session):
-                with patch("packages.webui.chunking_tasks.OperationRepository", return_value=mock_op_repo):
-                    with patch("packages.webui.chunking_tasks.CollectionRepository", return_value=mock_coll_repo):
-                        with patch("packages.webui.chunking_tasks.ChunkingService", return_value=mock_chunking_service):
-                            with patch("packages.webui.chunking_tasks.get_redis_client"):
-                                with patch("packages.webui.chunking_tasks._calculate_batch_size", return_value=10):
-                                    celery_task = Mock(spec=ChunkingTask)
-                                    celery_task._graceful_shutdown = False
+            celery_task = Mock(spec=ChunkingTask)
+            celery_task._graceful_shutdown = False
 
-                                    result = await _process_chunking_operation_async(
-                                        operation_id="op-123",
-                                        correlation_id="corr-123",
-                                        celery_task=celery_task,
-                                    )
+            result = await _process_chunking_operation_async(
+                operation_id="op-123",
+                correlation_id="corr-123",
+                celery_task=celery_task,
+            )
 
         assert result["status"] == "partial_success"
         assert result["documents_failed"] == 2
@@ -367,20 +373,22 @@ class TestResourceManagement:
             wait_time=5,
         )
 
-        with patch("packages.webui.chunking_tasks.psutil.virtual_memory") as mock_memory:
-            with patch("packages.webui.chunking_tasks.psutil.cpu_percent") as mock_cpu:
-                with patch("packages.webui.chunking_tasks.asyncio.sleep") as mock_sleep:
-                    mock_memory.return_value = Mock(percent=70)
-                    mock_cpu.return_value = 95
+        with (
+            patch("packages.webui.chunking_tasks.psutil.virtual_memory") as mock_memory,
+            patch("packages.webui.chunking_tasks.psutil.cpu_percent") as mock_cpu,
+            patch("packages.webui.chunking_tasks.asyncio.sleep") as mock_sleep,
+        ):
+            mock_memory.return_value = Mock(percent=70)
+            mock_cpu.return_value = 95
 
-                    await _check_resource_limits(
-                        error_handler=mock_error_handler,
-                        operation_id="op-123",
-                        correlation_id="corr-123",
-                        initial_memory=1024**3,
-                    )
+            await _check_resource_limits(
+                error_handler=mock_error_handler,
+                operation_id="op-123",
+                correlation_id="corr-123",
+                initial_memory=1024**3,
+            )
 
-                    mock_sleep.assert_called_once_with(5)
+            mock_sleep.assert_called_once_with(5)
 
     @pytest.mark.asyncio()
     async def test_monitor_resources_memory_limit(self):
@@ -473,13 +481,15 @@ class TestSoftTimeout:
         mock_redis = MagicMock(spec=Redis)
         mock_error_handler = AsyncMock()
 
-        with patch("packages.webui.chunking_tasks.get_redis_client", return_value=mock_redis):
-            with patch("packages.webui.chunking_tasks.ChunkingErrorHandler", return_value=mock_error_handler):
-                await _handle_soft_timeout(
-                    operation_id="op-123",
-                    correlation_id="corr-123",
-                    celery_task=mock_task,
-                )
+        with (
+            patch("packages.webui.chunking_tasks.get_redis_client", return_value=mock_redis),
+            patch("packages.webui.chunking_tasks.ChunkingErrorHandler", return_value=mock_error_handler),
+        ):
+            await _handle_soft_timeout(
+                operation_id="op-123",
+                correlation_id="corr-123",
+                celery_task=mock_task,
+            )
 
         mock_error_handler._save_operation_state.assert_called_once()
         call_args = mock_error_handler._save_operation_state.call_args

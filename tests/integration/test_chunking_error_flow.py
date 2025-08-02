@@ -69,7 +69,7 @@ class TestChunkingErrorFlowIntegration:
 
         # Add endpoint that uses chunking service
         @test_app.post("/test/chunking")
-        async def test_endpoint(request: Request):
+        async def test_endpoint(request: Request):  # noqa: ARG001
             # Get correlation ID from request
             req_correlation_id = get_correlation_id()
             assert req_correlation_id == correlation_id
@@ -314,7 +314,7 @@ class TestChunkingErrorFlowIntegration:
         )
 
         # Handle error that exceeds retries
-        result = await error_handler.handle_with_correlation(
+        _ = await error_handler.handle_with_correlation(
             operation_id="op-456",
             correlation_id="corr-123",
             error=error,
@@ -340,7 +340,7 @@ class TestChunkingErrorFlowIntegration:
             memory_limit=500,
         )
 
-        result = await error_handler.handle_with_correlation(
+        _ = await error_handler.handle_with_correlation(
             operation_id="op-123",
             correlation_id="corr-123",
             error=error,
@@ -420,7 +420,7 @@ class TestChunkingErrorFlowIntegration:
                         memory_used=1000,
                         memory_limit=500,
                     )
-                elif i % 3 == 1:
+                if i % 3 == 1:
                     raise ChunkingTimeoutError(
                         detail=f"Timeout error {i}",
                         correlation_id=f"corr-{i}",
@@ -428,11 +428,10 @@ class TestChunkingErrorFlowIntegration:
                         elapsed_time=10,
                         timeout_limit=5,
                     )
-                else:
-                    raise ChunkingValidationError(
-                        detail=f"Validation error {i}",
-                        correlation_id=f"corr-{i}",
-                    )
+                raise ChunkingValidationError(
+                    detail=f"Validation error {i}",
+                    correlation_id=f"corr-{i}",
+                )
             except Exception as e:
                 return await error_handler.handle_with_correlation(
                     operation_id=f"op-{i}",
@@ -461,7 +460,7 @@ class TestChunkingErrorFlowIntegration:
         mock_deps["redis_client"].lrem = AsyncMock()
 
         # Create an async generator function for scan_iter
-        async def mock_scan_iter(pattern):
+        async def mock_scan_iter(pattern):  # noqa: ARG001
             # Return an empty async generator
             for item in []:
                 yield item
@@ -480,7 +479,7 @@ class TestChunkingErrorFlowIntegration:
         )
 
         # Handle the error
-        result = await error_handler.handle_with_correlation(
+        _ = await error_handler.handle_with_correlation(
             operation_id="op-cleanup",
             correlation_id="corr-cleanup",
             error=error,

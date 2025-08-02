@@ -123,7 +123,7 @@ class TestChunkingServiceErrorHandling:
         """Test timeout handling in chunking operations."""
         text = "Test document content"
 
-        async def slow_chunk_text(*args, **kwargs):
+        async def slow_chunk_text(*args, **kwargs):  # noqa: ARG001
             # Simulate timeout
             raise TimeoutError("Operation timed out")
 
@@ -250,14 +250,13 @@ class TestChunkingServiceErrorHandling:
 
         call_count = 0
 
-        async def mock_chunk_text(text, doc_id, metadata):
+        async def mock_chunk_text(text, doc_id, metadata):  # noqa: ARG001
             nonlocal call_count
             call_count += 1
             if doc_id in ["doc2", "doc3"]:
                 if doc_id == "doc2":
                     raise MemoryError("Out of memory")
-                else:
-                    raise TimeoutError("Processing timeout")
+                raise TimeoutError("Processing timeout")
             return successful_chunks
 
         with patch("packages.shared.text_processing.chunking_factory.ChunkingFactory.create_chunker") as mock_factory:
@@ -375,16 +374,16 @@ class TestChunkingServiceErrorHandling:
         """Test that error context is properly propagated to error handler."""
         error_contexts = []
 
-        async def capture_context(operation_id, correlation_id, error, context):
+        async def capture_context(operation_id, correlation_id, error, context):  # noqa: ARG001
             error_contexts.append(context)
             raise error  # Re-raise to continue error flow
 
         mock_dependencies["error_handler"].handle_with_correlation = AsyncMock(side_effect=capture_context)
 
         with patch("packages.shared.text_processing.chunking_factory.ChunkingFactory.create_chunker") as mock_factory:
-            mock_factory.side_effect = Exception("Test error")
+            mock_factory.side_effect = RuntimeError("Test error")
 
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError):
                 await chunking_service.preview_chunking(
                     text="Test text",
                     file_type=".py",
