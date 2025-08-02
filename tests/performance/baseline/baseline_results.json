@@ -1,0 +1,50 @@
+{
+  "timestamp": "2025-08-02T15:46:19.766348",
+  "baselines": [
+    {
+      "strategy": "character",
+      "chunks_per_second": 155.54047476005633,
+      "memory_per_mb": 11.921875,
+      "cpu_avg_percent": 97.02941176470587,
+      "test_date": "2025-08-02T15:45:57.459073",
+      "git_commit": "d9d5987c",
+      "hardware_info": {
+        "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+        "processor": "x86_64",
+        "cpu_count": 24,
+        "memory_gb": 62.8,
+        "python_version": "3.11.13"
+      }
+    },
+    {
+      "strategy": "recursive",
+      "chunks_per_second": 786.964994447673,
+      "memory_per_mb": 1.015625,
+      "cpu_avg_percent": 86.97142857142856,
+      "test_date": "2025-08-02T15:46:01.050481",
+      "git_commit": "d9d5987c",
+      "hardware_info": {
+        "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+        "processor": "x86_64",
+        "cpu_count": 24,
+        "memory_gb": 62.8,
+        "python_version": "3.11.13"
+      }
+    },
+    {
+      "strategy": "markdown",
+      "chunks_per_second": 1403.052561186323,
+      "memory_per_mb": 0.0,
+      "cpu_avg_percent": 98.70447761194033,
+      "test_date": "2025-08-02T15:46:19.765775",
+      "git_commit": "d9d5987c",
+      "hardware_info": {
+        "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+        "processor": "x86_64",
+        "cpu_count": 24,
+        "memory_gb": 62.8,
+        "python_version": "3.11.13"
+      }
+    }
+  ]
+}
