@@ -480,18 +480,18 @@ class ChunkingService:
         # Check if standard deviation is more than 50% of average
         if std_dev > avg_size * 0.5:
             recommendations.append(
-                "High variance in chunk sizes detected. " "Consider using a different strategy for more uniform chunks."
+                "High variance in chunk sizes detected. Consider using a different strategy for more uniform chunks."
             )
 
         # Check for very small chunks
         small_chunks = [size for size in chunk_sizes if size < 100]
         if len(small_chunks) > len(chunks) * 0.2:
-            recommendations.append("Many small chunks detected. " "Consider increasing chunk_size parameter.")
+            recommendations.append("Many small chunks detected. Consider increasing chunk_size parameter.")
 
         # File type specific recommendations
         if file_type and FileTypeDetector.is_code_file(file_type) and avg_size > 500:
             recommendations.append(
-                "Code files typically benefit from smaller chunk sizes. " "Consider reducing chunk_size to 400."
+                "Code files typically benefit from smaller chunk sizes. Consider reducing chunk_size to 400."
             )
 
         return recommendations

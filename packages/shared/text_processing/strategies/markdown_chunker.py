@@ -136,7 +136,7 @@ class MarkdownChunker(BaseChunker):
             )
             results.append(result)
 
-        logger.debug(f"Created {len(results)} chunks from {len(text)} characters " f"of markdown content")
+        logger.debug(f"Created {len(results)} chunks from {len(text)} characters of markdown content")
         return results
 
     async def chunk_text_async(

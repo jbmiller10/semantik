@@ -11,7 +11,6 @@ import json
 import logging
 import os
 import random
-import string
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -136,7 +135,7 @@ class ChunkingBenchmarks:
             while current_size < size_bytes:
                 section = f"\n# Section {section_num}\n\n"
                 section += "This is a paragraph in the section. " * random.randint(5, 10)
-                section += "\n\n## Subsection {}.1\n\n".format(section_num)
+                section += f"\n\n## Subsection {section_num}.1\n\n"
                 section += "More content here. " * random.randint(3, 8)
                 section += "\n\n"
 
@@ -207,7 +206,7 @@ class PerformanceMonitor:
 class TestChunkingPerformance:
     """Performance tests for chunking strategies."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def performance_monitor(self) -> PerformanceMonitor:
         """Provide performance monitor."""
         return PerformanceMonitor()
@@ -328,7 +327,7 @@ class TestChunkingPerformance:
         efficiency = speedup / num_workers
 
         logger.info(
-            f"Parallel test with {num_workers} workers: " f"speedup={speedup:.2f}x, efficiency={efficiency:.2%}"
+            f"Parallel test with {num_workers} workers: speedup={speedup:.2f}x, efficiency={efficiency:.2%}"
         )
 
         # Should achieve at least 70% efficiency

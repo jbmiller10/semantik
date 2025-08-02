@@ -5,12 +5,11 @@ Unit tests for ChunkingService.
 This module tests the ChunkingService business logic layer.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from redis import Redis
 
-from packages.shared.text_processing.file_type_detector import FileTypeDetector
 from packages.webui.services.chunking_security import ValidationError
 from packages.webui.services.chunking_service import (
     ChunkingPreviewResponse,
@@ -24,7 +23,7 @@ from packages.webui.services.chunking_service import (
 class TestChunkingService:
     """Tests for ChunkingService."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_redis(self) -> MagicMock:
         """Mock Redis client."""
         redis = MagicMock(spec=Redis)
@@ -33,7 +32,7 @@ class TestChunkingService:
         redis.incr = MagicMock()
         return redis
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_repos(self) -> tuple[MagicMock, MagicMock]:
         """Mock repositories."""
         collection_repo = MagicMock()
@@ -44,7 +43,7 @@ class TestChunkingService:
 
         return collection_repo, document_repo
 
-    @pytest.fixture
+    @pytest.fixture()
     def chunking_service(
         self,
         mock_redis: MagicMock,
@@ -95,7 +94,7 @@ class TestChunkingService:
         code = """
 def hello():
     print("Hello, world!")
-    
+
 class Test:
     pass
 """
