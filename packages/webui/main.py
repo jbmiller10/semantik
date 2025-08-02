@@ -29,6 +29,7 @@ from shared.embedding import configure_global_embedding_service
 logger = logging.getLogger(__name__)
 
 from .api import auth, health, internal, metrics, models, root, settings  # noqa: E402
+from .api.chunking_exception_handlers import register_chunking_exception_handlers  # noqa: E402
 from .api.v2 import collections as v2_collections  # noqa: E402
 from .api.v2 import directory_scan as v2_directory_scan  # noqa: E402
 from .api.v2 import documents as v2_documents  # noqa: E402
@@ -37,6 +38,7 @@ from .api.v2 import search as v2_search  # noqa: E402
 from .api.v2 import system as v2_system  # noqa: E402
 from .api.v2.directory_scan import directory_scan_websocket  # noqa: E402
 from .api.v2.operations import operation_websocket  # noqa: E402
+from .middleware.correlation import CorrelationMiddleware, configure_logging_with_correlation  # noqa: E402
 from .rate_limiter import limiter  # noqa: E402
 from .websocket_manager import ws_manager  # noqa: E402
 
@@ -124,6 +126,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     # Startup
     logger.info("Starting up WebUI application...")
 
+    # Configure logging with correlation support
+    configure_logging_with_correlation()
+    logger.info("Logging configured with correlation ID support")
+
     # Initialize PostgreSQL connection
     logger.info("Initializing PostgreSQL connection...")
     await pg_connection_manager.initialize()
@@ -178,17 +184,30 @@ def create_app() -> FastAPI:
             "Set CORS_ORIGINS environment variable with valid origin URLs."
         )
 
+    # Add correlation middleware BEFORE other middleware for proper context propagation
+    app.add_middleware(CorrelationMiddleware)
+
     # Configure CORS with more restrictive settings
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],  # Explicit methods
-        allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],  # Common headers
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "Accept",
+            "Origin",
+            "X-Requested-With",
+            "X-Correlation-ID",
+        ],  # Added correlation header
     )
 
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+
+    # Register chunking exception handlers
+    register_chunking_exception_handlers(app)
 
     # Include routers with their specific prefixes
     app.include_router(auth.router)
