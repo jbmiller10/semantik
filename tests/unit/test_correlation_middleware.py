@@ -8,7 +8,7 @@ import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from packages.webui.middleware.correlation import (
@@ -149,8 +149,8 @@ class TestCorrelationMiddleware:
         client = TestClient(app)
         test_id = str(uuid.uuid4())
 
-        with pytest.raises(ValueError):
-            response = client.get("/error", headers={"X-Correlation-ID": test_id})
+        with pytest.raises(ValueError, match="Test error"):
+            _ = client.get("/error", headers={"X-Correlation-ID": test_id})
 
     def test_middleware_clears_context_after_request(self, app: FastAPI) -> None:
         """Test middleware clears context variable after request."""
@@ -313,7 +313,7 @@ class TestMiddlewareLogging:
         client = TestClient(app)
         test_id = str(uuid.uuid4())
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Test error"):
             client.get("/error", headers={"X-Correlation-ID": test_id})
 
         # Should log the error
