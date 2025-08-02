@@ -23,19 +23,47 @@ class RecursiveChunker(BaseChunker):
 
     # Code file extensions that get optimized parameters
     CODE_EXTENSIONS = {
-        ".py", ".js", ".ts", ".java", ".cpp", ".c", ".h", ".hpp",
-        ".cs", ".rb", ".go", ".rs", ".php", ".swift", ".kt", ".scala",
-        ".r", ".m", ".mm", ".lua", ".dart", ".jsx", ".tsx", ".vue",
-        ".sql", ".sh", ".bash", ".zsh", ".ps1", ".yaml", ".yml",
-        ".json", ".xml", ".html", ".css", ".scss", ".sass", ".less",
+        ".py",
+        ".js",
+        ".ts",
+        ".java",
+        ".cpp",
+        ".c",
+        ".h",
+        ".hpp",
+        ".cs",
+        ".rb",
+        ".go",
+        ".rs",
+        ".php",
+        ".swift",
+        ".kt",
+        ".scala",
+        ".r",
+        ".m",
+        ".mm",
+        ".lua",
+        ".dart",
+        ".jsx",
+        ".tsx",
+        ".vue",
+        ".sql",
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".ps1",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".xml",
+        ".html",
+        ".css",
+        ".scss",
+        ".sass",
+        ".less",
     }
 
-    def __init__(
-        self,
-        chunk_size: int = 600,
-        chunk_overlap: int = 100,
-        **kwargs: Any
-    ) -> None:
+    def __init__(self, chunk_size: int = 600, chunk_overlap: int = 100, **kwargs: Any) -> None:
         """Initialize RecursiveChunker.
 
         Args:
@@ -48,8 +76,7 @@ class RecursiveChunker(BaseChunker):
         # Validate parameters
         if chunk_overlap >= chunk_size:
             logger.warning(
-                f"chunk_overlap ({chunk_overlap}) >= chunk_size ({chunk_size}), "
-                f"setting overlap to chunk_size/4"
+                f"chunk_overlap ({chunk_overlap}) >= chunk_size ({chunk_size}), " f"setting overlap to chunk_size/4"
             )
             chunk_overlap = chunk_size // 4
 
@@ -68,10 +95,7 @@ class RecursiveChunker(BaseChunker):
             chunk_overlap=50,  # Less overlap for efficiency
         )
 
-        logger.info(
-            f"Initialized RecursiveChunker with chunk_size={chunk_size}, "
-            f"chunk_overlap={chunk_overlap}"
-        )
+        logger.info(f"Initialized RecursiveChunker with chunk_size={chunk_size}, " f"chunk_overlap={chunk_overlap}")
 
     def _is_code_file(self, metadata: dict[str, Any] | None) -> bool:
         """Check if the document is a code file based on metadata."""
@@ -130,16 +154,19 @@ class RecursiveChunker(BaseChunker):
                 doc_id=doc_id,
                 chunk_index=idx,
                 text=node.get_content(),
-                start_offset=node.start_char_idx if hasattr(node, 'start_char_idx') and node.start_char_idx is not None else 0,
-                end_offset=node.end_char_idx if hasattr(node, 'end_char_idx') and node.end_char_idx is not None else len(node.get_content()),
+                start_offset=(
+                    node.start_char_idx if hasattr(node, "start_char_idx") and node.start_char_idx is not None else 0
+                ),
+                end_offset=(
+                    node.end_char_idx
+                    if hasattr(node, "end_char_idx") and node.end_char_idx is not None
+                    else len(node.get_content())
+                ),
                 metadata=chunk_metadata,
             )
             results.append(result)
 
-        logger.debug(
-            f"Created {len(results)} chunks from {len(text)} characters "
-            f"(code_file={is_code})"
-        )
+        logger.debug(f"Created {len(results)} chunks from {len(text)} characters " f"(code_file={is_code})")
         return results
 
     async def chunk_text_async(
@@ -196,10 +223,7 @@ class RecursiveChunker(BaseChunker):
 
             # Overlap should be less than chunk size
             if chunk_overlap >= chunk_size:
-                logger.error(
-                    f"chunk_overlap ({chunk_overlap}) must be less than "
-                    f"chunk_size ({chunk_size})"
-                )
+                logger.error(f"chunk_overlap ({chunk_overlap}) must be less than " f"chunk_size ({chunk_size})")
                 return False
 
             return True

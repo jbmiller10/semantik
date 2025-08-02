@@ -61,10 +61,12 @@ class ChunkingFactory:
             if os.getenv("TESTING", "false").lower() == "true":
                 # For testing, use mock embedding
                 from llama_index.core.embeddings import MockEmbedding
+
                 params["embed_model"] = MockEmbedding(embed_dim=384)
             else:
                 # For production, use OpenAI embeddings
                 from llama_index.embeddings.openai import OpenAIEmbedding
+
                 params["embed_model"] = OpenAIEmbedding()
 
         return strategy_class(**params)
