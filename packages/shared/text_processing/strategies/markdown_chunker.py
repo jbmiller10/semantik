@@ -82,7 +82,7 @@ class MarkdownChunker(BaseChunker):
 
         if not is_markdown:
             logger.warning(
-                f"Document {doc_id} doesn't appear to be markdown. " "Consider using recursive chunker instead."
+                f"Document {doc_id} doesn't appear to be markdown. Consider using recursive chunker instead."
             )
 
         # Create a temporary document

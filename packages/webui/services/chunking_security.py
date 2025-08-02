@@ -121,12 +121,12 @@ class ChunkingSecurityValidator:
         # Allow only alphanumeric and underscore
         if not strategy.replace("_", "").isalnum():
             raise ValidationError(
-                f"Invalid strategy name: {strategy}. " "Only alphanumeric characters and underscores allowed."
+                f"Invalid strategy name: {strategy}. Only alphanumeric characters and underscores allowed."
             )
 
         # Check length
         if len(strategy) > 50:
-            raise ValidationError(f"Strategy name too long: {len(strategy)} characters " "(maximum 50 allowed)")
+            raise ValidationError(f"Strategy name too long: {len(strategy)} characters (maximum 50 allowed)")
 
     @staticmethod
     def validate_file_paths(file_paths: list[str]) -> None:
@@ -142,7 +142,7 @@ class ChunkingSecurityValidator:
             raise ValidationError("file_paths must be a list")
 
         if len(file_paths) > 1000:
-            raise ValidationError(f"Too many file paths: {len(file_paths)} " "(maximum 1000 allowed)")
+            raise ValidationError(f"Too many file paths: {len(file_paths)} (maximum 1000 allowed)")
 
         for path in file_paths:
             if not isinstance(path, str):
@@ -151,12 +151,12 @@ class ChunkingSecurityValidator:
             # Check for directory traversal attempts
             if ".." in path or path.startswith("/"):
                 raise ValidationError(
-                    f"Invalid file path: {path}. " "Absolute paths and parent directory references not allowed."
+                    f"Invalid file path: {path}. Absolute paths and parent directory references not allowed."
                 )
 
             # Check length
             if len(path) > 1000:
-                raise ValidationError(f"File path too long: {len(path)} characters " "(maximum 1000 allowed)")
+                raise ValidationError(f"File path too long: {len(path)} characters (maximum 1000 allowed)")
 
     @staticmethod
     def sanitize_text_for_preview(text: str, max_length: int = 200) -> str:
