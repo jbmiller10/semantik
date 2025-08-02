@@ -329,7 +329,7 @@ class ChunkingErrorHandler:
         else:
             delay = 0
 
-        logger.info(f"Retry {current_retries}/{strategy.max_retries} for {error_type.value}, " f"delay: {delay}s")
+        logger.info(f"Retry {current_retries}/{strategy.max_retries} for {error_type.value}, delay: {delay}s")
 
         return delay
 

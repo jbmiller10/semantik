@@ -60,7 +60,7 @@ class ChunkingSecurityValidator:
             # Validate overlap against chunk size
             if chunk_size and chunk_overlap >= chunk_size:
                 raise ValidationError(
-                    f"chunk_overlap ({chunk_overlap}) must be less than " f"chunk_size ({chunk_size})"
+                    f"chunk_overlap ({chunk_overlap}) must be less than chunk_size ({chunk_size})"
                 )
 
         # Validate other parameters based on strategy
@@ -69,10 +69,10 @@ class ChunkingSecurityValidator:
             threshold = params["breakpoint_percentile_threshold"]
             if not isinstance(threshold, int | float):
                 raise ValidationError(
-                    f"breakpoint_percentile_threshold must be a number, " f"got {type(threshold).__name__}"
+                    f"breakpoint_percentile_threshold must be a number, got {type(threshold).__name__}"
                 )
             if not 0 <= threshold <= 100:
-                raise ValidationError(f"breakpoint_percentile_threshold must be between 0 and 100, " f"got {threshold}")
+                raise ValidationError(f"breakpoint_percentile_threshold must be between 0 and 100, got {threshold}")
 
         # For hierarchical chunking
         if "chunk_sizes" in params:

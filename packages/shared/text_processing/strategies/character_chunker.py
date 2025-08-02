@@ -34,7 +34,7 @@ class CharacterChunker(BaseChunker):
         # Validate parameters
         if chunk_overlap >= chunk_size:
             logger.warning(
-                f"chunk_overlap ({chunk_overlap}) >= chunk_size ({chunk_size}), " f"setting overlap to chunk_size/2"
+                f"chunk_overlap ({chunk_overlap}) >= chunk_size ({chunk_size}), setting overlap to chunk_size/2"
             )
             chunk_overlap = chunk_size // 2
 
@@ -48,7 +48,7 @@ class CharacterChunker(BaseChunker):
             separator=" ",
         )
 
-        logger.info(f"Initialized CharacterChunker with chunk_size={chunk_size}, " f"chunk_overlap={chunk_overlap}")
+        logger.info(f"Initialized CharacterChunker with chunk_size={chunk_size}, chunk_overlap={chunk_overlap}")
 
     def chunk_text(
         self,
@@ -185,7 +185,7 @@ class CharacterChunker(BaseChunker):
 
             # Overlap should be less than chunk size
             if chunk_overlap >= chunk_size:
-                logger.error(f"chunk_overlap ({chunk_overlap}) must be less than " f"chunk_size ({chunk_size})")
+                logger.error(f"chunk_overlap ({chunk_overlap}) must be less than chunk_size ({chunk_size})")
                 return False
 
             return True

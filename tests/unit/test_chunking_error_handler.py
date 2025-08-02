@@ -7,13 +7,11 @@ This module tests the error handling framework for chunking operations.
 
 import pytest
 
-from packages.shared.database.models import CollectionStatus
 from packages.shared.text_processing.base_chunker import ChunkResult
 from packages.webui.services.chunking_error_handler import (
     ChunkingErrorHandler,
     ChunkingErrorType,
     ChunkingOperationResult,
-    RecoveryStrategy,
     StreamRecoveryAction,
 )
 
@@ -21,7 +19,7 @@ from packages.webui.services.chunking_error_handler import (
 class TestChunkingErrorHandler:
     """Tests for ChunkingErrorHandler."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def error_handler(self) -> ChunkingErrorHandler:
         """Create error handler instance."""
         return ChunkingErrorHandler()
