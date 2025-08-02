@@ -190,7 +190,7 @@ class TestChunkingSecurityValidator:
 
         # Not a list
         with pytest.raises(ValidationError, match="must be a list"):
-            ChunkingSecurityValidator.validate_file_paths("single_file.txt")
+            ChunkingSecurityValidator.validate_file_paths("single_file.txt")  # type: ignore
 
         # Too many paths
         many_paths = ["file.txt"] * 1500
@@ -199,7 +199,7 @@ class TestChunkingSecurityValidator:
 
         # Invalid path type
         with pytest.raises(ValidationError, match="must be string"):
-            ChunkingSecurityValidator.validate_file_paths([123, 456])
+            ChunkingSecurityValidator.validate_file_paths([123, 456])  # type: ignore
 
         # Directory traversal attempt
         with pytest.raises(ValidationError, match="Invalid file path"):
@@ -256,7 +256,7 @@ class TestChunkingSecurityValidator:
 
         # Not a dict
         with pytest.raises(ValidationError, match="Config must be a dictionary"):
-            ChunkingSecurityValidator.validate_collection_config("not_a_dict")
+            ChunkingSecurityValidator.validate_collection_config("not_a_dict")  # type: ignore
 
         # Missing strategy
         with pytest.raises(ValidationError, match="must include 'strategy'"):

@@ -13,7 +13,7 @@ import os
 import random
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypedDict
 
 import psutil
 import pytest
@@ -25,6 +25,14 @@ logger = logging.getLogger(__name__)
 # Constants
 KB = 1024
 MB = 1024 * KB
+
+
+class DocumentProfile(TypedDict):
+    """Type definition for document profiles."""
+    name: str
+    size_bytes: int
+    size: str
+    chunks_expected: int
 
 
 @dataclass
@@ -78,7 +86,7 @@ class ChunkingBenchmarks:
         },
     }
 
-    DOCUMENT_PROFILES = [
+    DOCUMENT_PROFILES: list[DocumentProfile] = [
         {"name": "small", "size_bytes": 1 * KB, "size": "1KB", "chunks_expected": 2},
         {"name": "medium", "size_bytes": 100 * KB, "size": "100KB", "chunks_expected": 100},
         {"name": "large", "size_bytes": 10 * MB, "size": "10MB", "chunks_expected": 10000},
@@ -126,7 +134,7 @@ class ChunkingBenchmarks:
 
             return "".join(sentences)[:size_bytes]
 
-        elif doc_type == "markdown":
+        if doc_type == "markdown":
             # Generate markdown document
             sections = []
             current_size = 0
@@ -145,7 +153,7 @@ class ChunkingBenchmarks:
 
             return "".join(sections)[:size_bytes]
 
-        elif doc_type == "code":
+        if doc_type == "code":
             # Generate Python-like code
             code_lines = []
             current_size = 0
@@ -168,9 +176,8 @@ class ChunkingBenchmarks:
 
             return "".join(code_lines)[:size_bytes]
 
-        else:
-            # Default to text
-            return ChunkingBenchmarks.generate_test_document(size_bytes, "text")
+        # Default to text
+        return ChunkingBenchmarks.generate_test_document(size_bytes, "text")
 
 
 class PerformanceMonitor:
@@ -212,7 +219,7 @@ class TestChunkingPerformance:
         return PerformanceMonitor()
 
     @pytest.mark.parametrize(
-        "strategy,document_size,expected_rate",
+        ("strategy", "document_size", "expected_rate"),
         [
             ("character", "1MB", 1000),
             ("recursive", "1MB", 800),
