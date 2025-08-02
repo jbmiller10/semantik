@@ -13,6 +13,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
 
+import psutil
 from redis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +21,15 @@ from packages.shared.database.repositories.collection_repository import Collecti
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.text_processing.chunking_factory import ChunkingFactory
 from packages.shared.text_processing.file_type_detector import FileTypeDetector
+from packages.webui.api.chunking_exceptions import (
+    ChunkingMemoryError,
+    ChunkingStrategyError,
+    ChunkingTimeoutError,
+    ChunkingValidationError,
+)
+from packages.webui.middleware.correlation import get_correlation_id
+from packages.webui.services.chunking_config import CHUNKING_CACHE, CHUNKING_LIMITS, CHUNKING_TIMEOUTS
+from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
 from packages.webui.services.chunking_security import ChunkingSecurityValidator
 
 logger = logging.getLogger(__name__)
@@ -78,6 +88,7 @@ class ChunkingService:
         document_repo: DocumentRepository,
         redis_client: Redis,
         security_validator: ChunkingSecurityValidator | None = None,
+        error_handler: ChunkingErrorHandler | None = None,
     ) -> None:
         """Initialize the chunking service.
 
@@ -87,12 +98,14 @@ class ChunkingService:
             document_repo: Document repository
             redis_client: Redis client for caching
             security_validator: Security validator (optional)
+            error_handler: Error handler (optional)
         """
         self.db = db_session
         self.collection_repo = collection_repo
         self.document_repo = document_repo
         self.redis = redis_client
         self.security = security_validator or ChunkingSecurityValidator()
+        self.error_handler = error_handler or ChunkingErrorHandler()
 
     async def preview_chunking(
         self,
@@ -113,10 +126,23 @@ class ChunkingService:
             ChunkingPreviewResponse with preview results
 
         Raises:
-            ValidationError: If validation fails
+            ChunkingValidationError: If validation fails
+            ChunkingMemoryError: If memory limits exceeded
+            ChunkingStrategyError: If strategy initialization fails
         """
-        # Validate input size for preview
-        self.security.validate_document_size(len(text), is_preview=True)
+        correlation_id = get_correlation_id()
+        operation_id = f"preview_{hashlib.sha256(text.encode()).hexdigest()[:8]}"
+
+        try:
+            # Validate input size for preview
+            self.security.validate_document_size(len(text), is_preview=True)
+        except ValueError as e:
+            raise ChunkingValidationError(
+                detail=str(e),
+                correlation_id=correlation_id,
+                field_errors={"text": ["Document size exceeds preview limits"]},
+                operation_id=operation_id,
+            ) from e
 
         # Get or validate config
         if not config:
@@ -130,7 +156,15 @@ class ChunkingService:
                 }
 
         # Validate config security
-        self.security.validate_chunk_params(config.get("params", {}))
+        try:
+            self.security.validate_chunk_params(config.get("params", {}))
+        except ValueError as e:
+            raise ChunkingValidationError(
+                detail=str(e),
+                correlation_id=correlation_id,
+                field_errors={"config": ["Invalid chunking parameters"]},
+                operation_id=operation_id,
+            ) from e
 
         # Check cache
         config_hash = self._hash_config(config)
@@ -140,10 +174,15 @@ class ChunkingService:
             logger.debug("Returning cached preview")
             return cached
 
-        # Create chunker and process
+        # Create chunker and process with error handling
         import time
 
         start_time = time.time()
+
+        # Check memory before processing
+        process = psutil.Process()
+        initial_memory = process.memory_info().rss
+        memory_limit = CHUNKING_LIMITS.PREVIEW_MEMORY_LIMIT_BYTES
 
         # Prepare metadata for chunker
         metadata = {}
@@ -151,8 +190,94 @@ class ChunkingService:
             metadata["file_type"] = file_type
             metadata["file_name"] = f"preview{file_type}"
 
-        chunker = ChunkingFactory.create_chunker(config)
-        chunks = await chunker.chunk_text_async(text, "preview", metadata)
+        try:
+            chunker = ChunkingFactory.create_chunker(config)
+        except Exception as e:
+            # Handle strategy initialization errors
+            error_result = await self.error_handler.handle_with_correlation(
+                operation_id=operation_id,
+                correlation_id=correlation_id,
+                error=e,
+                context={
+                    "method": "preview_chunking",
+                    "strategy": config.get("strategy"),
+                    "text_size": len(text),
+                },
+            )
+
+            # If we have a fallback strategy, raise a specific error
+            if error_result.fallback_strategy:
+                raise ChunkingStrategyError(
+                    detail=f"Failed to initialize {config.get('strategy')} strategy",
+                    correlation_id=correlation_id,
+                    strategy=config.get("strategy", "unknown"),
+                    fallback_strategy=error_result.fallback_strategy,
+                    operation_id=operation_id,
+                ) from e
+            raise ChunkingStrategyError(
+                detail="Failed to initialize chunking strategy",
+                correlation_id=correlation_id,
+                strategy=config.get("strategy", "unknown"),
+                fallback_strategy="recursive",
+                operation_id=operation_id,
+            ) from e
+
+        try:
+            chunks = await chunker.chunk_text_async(text, "preview", metadata)
+
+            # Check memory usage
+            current_memory = process.memory_info().rss
+            memory_used = current_memory - initial_memory
+
+            if memory_used > memory_limit:
+                raise ChunkingMemoryError(
+                    detail="Preview operation exceeded memory limit",
+                    correlation_id=correlation_id,
+                    operation_id=operation_id,
+                    memory_used=memory_used,
+                    memory_limit=memory_limit,
+                    recovery_hint="Try with fewer chunks or smaller text",
+                )
+
+        except MemoryError as e:
+            # Handle out of memory errors
+            current_memory = process.memory_info().rss
+            memory_used = current_memory - initial_memory
+
+            raise ChunkingMemoryError(
+                detail="Out of memory during preview operation",
+                correlation_id=correlation_id,
+                operation_id=operation_id,
+                memory_used=memory_used,
+                memory_limit=memory_limit,
+                recovery_hint="Try processing smaller text or use a simpler strategy",
+            ) from e
+        except TimeoutError as e:
+            # Handle timeout errors
+            elapsed_time = time.time() - start_time
+
+            raise ChunkingTimeoutError(
+                detail="Preview operation timed out",
+                correlation_id=correlation_id,
+                operation_id=operation_id,
+                elapsed_time=elapsed_time,
+                timeout_limit=CHUNKING_TIMEOUTS.PREVIEW_TIMEOUT_SECONDS,
+                estimated_completion=elapsed_time * 2,  # Rough estimate
+            ) from e
+        except Exception as e:
+            # Handle any other errors
+            error_result = await self.error_handler.handle_with_correlation(
+                operation_id=operation_id,
+                correlation_id=correlation_id,
+                error=e,
+                context={
+                    "method": "preview_chunking",
+                    "strategy": config.get("strategy"),
+                    "text_size": len(text),
+                    "chunks_processed": 0,
+                },
+            )
+            raise  # Re-raise the original exception
 
         processing_time = time.time() - start_time
 
@@ -403,10 +528,14 @@ class ChunkingService:
         cache_key = f"chunking:preview:{config_hash}:{text_hash}"
 
         # Check Redis
-        cached_data = self.redis.get(cache_key)
-        if cached_data:
-            data = json.loads(cached_data)
-            return ChunkingPreviewResponse(**data)
+        try:
+            cached_data = self.redis.get(cache_key)
+            if cached_data:
+                data = json.loads(cached_data)
+                return ChunkingPreviewResponse(**data)
+        except ConnectionError:
+            # Log warning and continue without cache
+            logger.warning("Redis unavailable, continuing without cache")
 
         return None
 
@@ -431,12 +560,16 @@ class ChunkingService:
             "recommendations": response.recommendations,
         }
 
-        # Store in Redis with 15 minute TTL
-        self.redis.setex(
-            cache_key,
-            900,  # 15 minutes
-            json.dumps(data),
-        )
+        # Store in Redis with configured TTL
+        try:
+            self.redis.setex(
+                cache_key,
+                CHUNKING_CACHE.PREVIEW_CACHE_TTL_SECONDS,
+                json.dumps(data),
+            )
+        except ConnectionError:
+            # Log warning and continue without caching
+            logger.warning("Redis unavailable, could not cache preview")
 
     def _calculate_metrics(
         self,
