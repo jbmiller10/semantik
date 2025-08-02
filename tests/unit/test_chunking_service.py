@@ -28,9 +28,9 @@ class TestChunkingService:
     def mock_redis(self) -> MagicMock:
         """Mock Redis client."""
         redis = MagicMock(spec=Redis)
-        redis.get = AsyncMock(return_value=None)
-        redis.setex = AsyncMock()
-        redis.incr = AsyncMock()
+        redis.get = MagicMock(return_value=None)
+        redis.setex = MagicMock()
+        redis.incr = MagicMock()
         return redis
 
     @pytest.fixture
@@ -186,6 +186,8 @@ Content under header 2.
         mock_redis: MagicMock,
     ) -> None:
         """Test chunking preview returns cached result."""
+        import json
+        
         # Set up cached response
         cached_data = {
             "chunks": [{"chunk_id": "test_0000", "text": "cached"}],
@@ -195,13 +197,7 @@ Content under header 2.
             "performance_metrics": {},
             "recommendations": [],
         }
-        mock_redis.get.return_value = AsyncMock(
-            return_value=str(cached_data).encode()
-        )
-        
-        # This will fail because json.loads expects proper JSON
-        # Let's fix the mock
-        import json
+        # Redis returns bytes, so encode the JSON string
         mock_redis.get.return_value = json.dumps(cached_data).encode()
         
         result = await chunking_service.preview_chunking(text="test")
