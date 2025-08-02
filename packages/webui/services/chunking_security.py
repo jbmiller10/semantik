@@ -59,9 +59,7 @@ class ChunkingSecurityValidator:
 
             # Validate overlap against chunk size
             if chunk_size and chunk_overlap >= chunk_size:
-                raise ValidationError(
-                    f"chunk_overlap ({chunk_overlap}) must be less than chunk_size ({chunk_size})"
-                )
+                raise ValidationError(f"chunk_overlap ({chunk_overlap}) must be less than chunk_size ({chunk_size})")
 
         # Validate other parameters based on strategy
         # For semantic chunking
