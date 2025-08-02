@@ -810,12 +810,12 @@ class ChunkingErrorHandler:
             keys_to_remove = [k for k in self.retry_counts if k.startswith(f"{operation_id}:")]
             for key in keys_to_remove:
                 del self.retry_counts[key]
-            resources_freed["retry_entries"] = len(keys_to_remove)
+            resources_freed["retry_entries"] = len(keys_to_remove)  # type: ignore[assignment]
 
             # Clear from error history
             if operation_id in self._error_history:
                 del self._error_history[operation_id]
-                resources_freed["error_history"] = True
+                resources_freed["error_history"] = True  # type: ignore[assignment]
 
             # Perform rollback if requested
             if cleanup_strategy == "rollback":
@@ -1036,13 +1036,14 @@ class ChunkingErrorHandler:
             # Check if already queued
             position = await self.redis_client.lpos(queue_key, operation_id)
             if position is not None:
-                return position
+                return int(position)
 
             # Add to queue
             await self.redis_client.rpush(queue_key, operation_id)
 
             # Get position
-            return await self.redis_client.lpos(queue_key, operation_id)
+            position = await self.redis_client.lpos(queue_key, operation_id)
+            return int(position) if position is not None else None
 
         except Exception as e:
             logger.error(f"Failed to queue operation: {str(e)}")
@@ -1229,7 +1230,8 @@ class ChunkingErrorHandler:
             state_data = await self.redis_client.get(state_key)
 
             if state_data:
-                return json.loads(state_data)
+                state_dict: dict[str, Any] = json.loads(state_data)
+                return state_dict
 
         except Exception as e:
             logger.error(f"Failed to retrieve operation state: {str(e)}", exc_info=e)

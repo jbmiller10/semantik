@@ -22,7 +22,7 @@ from packages.webui.services.chunking_error_handler import (
 )
 
 
-async def example_usage():
+async def example_usage() -> None:
     """Demonstrate usage of the enhanced ChunkingErrorHandler."""
 
     # Initialize Redis client
@@ -98,16 +98,18 @@ async def example_usage():
     # Example 3: Clean up failed operation
     partial_results = [
         ChunkResult(
+            chunk_id="chunk_1",
             text="Sample chunk 1",
             metadata={"doc_id": "doc_1", "position": 0},
-            start_index=0,
-            end_index=100,
+            start_offset=0,
+            end_offset=100,
         ),
         ChunkResult(
+            chunk_id="chunk_2",
             text="Sample chunk 2",
             metadata={"doc_id": "doc_1", "position": 1},
-            start_index=100,
-            end_index=200,
+            start_offset=100,
+            end_offset=200,
         ),
     ]
 
@@ -144,7 +146,7 @@ async def example_usage():
     await redis_client.close()
 
 
-async def integration_with_fastapi(request: Request):
+async def integration_with_fastapi(request: Request) -> None:
     """Example of integration with FastAPI endpoint."""
 
     # Get correlation ID from request (set by middleware)
@@ -197,7 +199,7 @@ async def integration_with_fastapi(request: Request):
         await redis_client.close()
 
 
-async def monitoring_and_alerting_example():
+async def monitoring_and_alerting_example() -> None:
     """Example of using error handler for monitoring and alerting."""
     redis_client = Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
     error_handler = ChunkingErrorHandler(redis_client=redis_client)
