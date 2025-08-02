@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, Mock, PropertyMock, patch
 
 import psutil
 import pytest
-from celery.exceptions import SoftTimeLimitExceeded
 from redis import Redis
 
 from packages.shared.database.models import OperationStatus, OperationType
@@ -19,7 +18,6 @@ from packages.webui.api.chunking_exceptions import (
     ChunkingMemoryError,
     ChunkingPartialFailureError,
     ChunkingResourceLimitError,
-    ChunkingTimeoutError,
     ResourceType,
 )
 from packages.webui.chunking_tasks import (
@@ -32,8 +30,6 @@ from packages.webui.chunking_tasks import (
     _process_chunking_operation_async,
     _send_progress_update,
     monitor_dead_letter_queue,
-    process_chunking_operation,
-    retry_failed_documents,
 )
 
 
@@ -230,12 +226,12 @@ class TestProcessChunkingOperation:
         mock_op_repo.get_by_id.return_value = mock_operation
 
         mock_db = AsyncMock()
-        
+
         # Create a proper async context manager
         mock_session_instance = AsyncMock()
         mock_session_instance.__aenter__ = AsyncMock(return_value=mock_db)
         mock_session_instance.__aexit__ = AsyncMock(return_value=None)
-        
+
         mock_session = MagicMock()
         mock_session.return_value = mock_session_instance
 
@@ -296,12 +292,12 @@ class TestProcessChunkingOperation:
         )
 
         mock_db = AsyncMock()
-        
+
         # Create a proper async context manager
         mock_session_instance = AsyncMock()
         mock_session_instance.__aenter__ = AsyncMock(return_value=mock_db)
         mock_session_instance.__aexit__ = AsyncMock(return_value=None)
-        
+
         mock_session = MagicMock()
         mock_session.return_value = mock_session_instance
 
@@ -316,9 +312,7 @@ class TestProcessChunkingOperation:
             with patch("packages.webui.chunking_tasks.AsyncSessionLocal", mock_session):
                 with patch("packages.webui.chunking_tasks.OperationRepository", return_value=mock_op_repo):
                     with patch("packages.webui.chunking_tasks.CollectionRepository", return_value=mock_coll_repo):
-                        with patch(
-                            "packages.webui.chunking_tasks.ChunkingService", return_value=mock_chunking_service
-                        ):
+                        with patch("packages.webui.chunking_tasks.ChunkingService", return_value=mock_chunking_service):
                             with patch("packages.webui.chunking_tasks.get_redis_client"):
                                 with patch("packages.webui.chunking_tasks._calculate_batch_size", return_value=10):
                                     celery_task = Mock(spec=ChunkingTask)
@@ -500,11 +494,11 @@ class TestRetryAndMonitoring:
     def test_retry_failed_documents(self, mock_process):
         """Test retry task for failed documents."""
         mock_process.apply_async.return_value.get.return_value = {"status": "success"}
-        
+
         # Create the task and set up the return value
         task = Mock()
         task.run = Mock(return_value={"status": "success"})
-        
+
         # Simulate calling the task
         result = task.run(
             operation_id="op-123",

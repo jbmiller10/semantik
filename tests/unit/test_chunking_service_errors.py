@@ -17,14 +17,10 @@ from packages.shared.database.repositories.collection_repository import Collecti
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.text_processing.base_chunker import ChunkResult
 from packages.webui.api.chunking_exceptions import (
-    ChunkingDependencyError,
     ChunkingMemoryError,
-    ChunkingPartialFailureError,
-    ChunkingResourceLimitError,
     ChunkingStrategyError,
     ChunkingTimeoutError,
     ChunkingValidationError,
-    ResourceType,
 )
 from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
 from packages.webui.services.chunking_security import ChunkingSecurityValidator
@@ -294,7 +290,9 @@ class TestChunkingServiceErrorHandling:
         # Should still work but without caching
         with patch("packages.shared.text_processing.chunking_factory.ChunkingFactory.create_chunker") as mock_factory:
             mock_chunker = MagicMock()
-            mock_chunker.chunk_text_async = AsyncMock(return_value=[ChunkResult(chunk_id="1", text="chunk1", start_offset=0, end_offset=6, metadata={})])
+            mock_chunker.chunk_text_async = AsyncMock(
+                return_value=[ChunkResult(chunk_id="1", text="chunk1", start_offset=0, end_offset=6, metadata={})]
+            )
             mock_factory.return_value = mock_chunker
 
             # Should not raise error, but log warning

@@ -35,20 +35,20 @@ async def mock_redis():
     redis.lpos = AsyncMock(return_value=None)
     redis.rpush = AsyncMock()
     redis.lrem = AsyncMock()
-    
+
     # Mock scan_iter to return an async iterator
     class AsyncIteratorMock:
         def __init__(self, items):
             self.items = items
-            
+
         def __aiter__(self):
             return self
-            
+
         async def __anext__(self):
             if self.items:
                 return self.items.pop(0)
             raise StopAsyncIteration
-    
+
     redis.scan_iter = MagicMock(return_value=AsyncIteratorMock([]))
     return redis
 

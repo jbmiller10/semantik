@@ -216,13 +216,19 @@ class TestHelperFunctions:
 
     def test_get_or_generate_correlation_id_from_request(self) -> None:
         """Test getting correlation ID from request headers."""
+        # Clear any existing context
         correlation_id_var.set(None)
         test_id = str(uuid.uuid4())
 
-        request = MagicMock(spec=Request)
-        request.headers = {"X-Correlation-ID": test_id}
+        # Create a simple object with headers attribute
+        class MockRequest:
+            def __init__(self, headers):
+                self.headers = headers
 
-        assert get_or_generate_correlation_id(request) == test_id
+        request = MockRequest({"X-Correlation-ID": test_id})
+
+        result = get_or_generate_correlation_id(request)
+        assert result == test_id
 
     def test_get_or_generate_correlation_id_generates_new(self) -> None:
         """Test generating new correlation ID when none available."""
@@ -237,8 +243,12 @@ class TestHelperFunctions:
         """Test handling invalid correlation ID from request."""
         correlation_id_var.set(None)
 
-        request = MagicMock(spec=Request)
-        request.headers = {"X-Correlation-ID": "invalid-uuid"}
+        # Create a simple object with headers attribute
+        class MockRequest:
+            def __init__(self, headers):
+                self.headers = headers
+
+        request = MockRequest({"X-Correlation-ID": "invalid-uuid"})
 
         correlation_id = get_or_generate_correlation_id(request)
         assert correlation_id != "invalid-uuid"
