@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import random
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, TypedDict
@@ -182,32 +183,133 @@ class ChunkingBenchmarks:
 
 
 class PerformanceMonitor:
-    """Monitor resource usage during tests."""
+    """Enhanced monitor for resource usage during tests with continuous sampling."""
 
-    def __init__(self) -> None:
-        """Initialize the monitor."""
+    def __init__(self, sample_interval: float = 0.1) -> None:
+        """Initialize the monitor.
+
+        Args:
+            sample_interval: Seconds between samples (default 0.1s)
+        """
         self.process = psutil.Process()
+        self.sample_interval = sample_interval
         self.start_memory = 0
         self.peak_memory = 0
+        self.start_time = 0.0
+
+        # Continuous monitoring data
+        self.memory_samples: list[float] = []
+        self.cpu_samples: list[float] = []
+        self.time_samples: list[float] = []
+
+        # Threading control
+        self._monitoring = False
+        self._monitor_thread: threading.Thread | None = None
+
+        # CPU tracking
+        self.start_cpu_percent = 0.0
+        self.peak_cpu_percent = 0.0
+        self.avg_cpu_percent = 0.0
+
+    def _monitor_loop(self) -> None:
+        """Background thread for continuous monitoring."""
+        while self._monitoring:
+            try:
+                # Sample memory
+                current_memory = self.process.memory_info().rss / MB
+                self.memory_samples.append(current_memory)
+                self.peak_memory = max(self.peak_memory, current_memory)
+
+                # Sample CPU (non-blocking with interval=0)
+                cpu_percent = self.process.cpu_percent(interval=0)
+                self.cpu_samples.append(cpu_percent)
+                self.peak_cpu_percent = max(self.peak_cpu_percent, cpu_percent)
+
+                # Record timestamp
+                self.time_samples.append(time.time() - self.start_time)
+
+                # Sleep for interval
+                time.sleep(self.sample_interval)
+
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                # Process ended or access denied
+                break
 
     def start(self) -> None:
-        """Start monitoring."""
+        """Start continuous monitoring."""
+        self.start_time = time.time()
         self.start_memory = self.process.memory_info().rss / MB
         self.peak_memory = self.start_memory
 
-    def update(self) -> None:
-        """Update peak memory usage."""
-        current_memory = self.process.memory_info().rss / MB
-        self.peak_memory = max(self.peak_memory, current_memory)
+        # Initialize CPU tracking (first call to establish baseline)
+        self.process.cpu_percent(interval=None)
+        time.sleep(0.1)  # Small delay for CPU baseline
+        self.start_cpu_percent = self.process.cpu_percent(interval=0)
 
-    def stop(self) -> dict[str, float]:
-        """Stop monitoring and return metrics."""
+        # Clear previous samples
+        self.memory_samples.clear()
+        self.cpu_samples.clear()
+        self.time_samples.clear()
+
+        # Start monitoring thread
+        self._monitoring = True
+        self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
+        self._monitor_thread.start()
+
+    def update(self) -> None:
+        """Manual update - kept for compatibility but not needed with continuous monitoring."""
+        if not self._monitoring:
+            current_memory = self.process.memory_info().rss / MB
+            self.peak_memory = max(self.peak_memory, current_memory)
+
+    def stop(self) -> dict[str, Any]:
+        """Stop monitoring and return comprehensive metrics."""
+        # Stop monitoring thread
+        self._monitoring = False
+        if self._monitor_thread:
+            self._monitor_thread.join(timeout=1.0)
+
         final_memory = self.process.memory_info().rss / MB
+        final_cpu = self.process.cpu_percent(interval=0)
+
+        # Calculate statistics
+        if self.cpu_samples:
+            self.avg_cpu_percent = sum(self.cpu_samples) / len(self.cpu_samples)
+        else:
+            self.avg_cpu_percent = (self.start_cpu_percent + final_cpu) / 2
+
+        # Memory statistics
+        memory_stats = {
+            "min": min(self.memory_samples) if self.memory_samples else self.start_memory,
+            "max": self.peak_memory,
+            "avg": sum(self.memory_samples) / len(self.memory_samples) if self.memory_samples else self.start_memory,
+            "samples": len(self.memory_samples),
+        }
+
+        # CPU statistics
+        cpu_stats = {
+            "min": min(self.cpu_samples) if self.cpu_samples else self.start_cpu_percent,
+            "max": self.peak_cpu_percent,
+            "avg": self.avg_cpu_percent,
+            "samples": len(self.cpu_samples),
+        }
+
         return {
+            # Legacy fields for compatibility
             "start_memory_mb": self.start_memory,
             "peak_memory_mb": self.peak_memory,
             "final_memory_mb": final_memory,
             "memory_used_mb": self.peak_memory - self.start_memory,
+            # Enhanced metrics
+            "memory_stats": memory_stats,
+            "cpu_stats": cpu_stats,
+            "duration_seconds": time.time() - self.start_time if self.start_time else 0,
+            "sample_count": len(self.memory_samples),
+            # Time series data (for detailed analysis)
+            "memory_timeline": list(zip(self.time_samples, self.memory_samples, strict=False))[
+                :100
+            ],  # Limit to 100 samples
+            "cpu_timeline": list(zip(self.time_samples, self.cpu_samples, strict=False))[:100],
         }
 
 
