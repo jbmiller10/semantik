@@ -66,7 +66,7 @@ class Calculator:
     def multiply(self, a, b):
         return a * b
 ''',
-        "javascript": '''function greet(name) {
+        "javascript": """function greet(name) {
     console.log(`Hello, ${name}!`);
 }
 
@@ -76,7 +76,7 @@ const calculator = {
 };
 
 export default calculator;
-''',
+""",
     }
 
     MARKDOWN_SAMPLES = {
@@ -179,15 +179,15 @@ For more complex scenarios...
     async def test_character_chunker_basic(self) -> None:
         """Test basic character chunker functionality."""
         chunker = CharacterChunker(chunk_size=50, chunk_overlap=10)
-        
+
         text = "This is a test document. " * 10  # ~250 characters
         chunks = await chunker.chunk_text_async(text, "test_doc")
-        
+
         # Verify chunks
         assert len(chunks) > 1
         assert all(isinstance(chunk, ChunkResult) for chunk in chunks)
         assert all(len(chunk.text) <= 250 for chunk in chunks)  # Token size ~4x char size
-        
+
         # Verify overlap
         for i in range(len(chunks) - 1):
             # Some overlap should exist between consecutive chunks
@@ -196,14 +196,14 @@ For more complex scenarios...
     async def test_recursive_chunker_basic(self) -> None:
         """Test basic recursive chunker functionality."""
         chunker = RecursiveChunker(chunk_size=50, chunk_overlap=10)
-        
+
         text = "This is sentence one. This is sentence two. This is sentence three. " * 10
         chunks = await chunker.chunk_text_async(text, "test_doc")
-        
+
         # Verify chunks
         assert len(chunks) > 1
         assert all(isinstance(chunk, ChunkResult) for chunk in chunks)
-        
+
         # Verify sentence boundaries are respected
         for chunk in chunks:
             # Most chunks should end with sentence punctuation
@@ -214,7 +214,7 @@ For more complex scenarios...
     async def test_recursive_chunker_code_optimization(self) -> None:
         """Test recursive chunker with code file optimization."""
         chunker = RecursiveChunker()
-        
+
         # Test with Python code
         metadata = {"file_type": ".py", "file_name": "test.py"}
         chunks = await chunker.chunk_text_async(
@@ -222,27 +222,27 @@ For more complex scenarios...
             "test_code",
             metadata,
         )
-        
+
         # Verify code optimization was applied
         assert len(chunks) >= 1
         assert all(chunk.metadata.get("is_code_file") is True for chunk in chunks)
-        
+
         # Code chunks should be smaller
         assert all(len(chunk.text) < 2000 for chunk in chunks)
 
     async def test_markdown_chunker_basic(self) -> None:
         """Test basic markdown chunker functionality."""
         chunker = MarkdownChunker()
-        
+
         chunks = await chunker.chunk_text_async(
             self.MARKDOWN_SAMPLES["simple"],
             "test_doc",
         )
-        
+
         # Verify chunks
         assert len(chunks) >= 1
         assert all(isinstance(chunk, ChunkResult) for chunk in chunks)
-        
+
         # Verify markdown structure is preserved
         # Each major section should be its own chunk
         chunk_texts = [chunk.text for chunk in chunks]
@@ -252,17 +252,17 @@ For more complex scenarios...
     async def test_markdown_chunker_complex(self) -> None:
         """Test markdown chunker with complex document."""
         chunker = MarkdownChunker()
-        
+
         chunks = await chunker.chunk_text_async(
             self.MARKDOWN_SAMPLES["complex"],
             "test_doc",
             {"file_type": ".md"},
         )
-        
+
         # Verify chunks
         assert len(chunks) > 3  # Should have multiple sections
         assert all(isinstance(chunk, ChunkResult) for chunk in chunks)
-        
+
         # Code blocks should be preserved within chunks
         code_chunks = [c for c in chunks if "```" in c.text]
         assert len(code_chunks) >= 2  # At least bash and python examples
@@ -274,13 +274,13 @@ For more complex scenarios...
         chunker = ChunkingFactory.create_chunker(config)
         assert isinstance(chunker, CharacterChunker)
         assert chunker.chunk_size == 100
-        
+
         # Recursive chunker
         config = {"strategy": "recursive", "params": {"chunk_size": 200}}
         chunker = ChunkingFactory.create_chunker(config)
         assert isinstance(chunker, RecursiveChunker)
         assert chunker.chunk_size == 200
-        
+
         # Markdown chunker
         config = {"strategy": "markdown", "params": {}}
         chunker = ChunkingFactory.create_chunker(config)
@@ -289,14 +289,14 @@ For more complex scenarios...
     async def test_factory_invalid_strategy(self) -> None:
         """Test factory handles invalid strategy."""
         config = {"strategy": "invalid_strategy", "params": {}}
-        
+
         with pytest.raises(ValueError, match="Unknown chunking strategy"):
             ChunkingFactory.create_chunker(config)
 
     def test_factory_available_strategies(self) -> None:
         """Test factory returns available strategies."""
         strategies = ChunkingFactory.get_available_strategies()
-        
+
         assert "character" in strategies
         assert "recursive" in strategies
         assert "markdown" in strategies
@@ -307,33 +307,38 @@ For more complex scenarios...
         """Test configuration validation."""
         config = self.get_default_config(strategy)
         chunker = ChunkingFactory.create_chunker(config)
-        
+
         # Valid config
         assert chunker.validate_config(config["params"]) is True
-        
+
         # Invalid configs
         if strategy in ["character", "recursive"]:
             # Invalid chunk size
             assert chunker.validate_config({"chunk_size": -100}) is False
             assert chunker.validate_config({"chunk_size": "not_a_number"}) is False
-            
+
             # Invalid overlap
-            assert chunker.validate_config({
-                "chunk_size": 100,
-                "chunk_overlap": 200,  # Greater than chunk size
-            }) is False
+            assert (
+                chunker.validate_config(
+                    {
+                        "chunk_size": 100,
+                        "chunk_overlap": 200,  # Greater than chunk size
+                    }
+                )
+                is False
+            )
 
     @pytest.mark.parametrize("strategy", ALL_STRATEGIES)
     def test_estimate_chunks(self, strategy: str) -> None:
         """Test chunk estimation."""
         config = self.get_default_config(strategy)
         chunker = ChunkingFactory.create_chunker(config)
-        
+
         # Small text
         estimate = chunker.estimate_chunks(100, config["params"])
         assert estimate >= 1
         assert estimate <= 5
-        
+
         # Large text
         estimate = chunker.estimate_chunks(10000, config["params"])
         assert estimate > 10
@@ -342,22 +347,22 @@ For more complex scenarios...
     async def test_metadata_preservation(self) -> None:
         """Test metadata is preserved in chunks."""
         chunker = RecursiveChunker(chunk_size=50)
-        
+
         metadata = {
             "source": "test_file.txt",
             "author": "Test Author",
             "custom_field": 123,
         }
-        
+
         text = "This is a test. " * 10
         chunks = await chunker.chunk_text_async(text, "test_doc", metadata)
-        
+
         # All chunks should have metadata
         assert all(chunk.metadata for chunk in chunks)
-        
+
         # Strategy should be added to metadata
         assert all(chunk.metadata["strategy"] == "recursive" for chunk in chunks)
-        
+
         # Original metadata should be preserved
         for chunk in chunks:
             assert chunk.metadata.get("source") == "test_file.txt"
@@ -367,14 +372,14 @@ For more complex scenarios...
     async def test_chunk_ids_unique(self) -> None:
         """Test chunk IDs are unique."""
         chunker = CharacterChunker(chunk_size=50)
-        
+
         text = "Test text. " * 20
         chunks = await chunker.chunk_text_async(text, "doc123")
-        
+
         # All chunk IDs should be unique
         chunk_ids = [chunk.chunk_id for chunk in chunks]
         assert len(chunk_ids) == len(set(chunk_ids))
-        
+
         # Chunk IDs should follow pattern
         for i, chunk in enumerate(chunks):
             assert chunk.chunk_id == f"doc123_{i:04d}"
@@ -382,7 +387,7 @@ For more complex scenarios...
     async def test_unicode_handling(self) -> None:
         """Test proper Unicode handling."""
         chunker = RecursiveChunker(chunk_size=50)
-        
+
         # Various Unicode texts
         texts = [
             "Hello 世界! Testing 中文 characters.",
@@ -390,13 +395,13 @@ For more complex scenarios...
             "Mixed: Café, naïve, résumé, Zürich",
             "RTL: العربية and עברית text",
         ]
-        
+
         for text in texts:
             chunks = await chunker.chunk_text_async(text, "unicode_test")
-            
+
             # Should handle without errors
             assert len(chunks) >= 1
-            
+
             # Reassembled text should match original (minus whitespace changes)
             reassembled = " ".join(chunk.text.strip() for chunk in chunks)
             assert text.strip() in reassembled or reassembled in text.strip()
@@ -404,18 +409,18 @@ For more complex scenarios...
     async def test_large_document_handling(self) -> None:
         """Test handling of large documents."""
         chunker = CharacterChunker(chunk_size=1000, chunk_overlap=200)
-        
+
         # Generate large document (1MB)
         large_text = "This is a test sentence. " * 50000
-        
+
         chunks = await chunker.chunk_text_async(large_text, "large_doc")
-        
+
         # Should create many chunks
         assert len(chunks) > 100
-        
+
         # All chunks should be within size limits
         assert all(len(chunk.text) <= 5000 for chunk in chunks)
-        
+
         # Verify offsets are correct
         for i in range(len(chunks) - 1):
             assert chunks[i].end_offset <= chunks[i + 1].end_offset
@@ -490,19 +495,19 @@ if __name__ == "__main__":
     print(calc.divide(20, 5))
     print("History:", calc.get_history())
 """
-        
+
         # Test with .py file type
         from packages.shared.text_processing.file_type_detector import FileTypeDetector
-        
+
         config = FileTypeDetector.get_optimal_config("test.py")
         assert config["strategy"] == "recursive"
         assert config["params"]["chunk_size"] == 400  # Optimized for code
         assert config["params"]["chunk_overlap"] == 50
-        
+
         # Test chunking preserves code structure reasonably
         chunker = ChunkingFactory.create_chunker(config)
         chunks = await chunker.chunk_text_async(code_file, "test.py")
-        
+
         # Verify chunks
         assert len(chunks) >= 2
         assert any("fibonacci" in chunk.text for chunk in chunks)
