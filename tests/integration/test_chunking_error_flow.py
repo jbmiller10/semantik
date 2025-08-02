@@ -7,32 +7,28 @@ correlation ID tracking, exception handler responses, and recovery mechanisms.
 """
 
 import asyncio
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
-from httpx import AsyncClient
 from redis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
+from packages.webui.api.chunking_exception_handlers import register_chunking_exception_handlers
 from packages.webui.api.chunking_exceptions import (
     ChunkingMemoryError,
     ChunkingPartialFailureError,
     ChunkingStrategyError,
     ChunkingTimeoutError,
     ChunkingValidationError,
-    ResourceType,
 )
-from packages.webui.api.chunking_exception_handlers import register_chunking_exception_handlers
 from packages.webui.middleware.correlation import CorrelationMiddleware, get_correlation_id
 from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
 from packages.webui.services.chunking_service import ChunkingService
-from packages.webui.tasks.chunking_tasks import process_collection_chunking
 
 
 class TestChunkingErrorFlowIntegration:
@@ -54,7 +50,7 @@ class TestChunkingErrorFlowIntegration:
         app = FastAPI()
         app.add_middleware(CorrelationMiddleware)
         register_chunking_exception_handlers(app)
-        
+
         return app
 
     @pytest.fixture()
@@ -70,14 +66,14 @@ class TestChunkingErrorFlowIntegration:
     async def test_correlation_id_propagation(self, test_app: FastAPI, chunking_service: ChunkingService) -> None:
         """Test that correlation IDs propagate through all layers."""
         correlation_id = str(uuid4())
-        
+
         # Add endpoint that uses chunking service
         @test_app.post("/test/chunking")
         async def test_endpoint(request: Request):
             # Get correlation ID from request
             req_correlation_id = get_correlation_id()
             assert req_correlation_id == correlation_id
-            
+
             # Trigger an error in chunking service
             raise ChunkingMemoryError(
                 detail="Test memory error",
@@ -86,13 +82,13 @@ class TestChunkingErrorFlowIntegration:
                 memory_used=1000,
                 memory_limit=500,
             )
-        
+
         client = TestClient(test_app)
         response = client.post(
             "/test/chunking",
             headers={"X-Correlation-ID": correlation_id},
         )
-        
+
         # Verify response includes correlation ID
         assert response.status_code == 507
         data = response.json()
@@ -102,6 +98,7 @@ class TestChunkingErrorFlowIntegration:
 
     async def test_memory_error_propagation(self, test_app: FastAPI, chunking_service: ChunkingService) -> None:
         """Test ChunkingMemoryError propagation and response format."""
+
         @test_app.post("/test/memory-error")
         async def test_endpoint():
             correlation_id = get_correlation_id()
@@ -113,13 +110,13 @@ class TestChunkingErrorFlowIntegration:
                 memory_limit=1 * 1024 * 1024 * 1024,  # 1GB
                 recovery_hint="Split the document",
             )
-        
+
         client = TestClient(test_app)
         response = client.post("/test/memory-error")
-        
+
         assert response.status_code == 507
         data = response.json()
-        
+
         # Verify error structure
         assert data["error_code"] == "CHUNKING_MEMORY_EXCEEDED"
         assert data["detail"] == "Document too large"
@@ -131,6 +128,7 @@ class TestChunkingErrorFlowIntegration:
 
     async def test_timeout_error_propagation(self, test_app: FastAPI) -> None:
         """Test ChunkingTimeoutError propagation."""
+
         @test_app.post("/test/timeout-error")
         async def test_endpoint():
             correlation_id = get_correlation_id()
@@ -142,13 +140,13 @@ class TestChunkingErrorFlowIntegration:
                 timeout_limit=60.0,
                 estimated_completion=120.0,
             )
-        
+
         client = TestClient(test_app)
         response = client.post("/test/timeout-error")
-        
+
         assert response.status_code == 504
         data = response.json()
-        
+
         assert data["error_code"] == "CHUNKING_TIMEOUT"
         assert data["elapsed_seconds"] == 65.0
         assert data["timeout_seconds"] == 60.0
@@ -156,6 +154,7 @@ class TestChunkingErrorFlowIntegration:
 
     async def test_validation_error_propagation(self, test_app: FastAPI) -> None:
         """Test ChunkingValidationError propagation with field errors."""
+
         @test_app.post("/test/validation-error")
         async def test_endpoint():
             correlation_id = get_correlation_id()
@@ -167,13 +166,13 @@ class TestChunkingErrorFlowIntegration:
                     "strategy": ["Unknown strategy 'invalid'"],
                 },
             )
-        
+
         client = TestClient(test_app)
         response = client.post("/test/validation-error")
-        
+
         assert response.status_code == 422
         data = response.json()
-        
+
         assert data["error_code"] == "CHUNKING_VALIDATION_FAILED"
         assert "field_errors" in data
         assert "chunk_size" in data["field_errors"]
@@ -181,6 +180,7 @@ class TestChunkingErrorFlowIntegration:
 
     async def test_strategy_error_with_fallback(self, test_app: FastAPI) -> None:
         """Test ChunkingStrategyError with fallback suggestion."""
+
         @test_app.post("/test/strategy-error")
         async def test_endpoint():
             correlation_id = get_correlation_id()
@@ -190,13 +190,13 @@ class TestChunkingErrorFlowIntegration:
                 strategy="semantic",
                 fallback_strategy="recursive",
             )
-        
+
         client = TestClient(test_app)
         response = client.post("/test/strategy-error")
-        
+
         assert response.status_code == 503
         data = response.json()
-        
+
         assert data["error_code"] == "CHUNKING_STRATEGY_FAILED"
         assert data["strategy"] == "semantic"
         assert data["fallback_strategy"] == "recursive"
@@ -204,6 +204,7 @@ class TestChunkingErrorFlowIntegration:
 
     async def test_partial_failure_handling(self, test_app: FastAPI) -> None:
         """Test ChunkingPartialFailureError handling."""
+
         @test_app.post("/test/partial-failure")
         async def test_endpoint():
             correlation_id = get_correlation_id()
@@ -222,13 +223,13 @@ class TestChunkingErrorFlowIntegration:
                 },
                 successful_chunks=150,
             )
-        
+
         client = TestClient(test_app)
         response = client.post("/test/partial-failure")
-        
+
         assert response.status_code == 207  # Multi-Status
         data = response.json()
-        
+
         assert data["error_code"] == "CHUNKING_PARTIAL_FAILURE"
         assert data["total_documents"] == 20
         assert data["failed_count"] == 5
@@ -241,44 +242,45 @@ class TestChunkingErrorFlowIntegration:
         """Test error recovery mechanism with retry logic."""
         # Mock document repo to return test documents
         mock_deps["document_repo"].list_by_collection = AsyncMock(
-            return_value=([
-                MagicMock(id="doc1", content="Test content 1"),
-                MagicMock(id="doc2", content="Test content 2"),
-            ], 2)
+            return_value=(
+                [
+                    MagicMock(id="doc1", content="Test content 1"),
+                    MagicMock(id="doc2", content="Test content 2"),
+                ],
+                2,
+            )
         )
-        
+
         # Mock collection repo
         mock_collection = MagicMock(id="coll-123", uuid="uuid-123")
-        mock_deps["collection_repo"].get_by_uuid_with_permission_check = AsyncMock(
-            return_value=mock_collection
-        )
-        
+        mock_deps["collection_repo"].get_by_uuid_with_permission_check = AsyncMock(return_value=mock_collection)
+
         # Create error handler with retry enabled
         error_handler = ChunkingErrorHandler(max_retries=3)
         chunking_service.error_handler = error_handler
-        
+
         # Simulate transient error that succeeds on retry
         call_count = 0
-        
+
         async def mock_chunk_text(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count < 3:
                 raise Exception("Transient error")
             return [MagicMock(text="chunk1"), MagicMock(text="chunk2")]
-        
+
         with patch("packages.shared.text_processing.chunking_factory.ChunkingFactory.create_chunker") as mock_factory:
             mock_chunker = MagicMock()
             mock_chunker.chunk_text_async = AsyncMock(side_effect=mock_chunk_text)
             mock_factory.return_value = mock_chunker
-            
+
             # Process collection with retry
             result = await chunking_service.process_collection(
                 collection_uuid="uuid-123",
                 user_id=1,
                 config={"strategy": "recursive", "params": {}},
             )
-            
+
             # Verify retry happened
             assert call_count == 3
             assert mock_chunker.chunk_text_async.call_count == 3
@@ -291,7 +293,7 @@ class TestChunkingErrorFlowIntegration:
             circuit_breaker_timeout=60,
         )
         chunking_service.error_handler = error_handler
-        
+
         # Simulate repeated failures
         for i in range(5):
             try:
@@ -303,7 +305,7 @@ class TestChunkingErrorFlowIntegration:
                 )
             except Exception:
                 pass
-        
+
         # Verify circuit breaker is open
         assert error_handler.is_circuit_open("chunking")
 
@@ -313,11 +315,11 @@ class TestChunkingErrorFlowIntegration:
             max_retries=1,
             enable_dead_letter_queue=True,
         )
-        
+
         # Mock Redis for DLQ
         mock_deps["redis_client"].lpush = MagicMock()
         error_handler.redis = mock_deps["redis_client"]
-        
+
         # Create unrecoverable error
         error = ChunkingMemoryError(
             detail="Out of memory",
@@ -326,7 +328,7 @@ class TestChunkingErrorFlowIntegration:
             memory_used=2000000000,
             memory_limit=1000000000,
         )
-        
+
         # Handle error that exceeds retries
         result = await error_handler.handle_with_correlation(
             operation_id="op-456",
@@ -334,7 +336,7 @@ class TestChunkingErrorFlowIntegration:
             error=error,
             context={"attempt": 3},
         )
-        
+
         # Verify message sent to DLQ
         assert mock_deps["redis_client"].lpush.called
         dlq_call = mock_deps["redis_client"].lpush.call_args
@@ -359,7 +361,7 @@ class TestChunkingErrorFlowIntegration:
                     error=e,
                     context={"strategy": "semantic"},
                 )
-            
+
             # Verify metrics were recorded
             mock_record.assert_called_with(
                 error_type="memory",
@@ -369,11 +371,12 @@ class TestChunkingErrorFlowIntegration:
 
     async def test_graceful_degradation(self, test_app: FastAPI, chunking_service: ChunkingService) -> None:
         """Test system degrades gracefully under resource pressure."""
+
         @test_app.post("/test/degradation")
         async def test_endpoint():
             # Simulate resource exhaustion
             correlation_id = get_correlation_id()
-            
+
             # First try primary strategy
             try:
                 # Simulate failure
@@ -408,10 +411,10 @@ class TestChunkingErrorFlowIntegration:
                         "failed_documents": e.failed_documents,
                         "degraded": True,
                     }
-        
+
         client = TestClient(test_app)
         response = client.post("/test/degradation")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "partial_success"
@@ -421,7 +424,7 @@ class TestChunkingErrorFlowIntegration:
     async def test_concurrent_error_handling(self, chunking_service: ChunkingService) -> None:
         """Test error handling under concurrent load."""
         error_handler = ChunkingErrorHandler()
-        
+
         async def simulate_error(i: int):
             try:
                 if i % 3 == 0:
@@ -452,13 +455,13 @@ class TestChunkingErrorFlowIntegration:
                     error=e,
                     context={"index": i},
                 )
-        
+
         # Run multiple concurrent errors
         results = await asyncio.gather(
             *[simulate_error(i) for i in range(30)],
             return_exceptions=True,
         )
-        
+
         # Verify all errors were handled
         assert len(results) == 30
         assert all(hasattr(r, "error_handled") for r in results if not isinstance(r, Exception))
@@ -468,10 +471,10 @@ class TestChunkingErrorFlowIntegration:
         # Mock cleanup operations
         mock_deps["db_session"].rollback = AsyncMock()
         mock_deps["redis_client"].delete = MagicMock()
-        
+
         error_handler = ChunkingErrorHandler()
         error_handler.redis = mock_deps["redis_client"]
-        
+
         # Create error with cleanup context
         error = ChunkingMemoryError(
             detail="Memory error requiring cleanup",
@@ -480,7 +483,7 @@ class TestChunkingErrorFlowIntegration:
             memory_used=1000,
             memory_limit=500,
         )
-        
+
         await error_handler.handle_with_correlation(
             operation_id="op-cleanup",
             correlation_id="corr-cleanup",
@@ -490,6 +493,6 @@ class TestChunkingErrorFlowIntegration:
                 "temp_keys": ["temp:key1", "temp:key2"],
             },
         )
-        
+
         # Verify cleanup was performed
         assert mock_deps["redis_client"].delete.called

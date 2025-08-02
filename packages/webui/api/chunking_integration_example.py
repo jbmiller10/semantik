@@ -17,13 +17,13 @@ This file demonstrates the changes needed in main.py to enable the new functiona
 # async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 #     """Manage application lifespan events."""
 #     # ... existing startup code ...
-#     
+#
 #     # Configure logging with correlation ID support
 #     configure_logging_with_correlation()
 #     logger.info("Configured logging with correlation ID support")
-#     
+#
 #     yield
-#     
+#
 #     # ... existing shutdown code ...
 
 # In the create_app function, add after creating the app instance:
@@ -35,24 +35,27 @@ This file demonstrates the changes needed in main.py to enable the new functiona
 #         version="1.1.0",
 #         lifespan=lifespan,
 #     )
-#     
+#
 #     # Add correlation middleware BEFORE other middleware
 #     app.add_middleware(CorrelationMiddleware)
-#     
+#
 #     # ... existing CORS middleware configuration ...
-#     
+#
 #     # Register chunking exception handlers
 #     register_chunking_exception_handlers(app)
-#     
+#
 #     # ... rest of the function ...
 
 
 # Example usage in API endpoints:
+import psutil
 from fastapi import APIRouter, Depends
-from ..middleware.correlation import get_correlation_id
-from .chunking_exceptions import ChunkingValidationError
+
+from packages.webui.api.chunking_exceptions import ChunkingMemoryError, ChunkingValidationError
+from packages.webui.middleware.correlation import get_correlation_id
 
 router = APIRouter(prefix="/api/v2/chunking", tags=["chunking"])
+
 
 @router.post("/process")
 async def process_document(
@@ -61,7 +64,7 @@ async def process_document(
 ) -> dict[str, str]:
     """Example endpoint showing correlation ID usage."""
     # The correlation_id is automatically available
-    
+
     # Example of raising a chunking exception
     if not document_id:
         raise ChunkingValidationError(
@@ -69,7 +72,7 @@ async def process_document(
             correlation_id=correlation_id,
             field_errors={"document_id": ["This field is required"]},
         )
-    
+
     return {
         "status": "processed",
         "correlation_id": correlation_id,
@@ -77,17 +80,15 @@ async def process_document(
 
 
 # Example usage in services:
-from ..middleware.correlation import get_correlation_id
-from ..api.chunking_exceptions import ChunkingMemoryError
-import psutil
+
 
 class ChunkingService:
     """Example service showing exception usage."""
-    
-    async def process_large_document(self, content: str) -> list[str]:
+
+    async def process_large_document(self, content: str) -> list[str]:  # noqa: ARG002
         """Process document with memory monitoring."""
         correlation_id = get_correlation_id()
-        
+
         # Check memory usage
         memory_info = psutil.virtual_memory()
         if memory_info.percent > 90:
@@ -99,6 +100,6 @@ class ChunkingService:
                 memory_limit=memory_info.total,
                 recovery_hint="Try processing smaller documents or wait for other operations to complete",
             )
-        
+
         # Process document...
         return []

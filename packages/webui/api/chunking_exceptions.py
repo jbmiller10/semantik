@@ -98,11 +98,13 @@ class ChunkingMemoryError(ChunkingError):
     def to_dict(self) -> dict[str, Any]:
         """Include memory details in serialization."""
         data = super().to_dict()
-        data.update({
-            "memory_used_mb": round(self.memory_used / (1024 * 1024), 2),
-            "memory_limit_mb": round(self.memory_limit / (1024 * 1024), 2),
-            "recovery_hint": self.recovery_hint,
-        })
+        data.update(
+            {
+                "memory_used_mb": round(self.memory_used / (1024 * 1024), 2),
+                "memory_limit_mb": round(self.memory_limit / (1024 * 1024), 2),
+                "recovery_hint": self.recovery_hint,
+            }
+        )
         return data
 
 
@@ -140,12 +142,16 @@ class ChunkingTimeoutError(ChunkingError):
     def to_dict(self) -> dict[str, Any]:
         """Include timing details in serialization."""
         data = super().to_dict()
-        data.update({
-            "elapsed_seconds": round(self.elapsed_time, 2),
-            "timeout_seconds": round(self.timeout_limit, 2),
-            "estimated_completion_seconds": round(self.estimated_completion, 2) if self.estimated_completion else None,
-            "recovery_hint": "Consider using a faster strategy or processing in smaller batches",
-        })
+        data.update(
+            {
+                "elapsed_seconds": round(self.elapsed_time, 2),
+                "timeout_seconds": round(self.timeout_limit, 2),
+                "estimated_completion_seconds": (
+                    round(self.estimated_completion, 2) if self.estimated_completion else None
+                ),
+                "recovery_hint": "Consider using a faster strategy or processing in smaller batches",
+            }
+        )
         return data
 
 
@@ -212,11 +218,15 @@ class ChunkingStrategyError(ChunkingError):
     def to_dict(self) -> dict[str, Any]:
         """Include strategy details in serialization."""
         data = super().to_dict()
-        data.update({
-            "strategy": self.strategy,
-            "fallback_strategy": self.fallback_strategy,
-            "recovery_hint": f"Try using {self.fallback_strategy} strategy instead" if self.fallback_strategy else None,
-        })
+        data.update(
+            {
+                "strategy": self.strategy,
+                "fallback_strategy": self.fallback_strategy,
+                "recovery_hint": (
+                    f"Try using {self.fallback_strategy} strategy instead" if self.fallback_strategy else None
+                ),
+            }
+        )
         return data
 
 
@@ -254,12 +264,14 @@ class ChunkingResourceLimitError(ChunkingError):
     def to_dict(self) -> dict[str, Any]:
         """Include resource details in serialization."""
         data = super().to_dict()
-        data.update({
-            "resource_type": self.resource_type.value,
-            "current_usage": self.current_usage,
-            "limit": self.limit,
-            "recovery_hint": f"Wait for other operations to complete or increase {self.resource_type.value} limit",
-        })
+        data.update(
+            {
+                "resource_type": self.resource_type.value,
+                "current_usage": self.current_usage,
+                "limit": self.limit,
+                "recovery_hint": f"Wait for other operations to complete or increase {self.resource_type.value} limit",
+            }
+        )
         return data
 
 
@@ -300,15 +312,17 @@ class ChunkingPartialFailureError(ChunkingError):
     def to_dict(self) -> dict[str, Any]:
         """Include failure details in serialization."""
         data = super().to_dict()
-        data.update({
-            "total_documents": self.total_documents,
-            "failed_count": len(self.failed_documents),
-            "success_count": self.total_documents - len(self.failed_documents),
-            "failed_documents": self.failed_documents[:10],  # Limit to first 10
-            "failure_reasons": dict(list(self.failure_reasons.items())[:10]),  # Limit to first 10
-            "successful_chunks": self.successful_chunks,
-            "recovery_hint": "Retry processing for failed documents only",
-        })
+        data.update(
+            {
+                "total_documents": self.total_documents,
+                "failed_count": len(self.failed_documents),
+                "success_count": self.total_documents - len(self.failed_documents),
+                "failed_documents": self.failed_documents[:10],  # Limit to first 10
+                "failure_reasons": dict(list(self.failure_reasons.items())[:10]),  # Limit to first 10
+                "successful_chunks": self.successful_chunks,
+                "recovery_hint": "Retry processing for failed documents only",
+            }
+        )
         return data
 
 
@@ -375,9 +389,11 @@ class ChunkingDependencyError(ChunkingError):
     def to_dict(self) -> dict[str, Any]:
         """Include dependency details in serialization."""
         data = super().to_dict()
-        data.update({
-            "dependency": self.dependency,
-            "dependency_error": self.dependency_error,
-            "recovery_hint": f"Check {self.dependency} service status and retry",
-        })
+        data.update(
+            {
+                "dependency": self.dependency,
+                "dependency_error": self.dependency_error,
+                "recovery_hint": f"Check {self.dependency} service status and retry",
+            }
+        )
         return data

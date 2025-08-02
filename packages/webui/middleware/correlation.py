@@ -10,7 +10,6 @@ and includes them in response headers for end-to-end tracing.
 import logging
 import uuid
 from contextvars import ContextVar
-from typing import Any
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -104,10 +103,7 @@ class CorrelationMiddleware(BaseHTTPMiddleware):
                 # Ensure it's a valid UUID format
                 uuid.UUID(correlation_id)
             except ValueError:
-                logger.warning(
-                    f"Invalid correlation ID format received: {correlation_id}. "
-                    "Generating new ID."
-                )
+                logger.warning(f"Invalid correlation ID format received: {correlation_id}. Generating new ID.")
                 correlation_id = None
 
         # Generate new correlation ID if missing or invalid
@@ -187,9 +183,7 @@ def configure_logging_with_correlation() -> None:
 
     # Update formatter to include correlation ID
     # This is a basic example - adjust based on your logging configuration
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - [%(correlation_id)s] - %(message)s"
-    )
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - [%(correlation_id)s] - %(message)s")
     for handler in root_logger.handlers:
         handler.setFormatter(formatter)
 

@@ -6,7 +6,6 @@ This module provides the business logic for text chunking, including
 validation, caching, and progress tracking.
 """
 
-import asyncio
 import hashlib
 import json
 import logging
@@ -133,7 +132,7 @@ class ChunkingService:
         """
         correlation_id = get_correlation_id()
         operation_id = f"preview_{hashlib.sha256(text.encode()).hexdigest()[:8]}"
-        
+
         try:
             # Validate input size for preview
             self.security.validate_document_size(len(text), is_preview=True)
@@ -179,7 +178,7 @@ class ChunkingService:
         import time
 
         start_time = time.time()
-        
+
         # Check memory before processing
         process = psutil.Process()
         initial_memory = process.memory_info().rss
@@ -205,32 +204,31 @@ class ChunkingService:
                     "text_size": len(text),
                 },
             )
-            
+
             # If we have a fallback strategy, raise a specific error
-            if error_result.recovery_strategy and error_result.recovery_strategy.fallback_strategy:
+            if error_result.fallback_strategy:
                 raise ChunkingStrategyError(
                     detail=f"Failed to initialize {config.get('strategy')} strategy",
                     correlation_id=correlation_id,
                     strategy=config.get("strategy", "unknown"),
-                    fallback_strategy=error_result.recovery_strategy.fallback_strategy,
+                    fallback_strategy=error_result.fallback_strategy,
                     operation_id=operation_id,
                 ) from e
-            else:
-                raise ChunkingStrategyError(
-                    detail=f"Failed to initialize chunking strategy",
-                    correlation_id=correlation_id,
-                    strategy=config.get("strategy", "unknown"),
-                    fallback_strategy="recursive",
-                    operation_id=operation_id,
-                ) from e
+            raise ChunkingStrategyError(
+                detail="Failed to initialize chunking strategy",
+                correlation_id=correlation_id,
+                strategy=config.get("strategy", "unknown"),
+                fallback_strategy="recursive",
+                operation_id=operation_id,
+            ) from e
 
         try:
             chunks = await chunker.chunk_text_async(text, "preview", metadata)
-            
+
             # Check memory usage
             current_memory = process.memory_info().rss
             memory_used = current_memory - initial_memory
-            
+
             if memory_used > memory_limit:
                 raise ChunkingMemoryError(
                     detail="Preview operation exceeded memory limit",
@@ -240,12 +238,12 @@ class ChunkingService:
                     memory_limit=memory_limit,
                     recovery_hint="Try with fewer chunks or smaller text",
                 )
-                
+
         except MemoryError as e:
             # Handle out of memory errors
             current_memory = process.memory_info().rss
             memory_used = current_memory - initial_memory
-            
+
             raise ChunkingMemoryError(
                 detail="Out of memory during preview operation",
                 correlation_id=correlation_id,
@@ -254,10 +252,10 @@ class ChunkingService:
                 memory_limit=memory_limit,
                 recovery_hint="Try processing smaller text or use a simpler strategy",
             ) from e
-        except asyncio.TimeoutError as e:
+        except TimeoutError as e:
             # Handle timeout errors
             elapsed_time = time.time() - start_time
-            
+
             raise ChunkingTimeoutError(
                 detail="Preview operation timed out",
                 correlation_id=correlation_id,
@@ -530,10 +528,14 @@ class ChunkingService:
         cache_key = f"chunking:preview:{config_hash}:{text_hash}"
 
         # Check Redis
-        cached_data = self.redis.get(cache_key)
-        if cached_data:
-            data = json.loads(cached_data)
-            return ChunkingPreviewResponse(**data)
+        try:
+            cached_data = self.redis.get(cache_key)
+            if cached_data:
+                data = json.loads(cached_data)
+                return ChunkingPreviewResponse(**data)
+        except ConnectionError:
+            # Log warning and continue without cache
+            logger.warning("Redis unavailable, continuing without cache")
 
         return None
 
@@ -559,11 +561,15 @@ class ChunkingService:
         }
 
         # Store in Redis with configured TTL
-        self.redis.setex(
-            cache_key,
-            CHUNKING_CACHE.PREVIEW_CACHE_TTL_SECONDS,
-            json.dumps(data),
-        )
+        try:
+            self.redis.setex(
+                cache_key,
+                CHUNKING_CACHE.PREVIEW_CACHE_TTL_SECONDS,
+                json.dumps(data),
+            )
+        except ConnectionError:
+            # Log warning and continue without caching
+            logger.warning("Redis unavailable, could not cache preview")
 
     def _calculate_metrics(
         self,

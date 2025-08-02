@@ -5,7 +5,6 @@ Tests for chunking exception handlers.
 
 import json
 import uuid
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,15 +14,6 @@ from fastapi.testclient import TestClient
 from packages.webui.api.chunking_exception_handlers import (
     _create_error_response,
     _sanitize_error_detail,
-    chunking_configuration_error_handler,
-    chunking_dependency_error_handler,
-    chunking_error_handler,
-    chunking_memory_error_handler,
-    chunking_partial_failure_error_handler,
-    chunking_resource_limit_error_handler,
-    chunking_strategy_error_handler,
-    chunking_timeout_error_handler,
-    chunking_validation_error_handler,
     register_chunking_exception_handlers,
 )
 from packages.webui.api.chunking_exceptions import (
@@ -41,7 +31,7 @@ from packages.webui.api.chunking_exceptions import (
 from packages.webui.middleware.correlation import CorrelationMiddleware
 
 
-@pytest.fixture
+@pytest.fixture()
 def app() -> FastAPI:
     """Create a test FastAPI app with chunking exception handlers."""
     test_app = FastAPI()
@@ -194,7 +184,7 @@ class TestExceptionHandlers:
 
         assert response.status_code == 507  # Insufficient Storage
         data = response.json()
-        
+
         assert data["error_code"] == "CHUNKING_MEMORY_EXCEEDED"
         assert "memory_used_mb" in data
         assert "memory_limit_mb" in data
@@ -210,7 +200,7 @@ class TestExceptionHandlers:
 
         assert response.status_code == 504  # Gateway Timeout
         data = response.json()
-        
+
         assert data["error_code"] == "CHUNKING_TIMEOUT"
         assert data["elapsed_seconds"] == 120.5
         assert data["timeout_seconds"] == 60.0
@@ -224,7 +214,7 @@ class TestExceptionHandlers:
 
         assert response.status_code == 422  # Unprocessable Entity
         data = response.json()
-        
+
         assert data["error_code"] == "CHUNKING_VALIDATION_FAILED"
         assert "field_errors" in data
         assert "chunk_size" in data["field_errors"]
@@ -237,7 +227,7 @@ class TestExceptionHandlers:
 
         assert response.status_code == 501  # Not Implemented
         data = response.json()
-        
+
         assert data["error_code"] == "CHUNKING_STRATEGY_FAILED"
         assert data["strategy"] == "advanced-nlp"
         assert data["fallback_strategy"] == "semantic"
@@ -251,7 +241,7 @@ class TestExceptionHandlers:
         assert response.status_code == 503  # Service Unavailable
         assert response.headers["retry-after"] == "30"
         data = response.json()
-        
+
         assert data["error_code"] == "CHUNKING_RESOURCE_LIMIT"
         assert data["resource_type"] == "threads"
         assert data["current_usage"] == 100
@@ -265,7 +255,7 @@ class TestExceptionHandlers:
 
         assert response.status_code == 207  # Multi-Status
         data = response.json()
-        
+
         assert data["error_code"] == "CHUNKING_PARTIAL_FAILURE"
         assert data["total_documents"] == 100
         assert data["failed_count"] == 3
@@ -281,7 +271,7 @@ class TestExceptionHandlers:
 
         assert response.status_code == 500  # Internal Server Error
         data = response.json()
-        
+
         assert data["error_code"] == "CHUNKING_CONFIG_ERROR"
         assert "config_errors" in data
         assert len(data["config_errors"]) == 2
@@ -294,7 +284,7 @@ class TestExceptionHandlers:
         assert response.status_code == 503  # Service Unavailable
         assert response.headers["retry-after"] == "60"
         data = response.json()
-        
+
         assert data["error_code"] == "CHUNKING_DEPENDENCY_FAILED"
         assert data["dependency"] == "embedding-service"
         assert data["dependency_error"] == "Connection timeout"
@@ -307,7 +297,7 @@ class TestExceptionHandlers:
 
         assert response.status_code == 500  # Internal Server Error
         data = response.json()
-        
+
         assert data["error_code"] == "ChunkingError"
         assert data["type"] == "ChunkingError"
 
@@ -417,7 +407,7 @@ class TestIntegrationScenarios:
         """Test error handling preserves custom correlation ID."""
         client = TestClient(app)
         custom_id = str(uuid.uuid4())
-        
+
         response = client.post(
             "/test/memory-error",
             headers={"X-Correlation-ID": custom_id},
@@ -430,13 +420,13 @@ class TestIntegrationScenarios:
     def test_multiple_errors_different_correlation_ids(self, app: FastAPI) -> None:
         """Test multiple errors have different correlation IDs."""
         client = TestClient(app)
-        
+
         response1 = client.post("/test/memory-error")
         response2 = client.post("/test/timeout-error")
-        
+
         id1 = response1.headers["x-correlation-id"]
         id2 = response2.headers["x-correlation-id"]
-        
+
         assert id1 != id2
         assert uuid.UUID(id1)  # Valid UUID
         assert uuid.UUID(id2)  # Valid UUID

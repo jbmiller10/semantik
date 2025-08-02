@@ -125,7 +125,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     """Manage application lifespan events."""
     # Startup
     logger.info("Starting up WebUI application...")
-    
+
     # Configure logging with correlation support
     configure_logging_with_correlation()
     logger.info("Logging configured with correlation ID support")
@@ -186,19 +186,26 @@ def create_app() -> FastAPI:
 
     # Add correlation middleware BEFORE other middleware for proper context propagation
     app.add_middleware(CorrelationMiddleware)
-    
+
     # Configure CORS with more restrictive settings
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],  # Explicit methods
-        allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With", "X-Correlation-ID"],  # Added correlation header
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "Accept",
+            "Origin",
+            "X-Requested-With",
+            "X-Correlation-ID",
+        ],  # Added correlation header
     )
 
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
-    
+
     # Register chunking exception handlers
     register_chunking_exception_handlers(app)
 

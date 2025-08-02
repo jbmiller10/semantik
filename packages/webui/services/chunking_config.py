@@ -90,7 +90,7 @@ class ChunkingBatches:
     DEFAULT_BATCH_SIZE: int = 32
     REDUCED_BATCH_SIZE: int = 16
     MIN_BATCH_SIZE: int = 4
-    
+
     # Processing batches
     EMBEDDING_BATCH_SIZE: int = 100
     VECTOR_UPLOAD_BATCH_SIZE: int = 100
@@ -103,7 +103,7 @@ class ChunkingMetrics:
 
     # Collection intervals
     METRICS_COLLECTION_INTERVAL_SECONDS: int = 60
-    
+
     # Thresholds for alerts
     ERROR_RATE_THRESHOLD: float = 0.1  # 10% error rate
     MEMORY_USAGE_THRESHOLD: float = 0.8  # 80% of limit
@@ -156,8 +156,7 @@ def get_memory_limit_for_strategy(strategy: str) -> int:
     # Semantic and hierarchical strategies need more memory
     if strategy in ["semantic", "hierarchical"]:
         return CHUNKING_LIMITS.OPERATION_MEMORY_LIMIT_BYTES
-    else:
-        return CHUNKING_LIMITS.OPERATION_MEMORY_LIMIT_BYTES // 2
+    return CHUNKING_LIMITS.OPERATION_MEMORY_LIMIT_BYTES // 2
 
 
 def get_timeout_for_strategy(strategy: str) -> float:
@@ -172,5 +171,4 @@ def get_timeout_for_strategy(strategy: str) -> float:
     # Semantic strategy is slower due to embeddings
     if strategy == "semantic":
         return CHUNKING_TIMEOUTS.OPERATION_SOFT_TIMEOUT_SECONDS * 1.5
-    else:
-        return CHUNKING_TIMEOUTS.OPERATION_SOFT_TIMEOUT_SECONDS
+    return CHUNKING_TIMEOUTS.OPERATION_SOFT_TIMEOUT_SECONDS

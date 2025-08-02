@@ -5,12 +5,11 @@ Tests for correlation ID middleware.
 
 import logging
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
-from httpx import Response
 
 from packages.webui.middleware.correlation import (
     CorrelationIdFilter,
@@ -23,7 +22,7 @@ from packages.webui.middleware.correlation import (
 )
 
 
-@pytest.fixture
+@pytest.fixture()
 def app() -> FastAPI:
     """Create a test FastAPI app with correlation middleware."""
     test_app = FastAPI()
@@ -49,7 +48,7 @@ class TestCorrelationContextVars:
         """Test getting correlation ID when none is set."""
         # Clear any existing context
         correlation_id_var.set(None)
-        
+
         correlation_id = get_correlation_id()
         assert correlation_id is not None
         assert isinstance(correlation_id, str)
@@ -60,14 +59,14 @@ class TestCorrelationContextVars:
         """Test setting and getting correlation ID."""
         test_id = str(uuid.uuid4())
         set_correlation_id(test_id)
-        
+
         assert get_correlation_id() == test_id
 
     def test_correlation_id_filter(self) -> None:
         """Test logging filter adds correlation ID."""
         test_id = str(uuid.uuid4())
         set_correlation_id(test_id)
-        
+
         filter_instance = CorrelationIdFilter()
         record = logging.LogRecord(
             name="test",
@@ -78,7 +77,7 @@ class TestCorrelationContextVars:
             args=(),
             exc_info=None,
         )
-        
+
         assert filter_instance.filter(record)
         assert hasattr(record, "correlation_id")
         assert record.correlation_id == test_id
@@ -86,7 +85,7 @@ class TestCorrelationContextVars:
     def test_correlation_id_filter_no_context(self) -> None:
         """Test logging filter when no correlation ID is set."""
         correlation_id_var.set(None)
-        
+
         filter_instance = CorrelationIdFilter()
         record = logging.LogRecord(
             name="test",
@@ -97,7 +96,7 @@ class TestCorrelationContextVars:
             args=(),
             exc_info=None,
         )
-        
+
         assert filter_instance.filter(record)
         assert hasattr(record, "correlation_id")
         assert record.correlation_id == "no-correlation-id"
@@ -110,14 +109,14 @@ class TestCorrelationMiddleware:
         """Test middleware generates correlation ID when not provided."""
         client = TestClient(app)
         response = client.get("/test")
-        
+
         assert response.status_code == 200
         assert "x-correlation-id" in response.headers
-        
+
         # Verify it's a valid UUID
         correlation_id = response.headers["x-correlation-id"]
         uuid.UUID(correlation_id)
-        
+
         # Verify endpoint received the same ID
         assert response.json()["correlation_id"] == correlation_id
 
@@ -125,9 +124,9 @@ class TestCorrelationMiddleware:
         """Test middleware uses correlation ID from request headers."""
         client = TestClient(app)
         test_id = str(uuid.uuid4())
-        
+
         response = client.get("/test", headers={"X-Correlation-ID": test_id})
-        
+
         assert response.status_code == 200
         assert response.headers["x-correlation-id"] == test_id
         assert response.json()["correlation_id"] == test_id
@@ -136,9 +135,9 @@ class TestCorrelationMiddleware:
         """Test middleware generates new ID for invalid format."""
         client = TestClient(app)
         invalid_id = "not-a-uuid"
-        
+
         response = client.get("/test", headers={"X-Correlation-ID": invalid_id})
-        
+
         assert response.status_code == 200
         # Should have generated a new valid UUID
         correlation_id = response.headers["x-correlation-id"]
@@ -149,18 +148,18 @@ class TestCorrelationMiddleware:
         """Test middleware preserves correlation ID during errors."""
         client = TestClient(app)
         test_id = str(uuid.uuid4())
-        
+
         with pytest.raises(ValueError):
             response = client.get("/error", headers={"X-Correlation-ID": test_id})
 
     def test_middleware_clears_context_after_request(self, app: FastAPI) -> None:
         """Test middleware clears context variable after request."""
         client = TestClient(app)
-        
+
         # Make a request
         response = client.get("/test")
         assert response.status_code == 200
-        
+
         # Context should be cleared after request
         assert correlation_id_var.get() is None
 
@@ -178,9 +177,9 @@ class TestCorrelationMiddleware:
 
         client = TestClient(test_app)
         test_id = str(uuid.uuid4())
-        
+
         response = client.get("/test", headers={"X-Request-ID": test_id})
-        
+
         assert response.status_code == 200
         assert response.headers["x-request-id"] == test_id
 
@@ -197,7 +196,7 @@ class TestCorrelationMiddleware:
             return {"correlation_id": correlation_id_var.get()}
 
         client = TestClient(test_app)
-        
+
         # Without header, should not generate ID
         response = client.get("/test")
         assert response.status_code == 200
@@ -212,23 +211,23 @@ class TestHelperFunctions:
         """Test getting correlation ID from context."""
         test_id = str(uuid.uuid4())
         set_correlation_id(test_id)
-        
+
         assert get_or_generate_correlation_id() == test_id
 
     def test_get_or_generate_correlation_id_from_request(self) -> None:
         """Test getting correlation ID from request headers."""
         correlation_id_var.set(None)
         test_id = str(uuid.uuid4())
-        
+
         request = MagicMock(spec=Request)
         request.headers = {"X-Correlation-ID": test_id}
-        
+
         assert get_or_generate_correlation_id(request) == test_id
 
     def test_get_or_generate_correlation_id_generates_new(self) -> None:
         """Test generating new correlation ID when none available."""
         correlation_id_var.set(None)
-        
+
         correlation_id = get_or_generate_correlation_id()
         assert correlation_id is not None
         # Should be a valid UUID
@@ -237,10 +236,10 @@ class TestHelperFunctions:
     def test_get_or_generate_correlation_id_invalid_from_request(self) -> None:
         """Test handling invalid correlation ID from request."""
         correlation_id_var.set(None)
-        
+
         request = MagicMock(spec=Request)
         request.headers = {"X-Correlation-ID": "invalid-uuid"}
-        
+
         correlation_id = get_or_generate_correlation_id(request)
         assert correlation_id != "invalid-uuid"
         # Should generate a valid UUID
@@ -253,14 +252,14 @@ class TestHelperFunctions:
         mock_root_logger = MagicMock()
         mock_root_logger.handlers = [mock_handler]
         mock_get_logger.return_value = mock_root_logger
-        
+
         configure_logging_with_correlation()
-        
+
         # Should add filter to handler
         mock_handler.addFilter.assert_called_once()
         filter_arg = mock_handler.addFilter.call_args[0][0]
         assert isinstance(filter_arg, CorrelationIdFilter)
-        
+
         # Should set formatter
         mock_handler.setFormatter.assert_called_once()
 
@@ -273,9 +272,9 @@ class TestMiddlewareLogging:
         """Test middleware logs incoming requests."""
         client = TestClient(app)
         response = client.get("/test")
-        
+
         assert response.status_code == 200
-        
+
         # Should log incoming request
         mock_logger.info.assert_any_call(
             "Incoming GET request to /test",
@@ -286,7 +285,7 @@ class TestMiddlewareLogging:
                 "client_host": "testclient",
             },
         )
-        
+
         # Should log completed request
         mock_logger.info.assert_any_call(
             "Request completed with status 200",
@@ -303,10 +302,10 @@ class TestMiddlewareLogging:
         """Test middleware logs errors with correlation ID."""
         client = TestClient(app)
         test_id = str(uuid.uuid4())
-        
+
         with pytest.raises(ValueError):
             client.get("/error", headers={"X-Correlation-ID": test_id})
-        
+
         # Should log the error
         mock_logger.error.assert_called_once()
         error_call = mock_logger.error.call_args

@@ -10,19 +10,18 @@ import asyncio
 import hashlib
 import json
 import logging
-import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 import psutil
 from redis.asyncio import Redis
 
 from packages.shared.database.models import CollectionStatus
 from packages.shared.text_processing.base_chunker import ChunkResult
-from packages.webui.api.chunking_exceptions import ResourceType, ChunkingResourceLimitError
-from packages.webui.middleware.correlation import get_correlation_id, get_or_generate_correlation_id
+from packages.webui.api.chunking_exceptions import ResourceType
+from packages.webui.middleware.correlation import get_correlation_id
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +129,7 @@ class ErrorReport:
 
 class ChunkingErrorHandler:
     """Handle errors during chunking operations with production-ready features.
-    
+
     This handler provides:
     - Correlation ID tracking for distributed tracing
     - State management with Redis for resumable operations
@@ -207,7 +206,7 @@ class ChunkingErrorHandler:
 
     def __init__(self, redis_client: Redis | None = None) -> None:
         """Initialize the error handler.
-        
+
         Args:
             redis_client: Optional Redis client for state management.
                          If not provided, state management features will be disabled.
@@ -237,7 +236,7 @@ class ChunkingErrorHandler:
         """
         # Get correlation ID for tracking
         correlation_id = get_correlation_id() or "unknown"
-        
+
         logger.info(
             f"Handling partial failure for operation {operation_id}",
             extra={
@@ -247,7 +246,7 @@ class ChunkingErrorHandler:
                 "failed_count": len(failed_documents),
             },
         )
-        
+
         # Save successful chunks (this would be implemented with actual DB operations)
         await self.save_partial_results(operation_id, processed_chunks)
 
@@ -259,7 +258,7 @@ class ChunkingErrorHandler:
             failure_analysis,
             failed_documents,
         )
-        
+
         # Track errors for reporting
         for error in errors:
             error_type = self.classify_error(error)
@@ -277,7 +276,7 @@ class ChunkingErrorHandler:
             operation_id,
             recovery_strategy,
         )
-        
+
         # Save state for potential retry if Redis available
         if self.redis_client and recovery_op:
             await self._save_operation_state(
@@ -323,7 +322,7 @@ class ChunkingErrorHandler:
             StreamRecoveryAction with recovery instructions
         """
         correlation_id = get_correlation_id() or "unknown"
-        
+
         logger.warning(
             f"Streaming failure for document {document_id}",
             extra={
@@ -334,9 +333,9 @@ class ChunkingErrorHandler:
                 "operation_id": operation_id,
             },
         )
-        
+
         error_type = self.classify_error(error)
-        
+
         # Track error if operation ID provided
         if operation_id:
             await self._track_error(operation_id, correlation_id, error, error_type)
@@ -353,7 +352,7 @@ class ChunkingErrorHandler:
                 )
             else:
                 new_batch_size = self.calculate_reduced_batch_size(error)
-            
+
             return StreamRecoveryAction(
                 action="retry_from_checkpoint",
                 checkpoint=bytes_processed,
@@ -364,11 +363,11 @@ class ChunkingErrorHandler:
             # Progressive timeout increase based on retry count
             retry_key = f"{operation_id}:{error_type.value}" if operation_id else f"{document_id}:{error_type.value}"
             retry_count = self.retry_counts.get(retry_key, 0)
-            
+
             # Exponential timeout increase: 450s, 675s, 1012s
             base_timeout = self.calculate_extended_timeout()
-            new_timeout = int(base_timeout * (1.5 ** retry_count))
-            
+            new_timeout = int(base_timeout * (1.5**retry_count))
+
             return StreamRecoveryAction(
                 action="retry_with_extended_timeout",
                 checkpoint=bytes_processed,
@@ -626,13 +625,13 @@ class ChunkingErrorHandler:
         context: dict[str, Any],
     ) -> ErrorHandlingResult:
         """Handle error with correlation ID tracking for distributed tracing.
-        
+
         Args:
             operation_id: Operation identifier
             correlation_id: Correlation ID for tracing
             error: Exception that occurred
             context: Additional context about the operation
-            
+
         Returns:
             ErrorHandlingResult with recovery instructions
         """
@@ -647,19 +646,19 @@ class ChunkingErrorHandler:
             },
             exc_info=error,
         )
-        
+
         # Classify the error
         error_type = self.classify_error(error)
-        
+
         # Track error in history
         await self._track_error(operation_id, correlation_id, error, error_type)
-        
+
         # Get recovery strategy
         strategy = self.get_retry_strategy(error_type)
-        
+
         # Check if we should retry
         should_retry = self.should_retry(operation_id, error_type)
-        
+
         # Save operation state if Redis is available
         state_checkpoint = None
         if self.redis_client and should_retry:
@@ -669,12 +668,12 @@ class ChunkingErrorHandler:
                 context,
                 error_type,
             )
-        
+
         # Calculate retry delay
         retry_after = None
         if should_retry:
             retry_after = self.calculate_retry_delay(operation_id, error_type)
-        
+
         return ErrorHandlingResult(
             handled=True,
             recovery_action=strategy.action if should_retry else "fail",
@@ -695,13 +694,13 @@ class ChunkingErrorHandler:
         limit: float,
     ) -> ResourceRecoveryAction:
         """Handle resource exhaustion with intelligent recovery strategies.
-        
+
         Args:
             operation_id: Operation identifier
             resource_type: Type of resource exhausted
             current_usage: Current resource usage
             limit: Resource limit
-            
+
         Returns:
             ResourceRecoveryAction with recovery instructions
         """
@@ -715,10 +714,10 @@ class ChunkingErrorHandler:
                 "usage_percent": (current_usage / limit * 100) if limit > 0 else 100,
             },
         )
-        
+
         # Check current system resources
         resource_availability = await self._check_resource_availability(resource_type)
-        
+
         # Check if we can queue the operation
         if self.redis_client:
             queue_position = await self._queue_operation(operation_id, resource_type)
@@ -729,7 +728,7 @@ class ChunkingErrorHandler:
                     wait_time=queue_position * 30,  # Estimate 30s per queued operation
                     resource_availability=resource_availability,
                 )
-        
+
         # Determine recovery action based on resource type
         if resource_type == ResourceType.MEMORY:
             # Adaptive batch size reduction based on memory pressure
@@ -740,8 +739,8 @@ class ChunkingErrorHandler:
                 alternative_strategy="streaming",
                 resource_availability=resource_availability,
             )
-        
-        elif resource_type == ResourceType.CPU:
+
+        if resource_type == ResourceType.CPU:
             # For CPU, suggest waiting or using simpler strategy
             return ResourceRecoveryAction(
                 action="wait_and_retry",
@@ -749,14 +748,13 @@ class ChunkingErrorHandler:
                 alternative_strategy="character",  # Simpler strategy
                 resource_availability=resource_availability,
             )
-        
-        else:
-            # For other resources, wait and retry
-            return ResourceRecoveryAction(
-                action="wait_and_retry",
-                wait_time=30,
-                resource_availability=resource_availability,
-            )
+
+        # For other resources, wait and retry
+        return ResourceRecoveryAction(
+            action="wait_and_retry",
+            wait_time=30,
+            resource_availability=resource_availability,
+        )
 
     async def cleanup_failed_operation(
         self,
@@ -765,22 +763,22 @@ class ChunkingErrorHandler:
         cleanup_strategy: str = "save_partial",
     ) -> CleanupResult:
         """Clean up after a failed operation with configurable strategies.
-        
+
         Args:
             operation_id: Operation identifier
             partial_results: Any partial results to handle
             cleanup_strategy: Strategy for cleanup (save_partial, rollback, discard)
-            
+
         Returns:
             CleanupResult with cleanup details
         """
         logger.info(f"Cleaning up failed operation {operation_id} with strategy: {cleanup_strategy}")
-        
+
         cleanup_errors = []
         resources_freed = {}
         partial_saved = False
         rollback_performed = False
-        
+
         try:
             # Save partial results if requested
             if cleanup_strategy == "save_partial" and partial_results:
@@ -789,46 +787,46 @@ class ChunkingErrorHandler:
                     partial_saved = True
                 except Exception as e:
                     cleanup_errors.append(f"Failed to save partial results: {str(e)}")
-            
+
             # Clear operation state from Redis
             if self.redis_client:
                 try:
                     state_key = f"chunking:state:{operation_id}"
                     checkpoint_key = f"chunking:checkpoint:{operation_id}"
-                    queue_key = f"chunking:queue:*"
-                    
+                    queue_key = "chunking:queue:*"
+
                     # Remove state and checkpoint
                     await self.redis_client.delete(state_key, checkpoint_key)
-                    
+
                     # Remove from any queues
                     async for key in self.redis_client.scan_iter(queue_key):
                         await self.redis_client.lrem(key, 0, operation_id)
-                    
+
                     resources_freed["redis_keys"] = [state_key, checkpoint_key]
                 except Exception as e:
                     cleanup_errors.append(f"Failed to clear Redis state: {str(e)}")
-            
+
             # Clear from retry counts
-            keys_to_remove = [k for k in self.retry_counts.keys() if k.startswith(f"{operation_id}:")]
+            keys_to_remove = [k for k in self.retry_counts if k.startswith(f"{operation_id}:")]
             for key in keys_to_remove:
                 del self.retry_counts[key]
             resources_freed["retry_entries"] = len(keys_to_remove)
-            
+
             # Clear from error history
             if operation_id in self._error_history:
                 del self._error_history[operation_id]
                 resources_freed["error_history"] = True
-            
+
             # Perform rollback if requested
             if cleanup_strategy == "rollback":
                 # This would involve database transactions in a real implementation
                 rollback_performed = True
                 logger.info(f"Performed rollback for operation {operation_id}")
-            
+
         except Exception as e:
             cleanup_errors.append(f"Unexpected error during cleanup: {str(e)}")
             logger.error(f"Cleanup failed for operation {operation_id}", exc_info=e)
-        
+
         return CleanupResult(
             cleaned=len(cleanup_errors) == 0,
             partial_results_saved=partial_saved,
@@ -843,56 +841,66 @@ class ChunkingErrorHandler:
         errors: list[Exception] | None = None,
     ) -> ErrorReport:
         """Create a comprehensive error report for an operation.
-        
+
         Args:
             operation_id: Operation identifier
             errors: Optional list of errors (uses history if not provided)
-            
+
         Returns:
             ErrorReport with detailed error analysis
         """
         correlation_id = get_correlation_id() or "unknown"
-        
+
         # Get error history for the operation
         error_history = self._error_history.get(operation_id, [])
-        
+
         # If errors provided, use those; otherwise use history
         if errors:
             for error in errors:
                 error_type = self.classify_error(error)
-                error_history.append({
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "error_type": error_type.value,
-                    "error_message": str(error),
-                    "error_class": type(error).__name__,
-                })
-        
+                error_history.append(
+                    {
+                        "timestamp": datetime.now(UTC).isoformat(),
+                        "error_type": error_type.value,
+                        "error_message": str(error),
+                        "error_class": type(error).__name__,
+                    }
+                )
+
         # Analyze error patterns
-        error_breakdown = {}
+        error_breakdown: dict[str, int] = {}
         for entry in error_history:
             error_type = entry.get("error_type", "unknown")
             error_breakdown[error_type] = error_breakdown.get(error_type, 0) + 1
-        
+
         # Get resource usage
         resource_usage = self._get_current_resource_usage()
-        
+
         # Get recovery attempts
         recovery_attempts = []
         for key, count in self.retry_counts.items():
             if key.startswith(f"{operation_id}:"):
-                error_type = key.split(":", 1)[1]
-                recovery_attempts.append({
-                    "error_type": error_type,
-                    "retry_count": count,
-                    "max_retries": self.RETRY_STRATEGIES.get(
-                        ChunkingErrorType(error_type),
+                error_type_str = key.split(":", 1)[1]
+                try:
+                    error_type_enum = ChunkingErrorType(error_type_str)
+                    max_retries = self.RETRY_STRATEGIES.get(
+                        error_type_enum,
                         RecoveryStrategy("fail", 0, "none", []),
-                    ).max_retries,
-                })
-        
+                    ).max_retries
+                except ValueError:
+                    # Invalid error type, use default
+                    max_retries = 0
+                recovery_attempts.append(
+                    {
+                        "error_type": error_type_str,
+                        "retry_count": count,
+                        "max_retries": max_retries,
+                    }
+                )
+
         # Generate recommendations
         recommendations = self._generate_recommendations(error_breakdown, resource_usage)
-        
+
         return ErrorReport(
             operation_id=operation_id,
             correlation_id=correlation_id,
@@ -902,11 +910,11 @@ class ChunkingErrorHandler:
             resource_usage=resource_usage,
             recovery_attempts=recovery_attempts,
             recommendations=recommendations,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
         )
 
     # Helper methods for new functionality
-    
+
     async def _track_error(
         self,
         operation_id: str,
@@ -917,20 +925,22 @@ class ChunkingErrorHandler:
         """Track error in history for analysis."""
         if operation_id not in self._error_history:
             self._error_history[operation_id] = []
-        
-        self._error_history[operation_id].append({
-            "timestamp": datetime.utcnow().isoformat(),
-            "correlation_id": correlation_id,
-            "error_type": error_type.value,
-            "error_message": str(error),
-            "error_class": type(error).__name__,
-            "stack_trace": None,  # Could add traceback if needed
-        })
-        
+
+        self._error_history[operation_id].append(
+            {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "correlation_id": correlation_id,
+                "error_type": error_type.value,
+                "error_message": str(error),
+                "error_class": type(error).__name__,
+                "stack_trace": None,  # Could add traceback if needed
+            }
+        )
+
         # Limit history size to prevent memory issues
         if len(self._error_history[operation_id]) > 100:
             self._error_history[operation_id] = self._error_history[operation_id][-100:]
-    
+
     async def _save_operation_state(
         self,
         operation_id: str,
@@ -941,21 +951,21 @@ class ChunkingErrorHandler:
         """Save operation state to Redis for resumability."""
         if not self.redis_client:
             return None
-        
+
         try:
             state = {
                 "operation_id": operation_id,
                 "correlation_id": correlation_id,
                 "error_type": error_type.value,
                 "context": context,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "retry_count": self.retry_counts.get(f"{operation_id}:{error_type.value}", 0),
             }
-            
+
             # Create operation fingerprint for idempotency
             fingerprint = self._create_operation_fingerprint(operation_id, context)
             state["fingerprint"] = fingerprint
-            
+
             # Save to Redis with TTL
             state_key = f"chunking:state:{operation_id}"
             await self.redis_client.setex(
@@ -963,7 +973,7 @@ class ChunkingErrorHandler:
                 self.STATE_TTL,
                 json.dumps(state),
             )
-            
+
             # Save checkpoint if available
             if "checkpoint" in context:
                 checkpoint_key = f"chunking:checkpoint:{operation_id}"
@@ -972,20 +982,20 @@ class ChunkingErrorHandler:
                     self.STATE_TTL,
                     json.dumps(context["checkpoint"]),
                 )
-            
+
             return state
-            
+
         except Exception as e:
             logger.error(f"Failed to save operation state: {str(e)}", exc_info=e)
             return None
-    
+
     async def _check_resource_availability(
         self,
         resource_type: ResourceType,
     ) -> dict[str, float]:
         """Check current resource availability."""
         availability = {}
-        
+
         try:
             if resource_type == ResourceType.MEMORY:
                 memory = psutil.virtual_memory()
@@ -1008,9 +1018,9 @@ class ChunkingErrorHandler:
                 }
         except Exception as e:
             logger.error(f"Failed to check resource availability: {str(e)}")
-        
+
         return availability
-    
+
     async def _queue_operation(
         self,
         operation_id: str,
@@ -1019,26 +1029,25 @@ class ChunkingErrorHandler:
         """Queue operation for later execution when resources are available."""
         if not self.redis_client:
             return None
-        
+
         try:
             queue_key = f"chunking:queue:{resource_type.value}"
-            
+
             # Check if already queued
             position = await self.redis_client.lpos(queue_key, operation_id)
             if position is not None:
                 return position
-            
+
             # Add to queue
             await self.redis_client.rpush(queue_key, operation_id)
-            
+
             # Get position
-            position = await self.redis_client.lpos(queue_key, operation_id)
-            return position
-            
+            return await self.redis_client.lpos(queue_key, operation_id)
+
         except Exception as e:
             logger.error(f"Failed to queue operation: {str(e)}")
             return None
-    
+
     def _calculate_adaptive_batch_size(
         self,
         current_usage: float,
@@ -1046,20 +1055,19 @@ class ChunkingErrorHandler:
     ) -> int:
         """Calculate adaptive batch size based on resource pressure."""
         usage_ratio = current_usage / limit if limit > 0 else 1.0
-        
+
         if usage_ratio > 0.9:
             # Very high usage: minimize batch size
             return 4
-        elif usage_ratio > 0.8:
+        if usage_ratio > 0.8:
             # High usage: small batches
             return 8
-        elif usage_ratio > 0.7:
+        if usage_ratio > 0.7:
             # Moderate usage: medium batches
             return 16
-        else:
-            # Low usage: normal batches
-            return 32
-    
+        # Low usage: normal batches
+        return 32
+
     def _create_operation_fingerprint(
         self,
         operation_id: str,
@@ -1074,11 +1082,11 @@ class ChunkingErrorHandler:
             "strategy": context.get("strategy"),
             "params": context.get("params"),
         }
-        
+
         # Create hash
         fingerprint_str = json.dumps(fingerprint_data, sort_keys=True)
         return hashlib.sha256(fingerprint_str.encode()).hexdigest()
-    
+
     def _get_current_resource_usage(self) -> dict[str, Any]:
         """Get current system resource usage."""
         try:
@@ -1099,7 +1107,7 @@ class ChunkingErrorHandler:
         except Exception as e:
             logger.error(f"Failed to get resource usage: {str(e)}")
             return {}
-    
+
     def _generate_recommendations(
         self,
         error_breakdown: dict[str, int],
@@ -1107,31 +1115,31 @@ class ChunkingErrorHandler:
     ) -> list[str]:
         """Generate recommendations based on error patterns and resources."""
         recommendations = []
-        
+
         # Analyze error patterns
         if error_breakdown.get("memory_error", 0) > 0:
             recommendations.append("Consider using streaming mode for large documents")
             recommendations.append("Reduce batch size for processing")
             if resource_usage.get("memory", {}).get("percent", 0) > 80:
                 recommendations.append("System memory is high - consider scaling resources")
-        
+
         if error_breakdown.get("timeout_error", 0) > 0:
             recommendations.append("Use simpler chunking strategies for faster processing")
             recommendations.append("Process documents in smaller batches")
-        
+
         if error_breakdown.get("strategy_error", 0) > 0:
             recommendations.append("Review strategy configuration parameters")
             recommendations.append("Consider using recursive strategy as fallback")
-        
+
         # Resource-based recommendations
         if resource_usage.get("cpu", {}).get("percent", 0) > 80:
             recommendations.append("High CPU usage detected - consider queuing operations")
-        
+
         if len(recommendations) == 0:
             recommendations.append("Review logs for detailed error information")
-        
+
         return recommendations
-    
+
     async def acquire_resource_lock(
         self,
         resource_type: ResourceType,
@@ -1139,39 +1147,38 @@ class ChunkingErrorHandler:
         timeout: float = 30.0,
     ) -> bool:
         """Acquire a lock for a specific resource type to prevent overload.
-        
+
         Args:
             resource_type: Type of resource to lock
             operation_id: Operation requesting the lock
             timeout: Maximum time to wait for lock
-            
+
         Returns:
             True if lock acquired, False otherwise
         """
         lock_key = f"resource_lock:{resource_type.value}"
-        
+
         # Create lock if doesn't exist
         if lock_key not in self._resource_locks:
             self._resource_locks[lock_key] = asyncio.Lock()
-        
+
         lock = self._resource_locks[lock_key]
-        
+
         try:
             # Try to acquire with timeout
-            async with asyncio.timeout(timeout):
-                await lock.acquire()
-                
-                logger.info(
-                    f"Acquired resource lock for {resource_type.value}",
-                    extra={
-                        "operation_id": operation_id,
-                        "resource_type": resource_type.value,
-                        "correlation_id": get_correlation_id(),
-                    },
-                )
-                return True
-                
-        except asyncio.TimeoutError:
+            await asyncio.wait_for(lock.acquire(), timeout=timeout)
+
+            logger.info(
+                f"Acquired resource lock for {resource_type.value}",
+                extra={
+                    "operation_id": operation_id,
+                    "resource_type": resource_type.value,
+                    "correlation_id": get_correlation_id(),
+                },
+            )
+            return True
+
+        except TimeoutError:
             logger.warning(
                 f"Failed to acquire resource lock for {resource_type.value} within {timeout}s",
                 extra={
@@ -1181,15 +1188,15 @@ class ChunkingErrorHandler:
                 },
             )
             return False
-    
+
     def release_resource_lock(self, resource_type: ResourceType) -> None:
         """Release a resource lock.
-        
+
         Args:
             resource_type: Type of resource to unlock
         """
         lock_key = f"resource_lock:{resource_type.value}"
-        
+
         if lock_key in self._resource_locks:
             lock = self._resource_locks[lock_key]
             if lock.locked():
@@ -1201,54 +1208,54 @@ class ChunkingErrorHandler:
                         "correlation_id": get_correlation_id(),
                     },
                 )
-    
+
     async def get_operation_state(
         self,
         operation_id: str,
     ) -> dict[str, Any] | None:
         """Retrieve saved operation state from Redis.
-        
+
         Args:
             operation_id: Operation identifier
-            
+
         Returns:
             Saved state dictionary or None if not found
         """
         if not self.redis_client:
             return None
-        
+
         try:
             state_key = f"chunking:state:{operation_id}"
             state_data = await self.redis_client.get(state_key)
-            
+
             if state_data:
                 return json.loads(state_data)
-                
+
         except Exception as e:
             logger.error(f"Failed to retrieve operation state: {str(e)}", exc_info=e)
-        
+
         return None
-    
+
     async def resume_operation(
         self,
         operation_id: str,
         context_updates: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """Resume a failed operation from saved state.
-        
+
         Args:
             operation_id: Operation to resume
             context_updates: Optional updates to merge with saved context
-            
+
         Returns:
             Combined state and context for resuming, or None if not found
         """
         state = await self.get_operation_state(operation_id)
-        
+
         if not state:
             logger.warning(f"No saved state found for operation {operation_id}")
             return None
-        
+
         # Check if checkpoint exists
         checkpoint = None
         if self.redis_client:
@@ -1256,15 +1263,15 @@ class ChunkingErrorHandler:
             checkpoint_data = await self.redis_client.get(checkpoint_key)
             if checkpoint_data:
                 checkpoint = json.loads(checkpoint_data)
-        
+
         # Merge context updates
         if context_updates:
             state["context"].update(context_updates)
-        
+
         # Add checkpoint if found
         if checkpoint:
             state["checkpoint"] = checkpoint
-        
+
         logger.info(
             f"Resuming operation {operation_id}",
             extra={
@@ -1273,5 +1280,5 @@ class ChunkingErrorHandler:
                 "has_checkpoint": checkpoint is not None,
             },
         )
-        
+
         return state

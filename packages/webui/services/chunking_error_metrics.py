@@ -297,16 +297,16 @@ def record_partial_failure(
 
     if total_documents > 0:
         failure_ratio = failed_documents / total_documents
-        chunking_partial_failure_document_ratio.labels(
-            strategy=strategy
-        ).observe(failure_ratio)
+        chunking_partial_failure_document_ratio.labels(strategy=strategy).observe(failure_ratio)
 
 
 # Initialize error handler info
-chunking_error_handler_info.info({
-    "version": "1.0.0",
-    "max_retries": "3",
-    "retry_backoff": "exponential",
-    "circuit_breaker_enabled": "true",
-    "dead_letter_queue_enabled": "true",
-})
+chunking_error_handler_info.info(
+    {
+        "version": "1.0.0",
+        "max_retries": "3",
+        "retry_backoff": "exponential",
+        "circuit_breaker_enabled": "true",
+        "dead_letter_queue_enabled": "true",
+    }
+)

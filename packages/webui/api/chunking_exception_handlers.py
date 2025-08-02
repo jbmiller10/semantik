@@ -14,8 +14,7 @@ from fastapi import Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
-from ..middleware.correlation import get_or_generate_correlation_id
-from .chunking_exceptions import (
+from packages.webui.api.chunking_exceptions import (
     ChunkingConfigurationError,
     ChunkingDependencyError,
     ChunkingError,
@@ -26,6 +25,7 @@ from .chunking_exceptions import (
     ChunkingTimeoutError,
     ChunkingValidationError,
 )
+from packages.webui.middleware.correlation import get_or_generate_correlation_id
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,8 @@ def _sanitize_error_detail(detail: str, is_production: bool = True) -> str:
     # In production, remove sensitive information
     # This is a basic implementation - customize based on your security needs
     sensitive_patterns = [
+        # System files and paths
+        r"\/etc\/[a-zA-Z0-9_\-\/]+",
         # File system paths
         r"\/[a-zA-Z0-9_\-\/]+\.(py|conf|env|key|pem)",
         # Database connection strings

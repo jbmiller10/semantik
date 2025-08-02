@@ -6,7 +6,6 @@ This module tests all custom exception classes, their serialization,
 inheritance hierarchy, and attribute handling.
 """
 
-import pytest
 
 from packages.webui.api.chunking_exceptions import (
     ChunkingConfigurationError,
