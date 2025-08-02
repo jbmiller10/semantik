@@ -29,6 +29,7 @@ MB = 1024 * KB
 
 class DocumentProfile(TypedDict):
     """Type definition for document profiles."""
+
     name: str
     size_bytes: int
     size: str
@@ -333,9 +334,7 @@ class TestChunkingPerformance:
         speedup = single_duration / parallel_duration
         efficiency = speedup / num_workers
 
-        logger.info(
-            f"Parallel test with {num_workers} workers: speedup={speedup:.2f}x, efficiency={efficiency:.2%}"
-        )
+        logger.info(f"Parallel test with {num_workers} workers: speedup={speedup:.2f}x, efficiency={efficiency:.2%}")
 
         # Should achieve at least 70% efficiency
         assert efficiency >= 0.7, f"Parallel efficiency {efficiency:.2f} below threshold"
