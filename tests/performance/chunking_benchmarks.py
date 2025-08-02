@@ -31,7 +31,7 @@ MB = 1024 * KB
 @dataclass
 class BenchmarkResult:
     """Result of a benchmark test."""
-    
+
     strategy: str
     document_size: str
     text_length: int
@@ -54,26 +54,26 @@ class ChunkingBenchmarks:
     PERFORMANCE_TARGETS = {
         "character": {  # TokenTextSplitter
             "single_thread": 1000,  # chunks/sec
-            "parallel_4": 3500,     # chunks/sec with 4 workers
-            "memory_per_mb": 50,    # MB memory per MB document
+            "parallel_4": 3500,  # chunks/sec with 4 workers
+            "memory_per_mb": 50,  # MB memory per MB document
         },
         "recursive": {  # SentenceSplitter
             "single_thread": 800,
             "parallel_4": 3000,
             "memory_per_mb": 60,
         },
-        "markdown": {   # MarkdownNodeParser
+        "markdown": {  # MarkdownNodeParser
             "single_thread": 600,
             "parallel_4": 2200,
             "memory_per_mb": 80,
         },
-        "semantic": {   # SemanticSplitterNodeParser
-            "single_thread": 150,   # Lower due to embeddings
-            "parallel_4": 400,      # Limited by embedding model
+        "semantic": {  # SemanticSplitterNodeParser
+            "single_thread": 150,  # Lower due to embeddings
+            "parallel_4": 400,  # Limited by embedding model
             "memory_per_mb": 200,
         },
         "hierarchical": {  # HierarchicalNodeParser
-            "single_thread": 400,   # Multiple passes
+            "single_thread": 400,  # Multiple passes
             "parallel_4": 1500,
             "memory_per_mb": 150,
         },
@@ -100,16 +100,31 @@ class ChunkingBenchmarks:
         if doc_type == "text":
             # Generate sentences
             sentences = []
-            words = ["the", "quick", "brown", "fox", "jumps", "over", "lazy", "dog",
-                    "and", "then", "runs", "away", "quickly", "through", "forest"]
-            
+            words = [
+                "the",
+                "quick",
+                "brown",
+                "fox",
+                "jumps",
+                "over",
+                "lazy",
+                "dog",
+                "and",
+                "then",
+                "runs",
+                "away",
+                "quickly",
+                "through",
+                "forest",
+            ]
+
             current_size = 0
             while current_size < size_bytes:
                 sentence = " ".join(random.choices(words, k=random.randint(5, 15)))
                 sentence = sentence.capitalize() + ". "
                 sentences.append(sentence)
                 current_size += len(sentence)
-            
+
             return "".join(sentences)[:size_bytes]
 
         elif doc_type == "markdown":
@@ -117,28 +132,28 @@ class ChunkingBenchmarks:
             sections = []
             current_size = 0
             section_num = 1
-            
+
             while current_size < size_bytes:
                 section = f"\n# Section {section_num}\n\n"
                 section += "This is a paragraph in the section. " * random.randint(5, 10)
                 section += "\n\n## Subsection {}.1\n\n".format(section_num)
                 section += "More content here. " * random.randint(3, 8)
                 section += "\n\n"
-                
+
                 sections.append(section)
                 current_size += len(section)
                 section_num += 1
-            
+
             return "".join(sections)[:size_bytes]
 
         elif doc_type == "code":
             # Generate Python-like code
             code_lines = []
             current_size = 0
-            
+
             code_lines.append("#!/usr/bin/env python3\n")
             code_lines.append('"""Generated test code."""\n\n')
-            
+
             func_num = 1
             while current_size < size_bytes:
                 func = f"def function_{func_num}(param1, param2):\n"
@@ -147,11 +162,11 @@ class ChunkingBenchmarks:
                 func += "    for i in range(10):\n"
                 func += "        result += i\n"
                 func += "    return result\n\n"
-                
+
                 code_lines.append(func)
                 current_size += len(func)
                 func_num += 1
-            
+
             return "".join(code_lines)[:size_bytes]
 
         else:
@@ -197,11 +212,14 @@ class TestChunkingPerformance:
         """Provide performance monitor."""
         return PerformanceMonitor()
 
-    @pytest.mark.parametrize("strategy,document_size,expected_rate", [
-        ("character", "1MB", 1000),
-        ("recursive", "1MB", 800),
-        ("markdown", "1MB", 600),
-    ])
+    @pytest.mark.parametrize(
+        "strategy,document_size,expected_rate",
+        [
+            ("character", "1MB", 1000),
+            ("recursive", "1MB", 800),
+            ("markdown", "1MB", 600),
+        ],
+    )
     async def test_single_thread_performance(
         self,
         strategy: str,
@@ -257,15 +275,15 @@ class TestChunkingPerformance:
             memory_used_mb=metrics["memory_used_mb"],
             avg_chunk_size=sum(len(c.text) for c in chunks) / len(chunks) if chunks else 0,
         )
-        
+
         logger.info(f"Benchmark result: {result}")
 
         # Assertions
-        assert chunks_per_second >= expected_rate * 0.9, \
-            f"{strategy} performance {chunks_per_second:.1f} below target {expected_rate}"
+        assert (
+            chunks_per_second >= expected_rate * 0.9
+        ), f"{strategy} performance {chunks_per_second:.1f} below target {expected_rate}"
 
-        assert metrics["memory_used_mb"] < 100, \
-            f"Memory usage {metrics['memory_used_mb']}MB exceeds limit"
+        assert metrics["memory_used_mb"] < 100, f"Memory usage {metrics['memory_used_mb']}MB exceeds limit"
 
     @pytest.mark.parametrize("num_workers", [2, 4, 8])
     async def test_parallel_performance(
@@ -278,10 +296,7 @@ class TestChunkingPerformance:
             num_workers: Number of parallel workers
         """
         # Generate test documents
-        documents = [
-            ChunkingBenchmarks.generate_test_document(100 * KB, "text")
-            for _ in range(100)
-        ]
+        documents = [ChunkingBenchmarks.generate_test_document(100 * KB, "text") for _ in range(100)]
 
         # Test with recursive strategy
         config = {"strategy": "recursive", "params": {"chunk_size": 600}}
@@ -296,15 +311,15 @@ class TestChunkingPerformance:
         # Parallel processing
         parallel_start = time.time()
         tasks = []
-        
+
         # Process in batches to simulate parallel workers
         batch_size = len(documents) // num_workers
         for i in range(0, len(documents), batch_size):
-            batch = documents[i:i + batch_size]
+            batch = documents[i : i + batch_size]
             for doc in batch:
                 task = chunker.chunk_text_async(doc, f"test_{i}")
                 tasks.append(task)
-        
+
         await asyncio.gather(*tasks)
         parallel_duration = time.time() - parallel_start
 
@@ -313,13 +328,11 @@ class TestChunkingPerformance:
         efficiency = speedup / num_workers
 
         logger.info(
-            f"Parallel test with {num_workers} workers: "
-            f"speedup={speedup:.2f}x, efficiency={efficiency:.2%}"
+            f"Parallel test with {num_workers} workers: " f"speedup={speedup:.2f}x, efficiency={efficiency:.2%}"
         )
 
         # Should achieve at least 70% efficiency
-        assert efficiency >= 0.7, \
-            f"Parallel efficiency {efficiency:.2f} below threshold"
+        assert efficiency >= 0.7, f"Parallel efficiency {efficiency:.2f} below threshold"
 
     @pytest.mark.parametrize("strategy", ["character", "recursive", "markdown"])
     async def test_memory_scaling(
@@ -348,26 +361,27 @@ class TestChunkingPerformance:
 
             # Monitor memory
             performance_monitor.start()
-            
+
             # Process document
             chunks = await chunker.chunk_text_async(document, f"test_{profile['name']}")
-            
+
             performance_monitor.update()
             metrics = performance_monitor.stop()
 
             # Record results
             memory_per_mb = metrics["memory_used_mb"] / (profile["size_bytes"] / MB)
-            memory_results.append({
-                "size": profile["size"],
-                "memory_used_mb": metrics["memory_used_mb"],
-                "memory_per_mb": memory_per_mb,
-                "chunks": len(chunks),
-            })
+            memory_results.append(
+                {
+                    "size": profile["size"],
+                    "memory_used_mb": metrics["memory_used_mb"],
+                    "memory_per_mb": memory_per_mb,
+                    "chunks": len(chunks),
+                }
+            )
 
             # Check against targets
             target = ChunkingBenchmarks.PERFORMANCE_TARGETS[strategy]["memory_per_mb"]
-            assert memory_per_mb <= target * 1.2, \
-                f"Memory usage {memory_per_mb:.1f}MB/MB exceeds target {target}MB/MB"
+            assert memory_per_mb <= target * 1.2, f"Memory usage {memory_per_mb:.1f}MB/MB exceeds target {target}MB/MB"
 
         logger.info(f"Memory scaling for {strategy}: {json.dumps(memory_results, indent=2)}")
 
@@ -394,12 +408,12 @@ class TestChunkingPerformance:
                 "params": {},
             },
         }
-        
+
         config = configs.get(strategy, configs["recursive"])
-        
+
         # Use mock embeddings for testing
         os.environ["TESTING"] = "true"
-        
+
         return config
 
 
@@ -410,32 +424,32 @@ async def run_benchmarks() -> None:
     results = []
 
     strategies = ["character", "recursive", "markdown"]
-    
+
     for strategy in strategies:
         config = {"strategy": strategy, "params": {}}
         if strategy == "character":
             config["params"] = {"chunk_size": 1000, "chunk_overlap": 200}
         elif strategy == "recursive":
             config["params"] = {"chunk_size": 600, "chunk_overlap": 100}
-        
+
         chunker = ChunkingFactory.create_chunker(config)
-        
+
         for profile in ChunkingBenchmarks.DOCUMENT_PROFILES[:3]:
             # Generate document
             doc_type = "markdown" if strategy == "markdown" else "text"
             document = benchmarks.generate_test_document(profile["size_bytes"], doc_type)
-            
+
             # Benchmark
             monitor = PerformanceMonitor()
             monitor.start()
-            
+
             start_time = time.time()
             chunks = await chunker.chunk_text_async(document, f"bench_{profile['name']}")
             duration = time.time() - start_time
-            
+
             monitor.update()
             metrics = monitor.stop()
-            
+
             # Record result
             result = BenchmarkResult(
                 strategy=strategy,
@@ -447,21 +461,23 @@ async def run_benchmarks() -> None:
                 memory_used_mb=metrics["memory_used_mb"],
                 avg_chunk_size=sum(len(c.text) for c in chunks) / len(chunks) if chunks else 0,
             )
-            
+
             results.append(result)
-            print(f"{strategy} - {profile['size']}: {result.chunks_per_second:.1f} chunks/sec, "
-                  f"{result.memory_used_mb:.1f}MB memory")
+            print(
+                f"{strategy} - {profile['size']}: {result.chunks_per_second:.1f} chunks/sec, "
+                f"{result.memory_used_mb:.1f}MB memory"
+            )
 
     # Generate summary report
     print("\n=== Chunking Performance Benchmark Report ===")
     print(f"Hardware: {ChunkingBenchmarks.HARDWARE_BASELINE}")
     print("\nResults by Strategy:")
-    
+
     for strategy in strategies:
         strategy_results = [r for r in results if r.strategy == strategy]
         avg_rate = sum(r.chunks_per_second for r in strategy_results) / len(strategy_results)
         avg_memory = sum(r.memory_used_mb for r in strategy_results) / len(strategy_results)
-        
+
         print(f"\n{strategy.capitalize()}:")
         print(f"  Average rate: {avg_rate:.1f} chunks/sec")
         print(f"  Average memory: {avg_memory:.1f}MB")

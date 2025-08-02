@@ -38,7 +38,7 @@ class MarkdownChunker(BaseChunker):
     def _has_markdown_headers(self, text: str) -> bool:
         """Check if text contains markdown headers."""
         # Look for markdown headers (# Header, ## Header, etc.)
-        return bool(re.search(r'^#{1,6}\s+', text, re.MULTILINE))
+        return bool(re.search(r"^#{1,6}\s+", text, re.MULTILINE))
 
     def _is_markdown_file(self, metadata: dict[str, Any] | None) -> bool:
         """Check if the document is a markdown file based on metadata."""
@@ -82,8 +82,7 @@ class MarkdownChunker(BaseChunker):
 
         if not is_markdown:
             logger.warning(
-                f"Document {doc_id} doesn't appear to be markdown. "
-                "Consider using recursive chunker instead."
+                f"Document {doc_id} doesn't appear to be markdown. " "Consider using recursive chunker instead."
             )
 
         # Create a temporary document
@@ -113,28 +112,31 @@ class MarkdownChunker(BaseChunker):
             chunk_metadata = metadata.copy() if metadata else {}
 
             # Add markdown-specific metadata
-            if hasattr(node, 'metadata'):
+            if hasattr(node, "metadata"):
                 node_meta = node.metadata
                 # Extract header level if available
-                if 'Header_1' in node_meta:
-                    chunk_metadata['section'] = node_meta['Header_1']
-                if 'Header_2' in node_meta:
-                    chunk_metadata['subsection'] = node_meta['Header_2']
+                if "Header_1" in node_meta:
+                    chunk_metadata["section"] = node_meta["Header_1"]
+                if "Header_2" in node_meta:
+                    chunk_metadata["subsection"] = node_meta["Header_2"]
 
             result = self._create_chunk_result(
                 doc_id=doc_id,
                 chunk_index=idx,
                 text=node.get_content(),
-                start_offset=node.start_char_idx if hasattr(node, 'start_char_idx') and node.start_char_idx is not None else 0,
-                end_offset=node.end_char_idx if hasattr(node, 'end_char_idx') and node.end_char_idx is not None else len(node.get_content()),
+                start_offset=(
+                    node.start_char_idx if hasattr(node, "start_char_idx") and node.start_char_idx is not None else 0
+                ),
+                end_offset=(
+                    node.end_char_idx
+                    if hasattr(node, "end_char_idx") and node.end_char_idx is not None
+                    else len(node.get_content())
+                ),
                 metadata=chunk_metadata,
             )
             results.append(result)
 
-        logger.debug(
-            f"Created {len(results)} chunks from {len(text)} characters "
-            f"of markdown content"
-        )
+        logger.debug(f"Created {len(results)} chunks from {len(text)} characters " f"of markdown content")
         return results
 
     async def chunk_text_async(
