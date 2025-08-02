@@ -883,7 +883,6 @@ async def _handle_soft_timeout(
         celery_task: Celery task instance
     """
     try:
-        redis_client = get_redis_client()
         # ChunkingErrorHandler expects async Redis, but we have sync Redis
         # For now, pass None as the handler can work without Redis
         error_handler = ChunkingErrorHandler(None)
