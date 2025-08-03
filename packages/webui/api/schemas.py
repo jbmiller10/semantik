@@ -69,6 +69,18 @@ class UserResponse(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+# Chunking Strategy Enum
+class ChunkingStrategyEnum(str, Enum):
+    """Available chunking strategies."""
+
+    CHARACTER = "character"
+    RECURSIVE = "recursive"
+    MARKDOWN = "markdown"
+    SEMANTIC = "semantic"
+    HIERARCHICAL = "hierarchical"
+    HYBRID = "hybrid"
+
+
 # Collection schemas
 class CollectionBase(BaseModel):
     """Base collection schema."""
@@ -89,6 +101,21 @@ class CollectionBase(BaseModel):
     )
     chunk_size: int = Field(default=1000, ge=100, le=10000)
     chunk_overlap: int = Field(default=200, ge=0, le=1000)
+    chunking_strategy: ChunkingStrategyEnum = Field(
+        default=ChunkingStrategyEnum.RECURSIVE,
+        description="Chunking strategy to use for document processing",
+    )
+    chunking_params: dict[str, Any] | None = Field(
+        default=None,
+        description="Strategy-specific parameters for chunking",
+        json_schema_extra={
+            "example": {
+                "breakpoint_percentile_threshold": 90,
+                "buffer_size": 2,
+                "max_chunk_size": 2000,
+            }
+        },
+    )
     is_public: bool = False
     metadata: dict[str, Any] | None = None
 
@@ -97,6 +124,59 @@ class CollectionBase(BaseModel):
     def normalize_name(cls, v: str) -> str:
         """Normalize collection name by stripping whitespace."""
         return v.strip()
+
+    @field_validator("chunking_params", mode="after")
+    @classmethod
+    def validate_chunking_params(cls, v: dict[str, Any] | None, info) -> dict[str, Any] | None:
+        """Validate chunking parameters based on selected strategy."""
+        if v is None:
+            return v
+
+        strategy = info.data.get("chunking_strategy", ChunkingStrategyEnum.RECURSIVE)
+
+        if strategy == ChunkingStrategyEnum.SEMANTIC:
+            # Validate semantic chunking parameters
+            if "breakpoint_percentile_threshold" in v:
+                threshold = v["breakpoint_percentile_threshold"]
+                if not isinstance(threshold, (int, float)) or not 0 <= threshold <= 100:
+                    raise ValueError("breakpoint_percentile_threshold must be between 0 and 100")
+            if "buffer_size" in v:
+                buffer = v["buffer_size"]
+                if not isinstance(buffer, int) or buffer < 0:
+                    raise ValueError("buffer_size must be a non-negative integer")
+            if "max_chunk_size" in v:
+                max_size = v["max_chunk_size"]
+                if not isinstance(max_size, int) or max_size <= 0:
+                    raise ValueError("max_chunk_size must be a positive integer")
+
+        elif strategy == ChunkingStrategyEnum.HIERARCHICAL:
+            # Validate hierarchical chunking parameters
+            if "chunk_sizes" in v:
+                sizes = v["chunk_sizes"]
+                if not isinstance(sizes, list) or not all(isinstance(s, int) and s > 0 for s in sizes):
+                    raise ValueError("chunk_sizes must be a list of positive integers")
+                if len(sizes) != len(sorted(sizes, reverse=True)):
+                    raise ValueError("chunk_sizes must be in descending order")
+            if "chunk_overlap" in v:
+                overlap = v["chunk_overlap"]
+                if not isinstance(overlap, int) or overlap < 0:
+                    raise ValueError("chunk_overlap must be a non-negative integer")
+
+        elif strategy == ChunkingStrategyEnum.HYBRID:
+            # Validate hybrid chunking parameters
+            if "semantic_threshold" in v:
+                threshold = v["semantic_threshold"]
+                if not isinstance(threshold, (int, float)) or not 0.0 <= threshold <= 1.0:
+                    raise ValueError("semantic_threshold must be between 0.0 and 1.0")
+            if "length_threshold" in v:
+                threshold = v["length_threshold"]
+                if not isinstance(threshold, (int, float)) or not 0.0 <= threshold <= 1.0:
+                    raise ValueError("length_threshold must be between 0.0 and 1.0")
+
+        # Character, Recursive, and Markdown strategies use the standard chunk_size/chunk_overlap
+        # which are already validated in the base schema
+
+        return v
 
 
 class CollectionCreate(CollectionBase):
@@ -158,6 +238,11 @@ class CollectionResponse(CollectionBase):
     @classmethod
     def from_collection(cls, collection: Any) -> "CollectionResponse":
         """Create response from ORM Collection object."""
+        # Handle chunking_strategy - it might be stored as a string in the DB
+        chunking_strategy = getattr(collection, "chunking_strategy", "recursive")
+        if isinstance(chunking_strategy, str):
+            chunking_strategy = ChunkingStrategyEnum(chunking_strategy)
+        
         return cls(
             id=collection.id,
             name=collection.name,
@@ -168,6 +253,8 @@ class CollectionResponse(CollectionBase):
             quantization=collection.quantization,
             chunk_size=collection.chunk_size,
             chunk_overlap=collection.chunk_overlap,
+            chunking_strategy=chunking_strategy,
+            chunking_params=getattr(collection, "chunking_params", None),
             is_public=collection.is_public,
             metadata=collection.meta,
             created_at=collection.created_at,

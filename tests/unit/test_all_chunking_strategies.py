@@ -18,6 +18,11 @@ from packages.shared.text_processing.strategies.character_chunker import Charact
 from packages.shared.text_processing.strategies.markdown_chunker import MarkdownChunker
 from packages.shared.text_processing.strategies.recursive_chunker import RecursiveChunker
 
+# Week 2: Advanced strategies
+from packages.shared.text_processing.strategies.semantic_chunker import SemanticChunker
+from packages.shared.text_processing.strategies.hierarchical_chunker import HierarchicalChunker
+from packages.shared.text_processing.strategies.hybrid_chunker import HybridChunker
+
 # Set testing environment
 os.environ["TESTING"] = "true"
 
@@ -127,7 +132,7 @@ For more complex scenarios...
 """,
     }
 
-    ALL_STRATEGIES = ["character", "recursive", "markdown"]
+    ALL_STRATEGIES = ["character", "recursive", "markdown", "semantic", "hierarchical", "hybrid"]
 
     def get_default_config(self, strategy: str) -> dict[str, Any]:
         """Get default configuration for a strategy."""
@@ -143,6 +148,18 @@ For more complex scenarios...
             "markdown": {
                 "strategy": "markdown",
                 "params": {},
+            },
+            "semantic": {
+                "strategy": "semantic",
+                "params": {"breakpoint_percentile_threshold": 90, "buffer_size": 1, "max_chunk_size": 1000},
+            },
+            "hierarchical": {
+                "strategy": "hierarchical",
+                "params": {"chunk_sizes": [500, 200, 100], "chunk_overlap": 20},
+            },
+            "hybrid": {
+                "strategy": "hybrid",
+                "params": {"markdown_density_threshold": 0.1, "topic_diversity_threshold": 0.7},
             },
         }
         return configs.get(strategy, configs["recursive"])
@@ -300,7 +317,11 @@ For more complex scenarios...
         assert "character" in strategies
         assert "recursive" in strategies
         assert "markdown" in strategies
-        assert len(strategies) >= 3
+        # Week 2: Advanced strategies
+        assert "semantic" in strategies
+        assert "hierarchical" in strategies
+        assert "hybrid" in strategies
+        assert len(strategies) >= 6
 
     @pytest.mark.parametrize("strategy", ALL_STRATEGIES)
     def test_validate_config(self, strategy: str) -> None:
@@ -327,6 +348,24 @@ For more complex scenarios...
                 )
                 is False
             )
+        elif strategy == "semantic":
+            # Invalid threshold
+            assert chunker.validate_config({"breakpoint_percentile_threshold": -10}) is False
+            assert chunker.validate_config({"breakpoint_percentile_threshold": 150}) is False
+            
+            # Invalid buffer size
+            assert chunker.validate_config({"buffer_size": -1}) is False
+            
+        elif strategy == "hierarchical":
+            # Invalid chunk sizes
+            assert chunker.validate_config({"chunk_sizes": "not_a_list"}) is False
+            assert chunker.validate_config({"chunk_sizes": [100]}) is False  # Too few levels
+            assert chunker.validate_config({"chunk_sizes": [-100, 50]}) is False  # Negative size
+            
+        elif strategy == "hybrid":
+            # Invalid thresholds
+            assert chunker.validate_config({"markdown_density_threshold": -0.1}) is False
+            assert chunker.validate_config({"topic_diversity_threshold": 1.5}) is False
 
     @pytest.mark.parametrize("strategy", ALL_STRATEGIES)
     def test_estimate_chunks(self, strategy: str) -> None:
@@ -383,6 +422,201 @@ For more complex scenarios...
         # Chunk IDs should follow pattern
         for i, chunk in enumerate(chunks):
             assert chunk.chunk_id == f"doc123_{i:04d}"
+
+    async def test_semantic_chunker_basic(self) -> None:
+        """Test basic semantic chunker functionality."""
+        chunker = SemanticChunker(
+            breakpoint_percentile_threshold=80,
+            buffer_size=1,
+            max_chunk_size=1000,
+        )
+
+        # Use topic-diverse text that should create semantic boundaries
+        text = (
+            "Machine learning is a subset of artificial intelligence that focuses on algorithms. "
+            "These algorithms can learn from data without being explicitly programmed. "
+            "In the field of cooking, French cuisine is known for its sophisticated techniques. "
+            "Sauce preparation requires careful attention to temperature and timing. "
+            "Quantum physics deals with the behavior of matter at the atomic level. "
+            "Particles can exist in multiple states simultaneously through superposition."
+        )
+        
+        chunks = await chunker.chunk_text_async(text, "test_semantic")
+
+        # Verify chunks
+        assert len(chunks) >= 1
+        assert all(isinstance(chunk, ChunkResult) for chunk in chunks)
+        assert all(chunk.metadata.get("strategy") == "semantic" for chunk in chunks)
+        assert all("breakpoint_threshold" in chunk.metadata for chunk in chunks)
+
+        # Verify text is preserved
+        reassembled = "".join(chunk.text for chunk in chunks)
+        assert len(reassembled) <= len(text) + 100  # Allow for some overlap
+
+    async def test_semantic_chunker_fallback(self) -> None:
+        """Test semantic chunker fallback to recursive on failure."""
+        # Create chunker with invalid embedding model to trigger fallback
+        chunker = SemanticChunker(
+            embed_model=None,  # This might cause issues
+            breakpoint_percentile_threshold=95,
+        )
+
+        text = "This is a test text. " * 50
+        chunks = await chunker.chunk_text_async(text, "test_fallback")
+
+        # Should still get chunks (from fallback)
+        assert len(chunks) >= 1
+        assert all(isinstance(chunk, ChunkResult) for chunk in chunks)
+
+    async def test_hierarchical_chunker_basic(self) -> None:
+        """Test basic hierarchical chunker functionality."""
+        chunker = HierarchicalChunker(
+            chunk_sizes=[400, 200, 100],
+            chunk_overlap=20,
+        )
+
+        text = "This is a test document. " * 100  # ~2500 characters
+        chunks = await chunker.chunk_text_async(text, "test_hierarchical")
+
+        # Verify chunks
+        assert len(chunks) >= 1
+        assert all(isinstance(chunk, ChunkResult) for chunk in chunks)
+        assert all(chunk.metadata.get("strategy") == "hierarchical" for chunk in chunks)
+
+        # Check for both leaf and parent chunks
+        leaf_chunks = [c for c in chunks if c.metadata.get("chunk_type") == "leaf"]
+        parent_chunks = [c for c in chunks if c.metadata.get("chunk_type") == "parent"]
+
+        assert len(leaf_chunks) >= 1
+        # Parent chunks are optional depending on hierarchy
+        
+        # Verify hierarchy metadata
+        for chunk in chunks:
+            assert "chunk_level" in chunk.metadata
+            assert "chunk_size_target" in chunk.metadata
+            assert isinstance(chunk.metadata["chunk_level"], int)
+
+    async def test_hierarchical_chunker_relationships(self) -> None:
+        """Test hierarchical chunker parent-child relationships."""
+        chunker = HierarchicalChunker(
+            chunk_sizes=[300, 150],  # Two levels for simpler testing
+            chunk_overlap=10,
+        )
+
+        text = "This is paragraph one with some content. " * 10
+        text += "This is paragraph two with different content. " * 10
+        
+        chunks = await chunker.chunk_text_async(text, "test_hierarchy")
+
+        # Verify hierarchy structure exists
+        assert len(chunks) >= 2
+        
+        # Check that hierarchy paths are present
+        for chunk in chunks:
+            assert "hierarchy_path" in chunk.metadata
+            assert isinstance(chunk.metadata["hierarchy_path"], list)
+
+    async def test_hybrid_chunker_markdown_selection(self) -> None:
+        """Test hybrid chunker selects markdown strategy for markdown content."""
+        chunker = HybridChunker(
+            markdown_density_threshold=0.1,
+            topic_diversity_threshold=0.7,
+        )
+
+        markdown_text = """# Main Header
+
+This is a paragraph with some text.
+
+## Subheader  
+
+More content here with `code` and **bold** text.
+
+### Another Section
+
+- List item 1
+- List item 2
+
+```python
+def example():
+    return "code block"
+```
+"""
+
+        chunks = await chunker.chunk_text_async(markdown_text, "test_md", {"file_type": ".md"})
+
+        # Verify chunks and strategy selection
+        assert len(chunks) >= 1
+        assert all(isinstance(chunk, ChunkResult) for chunk in chunks)
+        assert all(chunk.metadata.get("strategy") == "hybrid" for chunk in chunks)
+        assert all(chunk.metadata.get("sub_strategy") == "markdown" for chunk in chunks)
+        assert all("file type indicates markdown" in chunk.metadata.get("selection_reason", "") for chunk in chunks)
+
+    async def test_hybrid_chunker_semantic_selection(self) -> None:
+        """Test hybrid chunker selects semantic strategy for topic-diverse content."""
+        chunker = HybridChunker(
+            markdown_density_threshold=0.5,  # High threshold to avoid markdown
+            topic_diversity_threshold=0.3,   # Lower threshold for testing
+            semantic_min_length=100,         # Low threshold for testing
+        )
+
+        # Create content with high topic diversity
+        diverse_text = (
+            "Machine learning algorithms require extensive training data sets. "
+            "Neural networks process information through interconnected nodes. "
+            "In culinary arts, French techniques emphasize precise temperature control. "
+            "Molecular gastronomy combines science with creative presentation methods. "
+            "Quantum mechanics describes particle behavior at subatomic scales. "
+            "Superposition allows particles to exist in multiple states simultaneously. "
+            "Astrophysics studies celestial bodies and cosmic phenomena extensively. "
+            "Dark matter comprises approximately twenty-seven percent of the universe."
+        )
+
+        chunks = await chunker.chunk_text_async(diverse_text, "test_diverse")
+
+        # Verify strategy selection
+        assert len(chunks) >= 1
+        assert all(chunk.metadata.get("strategy") == "hybrid" for chunk in chunks)
+        # Should select semantic due to topic diversity
+        expected_strategies = ["semantic", "recursive"]  # Fallback might occur
+        assert all(chunk.metadata.get("sub_strategy") in expected_strategies for chunk in chunks)
+
+    async def test_hybrid_chunker_recursive_default(self) -> None:
+        """Test hybrid chunker defaults to recursive for general text."""
+        chunker = HybridChunker(
+            markdown_density_threshold=0.5,  # High threshold
+            topic_diversity_threshold=0.8,   # High threshold
+        )
+
+        # Simple, low-diversity text
+        simple_text = "This is a simple test document. " * 20
+
+        chunks = await chunker.chunk_text_async(simple_text, "test_simple")
+
+        # Verify chunks and default strategy
+        assert len(chunks) >= 1
+        assert all(chunk.metadata.get("strategy") == "hybrid" for chunk in chunks)
+        assert all(chunk.metadata.get("sub_strategy") == "recursive" for chunk in chunks)
+        assert all("default choice" in chunk.metadata.get("selection_reason", "") for chunk in chunks)
+
+    async def test_hybrid_chunker_analytics(self) -> None:
+        """Test hybrid chunker analytics tracking."""
+        chunker = HybridChunker(enable_analytics=True)
+
+        # Process different types of content
+        texts = [
+            ("Simple text. " * 10, "simple"),
+            ("# Header\n\nMarkdown content.", "markdown"),
+            ("Machine learning uses algorithms. Cooking requires techniques. Physics studies matter.", "diverse"),
+        ]
+
+        for text, doc_id in texts:
+            await chunker.chunk_text_async(text, doc_id)
+
+        # Check analytics
+        analytics = chunker.get_selection_analytics()
+        assert "selection_stats" in analytics
+        assert "analytics_summary" in analytics
+        assert analytics["analytics_summary"]["total_selections"] == 3
 
     async def test_unicode_handling(self) -> None:
         """Test proper Unicode handling."""

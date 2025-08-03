@@ -41,6 +41,8 @@ class CollectionRepository:
         quantization: str = "float16",
         chunk_size: int = 1000,
         chunk_overlap: int = 200,
+        chunking_strategy: str = "recursive",
+        chunking_params: dict[str, Any] | None = None,
         is_public: bool = False,
         meta: dict[str, Any] | None = None,
     ) -> Collection:
@@ -54,6 +56,8 @@ class CollectionRepository:
             quantization: Model quantization level (float32, float16, or int8)
             chunk_size: Size of text chunks
             chunk_overlap: Overlap between chunks
+            chunking_strategy: Chunking strategy to use (character, recursive, markdown, semantic, hierarchical, hybrid)
+            chunking_params: Strategy-specific parameters for chunking
             is_public: Whether collection is publicly accessible
             meta: Optional metadata
 
@@ -93,6 +97,8 @@ class CollectionRepository:
                 quantization=quantization,
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
+                chunking_strategy=chunking_strategy,
+                chunking_params=chunking_params,
                 is_public=is_public,
                 vector_store_name=vector_store_name,
                 status=CollectionStatus.PENDING,  # Pass enum object, not value

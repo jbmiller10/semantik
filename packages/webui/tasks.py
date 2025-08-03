@@ -59,6 +59,7 @@ from shared.metrics.collection_metrics import (
     update_collection_stats,
 )
 from shared.text_processing.chunking import TokenChunker
+from shared.text_processing.chunking_factory import ChunkingFactory
 from webui.celery_app import celery_app
 from webui.utils.qdrant_manager import qdrant_manager
 
@@ -1477,19 +1478,38 @@ async def _process_append_operation(
                         failed_count += 1
                         continue
 
-                    # Create chunks
-                    chunker = TokenChunker(
-                        chunk_size=chunk_size,
-                        chunk_overlap=chunk_overlap,
-                    )
+                    # Create chunks using the chunking strategy
+                    chunking_strategy = collection.get("chunking_strategy", "recursive")
+                    chunking_params = collection.get("chunking_params", {})
+                    
+                    # Build config for ChunkingFactory
+                    chunking_config = {
+                        "strategy": chunking_strategy,
+                        "params": {
+                            "chunk_size": chunk_size,
+                            "chunk_overlap": chunk_overlap,
+                            **chunking_params  # Merge with strategy-specific params
+                        }
+                    }
+                    
+                    chunker = ChunkingFactory.create_chunker(chunking_config)
 
                     # Process each text block
                     all_chunks = []
                     for text, metadata in text_blocks:
                         if not text.strip():
                             continue
-                        chunks = chunker.chunk_text(text, doc.id, metadata)
-                        all_chunks.extend(chunks)
+                        # BaseChunker returns ChunkResult objects from chunk() method
+                        chunk_results = chunker.chunk(text, metadata)
+                        # Convert ChunkResult objects to the expected format
+                        for chunk_result in chunk_results:
+                            chunk_dict = {
+                                "text": chunk_result.text,
+                                "doc_id": doc.id,
+                                "chunk_id": chunk_result.chunk_id,
+                                "metadata": chunk_result.metadata
+                            }
+                            all_chunks.append(chunk_dict)
 
                     chunks = all_chunks
                     logger.info(f"Created {len(chunks)} chunks for {doc.file_path}")
@@ -1844,8 +1864,21 @@ async def _process_reindex_operation(
                             timeout=300,  # 5 minute timeout
                         )
 
-                        # Create chunker with new configuration
-                        chunker = TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                        # Create chunker with new configuration using chunking strategy
+                        chunking_strategy = new_config.get("chunking_strategy", collection.get("chunking_strategy", "recursive"))
+                        chunking_params = new_config.get("chunking_params", collection.get("chunking_params", {}))
+                        
+                        # Build config for ChunkingFactory
+                        chunking_config = {
+                            "strategy": chunking_strategy,
+                            "params": {
+                                "chunk_size": chunk_size,
+                                "chunk_overlap": chunk_overlap,
+                                **chunking_params  # Merge with strategy-specific params
+                            }
+                        }
+                        
+                        chunker = ChunkingFactory.create_chunker(chunking_config)
 
                         # Generate document ID
                         doc_id = hashlib.md5(file_path.encode()).hexdigest()[:16]
@@ -1856,15 +1889,22 @@ async def _process_reindex_operation(
                             if not text.strip():
                                 continue
 
-                            # Create chunks
-                            chunks = await loop.run_in_executor(
+                            # Create chunks using the BaseChunker interface
+                            chunk_results = await loop.run_in_executor(
                                 executor,
-                                chunker.chunk_text,
+                                chunker.chunk,
                                 text,
-                                doc_id,
                                 metadata,
                             )
-                            all_chunks.extend(chunks)
+                            # Convert ChunkResult objects to the expected format
+                            for chunk_result in chunk_results:
+                                chunk_dict = {
+                                    "text": chunk_result.text,
+                                    "doc_id": doc_id,
+                                    "chunk_id": chunk_result.chunk_id,
+                                    "metadata": chunk_result.metadata
+                                }
+                                all_chunks.append(chunk_dict)
 
                         if not all_chunks:
                             logger.warning(f"No chunks created for document: {file_path}")

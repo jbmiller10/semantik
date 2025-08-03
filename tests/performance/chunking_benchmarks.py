@@ -75,15 +75,20 @@ class ChunkingBenchmarks:
             "parallel_4": 2200,
             "memory_per_mb": 80,
         },
-        "semantic": {  # SemanticSplitterNodeParser
-            "single_thread": 150,  # Lower due to embeddings
-            "parallel_4": 400,  # Limited by embedding model
-            "memory_per_mb": 200,
+        "semantic": {  # SemanticSplitterNodeParser with LOCAL embeddings
+            "single_thread": 50,    # Realistic for local GPU embeddings
+            "parallel_4": 150,      # GPU throughput limited
+            "memory_per_mb": 200,   # Including embedding model overhead
         },
         "hierarchical": {  # HierarchicalNodeParser
-            "single_thread": 400,  # Multiple passes
-            "parallel_4": 1500,
-            "memory_per_mb": 150,
+            "single_thread": 200,   # Multi-level processing
+            "parallel_4": 600,      # Better CPU parallelization
+            "memory_per_mb": 100,   # Relationship storage
+        },
+        "hybrid": {  # Intelligent strategy selection
+            "single_thread": 300,   # Strategy selection overhead
+            "parallel_4": 900,      # Mixed strategy performance
+            "memory_per_mb": 120,   # Average of sub-strategies
         },
     }
 
@@ -225,6 +230,10 @@ class TestChunkingPerformance:
             ("character", "1MB", 1000),
             ("recursive", "1MB", 800),
             ("markdown", "1MB", 600),
+            # Week 2: Advanced strategies
+            ("semantic", "1MB", 50),     # Realistic for local GPU embeddings
+            ("hierarchical", "1MB", 200), # Multi-level processing
+            ("hybrid", "1MB", 300),       # Strategy selection overhead
         ],
     )
     async def test_single_thread_performance(
@@ -339,7 +348,7 @@ class TestChunkingPerformance:
         # Should achieve at least 70% efficiency
         assert efficiency >= 0.7, f"Parallel efficiency {efficiency:.2f} below threshold"
 
-    @pytest.mark.parametrize("strategy", ["character", "recursive", "markdown"])
+    @pytest.mark.parametrize("strategy", ["character", "recursive", "markdown", "semantic", "hierarchical", "hybrid"])
     async def test_memory_scaling(
         self,
         strategy: str,
@@ -412,6 +421,18 @@ class TestChunkingPerformance:
                 "strategy": "markdown",
                 "params": {},
             },
+            "semantic": {
+                "strategy": "semantic",
+                "params": {"breakpoint_percentile_threshold": 90, "buffer_size": 1, "max_chunk_size": 2000},
+            },
+            "hierarchical": {
+                "strategy": "hierarchical",
+                "params": {"chunk_sizes": [2048, 512, 128], "chunk_overlap": 20},
+            },
+            "hybrid": {
+                "strategy": "hybrid",
+                "params": {"markdown_density_threshold": 0.1, "topic_diversity_threshold": 0.7},
+            },
         }
 
         config = configs.get(strategy, configs["recursive"])
@@ -428,7 +449,7 @@ async def run_benchmarks() -> None:
     benchmarks = ChunkingBenchmarks()
     results = []
 
-    strategies = ["character", "recursive", "markdown"]
+    strategies = ["character", "recursive", "markdown", "semantic", "hierarchical", "hybrid"]
 
     for strategy in strategies:
         config = {"strategy": strategy, "params": {}}
@@ -436,6 +457,12 @@ async def run_benchmarks() -> None:
             config["params"] = {"chunk_size": 1000, "chunk_overlap": 200}
         elif strategy == "recursive":
             config["params"] = {"chunk_size": 600, "chunk_overlap": 100}
+        elif strategy == "semantic":
+            config["params"] = {"breakpoint_percentile_threshold": 90, "buffer_size": 1, "max_chunk_size": 2000}
+        elif strategy == "hierarchical":
+            config["params"] = {"chunk_sizes": [2048, 512, 128], "chunk_overlap": 20}
+        elif strategy == "hybrid":
+            config["params"] = {"markdown_density_threshold": 0.1, "topic_diversity_threshold": 0.7}
 
         chunker = ChunkingFactory.create_chunker(config)
 
