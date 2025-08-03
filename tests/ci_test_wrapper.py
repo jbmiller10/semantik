@@ -8,6 +8,7 @@ NLTK and other dependencies are properly mocked.
 
 import os
 import sys
+import importlib.util
 from unittest.mock import MagicMock
 
 # Set test environment
@@ -21,11 +22,16 @@ if IS_CI:
     # Disable GPU
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
     
-    # Mock NLTK before any imports
-    nltk_mock = MagicMock()
-    nltk_mock.__version__ = "3.8"
+    def create_nltk_module_mock(module_name):
+        """Create a proper module mock with __spec__ attribute."""
+        mock = MagicMock()
+        mock.__name__ = module_name
+        mock.__package__ = module_name.rsplit('.', 1)[0] if '.' in module_name else None
+        mock.__spec__ = importlib.util.spec_from_loader(module_name, loader=None)
+        mock.__version__ = "3.8"
+        return mock
     
-    # Pre-mock all NLTK modules
+    # Pre-mock all NLTK modules with proper specs
     nltk_modules = [
         "nltk",
         "nltk.data",
@@ -37,10 +43,16 @@ if IS_CI:
         "nltk.tag",
         "nltk.chunk",
         "nltk.parse",
+        "nltk.tree",
+        "nltk.grammar",
+        "nltk.sem",
+        "nltk.metrics",
+        "nltk.classify",
+        "nltk.cluster",
     ]
     
-    for module in nltk_modules:
-        sys.modules[module] = MagicMock()
+    for module_name in nltk_modules:
+        sys.modules[module_name] = create_nltk_module_mock(module_name)
     
     # Setup basic tokenizer
     def mock_sent_tokenize(text):
@@ -55,6 +67,7 @@ if IS_CI:
     
     sys.modules["nltk.tokenize"].sent_tokenize = mock_sent_tokenize
     sys.modules["nltk"].tokenize = sys.modules["nltk.tokenize"]
+    sys.modules["nltk"].sent_tokenize = mock_sent_tokenize
     
     # Mock torch CUDA
     torch_mock = MagicMock()
