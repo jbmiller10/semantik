@@ -8,6 +8,7 @@ dependencies and preventing network requests in CI.
 
 import os
 import sys
+import importlib.util
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -20,16 +21,38 @@ IS_CI = os.getenv("CI", "false").lower() == "true"
 
 # Mock NLTK to prevent downloads in CI
 if IS_CI:
-    # Create comprehensive NLTK mock
-    nltk_mock = MagicMock()
-    nltk_mock.__version__ = "3.8"
+    def create_nltk_module_mock(module_name):
+        """Create a proper module mock with __spec__ attribute."""
+        mock = MagicMock()
+        mock.__name__ = module_name
+        mock.__package__ = module_name.rsplit('.', 1)[0] if '.' in module_name else None
+        mock.__spec__ = importlib.util.spec_from_loader(module_name, loader=None)
+        mock.__version__ = "3.8"
+        return mock
     
-    # Mock all NLTK submodules that might be imported
-    sys.modules["nltk"] = nltk_mock
-    sys.modules["nltk.data"] = MagicMock()
-    sys.modules["nltk.tokenize"] = MagicMock()
-    sys.modules["nltk.corpus"] = MagicMock()
-    sys.modules["nltk.download"] = MagicMock()
+    # Create comprehensive NLTK mocks with proper module specs
+    nltk_modules = [
+        "nltk",
+        "nltk.data", 
+        "nltk.tokenize",
+        "nltk.tokenize.punkt",
+        "nltk.corpus",
+        "nltk.download",
+        "nltk.stem",
+        "nltk.tag", 
+        "nltk.chunk",
+        "nltk.parse",
+        "nltk.tree",
+        "nltk.grammar",
+        "nltk.sem",
+        "nltk.metrics",
+        "nltk.classify",
+        "nltk.cluster",
+    ]
+    
+    # Mock all NLTK modules with proper specs
+    for module_name in nltk_modules:
+        sys.modules[module_name] = create_nltk_module_mock(module_name)
     
     # Mock sentence splitter to return basic splits
     def mock_sent_tokenize(text):
@@ -44,6 +67,7 @@ if IS_CI:
                 sentences.append(s + ".")
         return sentences if sentences else [text]
     
+    # Setup tokenization functions
     sys.modules["nltk.tokenize"].sent_tokenize = mock_sent_tokenize
     sys.modules["nltk"].tokenize = sys.modules["nltk.tokenize"]
     
@@ -52,6 +76,9 @@ if IS_CI:
     punkt_mock.tokenize = mock_sent_tokenize
     sys.modules["nltk.tokenize"].punkt = MagicMock()
     sys.modules["nltk.tokenize"].punkt.PunktSentenceTokenizer = MagicMock(return_value=punkt_mock)
+    
+    # Ensure main nltk module has access to tokenize
+    sys.modules["nltk"].sent_tokenize = mock_sent_tokenize
 
 
 @pytest.fixture(scope="session", autouse=True)
