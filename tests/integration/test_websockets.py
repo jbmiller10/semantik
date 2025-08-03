@@ -4,6 +4,7 @@ This file contains tests specifically for the /ws/operations/{operation_id} endp
 as required by Ticket-003.
 """
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, patch
 
@@ -11,8 +12,25 @@ import pytest
 from fastapi import WebSocket
 
 
+@pytest.mark.timeout(30)  # Add timeout to prevent hanging
 class TestOperationsWebSocket:
     """Integration tests for the operations WebSocket endpoint."""
+    
+    async def _cleanup_tasks(self) -> None:
+        """Helper to clean up all running async tasks."""
+        # Give tasks a moment to complete naturally
+        await asyncio.sleep(0.1)
+        
+        # Get all running tasks
+        tasks = [task for task in asyncio.all_tasks() if not task.done() and task != asyncio.current_task()]
+        
+        # Cancel all remaining tasks
+        for task in tasks:
+            task.cancel()
+        
+        # Wait for all tasks to be cancelled
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     @pytest.fixture()
     def mock_websocket_client(self) -> None:
@@ -113,3 +131,6 @@ class TestOperationsWebSocket:
 
                 # Verify disconnection was called
                 mock_ws_manager.disconnect.assert_called_once_with(mock_websocket_client, "test-operation-id", "1")
+                
+                # Clean up any remaining tasks
+                await self._cleanup_tasks()

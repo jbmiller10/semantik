@@ -54,6 +54,7 @@ llama-index-embeddings-huggingface = "^0.6.0"
 pytest = "^8.0.0"
 pytest-asyncio = "^0.23.0"
 pytest-cov = "^4.1.0"
+pytest-timeout = "^2.2.0"
 ruff = "^0.2.0"
 mypy = "^1.8.0"
 black = "^24.2.0"
@@ -145,6 +146,7 @@ markers = [
     "e2e: End-to-end tests that require a running instance (deselect with '-m \"not e2e\"')",
     "security: Security and privacy tests",
     "privacy: Data privacy tests (always run)",
+    "timeout: Mark test with timeout in seconds",
 ]
 
 [build-system]
