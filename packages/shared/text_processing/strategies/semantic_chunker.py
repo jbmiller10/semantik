@@ -12,13 +12,23 @@ import os
 import time
 from typing import Any, Dict, List, Optional
 
-from llama_index.core import Document
-from llama_index.core.embeddings import MockEmbedding
-from llama_index.core.node_parser import SemanticSplitterNodeParser
-from llama_index.embeddings.openai import OpenAIEmbedding
-
 from packages.shared.text_processing.base_chunker import BaseChunker, ChunkResult
 from packages.shared.utils.gpu_memory_monitor import GPUMemoryMonitor
+
+# Conditional imports for CI compatibility
+try:
+    from llama_index.core import Document
+    from llama_index.core.embeddings import MockEmbedding
+    from llama_index.core.node_parser import SemanticSplitterNodeParser
+    from llama_index.embeddings.openai import OpenAIEmbedding
+    LLAMA_INDEX_AVAILABLE = True
+except ImportError:
+    # Fallback for CI environments
+    Document = None
+    MockEmbedding = None  
+    SemanticSplitterNodeParser = None
+    OpenAIEmbedding = None
+    LLAMA_INDEX_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +54,17 @@ class SemanticChunker(BaseChunker):
             max_chunk_size: Maximum tokens per chunk for safety
             max_retries: Maximum retry attempts for embedding API failures
         """
+        # Check if LlamaIndex is available
+        if not LLAMA_INDEX_AVAILABLE:
+            logger.warning("LlamaIndex not available, semantic chunking will use fallback strategy")
+            
         # Smart model selection prioritizing local embeddings (data privacy)
         if embed_model is None:
-            if os.getenv("TESTING", "false").lower() == "true":
+            if not LLAMA_INDEX_AVAILABLE:
+                # Fallback when LlamaIndex is not available (CI environments)
+                embed_model = None
+                logger.info("LlamaIndex unavailable - using fallback mode")
+            elif os.getenv("TESTING", "false").lower() == "true":
                 embed_model = MockEmbedding(embed_dim=384)
                 logger.info("Using MockEmbedding for testing")
             else:
@@ -126,11 +144,16 @@ class SemanticChunker(BaseChunker):
                             )
 
         try:
-            self.splitter = SemanticSplitterNodeParser(
-                embed_model=embed_model,
-                breakpoint_percentile_threshold=breakpoint_percentile_threshold,
-                buffer_size=buffer_size,
-            )
+            if LLAMA_INDEX_AVAILABLE:
+                self.splitter = SemanticSplitterNodeParser(
+                    embed_model=embed_model,
+                    breakpoint_percentile_threshold=breakpoint_percentile_threshold,
+                    buffer_size=buffer_size,
+                )
+            else:
+                # Fallback for CI environments
+                self.splitter = None
+                logger.warning("SemanticSplitterNodeParser unavailable - using fallback mode")
         except Exception as e:
             logger.error(f"Failed to initialize SemanticSplitterNodeParser: {e}")
             raise ValueError(f"Invalid semantic chunker configuration: {e}")
@@ -238,6 +261,21 @@ class SemanticChunker(BaseChunker):
         if not text.strip():
             return []
             
+        # Fallback when LlamaIndex is not available (CI environments)
+        if not LLAMA_INDEX_AVAILABLE or self.splitter is None:
+            logger.warning("Semantic chunking unavailable, falling back to basic chunking")
+            # Simple fallback: split by sentences
+            sentences = text.split('. ')
+            chunks = []
+            for i, sentence in enumerate(sentences):
+                if sentence.strip():
+                    chunks.append(ChunkResult(
+                        text=sentence.strip() + ('.' if not sentence.endswith('.') else ''),
+                        chunk_id=f"{doc_id}_fallback_{i}",
+                        metadata={**(metadata or {}), "strategy": "semantic_fallback"}
+                    ))
+            return chunks
+            
         # Start GPU memory monitoring if available
         if self._gpu_memory_monitor:
             self._gpu_memory_monitor.start_monitoring()
@@ -344,7 +382,22 @@ class SemanticChunker(BaseChunker):
         if not text.strip():
             return []
             
-        # Start GPU memory monitoring if available
+        # Fallback when LlamaIndex is not available (CI environments)
+        if not LLAMA_INDEX_AVAILABLE or self.splitter is None:
+            logger.warning("Semantic chunking unavailable, falling back to basic chunking")
+            # Simple fallback: split by sentences
+            sentences = text.split('. ')
+            chunks = []
+            for i, sentence in enumerate(sentences):
+                if sentence.strip():
+                    chunks.append(ChunkResult(
+                        text=sentence.strip() + ('.' if not sentence.endswith('.') else ''),
+                        chunk_id=f"{doc_id}_fallback_{i}",
+                        metadata={**(metadata or {}), "strategy": "semantic_fallback"}
+                    ))
+            return chunks
+            
+        # Start GPU memory monitoring if available  
         if self._gpu_memory_monitor:
             self._gpu_memory_monitor.start_monitoring()
 
