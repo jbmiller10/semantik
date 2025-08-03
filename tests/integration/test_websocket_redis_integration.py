@@ -11,8 +11,25 @@ from packages.webui.tasks import CeleryTaskWithOperationUpdates
 from packages.webui.websocket_manager import RedisStreamWebSocketManager
 
 
+@pytest.mark.timeout(30)  # Add timeout to prevent hanging
 class TestWebSocketRedisIntegration:
     """Integration tests for WebSocket and Redis streaming."""
+
+    async def _cleanup_tasks(self) -> None:
+        """Helper to clean up all running async tasks."""
+        # Give tasks a moment to complete naturally
+        await asyncio.sleep(0.1)
+        
+        # Get all running tasks
+        tasks = [task for task in asyncio.all_tasks() if not task.done() and task != asyncio.current_task()]
+        
+        # Cancel all remaining tasks
+        for task in tasks:
+            task.cancel()
+        
+        # Wait for all tasks to be cancelled
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     def _setup_operation_getter(self, manager, operation_ids) -> None:
         """Helper to set up mock operation getter for tests."""
@@ -46,7 +63,7 @@ class TestWebSocketRedisIntegration:
         manager.set_operation_getter(mock_get_operation)
 
     @pytest.fixture()
-    def real_redis_mock(self) -> None:
+    async def real_redis_mock(self) -> None:
         """Create a more realistic Redis mock that simulates stream behavior."""
 
         class RedisStreamMock:
@@ -168,11 +185,15 @@ class TestWebSocketRedisIntegration:
             async def close(self):
                 self.closed = True
 
-        return RedisStreamMock()
+        mock = RedisStreamMock()
+        yield mock
+        # Ensure the mock is closed after the test
+        await mock.close()
 
     @pytest.fixture()
-    def mock_websocket_factory(self) -> None:
+    async def mock_websocket_factory(self) -> None:
         """Factory to create mock WebSocket connections."""
+        created_websockets = []
 
         def create_mock_websocket(client_id) -> None:
             # Create fresh AsyncMock instance
@@ -192,9 +213,17 @@ class TestWebSocketRedisIntegration:
 
             mock.send_json.side_effect = track_send_json
 
+            created_websockets.append(mock)
             return mock
 
-        return create_mock_websocket
+        yield create_mock_websocket
+        
+        # Clean up all created websockets
+        for ws in created_websockets:
+            try:
+                await ws.close()
+            except Exception:
+                pass
 
     @pytest.mark.asyncio()
     async def test_end_to_end_operation_updates_flow(self, real_redis_mock, mock_websocket_factory):
@@ -283,6 +312,7 @@ class TestWebSocketRedisIntegration:
                 # Cleanup
                 await manager.disconnect(ws_client, "operation1", "user1")
                 await manager.shutdown()
+                await self._cleanup_tasks()
 
     @pytest.mark.asyncio()
     async def test_multiple_clients_receive_updates(self, real_redis_mock, mock_websocket_factory):
@@ -348,6 +378,7 @@ class TestWebSocketRedisIntegration:
                     await manager.disconnect(client, "operation1", f"user{i}")
 
             await manager.shutdown()
+            await self._cleanup_tasks()
 
     @pytest.mark.asyncio()
     async def test_message_history_replay(self, real_redis_mock, mock_websocket_factory):
@@ -411,6 +442,7 @@ class TestWebSocketRedisIntegration:
                 await manager.disconnect(client, "operation1", "user1")
 
             await manager.shutdown()
+            await self._cleanup_tasks()
 
     @pytest.mark.asyncio()
     async def test_consumer_group_coordination(self, real_redis_mock, mock_websocket_factory):
@@ -483,6 +515,7 @@ class TestWebSocketRedisIntegration:
 
             await manager1.shutdown()
             await manager2.shutdown()
+            await self._cleanup_tasks()
 
     @pytest.mark.asyncio()
     async def test_stream_cleanup_after_operation_completion(self, real_redis_mock):
@@ -509,6 +542,7 @@ class TestWebSocketRedisIntegration:
             assert "operation-progress:operation1" not in real_redis_mock.streams
 
             await manager.shutdown()
+            await self._cleanup_tasks()
 
     @pytest.mark.asyncio()
     async def test_graceful_degradation_without_redis(self, mock_websocket_factory):
@@ -594,6 +628,7 @@ class TestWebSocketRedisIntegration:
             await manager.disconnect(client, "operation1", "user1")
 
         await manager.shutdown()
+        await self._cleanup_tasks()
 
     @pytest.mark.asyncio()
     async def test_connection_resilience(self, real_redis_mock, mock_websocket_factory):
@@ -645,6 +680,7 @@ class TestWebSocketRedisIntegration:
                 assert client not in manager.connections.get("user1:operation:operation1", set())
 
             await manager.shutdown()
+            await self._cleanup_tasks()
 
     @pytest.mark.asyncio()
     async def test_concurrent_operation_processing(self, real_redis_mock, mock_websocket_factory):
@@ -720,3 +756,4 @@ class TestWebSocketRedisIntegration:
                         await manager.disconnect(client, operation_id, f"user_{operation_id}_{i}")
 
             await manager.shutdown()
+            await self._cleanup_tasks()

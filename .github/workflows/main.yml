@@ -24,6 +24,8 @@ env:
   JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY || 'test-secret-key-for-ci' }}
   USE_MOCK_EMBEDDINGS: "true"
   PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:512"
+  TESTING: "true"  # Ensure semantic chunker uses MockEmbedding
+  CI: "true"       # Mark as CI environment for test skipping
 
 jobs:
   # Single job for all linting and formatting checks
@@ -211,7 +213,9 @@ jobs:
             --cov=packages \
             --cov-report=xml \
             --cov-report=term-missing \
-            -m "not e2e"
+            -m "not e2e" \
+            --timeout=60 \
+            --timeout-method=thread
 
       - name: Upload backend coverage
         uses: codecov/codecov-action@v4

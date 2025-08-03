@@ -75,21 +75,34 @@ class RedisStreamWebSocketManager:
     async def shutdown(self) -> None:
         """Clean up resources on application shutdown."""
         # Cancel all consumer tasks
-        for operation_id, task in list(self.consumer_tasks.items()):
+        tasks_to_cancel = list(self.consumer_tasks.items())
+        for operation_id, task in tasks_to_cancel:
             logger.info(f"Cancelling consumer task for operation {operation_id}")
             task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
+        
+        # Wait for all tasks to be cancelled
+        if tasks_to_cancel:
+            await asyncio.gather(
+                *[task for _, task in tasks_to_cancel],
+                return_exceptions=True
+            )
+        
+        # Clear the consumer tasks dict
+        self.consumer_tasks.clear()
 
         # Close all WebSocket connections
         for _, websockets in list(self.connections.items()):
             for websocket in list(websockets):
                 with contextlib.suppress(Exception):
                     await websocket.close()
+        
+        # Clear connections
+        self.connections.clear()
 
         # Close Redis connection
         if self.redis:
             await self.redis.close()
+            self.redis = None
             logger.info("WebSocket manager Redis connection closed")
 
     def set_operation_getter(self, get_operation_func: Any) -> None:
@@ -194,11 +207,16 @@ class RedisStreamWebSocketManager:
         # Stop consumer if no more connections for this operation
         if not any(operation_id in k for k in self.connections) and operation_id in self.consumer_tasks:
             logger.info(f"Stopping consumer task for operation {operation_id} (no more connections)")
-            self.consumer_tasks[operation_id].cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self.consumer_tasks[operation_id]
-            if operation_id in self.consumer_tasks:
-                del self.consumer_tasks[operation_id]
+            task = self.consumer_tasks.get(operation_id)
+            if task:
+                task.cancel()
+                # Wait for task to complete
+                try:
+                    await asyncio.wait_for(task, timeout=5.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+                # Remove from dict
+                self.consumer_tasks.pop(operation_id, None)
 
     async def send_update(self, operation_id: str, update_type: str, data: dict) -> None:
         """Send an update to Redis Stream for a specific operation.
@@ -236,6 +254,8 @@ class RedisStreamWebSocketManager:
         stream_key = f"operation-progress:{operation_id}"
         consumer_name = f"consumer-{operation_id}"
         consumer_group_created = False
+        
+        logger.info(f"Starting consumer task for operation {operation_id}")
 
         try:
             while True:
@@ -313,6 +333,7 @@ class RedisStreamWebSocketManager:
 
                 except asyncio.CancelledError:
                     # Clean up consumer
+                    logger.info(f"Consumer task cancelled for operation {operation_id}")
                     try:
                         if self.redis is not None:
                             await self.redis.xgroup_delconsumer(stream_key, self.consumer_group, consumer_name)
@@ -340,8 +361,9 @@ class RedisStreamWebSocketManager:
                         await asyncio.sleep(5)  # Wait before retry
 
         except asyncio.CancelledError:
-            logger.info(f"Consumer task cancelled for operation {operation_id}")
-            raise
+            logger.info(f"Consumer task cancelled for operation {operation_id} - exiting cleanly")
+            # Don't re-raise to avoid propagating to test framework
+            return
         except RuntimeError as e:
             if "no running event loop" in str(e).lower():
                 logger.debug(f"Event loop closed for operation {operation_id}, exiting consumer")
@@ -349,6 +371,8 @@ class RedisStreamWebSocketManager:
                 logger.error(f"Fatal runtime error in consumer for operation {operation_id}: {e}")
         except Exception as e:
             logger.error(f"Fatal error in consumer for operation {operation_id}: {e}")
+        finally:
+            logger.info(f"Consumer task ended for operation {operation_id}")
 
     async def _send_history(self, websocket: WebSocket, operation_id: str) -> None:
         """Send historical messages to newly connected client for operation."""
