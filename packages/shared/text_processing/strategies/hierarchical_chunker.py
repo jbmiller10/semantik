@@ -10,10 +10,20 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-from llama_index.core import Document
-from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes, get_root_nodes
-
 from packages.shared.text_processing.base_chunker import BaseChunker, ChunkResult
+
+# Conditional imports for CI compatibility
+try:
+    from llama_index.core import Document
+    from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes, get_root_nodes
+    LLAMA_INDEX_AVAILABLE = True
+except ImportError:
+    # Fallback for CI environments
+    Document = None
+    HierarchicalNodeParser = None
+    get_leaf_nodes = None
+    get_root_nodes = None
+    LLAMA_INDEX_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +65,17 @@ class HierarchicalChunker(BaseChunker):
 
         # Initialize the LlamaIndex hierarchical parser
         try:
-            self.splitter = HierarchicalNodeParser.from_defaults(
-                chunk_sizes=self.chunk_sizes,
-                chunk_overlap=self.chunk_overlap,
-                include_prev_next_rel=self.include_prev_next_rel,
-                include_metadata=self.include_metadata,
-            )
+            if LLAMA_INDEX_AVAILABLE:
+                self.splitter = HierarchicalNodeParser.from_defaults(
+                    chunk_sizes=self.chunk_sizes,
+                    chunk_overlap=self.chunk_overlap,
+                    include_prev_next_rel=self.include_prev_next_rel,
+                    include_metadata=self.include_metadata,
+                )
+            else:
+                # Fallback for CI environments
+                self.splitter = None
+                logger.warning("HierarchicalNodeParser unavailable - using fallback mode")
         except Exception as e:
             logger.error(f"Failed to initialize HierarchicalNodeParser: {e}")
             raise ValueError(f"Invalid hierarchical chunker configuration: {e}")
