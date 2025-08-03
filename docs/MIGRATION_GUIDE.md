@@ -275,6 +275,135 @@ environment:
   - CELERY_TASK_ROUTES={"tasks.index_operation": "operations"}
 ```
 
+## Chunking Strategy Migration
+
+### Overview
+
+The new collection-centric architecture introduces advanced chunking strategies. Existing collections will continue using their original chunking method, but new collections can leverage improved strategies.
+
+### Default Chunking Changes
+
+#### Before (Simple Character-Based)
+```bash
+# Fixed character-based chunking
+CHUNK_SIZE=512
+CHUNK_OVERLAP=128
+```
+
+#### After (Strategy-Based)
+```bash
+# Strategy-based chunking with parameters
+DEFAULT_CHUNKING_STRATEGY=recursive
+```
+
+### Migrating Existing Collections
+
+To update an existing collection to use a new chunking strategy:
+
+#### Step 1: Create New Collection with Desired Strategy
+```bash
+POST /api/v2/collections
+{
+  "name": "Engineering Docs v2",
+  "description": "Migrated with semantic chunking",
+  "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+  "chunking_strategy": "semantic",
+  "chunking_params": {
+    "breakpoint_percentile_threshold": 90,
+    "buffer_size": 1,
+    "max_chunk_size": 2000
+  }
+}
+```
+
+#### Step 2: Re-index Documents
+```bash
+# Get source paths from old collection
+GET /api/v2/collections/{old_collection_id}
+
+# Add same sources to new collection
+POST /api/v2/collections/{new_collection_id}/sources
+{
+  "source_type": "directory",
+  "source_path": "/docs/technical"
+}
+```
+
+#### Step 3: Update Application References
+```javascript
+// Update collection ID in your application
+const COLLECTION_ID = 'new_collection_uuid';
+```
+
+#### Step 4: Verify and Clean Up
+```bash
+# Verify new collection is working
+POST /api/v2/search
+{
+  "collection_uuids": ["new_collection_uuid"],
+  "query": "test query"
+}
+
+# Delete old collection when ready
+DELETE /api/v2/collections/{old_collection_id}
+```
+
+### Strategy Selection Guide
+
+| Content Type | Recommended Strategy | Migration Priority |
+|--------------|---------------------|-------------------|
+| Technical Docs | `markdown` | High |
+| Research Papers | `semantic` | High |
+| Mixed Content | `hybrid` | Medium |
+| Legal Documents | `character` | Low |
+| General Text | `recursive` | Low |
+
+### Configuration for Chunking
+
+Add these environment variables for optimal chunking:
+
+```bash
+# Chunking Configuration
+DEFAULT_CHUNKING_STRATEGY=recursive
+SEMANTIC_EMBEDDING_MODEL=all-MiniLM-L6-v2
+CHUNKING_MAX_DOCUMENT_SIZE=100000000
+GPU_MEMORY_THRESHOLD=0.8
+DISABLE_EXTERNAL_EMBEDDINGS=true
+```
+
+### Common Chunking Migration Issues
+
+#### 1. GPU Memory Errors with Semantic Chunking
+**Problem:** Out of memory errors when using semantic strategy
+
+**Solution:**
+```bash
+# Reduce batch size
+SEMANTIC_EMBED_BATCH_SIZE=16
+
+# Or use CPU-friendly strategy
+"chunking_strategy": "recursive"
+```
+
+#### 2. Different Chunk Counts After Migration
+**Problem:** New strategy produces different number of chunks
+
+**Solution:** This is expected. Different strategies optimize for different goals:
+- `character`: Fixed size chunks
+- `semantic`: Topic-coherent chunks (variable size)
+- `markdown`: Structure-aware chunks
+
+#### 3. Performance Degradation
+**Problem:** Slower indexing with advanced strategies
+
+**Solution:**
+```bash
+# For high-throughput needs, use simpler strategies
+"chunking_strategy": "recursive"  # Fast
+# Instead of
+"chunking_strategy": "semantic"   # Slower but higher quality
+```
+
 ## Frontend Updates
 
 ### State Management

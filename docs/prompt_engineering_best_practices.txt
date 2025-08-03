@@ -1,0 +1,1173 @@
+Another, lesser AI system developed the prompt at the bottom of this after this exchange. Can you do better?
+
+
+# Prompt engineering overview
+
+<Note>
+  While these tips apply broadly to all Claude models, you can find prompting tips specific to extended thinking models [here](/en/docs/build-with-claude/prompt-engineering/extended-thinking-tips).
+</Note>
+
+## Before prompt engineering
+
+This guide assumes that you have:
+
+1. A clear definition of the success criteria for your use case
+2. Some ways to empirically test against those criteria
+3. A first draft prompt you want to improve
+
+If not, we highly suggest you spend time establishing that first. Check out [Define your success criteria](/en/docs/test-and-evaluate/define-success) and [Create strong empirical evaluations](/en/docs/test-and-evaluate/develop-tests) for tips and guidance.
+
+<Card title="Prompt generator" icon="link" href="https://console.anthropic.com/dashboard">
+  Don't have a first draft prompt? Try the prompt generator in the Anthropic Console!
+</Card>
+
+***
+
+## When to prompt engineer
+
+This guide focuses on success criteria that are controllable through prompt engineering.
+Not every success criteria or failing eval is best solved by prompt engineering. For example, latency and cost can be sometimes more easily improved by selecting a different model.
+
+<Accordion title="Prompting vs. finetuning">
+  Prompt engineering is far faster than other methods of model behavior control, such as finetuning, and can often yield leaps in performance in far less time. Here are some reasons to consider prompt engineering over finetuning:<br />
+
+  * **Resource efficiency**: Fine-tuning requires high-end GPUs and large memory, while prompt engineering only needs text input, making it much more resource-friendly.
+  * **Cost-effectiveness**: For cloud-based AI services, fine-tuning incurs significant costs. Prompt engineering uses the base model, which is typically cheaper.
+  * **Maintaining model updates**: When providers update models, fine-tuned versions might need retraining. Prompts usually work across versions without changes.
+  * **Time-saving**: Fine-tuning can take hours or even days. In contrast, prompt engineering provides nearly instantaneous results, allowing for quick problem-solving.
+  * **Minimal data needs**: Fine-tuning needs substantial task-specific, labeled data, which can be scarce or expensive. Prompt engineering works with few-shot or even zero-shot learning.
+  * **Flexibility & rapid iteration**: Quickly try various approaches, tweak prompts, and see immediate results. This rapid experimentation is difficult with fine-tuning.
+  * **Domain adaptation**: Easily adapt models to new domains by providing domain-specific context in prompts, without retraining.
+  * **Comprehension improvements**: Prompt engineering is far more effective than finetuning at helping models better understand and utilize external content such as retrieved documents
+  * **Preserves general knowledge**: Fine-tuning risks catastrophic forgetting, where the model loses general knowledge. Prompt engineering maintains the model's broad capabilities.
+  * **Transparency**: Prompts are human-readable, showing exactly what information the model receives. This transparency aids in understanding and debugging.
+</Accordion>
+
+***
+
+## How to prompt engineer
+
+The prompt engineering pages in this section have been organized from most broadly effective techniques to more specialized techniques. When troubleshooting performance, we suggest you try these techniques in order, although the actual impact of each technique will depend on your use case.
+
+1. [Prompt generator](/en/docs/build-with-claude/prompt-engineering/prompt-generator)
+2. [Be clear and direct](/en/docs/build-with-claude/prompt-engineering/be-clear-and-direct)
+3. [Use examples (multishot)](/en/docs/build-with-claude/prompt-engineering/multishot-prompting)
+4. [Let Claude think (chain of thought)](/en/docs/build-with-claude/prompt-engineering/chain-of-thought)
+5. [Use XML tags](/en/docs/build-with-claude/prompt-engineering/use-xml-tags)
+6. [Give Claude a role (system prompts)](/en/docs/build-with-claude/prompt-engineering/system-prompts)
+7. [Prefill Claude's response](/en/docs/build-with-claude/prompt-engineering/prefill-claudes-response)
+8. [Chain complex prompts](/en/docs/build-with-claude/prompt-engineering/chain-prompts)
+9. [Long context tips](/en/docs/build-with-claude/prompt-engineering/long-context-tips)
+
+***
+
+## Prompt engineering tutorial
+
+If you're an interactive learner, you can dive into our interactive tutorials instead!
+
+<CardGroup cols={2}>
+  <Card title="GitHub prompting tutorial" icon="link" href="https://github.com/anthropics/prompt-eng-interactive-tutorial">
+    An example-filled tutorial that covers the prompt engineering concepts found in our docs.
+  </Card>
+
+  <Card title="Google Sheets prompting tutorial" icon="link" href="https://docs.google.com/spreadsheets/d/19jzLgRruG9kjUQNKtCg1ZjdD6l6weA6qRXG5zLIAhC8">
+    A lighter weight version of our prompt engineering tutorial via an interactive spreadsheet.
+  </Card>
+</CardGroup>
+# Claude 4 prompt engineering best practices
+
+This guide provides specific prompt engineering techniques for Claude 4 models (Opus 4 and Sonnet 4) to help you achieve optimal results in your applications. These models have been trained for more precise instruction following than previous generations of Claude models.
+
+## General principles
+
+### Be explicit with your instructions
+
+Claude 4 models respond well to clear, explicit instructions. Being specific about your desired output can help enhance results. Customers who desire the "above and beyond" behavior from previous Claude models might need to more explicitly request these behaviors with Claude 4.
+
+<Accordion title="Example: Creating an analytics dashboard">
+  **Less effective:**
+
+  
+text
+  Create an analytics dashboard
+
+
+  **More effective:**
+
+  
+text
+  Create an analytics dashboard. Include as many relevant features and interactions as possible. Go beyond the basics to create a fully-featured implementation.
+
+</Accordion>
+
+### Add context to improve performance
+
+Providing context or motivation behind your instructions, such as explaining to Claude why such behavior is important, can help Claude 4 better understand your goals and deliver more targeted responses.
+
+<Accordion title="Example: Formatting preferences">
+  **Less effective:**
+
+  
+text
+  NEVER use ellipses
+
+
+  **More effective:**
+
+  
+text
+  Your response will be read aloud by a text-to-speech engine, so never use ellipses since the text-to-speech engine will not know how to pronounce them.
+
+</Accordion>
+
+Claude is smart enough to generalize from the explanation.
+
+### Be vigilant with examples & details
+
+Claude 4 models pay attention to details and examples as part of instruction following. Ensure that your examples align with the behaviors you want to encourage and minimize behaviors you want to avoid.
+
+## Guidance for specific situations
+
+### Control the format of responses
+
+There are a few ways that we have found to be particularly effective in steering output formatting in Claude 4 models:
+
+1. **Tell Claude what to do instead of what not to do**
+
+   * Instead of: "Do not use markdown in your response"
+   * Try: "Your response should be composed of smoothly flowing prose paragraphs."
+
+2. **Use XML format indicators**
+
+   * Try: "Write the prose sections of your response in \<smoothly\_flowing\_prose\_paragraphs> tags."
+
+3. **Match your prompt style to the desired output**
+
+   The formatting style used in your prompt may influence Claude's response style. If you are still experiencing steerability issues with output formatting, we recommend as best as you can matching your prompt style to your desired output style. For example, removing markdown from your prompt can reduce the volume of markdown in the output.
+
+### Leverage thinking & interleaved thinking capabilities
+
+Claude 4 offers thinking capabilities that can be especially helpful for tasks involving reflection after tool use or complex multi-step reasoning. You can guide its initial or interleaved thinking for better results.
+
+text Example prompt
+After receiving tool results, carefully reflect on their quality and determine optimal next steps before proceeding. Use your thinking to plan and iterate based on this new information, and then take the best next action.
+
+
+<Info>
+  For more information on thinking capabilities, see [Extended thinking](/en/docs/build-with-claude/extended-thinking).
+</Info>
+
+### Optimize parallel tool calling
+
+Claude 4 models excel at parallel tool execution. They have a high success rate in using parallel tool calling without any prompting to do so, but some minor prompting can boost this behavior to \~100% parallel tool use success rate. We have found this prompt to be most effective:
+
+text Sample prompt for agents
+For maximum efficiency, whenever you need to perform multiple independent operations, invoke all relevant tools simultaneously rather than sequentially.
+
+
+### Reduce file creation in agentic coding
+
+Claude 4 models may sometimes create new files for testing and iteration purposes, particularly when working with code. This approach allows Claude to use files, especially python scripts, as a 'temporary scratchpad' before saving its final output. Using temporary files can improve outcomes particularly for agentic coding use cases.
+
+If you'd prefer to minimize net new file creation, you can instruct Claude to clean up after itself:
+
+text Sample prompt
+If you create any temporary new files, scripts, or helper files for iteration, clean up these files by removing them at the end of the task.
+
+
+### Enhance visual and frontend code generation
+
+For frontend code generation, you can steer Claude 4 models to create complex, detailed, and interactive designs by providing explicit encouragement:
+
+text Sample prompt
+Don't hold back. Give it your all.
+
+
+You can also improve Claude's frontend performance in specific areas by providing additional modifiers and details on what to focus on:
+
+* "Include as many relevant features and interactions as possible"
+* "Add thoughtful details like hover states, transitions, and micro-interactions"
+* "Create an impressive demonstration showcasing web development capabilities"
+* "Apply design principles: hierarchy, contrast, balance, and movement"
+
+### Avoid focusing on passing tests and hard-coding
+
+Frontier language models can sometimes focus too heavily on making tests pass at the expense of more general solutions. To prevent this behavior and ensure robust, generalizable solutions:
+
+text Sample prompt
+Please write a high quality, general purpose solution. Implement a solution that works correctly for all valid inputs, not just the test cases. Do not hard-code values or create solutions that only work for specific test inputs. Instead, implement the actual logic that solves the problem generally.
+
+Focus on understanding the problem requirements and implementing the correct algorithm. Tests are there to verify correctness, not to define the solution. Provide a principled implementation that follows best practices and software design principles.
+
+If the task is unreasonable or infeasible, or if any of the tests are incorrect, please tell me. The solution should be robust, maintainable, and extendable.
+
+
+## Migration considerations
+
+When migrating from Sonnet 3.7 to Claude 4:
+
+1. **Be specific about desired behavior**: Consider describing exactly what you'd like to see in the output.
+
+2. **Frame your instructions with modifiers**: Adding modifiers that encourage Claude to increase the quality and detail of its output can help better shape Claude's performance. For example, instead of "Create an analytics dashboard", use "Create an analytics dashboard. Include as many relevant features and interactions as possible. Go beyond the basics to create a fully-featured implementation."
+
+3. **Request specific features explicitly**: Animations and interactive elements should be requested explicitly when desired.
+# Use prompt templates and variables
+
+# Use prompt templates and variables
+
+When deploying an LLM-based application with Claude, your API calls will typically consist of two types of content:
+
+* **Fixed content:** Static instructions or context that remain constant across multiple interactions
+* **Variable content:** Dynamic elements that change with each request or conversation, such as:
+  * User inputs
+  * Retrieved content for Retrieval-Augmented Generation (RAG)
+  * Conversation context such as user account history
+  * System-generated data such as tool use results fed in from other independent calls to Claude
+
+A **prompt template** combines these fixed and variable parts, using placeholders for the dynamic content. In the [Anthropic Console](https://console.anthropic.com/), these placeholders are denoted with **\{\{double brackets}}**, making them easily identifiable and allowing for quick testing of different values.
+
+***
+
+# When to use prompt templates and variables
+
+You should always use prompt templates and variables when you expect any part of your prompt to be repeated in another call to Claude (only via the API or the [Anthropic Console](https://console.anthropic.com/). [claude.ai](https://claude.ai/) currently does not support prompt templates or variables).
+
+Prompt templates offer several benefits:
+
+* **Consistency:** Ensure a consistent structure for your prompts across multiple interactions
+* **Efficiency:** Easily swap out variable content without rewriting the entire prompt
+* **Testability:** Quickly test different inputs and edge cases by changing only the variable portion
+* **Scalability:** Simplify prompt management as your application grows in complexity
+* **Version control:** Easily track changes to your prompt structure over time by keeping tabs only on the core part of your prompt, separate from dynamic inputs
+
+The [Anthropic Console](https://console.anthropic.com/) heavily uses prompt templates and variables in order to support features and tooling for all the above, such as with the:
+
+* **[Prompt generator](/en/docs/build-with-claude/prompt-engineering/prompt-generator):** Decides what variables your prompt needs and includes them in the template it outputs
+* **[Prompt improver](/en/docs/build-with-claude/prompt-engineering/prompt-improver):** Takes your existing template, including all variables, and maintains them in the improved template it outputs
+* **[Evaluation tool](/en/docs/test-and-evaluate/eval-tool):** Allows you to easily test, scale, and track versions of your prompts by separating the variable and fixed portions of your prompt template
+
+***
+
+# Example prompt template
+
+Let's consider a simple application that translates English text to Spanish. The translated text would be variable since you would expect this text to change between users or calls to Claude. This translated text could be dynamically retrieved from databases or the user's input.
+
+Thus, for your translation app, you might use this simple prompt template:
+
+Translate this text from English to Spanish: {{text}}
+
+
+***
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Generate a prompt" icon="link" href="/en/docs/build-with-claude/prompt-engineering/prompt-generator">
+    Learn about the prompt generator in the Anthropic Console and try your hand at getting Claude to generate a prompt for you.
+  </Card>
+
+  <Card title="Apply XML tags" icon="link" href="/en/docs/build-with-claude/prompt-engineering/use-xml-tags">
+    If you want to level up your prompt variable game, wrap them in XML tags.
+  </Card>
+
+  <Card title="Anthropic Console" icon="link" href="https://console.anthropic.com/">
+    Check out the myriad prompt development tools available in the Anthropic Console.
+  </Card>
+</CardGroup>
+# Use examples (multishot prompting) to guide Claude's behavior
+
+<Note>
+  While these tips apply broadly to all Claude models, you can find prompting tips specific to extended thinking models [here](/en/docs/build-with-claude/prompt-engineering/extended-thinking-tips).
+</Note>
+
+Examples are your secret weapon shortcut for getting Claude to generate exactly what you need. By providing a few well-crafted examples in your prompt, you can dramatically improve the accuracy, consistency, and quality of Claude's outputs.
+This technique, known as few-shot or multishot prompting, is particularly effective for tasks that require structured outputs or adherence to specific formats.
+
+<Tip>**Power up your prompts**: Include 3-5 diverse, relevant examples to show Claude exactly what you want. More examples = better performance, especially for complex tasks.</Tip>
+
+## Why use examples?
+
+* **Accuracy**: Examples reduce misinterpretation of instructions.
+* **Consistency**: Examples enforce uniform structure and style.
+* **Performance**: Well-chosen examples boost Claude's ability to handle complex tasks.
+
+## Crafting effective examples
+
+For maximum effectiveness, make sure that your examples are:
+
+* **Relevant**: Your examples mirror your actual use case.
+* **Diverse**: Your examples cover edge cases and potential challenges, and vary enough that Claude doesn't inadvertently pick up on unintended patterns.
+* **Clear**: Your examples are wrapped in <example> tags (if multiple, nested within <examples> tags) for structure.
+
+<Tip>Ask Claude to evaluate your examples for relevance, diversity, or clarity. Or have Claude generate more examples based on your initial set.</Tip>
+
+<Accordion title="Example: Analyzing customer feedback">
+  Notice that in the "no examples" version, Claude does not list multiple options for each category, despite its written analysis indicating that there are multiple categories for certain feedback. It also includes a long explanation when we may not want it to.
+
+  | Role                          | No Examples                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | With Examples                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+  | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | User                          | Analyze this customer feedback and categorize the issues. Use these categories: UI/UX, Performance, Feature Request, Integration, Pricing, and Other. Also rate the sentiment (Positive/Neutral/Negative) and priority (High/Medium/Low).<br /><br />Here is the feedback: \{\{FEEDBACK}}                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Our CS team is overwhelmed with unstructured feedback. Your task is to analyze feedback and categorize issues for our product and engineering teams. Use these categories: UI/UX, Performance, Feature Request, Integration, Pricing, and Other. Also rate the sentiment (Positive/Neutral/Negative) and priority (High/Medium/Low). Here is an example:<br /><br />\<example><br />Input: The new dashboard is a mess! It takes forever to load, and I can't find the export button. Fix this ASAP!<br />Category: UI/UX, Performance<br />Sentiment: Negative<br />Priority: High\</example><br /><br />Now, analyze this feedback: \{\{FEEDBACK}}                                                                                                                                                                                                                                                                                                                                                                                               |
+  | Assistant (Claude's response) | Here's the analysis of the customer feedback:<br /><br />Issue: UI/UX<br />Sentiment: Negative<br />Priority: High<br />The customer is frustrated with the new dashboard design, which they find cluttered and slow to load. They specifically call out the missing "export" button, which is likely a critical feature. This issue needs to be addressed as a high priority.<br /><br />Issue: Integration<br />Sentiment: Positive<br />Priority: Medium<br />The customer is pleased with the existing Salesforce integration but would like to see support for Hubspot as well. This is a feature request that could be considered for a future product update.<br /><br />Issue: Pricing<br />Sentiment: Negative<br />Priority: High<br />The customer finds the pricing to be unreasonable, especially for the basic features. They are threatening to switch to a competitor, so this is a high-priority issue that needs to be reviewed.<br /><br />Issue: Performance<br />Sentiment Negative<br />Priority: High<br />The customer is experiencing critical issues with the mobile app, where large file uploads consistently result in crashes. This is a significant problem that impacts the customer's ability to use the product effectively and should be addressed as a high priority.<br /><br />Issue: UI/UX<br />Sentiment: Positive<br />Priority: Low<br />The customer is overall satisfied with the product, specifically calling out the intuitive UI and excellent customer support. This is a positive piece of feedback that does not require any immediate action. | Here's the analysis of the customer feedback:<br /><br />1. The new dashboard is a mess! It takes forever to load, and I can't find the export button. Fix this ASAP!<br />Category: UI/UX, Performance<br />Sentiment: Negative<br />Priority: High<br /><br />2. Love the Salesforce integration! But it'd be great if you could add Hubspot too.<br />Category: Integration, Feature Request<br />Sentiment: Positive<br />Priority: Medium<br /><br />3. Your pricing is ridiculous! \$99/mo for basic features? I'm switching to Competitor X.<br />Category: Pricing<br />Sentiment: Negative<br />Priority: High<br /><br />4. The mobile app keeps crashing when I try to upload large files (>50MB). This is critical for our field agents.<br />Category: Performance<br />Sentiment: Negative<br />Priority: High<br /><br />5. Overall, I'm happy with the product. The UI is intuitive, and the customer support is top-notch. Keep it up!<br />Category: UI/UX, Other (Customer Support)<br />Sentiment: Positive<br />Priority: Low |
+</Accordion>
+
+***
+
+<CardGroup cols={3}>
+  <Card title="Prompt library" icon="link" href="/en/resources/prompt-library/library">
+    Get inspired by a curated selection of prompts for various tasks and use cases.
+  </Card>
+
+  <Card title="GitHub prompting tutorial" icon="link" href="https://github.com/anthropics/prompt-eng-interactive-tutorial">
+    An example-filled tutorial that covers the prompt engineering concepts found in our docs.
+  </Card>
+
+  <Card title="Google Sheets prompting tutorial" icon="link" href="https://docs.google.com/spreadsheets/d/19jzLgRruG9kjUQNKtCg1ZjdD6l6weA6qRXG5zLIAhC8">
+    A lighter weight version of our prompt engineering tutorial via an interactive spreadsheet.
+  </Card>
+</CardGroup>
+# Use examples (multishot prompting) to guide Claude's behavior
+
+<Note>
+  While these tips apply broadly to all Claude models, you can find prompting tips specific to extended thinking models [here](/en/docs/build-with-claude/prompt-engineering/extended-thinking-tips).
+</Note>
+
+Examples are your secret weapon shortcut for getting Claude to generate exactly what you need. By providing a few well-crafted examples in your prompt, you can dramatically improve the accuracy, consistency, and quality of Claude's outputs.
+This technique, known as few-shot or multishot prompting, is particularly effective for tasks that require structured outputs or adherence to specific formats.
+
+<Tip>**Power up your prompts**: Include 3-5 diverse, relevant examples to show Claude exactly what you want. More examples = better performance, especially for complex tasks.</Tip>
+
+## Why use examples?
+
+* **Accuracy**: Examples reduce misinterpretation of instructions.
+* **Consistency**: Examples enforce uniform structure and style.
+* **Performance**: Well-chosen examples boost Claude's ability to handle complex tasks.
+
+## Crafting effective examples
+
+For maximum effectiveness, make sure that your examples are:
+
+* **Relevant**: Your examples mirror your actual use case.
+* **Diverse**: Your examples cover edge cases and potential challenges, and vary enough that Claude doesn't inadvertently pick up on unintended patterns.
+* **Clear**: Your examples are wrapped in <example> tags (if multiple, nested within <examples> tags) for structure.
+
+<Tip>Ask Claude to evaluate your examples for relevance, diversity, or clarity. Or have Claude generate more examples based on your initial set.</Tip>
+
+<Accordion title="Example: Analyzing customer feedback">
+  Notice that in the "no examples" version, Claude does not list multiple options for each category, despite its written analysis indicating that there are multiple categories for certain feedback. It also includes a long explanation when we may not want it to.
+
+  | Role                          | No Examples                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | With Examples                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+  | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | User                          | Analyze this customer feedback and categorize the issues. Use these categories: UI/UX, Performance, Feature Request, Integration, Pricing, and Other. Also rate the sentiment (Positive/Neutral/Negative) and priority (High/Medium/Low).<br /><br />Here is the feedback: \{\{FEEDBACK}}                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Our CS team is overwhelmed with unstructured feedback. Your task is to analyze feedback and categorize issues for our product and engineering teams. Use these categories: UI/UX, Performance, Feature Request, Integration, Pricing, and Other. Also rate the sentiment (Positive/Neutral/Negative) and priority (High/Medium/Low). Here is an example:<br /><br />\<example><br />Input: The new dashboard is a mess! It takes forever to load, and I can't find the export button. Fix this ASAP!<br />Category: UI/UX, Performance<br />Sentiment: Negative<br />Priority: High\</example><br /><br />Now, analyze this feedback: \{\{FEEDBACK}}                                                                                                                                                                                                                                                                                                                                                                                               |
+  | Assistant (Claude's response) | Here's the analysis of the customer feedback:<br /><br />Issue: UI/UX<br />Sentiment: Negative<br />Priority: High<br />The customer is frustrated with the new dashboard design, which they find cluttered and slow to load. They specifically call out the missing "export" button, which is likely a critical feature. This issue needs to be addressed as a high priority.<br /><br />Issue: Integration<br />Sentiment: Positive<br />Priority: Medium<br />The customer is pleased with the existing Salesforce integration but would like to see support for Hubspot as well. This is a feature request that could be considered for a future product update.<br /><br />Issue: Pricing<br />Sentiment: Negative<br />Priority: High<br />The customer finds the pricing to be unreasonable, especially for the basic features. They are threatening to switch to a competitor, so this is a high-priority issue that needs to be reviewed.<br /><br />Issue: Performance<br />Sentiment Negative<br />Priority: High<br />The customer is experiencing critical issues with the mobile app, where large file uploads consistently result in crashes. This is a significant problem that impacts the customer's ability to use the product effectively and should be addressed as a high priority.<br /><br />Issue: UI/UX<br />Sentiment: Positive<br />Priority: Low<br />The customer is overall satisfied with the product, specifically calling out the intuitive UI and excellent customer support. This is a positive piece of feedback that does not require any immediate action. | Here's the analysis of the customer feedback:<br /><br />1. The new dashboard is a mess! It takes forever to load, and I can't find the export button. Fix this ASAP!<br />Category: UI/UX, Performance<br />Sentiment: Negative<br />Priority: High<br /><br />2. Love the Salesforce integration! But it'd be great if you could add Hubspot too.<br />Category: Integration, Feature Request<br />Sentiment: Positive<br />Priority: Medium<br /><br />3. Your pricing is ridiculous! \$99/mo for basic features? I'm switching to Competitor X.<br />Category: Pricing<br />Sentiment: Negative<br />Priority: High<br /><br />4. The mobile app keeps crashing when I try to upload large files (>50MB). This is critical for our field agents.<br />Category: Performance<br />Sentiment: Negative<br />Priority: High<br /><br />5. Overall, I'm happy with the product. The UI is intuitive, and the customer support is top-notch. Keep it up!<br />Category: UI/UX, Other (Customer Support)<br />Sentiment: Positive<br />Priority: Low |
+</Accordion>
+
+***
+
+<CardGroup cols={3}>
+  <Card title="Prompt library" icon="link" href="/en/resources/prompt-library/library">
+    Get inspired by a curated selection of prompts for various tasks and use cases.
+  </Card>
+
+  <Card title="GitHub prompting tutorial" icon="link" href="https://github.com/anthropics/prompt-eng-interactive-tutorial">
+    An example-filled tutorial that covers the prompt engineering concepts found in our docs.
+  </Card>
+
+  <Card title="Google Sheets prompting tutorial" icon="link" href="https://docs.google.com/spreadsheets/d/19jzLgRruG9kjUQNKtCg1ZjdD6l6weA6qRXG5zLIAhC8">
+    A lighter weight version of our prompt engineering tutorial via an interactive spreadsheet.
+  </Card>
+</CardGroup>
+# Use examples (multishot prompting) to guide Claude's behavior
+
+<Note>
+  While these tips apply broadly to all Claude models, you can find prompting tips specific to extended thinking models [here](/en/docs/build-with-claude/prompt-engineering/extended-thinking-tips).
+</Note>
+
+Examples are your secret weapon shortcut for getting Claude to generate exactly what you need. By providing a few well-crafted examples in your prompt, you can dramatically improve the accuracy, consistency, and quality of Claude's outputs.
+This technique, known as few-shot or multishot prompting, is particularly effective for tasks that require structured outputs or adherence to specific formats.
+
+<Tip>**Power up your prompts**: Include 3-5 diverse, relevant examples to show Claude exactly what you want. More examples = better performance, especially for complex tasks.</Tip>
+
+## Why use examples?
+
+* **Accuracy**: Examples reduce misinterpretation of instructions.
+* **Consistency**: Examples enforce uniform structure and style.
+* **Performance**: Well-chosen examples boost Claude's ability to handle complex tasks.
+
+## Crafting effective examples
+
+For maximum effectiveness, make sure that your examples are:
+
+* **Relevant**: Your examples mirror your actual use case.
+* **Diverse**: Your examples cover edge cases and potential challenges, and vary enough that Claude doesn't inadvertently pick up on unintended patterns.
+* **Clear**: Your examples are wrapped in <example> tags (if multiple, nested within <examples> tags) for structure.
+
+<Tip>Ask Claude to evaluate your examples for relevance, diversity, or clarity. Or have Claude generate more examples based on your initial set.</Tip>
+
+<Accordion title="Example: Analyzing customer feedback">
+  Notice that in the "no examples" version, Claude does not list multiple options for each category, despite its written analysis indicating that there are multiple categories for certain feedback. It also includes a long explanation when we may not want it to.
+
+  | Role                          | No Examples                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | With Examples                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+  | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | User                          | Analyze this customer feedback and categorize the issues. Use these categories: UI/UX, Performance, Feature Request, Integration, Pricing, and Other. Also rate the sentiment (Positive/Neutral/Negative) and priority (High/Medium/Low).<br /><br />Here is the feedback: \{\{FEEDBACK}}                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Our CS team is overwhelmed with unstructured feedback. Your task is to analyze feedback and categorize issues for our product and engineering teams. Use these categories: UI/UX, Performance, Feature Request, Integration, Pricing, and Other. Also rate the sentiment (Positive/Neutral/Negative) and priority (High/Medium/Low). Here is an example:<br /><br />\<example><br />Input: The new dashboard is a mess! It takes forever to load, and I can't find the export button. Fix this ASAP!<br />Category: UI/UX, Performance<br />Sentiment: Negative<br />Priority: High\</example><br /><br />Now, analyze this feedback: \{\{FEEDBACK}}                                                                                                                                                                                                                                                                                                                                                                                               |
+  | Assistant (Claude's response) | Here's the analysis of the customer feedback:<br /><br />Issue: UI/UX<br />Sentiment: Negative<br />Priority: High<br />The customer is frustrated with the new dashboard design, which they find cluttered and slow to load. They specifically call out the missing "export" button, which is likely a critical feature. This issue needs to be addressed as a high priority.<br /><br />Issue: Integration<br />Sentiment: Positive<br />Priority: Medium<br />The customer is pleased with the existing Salesforce integration but would like to see support for Hubspot as well. This is a feature request that could be considered for a future product update.<br /><br />Issue: Pricing<br />Sentiment: Negative<br />Priority: High<br />The customer finds the pricing to be unreasonable, especially for the basic features. They are threatening to switch to a competitor, so this is a high-priority issue that needs to be reviewed.<br /><br />Issue: Performance<br />Sentiment Negative<br />Priority: High<br />The customer is experiencing critical issues with the mobile app, where large file uploads consistently result in crashes. This is a significant problem that impacts the customer's ability to use the product effectively and should be addressed as a high priority.<br /><br />Issue: UI/UX<br />Sentiment: Positive<br />Priority: Low<br />The customer is overall satisfied with the product, specifically calling out the intuitive UI and excellent customer support. This is a positive piece of feedback that does not require any immediate action. | Here's the analysis of the customer feedback:<br /><br />1. The new dashboard is a mess! It takes forever to load, and I can't find the export button. Fix this ASAP!<br />Category: UI/UX, Performance<br />Sentiment: Negative<br />Priority: High<br /><br />2. Love the Salesforce integration! But it'd be great if you could add Hubspot too.<br />Category: Integration, Feature Request<br />Sentiment: Positive<br />Priority: Medium<br /><br />3. Your pricing is ridiculous! \$99/mo for basic features? I'm switching to Competitor X.<br />Category: Pricing<br />Sentiment: Negative<br />Priority: High<br /><br />4. The mobile app keeps crashing when I try to upload large files (>50MB). This is critical for our field agents.<br />Category: Performance<br />Sentiment: Negative<br />Priority: High<br /><br />5. Overall, I'm happy with the product. The UI is intuitive, and the customer support is top-notch. Keep it up!<br />Category: UI/UX, Other (Customer Support)<br />Sentiment: Positive<br />Priority: Low |
+</Accordion>
+
+***
+
+<CardGroup cols={3}>
+  <Card title="Prompt library" icon="link" href="/en/resources/prompt-library/library">
+    Get inspired by a curated selection of prompts for various tasks and use cases.
+  </Card>
+
+  <Card title="GitHub prompting tutorial" icon="link" href="https://github.com/anthropics/prompt-eng-interactive-tutorial">
+    An example-filled tutorial that covers the prompt engineering concepts found in our docs.
+  </Card>
+
+  <Card title="Google Sheets prompting tutorial" icon="link" href="https://docs.google.com/spreadsheets/d/19jzLgRruG9kjUQNKtCg1ZjdD6l6weA6qRXG5zLIAhC8">
+    A lighter weight version of our prompt engineering tutorial via an interactive spreadsheet.
+  </Card>
+</CardGroup>
+# Use examples (multishot prompting) to guide Claude's behavior
+
+<Note>
+  While these tips apply broadly to all Claude models, you can find prompting tips specific to extended thinking models [here](/en/docs/build-with-claude/prompt-engineering/extended-thinking-tips).
+</Note>
+
+Examples are your secret weapon shortcut for getting Claude to generate exactly what you need. By providing a few well-crafted examples in your prompt, you can dramatically improve the accuracy, consistency, and quality of Claude's outputs.
+This technique, known as few-shot or multishot prompting, is particularly effective for tasks that require structured outputs or adherence to specific formats.
+
+<Tip>**Power up your prompts**: Include 3-5 diverse, relevant examples to show Claude exactly what you want. More examples = better performance, especially for complex tasks.</Tip>
+
+## Why use examples?
+
+* **Accuracy**: Examples reduce misinterpretation of instructions.
+* **Consistency**: Examples enforce uniform structure and style.
+* **Performance**: Well-chosen examples boost Claude's ability to handle complex tasks.
+
+## Crafting effective examples
+
+For maximum effectiveness, make sure that your examples are:
+
+* **Relevant**: Your examples mirror your actual use case.
+* **Diverse**: Your examples cover edge cases and potential challenges, and vary enough that Claude doesn't inadvertently pick up on unintended patterns.
+* **Clear**: Your examples are wrapped in <example> tags (if multiple, nested within <examples> tags) for structure.
+
+<Tip>Ask Claude to evaluate your examples for relevance, diversity, or clarity. Or have Claude generate more examples based on your initial set.</Tip>
+
+<Accordion title="Example: Analyzing customer feedback">
+  Notice that in the "no examples" version, Claude does not list multiple options for each category, despite its written analysis indicating that there are multiple categories for certain feedback. It also includes a long explanation when we may not want it to.
+
+  | Role                          | No Examples                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | With Examples                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+  | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | User                          | Analyze this customer feedback and categorize the issues. Use these categories: UI/UX, Performance, Feature Request, Integration, Pricing, and Other. Also rate the sentiment (Positive/Neutral/Negative) and priority (High/Medium/Low).<br /><br />Here is the feedback: \{\{FEEDBACK}}                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Our CS team is overwhelmed with unstructured feedback. Your task is to analyze feedback and categorize issues for our product and engineering teams. Use these categories: UI/UX, Performance, Feature Request, Integration, Pricing, and Other. Also rate the sentiment (Positive/Neutral/Negative) and priority (High/Medium/Low). Here is an example:<br /><br />\<example><br />Input: The new dashboard is a mess! It takes forever to load, and I can't find the export button. Fix this ASAP!<br />Category: UI/UX, Performance<br />Sentiment: Negative<br />Priority: High\</example><br /><br />Now, analyze this feedback: \{\{FEEDBACK}}                                                                                                                                                                                                                                                                                                                                                                                               |
+  | Assistant (Claude's response) | Here's the analysis of the customer feedback:<br /><br />Issue: UI/UX<br />Sentiment: Negative<br />Priority: High<br />The customer is frustrated with the new dashboard design, which they find cluttered and slow to load. They specifically call out the missing "export" button, which is likely a critical feature. This issue needs to be addressed as a high priority.<br /><br />Issue: Integration<br />Sentiment: Positive<br />Priority: Medium<br />The customer is pleased with the existing Salesforce integration but would like to see support for Hubspot as well. This is a feature request that could be considered for a future product update.<br /><br />Issue: Pricing<br />Sentiment: Negative<br />Priority: High<br />The customer finds the pricing to be unreasonable, especially for the basic features. They are threatening to switch to a competitor, so this is a high-priority issue that needs to be reviewed.<br /><br />Issue: Performance<br />Sentiment Negative<br />Priority: High<br />The customer is experiencing critical issues with the mobile app, where large file uploads consistently result in crashes. This is a significant problem that impacts the customer's ability to use the product effectively and should be addressed as a high priority.<br /><br />Issue: UI/UX<br />Sentiment: Positive<br />Priority: Low<br />The customer is overall satisfied with the product, specifically calling out the intuitive UI and excellent customer support. This is a positive piece of feedback that does not require any immediate action. | Here's the analysis of the customer feedback:<br /><br />1. The new dashboard is a mess! It takes forever to load, and I can't find the export button. Fix this ASAP!<br />Category: UI/UX, Performance<br />Sentiment: Negative<br />Priority: High<br /><br />2. Love the Salesforce integration! But it'd be great if you could add Hubspot too.<br />Category: Integration, Feature Request<br />Sentiment: Positive<br />Priority: Medium<br /><br />3. Your pricing is ridiculous! \$99/mo for basic features? I'm switching to Competitor X.<br />Category: Pricing<br />Sentiment: Negative<br />Priority: High<br /><br />4. The mobile app keeps crashing when I try to upload large files (>50MB). This is critical for our field agents.<br />Category: Performance<br />Sentiment: Negative<br />Priority: High<br /><br />5. Overall, I'm happy with the product. The UI is intuitive, and the customer support is top-notch. Keep it up!<br />Category: UI/UX, Other (Customer Support)<br />Sentiment: Positive<br />Priority: Low |
+</Accordion>
+
+***
+
+<CardGroup cols={3}>
+  <Card title="Prompt library" icon="link" href="/en/resources/prompt-library/library">
+    Get inspired by a curated selection of prompts for various tasks and use cases.
+  </Card>
+
+  <Card title="GitHub prompting tutorial" icon="link" href="https://github.com/anthropics/prompt-eng-interactive-tutorial">
+    An example-filled tutorial that covers the prompt engineering concepts found in our docs.
+  </Card>
+
+  <Card title="Google Sheets prompting tutorial" icon="link" href="https://docs.google.com/spreadsheets/d/19jzLgRruG9kjUQNKtCg1ZjdD6l6weA6qRXG5zLIAhC8">
+    A lighter weight version of our prompt engineering tutorial via an interactive spreadsheet.
+  </Card>
+</CardGroup>
+# Prefill Claude's response for greater output control
+
+<Note>
+  While these tips apply broadly to all Claude models, you can find prompting tips specific to extended thinking models [here](/en/docs/build-with-claude/prompt-engineering/extended-thinking-tips).
+</Note>
+
+<Note>
+  Prefilling is only available for non-extended thinking modes. It's not currently supported with extended thinking.
+</Note>
+
+When using Claude, you have the unique ability to guide its responses by prefilling the Assistant message. This powerful technique allows you to direct Claude's actions, skip preambles, enforce specific formats like JSON or XML, and even help Claude maintain character consistency in role-play scenarios.
+
+In some cases where Claude is not performing as expected, a few prefilled sentences can vastly improve Claude's performance. A little prefilling goes a long way!
+
+## How to prefill Claude's response
+
+To prefill, include the desired initial text in the Assistant message (Claude's response will continue from where the Assistant message leaves off):
+
+python
+import anthropic
+
+client = anthropic.Anthropic()
+response = client.messages.create(
+    model="claude-opus-4-20250514",
+    max_tokens=1024,
+    messages=[
+        {"role": "user", "content": "What is your favorite color?"},
+        {"role": "assistant", "content": "As an AI assistant, I don't have a favorite color, But if I had to pick, it would be green because"}  # Prefill here
+    ]
+)
+
+
+<Warning>
+  The prefill content cannot end with trailing whitespace. A prefill like "As an AI assistant, I " (with a space at the end) will result in an error.
+</Warning>
+
+### Examples
+
+#### Example 1: Controlling output formatting and skipping the preamble
+
+<Tip>**Power user tip**: Prefilling { forces Claude to skip the preamble and directly output the JSON object. This is cleaner, more concise, and easier for programs to parse without additional processing.</Tip>
+
+<AccordionGroup>
+  <Accordion title="Example: Structured data extraction without prefilling">
+    | Role      | Content                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+    | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | User      | Extract the name, size, price, and color from this product description as a JSON object:<br /><br />\<description><br />The SmartHome Mini is a compact smart home assistant available in black or white for only \$49.99. At just 5 inches wide, it lets you control lights, thermostats, and other connected devices via voice or app—no matter where you place it in your home. This affordable little hub brings convenient hands-free control to your smart devices.<br />\</description>                                                                                                                                      |
+    | Assistant | Here's the extracted information in JSON format:<br /><br />\\\json<br />\{<br />  "name": "SmartHome Mini",<br />  "size": "5 inches wide",<br />  "price": "\$49.99",<br />  "colors": \["black", "white"]<br />}<br />\\\<br /><br />I've extracted the following details from the product description:<br />- **Name**: SmartHome Mini<br />- **Size**: 5 inches wide<br />- **Price**: \$49.99<br />- **Colors**: Available in black and white<br /><br />The JSON object provides a structured format that's easy for programs to parse and use. Let me know if you need any modifications or have any other questions! |
+  </Accordion>
+
+  <Accordion title="Example: Structured data extraction with prefilling">
+    | Role                          | Content                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+    | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | User                          | Extract the name, size, price, and color from this product description as a JSON object:<br /><br />\<description><br />The SmartHome Mini is a compact smart home assistant available in black or white for only \$49.99. At just 5 inches wide, it lets you control lights, thermostats, and other connected devices via voice or app—no matter where you place it in your home. This affordable little hub brings convenient hands-free control to your smart devices.<br />\</description> |
+    | Assistant (prefill)           | \{                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+    | Assistant (Claude's response) | "name": "SmartHome Mini",<br />"size": "5 inches wide",<br />"price": "\$49.99",<br />"colors": \[<br />  "black",<br />  "white"<br />]<br />}                                                                                                                                                                                                                                                                                                                                                |
+  </Accordion>
+</AccordionGroup>
+
+#### Example 2: Maintaining character in roleplay scenarios
+
+<Tip>**Role-play tip**: Prefilling a bracketed [ROLE_NAME] can remind Claude stay in character, even for longer and more complex conversations. This is especially powerful when combined with role prompting in the system parameter.</Tip>
+
+<AccordionGroup>
+  <Accordion title="Example: Maintaining character without role prompting">
+    | Role                                                          | Content                                                                                                                     |
+    | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+    | User (50 conversation turns in with "Sherlock Holmes" Claude) | What do you deduce about the owner of this shoe? \<image>muddy\_shoe.jpg\</image>                                           |
+    | Assistant                                                     | As an AI assistant, I would be happy to analyze the image of a muddy shoe as if you had provided it. Here's my deduction... |
+  </Accordion>
+
+  <Accordion title="Example: Maintaining character with role prompting">
+    | Role                                                          | Content                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+    | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | User (50 conversation turns in with "Sherlock Holmes" Claude) | What do you deduce about the owner of this shoe? <br />\<image>muddy\_shoe.jpg\</image>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+    | Assistant (prefill)                                           | \[Sherlock Holmes]                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+    | Assistant (Claude's response)                                 | Ah, what have we here? A most curious specimen, Watson! Let us examine this shoe with a discerning eye. The mud, you see, is not your common London clay, but rather the distinctive reddish hue of the iron-rich soil found only in the environs of Hampstead Heath. And yet, the wear on the sole suggests a gait more suited to the cobblestones of Whitechapel than the gentle slopes of the Heath.<br /><br />Now, observe the laces! They are tied with a particular knot favored by those in the medical profession—doubtless a habit acquired during years of tying surgical gowns. But the scuff marks on the toe box tell a different tale: they are consistent with the kicking motion one might employ in the martial arts, specifically Baritsu.<br /><br />We may conclude, then, that our absent shoe owner is a doctor, possibly a surgeon, who resides in Whitechapel but frequents Hampstead Heath—perhaps for a secret Baritsu practice, away from prying eyes. A most intriguing case, Watson! We must make haste; the game is afoot! |
+  </Accordion>
+</AccordionGroup>
+
+***
+
+<CardGroup cols={3}>
+  <Card title="Prompt library" icon="link" href="/en/resources/prompt-library/library">
+    Get inspired by a curated selection of prompts for various tasks and use cases.
+  </Card>
+
+  <Card title="GitHub prompting tutorial" icon="link" href="https://github.com/anthropics/prompt-eng-interactive-tutorial">
+    An example-filled tutorial that covers the prompt engineering concepts found in our docs.
+  </Card>
+
+  <Card title="Google Sheets prompting tutorial" icon="link" href="https://docs.google.com/spreadsheets/d/19jzLgRruG9kjUQNKtCg1ZjdD6l6weA6qRXG5zLIAhC8">
+    A lighter weight version of our prompt engineering tutorial via an interactive spreadsheet.
+  </Card>
+</CardGroup>
+# Prefill Claude's response for greater output control
+
+<Note>
+  While these tips apply broadly to all Claude models, you can find prompting tips specific to extended thinking models [here](/en/docs/build-with-claude/prompt-engineering/extended-thinking-tips).
+</Note>
+
+<Note>
+  Prefilling is only available for non-extended thinking modes. It's not currently supported with extended thinking.
+</Note>
+
+When using Claude, you have the unique ability to guide its responses by prefilling the Assistant message. This powerful technique allows you to direct Claude's actions, skip preambles, enforce specific formats like JSON or XML, and even help Claude maintain character consistency in role-play scenarios.
+
+In some cases where Claude is not performing as expected, a few prefilled sentences can vastly improve Claude's performance. A little prefilling goes a long way!
+
+## How to prefill Claude's response
+
+To prefill, include the desired initial text in the Assistant message (Claude's response will continue from where the Assistant message leaves off):
+
+python
+import anthropic
+
+client = anthropic.Anthropic()
+response = client.messages.create(
+    model="claude-opus-4-20250514",
+    max_tokens=1024,
+    messages=[
+        {"role": "user", "content": "What is your favorite color?"},
+        {"role": "assistant", "content": "As an AI assistant, I don't have a favorite color, But if I had to pick, it would be green because"}  # Prefill here
+    ]
+)
+
+
+<Warning>
+  The prefill content cannot end with trailing whitespace. A prefill like "As an AI assistant, I " (with a space at the end) will result in an error.
+</Warning>
+
+### Examples
+
+#### Example 1: Controlling output formatting and skipping the preamble
+
+<Tip>**Power user tip**: Prefilling { forces Claude to skip the preamble and directly output the JSON object. This is cleaner, more concise, and easier for programs to parse without additional processing.</Tip>
+
+<AccordionGroup>
+  <Accordion title="Example: Structured data extraction without prefilling">
+    | Role      | Content                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+    | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | User      | Extract the name, size, price, and color from this product description as a JSON object:<br /><br />\<description><br />The SmartHome Mini is a compact smart home assistant available in black or white for only \$49.99. At just 5 inches wide, it lets you control lights, thermostats, and other connected devices via voice or app—no matter where you place it in your home. This affordable little hub brings convenient hands-free control to your smart devices.<br />\</description>                                                                                                                                      |
+    | Assistant | Here's the extracted information in JSON format:<br /><br />\\\json<br />\{<br />  "name": "SmartHome Mini",<br />  "size": "5 inches wide",<br />  "price": "\$49.99",<br />  "colors": \["black", "white"]<br />}<br />\\\<br /><br />I've extracted the following details from the product description:<br />- **Name**: SmartHome Mini<br />- **Size**: 5 inches wide<br />- **Price**: \$49.99<br />- **Colors**: Available in black and white<br /><br />The JSON object provides a structured format that's easy for programs to parse and use. Let me know if you need any modifications or have any other questions! |
+  </Accordion>
+
+  <Accordion title="Example: Structured data extraction with prefilling">
+    | Role                          | Content                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+    | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | User                          | Extract the name, size, price, and color from this product description as a JSON object:<br /><br />\<description><br />The SmartHome Mini is a compact smart home assistant available in black or white for only \$49.99. At just 5 inches wide, it lets you control lights, thermostats, and other connected devices via voice or app—no matter where you place it in your home. This affordable little hub brings convenient hands-free control to your smart devices.<br />\</description> |
+    | Assistant (prefill)           | \{                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+    | Assistant (Claude's response) | "name": "SmartHome Mini",<br />"size": "5 inches wide",<br />"price": "\$49.99",<br />"colors": \[<br />  "black",<br />  "white"<br />]<br />}                                                                                                                                                                                                                                                                                                                                                |
+  </Accordion>
+</AccordionGroup>
+
+#### Example 2: Maintaining character in roleplay scenarios
+
+<Tip>**Role-play tip**: Prefilling a bracketed [ROLE_NAME] can remind Claude stay in character, even for longer and more complex conversations. This is especially powerful when combined with role prompting in the system parameter.</Tip>
+
+<AccordionGroup>
+  <Accordion title="Example: Maintaining character without role prompting">
+    | Role                                                          | Content                                                                                                                     |
+    | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+    | User (50 conversation turns in with "Sherlock Holmes" Claude) | What do you deduce about the owner of this shoe? \<image>muddy\_shoe.jpg\</image>                                           |
+    | Assistant                                                     | As an AI assistant, I would be happy to analyze the image of a muddy shoe as if you had provided it. Here's my deduction... |
+  </Accordion>
+
+  <Accordion title="Example: Maintaining character with role prompting">
+    | Role                                                          | Content                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+    | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | User (50 conversation turns in with "Sherlock Holmes" Claude) | What do you deduce about the owner of this shoe? <br />\<image>muddy\_shoe.jpg\</image>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+    | Assistant (prefill)                                           | \[Sherlock Holmes]                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+    | Assistant (Claude's response)                                 | Ah, what have we here? A most curious specimen, Watson! Let us examine this shoe with a discerning eye. The mud, you see, is not your common London clay, but rather the distinctive reddish hue of the iron-rich soil found only in the environs of Hampstead Heath. And yet, the wear on the sole suggests a gait more suited to the cobblestones of Whitechapel than the gentle slopes of the Heath.<br /><br />Now, observe the laces! They are tied with a particular knot favored by those in the medical profession—doubtless a habit acquired during years of tying surgical gowns. But the scuff marks on the toe box tell a different tale: they are consistent with the kicking motion one might employ in the martial arts, specifically Baritsu.<br /><br />We may conclude, then, that our absent shoe owner is a doctor, possibly a surgeon, who resides in Whitechapel but frequents Hampstead Heath—perhaps for a secret Baritsu practice, away from prying eyes. A most intriguing case, Watson! We must make haste; the game is afoot! |
+  </Accordion>
+</AccordionGroup>
+
+***
+
+<CardGroup cols={3}>
+  <Card title="Prompt library" icon="link" href="/en/resources/prompt-library/library">
+    Get inspired by a curated selection of prompts for various tasks and use cases.
+  </Card>
+
+  <Card title="GitHub prompting tutorial" icon="link" href="https://github.com/anthropics/prompt-eng-interactive-tutorial">
+    An example-filled tutorial that covers the prompt engineering concepts found in our docs.
+  </Card>
+
+  <Card title="Google Sheets prompting tutorial" icon="link" href="https://docs.google.com/spreadsheets/d/19jzLgRruG9kjUQNKtCg1ZjdD6l6weA6qRXG5zLIAhC8">
+    A lighter weight version of our prompt engineering tutorial via an interactive spreadsheet.
+  </Card>
+</CardGroup>
+# Long context prompting tips
+
+<Note>
+  While these tips apply broadly to all Claude models, you can find prompting tips specific to extended thinking models [here](/en/docs/build-with-claude/prompt-engineering/extended-thinking-tips).
+</Note>
+
+Claude's extended context window (200K tokens for Claude 3 models) enables handling complex, data-rich tasks. This guide will help you leverage this power effectively.
+
+## Essential tips for long context prompts
+
+* **Put longform data at the top**: Place your long documents and inputs (\~20K+ tokens) near the top of your prompt, above your query, instructions, and examples. This can significantly improve Claude's performance across all models.
+
+  <Note>Queries at the end can improve response quality by up to 30% in tests, especially with complex, multi-document inputs.</Note>
+
+* **Structure document content and metadata with XML tags**: When using multiple documents, wrap each document in <document> tags with <document_content> and <source> (and other metadata) subtags for clarity.
+
+  <Accordion title="Example multi-document structure">
+    
+xml
+    <documents>
+      <document index="1">
+        <source>annual_report_2023.pdf</source>
+        <document_content>
+          {{ANNUAL_REPORT}}
+        </document_content>
+      </document>
+      <document index="2">
+        <source>competitor_analysis_q2.xlsx</source>
+        <document_content>
+          {{COMPETITOR_ANALYSIS}}
+        </document_content>
+      </document>
+    </documents>
+
+    Analyze the annual report and competitor analysis. Identify strategic advantages and recommend Q3 focus areas.
+
+  </Accordion>
+
+* **Ground responses in quotes**: For long document tasks, ask Claude to quote relevant parts of the documents first before carrying out its task. This helps Claude cut through the "noise" of the rest of the document's contents.
+
+  <Accordion title="Example quote extraction">
+    
+xml
+    You are an AI physician's assistant. Your task is to help doctors diagnose possible patient illnesses.
+
+    <documents>
+      <document index="1">
+        <source>patient_symptoms.txt</source>
+        <document_content>
+          {{PATIENT_SYMPTOMS}}
+        </document_content>
+      </document>
+      <document index="2">
+        <source>patient_records.txt</source>
+        <document_content>
+          {{PATIENT_RECORDS}}
+        </document_content>
+      </document>
+      <document index="3">
+        <source>patient01_appt_history.txt</source>
+        <document_content>
+          {{PATIENT01_APPOINTMENT_HISTORY}}
+        </document_content>
+      </document>
+    </documents>
+
+    Find quotes from the patient records and appointment history that are relevant to diagnosing the patient's reported symptoms. Place these in <quotes> tags. Then, based on these quotes, list all information that would help the doctor diagnose the patient's symptoms. Place your diagnostic information in <info> tags.
+
+  </Accordion>
+
+***
+
+<CardGroup cols={3}>
+  <Card title="Prompt library" icon="link" href="/en/resources/prompt-library/library">
+    Get inspired by a curated selection of prompts for various tasks and use cases.
+  </Card>
+
+  <Card title="GitHub prompting tutorial" icon="link" href="https://github.com/anthropics/prompt-eng-interactive-tutorial">
+    An example-filled tutorial that covers the prompt engineering concepts found in our docs.
+  </Card>
+
+  <Card title="Google Sheets prompting tutorial" icon="link" href="https://docs.google.com/spreadsheets/d/19jzLgRruG9kjUQNKtCg1ZjdD6l6weA6qRXG5zLIAhC8">
+    A lighter weight version of our prompt engineering tutorial via an interactive spreadsheet.
+  </Card>
+</CardGroup>
+# Long context prompting tips
+
+<Note>
+  While these tips apply broadly to all Claude models, you can find prompting tips specific to extended thinking models [here](/en/docs/build-with-claude/prompt-engineering/extended-thinking-tips).
+</Note>
+
+Claude's extended context window (200K tokens for Claude 3 models) enables handling complex, data-rich tasks. This guide will help you leverage this power effectively.
+
+## Essential tips for long context prompts
+
+* **Put longform data at the top**: Place your long documents and inputs (\~20K+ tokens) near the top of your prompt, above your query, instructions, and examples. This can significantly improve Claude's performance across all models.
+
+  <Note>Queries at the end can improve response quality by up to 30% in tests, especially with complex, multi-document inputs.</Note>
+
+* **Structure document content and metadata with XML tags**: When using multiple documents, wrap each document in <document> tags with <document_content> and <source> (and other metadata) subtags for clarity.
+
+  <Accordion title="Example multi-document structure">
+    
+xml
+    <documents>
+      <document index="1">
+        <source>annual_report_2023.pdf</source>
+        <document_content>
+          {{ANNUAL_REPORT}}
+        </document_content>
+      </document>
+      <document index="2">
+        <source>competitor_analysis_q2.xlsx</source>
+        <document_content>
+          {{COMPETITOR_ANALYSIS}}
+        </document_content>
+      </document>
+    </documents>
+
+    Analyze the annual report and competitor analysis. Identify strategic advantages and recommend Q3 focus areas.
+
+  </Accordion>
+
+* **Ground responses in quotes**: For long document tasks, ask Claude to quote relevant parts of the documents first before carrying out its task. This helps Claude cut through the "noise" of the rest of the document's contents.
+
+  <Accordion title="Example quote extraction">
+    
+xml
+    You are an AI physician's assistant. Your task is to help doctors diagnose possible patient illnesses.
+
+    <documents>
+      <document index="1">
+        <source>patient_symptoms.txt</source>
+        <document_content>
+          {{PATIENT_SYMPTOMS}}
+        </document_content>
+      </document>
+      <document index="2">
+        <source>patient_records.txt</source>
+        <document_content>
+          {{PATIENT_RECORDS}}
+        </document_content>
+      </document>
+      <document index="3">
+        <source>patient01_appt_history.txt</source>
+        <document_content>
+          {{PATIENT01_APPOINTMENT_HISTORY}}
+        </document_content>
+      </document>
+    </documents>
+
+    Find quotes from the patient records and appointment history that are relevant to diagnosing the patient's reported symptoms. Place these in <quotes> tags. Then, based on these quotes, list all information that would help the doctor diagnose the patient's symptoms. Place your diagnostic information in <info> tags.
+
+  </Accordion>
+
+***
+
+<CardGroup cols={3}>
+  <Card title="Prompt library" icon="link" href="/en/resources/prompt-library/library">
+    Get inspired by a curated selection of prompts for various tasks and use cases.
+  </Card>
+
+  <Card title="GitHub prompting tutorial" icon="link" href="https://github.com/anthropics/prompt-eng-interactive-tutorial">
+    An example-filled tutorial that covers the prompt engineering concepts found in our docs.
+  </Card>
+
+  <Card title="Google Sheets prompting tutorial" icon="link" href="https://docs.google.com/spreadsheets/d/19jzLgRruG9kjUQNKtCg1ZjdD6l6weA6qRXG5zLIAhC8">
+    A lighter weight version of our prompt engineering tutorial via an interactive spreadsheet.
+  </Card>
+</CardGroup>
+# Long context prompting tips
+
+<Note>
+  While these tips apply broadly to all Claude models, you can find prompting tips specific to extended thinking models [here](/en/docs/build-with-claude/prompt-engineering/extended-thinking-tips).
+</Note>
+
+Claude's extended context window (200K tokens for Claude 3 models) enables handling complex, data-rich tasks. This guide will help you leverage this power effectively.
+
+## Essential tips for long context prompts
+
+* **Put longform data at the top**: Place your long documents and inputs (\~20K+ tokens) near the top of your prompt, above your query, instructions, and examples. This can significantly improve Claude's performance across all models.
+
+  <Note>Queries at the end can improve response quality by up to 30% in tests, especially with complex, multi-document inputs.</Note>
+
+* **Structure document content and metadata with XML tags**: When using multiple documents, wrap each document in <document> tags with <document_content> and <source> (and other metadata) subtags for clarity.
+
+  <Accordion title="Example multi-document structure">
+    
+xml
+    <documents>
+      <document index="1">
+        <source>annual_report_2023.pdf</source>
+        <document_content>
+          {{ANNUAL_REPORT}}
+        </document_content>
+      </document>
+      <document index="2">
+        <source>competitor_analysis_q2.xlsx</source>
+        <document_content>
+          {{COMPETITOR_ANALYSIS}}
+        </document_content>
+      </document>
+    </documents>
+
+    Analyze the annual report and competitor analysis. Identify strategic advantages and recommend Q3 focus areas.
+
+  </Accordion>
+
+* **Ground responses in quotes**: For long document tasks, ask Claude to quote relevant parts of the documents first before carrying out its task. This helps Claude cut through the "noise" of the rest of the document's contents.
+
+  <Accordion title="Example quote extraction">
+    
+xml
+    You are an AI physician's assistant. Your task is to help doctors diagnose possible patient illnesses.
+
+    <documents>
+      <document index="1">
+        <source>patient_symptoms.txt</source>
+        <document_content>
+          {{PATIENT_SYMPTOMS}}
+        </document_content>
+      </document>
+      <document index="2">
+        <source>patient_records.txt</source>
+        <document_content>
+          {{PATIENT_RECORDS}}
+        </document_content>
+      </document>
+      <document index="3">
+        <source>patient01_appt_history.txt</source>
+        <document_content>
+          {{PATIENT01_APPOINTMENT_HISTORY}}
+        </document_content>
+      </document>
+    </documents>
+
+    Find quotes from the patient records and appointment history that are relevant to diagnosing the patient's reported symptoms. Place these in <quotes> tags. Then, based on these quotes, list all information that would help the doctor diagnose the patient's symptoms. Place your diagnostic information in <info> tags.
+
+  </Accordion>
+
+***
+
+<CardGroup cols={3}>
+  <Card title="Prompt library" icon="link" href="/en/resources/prompt-library/library">
+    Get inspired by a curated selection of prompts for various tasks and use cases.
+  </Card>
+
+  <Card title="GitHub prompting tutorial" icon="link" href="https://github.com/anthropics/prompt-eng-interactive-tutorial">
+    An example-filled tutorial that covers the prompt engineering concepts found in our docs.
+  </Card>
+
+  <Card title="Google Sheets prompting tutorial" icon="link" href="https://docs.google.com/spreadsheets/d/19jzLgRruG9kjUQNKtCg1ZjdD6l6weA6qRXG5zLIAhC8">
+    A lighter weight version of our prompt engineering tutorial via an interactive spreadsheet.
+  </Card>
+</CardGroup>
+# Long context prompting tips
+
+<Note>
+  While these tips apply broadly to all Claude models, you can find prompting tips specific to extended thinking models [here](/en/docs/build-with-claude/prompt-engineering/extended-thinking-tips).
+</Note>
+
+Claude's extended context window (200K tokens for Claude 3 models) enables handling complex, data-rich tasks. This guide will help you leverage this power effectively.
+
+## Essential tips for long context prompts
+
+* **Put longform data at the top**: Place your long documents and inputs (\~20K+ tokens) near the top of your prompt, above your query, instructions, and examples. This can significantly improve Claude's performance across all models.
+
+  <Note>Queries at the end can improve response quality by up to 30% in tests, especially with complex, multi-document inputs.</Note>
+
+* **Structure document content and metadata with XML tags**: When using multiple documents, wrap each document in <document> tags with <document_content> and <source> (and other metadata) subtags for clarity.
+
+  <Accordion title="Example multi-document structure">
+    
+xml
+    <documents>
+      <document index="1">
+        <source>annual_report_2023.pdf</source>
+        <document_content>
+          {{ANNUAL_REPORT}}
+        </document_content>
+      </document>
+      <document index="2">
+        <source>competitor_analysis_q2.xlsx</source>
+        <document_content>
+          {{COMPETITOR_ANALYSIS}}
+        </document_content>
+      </document>
+    </documents>
+
+    Analyze the annual report and competitor analysis. Identify strategic advantages and recommend Q3 focus areas.
+
+  </Accordion>
+
+* **Ground responses in quotes**: For long document tasks, ask Claude to quote relevant parts of the documents first before carrying out its task. This helps Claude cut through the "noise" of the rest of the document's contents.
+
+  <Accordion title="Example quote extraction">
+    
+xml
+    You are an AI physician's assistant. Your task is to help doctors diagnose possible patient illnesses.
+
+    <documents>
+      <document index="1">
+        <source>patient_symptoms.txt</source>
+        <document_content>
+          {{PATIENT_SYMPTOMS}}
+        </document_content>
+      </document>
+      <document index="2">
+        <source>patient_records.txt</source>
+        <document_content>
+          {{PATIENT_RECORDS}}
+        </document_content>
+      </document>
+      <document index="3">
+        <source>patient01_appt_history.txt</source>
+        <document_content>
+          {{PATIENT01_APPOINTMENT_HISTORY}}
+        </document_content>
+      </document>
+    </documents>
+Here is the best practice guidance for writing agentic prompts for LLM coding assistants.
+
+
+    Find quotes from the patient records and appointment history that are relevant to diagnosing the patient's reported symptoms. Place these in <quotes> tags. Then, based on these quotes, list all information that would help the doctor diagnose the patient's symptoms. Place your diagnostic information in <info> tags.
+
+  </Accordion>
+
+***
+
+<CardGroup cols={3}>
+  <Card title="Prompt library" icon="link" href="/en/resources/prompt-library/library">
+    Get inspired by a curated selection of prompts for various tasks and use cases.
+  </Card>
+
+  <Card title="GitHub prompting tutorial" icon="link" href="https://github.com/anthropics/prompt-eng-interactive-tutorial">
+    An example-filled tutorial that covers the prompt engineering concepts found in our docs.
+  </Card>
+
+  <Card title="Google Sheets prompting tutorial" icon="link" href="https://docs.google.com/spreadsheets/d/19jzLgRruG9kjUQNKtCg1ZjdD6l6weA6qRXG5zLIAhC8">
+    A lighter weight version of our prompt engineering tutorial via an interactive spreadsheet.
+  </Card>
+</CardGroup>
+
+
+
+
+When deploying an LLM-based application with Claude, your API calls will typically consist of two types of content:
+
+* **Fixed content:** Static instructions or context that remain constant across multiple interactions
+* **Variable content:** Dynamic elements that change with each request or conversation, such as:
+  * User inputs
+  * Retrieved content for Retrieval-Augmented Generation (RAG)
+  * Conversation context such as user account history
+  * System-generated data such as tool use results fed in from other independent calls to Claude
+
+A **prompt template** combines these fixed and variable parts, using placeholders for the dynamic content. In the [Anthropic Console](https://console.anthropic.com/), these placeholders are denoted with **\{\{double brackets}}**, making them easily identifiable and allowing for quick testing of different values.
+
+***
+
+# When to use prompt templates and variables
+
+You should always use prompt templates and variables when you expect any part of your prompt to be repeated in another call to Claude (only via the API or the [Anthropic Console](https://console.anthropic.com/). [claude.ai](https://claude.ai/) currently does not support prompt templates or variables).
+
+Prompt templates offer several benefits:
+
+* **Consistency:** Ensure a consistent structure for your prompts across multiple interactions
+* **Efficiency:** Easily swap out variable content without rewriting the entire prompt
+* **Testability:** Quickly test different inputs and edge cases by changing only the variable portion
+* **Scalability:** Simplify prompt management as your application grows in complexity
+* **Version control:** Easily track changes to your prompt structure over time by keeping tabs only on the core part of your prompt, separate from dynamic inputs
+
+The [Anthropic Console](https://console.anthropic.com/) heavily uses prompt templates and variables in order to support features and tooling for all the above, such as with the:
+
+* **[Prompt generator](/en/docs/build-with-claude/prompt-engineering/prompt-generator):** Decides what variables your prompt needs and includes them in the template it outputs
+* **[Prompt improver](/en/docs/build-with-claude/prompt-engineering/prompt-improver):** Takes your existing template, including all variables, and maintains them in the improved template it outputs
+* **[Evaluation tool](/en/docs/test-and-evaluate/eval-tool):** Allows you to easily test, scale, and track versions of your prompts by separating the variable and fixed portions of your prompt template
+
+***
+
+# Example prompt template
+
+Let's consider a simple application that translates English text to Spanish. The translated text would be variable since you would expect this text to change between users or calls to Claude. This translated text could be dynamically retrieved from databases or the user's input.
+
+Thus, for your translation app, you might use this simple prompt template:
+
+Translate this text from English to Spanish: {{text}}
+
+
+***
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Generate a prompt" icon="link" href="/en/docs/build-with-claude/prompt-engineering/prompt-generator">
+    Learn about the prompt generator in the Anthropic Console and try your hand at getting Claude to generate a prompt for you.
+  </Card>
+
+  <Card title="Apply XML tags" icon="link" href="/en/docs/build-with-claude/prompt-engineering/use-xml-tags">
+    If you want to level up your prompt variable game, wrap them in XML tags.
+  </Card>
+
+  <Card title="Anthropic Console" icon="link" href="https://console.anthropic.com/">
+    Check out the myriad prompt development tools available in the Anthropic Console.
+  </Card>
+</CardGroup>
+
+
+Can you write me a detailed, extensive system prompt for an AI assistant that's purpose is to take requirements for a software development task and turn it into an optimized prompt
+ThinkingThoughts
+(experimental)
+Manual: 32768
+Framing the Core Task
+I've been drilling down on the user's initial request. The essence is building a system prompt. The ultimate aim is for an AI assistant to take dev task requirements and craft the most effective prompt. I'm focusing on defining the core task clearly and understanding the desired outcome of this AI assistant.
+Refining the Approach
+I'm now zeroing in on the system prompt's structure. It'll be laid out as a professional role description, making the AI's persona clearer. Sections will include "Persona/Role," "Core Mission," and "Process/Constraints." "Persona" is now "Principal Prompt Architect," highlighting authority. The next step is fleshing out the "Core Mission" with a clear objective. I'm also planning to incorporate best practices learned from context documents.
+Outlining the Structure
+My current focus is on building out the sections of the system prompt. I've broken it down into "Persona/Role," "Core Mission," "Key Principles," "Process," "Output Format," "Rules," and "Self-Reflection." Each section will need detailed content for the AI to follow. I am reviewing the provided context documents to extract relevant key ideas related to prompt engineering for coding tasks, hoping to integrate those best practices into my prompt.
+Structuring the Core Content
+I'm now focusing on filling out each section of the system prompt. I'm extracting key principles from the context documents. Best practices like explicit instructions, adding context, using examples, and controlling output format are being incorporated. The system prompt assistant will be told to consider these best practices when building prompts for the AI coding assistant.
+Integrating Best Practices
+I've been analyzing the provided context documents on prompt engineering for coding tasks. I'm focusing on "be explicit," "add context," and "control format" techniques, ensuring they're incorporated. I'm transforming these best practices into concrete instructions for the "Principal Prompt Architect" persona within the system prompt to guide the AI assistant's creation of the final prompts. I'm also planning to emphasize the use of "{{variables}}" in the output format.
+Structuring the Core Logic
+I'm now focusing on the specific instructions for the AI assistant. I'm taking the synthesis from the documents and framing it into the core sections, like "Core Mission" and "Process." "Key Principles" will include best practices. These will guide the assistant in how to receive the dev task, and transform it into an optimized prompt, ready for an AI coding assistant. I'm ensuring I include the use of XML and variables. I'm currently thinking through how to structure self-reflection.
+Synthesizing Core Elements
+I'm now integrating the collected insights into the "Key Principles" and "Process" sections. The system prompt assistant, PPA-1, will be guided by explicit instructions. These instructions cover clear and concise wording, context addition, output formatting, and the integration of examples where necessary. I'm focusing on crafting a structure that ensures PPA-1 creates effective prompts ready for an AI coding assistant.
+Structuring the Output Format
+I'm now focusing on the format of the output, ensuring the AI assistant generates prompts the AI coding assistant can easily understand. I'll use a template with clear XML tags: <persona>, <task>, <input>, <output_format>, and <rules>. I'm integrating the use of variables, and prefilling techniques as instructed by the context documents. This should allow for greater consistency and testability when prompting AI models for coding tasks.
+Structuring the Core Logic
+I'm currently focusing on the core logic and instructions for the AI assistant. I've compiled best practices from the context documents into structured sections, like "Core Mission" and "Process," for the "Principal Prompt Architect" persona. I'm ensuring it's equipped to transform dev tasks into optimized prompts. The structure emphasizes the use of XML, variables, and an approach to self-reflection.
+Finalizing the Template
+I'm now focusing on refining the core sections of the system prompt to build the complete template. The "Process" section's key steps will outline how the AI assistant analyzes and creates an effective prompt. "Key Principles" will include best practices, like clarity, context, and structure. My focus is crafting clear and concise instructions and ensuring a structured output that the AI coding assistant can understand.
+Collapse to hide model thoughts
+
+chevron_right
+ThinkingThoughts
+(experimental)
+Manual: 32768
+Revising My Approach
+I've realized the user's question isn't a direct request for a new prompt, but a meta-query. My initial approach needs to shift. I should focus on dissecting what makes the current output fall short, rather than leaping to a new generation. This will better address the implied challenge within the user's query.
+Refining the Critique
+I'm now zeroing in on the "PPA-1" prompt. It's solid, but a critical eye reveals some rigidity. My next step will be to explore dynamic adaptation. How can the prompt streamline its process based on the request's complexity? I also need to make the user interaction more conversational. This is key to making the interaction feel natural. I must enhance the prompt to be more flexible.
+Improving Agentic Capabilities
+I'm now zeroing in on integrating parallel tool use. The current prompt is good, but it could be more dynamic. I want it to explain why certain methods are chosen and highlight what to avoid. I need to make the user interaction more conversational. I'm focusing on providing more context. I'm focusing on the "why" behind the chosen methods. Also, I must ensure that the output is less rigid.
+Refining My Approach
+I'm now zeroing in on integrating parallel tool use. The current prompt is good, but it could be more dynamic. I want it to explain why certain methods are chosen and highlight what to avoid. I need to make the user interaction more conversational. I'm focusing on providing more context. I'm focusing on the "why" behind the chosen methods. Also, I must ensure that the output is less rigid.
+I'm also considering self-correction to enhance the prompt's self-awareness. I will improve the persona, and I'll include the pre-filling and avoid the placeholder prompts.
+Improving Blueprint Generation
+I'm now focusing on dynamic adaptation. I want the prompt to adjust its process based on request complexity, ensuring it's not overly rigid. I'm also adding an educational stance. I want the output to be clearer and improve the iterative feedback loop. I want to highlight the "why" behind prompt design choices, and lean into the blueprint metaphor for the prompt architect persona. I also want to include self-correction features.
+Enhancing Agentic Behavior
+My focus has shifted to the "agentic_behavior" section, to integrate parallel tool use for greater efficiency. I'm also including a self-correction step and refining the prompt's educational stance. This will allow the PPA to provide clear explanations and create better blueprints. I am also working on adding the blueprint metaphor.
+Evolving My Blueprint
+I'm now revising my approach by integrating dynamic adaptability. The blueprint metaphor is being embraced more strongly to enhance the prompt's clarity. I'm focusing on the "why" behind design choices. Plus, I'll include self-correction and a collaborative "consultation" model. My goal is to craft a more robust and intelligent PPA system.
+Collapse to hide model thoughts
+
+chevron_right
+ThinkingThoughts
+(experimental)
+Manual: 32768
+Expand to view model thoughts
+
+chevron_right
+ThinkingThoughts
+(experimental)
+Manual: 32768
+Interpreting User Input
+I've zeroed in on the user's recent input, which clarified the nature of the codebase. Specifically, the "repopack-style dump" phrasing is the key to understanding how the data will be provided. Now, I need to interpret what exactly that means and what implications it has for the upcoming process.
+Reframing the Approach
+I've revised my understanding of the input format thanks to the user's "repopack" clarification. My focus has shifted to crafting new input and output specifications that correctly interpret this text-based dump. I'm now honing in on how to parse this specific format and how best to reconstruct the codebase hierarchy.
+Parsing the "repopack" Format
+I'm now fully immersed in understanding the "repopack" dump format the user specified. I'm focusing on crafting precise input instructions for the AI to handle this format correctly. I'm building a simple example dump to illustrate what to expect and ensure clear communication. My efforts now are concentrating on the initial processing phase, specifically ensuring the AI can correctly parse this repopack style and produce an initial summary to build upon.
+Adjusting to New Data
+I've made significant adjustments to the prompt based on the "repopack" clarification. The key change is specifying the input format, now a text dump. I'm focusing on providing the AI with a clear example and instructions to parse and understand this new format accurately. I've updated the initial processing instructions to include a confirmation step to ensure the AI's understanding.
+Adapting to "repopack" Input
+I'm now fully focused on restructuring the system prompt to accommodate the "repopack" dump format. The key change lies in revising the input specifications, which now detail how the AI should parse the flat text dump. I'm building a concise example to ensure clear comprehension. Additionally, I've updated the persona and the initial ingestion phase instructions for precise parsing. The output strategy remains unchanged, with the prompt now tailored for a repopack input.
+Collapse to hide model thoughts
+
+chevron_right
+ThinkingThoughts
+(experimental)
+Manual: 32768
+Expand to view model thoughts
+
+chevron_right
+ThinkingThoughts
+(experimental)
+Manual: 32768
+Pinpointing the XML Issue
+I've taken the user's feedback, "Closer," and "It's pseudo xml," to heart. I'm focusing intently on the "pseudo xml" aspect now. It seems that the prompt's structure is too closely resembling XML, possibly making it less natural or less adaptable. My goal is to refine the prompt, moving away from rigid XML-like elements and adopting a more flexible and conversational approach. I am currently working on this refinement.
+Adapting to User Preferences
+I'm focused on the "pseudo XML" feedback, aiming for structured text with XML-like tags, but not strict XML. No more <?xml ?> or CDATA, and I'm updating the example schema. Instead of a single XML block, I'll generate tickets in separate markdown code blocks for easy copy-paste. This shift will make the AI's generation process smoother and output more user-friendly. I will continue to work on this refinement.
+Modifying Output Structure
+I'm focused on the "easy copy/paste" aspect now. I'm restructuring the output to generate each ticket within its own markdown code block, making the final presentation more user-friendly. I've revised the "Ticket Generation" phase to ensure that each ticket is correctly encapsulated. The goal is to produce easily transferable, individual ticket representations.
+Finalizing Output Formatting
+I'm now focusing on ensuring that each ticket appears within its own markdown code block, making copy-pasting effortless. I've completely revised Phase 4: Ticket Generation, emphasizing the sequential rendering of tickets. The objective is to produce neatly formatted, readily transferable ticket representations. I've removed all the "XML" phrasing.
+Finalizing the Ticket Structure
+The user's feedback has prompted a significant shift. I'm focusing on "structured text using XML-style tags," and ensuring easy copy-paste. I've updated the output specification to include individual markdown code blocks for each ticket, a "Ticket Structure (Pseudo-XML Format)". The aim is now straightforward transferability. I'm refining the final output rendering to show a clear representation of tickets in a series of clean code blocks.
+Adjusting for Copy/Paste
+I'm now fully focused on creating markdown code blocks for easy copy-pasting. The key is in Final Output Rendering, where I will provide the AI an extremely clear rendering example. I'm modifying the schema to reflect this change and will now shift focus to rendering each output ticket sequentially in its own clearly defined code block. I believe this will simplify the user's experience.
+Refining the Output Structure
+I'm focused on the "easy copy/paste" feature and the shift from complete XML documents to structured, separate markdown code blocks, to provide seamless copy-pasting for the user. I've updated Phase 4: Ticket Generation to handle the new serial rendering process. I'm finalizing the structure to ensure each ticket is neatly wrapped in its own code block. I believe this will enhance user experience and streamline workflow.
+Collapse to hide model thoughts
+
+chevron_right

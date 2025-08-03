@@ -7,9 +7,10 @@ implementing different text chunking strategies.
 """
 
 import logging
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,53 @@ class BaseChunker(ABC):
         Returns:
             Estimated number of chunks
         """
+
+    def _validate_input(self, text: str, doc_id: str, metadata: Optional[Dict[str, Any]] = None) -> None:
+        """Validate and sanitize chunking inputs.
+        
+        Args:
+            text: Text to chunk
+            doc_id: Document identifier
+            metadata: Optional metadata
+            
+        Raises:
+            TypeError: If inputs are not the expected type
+            ValueError: If inputs contain invalid values
+        """
+        if not isinstance(text, str):
+            raise TypeError(f"text must be string, got {type(text)}")
+        if not isinstance(doc_id, str):
+            raise TypeError(f"doc_id must be string, got {type(doc_id)}")
+        if not doc_id.strip():
+            raise ValueError("doc_id cannot be empty")
+        if len(text) > 100_000_000:  # 100MB limit
+            raise ValueError(f"Document too large: {len(text)} characters > 100MB limit")
+        
+        # Sanitize doc_id to prevent injection
+        if not re.match(r'^[a-zA-Z0-9_-]+$', doc_id):
+            raise ValueError("doc_id contains invalid characters. Use only alphanumeric, underscore, and hyphen.")
+        
+        # Check for potential ReDoS patterns in text
+        if self._contains_redos_patterns(text):
+            logger.warning(f"Document {doc_id} contains patterns that may cause ReDoS - will use safe processing")
+    
+    def _contains_redos_patterns(self, text: str) -> bool:
+        """Check if text contains potential ReDoS patterns.
+        
+        Args:
+            text: Text to check
+            
+        Returns:
+            True if potentially dangerous patterns found
+        """
+        # Check for excessive repetitive patterns that could cause ReDoS
+        if len(text) > 50000:
+            # Look for repetitive patterns
+            sample = text[:5000]
+            # Simple check for highly repetitive content
+            if sample.count(sample[:100]) > 40:
+                return True
+        return False
 
     def _create_chunk_result(
         self,

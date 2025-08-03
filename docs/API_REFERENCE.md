@@ -136,9 +136,88 @@ Content-Type: application/json
   "quantization": "float16",
   "chunk_size": 1000,
   "chunk_overlap": 200,
+  "chunking_strategy": "recursive",
+  "chunking_params": {},
   "is_public": false
 }
 ```
+
+**Request Body:**
+- `name` (required): Collection name
+- `description` (optional): Collection description
+- `embedding_model` (optional): Embedding model to use
+- `quantization` (optional): Model quantization level
+- `chunk_size` (optional): Default chunk size (deprecated - use chunking_params)
+- `chunk_overlap` (optional): Default chunk overlap (deprecated - use chunking_params)
+- `chunking_strategy` (optional): Chunking strategy - character, recursive (default), markdown, semantic, hierarchical, or hybrid
+- `chunking_params` (optional): Strategy-specific parameters (see examples below)
+- `is_public` (optional): Whether collection is publicly accessible
+
+**Supported Chunking Strategies:**
+
+1. **character** - Simple character-based chunking
+   ```json
+   {
+     "chunking_strategy": "character",
+     "chunking_params": {
+       "chunk_size": 1000,
+       "chunk_overlap": 200
+     }
+   }
+   ```
+
+2. **recursive** - Sentence-aware chunking (default)
+   ```json
+   {
+     "chunking_strategy": "recursive",
+     "chunking_params": {
+       "chunk_size": 600,
+       "chunk_overlap": 100
+     }
+   }
+   ```
+
+3. **markdown** - Markdown structure-aware chunking
+   ```json
+   {
+     "chunking_strategy": "markdown",
+     "chunking_params": {}
+   }
+   ```
+
+4. **semantic** - AI-powered semantic boundary detection (requires local GPU)
+   ```json
+   {
+     "chunking_strategy": "semantic",
+     "chunking_params": {
+       "breakpoint_percentile_threshold": 90,
+       "buffer_size": 1,
+       "max_chunk_size": 2000
+     }
+   }
+   ```
+
+5. **hierarchical** - Multi-level parent-child chunking
+   ```json
+   {
+     "chunking_strategy": "hierarchical",
+     "chunking_params": {
+       "chunk_sizes": [2048, 512, 128],
+       "chunk_overlap": 20
+     }
+   }
+   ```
+
+6. **hybrid** - Intelligent strategy selection based on content
+   ```json
+   {
+     "chunking_strategy": "hybrid",
+     "chunking_params": {
+       "markdown_density_threshold": 0.1,
+       "topic_diversity_threshold": 0.7
+     }
+   }
+   ```
 
 **Response (201):**
 ```json
@@ -152,6 +231,11 @@ Content-Type: application/json
   "quantization": "float16",
   "chunk_size": 1000,
   "chunk_overlap": 200,
+  "chunking_strategy": "recursive",
+  "chunking_params": {
+    "chunk_size": 600,
+    "chunk_overlap": 100
+  },
   "is_public": false,
   "status": "pending",
   "created_at": "2024-01-15T10:00:00Z",
@@ -218,6 +302,12 @@ Authorization: Bearer {token}
   "quantization": "float16",
   "chunk_size": 1000,
   "chunk_overlap": 200,
+  "chunking_strategy": "semantic",
+  "chunking_params": {
+    "breakpoint_percentile_threshold": 90,
+    "buffer_size": 1,
+    "max_chunk_size": 2000
+  },
   "is_public": false,
   "status": "ready",
   "created_at": "2024-01-15T10:00:00Z",

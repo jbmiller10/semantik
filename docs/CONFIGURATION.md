@@ -194,6 +194,30 @@ BATCH_RESTORE_THRESHOLD=5  # Batches before size increase
 ADAPTIVE_BATCH_SIZING=true # Enable adaptive batching
 ```
 
+#### Chunking Configuration
+```bash
+# Chunking Strategy Settings
+DEFAULT_CHUNKING_STRATEGY=recursive          # Default strategy for new collections
+SEMANTIC_EMBEDDING_MODEL=all-MiniLM-L6-v2   # Local embedding model for semantic chunking
+ENABLE_OPENAI_EMBEDDINGS=false              # Allow external OpenAI embeddings (NOT recommended)
+CHUNKING_MAX_DOCUMENT_SIZE=100000000        # Maximum document size (100MB)
+
+# Performance Settings  
+SEMANTIC_EMBED_BATCH_SIZE=auto               # Batch size for embeddings (auto = dynamic)
+HIERARCHICAL_MAX_LEVELS=3                    # Maximum hierarchy levels
+CHUNK_PROCESSING_WORKERS=4                   # Parallel processing workers
+GPU_MEMORY_THRESHOLD=0.8                     # Maximum GPU memory usage
+
+# Cache Settings
+HF_CACHE_DIR=./models                        # HuggingFace model cache directory
+EMBEDDING_CACHE_SIZE=1000                    # Number of embeddings to cache
+
+# Privacy & Security
+DISABLE_EXTERNAL_EMBEDDINGS=true             # Block all external embedding APIs
+LOG_SENSITIVE_DATA=false                     # Never log document content
+VALIDATE_CHUNK_INPUTS=true                   # Enable input sanitization
+```
+
 #### Reranking Configuration
 ```bash
 # Reranking Settings

@@ -130,6 +130,9 @@ class RecursiveChunker(BaseChunker):
         Returns:
             List of ChunkResult objects
         """
+        # Validate inputs
+        self._validate_input(text, doc_id, metadata)
+        
         if not text.strip():
             return []
 
@@ -185,6 +188,9 @@ class RecursiveChunker(BaseChunker):
         Returns:
             List of ChunkResult objects
         """
+        # Validate inputs
+        self._validate_input(text, doc_id, metadata)
+        
         if not text.strip():
             return []
 

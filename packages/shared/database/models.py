@@ -129,6 +129,8 @@ class Collection(Base):
     quantization = Column(String, nullable=False, default="float16")  # float32, float16, int8
     chunk_size = Column(Integer, nullable=False, default=1000)
     chunk_overlap = Column(Integer, nullable=False, default=200)
+    chunking_strategy = Column(String, nullable=False, default="recursive", index=True)
+    chunking_params = Column(JSON, nullable=True)
     is_public = Column(Boolean, nullable=False, default=False, index=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
