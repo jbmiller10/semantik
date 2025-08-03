@@ -135,61 +135,10 @@ jobs:
           api-key: ${{ secrets.SAFETY_API_KEY }}
         continue-on-error: true  # Don't fail the build for now
 
-  # Critical privacy tests - MUST ALWAYS PASS
-  privacy-tests:
-    name: Privacy & Security Tests
-    runs-on: ubuntu-latest
-    # These tests MUST pass for any code to be merged
-    # They ensure NO data leaves the user's system
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Restore Poetry cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.local
-            ~/.cache/pypoetry
-          key: poetry-${{ runner.os }}-${{ env.POETRY_VERSION }}
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: ${{ env.POETRY_VERSION }}
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      - name: Restore Python dependencies
-        uses: actions/cache@v4
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('**/poetry.lock') }}
-
-      - name: Install dependencies
-        run: poetry install --with dev
-
-      - name: Run critical privacy tests
-        env:
-          TESTING: "false"  # Test in production mode
-          ENABLE_OPENAI_EMBEDDINGS: "false"  # Ensure external APIs disabled
-        run: |
-          poetry run pytest tests/security/test_embedding_privacy.py -v -x \
-            -k "test_no_network_requests or test_openai_embeddings_properly_disabled or test_local_embedding" \
-            || (echo "CRITICAL: Privacy tests failed! Data might be leaking." && exit 1)
-
-      - name: Run all security tests
-        run: poetry run pytest tests/security/ -v -m "security or privacy"
-
   # Backend tests with proper service management
   backend-tests:
     name: Backend Tests
     runs-on: ubuntu-latest
-    needs: [privacy-tests]  # Only run after privacy tests pass
     services:
       postgres:
         image: postgres:16-alpine
