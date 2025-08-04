@@ -293,8 +293,12 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
         # Mock time to simulate achieving 400 chunks/sec
         with patch("time.time") as mock_time:
             # 450 total chunks (400 leaf + 50 parent) in 1.125 seconds = 400 chunks/sec
-            # First call returns start time, second call returns end time
-            mock_time.side_effect = [100.0, 101.125]
+            # Use an iterator that provides consistent time values
+            # The chunker may call time.time() multiple times during processing
+            start_time = 100.0
+            end_time = 101.125
+            time_calls = iter([start_time, end_time])
+            mock_time.side_effect = lambda: next(time_calls, end_time)
 
             with patch.object(chunker, "_parser", mock_parser):
                 chunks = chunker.chunk_text(sample_texts["very_long"], "perf_test")
