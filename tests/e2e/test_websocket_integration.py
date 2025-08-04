@@ -6,6 +6,7 @@ import contextlib
 import json
 import os
 import time
+import uuid
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -95,7 +96,7 @@ class TestWebSocketIntegration:
         response = requests.post(
             f"{self.API_BASE_URL}/api/v2/collections",
             json={
-                "name": "Test Real-time Updates",
+                "name": f"Test Real-time Updates {uuid.uuid4().hex[:8]}",
                 "description": "Testing WebSocket integration",
                 "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
                 "initial_source": {
@@ -106,7 +107,7 @@ class TestWebSocketIntegration:
             headers=headers,
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 201
         collection_data = response.json()
         collection_id = collection_data["id"]
         operation_id = collection_data.get("active_operation", {}).get("id")
@@ -192,32 +193,37 @@ class TestWebSocketIntegration:
         response = requests.post(
             f"{self.API_BASE_URL}/api/v2/collections",
             json={
-                "name": "Test Add Source WebSocket",
+                "name": f"Test Add Source WebSocket {uuid.uuid4().hex[:8]}",
                 "description": "Testing add source with WebSocket",
                 "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
             },
             headers=headers,
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 201
         collection_data = response.json()
         collection_id = collection_data["id"]
         cleanup_collection.append(collection_id)
 
+        # Wait for any initial operations to complete
+        time.sleep(2)
+        
         # Add a source to the collection
         docker_path = "/mnt/docs"
         response = requests.post(
             f"{self.API_BASE_URL}/api/v2/collections/{collection_id}/sources",
             json={
-                "path": docker_path,
+                "source_path": docker_path,
                 "description": "Additional test documents",
             },
             headers=headers,
         )
 
-        assert response.status_code == 200
+        if response.status_code not in [201, 202]:
+            print(f"Add source failed with {response.status_code}: {response.json()}")
+        assert response.status_code in [201, 202]  # Can be 201 or 202 for async operation
         source_data = response.json()
-        operation_id = source_data.get("operation_id")
+        operation_id = source_data.get("id")  # Operation ID is in "id" field
 
         # Monitor operation via WebSocket
         if operation_id:
@@ -264,9 +270,10 @@ class TestWebSocketIntegration:
 
         # Create multiple collections concurrently
         docker_path = "/mnt/docs"
+        test_id = uuid.uuid4().hex[:8]
         collection_requests = [
             {
-                "name": f"Concurrent Test {i}",
+                "name": f"Concurrent Test {i} {test_id}",
                 "description": f"Testing concurrent operations {i}",
                 "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
                 "initial_source": {
@@ -288,7 +295,7 @@ class TestWebSocketIntegration:
                 headers=headers,
             )
 
-            assert response.status_code == 200
+            assert response.status_code == 201
             collection_data = response.json()
             collection_id = collection_data["id"]
             cleanup_collection.append(collection_id)
@@ -383,7 +390,7 @@ class TestWebSocketIntegration:
         response = requests.post(
             f"{self.API_BASE_URL}/api/v2/collections",
             json={
-                "name": "Test Disconnection Recovery",
+                "name": f"Test Disconnection Recovery {uuid.uuid4().hex[:8]}",
                 "description": "Testing WebSocket disconnection",
                 "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
                 "initial_source": {
@@ -394,7 +401,7 @@ class TestWebSocketIntegration:
             headers=headers,
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 201
         collection_data = response.json()
         collection_id = collection_data["id"]
         cleanup_collection.append(collection_id)
@@ -487,7 +494,8 @@ class TestWebSocketIntegration:
 
         # Verify connection was closed due to authentication
         assert connection_closed, "Connection should be closed due to auth failure"
-        assert close_code in [1008, 1011, 4401], f"Expected auth-related close code, got {close_code}"
+        # Close code might be None if the connection was rejected at handshake
+        assert close_code in [None, 1008, 1011, 4401], f"Expected auth-related close code, got {close_code}"
 
     def test_websocket_permission_denied(self, cleanup_collection: list[str]) -> None:
         """Test error condition: WebSocket connection to operation user doesn't own."""
@@ -500,14 +508,14 @@ class TestWebSocketIntegration:
         response = requests.post(
             f"{self.API_BASE_URL}/api/v2/collections",
             json={
-                "name": "User1 Private Collection",
+                "name": f"User1 Private Collection {uuid.uuid4().hex[:8]}",
                 "description": "Testing permission denied",
                 "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
             },
             headers=user1_headers,
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 201
         collection_data = response.json()
         collection_id = collection_data["id"]
         cleanup_collection.append(collection_id)

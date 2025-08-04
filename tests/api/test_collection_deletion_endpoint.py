@@ -12,20 +12,19 @@ from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoun
 class TestCollectionDeletionEndpoint:
     """Test the DELETE /api/v2/collections/{collection_uuid} endpoint."""
 
-    async def test_delete_collection_success(self, test_client):
+    async def test_delete_collection_success(self, test_app, test_client):
         """Test successful collection deletion."""
         # Arrange
         collection_uuid = "test-collection-uuid"
 
         # Override the dependency at the FastAPI level
-        from packages.webui.main import app
         from packages.webui.services.factory import get_collection_service
 
         mock_service = AsyncMock()
         mock_service.delete_collection = AsyncMock()
 
         # Override the dependency
-        app.dependency_overrides[get_collection_service] = lambda: mock_service
+        test_app.dependency_overrides[get_collection_service] = lambda: mock_service
 
         try:
             # Act
@@ -39,20 +38,19 @@ class TestCollectionDeletionEndpoint:
             mock_service.delete_collection.assert_called_once()
         finally:
             # Clean up
-            del app.dependency_overrides[get_collection_service]
+            del test_app.dependency_overrides[get_collection_service]
 
-    async def test_delete_collection_not_found(self, test_client):
+    async def test_delete_collection_not_found(self, test_app, test_client):
         """Test deletion of non-existent collection."""
         # Arrange
         collection_uuid = "non-existent-uuid"
 
-        from packages.webui.main import app
         from packages.webui.services.factory import get_collection_service
 
         mock_service = AsyncMock()
         mock_service.delete_collection = AsyncMock(side_effect=EntityNotFoundError("collection", collection_uuid))
 
-        app.dependency_overrides[get_collection_service] = lambda: mock_service
+        test_app.dependency_overrides[get_collection_service] = lambda: mock_service
 
         try:
             # Act
@@ -62,20 +60,19 @@ class TestCollectionDeletionEndpoint:
             assert response.status_code == status.HTTP_404_NOT_FOUND
             assert "not found" in response.json()["detail"].lower()
         finally:
-            del app.dependency_overrides[get_collection_service]
+            del test_app.dependency_overrides[get_collection_service]
 
-    async def test_delete_collection_access_denied(self, test_client):
+    async def test_delete_collection_access_denied(self, test_app, test_client):
         """Test deletion without permission."""
         # Arrange
         collection_uuid = "test-collection-uuid"
 
-        from packages.webui.main import app
         from packages.webui.services.factory import get_collection_service
 
         mock_service = AsyncMock()
         mock_service.delete_collection = AsyncMock(side_effect=AccessDeniedError("1", "collection", collection_uuid))
 
-        app.dependency_overrides[get_collection_service] = lambda: mock_service
+        test_app.dependency_overrides[get_collection_service] = lambda: mock_service
 
         try:
             # Act
@@ -85,14 +82,13 @@ class TestCollectionDeletionEndpoint:
             assert response.status_code == status.HTTP_403_FORBIDDEN
             assert "owner can delete" in response.json()["detail"]
         finally:
-            del app.dependency_overrides[get_collection_service]
+            del test_app.dependency_overrides[get_collection_service]
 
-    async def test_delete_collection_with_active_operations(self, test_client):
+    async def test_delete_collection_with_active_operations(self, test_app, test_client):
         """Test deletion while operations are in progress."""
         # Arrange
         collection_uuid = "test-collection-uuid"
 
-        from packages.webui.main import app
         from packages.webui.services.factory import get_collection_service
 
         mock_service = AsyncMock()
@@ -100,7 +96,7 @@ class TestCollectionDeletionEndpoint:
             side_effect=InvalidStateError("Cannot delete collection while operations are in progress")
         )
 
-        app.dependency_overrides[get_collection_service] = lambda: mock_service
+        test_app.dependency_overrides[get_collection_service] = lambda: mock_service
 
         try:
             # Act
@@ -110,9 +106,9 @@ class TestCollectionDeletionEndpoint:
             assert response.status_code == status.HTTP_409_CONFLICT
             assert "operations are in progress" in response.json()["detail"]
         finally:
-            del app.dependency_overrides[get_collection_service]
+            del test_app.dependency_overrides[get_collection_service]
 
-    async def test_delete_collection_rate_limiting(self, test_client):
+    async def test_delete_collection_rate_limiting(self, test_app, test_client):
         """Test rate limiting on delete endpoint."""
         # Arrange
         collection_uuid = "test-collection-uuid"
@@ -123,13 +119,12 @@ class TestCollectionDeletionEndpoint:
         # 2. Mock the rate limiter or use a test configuration
         # For now, we'll skip the actual rate limiting test and just verify the endpoint works
 
-        from packages.webui.main import app
         from packages.webui.services.factory import get_collection_service
 
         mock_service = AsyncMock()
         mock_service.delete_collection = AsyncMock()
 
-        app.dependency_overrides[get_collection_service] = lambda: mock_service
+        test_app.dependency_overrides[get_collection_service] = lambda: mock_service
 
         try:
             # Act - make one request to verify endpoint works
@@ -138,20 +133,19 @@ class TestCollectionDeletionEndpoint:
             # Assert
             assert response.status_code == status.HTTP_204_NO_CONTENT
         finally:
-            del app.dependency_overrides[get_collection_service]
+            del test_app.dependency_overrides[get_collection_service]
 
-    async def test_delete_collection_internal_error(self, test_client):
+    async def test_delete_collection_internal_error(self, test_app, test_client):
         """Test handling of unexpected errors."""
         # Arrange
         collection_uuid = "test-collection-uuid"
 
-        from packages.webui.main import app
         from packages.webui.services.factory import get_collection_service
 
         mock_service = AsyncMock()
         mock_service.delete_collection = AsyncMock(side_effect=Exception("Unexpected error"))
 
-        app.dependency_overrides[get_collection_service] = lambda: mock_service
+        test_app.dependency_overrides[get_collection_service] = lambda: mock_service
 
         try:
             # Act
@@ -161,14 +155,14 @@ class TestCollectionDeletionEndpoint:
             assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
             assert "Failed to delete collection" in response.json()["detail"]
         finally:
-            del app.dependency_overrides[get_collection_service]
+            del test_app.dependency_overrides[get_collection_service]
 
 
 @pytest.mark.asyncio()
 class TestCollectionDeletionIntegration:
     """Integration tests for collection deletion through the API."""
 
-    async def test_delete_collection_removes_from_list(self, test_client):
+    async def test_delete_collection_removes_from_list(self, test_app, test_client):
         """Test that deleted collection disappears from list endpoint."""
         # This would require a more complex setup with a real database
         # For now, we'll mock the behavior
@@ -176,7 +170,6 @@ class TestCollectionDeletionIntegration:
         from datetime import UTC, datetime
 
         from packages.shared.database.models import Collection, CollectionStatus
-        from packages.webui.main import app
         from packages.webui.services.factory import get_collection_service
 
         # Setup mock service
@@ -193,6 +186,8 @@ class TestCollectionDeletionIntegration:
         mock_collection.quantization = "float16"
         mock_collection.chunk_size = 1000
         mock_collection.chunk_overlap = 200
+        mock_collection.chunking_strategy = "character"  # Add missing field
+        mock_collection.chunking_params = {}  # Add missing field
         mock_collection.is_public = False
         mock_collection.meta = {}
         mock_collection.created_at = datetime.now(UTC)
@@ -205,7 +200,7 @@ class TestCollectionDeletionIntegration:
         mock_service.list_for_user = AsyncMock(return_value=([mock_collection], 1))
         mock_service.delete_collection = AsyncMock()
 
-        app.dependency_overrides[get_collection_service] = lambda: mock_service
+        test_app.dependency_overrides[get_collection_service] = lambda: mock_service
 
         try:
             # Get initial list
@@ -225,17 +220,16 @@ class TestCollectionDeletionIntegration:
             assert response.status_code == 200
             assert len(response.json()["collections"]) == 0
         finally:
-            del app.dependency_overrides[get_collection_service]
+            del test_app.dependency_overrides[get_collection_service]
 
     @pytest.mark.skip(reason="Rate limiting conflict with other tests - needs isolated run")
-    async def test_delete_collection_cascades_operations(self, test_client):
+    async def test_delete_collection_cascades_operations(self, test_app, test_client):
         """Test that collection deletion cascades to operations."""
         # This test would verify that operations endpoint returns 404
         # after collection is deleted
 
         collection_uuid = "test-collection-uuid"
 
-        from packages.webui.main import app
         from packages.webui.services.factory import get_collection_service
 
         mock_service = AsyncMock()
@@ -243,7 +237,7 @@ class TestCollectionDeletionIntegration:
         # After deletion, operations should fail with not found
         mock_service.list_operations = AsyncMock(side_effect=EntityNotFoundError("collection", collection_uuid))
 
-        app.dependency_overrides[get_collection_service] = lambda: mock_service
+        test_app.dependency_overrides[get_collection_service] = lambda: mock_service
 
         try:
             # Clear rate limiter to avoid hitting limits from previous tests
@@ -265,4 +259,4 @@ class TestCollectionDeletionIntegration:
             # Should return 404 or 403 depending on how the endpoint handles missing collections
             assert response.status_code in [403, 404]
         finally:
-            del app.dependency_overrides[get_collection_service]
+            del test_app.dependency_overrides[get_collection_service]
