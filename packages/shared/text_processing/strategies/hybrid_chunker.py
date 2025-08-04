@@ -544,7 +544,9 @@ class HybridChunker(BaseChunker):
                 logger.warning("Attempting fallback strategy")
                 try:
                     fallback_chunker = self._get_chunker(self.fallback_strategy)
-                    fallback_chunks: list[ChunkResult] = await fallback_chunker.chunk_text_async(text, doc_id, enhanced_metadata)
+                    fallback_chunks: list[ChunkResult] = await fallback_chunker.chunk_text_async(
+                        text, doc_id, enhanced_metadata
+                    )
 
                     # Update metadata to reflect fallback
                     for chunk in fallback_chunks:

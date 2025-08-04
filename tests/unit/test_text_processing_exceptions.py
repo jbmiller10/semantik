@@ -162,13 +162,17 @@ class TestExceptionHierarchy:
 
     def test_error_context_preservation(self):
         """Test that exceptions preserve context when chained."""
+        # Set up the low-level error outside the pytest.raises block
+        try:
+            # Simulate a low-level error
+            raise ValueError("Invalid dimension: -1")
+        except ValueError as e:
+            # Store the exception for later use
+            original_error = e
+
+        # Only the statement that triggers the exception should be in pytest.raises
         with pytest.raises(DimensionMismatchError) as exc_info:
-            try:
-                # Simulate a low-level error
-                raise ValueError("Invalid dimension: -1")
-            except ValueError as e:
-                # Wrap in domain-specific error
-                raise DimensionMismatchError("Dimension must be positive") from e
+            raise DimensionMismatchError("Dimension must be positive") from original_error
 
         assert str(exc_info.value) == "Dimension must be positive"
         assert exc_info.value.__cause__ is not None

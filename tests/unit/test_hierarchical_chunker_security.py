@@ -25,14 +25,12 @@ class TestHierarchicalChunkerSecurity:
     def test_max_chunk_size_validation(self):
         """Test that chunk sizes exceeding MAX_CHUNK_SIZE are rejected."""
         # Test single chunk size exceeding limit
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match=f"exceeds maximum allowed size of {MAX_CHUNK_SIZE}"):
             HierarchicalChunker(chunk_sizes=[MAX_CHUNK_SIZE + 1])
-        assert f"exceeds maximum allowed size of {MAX_CHUNK_SIZE}" in str(exc_info.value)
 
         # Test multiple sizes with one exceeding limit
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match=f"exceeds maximum allowed size of {MAX_CHUNK_SIZE}"):
             HierarchicalChunker(chunk_sizes=[5000, MAX_CHUNK_SIZE + 100, 1000])
-        assert f"exceeds maximum allowed size of {MAX_CHUNK_SIZE}" in str(exc_info.value)
 
         # Test exactly at limit (should work)
         chunker = HierarchicalChunker(chunk_sizes=[MAX_CHUNK_SIZE, 5000, 1000])
@@ -43,9 +41,8 @@ class TestHierarchicalChunkerSecurity:
         # Create chunk sizes that exceed max depth
         too_many_levels = [1000 - (i * 100) for i in range(MAX_HIERARCHY_DEPTH + 2)]
 
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match=f"Too many hierarchy levels: {len(too_many_levels)} > {MAX_HIERARCHY_DEPTH}"):
             HierarchicalChunker(chunk_sizes=too_many_levels)
-        assert f"Too many hierarchy levels: {len(too_many_levels)} > {MAX_HIERARCHY_DEPTH}" in str(exc_info.value)
 
         # Test exactly at limit (should work)
         max_levels = [1000 - (i * 150) for i in range(MAX_HIERARCHY_DEPTH)]
@@ -59,9 +56,8 @@ class TestHierarchicalChunkerSecurity:
         # Create text exceeding limit
         large_text = "a" * (MAX_TEXT_LENGTH + 1)
 
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Text too large to process"):
             chunker.chunk_text(large_text, "test_doc")
-        assert "Text too large to process" in str(exc_info.value)
 
         # Note: Testing exactly at MAX_TEXT_LENGTH (5MB) causes stack overflow in tiktoken
         # This is a known limitation of the tokenizer when processing very long repeated characters.
@@ -81,9 +77,8 @@ class TestHierarchicalChunkerSecurity:
         # Create text exceeding limit
         large_text = "a" * (MAX_TEXT_LENGTH + 1)
 
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Text too large to process"):
             await chunker.chunk_text_async(large_text, "test_doc")
-        assert "Text too large to process" in str(exc_info.value)
 
     def test_max_text_length_validation_stream(self):
         """Test that texts exceeding MAX_TEXT_LENGTH are rejected in stream chunking."""
@@ -92,28 +87,24 @@ class TestHierarchicalChunkerSecurity:
         # Create text exceeding limit
         large_text = "a" * (MAX_TEXT_LENGTH + 1)
 
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Text too large to process"):
             # Consume generator to trigger validation
             list(chunker.chunk_text_stream(large_text, "test_doc"))
-        assert "Text too large to process" in str(exc_info.value)
 
     def test_negative_chunk_sizes_validation(self):
         """Test that negative or zero chunk sizes are rejected."""
         # Test negative chunk size
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Must be positive"):
             HierarchicalChunker(chunk_sizes=[1000, -500, 100])
-        assert "Must be positive" in str(exc_info.value)
 
         # Test zero chunk size
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Must be positive"):
             HierarchicalChunker(chunk_sizes=[1000, 0, 100])
-        assert "Must be positive" in str(exc_info.value)
 
     def test_empty_chunk_sizes_validation(self):
         """Test that empty chunk sizes list is rejected."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="chunk_sizes must contain at least one size"):
             HierarchicalChunker(chunk_sizes=[])
-        assert "chunk_sizes must contain at least one size" in str(exc_info.value)
 
     def test_chunk_size_ordering_validation(self):
         """Test that chunk sizes must be in descending order."""

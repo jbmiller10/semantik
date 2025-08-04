@@ -19,6 +19,13 @@ from shared.embedding.validation import (
     validate_embedding_dimensions,
 )
 
+# Mock imports for tests that are marked as skipped pending new architecture
+# These are placeholder imports as the actual modules don't exist yet
+SearchService = MagicMock
+index_collection_task = AsyncMock
+reindex_collection_task = AsyncMock
+search_collection = AsyncMock
+
 
 class TestDimensionValidationIntegration:
     """Integration tests for dimension validation across the system."""
@@ -66,7 +73,7 @@ class TestDimensionValidationIntegration:
             )
 
             # Should not raise any errors
-            results = await search_service.search(collection_id=collection_id, query=query, limit=10)
+            await search_service.search(collection_id=collection_id, query=query, limit=10)
 
             # Verify embedding was called
             mock_embedding_service.embed_single.assert_called_with(query)
@@ -98,7 +105,7 @@ class TestDimensionValidationIntegration:
                 collection_id = "test-collection"
 
                 # Should handle dimension mismatch
-                results = await search_service.search(collection_id=collection_id, query=query, limit=10)
+                await search_service.search(collection_id=collection_id, query=query, limit=10)
 
                 # Verify dimension adjustment was called
                 mock_adjust.assert_called_once()
@@ -108,8 +115,8 @@ class TestDimensionValidationIntegration:
         """Test that indexing tasks validate embedding dimensions."""
         pytest.skip("Indexing task test needs updating for new architecture")
 
-        with patch("packages.shared.embedding.dense.embedding_service", mock_embedding_service):
-            with patch("packages.worker.tasks.indexing_tasks.get_collection") as mock_get_collection:
+        with patch("packages.shared.embedding.dense.embedding_service", mock_embedding_service), \
+             patch("packages.worker.tasks.indexing_tasks.get_collection") as mock_get_collection:
                 mock_get_collection.return_value = mock_collection
 
                 # Mock document processing
@@ -117,7 +124,7 @@ class TestDimensionValidationIntegration:
                     mock_process.return_value = AsyncMock()
 
                     # Run indexing task
-                    result = await index_collection_task(collection_id=mock_collection.id, operation_id="test-op")
+                    await index_collection_task(collection_id=mock_collection.id, operation_id="test-op")
 
                     # Verify dimension was checked
                     assert mock_embedding_service._service.get_dimension.called
@@ -131,8 +138,8 @@ class TestDimensionValidationIntegration:
         mock_collection.expected_embedding_dimension = 384
         mock_embedding_service._service.get_dimension.return_value = 512
 
-        with patch("packages.shared.embedding.dense.embedding_service", mock_embedding_service):
-            with patch("packages.worker.tasks.reindexing_tasks.get_collection") as mock_get_collection:
+        with patch("packages.shared.embedding.dense.embedding_service", mock_embedding_service), \
+             patch("packages.worker.tasks.reindexing_tasks.get_collection") as mock_get_collection:
                 mock_get_collection.return_value = mock_collection
 
                 # Mock Qdrant operations
@@ -143,7 +150,7 @@ class TestDimensionValidationIntegration:
                         mock_process.return_value = AsyncMock()
 
                         # Run re-indexing task
-                        result = await reindex_collection_task(collection_id=mock_collection.id, operation_id="test-op")
+                        await reindex_collection_task(collection_id=mock_collection.id, operation_id="test-op")
 
                         # Verify collection was recreated with new dimension
                         mock_recreate.assert_called_once()
@@ -234,7 +241,7 @@ class TestDimensionValidationIntegration:
             mock_service.search = AsyncMock(return_value={"results": [], "total": 0, "query_embedding_dimension": 384})
 
             # Perform search
-            response = await search_collection(collection_id="test-collection", query="test query", limit=10, offset=0)
+            await search_collection(collection_id="test-collection", query="test query", limit=10, offset=0)
 
             # Verify search was called
             mock_service.search.assert_called_once()
