@@ -56,7 +56,7 @@ class ChunkingFactory:
             raise ValueError(f"Unknown chunking strategy: {strategy}")
 
         # Special handling for strategies that need embedding models
-        if strategy == "semantic" and "embed_model" not in params:
+        if strategy in ["semantic", "hybrid"] and "embed_model" not in params:
             # Handle embedding model initialization
             if os.getenv("TESTING", "false").lower() == "true":
                 # For testing, use mock embedding
@@ -64,10 +64,19 @@ class ChunkingFactory:
 
                 params["embed_model"] = MockEmbedding(embed_dim=384)
             else:
-                # For production, use OpenAI embeddings
-                from llama_index.embeddings.openai import OpenAIEmbedding
+                # Check if we should use local embeddings
+                use_local = os.getenv("USE_LOCAL_EMBEDDINGS", "false").lower() == "true"
 
-                params["embed_model"] = OpenAIEmbedding()
+                if use_local:
+                    # Use the local embedding service via a custom adapter
+                    from packages.shared.text_processing.embedding_adapter import LocalEmbeddingAdapter
+
+                    params["embed_model"] = LocalEmbeddingAdapter()
+                else:
+                    # For production, use OpenAI embeddings
+                    from llama_index.embeddings.openai import OpenAIEmbedding
+
+                    params["embed_model"] = OpenAIEmbedding()
 
         return strategy_class(**params)
 
@@ -76,14 +85,18 @@ class ChunkingFactory:
         """Initialize the strategy registry with available strategies."""
         # Import strategies here to avoid circular imports
         from packages.shared.text_processing.strategies.character_chunker import CharacterChunker
+        from packages.shared.text_processing.strategies.hierarchical_chunker import HierarchicalChunker
+        from packages.shared.text_processing.strategies.hybrid_chunker import HybridChunker
         from packages.shared.text_processing.strategies.markdown_chunker import MarkdownChunker
         from packages.shared.text_processing.strategies.recursive_chunker import RecursiveChunker
+        from packages.shared.text_processing.strategies.semantic_chunker import SemanticChunker
 
         cls.register_strategy("character", CharacterChunker)
         cls.register_strategy("recursive", RecursiveChunker)
         cls.register_strategy("markdown", MarkdownChunker)
-
-        # Note: semantic, hierarchical, and hybrid strategies will be added in Week 2
+        cls.register_strategy("semantic", SemanticChunker)
+        cls.register_strategy("hierarchical", HierarchicalChunker)
+        cls.register_strategy("hybrid", HybridChunker)
 
     @classmethod
     def get_available_strategies(cls) -> list[str]:
