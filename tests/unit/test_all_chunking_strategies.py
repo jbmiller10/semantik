@@ -563,10 +563,7 @@ if __name__ == "__main__":
 
     async def test_hierarchical_chunker_relationships(self) -> None:
         """Test hierarchical chunker creates proper parent-child relationships."""
-        chunker = HierarchicalChunker(
-            chunk_sizes=[200, 100, 50],
-            chunk_overlap=10
-        )
+        chunker = HierarchicalChunker(chunk_sizes=[200, 100, 50], chunk_overlap=10)
 
         # Create text that will require multiple hierarchy levels
         text = " ".join([f"Sentence {i}." for i in range(100)])  # ~700 chars
@@ -606,10 +603,7 @@ if __name__ == "__main__":
     async def test_semantic_chunker_basic(self, mock_embed_model) -> None:
         """Test basic semantic chunker functionality."""
         chunker = SemanticChunker(
-            breakpoint_percentile_threshold=95,
-            buffer_size=1,
-            max_chunk_size=100,
-            embed_model=mock_embed_model
+            breakpoint_percentile_threshold=95, buffer_size=1, max_chunk_size=100, embed_model=mock_embed_model
         )
 
         text = "This is a test document. It has multiple sentences. Each sentence is different. The semantic chunker should find natural boundaries."
@@ -631,9 +625,7 @@ if __name__ == "__main__":
 
         # Test with markdown file extension
         chunks = await chunker.chunk_text_async(
-            self.MARKDOWN_SAMPLES["simple"],
-            "test_doc",
-            {"file_path": "/path/to/test.md"}
+            self.MARKDOWN_SAMPLES["simple"], "test_doc", {"file_path": "/path/to/test.md"}
         )
 
         # Verify markdown strategy was selected
@@ -668,20 +660,29 @@ More detailed content."""
         chunker = HybridChunker(large_doc_threshold=5000)
 
         # Create a large, coherent document
-        large_text = """
+        large_text = (
+            """
 # Technical Documentation
 
 ## Introduction
-""" + ("This is a comprehensive technical document. " * 50) + """
+"""
+            + ("This is a comprehensive technical document. " * 50)
+            + """
 
 ## Architecture
-""" + ("The system architecture consists of multiple components. " * 50) + """
+"""
+            + ("The system architecture consists of multiple components. " * 50)
+            + """
 
 ## Implementation
-""" + ("The implementation follows best practices. " * 50) + """
+"""
+            + ("The implementation follows best practices. " * 50)
+            + """
 
 ## Conclusion
-""" + ("In conclusion, this system provides robust functionality. " * 50)
+"""
+            + ("In conclusion, this system provides robust functionality. " * 50)
+        )
 
         chunks = await chunker.chunk_text_async(large_text, "large_doc")
 
@@ -698,7 +699,8 @@ More detailed content."""
         chunker = HybridChunker(semantic_coherence_threshold=0.5)
 
         # Create highly coherent, topic-focused content
-        coherent_text = """
+        coherent_text = (
+            """
 Machine learning is transforming how we process data. Deep learning models, 
 particularly neural networks, have revolutionized pattern recognition. 
 Convolutional neural networks excel at image processing tasks. 
@@ -709,13 +711,11 @@ BERT and GPT models demonstrate the power of pre-trained language models.
 Transfer learning allows these models to adapt to specific tasks efficiently.
 Fine-tuning pre-trained models reduces computational requirements.
 Model optimization techniques improve inference speed and accuracy.
-""" * 3  # Repeat to ensure enough content
+"""
+            * 3
+        )  # Repeat to ensure enough content
 
-        chunks = await chunker.chunk_text_async(
-            coherent_text, 
-            "coherent_doc",
-            {"source": "ml_textbook.txt"}
-        )
+        chunks = await chunker.chunk_text_async(coherent_text, "coherent_doc", {"source": "ml_textbook.txt"})
 
         # Verify semantic strategy was selected
         assert len(chunks) >= 1
@@ -729,8 +729,7 @@ Model optimization techniques improve inference speed and accuracy.
         """Test hybrid chunker fallback mechanism when primary strategy fails."""
         # Create a chunker that will trigger a fallback
         chunker = HybridChunker(
-            markdown_threshold=0.01,  # Very low threshold to force markdown detection
-            fallback_strategy="character"
+            markdown_threshold=0.01, fallback_strategy="character"  # Very low threshold to force markdown detection
         )
 
         # Create content that looks like markdown but might fail parsing
@@ -748,11 +747,7 @@ Model optimization techniques improve inference speed and accuracy.
 
         # Force semantic strategy via metadata
         text = "Simple text that would normally use recursive chunking."
-        chunks = await chunker.chunk_text_async(
-            text,
-            "override_doc",
-            {"chunking_strategy": "semantic"}
-        )
+        chunks = await chunker.chunk_text_async(text, "override_doc", {"chunking_strategy": "semantic"})
 
         # Verify override was applied
         assert len(chunks) >= 1
@@ -789,7 +784,7 @@ Model optimization techniques improve inference speed and accuracy.
             "markdown_threshold": 0.2,
             "semantic_coherence_threshold": 0.8,
             "large_doc_threshold": 10000,
-            "fallback_strategy": "character"
+            "fallback_strategy": "character",
         }
         assert chunker.validate_config(valid_config) is True
 
@@ -799,7 +794,7 @@ Model optimization techniques improve inference speed and accuracy.
             {"markdown_threshold": 1.5},
             {"semantic_coherence_threshold": "high"},
             {"large_doc_threshold": -1000},
-            {"fallback_strategy": "invalid_strategy"}
+            {"fallback_strategy": "invalid_strategy"},
         ]
 
         for config in invalid_configs:
@@ -817,7 +812,7 @@ Model optimization techniques improve inference speed and accuracy.
 
         for text, metadata, expected_strategy in test_cases:
             chunks = await chunker.chunk_text_async(text, f"test_{expected_strategy}", metadata)
-            
+
             assert len(chunks) >= 1
             # Verify reasoning is logged in metadata
             for chunk in chunks:

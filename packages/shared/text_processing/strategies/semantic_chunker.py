@@ -47,7 +47,9 @@ class SemanticChunker(BaseChunker):
 
         # Validate parameters
         if not 0 <= breakpoint_percentile_threshold <= 100:
-            raise ValueError(f"breakpoint_percentile_threshold must be between 0 and 100, got {breakpoint_percentile_threshold}")
+            raise ValueError(
+                f"breakpoint_percentile_threshold must be between 0 and 100, got {breakpoint_percentile_threshold}"
+            )
 
         if buffer_size <= 0:
             raise ValueError(f"buffer_size must be positive, got {buffer_size}")

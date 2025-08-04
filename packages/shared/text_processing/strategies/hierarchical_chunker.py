@@ -76,8 +76,7 @@ class HierarchicalChunker(BaseChunker):
         )
 
         logger.info(
-            f"Initialized HierarchicalChunker with chunk_sizes={self.chunk_sizes}, "
-            f"chunk_overlap={chunk_overlap}"
+            f"Initialized HierarchicalChunker with chunk_sizes={self.chunk_sizes}, " f"chunk_overlap={chunk_overlap}"
         )
 
     def chunk_text(
@@ -136,14 +135,16 @@ class HierarchicalChunker(BaseChunker):
 
                 # Prepare chunk metadata
                 chunk_metadata = metadata.copy() if metadata else {}
-                chunk_metadata.update({
-                    "hierarchy_level": hierarchy_info["level"],
-                    "parent_chunk_id": hierarchy_info["parent_id"],
-                    "child_chunk_ids": hierarchy_info["child_ids"],
-                    "chunk_sizes": self.chunk_sizes,
-                    "node_id": leaf_node.node_id,
-                    "is_leaf": True,
-                })
+                chunk_metadata.update(
+                    {
+                        "hierarchy_level": hierarchy_info["level"],
+                        "parent_chunk_id": hierarchy_info["parent_id"],
+                        "child_chunk_ids": hierarchy_info["child_ids"],
+                        "chunk_sizes": self.chunk_sizes,
+                        "node_id": leaf_node.node_id,
+                        "is_leaf": True,
+                    }
+                )
 
                 result = self._create_chunk_result(
                     doc_id=doc_id,
@@ -171,14 +172,16 @@ class HierarchicalChunker(BaseChunker):
                 end_offset = min(start_offset + len(content), len(text))
 
                 chunk_metadata = metadata.copy() if metadata else {}
-                chunk_metadata.update({
-                    "hierarchy_level": hierarchy_info["level"],
-                    "parent_chunk_id": hierarchy_info["parent_id"],
-                    "child_chunk_ids": hierarchy_info["child_ids"],
-                    "chunk_sizes": self.chunk_sizes,
-                    "node_id": parent_node.node_id,
-                    "is_leaf": False,
-                })
+                chunk_metadata.update(
+                    {
+                        "hierarchy_level": hierarchy_info["level"],
+                        "parent_chunk_id": hierarchy_info["parent_id"],
+                        "child_chunk_ids": hierarchy_info["child_ids"],
+                        "chunk_sizes": self.chunk_sizes,
+                        "node_id": parent_node.node_id,
+                        "is_leaf": False,
+                    }
+                )
 
                 # Use a special chunk ID format for parent chunks
                 parent_chunk_id = f"{doc_id}_parent_{chunk_index:04d}"
@@ -329,8 +332,7 @@ class HierarchicalChunker(BaseChunker):
             # Overlap should be less than smallest chunk size
             if chunk_overlap >= min(chunk_sizes):
                 logger.error(
-                    f"chunk_overlap ({chunk_overlap}) must be less than "
-                    f"smallest chunk size ({min(chunk_sizes)})"
+                    f"chunk_overlap ({chunk_overlap}) must be less than " f"smallest chunk size ({min(chunk_sizes)})"
                 )
                 return False
 

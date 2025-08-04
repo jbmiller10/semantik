@@ -101,8 +101,7 @@ class ChunkingPerformanceMonitor:
         """
         if metrics.error:
             logger.error(
-                f"Chunking failed - Strategy: {metrics.strategy}, "
-                f"Doc: {metrics.doc_id}, Error: {metrics.error}"
+                f"Chunking failed - Strategy: {metrics.strategy}, " f"Doc: {metrics.doc_id}, Error: {metrics.error}"
             )
         else:
             # Log at INFO level for normal performance, WARN if unusually slow
@@ -116,7 +115,7 @@ class ChunkingPerformanceMonitor:
                 f"Chunks: {metrics.output_chunks}, "
                 f"Duration: {metrics.duration_seconds:.3f}s, "
                 f"Speed: {metrics.chunks_per_second:.1f} chunks/s, "
-                f"Avg size: {metrics.chars_per_chunk:.0f} chars/chunk"
+                f"Avg size: {metrics.chars_per_chunk:.0f} chars/chunk",
             )
 
             # Log additional metadata if present

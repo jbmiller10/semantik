@@ -65,9 +65,7 @@ class LocalEmbeddingAdapter(BaseEmbedding):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                embedding = loop.run_until_complete(
-                    embedding_service.embed_single(query)
-                )
+                embedding = loop.run_until_complete(embedding_service.embed_single(query))
                 return embedding.tolist()
             finally:
                 loop.close()
@@ -129,9 +127,7 @@ class LocalEmbeddingAdapter(BaseEmbedding):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                embeddings = loop.run_until_complete(
-                    embedding_service.embed_texts(texts)
-                )
+                embeddings = loop.run_until_complete(embedding_service.embed_texts(texts))
                 return embeddings.tolist()
             finally:
                 loop.close()
@@ -156,4 +152,3 @@ class LocalEmbeddingAdapter(BaseEmbedding):
             logger.error(f"Error getting async text embeddings: {e}")
             # Return random embeddings as fallback
             return [np.random.randn(self.embed_dim).tolist() for _ in texts]
-

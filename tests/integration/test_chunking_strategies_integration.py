@@ -80,10 +80,10 @@ class TestChunkingStrategiesIntegration:
         [
             ("character", 500),  # Character chunking should be fastest
             ("recursive", 300),  # Recursive should be quite fast
-            ("markdown", 250),   # Markdown parsing adds overhead
-            ("semantic", 100),   # Semantic has embedding overhead (150 target)
+            ("markdown", 250),  # Markdown parsing adds overhead
+            ("semantic", 100),  # Semantic has embedding overhead (150 target)
             ("hierarchical", 200),  # Hierarchical needs multiple passes (400 target)
-            ("hybrid", 150),     # Hybrid has analysis overhead
+            ("hybrid", 150),  # Hybrid has analysis overhead
         ],
     )
     def test_strategy_performance(
@@ -128,7 +128,7 @@ class TestChunkingStrategiesIntegration:
         # For now, we'll just verify chunking works without asserting speed
         assert total_chunks > 0
         assert avg_chunks_per_sec > 0
-        
+
         # Log performance for monitoring
         print(f"\n{strategy}: {avg_chunks_per_sec:.1f} chunks/sec (target: >{expected_min_speed})")
 
@@ -136,44 +136,42 @@ class TestChunkingStrategiesIntegration:
         """Test that all strategies are registered."""
         available = ChunkingFactory.get_available_strategies()
         expected = ["character", "recursive", "markdown", "semantic", "hierarchical", "hybrid"]
-        
+
         for strategy in expected:
             assert strategy in available
 
     def test_factory_creates_all_strategies(self) -> None:
         """Test that factory can create all strategies."""
         strategies = ["character", "recursive", "markdown", "semantic", "hierarchical", "hybrid"]
-        
+
         for strategy in strategies:
             config = {"strategy": strategy}
             if strategy in ["semantic", "hybrid"]:
                 config["params"] = {"embed_model": MockEmbedding(embed_dim=384)}
-            
+
             chunker = ChunkingFactory.create_chunker(config)
             assert chunker is not None
             assert chunker.strategy_name == strategy
 
     @pytest.mark.asyncio
-    async def test_async_chunking_all_strategies(
-        self, sample_documents: Dict[str, str]
-    ) -> None:
+    async def test_async_chunking_all_strategies(self, sample_documents: Dict[str, str]) -> None:
         """Test async chunking for all strategies."""
         strategies = ["character", "recursive", "markdown", "semantic", "hierarchical", "hybrid"]
         text = sample_documents["medium_text"]
-        
+
         tasks = []
         for strategy in strategies:
             config = {"strategy": strategy}
             if strategy in ["semantic", "hybrid"]:
                 config["params"] = {"embed_model": MockEmbedding(embed_dim=384)}
-            
+
             chunker = ChunkingFactory.create_chunker(config)
             task = chunker.chunk_text_async(text, f"async_test_{strategy}")
             tasks.append(task)
-        
+
         # Run all async operations concurrently
         results = await asyncio.gather(*tasks)
-        
+
         # Verify all strategies produced chunks
         for i, chunks in enumerate(results):
             assert len(chunks) > 0
@@ -181,40 +179,28 @@ class TestChunkingStrategiesIntegration:
 
     def test_hybrid_strategy_selection(self, sample_documents: Dict[str, str]) -> None:
         """Test that hybrid strategy correctly selects appropriate sub-strategies."""
-        config = {
-            "strategy": "hybrid",
-            "params": {"embed_model": MockEmbedding(embed_dim=384)}
-        }
+        config = {"strategy": "hybrid", "params": {"embed_model": MockEmbedding(embed_dim=384)}}
         chunker = ChunkingFactory.create_chunker(config)
-        
+
         # Test markdown detection
-        chunks = chunker.chunk_text(
-            sample_documents["markdown_text"],
-            "hybrid_md_test",
-            {"file_path": "test.md"}
-        )
+        chunks = chunker.chunk_text(sample_documents["markdown_text"], "hybrid_md_test", {"file_path": "test.md"})
         assert any("selected_strategy" in chunk.metadata for chunk in chunks)
         assert any(chunk.metadata.get("selected_strategy") == "markdown" for chunk in chunks)
-        
+
         # Test default recursive selection
-        chunks = chunker.chunk_text(
-            sample_documents["short_text"],
-            "hybrid_default_test"
-        )
+        chunks = chunker.chunk_text(sample_documents["short_text"], "hybrid_default_test")
         assert any(chunk.metadata.get("selected_strategy") == "recursive" for chunk in chunks)
 
-    def test_hierarchical_parent_child_relationships(
-        self, sample_documents: Dict[str, str]
-    ) -> None:
+    def test_hierarchical_parent_child_relationships(self, sample_documents: Dict[str, str]) -> None:
         """Test that hierarchical chunking creates chunks with hierarchy metadata."""
         config = {"strategy": "hierarchical"}
         chunker = ChunkingFactory.create_chunker(config)
-        
+
         chunks = chunker.chunk_text(sample_documents["long_text"], "hierarchy_test")
-        
+
         # Verify we have chunks
         assert len(chunks) > 0
-        
+
         # Verify all chunks have hierarchy metadata
         for chunk in chunks:
             assert "hierarchy_level" in chunk.metadata
@@ -222,53 +208,44 @@ class TestChunkingStrategiesIntegration:
             assert "is_leaf" in chunk.metadata
             assert isinstance(chunk.metadata["hierarchy_level"], int)
             assert chunk.metadata["hierarchy_level"] >= 0
-        
+
         # Verify we have both parent and leaf chunks
-        has_parent = any(chunk.chunk_id.endswith("_parent_") or "_parent_" in chunk.chunk_id 
-                        for chunk in chunks)
+        has_parent = any(chunk.chunk_id.endswith("_parent_") or "_parent_" in chunk.chunk_id for chunk in chunks)
         has_leaf = any(chunk.metadata.get("is_leaf", False) for chunk in chunks)
-        
+
         # At least some chunks should have parent/child metadata
         has_parent_metadata = any(chunk.metadata.get("parent_chunk_id") for chunk in chunks)
         has_child_metadata = any(chunk.metadata.get("child_chunk_ids") for chunk in chunks)
 
     def test_semantic_chunking_coherence(self, sample_documents: Dict[str, str]) -> None:
         """Test that semantic chunking creates coherent chunks."""
-        config = {
-            "strategy": "semantic",
-            "params": {"embed_model": MockEmbedding(embed_dim=384)}
-        }
+        config = {"strategy": "semantic", "params": {"embed_model": MockEmbedding(embed_dim=384)}}
         chunker = ChunkingFactory.create_chunker(config)
-        
+
         chunks = chunker.chunk_text(sample_documents["medium_text"], "semantic_test")
-        
+
         # Verify chunks have semantic metadata
         for chunk in chunks:
             assert chunk.metadata.get("semantic_boundary") is True
             assert "breakpoint_threshold" in chunk.metadata
 
-    def test_performance_monitoring_integration(
-        self, sample_documents: Dict[str, str]
-    ) -> None:
+    def test_performance_monitoring_integration(self, sample_documents: Dict[str, str]) -> None:
         """Test that performance monitoring works across strategies."""
         monitor = ChunkingPerformanceMonitor()
         strategies = ["character", "recursive", "markdown"]
-        
+
         for strategy in strategies:
             config = {"strategy": strategy}
             chunker = ChunkingFactory.create_chunker(config)
-            
+
             with monitor.measure_chunking(
                 strategy=strategy,
                 doc_id=f"monitor_test_{strategy}",
                 text_length=len(sample_documents["medium_text"]),
             ) as metrics:
-                chunks = chunker.chunk_text(
-                    sample_documents["medium_text"],
-                    f"monitor_test_{strategy}"
-                )
+                chunks = chunker.chunk_text(sample_documents["medium_text"], f"monitor_test_{strategy}")
                 metrics.output_chunks = len(chunks)
-        
+
         # Verify summaries
         for strategy in strategies:
             summary = monitor.get_strategy_summary(strategy)
@@ -279,15 +256,15 @@ class TestChunkingStrategiesIntegration:
     def test_error_handling_across_strategies(self) -> None:
         """Test error handling for invalid inputs across strategies."""
         strategies = ["character", "recursive", "markdown", "hierarchical"]
-        
+
         for strategy in strategies:
             config = {"strategy": strategy}
             chunker = ChunkingFactory.create_chunker(config)
-            
+
             # Empty text should return empty list
             chunks = chunker.chunk_text("", f"empty_test_{strategy}")
             assert chunks == []
-            
+
             # Whitespace only should return empty list
             chunks = chunker.chunk_text("   \n\t  ", f"whitespace_test_{strategy}")
             assert chunks == []
@@ -297,28 +274,28 @@ class TestChunkingStrategiesIntegration:
         # Test semantic chunker validation
         config = {"strategy": "semantic", "params": {"embed_model": MockEmbedding(embed_dim=384)}}
         chunker = ChunkingFactory.create_chunker(config)
-        
+
         # Invalid threshold
         assert not chunker.validate_config({"breakpoint_percentile_threshold": 150})
         assert not chunker.validate_config({"breakpoint_percentile_threshold": -10})
-        
+
         # Invalid buffer size
         assert not chunker.validate_config({"buffer_size": 0})
         assert not chunker.validate_config({"buffer_size": -1})
-        
+
         # Test hierarchical chunker validation
         config = {"strategy": "hierarchical"}
         chunker = ChunkingFactory.create_chunker(config)
-        
+
         # Invalid chunk sizes (empty list)
         assert not chunker.validate_config({"chunk_sizes": []})
-        
+
         # Invalid chunk sizes (negative)
         assert not chunker.validate_config({"chunk_sizes": [2048, -512, 128]})
-        
+
         # Test character chunker validation with valid config
         config = {"strategy": "character"}
         chunker = ChunkingFactory.create_chunker(config)
-        
+
         # Valid config should pass
         assert chunker.validate_config({"chunk_size": 1000, "chunk_overlap": 100})

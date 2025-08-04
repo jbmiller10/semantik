@@ -66,11 +66,11 @@ class ChunkingFactory:
             else:
                 # Check if we should use local embeddings
                 use_local = os.getenv("USE_LOCAL_EMBEDDINGS", "false").lower() == "true"
-                
+
                 if use_local:
                     # Use the local embedding service via a custom adapter
                     from packages.shared.text_processing.embedding_adapter import LocalEmbeddingAdapter
-                    
+
                     params["embed_model"] = LocalEmbeddingAdapter()
                 else:
                     # For production, use OpenAI embeddings

@@ -54,15 +54,19 @@ class MockChunker:
                     },
                 )
             )
-        return chunks if chunks else [
-            ChunkResult(
-                chunk_id=f"{doc_id}_chunk_0",
-                text=text,
-                start_offset=0,
-                end_offset=len(text),
-                metadata={**(metadata or {}), "strategy": self.strategy_name},
-            )
-        ]
+        return (
+            chunks
+            if chunks
+            else [
+                ChunkResult(
+                    chunk_id=f"{doc_id}_chunk_0",
+                    text=text,
+                    start_offset=0,
+                    end_offset=len(text),
+                    metadata={**(metadata or {}), "strategy": self.strategy_name},
+                )
+            ]
+        )
 
     async def chunk_text_async(
         self,
@@ -139,6 +143,7 @@ This should still use the default recursive chunker.
     @pytest.fixture()
     def mock_chunking_factory(self):
         """Mock ChunkingFactory to return our mock chunkers."""
+
         def create_chunker(config: dict[str, Any]) -> MockChunker:
             strategy = config.get("strategy", "unknown")
             params = config.get("params", {})
@@ -254,7 +259,7 @@ This should still use the default recursive chunker.
         """Test strategy selection for large coherent documents."""
         chunker = HybridChunker(
             large_doc_threshold=10000,  # Lower threshold for testing
-            semantic_coherence_threshold=0.3  # Lower threshold to ensure our test text qualifies
+            semantic_coherence_threshold=0.3,  # Lower threshold to ensure our test text qualifies
         )
 
         strategy, params, reasoning = chunker._select_strategy(sample_texts["large_coherent"], None)
@@ -289,9 +294,7 @@ This should still use the default recursive chunker.
 
         # Test with override disabled
         chunker_no_override = HybridChunker(enable_strategy_override=False)
-        strategy, params, reasoning = chunker_no_override._select_strategy(
-            sample_texts["general"], metadata
-        )
+        strategy, params, reasoning = chunker_no_override._select_strategy(sample_texts["general"], metadata)
         assert strategy != ChunkingStrategy.CHARACTER  # Should ignore override
 
     def test_chunk_text_sync(self, sample_texts, mock_chunking_factory):
@@ -357,7 +360,7 @@ This should still use the default recursive chunker.
                 if self.strategy_name == "markdown":
                     raise RuntimeError("Markdown chunking failed")
                 return super().chunk_text(*args, **kwargs)
-        
+
         def create_chunker_for_fallback_test(config):
             strategy = config.get("strategy", "unknown")
             return FailingMockChunker(strategy, **config.get("params", {}))
@@ -524,9 +527,7 @@ This should still use the default recursive chunker.
 
         # Verify all succeeded
         assert all(len(result) > 0 for result in results)
-        assert all(
-            all(chunk.metadata.get("hybrid_chunker") is True for chunk in result) for result in results
-        )
+        assert all(all(chunk.metadata.get("hybrid_chunker") is True for chunk in result) for result in results)
 
     def test_strategy_params_propagation(self, mock_chunking_factory):
         """Test that strategy-specific parameters are properly propagated."""
@@ -558,21 +559,25 @@ This should still use the default recursive chunker.
 
         def mock_get_chunker(strategy, params=None):
             attempted_strategies.append(strategy)
-            
+
             # For this test, we want to test the actual fallback logic in chunk_text
             # So we'll let markdown fail during actual chunking, not during creation
             if strategy == "markdown":
                 mock_chunker = MockChunker(strategy)
+
                 # Override chunk_text to raise an error
                 def failing_chunk_text(*args, **kwargs):
                     raise RuntimeError("Markdown chunking failed")
+
                 mock_chunker.chunk_text = failing_chunk_text
                 return mock_chunker
             elif strategy == "semantic":
                 mock_chunker = MockChunker(strategy)
+
                 # Also make semantic fail
                 def failing_chunk_text(*args, **kwargs):
                     raise RuntimeError("Semantic chunking failed")
+
                 mock_chunker.chunk_text = failing_chunk_text
                 return mock_chunker
             else:

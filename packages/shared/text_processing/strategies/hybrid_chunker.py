@@ -391,9 +391,7 @@ class HybridChunker(BaseChunker):
 
         # Run strategy selection in executor to avoid blocking
         loop = asyncio.get_event_loop()
-        strategy, params, reasoning = await loop.run_in_executor(
-            None, self._select_strategy, text, metadata
-        )
+        strategy, params, reasoning = await loop.run_in_executor(None, self._select_strategy, text, metadata)
 
         # Log strategy selection
         logger.info(f"Document {doc_id}: {reasoning}")
