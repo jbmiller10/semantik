@@ -5,6 +5,7 @@
 import json
 import os
 import time
+import uuid
 from collections import defaultdict
 from collections.abc import Iterator
 from pathlib import Path
@@ -73,18 +74,18 @@ class TestWebSocketPerformanceAndValidation:
         response = requests.post(
             f"{self.API_BASE_URL}/api/v2/collections",
             json={
-                "name": "Test Message Validation",
+                "name": f"Test Message Validation {uuid.uuid4().hex[:8]}",
                 "description": "Testing WebSocket message structure",
                 "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
                 "initial_source": {
-                    "path": docker_path,
+                    "source_path": docker_path,
                     "description": "Test documents",
                 },
             },
             headers=headers,
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 201
         collection_data = response.json()
         collection_id = collection_data["id"]
         cleanup_collection.append(collection_id)
@@ -172,18 +173,18 @@ class TestWebSocketPerformanceAndValidation:
         response = requests.post(
             f"{self.API_BASE_URL}/api/v2/collections",
             json={
-                "name": "Test Message Frequency",
+                "name": f"Test Message Frequency {uuid.uuid4().hex[:8]}",
                 "description": "Testing WebSocket message frequency",
                 "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
                 "initial_source": {
-                    "path": docker_path,
+                    "source_path": docker_path,
                     "description": "Test documents",
                 },
             },
             headers=headers,
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 201
         collection_data = response.json()
         collection_id = collection_data["id"]
         cleanup_collection.append(collection_id)
@@ -262,18 +263,18 @@ class TestWebSocketPerformanceAndValidation:
         response = requests.post(
             f"{self.API_BASE_URL}/api/v2/collections",
             json={
-                "name": "Test Reconnection State",
+                "name": f"Test Reconnection State {uuid.uuid4().hex[:8]}",
                 "description": "Testing WebSocket reconnection state",
                 "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
                 "initial_source": {
-                    "path": docker_path,
+                    "source_path": docker_path,
                     "description": "Test documents",
                 },
             },
             headers=headers,
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 201
         collection_data = response.json()
         collection_id = collection_data["id"]
         cleanup_collection.append(collection_id)
@@ -340,30 +341,33 @@ class TestWebSocketPerformanceAndValidation:
         response = requests.post(
             f"{self.API_BASE_URL}/api/v2/collections",
             json={
-                "name": "Test Memory Leak",
+                "name": f"Test Memory Leak {uuid.uuid4().hex[:8]}",
                 "description": "Testing WebSocket memory management",
                 "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
             },
             headers=headers,
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 201
         collection_data = response.json()
         collection_id = collection_data["id"]
         cleanup_collection.append(collection_id)
+
+        # Wait a bit for any initial operation to complete
+        time.sleep(3)
 
         # Start a long-running operation
         docker_path = "/mnt/docs"
         add_response = requests.post(
             f"{self.API_BASE_URL}/api/v2/collections/{collection_id}/sources",
             json={
-                "path": docker_path,
+                "source_path": docker_path,
                 "description": "Test source",
             },
             headers=headers,
         )
 
-        assert add_response.status_code == 200
+        assert add_response.status_code in [200, 201, 202]  # Can be async
         source_data = add_response.json()
         operation_id = source_data.get("operation_id")
 
