@@ -368,4 +368,4 @@ class SemanticChunker(BaseChunker):
         # Cap by max chunk size constraint
         min_chunks_by_size = max(1, text_length // (max_chunk_size * 4))  # ~4 chars/token
 
-        return max(min_chunks_by_size, estimated_chunks)
+        return int(max(min_chunks_by_size, estimated_chunks))

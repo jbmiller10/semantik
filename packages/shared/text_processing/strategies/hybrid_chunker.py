@@ -82,7 +82,7 @@ class HybridChunker(BaseChunker):
         cache_key = f"{strategy}_{hash(str(params))}"
 
         if cache_key not in self._chunker_cache:
-            config = {"strategy": strategy}
+            config: dict[str, Any] = {"strategy": strategy}
             if params:
                 config["params"] = params
 
@@ -173,7 +173,7 @@ class HybridChunker(BaseChunker):
 
         if words:
             # Repeated terms indicate focused content
-            word_frequency = {}
+            word_frequency: dict[str, int] = {}
             for word in words:
                 if len(word) > 4:  # Skip short words
                     word_frequency[word] = word_frequency.get(word, 0) + 1
@@ -536,4 +536,4 @@ class HybridChunker(BaseChunker):
         remaining_text = text_length - chunk_size
         additional_chunks = max(0, (remaining_text + effective_chunk_size - 1) // effective_chunk_size)
 
-        return 1 + additional_chunks
+        return int(1 + additional_chunks)

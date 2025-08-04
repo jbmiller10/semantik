@@ -10,7 +10,10 @@ import logging
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +47,7 @@ class ChunkingPerformanceMonitor:
         doc_id: str,
         text_length: int,
         metadata: dict[str, Any] | None = None,
-    ):
+    ) -> Generator[ChunkingMetrics, None, None]:
         """Context manager to measure chunking performance.
 
         Args:
@@ -101,7 +104,7 @@ class ChunkingPerformanceMonitor:
         """
         if metrics.error:
             logger.error(
-                f"Chunking failed - Strategy: {metrics.strategy}, " f"Doc: {metrics.doc_id}, Error: {metrics.error}"
+                f"Chunking failed - Strategy: {metrics.strategy}, Doc: {metrics.doc_id}, Error: {metrics.error}"
             )
         else:
             # Log at INFO level for normal performance, WARN if unusually slow

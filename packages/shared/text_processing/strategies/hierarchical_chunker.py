@@ -76,7 +76,7 @@ class HierarchicalChunker(BaseChunker):
         )
 
         logger.info(
-            f"Initialized HierarchicalChunker with chunk_sizes={self.chunk_sizes}, " f"chunk_overlap={chunk_overlap}"
+            f"Initialized HierarchicalChunker with chunk_sizes={self.chunk_sizes}, chunk_overlap={chunk_overlap}"
         )
 
     def chunk_text(
@@ -261,7 +261,7 @@ class HierarchicalChunker(BaseChunker):
         Returns:
             Dictionary with hierarchy information
         """
-        hierarchy_info = {
+        hierarchy_info: dict[str, Any] = {
             "level": 0,  # Will be determined by position in hierarchy
             "parent_id": None,
             "child_ids": [],
@@ -270,12 +270,12 @@ class HierarchicalChunker(BaseChunker):
         # Determine parent relationship
         if hasattr(node, "relationships") and node.relationships:
             # Check for parent relationship
-            parent_rel = node.relationships.get("1")  # LlamaIndex uses "1" for parent
+            parent_rel = node.relationships.get("1")  # type: ignore  # LlamaIndex uses "1" for parent
             if parent_rel and parent_rel.node_id:
                 hierarchy_info["parent_id"] = parent_rel.node_id
 
             # Check for child relationships
-            child_rel = node.relationships.get("2")  # LlamaIndex uses "2" for child
+            child_rel = node.relationships.get("2")  # type: ignore  # LlamaIndex uses "2" for child
             if child_rel and child_rel.node_id:
                 # Single child
                 hierarchy_info["child_ids"] = [child_rel.node_id]
@@ -332,7 +332,7 @@ class HierarchicalChunker(BaseChunker):
             # Overlap should be less than smallest chunk size
             if chunk_overlap >= min(chunk_sizes):
                 logger.error(
-                    f"chunk_overlap ({chunk_overlap}) must be less than " f"smallest chunk size ({min(chunk_sizes)})"
+                    f"chunk_overlap ({chunk_overlap}) must be less than smallest chunk size ({min(chunk_sizes)})"
                 )
                 return False
 

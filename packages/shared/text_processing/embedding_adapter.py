@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from llama_index.core.embeddings import BaseEmbedding
@@ -66,13 +66,13 @@ class LocalEmbeddingAdapter(BaseEmbedding):
             asyncio.set_event_loop(loop)
             try:
                 embedding = loop.run_until_complete(embedding_service.embed_single(query))
-                return embedding.tolist()
+                return cast(list[float], embedding.tolist())
             finally:
                 loop.close()
         except Exception as e:
             logger.error(f"Error getting query embedding: {e}")
             # Return random embedding as fallback
-            return np.random.randn(self.embed_dim).tolist()
+            return cast(list[float], np.random.randn(self.embed_dim).tolist())
 
     async def _aget_query_embedding(self, query: str) -> list[float]:
         """Get embedding for a single query asynchronously.
@@ -85,11 +85,11 @@ class LocalEmbeddingAdapter(BaseEmbedding):
         """
         try:
             embedding = await embedding_service.embed_single(query)
-            return embedding.tolist()
+            return cast(list[float], embedding.tolist())
         except Exception as e:
             logger.error(f"Error getting async query embedding: {e}")
             # Return random embedding as fallback
-            return np.random.randn(self.embed_dim).tolist()
+            return cast(list[float], np.random.randn(self.embed_dim).tolist())
 
     def _get_text_embedding(self, text: str) -> list[float]:
         """Get embedding for a single text.
@@ -128,13 +128,13 @@ class LocalEmbeddingAdapter(BaseEmbedding):
             asyncio.set_event_loop(loop)
             try:
                 embeddings = loop.run_until_complete(embedding_service.embed_texts(texts))
-                return embeddings.tolist()
+                return cast(list[list[float]], embeddings.tolist())
             finally:
                 loop.close()
         except Exception as e:
             logger.error(f"Error getting text embeddings: {e}")
             # Return random embeddings as fallback
-            return [np.random.randn(self.embed_dim).tolist() for _ in texts]
+            return cast(list[list[float]], [np.random.randn(self.embed_dim).tolist() for _ in texts])
 
     async def _aget_text_embeddings(self, texts: list[str]) -> list[list[float]]:
         """Get embeddings for multiple texts asynchronously.
@@ -147,8 +147,8 @@ class LocalEmbeddingAdapter(BaseEmbedding):
         """
         try:
             embeddings = await embedding_service.embed_texts(texts)
-            return embeddings.tolist()
+            return cast(list[list[float]], embeddings.tolist())
         except Exception as e:
             logger.error(f"Error getting async text embeddings: {e}")
             # Return random embeddings as fallback
-            return [np.random.randn(self.embed_dim).tolist() for _ in texts]
+            return cast(list[list[float]], [np.random.randn(self.embed_dim).tolist() for _ in texts])

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Dict
 
 import pytest
 from llama_index.core.embeddings import MockEmbedding
@@ -17,12 +16,12 @@ from packages.shared.text_processing.chunking_factory import ChunkingFactory
 from packages.shared.text_processing.chunking_metrics import ChunkingPerformanceMonitor
 
 
-@pytest.fixture
-def sample_documents() -> Dict[str, str]:
+@pytest.fixture()
+def sample_documents() -> dict[str, str]:
     """Sample documents for testing different strategies."""
     return {
         "short_text": "This is a short text for testing.",
-        "medium_text": " ".join(["This is sentence number {}.".format(i) for i in range(100)]),
+        "medium_text": " ".join([f"This is sentence number {i}." for i in range(100)]),
         "long_text": " ".join(["This is paragraph {0}. " * 10 for i in range(100)]),
         "markdown_text": """# Title
 
@@ -54,18 +53,18 @@ def hello():
 class FibonacciCalculator:
     def __init__(self):
         self.cache = {}
-    
+
     def calculate(self, n):
         if n in self.cache:
             return self.cache[n]
-        
+
         if n <= 0:
             result = 0
         elif n == 1:
             result = 1
         else:
             result = self.calculate(n-1) + self.calculate(n-2)
-        
+
         self.cache[n] = result
         return result
 """,
@@ -76,7 +75,7 @@ class TestChunkingStrategiesIntegration:
     """Integration tests for chunking strategies."""
 
     @pytest.mark.parametrize(
-        "strategy,expected_min_speed",
+        ("strategy", "expected_min_speed"),
         [
             ("character", 500),  # Character chunking should be fastest
             ("recursive", 300),  # Recursive should be quite fast
@@ -90,7 +89,7 @@ class TestChunkingStrategiesIntegration:
         self,
         strategy: str,
         expected_min_speed: int,
-        sample_documents: Dict[str, str],
+        sample_documents: dict[str, str],
     ) -> None:
         """Test that each strategy meets minimum performance targets."""
         # Use mock embedding for consistent performance
@@ -153,8 +152,8 @@ class TestChunkingStrategiesIntegration:
             assert chunker is not None
             assert chunker.strategy_name == strategy
 
-    @pytest.mark.asyncio
-    async def test_async_chunking_all_strategies(self, sample_documents: Dict[str, str]) -> None:
+    @pytest.mark.asyncio()
+    async def test_async_chunking_all_strategies(self, sample_documents: dict[str, str]) -> None:
         """Test async chunking for all strategies."""
         strategies = ["character", "recursive", "markdown", "semantic", "hierarchical", "hybrid"]
         text = sample_documents["medium_text"]
@@ -173,11 +172,11 @@ class TestChunkingStrategiesIntegration:
         results = await asyncio.gather(*tasks)
 
         # Verify all strategies produced chunks
-        for i, chunks in enumerate(results):
+        for chunks in results:
             assert len(chunks) > 0
             assert all(chunk.text for chunk in chunks)
 
-    def test_hybrid_strategy_selection(self, sample_documents: Dict[str, str]) -> None:
+    def test_hybrid_strategy_selection(self, sample_documents: dict[str, str]) -> None:
         """Test that hybrid strategy correctly selects appropriate sub-strategies."""
         config = {"strategy": "hybrid", "params": {"embed_model": MockEmbedding(embed_dim=384)}}
         chunker = ChunkingFactory.create_chunker(config)
@@ -191,7 +190,7 @@ class TestChunkingStrategiesIntegration:
         chunks = chunker.chunk_text(sample_documents["short_text"], "hybrid_default_test")
         assert any(chunk.metadata.get("selected_strategy") == "recursive" for chunk in chunks)
 
-    def test_hierarchical_parent_child_relationships(self, sample_documents: Dict[str, str]) -> None:
+    def test_hierarchical_parent_child_relationships(self, sample_documents: dict[str, str]) -> None:
         """Test that hierarchical chunking creates chunks with hierarchy metadata."""
         config = {"strategy": "hierarchical"}
         chunker = ChunkingFactory.create_chunker(config)
@@ -210,14 +209,14 @@ class TestChunkingStrategiesIntegration:
             assert chunk.metadata["hierarchy_level"] >= 0
 
         # Verify we have both parent and leaf chunks
-        has_parent = any(chunk.chunk_id.endswith("_parent_") or "_parent_" in chunk.chunk_id for chunk in chunks)
-        has_leaf = any(chunk.metadata.get("is_leaf", False) for chunk in chunks)
+        assert any(chunk.chunk_id.endswith("_parent_") or "_parent_" in chunk.chunk_id for chunk in chunks)
+        assert any(chunk.metadata.get("is_leaf", False) for chunk in chunks)
 
         # At least some chunks should have parent/child metadata
-        has_parent_metadata = any(chunk.metadata.get("parent_chunk_id") for chunk in chunks)
-        has_child_metadata = any(chunk.metadata.get("child_chunk_ids") for chunk in chunks)
+        assert any(chunk.metadata.get("parent_chunk_id") for chunk in chunks)
+        assert any(chunk.metadata.get("child_chunk_ids") for chunk in chunks)
 
-    def test_semantic_chunking_coherence(self, sample_documents: Dict[str, str]) -> None:
+    def test_semantic_chunking_coherence(self, sample_documents: dict[str, str]) -> None:
         """Test that semantic chunking creates coherent chunks."""
         config = {"strategy": "semantic", "params": {"embed_model": MockEmbedding(embed_dim=384)}}
         chunker = ChunkingFactory.create_chunker(config)
@@ -229,7 +228,7 @@ class TestChunkingStrategiesIntegration:
             assert chunk.metadata.get("semantic_boundary") is True
             assert "breakpoint_threshold" in chunk.metadata
 
-    def test_performance_monitoring_integration(self, sample_documents: Dict[str, str]) -> None:
+    def test_performance_monitoring_integration(self, sample_documents: dict[str, str]) -> None:
         """Test that performance monitoring works across strategies."""
         monitor = ChunkingPerformanceMonitor()
         strategies = ["character", "recursive", "markdown"]

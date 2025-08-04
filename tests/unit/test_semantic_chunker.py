@@ -7,18 +7,13 @@ mocked embeddings, error handling, performance, and edge cases.
 """
 
 import asyncio
-import time
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
-from llama_index.core import Document
 from llama_index.core.embeddings import MockEmbedding
 from llama_index.core.node_parser import SemanticSplitterNodeParser
 
 from packages.shared.text_processing.base_chunker import ChunkResult
-from packages.shared.text_processing.strategies.character_chunker import CharacterChunker
 from packages.shared.text_processing.strategies.semantic_chunker import SemanticChunker
 
 
@@ -213,7 +208,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
                 mock_context.__exit__ = MagicMock(return_value=None)
                 mock_monitor.return_value = mock_context
 
-                chunks = chunker.chunk_text(sample_texts["simple"], "perf_test")
+                chunker.chunk_text(sample_texts["simple"], "perf_test")
 
                 # Verify performance monitor was called
                 mock_monitor.assert_called_once_with(
@@ -231,7 +226,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
         mock_splitter = MagicMock()
         fail_count = 0
 
-        def side_effect(docs):
+        def side_effect(docs):  # noqa: ARG001
             nonlocal fail_count
             if fail_count < 2:
                 fail_count += 1
@@ -243,14 +238,13 @@ Books provide knowledge and entertainment. Data science is transforming industri
 
         mock_splitter.get_nodes_from_documents.side_effect = side_effect
 
-        with patch.object(chunker, "_get_splitter", return_value=mock_splitter):
-            with patch("time.sleep"):  # Mock sleep to speed up test
-                chunks = chunker.chunk_text(sample_texts["simple"], "retry_test")
+        with patch.object(chunker, "_get_splitter", return_value=mock_splitter), patch("time.sleep"):  # Mock sleep to speed up test
+            chunks = chunker.chunk_text(sample_texts["simple"], "retry_test")
 
-                assert len(chunks) == 1
-                assert chunks[0].text == sample_texts["simple"]
-                # Verify retry was attempted
-                assert mock_splitter.get_nodes_from_documents.call_count == 3
+            assert len(chunks) == 1
+            assert chunks[0].text == sample_texts["simple"]
+            # Verify retry was attempted
+            assert mock_splitter.get_nodes_from_documents.call_count == 3
 
     def test_retry_logic_max_failures(self, mock_embed_model, sample_texts):
         """Test retry logic fails after max attempts then falls back to character chunking."""
@@ -261,25 +255,23 @@ Books provide knowledge and entertainment. Data science is transforming industri
         mock_splitter.get_nodes_from_documents.side_effect = Exception("Persistent embedding error")
 
         # Need to mock both _get_splitter and the performance monitor
-        with patch.object(chunker, "_get_splitter", return_value=mock_splitter):
-            with patch("time.sleep"):  # Mock sleep to speed up test
-                with patch(
-                    "packages.shared.text_processing.chunking_metrics.performance_monitor.measure_chunking"
-                ) as mock_monitor:
-                    mock_context = MagicMock()
-                    mock_context.__enter__ = MagicMock(return_value=MagicMock(output_chunks=0))
-                    mock_context.__exit__ = MagicMock(return_value=None)
-                    mock_monitor.return_value = mock_context
+        with patch.object(chunker, "_get_splitter", return_value=mock_splitter), patch("time.sleep"), patch(
+            "packages.shared.text_processing.chunking_metrics.performance_monitor.measure_chunking"
+        ) as mock_monitor:  # Mock sleep to speed up test
+            mock_context = MagicMock()
+            mock_context.__enter__ = MagicMock(return_value=MagicMock(output_chunks=0))
+            mock_context.__exit__ = MagicMock(return_value=None)
+            mock_monitor.return_value = mock_context
 
-                    # The chunker will fall back to character chunking on embedding error
-                    chunks = chunker.chunk_text(sample_texts["simple"], "retry_fail_test")
+            # The chunker will fall back to character chunking on embedding error
+            chunks = chunker.chunk_text(sample_texts["simple"], "retry_fail_test")
 
-                    # Verify all retries were attempted
-                    assert mock_splitter.get_nodes_from_documents.call_count == 3
+            # Verify all retries were attempted
+            assert mock_splitter.get_nodes_from_documents.call_count == 3
 
-                    # Should have fallen back to character chunking
-                    assert len(chunks) >= 1
-                    assert all(chunk.metadata["strategy"] == "character" for chunk in chunks)
+            # Should have fallen back to character chunking
+            assert len(chunks) >= 1
+            assert all(chunk.metadata["strategy"] == "character" for chunk in chunks)
 
     def test_fallback_to_character_chunker(self, mock_embed_model, sample_texts):
         """Test fallback to character chunker on embedding errors."""
@@ -460,7 +452,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
         mock_splitter = MagicMock()
         fail_count = 0
 
-        def side_effect(docs):
+        def side_effect(docs):  # noqa: ARG001
             nonlocal fail_count
             if fail_count < 2:
                 fail_count += 1
@@ -471,14 +463,13 @@ Books provide knowledge and entertainment. Data science is transforming industri
 
         mock_splitter.get_nodes_from_documents.side_effect = side_effect
 
-        with patch.object(chunker, "_get_splitter", return_value=mock_splitter):
-            with patch("time.sleep", side_effect=mock_sleep):
-                chunks = chunker.chunk_text(sample_texts["simple"], "backoff_test")
+        with patch.object(chunker, "_get_splitter", return_value=mock_splitter), patch("time.sleep", side_effect=mock_sleep):
+            chunker.chunk_text(sample_texts["simple"], "backoff_test")
 
-                # Verify exponential backoff
-                assert len(sleep_calls) == 2
-                assert sleep_calls[0] == 1.0  # First retry: 1 second
-                assert sleep_calls[1] == 2.0  # Second retry: 2 seconds (doubled)
+            # Verify exponential backoff
+            assert len(sleep_calls) == 2
+            assert sleep_calls[0] == 1.0  # First retry: 1 second
+            assert sleep_calls[1] == 2.0  # Second retry: 2 seconds (doubled)
 
     def test_semantic_boundaries_preserved(self, mock_embed_model):
         """Test that semantic boundaries are properly identified."""
@@ -486,12 +477,12 @@ Books provide knowledge and entertainment. Data science is transforming industri
 
         # Text with clear topic transitions
         text = """
-        The solar system consists of the sun and celestial bodies. 
+        The solar system consists of the sun and celestial bodies.
         Planets orbit around the sun in elliptical paths.
-        
+
         Machine learning is transforming technology.
         Neural networks can learn complex patterns from data.
-        
+
         Cooking requires patience and practice.
         Fresh ingredients make a significant difference in taste.
         """
@@ -570,29 +561,28 @@ Books provide knowledge and entertainment. Data science is transforming industri
             # Set up timing: start at 100.0, end at 101.0 (1 second elapsed)
             mock_time.side_effect = [100.0, 101.0]
 
-            def mock_get_nodes(docs):
+            def mock_get_nodes(docs):  # noqa: ARG001
                 # Simulate the time it takes to process
                 return mock_nodes
 
             mock_splitter.get_nodes_from_documents.side_effect = mock_get_nodes
 
-            with patch.object(chunker, "_get_splitter", return_value=mock_splitter):
-                with patch(
-                    "packages.shared.text_processing.chunking_metrics.performance_monitor.measure_chunking"
-                ) as mock_monitor:
-                    mock_metrics = MagicMock()
-                    mock_context = MagicMock()
-                    mock_context.__enter__ = MagicMock(return_value=mock_metrics)
-                    mock_context.__exit__ = MagicMock(return_value=None)
-                    mock_monitor.return_value = mock_context
+            with patch.object(chunker, "_get_splitter", return_value=mock_splitter), patch(
+                "packages.shared.text_processing.chunking_metrics.performance_monitor.measure_chunking"
+            ) as mock_monitor:
+                mock_metrics = MagicMock()
+                mock_context = MagicMock()
+                mock_context.__enter__ = MagicMock(return_value=mock_metrics)
+                mock_context.__exit__ = MagicMock(return_value=None)
+                mock_monitor.return_value = mock_context
 
-                    chunks = chunker.chunk_text("Test text", "perf_doc")
+                chunks = chunker.chunk_text("Test text", "perf_doc")
 
-                    # Verify we got 150 chunks
-                    assert len(chunks) == 150
+                # Verify we got 150 chunks
+                assert len(chunks) == 150
 
-                    # Verify metrics were set
-                    assert mock_metrics.output_chunks == 150
+                # Verify metrics were set
+                assert mock_metrics.output_chunks == 150
 
     def test_non_embedding_error_no_fallback(self, mock_embed_model):
         """Test that non-embedding errors don't trigger fallback to character chunking."""
@@ -602,11 +592,9 @@ Books provide knowledge and entertainment. Data science is transforming industri
         mock_splitter = MagicMock()
         mock_splitter.get_nodes_from_documents.side_effect = ValueError("Invalid document format")
 
-        with patch.object(chunker, "_get_splitter", return_value=mock_splitter):
-            with patch("time.sleep"):  # Mock sleep to speed up test
-                # The chunker wraps exceptions in RuntimeError
-                with pytest.raises(RuntimeError, match="Semantic chunking failed: Invalid document format"):
-                    chunker.chunk_text("Test text", "error_doc")
+        with patch.object(chunker, "_get_splitter", return_value=mock_splitter), patch("time.sleep"), pytest.raises(RuntimeError, match="Semantic chunking failed: Invalid document format"):  # Mock sleep to speed up test
+            # The chunker wraps exceptions in RuntimeError
+            chunker.chunk_text("Test text", "error_doc")
 
     def test_small_buffer_size(self, mock_embed_model):
         """Test semantic chunker with very small buffer size."""

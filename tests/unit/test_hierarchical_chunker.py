@@ -7,14 +7,11 @@ parent-child relationships, hierarchy levels, performance, and edge cases.
 """
 
 import asyncio
-import time
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from llama_index.core import Document
 from llama_index.core.node_parser import HierarchicalNodeParser
-from llama_index.core.schema import BaseNode, NodeRelationship, RelatedNodeInfo
+from llama_index.core.schema import BaseNode
 
 from packages.shared.text_processing.base_chunker import ChunkResult
 from packages.shared.text_processing.strategies.hierarchical_chunker import HierarchicalChunker
@@ -105,7 +102,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
 
         # Warning for small differences between levels
         with patch("packages.shared.text_processing.strategies.hierarchical_chunker.logger") as mock_logger:
-            chunker = HierarchicalChunker(chunk_sizes=[1000, 600, 100])
+            HierarchicalChunker(chunk_sizes=[1000, 600, 100])
             # Should warn about 600 being more than half of 1000
             mock_logger.warning.assert_called()
 
@@ -595,7 +592,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
         """Test that warnings are logged for small size differences between levels."""
         with patch("packages.shared.text_processing.strategies.hierarchical_chunker.logger") as mock_logger:
             # This should trigger a warning because 600 > 1000/2
-            chunker = HierarchicalChunker(chunk_sizes=[1000, 600, 100])
+            HierarchicalChunker(chunk_sizes=[1000, 600, 100])
 
             # Verify warning was called
             assert mock_logger.warning.called

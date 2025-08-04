@@ -9,7 +9,7 @@ between different chunking strategies based on content characteristics.
 import asyncio
 import logging
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -115,9 +115,9 @@ Python package management through pip simplifies dependency handling.
 """,
             "large_coherent": " ".join(
                 [
-                    f"Machine learning is transforming how we process data. "
-                    f"Machine learning algorithms can identify patterns in complex datasets. "
-                    f"Machine learning models improve with more training data. "
+                    "Machine learning is transforming how we process data. "
+                    "Machine learning algorithms can identify patterns in complex datasets. "
+                    "Machine learning models improve with more training data. "
                     for _ in range(500)
                 ]
             ),
@@ -141,7 +141,7 @@ This should still use the default recursive chunker.
         }
 
     @pytest.fixture()
-    def mock_chunking_factory(self):
+    def mock_chunking_factory(self):  # noqa: PT004
         """Mock ChunkingFactory to return our mock chunkers."""
 
         def create_chunker(config: dict[str, Any]) -> MockChunker:
@@ -386,8 +386,8 @@ This should still use the default recursive chunker.
         chunker = HybridChunker()
 
         # Mock all chunker creation to fail
-        def always_fail_create_chunker(config):
-            raise RuntimeError(f"All chunkers fail for testing")
+        def always_fail_create_chunker(config):  # noqa: ARG001
+            raise RuntimeError("All chunkers fail for testing")
 
         with patch(
             "packages.shared.text_processing.strategies.hybrid_chunker.ChunkingFactory.create_chunker",
@@ -476,7 +476,7 @@ This should still use the default recursive chunker.
         chunker = HybridChunker(large_doc_threshold=100)
         exactly_100_chars = "x" * 100
         strategy, _, _ = chunker._select_strategy(exactly_100_chars, None)
-        assert strategy in [s for s in ChunkingStrategy]  # Should select a valid strategy
+        assert strategy in list(ChunkingStrategy)  # Should select a valid strategy
 
     def test_metadata_preservation(self, sample_texts, mock_chunking_factory):
         """Test that original metadata is preserved and enhanced."""
@@ -504,7 +504,7 @@ This should still use the default recursive chunker.
         chunker = HybridChunker()
 
         with caplog.at_level(logging.INFO):
-            chunks = chunker.chunk_text(sample_texts["markdown"], "log_test", {"file_path": "test.md"})
+            chunker.chunk_text(sample_texts["markdown"], "log_test", {"file_path": "test.md"})
 
         # Check that strategy selection was logged
         assert any("markdown file extension" in record.message.lower() for record in caplog.records)
@@ -517,7 +517,7 @@ This should still use the default recursive chunker.
 
         # Create multiple chunking tasks
         tasks = []
-        for i, (text_type, text) in enumerate(sample_texts.items()):
+        for i, (_text_type, text) in enumerate(sample_texts.items()):
             if text.strip():  # Skip empty texts
                 task = chunker.chunk_text_async(text, f"concurrent_doc_{i}")
                 tasks.append(task)
@@ -554,10 +554,9 @@ This should still use the default recursive chunker.
         chunker = HybridChunker(fallback_strategy=ChunkingStrategy.SEMANTIC)
 
         # Mock the _get_chunker method to track attempts and control behavior
-        original_get_chunker = chunker._get_chunker
         attempted_strategies = []
 
-        def mock_get_chunker(strategy, params=None):
+        def mock_get_chunker(strategy, params=None):  # noqa: ARG001
             attempted_strategies.append(strategy)
 
             # For this test, we want to test the actual fallback logic in chunk_text
@@ -566,23 +565,22 @@ This should still use the default recursive chunker.
                 mock_chunker = MockChunker(strategy)
 
                 # Override chunk_text to raise an error
-                def failing_chunk_text(*args, **kwargs):
+                def failing_chunk_text(*args, **kwargs):  # noqa: ARG001
                     raise RuntimeError("Markdown chunking failed")
 
                 mock_chunker.chunk_text = failing_chunk_text
                 return mock_chunker
-            elif strategy == "semantic":
+            if strategy == "semantic":
                 mock_chunker = MockChunker(strategy)
 
                 # Also make semantic fail
-                def failing_chunk_text(*args, **kwargs):
+                def failing_chunk_text(*args, **kwargs):  # noqa: ARG001
                     raise RuntimeError("Semantic chunking failed")
 
                 mock_chunker.chunk_text = failing_chunk_text
                 return mock_chunker
-            else:
-                # Character chunker should work
-                return MockChunker(strategy)
+            # Character chunker should work
+            return MockChunker(strategy)
 
         chunker._get_chunker = mock_get_chunker
 
