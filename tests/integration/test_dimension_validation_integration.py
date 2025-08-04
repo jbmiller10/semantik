@@ -12,7 +12,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
-
 from shared.embedding.validation import (
     adjust_embeddings_dimension,
     get_model_dimension,
@@ -280,7 +279,7 @@ class TestDimensionValidationIntegration:
 
         # Create multiple concurrent validation tasks
         from shared.database.exceptions import DimensionMismatchError
-        
+
         async def validate_task(embeddings, dimension):
             try:
                 validate_embedding_dimensions(embeddings, dimension)
@@ -315,7 +314,7 @@ class TestDimensionValidationIntegration:
 
         # Test compatibility checks
         for model1, dim1 in model_dimensions.items():
-            for model2, dim2 in model_dimensions.items():
+            for _, dim2 in model_dimensions.items():
                 # Test compatibility
                 from shared.database.exceptions import DimensionMismatchError
                 try:

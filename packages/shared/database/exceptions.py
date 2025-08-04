@@ -126,11 +126,11 @@ class DimensionMismatchError(RepositoryError):
         self.actual_dimension = actual_dimension
         self.collection_name = collection_name
         self.model_name = model_name
-        
+
         message = f"Dimension mismatch: expected {expected_dimension}, got {actual_dimension}"
         if collection_name:
             message += f" for collection '{collection_name}'"
         if model_name:
             message += f" (model: {model_name})"
-        
+
         super().__init__(message)

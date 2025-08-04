@@ -11,26 +11,26 @@ packages/shared/text_processing/exceptions.py to ensure:
 import pytest
 
 from packages.shared.text_processing.exceptions import (
-    # Base exceptions
-    TextProcessingError,
-    ChunkingError,
-    EmbeddingError,
-    ValidationError,
-    # Specific chunking errors
-    ChunkSizeError,
-    HierarchyDepthError,
-    TextLengthError,
-    # Specific embedding errors
-    TransientEmbeddingError,
-    PermanentEmbeddingError,
-    DimensionMismatchError,
-    EmbeddingServiceNotInitializedError,
-    # Specific validation errors
-    ConfigValidationError,
-    RegexTimeoutError,
     # Factory errors
     ChunkerCreationError,
+    ChunkingError,
+    # Specific chunking errors
+    ChunkSizeError,
+    # Specific validation errors
+    ConfigValidationError,
+    DimensionMismatchError,
+    EmbeddingError,
+    EmbeddingServiceNotInitializedError,
+    HierarchyDepthError,
+    PermanentEmbeddingError,
+    RegexTimeoutError,
+    TextLengthError,
+    # Base exceptions
+    TextProcessingError,
+    # Specific embedding errors
+    TransientEmbeddingError,
     UnknownStrategyError,
+    ValidationError,
 )
 
 
@@ -43,16 +43,16 @@ class TestExceptionHierarchy:
         assert issubclass(ChunkingError, TextProcessingError)
         assert issubclass(EmbeddingError, TextProcessingError)
         assert issubclass(ValidationError, TextProcessingError)
-        
+
         # All exceptions should ultimately inherit from TextProcessingError
         all_exceptions = [
             ChunkSizeError, HierarchyDepthError, TextLengthError,
-            TransientEmbeddingError, PermanentEmbeddingError, 
+            TransientEmbeddingError, PermanentEmbeddingError,
             DimensionMismatchError, EmbeddingServiceNotInitializedError,
             ConfigValidationError, RegexTimeoutError,
             ChunkerCreationError, UnknownStrategyError
         ]
-        
+
         for exc_class in all_exceptions:
             assert issubclass(exc_class, TextProcessingError)
 
@@ -95,7 +95,7 @@ class TestExceptionHierarchy:
             ChunkerCreationError("Failed to create chunker"),
             UnknownStrategyError("Unknown strategy: foo"),
         ]
-        
+
         for exc in exceptions:
             assert isinstance(exc, Exception)
             assert isinstance(exc, TextProcessingError)
@@ -106,14 +106,14 @@ class TestExceptionHierarchy:
         # Test catching specific exceptions
         with pytest.raises(ChunkSizeError):
             raise ChunkSizeError("Chunk exceeds 1000 tokens")
-        
+
         # Test catching by category
         with pytest.raises(ChunkingError):
             raise HierarchyDepthError("Max depth exceeded")
-        
+
         with pytest.raises(EmbeddingError):
             raise DimensionMismatchError("Wrong dimensions")
-        
+
         # Test catching all text processing errors
         with pytest.raises(TextProcessingError):
             raise RegexTimeoutError("Regex timeout")
@@ -126,19 +126,19 @@ class TestExceptionHierarchy:
             TransientEmbeddingError("API rate limit"),
             TransientEmbeddingError("Temporary network error"),
         ]
-        
+
         # Permanent errors (not retryable)
         permanent_errors = [
             PermanentEmbeddingError("Invalid model name"),
             PermanentEmbeddingError("Corrupted model file"),
             PermanentEmbeddingError("Unsupported input format"),
         ]
-        
+
         for err in transient_errors:
             assert isinstance(err, TransientEmbeddingError)
             assert isinstance(err, EmbeddingError)
             assert not isinstance(err, PermanentEmbeddingError)
-        
+
         for err in permanent_errors:
             assert isinstance(err, PermanentEmbeddingError)
             assert isinstance(err, EmbeddingError)
@@ -149,25 +149,25 @@ class TestExceptionHierarchy:
         # UnknownStrategyError is a specific type of ChunkerCreationError
         with pytest.raises(ChunkerCreationError):
             raise UnknownStrategyError("Strategy 'quantum' not found")
-        
+
         # Both are ChunkingErrors
         with pytest.raises(ChunkingError):
             raise ChunkerCreationError("Factory initialization failed")
 
     def test_error_context_preservation(self):
         """Test that exceptions preserve context when chained."""
-        try:
+        with pytest.raises(DimensionMismatchError) as exc_info:
             try:
                 # Simulate a low-level error
                 raise ValueError("Invalid dimension: -1")
             except ValueError as e:
                 # Wrap in domain-specific error
                 raise DimensionMismatchError("Dimension must be positive") from e
-        except DimensionMismatchError as e:
-            assert str(e) == "Dimension must be positive"
-            assert e.__cause__ is not None
-            assert isinstance(e.__cause__, ValueError)
-            assert str(e.__cause__) == "Invalid dimension: -1"
+                
+        assert str(exc_info.value) == "Dimension must be positive"
+        assert exc_info.value.__cause__ is not None
+        assert isinstance(exc_info.value.__cause__, ValueError)
+        assert str(exc_info.value.__cause__) == "Invalid dimension: -1"
 
     def test_exception_type_checking(self):
         """Test type checking for exception handling decisions."""
@@ -175,15 +175,14 @@ class TestExceptionHierarchy:
             """Determine how to handle an embedding error."""
             if isinstance(error, TransientEmbeddingError):
                 return "retry"
-            elif isinstance(error, PermanentEmbeddingError):
+            if isinstance(error, PermanentEmbeddingError):
                 return "fail"
-            elif isinstance(error, EmbeddingServiceNotInitializedError):
+            if isinstance(error, EmbeddingServiceNotInitializedError):
                 return "initialize"
-            elif isinstance(error, DimensionMismatchError):
+            if isinstance(error, DimensionMismatchError):
                 return "resize"
-            else:
-                return "unknown"
-        
+            return "unknown"
+
         assert handle_embedding_error(TransientEmbeddingError("OOM")) == "retry"
         assert handle_embedding_error(PermanentEmbeddingError("Bad model")) == "fail"
         assert handle_embedding_error(EmbeddingServiceNotInitializedError()) == "initialize"
@@ -194,11 +193,11 @@ class TestExceptionHierarchy:
         # Test with single argument
         exc1 = ChunkSizeError("Chunk size 1500 exceeds maximum 1000")
         assert str(exc1) == "Chunk size 1500 exceeds maximum 1000"
-        
+
         # Test with multiple arguments (creates tuple)
         exc2 = TextLengthError("Text length:", 50000, "exceeds max:", 10000)
         assert len(exc2.args) == 4
-        
+
         # Test empty message
         exc3 = ValidationError()
         assert str(exc3) == ""
@@ -208,11 +207,11 @@ class TestExceptionHierarchy:
         pattern = r"(a+)+"
         text = "a" * 100
         timeout = 1.0
-        
+
         error = RegexTimeoutError(
             f"Regex pattern '{pattern}' timed out after {timeout}s on text of length {len(text)}"
         )
-        
+
         assert isinstance(error, ValidationError)
         assert isinstance(error, TextProcessingError)
         assert "timed out" in str(error)
@@ -223,13 +222,13 @@ class TestExceptionHierarchy:
         # Text length validation
         max_length = 5_000_000
         actual_length = 10_000_000
-        
+
         error = TextLengthError(
             f"Text length {actual_length:,} exceeds maximum {max_length:,}"
         )
         assert "10,000,000" in str(error)
         assert "5,000,000" in str(error)
-        
+
         # Hierarchy depth validation
         max_depth = 5
         error = HierarchyDepthError(

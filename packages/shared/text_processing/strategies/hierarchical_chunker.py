@@ -283,7 +283,7 @@ class HierarchicalChunker(BaseChunker):
                     for node in segment_nodes:
                         # Store original segment offset for later use
                         if not hasattr(node, "_segment_offset"):
-                            node._segment_offset = segment_offset  # type: ignore
+                            node._segment_offset = segment_offset
 
                     all_nodes.extend(segment_nodes)
                     segment_offset += len(segment)
@@ -406,7 +406,7 @@ class HierarchicalChunker(BaseChunker):
         loop = asyncio.get_event_loop()
 
         # Create a generator function that yields chunks
-        def chunk_generator():
+        def chunk_generator() -> Iterator[ChunkResult]:
             return self.chunk_text_stream(text, doc_id, metadata, include_parents)
 
         # Yield chunks asynchronously
@@ -563,7 +563,8 @@ class HierarchicalChunker(BaseChunker):
                     },
                 }
             )
-            return fallback_chunker.chunk_text(text, doc_id, metadata)
+            result = fallback_chunker.chunk_text(text, doc_id, metadata)
+            return list(result) if result else []
 
     async def chunk_text_async(
         self,
@@ -625,12 +626,12 @@ class HierarchicalChunker(BaseChunker):
         # Determine parent relationship
         if hasattr(node, "relationships") and node.relationships:
             # Check for parent relationship
-            parent_rel = node.relationships.get("1")  # type: ignore  # LlamaIndex uses "1" for parent
+            parent_rel = node.relationships.get("1")  # LlamaIndex uses "1" for parent
             if parent_rel and parent_rel.node_id:
                 hierarchy_info["parent_id"] = parent_rel.node_id
 
             # Check for child relationships
-            child_rel = node.relationships.get("2")  # type: ignore  # LlamaIndex uses "2" for child
+            child_rel = node.relationships.get("2")  # LlamaIndex uses "2" for child
             if child_rel and child_rel.node_id:
                 # Single child
                 hierarchy_info["child_ids"] = [child_rel.node_id]

@@ -34,13 +34,12 @@ from shared.contracts.search import (
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from prometheus_client import Counter, Histogram  # noqa: E402
 from shared.config import settings  # noqa: E402
+from shared.database.exceptions import DimensionMismatchError  # noqa: E402
 from shared.embedding.service import get_embedding_service  # noqa: E402
-from shared.metrics.prometheus import metrics_collector, registry, start_metrics_server  # noqa: E402
 from shared.embedding.validation import (  # noqa: E402
-    get_collection_dimension,
     validate_dimension_compatibility,
 )
-from shared.database.exceptions import DimensionMismatchError  # noqa: E402
+from shared.metrics.prometheus import metrics_collector, registry, start_metrics_server  # noqa: E402
 
 from .hybrid_search import HybridSearchEngine  # noqa: E402
 from .memory_utils import InsufficientMemoryError  # noqa: E402
@@ -602,7 +601,7 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
             query_vector = generate_mock_embedding(request.query, vector_dim)
 
         embed_time = (time.time() - embed_start) * 1000
-        
+
         # Validate query embedding dimension matches collection dimension
         if not settings.USE_MOCK_EMBEDDINGS:
             query_dim = len(query_vector)
@@ -976,7 +975,7 @@ async def hybrid_search(
 
         if not settings.USE_MOCK_EMBEDDINGS:
             query_vector = await generate_embedding_async(q, model_name, quantization)
-            
+
             # Validate query embedding dimension
             query_dim = len(query_vector)
             try:
@@ -1459,7 +1458,7 @@ async def upsert_points(request: UpsertRequest = Body(...)) -> UpsertResponse:
         logger.info(
             f"Processing upsert request: {len(request.points)} points to collection '{request.collection_name}'"
         )
-        
+
         # Get collection dimension for validation
         try:
             response = await qdrant_client.get(f"/collections/{request.collection_name}")
@@ -1468,10 +1467,10 @@ async def upsert_points(request: UpsertRequest = Body(...)) -> UpsertResponse:
             collection_dim = None
             if "config" in collection_info and "params" in collection_info["config"]:
                 collection_dim = collection_info["config"]["params"]["vectors"]["size"]
-            
+
             # Validate dimensions of all points before upserting
             if collection_dim and request.points:
-                for i, point in enumerate(request.points):
+                for point in request.points:
                     vector_dim = len(point.vector)
                     if vector_dim != collection_dim:
                         raise DimensionMismatchError(

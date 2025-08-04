@@ -1280,14 +1280,14 @@ async def _process_index_operation(
         actual_model_name = collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
         from shared.embedding.validation import get_model_dimension
         actual_model_dim = get_model_dimension(actual_model_name)
-        
+
         if actual_model_dim and actual_model_dim != vector_dim:
             logger.warning(
                 f"Model {actual_model_name} has dimension {actual_model_dim}, "
                 f"but collection will be created with dimension {vector_dim}. "
                 f"This may cause issues during indexing."
             )
-        
+
         # Create collection in Qdrant with monitoring
         from qdrant_client.models import Distance, VectorParams
 
@@ -1296,7 +1296,7 @@ async def _process_index_operation(
                 collection_name=vector_store_name,
                 vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
             )
-        
+
         # Store collection metadata including the expected model
         from shared.database.collection_metadata import store_collection_metadata
         try:
@@ -1308,7 +1308,7 @@ async def _process_index_operation(
                     "quantization": collection.get("quantization", "float16"),
                     "instruction": config.get("instruction"),
                     "dimension": vector_dim,
-                    "created_at": datetime.utcnow().isoformat(),
+                    "created_at": datetime.now(UTC).isoformat(),
                 }
             )
         except Exception as e:
@@ -1562,19 +1562,22 @@ async def _process_append_operation(
                         raise Exception("Failed to generate embeddings")
 
                     embeddings = embeddings_array  # Already a list from API response
-                    
+
                     # Validate embedding dimensions before preparing points
                     if embeddings:
                         from shared.database.exceptions import DimensionMismatchError
-                        from shared.embedding.validation import get_collection_dimension, validate_dimension_compatibility
-                        
+                        from shared.embedding.validation import (
+                            get_collection_dimension,
+                            validate_dimension_compatibility,
+                        )
+
                         # Get expected dimension from Qdrant collection
                         expected_dim = get_collection_dimension(qdrant_client, qdrant_collection_name)
                         if expected_dim is None:
                             logger.warning(f"Could not get dimension for collection {qdrant_collection_name}")
                         else:
                             # Validate all embeddings have correct dimension
-                            for i, embedding in enumerate(embeddings):
+                            for embedding in embeddings:
                                 actual_dim = len(embedding)
                                 try:
                                     validate_dimension_compatibility(
@@ -1958,7 +1961,7 @@ async def _process_reindex_operation(
                             raise Exception("Failed to generate embeddings")
 
                         embeddings = embeddings_array  # Already a list from API response
-                        
+
                         # Validate embedding dimensions
                         if embeddings:
                             from shared.database.exceptions import DimensionMismatchError
@@ -1967,14 +1970,14 @@ async def _process_reindex_operation(
                                 get_collection_dimension,
                                 validate_dimension_compatibility,
                             )
-                            
+
                             # Get expected dimension from staging collection
                             expected_dim = get_collection_dimension(qdrant_client, staging_collection_name)
                             if expected_dim is None:
                                 logger.warning(f"Could not get dimension for staging collection {staging_collection_name}")
                             else:
                                 actual_dim = len(embeddings[0]) if embeddings else 0
-                                
+
                                 # Check if dimensions match
                                 try:
                                     validate_dimension_compatibility(

@@ -10,22 +10,21 @@ implemented in the HybridChunker to ensure:
 
 import re
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from packages.shared.text_processing.strategies.hybrid_chunker import (
+    REGEX_TIMEOUT,
     HybridChunker,
     safe_regex_findall,
-    REGEX_TIMEOUT,
 )
-from packages.shared.text_processing.exceptions import RegexTimeoutError
 
 
 class TestHybridChunkerReDoSProtection:
     """Test suite for ReDoS protection in HybridChunker."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def chunker(self):
         """Create a HybridChunker instance."""
         return HybridChunker()
@@ -37,7 +36,7 @@ class TestHybridChunkerReDoSProtection:
         text = "There are 123 numbers and 456 more"
         matches = safe_regex_findall(pattern, text)
         assert matches == ["123", "456"]
-        
+
         # Test with string pattern
         matches = safe_regex_findall(r"\w+", "hello world", re.IGNORECASE)
         assert matches == ["hello", "world"]
@@ -59,7 +58,7 @@ class TestHybridChunkerReDoSProtection:
         # With long input, it causes exponential backtracking
         pattern = re.compile(r"(a+)+b")
         text = "a" * 30  # No 'b' at the end causes maximum backtracking
-        
+
         with pytest.raises(TimeoutError):
             safe_regex_findall(pattern, text)
 
@@ -72,7 +71,7 @@ class TestHybridChunkerReDoSProtection:
         """Test that markdown patterns are pre-compiled during initialization."""
         assert hasattr(chunker, '_compiled_patterns')
         assert isinstance(chunker._compiled_patterns, dict)
-        
+
         # Check expected patterns are compiled
         expected_patterns = [
             r"^#{1,6}\s+",  # Headers
@@ -85,7 +84,7 @@ class TestHybridChunkerReDoSProtection:
             r"^\s*\|.*\|",  # Tables
             r"^---+$|^===+$",  # Horizontal rules
         ]
-        
+
         # Verify patterns are compiled
         for pattern_str in expected_patterns:
             assert pattern_str in chunker._compiled_patterns
@@ -97,11 +96,11 @@ class TestHybridChunkerReDoSProtection:
     def test_markdown_analysis_with_pattern_failure(self, chunker):
         """Test markdown analysis continues even when patterns fail."""
         test_text = "# Header\n\nSome content with **bold** text."
-        
+
         # Mock safe_regex_findall to simulate some patterns failing
         original_safe_regex = safe_regex_findall
         call_count = 0
-        
+
         def mock_safe_regex(pattern, text, flags=0):
             nonlocal call_count
             call_count += 1
@@ -109,11 +108,11 @@ class TestHybridChunkerReDoSProtection:
             if call_count % 2 == 0:
                 raise TimeoutError("Simulated timeout")
             return original_safe_regex(pattern, text, flags)
-        
-        with patch('packages.shared.text_processing.strategies.hybrid_chunker.safe_regex_findall', 
+
+        with patch('packages.shared.text_processing.strategies.hybrid_chunker.safe_regex_findall',
                    side_effect=mock_safe_regex):
             is_file, density = chunker._analyze_markdown_content(test_text, None)
-            
+
             # Should still return a result despite some patterns failing
             assert isinstance(is_file, bool)
             assert isinstance(density, float)
@@ -124,12 +123,12 @@ class TestHybridChunkerReDoSProtection:
         test_text = """This is a test document with repeated words.
         The test document contains test content for testing.
         Testing is important for test coverage."""
-        
+
         # Mock safe_regex_findall to fail
         with patch('packages.shared.text_processing.strategies.hybrid_chunker.safe_regex_findall',
                    side_effect=Exception("Regex failed")):
             coherence = chunker._estimate_semantic_coherence(test_text)
-            
+
             # Should still return a valid coherence score
             assert isinstance(coherence, float)
             assert 0.0 <= coherence <= 1.0
@@ -138,12 +137,12 @@ class TestHybridChunkerReDoSProtection:
         """Test that malicious content doesn't cause ReDoS in markdown detection."""
         # Create content that could trigger ReDoS with poorly written patterns
         malicious_content = "a" * 1000 + "[[[[[[" + "]]]]]]" + "(((((" + ")))))"
-        
+
         # This should complete without hanging
         start_time = time.time()
         is_file, density = chunker._analyze_markdown_content(malicious_content, None)
         elapsed_time = time.time() - start_time
-        
+
         # Should complete quickly (well under the timeout)
         assert elapsed_time < REGEX_TIMEOUT
         assert isinstance(is_file, bool)
@@ -154,7 +153,7 @@ class TestHybridChunkerReDoSProtection:
         # Create a new chunker and mock the timeout context
         with patch('packages.shared.text_processing.strategies.hybrid_chunker.timeout') as mock_timeout:
             # Make timeout raise TimeoutError for specific patterns
-            def timeout_side_effect(seconds):
+            def timeout_side_effect(seconds):  # noqa: ARG001
                 class TimeoutContext:
                     def __enter__(self):
                         return self
@@ -162,7 +161,7 @@ class TestHybridChunkerReDoSProtection:
                         # Simulate timeout on complex patterns
                         if hasattr(self, '_pattern_check'):
                             raise TimeoutError("Pattern compilation timeout")
-                
+
                 ctx = TimeoutContext()
                 # Mark for timeout on the second pattern
                 if not hasattr(timeout_side_effect, 'call_count'):
@@ -171,33 +170,33 @@ class TestHybridChunkerReDoSProtection:
                 if timeout_side_effect.call_count == 2:
                     ctx._pattern_check = True
                 return ctx
-            
+
             mock_timeout.side_effect = timeout_side_effect
-            
+
             # Create chunker - should handle timeout during pattern compilation
             chunker = HybridChunker()
-            
+
             # Should have compiled some patterns despite timeout
             assert len(chunker._compiled_patterns) > 0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_async_chunk_text_with_pattern_failures(self, chunker):
         """Test async chunking continues despite regex pattern failures."""
         test_text = """# Test Document
-        
+
         This is a test with some **markdown** elements.
-        
+
         - List item 1
         - List item 2
-        
+
         [Link](http://example.com)
         """
-        
+
         # Mock some pattern executions to fail
         with patch('packages.shared.text_processing.strategies.hybrid_chunker.safe_regex_findall') as mock_safe:
             call_count = 0
-            
-            def side_effect(pattern, text, flags=0):
+
+            def side_effect(pattern, text, flags=0):  # noqa: ARG001
                 nonlocal call_count
                 call_count += 1
                 # Fail on some calls
@@ -205,12 +204,12 @@ class TestHybridChunkerReDoSProtection:
                     raise Exception("Pattern failed")
                 # Return empty for others (to ensure we get to strategy selection)
                 return []
-            
+
             mock_safe.side_effect = side_effect
-            
+
             # Should still produce chunks
             chunks = await chunker.chunk_text_async(test_text, "test_doc")
-            
+
             assert len(chunks) > 0
             assert all(chunk.text for chunk in chunks)
 
@@ -220,11 +219,11 @@ class TestHybridChunkerReDoSProtection:
         for pattern_str, (compiled_pattern, _) in chunker._compiled_patterns.items():
             # Check pattern doesn't have nested quantifiers that could cause ReDoS
             # This is a simplified check - real ReDoS detection is complex
-            
+
             # Patterns should not have patterns like (a+)+ or (a*)*
             assert not re.search(r'\([^)]*[+*]\)[+*]', pattern_str), \
                 f"Pattern {pattern_str} may be vulnerable to ReDoS"
-            
+
             # Patterns should compile successfully
             assert compiled_pattern is not None
 
@@ -237,12 +236,12 @@ class TestHybridChunkerReDoSProtection:
             large_doc += "This is some content " * 50 + "\n\n"
             large_doc += f"- List item {i}\n"
             large_doc += f"[Link {i}](http://example.com/{i})\n\n"
-        
+
         # Time the markdown analysis
         start_time = time.time()
         is_file, density = chunker._analyze_markdown_content(large_doc, None)
         elapsed_time = time.time() - start_time
-        
+
         # Should complete in reasonable time
         assert elapsed_time < 1.0  # Should be much faster than timeout
         assert density > 0  # Should detect markdown elements
@@ -257,14 +256,14 @@ class TestHybridChunkerReDoSProtection:
         """Test the timeout context manager behavior."""
         # This test verifies the timeout mechanism works
         # Note: actual implementation differs between Unix/Windows
-        
+
         from packages.shared.text_processing.strategies.hybrid_chunker import timeout
-        
+
         # Test normal execution (no timeout)
         with timeout(2):
             result = 1 + 1
             assert result == 2
-        
+
         # Context manager should complete normally
         try:
             with timeout(1):

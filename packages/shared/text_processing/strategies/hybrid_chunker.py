@@ -12,6 +12,7 @@ import platform
 import re
 import signal
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
 from enum import Enum
 from typing import Any
@@ -29,9 +30,9 @@ MAX_TEXT_LENGTH = 5_000_000  # 5MB text limit to prevent DOS
 # Platform-specific timeout implementation
 if platform.system() != "Windows":
     @contextmanager
-    def timeout(seconds):
+    def timeout(seconds: int) -> Iterator[None]:
         """Context manager for timeout enforcement using signal alarm (Unix/Linux)."""
-        def timeout_handler(signum, frame):  # noqa: ARG001
+        def timeout_handler(signum: int, frame: Any) -> None:  # noqa: ARG001
             raise TimeoutError("Regex execution timeout")
 
         # Set the signal handler and alarm
@@ -47,7 +48,7 @@ if platform.system() != "Windows":
 else:
     # Windows-compatible timeout using threading
     @contextmanager
-    def timeout(seconds):
+    def timeout(seconds: int) -> Iterator[None]:
         """Context manager for timeout enforcement using threading (Windows)."""
         timer = threading.Timer(seconds, lambda: None)
         timer.start()
@@ -420,7 +421,7 @@ class HybridChunker(BaseChunker):
             chunker = self._get_chunker(strategy.value, params)
 
             # Perform chunking
-            chunks = chunker.chunk_text(text, doc_id, enhanced_metadata)
+            chunks: list[ChunkResult] = chunker.chunk_text(text, doc_id, enhanced_metadata)
 
             # Add hybrid chunker metadata to each chunk
             for chunk in chunks:

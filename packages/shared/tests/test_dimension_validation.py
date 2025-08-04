@@ -3,7 +3,6 @@ Unit tests for dimension validation utilities.
 """
 
 import pytest
-
 from shared.database.exceptions import DimensionMismatchError
 from shared.embedding.validation import (
     adjust_embeddings_dimension,
@@ -34,7 +33,7 @@ class TestDimensionValidation:
                 collection_name="test_collection",
                 model_name="Qwen3-0.6B",
             )
-        
+
         error = exc_info.value
         assert error.expected_dimension == 384
         assert error.actual_dimension == 1024
@@ -51,10 +50,10 @@ class TestDimensionValidation:
     def test_validate_embedding_dimensions_failure(self):
         """Test that embeddings with wrong dimensions raise DimensionMismatchError."""
         embeddings = [[0.1] * 384, [0.2] * 1024, [0.3] * 384]  # Middle one is wrong
-        
+
         with pytest.raises(DimensionMismatchError) as exc_info:
             validate_embedding_dimensions(embeddings, expected_dimension=384)
-        
+
         error = exc_info.value
         assert error.expected_dimension == 384
         assert error.actual_dimension == 1024
@@ -70,7 +69,7 @@ class TestDimensionValidation:
         adjusted = adjust_embeddings_dimension(
             original, target_dimension=2, normalize=False
         )
-        
+
         assert len(adjusted) == 2
         assert len(adjusted[0]) == 2
         assert adjusted[0] == [1.0, 2.0]
@@ -82,7 +81,7 @@ class TestDimensionValidation:
         adjusted = adjust_embeddings_dimension(
             original, target_dimension=4, normalize=False
         )
-        
+
         assert len(adjusted) == 2
         assert len(adjusted[0]) == 4
         assert adjusted[0] == [1.0, 2.0, 0.0, 0.0]
@@ -94,7 +93,7 @@ class TestDimensionValidation:
         adjusted = adjust_embeddings_dimension(
             original, target_dimension=2, normalize=True
         )
-        
+
         # Check that it's normalized to unit length
         norm = sum(v**2 for v in adjusted[0]) ** 0.5
         assert abs(norm - 1.0) < 1e-6
@@ -107,7 +106,7 @@ class TestDimensionValidation:
         adjusted = adjust_embeddings_dimension(
             original, target_dimension=3, normalize=False
         )
-        
+
         assert adjusted == original
 
     def test_adjust_embeddings_dimension_empty_list(self):
