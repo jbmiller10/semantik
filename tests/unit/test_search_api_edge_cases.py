@@ -396,6 +396,12 @@ class TestSearchAPIEdgeCases:
     async def test_upsert_with_http_error_parsing(self, mock_qdrant_client):
         """Test upsert error parsing when response format is unexpected."""
         with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
+            # Mock collection info first
+            mock_get_response = Mock()
+            mock_get_response.json.return_value = {"result": {"config": {"params": {"vectors": {"size": 768}}}}}
+            mock_get_response.raise_for_status = Mock()
+            mock_qdrant_client.get.return_value = mock_get_response
+
             # Mock error without expected format
             error_response = Mock()
             error_response.json.side_effect = Exception("Invalid JSON")
