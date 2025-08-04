@@ -839,6 +839,9 @@ class TestSearchAPI:
             mock_response.json.return_value = {"result": {"config": {"params": {"vectors": {"size": 768}}}}}
             mock_response.raise_for_status = Mock()
             mock_qdrant_client.get.return_value = mock_response
+            
+            # Make sure model manager returns embeddings with correct dimension (768)
+            mock_model_manager.generate_embedding.return_value = [0.1] * 768
 
             # Mock search results
             mock_search_response = Mock()

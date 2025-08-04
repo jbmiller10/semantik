@@ -7,6 +7,7 @@ This module tests the integration of dimension validation utilities with:
 3. End-to-end embedding dimension handling
 """
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -266,7 +267,8 @@ class TestDimensionValidationIntegration:
         # Test dimension mismatch error
         embeddings = [[1.0] * 512]
 
-        with pytest.raises(ValueError) as exc_info:
+        from shared.database.exceptions import DimensionMismatchError
+        with pytest.raises(DimensionMismatchError) as exc_info:
             validate_embedding_dimensions(embeddings, expected_dimension=384)
 
         error_msg = str(exc_info.value)
