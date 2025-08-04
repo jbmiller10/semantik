@@ -238,7 +238,10 @@ Books provide knowledge and entertainment. Data science is transforming industri
 
         mock_splitter.get_nodes_from_documents.side_effect = side_effect
 
-        with patch.object(chunker, "_get_splitter", return_value=mock_splitter), patch("time.sleep"):  # Mock sleep to speed up test
+        with (
+            patch.object(chunker, "_get_splitter", return_value=mock_splitter),
+            patch("time.sleep"),
+        ):  # Mock sleep to speed up test
             chunks = chunker.chunk_text(sample_texts["simple"], "retry_test")
 
             assert len(chunks) == 1
@@ -255,9 +258,13 @@ Books provide knowledge and entertainment. Data science is transforming industri
         mock_splitter.get_nodes_from_documents.side_effect = Exception("Persistent embedding error")
 
         # Need to mock both _get_splitter and the performance monitor
-        with patch.object(chunker, "_get_splitter", return_value=mock_splitter), patch("time.sleep"), patch(
-            "packages.shared.text_processing.chunking_metrics.performance_monitor.measure_chunking"
-        ) as mock_monitor:  # Mock sleep to speed up test
+        with (
+            patch.object(chunker, "_get_splitter", return_value=mock_splitter),
+            patch("time.sleep"),
+            patch(
+                "packages.shared.text_processing.chunking_metrics.performance_monitor.measure_chunking"
+            ) as mock_monitor,
+        ):  # Mock sleep to speed up test
             mock_context = MagicMock()
             mock_context.__enter__ = MagicMock(return_value=MagicMock(output_chunks=0))
             mock_context.__exit__ = MagicMock(return_value=None)
@@ -463,7 +470,10 @@ Books provide knowledge and entertainment. Data science is transforming industri
 
         mock_splitter.get_nodes_from_documents.side_effect = side_effect
 
-        with patch.object(chunker, "_get_splitter", return_value=mock_splitter), patch("time.sleep", side_effect=mock_sleep):
+        with (
+            patch.object(chunker, "_get_splitter", return_value=mock_splitter),
+            patch("time.sleep", side_effect=mock_sleep),
+        ):
             chunker.chunk_text(sample_texts["simple"], "backoff_test")
 
             # Verify exponential backoff
@@ -567,9 +577,12 @@ Books provide knowledge and entertainment. Data science is transforming industri
 
             mock_splitter.get_nodes_from_documents.side_effect = mock_get_nodes
 
-            with patch.object(chunker, "_get_splitter", return_value=mock_splitter), patch(
-                "packages.shared.text_processing.chunking_metrics.performance_monitor.measure_chunking"
-            ) as mock_monitor:
+            with (
+                patch.object(chunker, "_get_splitter", return_value=mock_splitter),
+                patch(
+                    "packages.shared.text_processing.chunking_metrics.performance_monitor.measure_chunking"
+                ) as mock_monitor,
+            ):
                 mock_metrics = MagicMock()
                 mock_context = MagicMock()
                 mock_context.__enter__ = MagicMock(return_value=mock_metrics)
@@ -592,7 +605,11 @@ Books provide knowledge and entertainment. Data science is transforming industri
         mock_splitter = MagicMock()
         mock_splitter.get_nodes_from_documents.side_effect = ValueError("Invalid document format")
 
-        with patch.object(chunker, "_get_splitter", return_value=mock_splitter), patch("time.sleep"), pytest.raises(RuntimeError, match="Semantic chunking failed: Invalid document format"):  # Mock sleep to speed up test
+        with (
+            patch.object(chunker, "_get_splitter", return_value=mock_splitter),
+            patch("time.sleep"),
+            pytest.raises(RuntimeError, match="Semantic chunking failed: Invalid document format"),
+        ):  # Mock sleep to speed up test
             # The chunker wraps exceptions in RuntimeError
             chunker.chunk_text("Test text", "error_doc")
 
