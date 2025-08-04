@@ -15,8 +15,11 @@ from llama_index.core.embeddings import MockEmbedding
 from packages.shared.text_processing.base_chunker import ChunkResult
 from packages.shared.text_processing.chunking_factory import ChunkingFactory
 from packages.shared.text_processing.strategies.character_chunker import CharacterChunker
+from packages.shared.text_processing.strategies.hierarchical_chunker import HierarchicalChunker
+from packages.shared.text_processing.strategies.hybrid_chunker import HybridChunker
 from packages.shared.text_processing.strategies.markdown_chunker import MarkdownChunker
 from packages.shared.text_processing.strategies.recursive_chunker import RecursiveChunker
+from packages.shared.text_processing.strategies.semantic_chunker import SemanticChunker
 
 # Set testing environment
 os.environ["TESTING"] = "true"
@@ -127,7 +130,7 @@ For more complex scenarios...
 """,
     }
 
-    ALL_STRATEGIES = ["character", "recursive", "markdown"]
+    ALL_STRATEGIES = ["character", "recursive", "markdown", "semantic", "hierarchical", "hybrid"]
 
     def get_default_config(self, strategy: str) -> dict[str, Any]:
         """Get default configuration for a strategy."""
@@ -143,6 +146,30 @@ For more complex scenarios...
             "markdown": {
                 "strategy": "markdown",
                 "params": {},
+            },
+            "semantic": {
+                "strategy": "semantic",
+                "params": {
+                    "breakpoint_percentile_threshold": 95,
+                    "buffer_size": 1,
+                    "max_chunk_size": 100,
+                },
+            },
+            "hierarchical": {
+                "strategy": "hierarchical",
+                "params": {
+                    "chunk_sizes": [200, 100, 50],
+                    "chunk_overlap": 10,
+                },
+            },
+            "hybrid": {
+                "strategy": "hybrid",
+                "params": {
+                    "markdown_threshold": 0.15,
+                    "semantic_coherence_threshold": 0.7,
+                    "large_doc_threshold": 50000,
+                    "fallback_strategy": "recursive",
+                },
             },
         }
         return configs.get(strategy, configs["recursive"])
@@ -286,6 +313,24 @@ For more complex scenarios...
         chunker = ChunkingFactory.create_chunker(config)
         assert isinstance(chunker, MarkdownChunker)
 
+        # Semantic chunker
+        config = {"strategy": "semantic", "params": {"max_chunk_size": 150}}
+        chunker = ChunkingFactory.create_chunker(config)
+        assert isinstance(chunker, SemanticChunker)
+        assert chunker.max_chunk_size == 150
+
+        # Hierarchical chunker
+        config = {"strategy": "hierarchical", "params": {"chunk_sizes": [300, 150, 75]}}
+        chunker = ChunkingFactory.create_chunker(config)
+        assert isinstance(chunker, HierarchicalChunker)
+        assert chunker.chunk_sizes == [300, 150, 75]
+
+        # Hybrid chunker
+        config = {"strategy": "hybrid", "params": {"markdown_threshold": 0.2}}
+        chunker = ChunkingFactory.create_chunker(config)
+        assert isinstance(chunker, HybridChunker)
+        assert chunker.markdown_threshold == 0.2
+
     async def test_factory_invalid_strategy(self) -> None:
         """Test factory handles invalid strategy."""
         config = {"strategy": "invalid_strategy", "params": {}}
@@ -300,7 +345,10 @@ For more complex scenarios...
         assert "character" in strategies
         assert "recursive" in strategies
         assert "markdown" in strategies
-        assert len(strategies) >= 3
+        assert "semantic" in strategies
+        assert "hierarchical" in strategies
+        assert "hybrid" in strategies
+        assert len(strategies) >= 6
 
     @pytest.mark.parametrize("strategy", ALL_STRATEGIES)
     def test_validate_config(self, strategy: str) -> None:
@@ -512,3 +560,266 @@ if __name__ == "__main__":
         assert len(chunks) >= 2
         assert any("fibonacci" in chunk.text for chunk in chunks)
         assert any("Calculator" in chunk.text for chunk in chunks)
+
+    async def test_hierarchical_chunker_relationships(self) -> None:
+        """Test hierarchical chunker creates proper parent-child relationships."""
+        chunker = HierarchicalChunker(
+            chunk_sizes=[200, 100, 50],
+            chunk_overlap=10
+        )
+
+        # Create text that will require multiple hierarchy levels
+        text = " ".join([f"Sentence {i}." for i in range(100)])  # ~700 chars
+        chunks = await chunker.chunk_text_async(text, "hier_test")
+
+        # Should have both leaf and parent chunks
+        leaf_chunks = [c for c in chunks if c.metadata.get("is_leaf", False)]
+        parent_chunks = [c for c in chunks if not c.metadata.get("is_leaf", False)]
+
+        assert len(leaf_chunks) > 0
+        assert len(parent_chunks) > 0
+
+        # Verify hierarchy metadata
+        for chunk in chunks:
+            assert "hierarchy_level" in chunk.metadata
+            assert "parent_chunk_id" in chunk.metadata
+            assert "child_chunk_ids" in chunk.metadata
+            assert "chunk_sizes" in chunk.metadata
+            assert chunk.metadata["chunk_sizes"] == [200, 100, 50]
+
+        # Verify that leaf chunks have appropriate hierarchy level
+        for leaf in leaf_chunks:
+            # Leaf chunks should be at the deepest level (highest number)
+            assert leaf.metadata["hierarchy_level"] >= 0
+
+        # Parent chunks should have lower hierarchy levels
+        for parent in parent_chunks:
+            assert parent.metadata["hierarchy_level"] >= 0
+
+        # Verify chunk IDs follow expected pattern
+        for chunk in chunks:
+            if chunk.metadata["is_leaf"]:
+                assert chunk.chunk_id.startswith("hier_test_")
+            else:
+                assert chunk.chunk_id.startswith("hier_test_parent_")
+
+    async def test_semantic_chunker_basic(self, mock_embed_model) -> None:
+        """Test basic semantic chunker functionality."""
+        chunker = SemanticChunker(
+            breakpoint_percentile_threshold=95,
+            buffer_size=1,
+            max_chunk_size=100,
+            embed_model=mock_embed_model
+        )
+
+        text = "This is a test document. It has multiple sentences. Each sentence is different. The semantic chunker should find natural boundaries."
+        chunks = await chunker.chunk_text_async(text, "semantic_test")
+
+        # Verify chunks
+        assert len(chunks) >= 1
+        assert all(isinstance(chunk, ChunkResult) for chunk in chunks)
+
+        # Verify semantic metadata
+        for chunk in chunks:
+            assert chunk.metadata.get("semantic_boundary") is True
+            assert "breakpoint_threshold" in chunk.metadata
+            assert chunk.metadata["breakpoint_threshold"] == 95
+
+    async def test_hybrid_chunker_markdown_detection(self) -> None:
+        """Test hybrid chunker selects markdown strategy for markdown content."""
+        chunker = HybridChunker()
+
+        # Test with markdown file extension
+        chunks = await chunker.chunk_text_async(
+            self.MARKDOWN_SAMPLES["simple"],
+            "test_doc",
+            {"file_path": "/path/to/test.md"}
+        )
+
+        # Verify markdown strategy was selected
+        assert len(chunks) >= 1
+        for chunk in chunks:
+            assert chunk.metadata["hybrid_chunker"] is True
+            assert chunk.metadata["selected_strategy"] == "markdown"
+            assert "hybrid_strategy_reasoning" in chunk.metadata
+            assert "markdown file extension" in chunk.metadata["hybrid_strategy_reasoning"]
+
+        # Test with markdown content (no file extension)
+        text_with_headers = """# Main Title
+
+## Section 1
+Content for section 1.
+
+## Section 2
+Content for section 2.
+
+### Subsection 2.1
+More detailed content."""
+
+        chunks = await chunker.chunk_text_async(text_with_headers, "test_doc_2")
+
+        # Verify markdown strategy was selected based on content
+        for chunk in chunks:
+            assert chunk.metadata["selected_strategy"] == "markdown"
+            assert "markdown syntax density" in chunk.metadata["hybrid_strategy_reasoning"]
+
+    async def test_hybrid_chunker_large_document_handling(self) -> None:
+        """Test hybrid chunker selects hierarchical strategy for large documents."""
+        chunker = HybridChunker(large_doc_threshold=5000)
+
+        # Create a large, coherent document
+        large_text = """
+# Technical Documentation
+
+## Introduction
+""" + ("This is a comprehensive technical document. " * 50) + """
+
+## Architecture
+""" + ("The system architecture consists of multiple components. " * 50) + """
+
+## Implementation
+""" + ("The implementation follows best practices. " * 50) + """
+
+## Conclusion
+""" + ("In conclusion, this system provides robust functionality. " * 50)
+
+        chunks = await chunker.chunk_text_async(large_text, "large_doc")
+
+        # Verify appropriate strategy was selected
+        assert len(chunks) > 1
+        for chunk in chunks:
+            assert chunk.metadata["hybrid_chunker"] is True
+            # Should use hierarchical due to size and coherence
+            if "Large document" in chunk.metadata["hybrid_strategy_reasoning"]:
+                assert chunk.metadata["selected_strategy"] == "hierarchical"
+
+    async def test_hybrid_chunker_semantic_content_detection(self) -> None:
+        """Test hybrid chunker selects semantic strategy for topic-focused content."""
+        chunker = HybridChunker(semantic_coherence_threshold=0.5)
+
+        # Create highly coherent, topic-focused content
+        coherent_text = """
+Machine learning is transforming how we process data. Deep learning models, 
+particularly neural networks, have revolutionized pattern recognition. 
+Convolutional neural networks excel at image processing tasks. 
+Recurrent neural networks handle sequential data effectively. 
+Transformer models have advanced natural language processing significantly.
+The attention mechanism in transformers enables better context understanding.
+BERT and GPT models demonstrate the power of pre-trained language models.
+Transfer learning allows these models to adapt to specific tasks efficiently.
+Fine-tuning pre-trained models reduces computational requirements.
+Model optimization techniques improve inference speed and accuracy.
+""" * 3  # Repeat to ensure enough content
+
+        chunks = await chunker.chunk_text_async(
+            coherent_text, 
+            "coherent_doc",
+            {"source": "ml_textbook.txt"}
+        )
+
+        # Verify semantic strategy was selected
+        assert len(chunks) >= 1
+        for chunk in chunks:
+            assert chunk.metadata["hybrid_chunker"] is True
+            # Should detect high semantic coherence
+            if "semantic coherence" in chunk.metadata["hybrid_strategy_reasoning"]:
+                assert chunk.metadata["selected_strategy"] == "semantic"
+
+    async def test_hybrid_chunker_fallback_mechanism(self) -> None:
+        """Test hybrid chunker fallback mechanism when primary strategy fails."""
+        # Create a chunker that will trigger a fallback
+        chunker = HybridChunker(
+            markdown_threshold=0.01,  # Very low threshold to force markdown detection
+            fallback_strategy="character"
+        )
+
+        # Create content that looks like markdown but might fail parsing
+        problematic_text = "# Broken markdown\n\n```\nUnclosed code block"
+
+        chunks = await chunker.chunk_text_async(problematic_text, "problematic_doc")
+
+        # Should still produce chunks (via fallback if needed)
+        assert len(chunks) >= 1
+        assert all(chunk.metadata["hybrid_chunker"] is True for chunk in chunks)
+
+    async def test_hybrid_chunker_strategy_override(self) -> None:
+        """Test manual strategy override in metadata."""
+        chunker = HybridChunker(enable_strategy_override=True)
+
+        # Force semantic strategy via metadata
+        text = "Simple text that would normally use recursive chunking."
+        chunks = await chunker.chunk_text_async(
+            text,
+            "override_doc",
+            {"chunking_strategy": "semantic"}
+        )
+
+        # Verify override was applied
+        assert len(chunks) >= 1
+        for chunk in chunks:
+            assert chunk.metadata["selected_strategy"] == "semantic"
+            assert "manually specified" in chunk.metadata["hybrid_strategy_reasoning"]
+
+    async def test_hybrid_chunker_edge_cases(self) -> None:
+        """Test hybrid chunker with various edge cases."""
+        chunker = HybridChunker()
+
+        # Empty text
+        chunks = await chunker.chunk_text_async("", "empty_doc")
+        assert chunks == []
+
+        # Very short text
+        chunks = await chunker.chunk_text_async("Short.", "short_doc")
+        assert len(chunks) == 1
+        assert chunks[0].metadata["selected_strategy"] == "recursive"
+
+        # Mixed content that doesn't strongly match any pattern
+        mixed_text = "Some text without any special formatting or structure."
+        chunks = await chunker.chunk_text_async(mixed_text, "mixed_doc")
+        assert len(chunks) >= 1
+        # Should default to recursive
+        assert chunks[0].metadata["selected_strategy"] == "recursive"
+
+    def test_hybrid_chunker_config_validation(self) -> None:
+        """Test hybrid chunker configuration validation."""
+        chunker = HybridChunker()
+
+        # Valid config
+        valid_config = {
+            "markdown_threshold": 0.2,
+            "semantic_coherence_threshold": 0.8,
+            "large_doc_threshold": 10000,
+            "fallback_strategy": "character"
+        }
+        assert chunker.validate_config(valid_config) is True
+
+        # Invalid threshold values
+        invalid_configs = [
+            {"markdown_threshold": -0.1},
+            {"markdown_threshold": 1.5},
+            {"semantic_coherence_threshold": "high"},
+            {"large_doc_threshold": -1000},
+            {"fallback_strategy": "invalid_strategy"}
+        ]
+
+        for config in invalid_configs:
+            assert chunker.validate_config(config) is False
+
+    async def test_hybrid_chunker_performance_logging(self) -> None:
+        """Test that hybrid chunker logs strategy selection reasoning."""
+        chunker = HybridChunker()
+
+        # Different content types to trigger different strategies
+        test_cases = [
+            ("# Markdown\n\nContent", {"file_type": ".md"}, "markdown"),
+            ("Regular text " * 100, {}, "recursive"),
+        ]
+
+        for text, metadata, expected_strategy in test_cases:
+            chunks = await chunker.chunk_text_async(text, f"test_{expected_strategy}", metadata)
+            
+            assert len(chunks) >= 1
+            # Verify reasoning is logged in metadata
+            for chunk in chunks:
+                assert "hybrid_strategy_reasoning" in chunk.metadata
+                assert chunk.metadata["hybrid_strategy_used"] == expected_strategy
