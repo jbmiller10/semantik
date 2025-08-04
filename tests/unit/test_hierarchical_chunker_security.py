@@ -146,22 +146,15 @@ class TestHierarchicalChunkerSecurity:
         chunker = HierarchicalChunker()
 
         # Test hierarchy depth validation
-        config_too_deep = {
-            "chunk_sizes": [1000 - (i * 100) for i in range(MAX_HIERARCHY_DEPTH + 2)]
-        }
+        config_too_deep = {"chunk_sizes": [1000 - (i * 100) for i in range(MAX_HIERARCHY_DEPTH + 2)]}
         assert chunker.validate_config(config_too_deep) is False
 
         # Test chunk size validation
-        config_too_large = {
-            "chunk_sizes": [MAX_CHUNK_SIZE + 1000, 5000, 1000]
-        }
+        config_too_large = {"chunk_sizes": [MAX_CHUNK_SIZE + 1000, 5000, 1000]}
         assert chunker.validate_config(config_too_large) is False
 
         # Test valid config
-        config_valid = {
-            "chunk_sizes": [2000, 1000, 500],
-            "chunk_overlap": 50
-        }
+        config_valid = {"chunk_sizes": [2000, 1000, 500], "chunk_overlap": 50}
         assert chunker.validate_config(config_valid) is True
 
     def test_streaming_chunk_size_constant(self):
@@ -236,16 +229,10 @@ class TestHierarchicalChunkerSecurity:
         assert chunker.validate_config({"chunk_sizes": ["1000", "500", "250"]}) is False
 
         # Test invalid chunk_overlap
-        assert chunker.validate_config({
-            "chunk_sizes": [1000, 500],
-            "chunk_overlap": -10
-        }) is False
+        assert chunker.validate_config({"chunk_sizes": [1000, 500], "chunk_overlap": -10}) is False
 
         # Test overlap greater than smallest chunk
-        assert chunker.validate_config({
-            "chunk_sizes": [1000, 100],
-            "chunk_overlap": 150
-        }) is False
+        assert chunker.validate_config({"chunk_sizes": [1000, 100], "chunk_overlap": 150}) is False
 
     def test_security_constants_reasonable_values(self):
         """Test that security constants have reasonable values."""
@@ -269,10 +256,7 @@ class TestHierarchicalChunkerSecurity:
         assert chunker.chunk_overlap == 100
 
         # Test via validate_config - overlap >= smallest chunk should be invalid
-        config = {
-            "chunk_sizes": [1000, 500, 100],
-            "chunk_overlap": 100  # Equal to smallest chunk
-        }
+        config = {"chunk_sizes": [1000, 500, 100], "chunk_overlap": 100}  # Equal to smallest chunk
         assert chunker.validate_config(config) is False
 
         # Valid overlap

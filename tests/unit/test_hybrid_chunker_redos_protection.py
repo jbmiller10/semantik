@@ -49,8 +49,7 @@ class TestHybridChunkerReDoSProtection:
         assert matches == []
 
     @pytest.mark.skipif(
-        True,  # Skip by default as it's time-dependent
-        reason="ReDoS test is time-dependent and may be flaky"
+        True, reason="ReDoS test is time-dependent and may be flaky"  # Skip by default as it's time-dependent
     )
     def test_safe_regex_findall_timeout(self):
         """Test that regex execution times out for malicious patterns."""
@@ -69,7 +68,7 @@ class TestHybridChunkerReDoSProtection:
 
     def test_markdown_pattern_compilation(self, chunker):
         """Test that markdown patterns are pre-compiled during initialization."""
-        assert hasattr(chunker, '_compiled_patterns')
+        assert hasattr(chunker, "_compiled_patterns")
         assert isinstance(chunker._compiled_patterns, dict)
 
         # Check expected patterns are compiled
@@ -109,8 +108,9 @@ class TestHybridChunkerReDoSProtection:
                 raise TimeoutError("Simulated timeout")
             return original_safe_regex(pattern, text, flags)
 
-        with patch('packages.shared.text_processing.strategies.hybrid_chunker.safe_regex_findall',
-                   side_effect=mock_safe_regex):
+        with patch(
+            "packages.shared.text_processing.strategies.hybrid_chunker.safe_regex_findall", side_effect=mock_safe_regex
+        ):
             is_file, density = chunker._analyze_markdown_content(test_text, None)
 
             # Should still return a result despite some patterns failing
@@ -125,8 +125,10 @@ class TestHybridChunkerReDoSProtection:
         Testing is important for test coverage."""
 
         # Mock safe_regex_findall to fail
-        with patch('packages.shared.text_processing.strategies.hybrid_chunker.safe_regex_findall',
-                   side_effect=Exception("Regex failed")):
+        with patch(
+            "packages.shared.text_processing.strategies.hybrid_chunker.safe_regex_findall",
+            side_effect=Exception("Regex failed"),
+        ):
             coherence = chunker._estimate_semantic_coherence(test_text)
 
             # Should still return a valid coherence score
@@ -151,20 +153,21 @@ class TestHybridChunkerReDoSProtection:
     def test_compile_markdown_patterns_timeout_handling(self):
         """Test that pattern compilation handles timeouts gracefully."""
         # Create a new chunker and mock the timeout context
-        with patch('packages.shared.text_processing.strategies.hybrid_chunker.timeout') as mock_timeout:
+        with patch("packages.shared.text_processing.strategies.hybrid_chunker.timeout") as mock_timeout:
             # Make timeout raise TimeoutError for specific patterns
             def timeout_side_effect(seconds):  # noqa: ARG001
                 class TimeoutContext:
                     def __enter__(self):
                         return self
+
                     def __exit__(self, *args):
                         # Simulate timeout on complex patterns
-                        if hasattr(self, '_pattern_check'):
+                        if hasattr(self, "_pattern_check"):
                             raise TimeoutError("Pattern compilation timeout")
 
                 ctx = TimeoutContext()
                 # Mark for timeout on the second pattern
-                if not hasattr(timeout_side_effect, 'call_count'):
+                if not hasattr(timeout_side_effect, "call_count"):
                     timeout_side_effect.call_count = 0
                 timeout_side_effect.call_count += 1
                 if timeout_side_effect.call_count == 2:
@@ -193,7 +196,7 @@ class TestHybridChunkerReDoSProtection:
         """
 
         # Mock some pattern executions to fail
-        with patch('packages.shared.text_processing.strategies.hybrid_chunker.safe_regex_findall') as mock_safe:
+        with patch("packages.shared.text_processing.strategies.hybrid_chunker.safe_regex_findall") as mock_safe:
             call_count = 0
 
             def side_effect(pattern, text, flags=0):  # noqa: ARG001
@@ -221,8 +224,7 @@ class TestHybridChunkerReDoSProtection:
             # This is a simplified check - real ReDoS detection is complex
 
             # Patterns should not have patterns like (a+)+ or (a*)*
-            assert not re.search(r'\([^)]*[+*]\)[+*]', pattern_str), \
-                f"Pattern {pattern_str} may be vulnerable to ReDoS"
+            assert not re.search(r"\([^)]*[+*]\)[+*]", pattern_str), f"Pattern {pattern_str} may be vulnerable to ReDoS"
 
             # Patterns should compile successfully
             assert compiled_pattern is not None

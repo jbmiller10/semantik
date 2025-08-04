@@ -66,9 +66,7 @@ class TestDimensionValidation:
     def test_adjust_embeddings_dimension_truncation(self):
         """Test truncating embeddings to smaller dimension."""
         original = [[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]]
-        adjusted = adjust_embeddings_dimension(
-            original, target_dimension=2, normalize=False
-        )
+        adjusted = adjust_embeddings_dimension(original, target_dimension=2, normalize=False)
 
         assert len(adjusted) == 2
         assert len(adjusted[0]) == 2
@@ -78,9 +76,7 @@ class TestDimensionValidation:
     def test_adjust_embeddings_dimension_padding(self):
         """Test padding embeddings to larger dimension."""
         original = [[1.0, 2.0], [3.0, 4.0]]
-        adjusted = adjust_embeddings_dimension(
-            original, target_dimension=4, normalize=False
-        )
+        adjusted = adjust_embeddings_dimension(original, target_dimension=4, normalize=False)
 
         assert len(adjusted) == 2
         assert len(adjusted[0]) == 4
@@ -90,9 +86,7 @@ class TestDimensionValidation:
     def test_adjust_embeddings_dimension_normalization(self):
         """Test that normalization produces unit vectors."""
         original = [[3.0, 4.0]]  # Norm = 5
-        adjusted = adjust_embeddings_dimension(
-            original, target_dimension=2, normalize=True
-        )
+        adjusted = adjust_embeddings_dimension(original, target_dimension=2, normalize=True)
 
         # Check that it's normalized to unit length
         norm = sum(v**2 for v in adjusted[0]) ** 0.5
@@ -103,9 +97,7 @@ class TestDimensionValidation:
     def test_adjust_embeddings_dimension_no_change(self):
         """Test that embeddings with correct dimension are unchanged."""
         original = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
-        adjusted = adjust_embeddings_dimension(
-            original, target_dimension=3, normalize=False
-        )
+        adjusted = adjust_embeddings_dimension(original, target_dimension=3, normalize=False)
 
         assert adjusted == original
 

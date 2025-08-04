@@ -47,7 +47,7 @@ class TestDimensionValidationIntegration:
         """Test that search API validates query embedding dimensions."""
         pytest.skip("Search service integration test needs updating for new architecture")
 
-        with patch('packages.shared.embedding.dense.embedding_service', mock_embedding_service):
+        with patch("packages.shared.embedding.dense.embedding_service", mock_embedding_service):
             # Create search service
             search_service = SearchService()
 
@@ -61,16 +61,12 @@ class TestDimensionValidationIntegration:
             collection_id = "test-collection"
 
             # Mock get_collection_info to return expected dimension
-            mock_qdrant.get_collection = AsyncMock(return_value=MagicMock(
-                config=MagicMock(params=MagicMock(vectors=MagicMock(size=384)))
-            ))
+            mock_qdrant.get_collection = AsyncMock(
+                return_value=MagicMock(config=MagicMock(params=MagicMock(vectors=MagicMock(size=384))))
+            )
 
             # Should not raise any errors
-            results = await search_service.search(
-                collection_id=collection_id,
-                query=query,
-                limit=10
-            )
+            results = await search_service.search(collection_id=collection_id, query=query, limit=10)
 
             # Verify embedding was called
             mock_embedding_service.embed_single.assert_called_with(query)
@@ -84,29 +80,25 @@ class TestDimensionValidationIntegration:
         mock_embedding_service._service.get_dimension.return_value = 512
         mock_embedding_service.embed_single.return_value = np.random.rand(512)
 
-        with patch('packages.shared.embedding.dense.embedding_service', mock_embedding_service):
+        with patch("packages.shared.embedding.dense.embedding_service", mock_embedding_service):
             search_service = SearchService()
 
             # Mock Qdrant with different dimension
             mock_qdrant = MagicMock()
-            mock_qdrant.get_collection = AsyncMock(return_value=MagicMock(
-                config=MagicMock(params=MagicMock(vectors=MagicMock(size=384)))
-            ))
+            mock_qdrant.get_collection = AsyncMock(
+                return_value=MagicMock(config=MagicMock(params=MagicMock(vectors=MagicMock(size=384))))
+            )
             search_service._client = mock_qdrant
 
             # Test query with dimension adjustment
-            with patch('packages.shared.embedding.validation.adjust_embeddings_dimension') as mock_adjust:
+            with patch("packages.shared.embedding.validation.adjust_embeddings_dimension") as mock_adjust:
                 mock_adjust.return_value = [np.random.rand(384).tolist()]
 
                 query = "test query"
                 collection_id = "test-collection"
 
                 # Should handle dimension mismatch
-                results = await search_service.search(
-                    collection_id=collection_id,
-                    query=query,
-                    limit=10
-                )
+                results = await search_service.search(collection_id=collection_id, query=query, limit=10)
 
                 # Verify dimension adjustment was called
                 mock_adjust.assert_called_once()
@@ -116,19 +108,16 @@ class TestDimensionValidationIntegration:
         """Test that indexing tasks validate embedding dimensions."""
         pytest.skip("Indexing task test needs updating for new architecture")
 
-        with patch('packages.shared.embedding.dense.embedding_service', mock_embedding_service):
-            with patch('packages.worker.tasks.indexing_tasks.get_collection') as mock_get_collection:
+        with patch("packages.shared.embedding.dense.embedding_service", mock_embedding_service):
+            with patch("packages.worker.tasks.indexing_tasks.get_collection") as mock_get_collection:
                 mock_get_collection.return_value = mock_collection
 
                 # Mock document processing
-                with patch('packages.worker.tasks.indexing_tasks.process_documents') as mock_process:
+                with patch("packages.worker.tasks.indexing_tasks.process_documents") as mock_process:
                     mock_process.return_value = AsyncMock()
 
                     # Run indexing task
-                    result = await index_collection_task(
-                        collection_id=mock_collection.id,
-                        operation_id="test-op"
-                    )
+                    result = await index_collection_task(collection_id=mock_collection.id, operation_id="test-op")
 
                     # Verify dimension was checked
                     assert mock_embedding_service._service.get_dimension.called
@@ -142,22 +131,19 @@ class TestDimensionValidationIntegration:
         mock_collection.expected_embedding_dimension = 384
         mock_embedding_service._service.get_dimension.return_value = 512
 
-        with patch('packages.shared.embedding.dense.embedding_service', mock_embedding_service):
-            with patch('packages.worker.tasks.reindexing_tasks.get_collection') as mock_get_collection:
+        with patch("packages.shared.embedding.dense.embedding_service", mock_embedding_service):
+            with patch("packages.worker.tasks.reindexing_tasks.get_collection") as mock_get_collection:
                 mock_get_collection.return_value = mock_collection
 
                 # Mock Qdrant operations
-                with patch('packages.worker.tasks.reindexing_tasks.recreate_collection') as mock_recreate:
+                with patch("packages.worker.tasks.reindexing_tasks.recreate_collection") as mock_recreate:
                     mock_recreate.return_value = AsyncMock()
 
-                    with patch('packages.worker.tasks.reindexing_tasks.process_documents') as mock_process:
+                    with patch("packages.worker.tasks.reindexing_tasks.process_documents") as mock_process:
                         mock_process.return_value = AsyncMock()
 
                         # Run re-indexing task
-                        result = await reindex_collection_task(
-                            collection_id=mock_collection.id,
-                            operation_id="test-op"
-                        )
+                        result = await reindex_collection_task(collection_id=mock_collection.id, operation_id="test-op")
 
                         # Verify collection was recreated with new dimension
                         mock_recreate.assert_called_once()
@@ -184,6 +170,7 @@ class TestDimensionValidationIntegration:
 
         # Test invalid dimensions
         from shared.database.exceptions import DimensionMismatchError
+
         with pytest.raises(DimensionMismatchError):
             validate_embedding_dimensions(embeddings, expected_dimension=4)
 
@@ -239,24 +226,15 @@ class TestDimensionValidationIntegration:
         pytest.skip("End-to-end test needs updating for new architecture")
 
         # Mock dependencies
-        with patch('packages.vecpipe.api.search_api.SearchService') as mock_search_service_class:
+        with patch("packages.vecpipe.api.search_api.SearchService") as mock_search_service_class:
             mock_service = MagicMock()
             mock_search_service_class.return_value = mock_service
 
             # Mock successful search
-            mock_service.search = AsyncMock(return_value={
-                "results": [],
-                "total": 0,
-                "query_embedding_dimension": 384
-            })
+            mock_service.search = AsyncMock(return_value={"results": [], "total": 0, "query_embedding_dimension": 384})
 
             # Perform search
-            response = await search_collection(
-                collection_id="test-collection",
-                query="test query",
-                limit=10,
-                offset=0
-            )
+            response = await search_collection(collection_id="test-collection", query="test query", limit=10, offset=0)
 
             # Verify search was called
             mock_service.search.assert_called_once()
@@ -267,6 +245,7 @@ class TestDimensionValidationIntegration:
         embeddings = [[1.0] * 512]
 
         from shared.database.exceptions import DimensionMismatchError
+
         with pytest.raises(DimensionMismatchError) as exc_info:
             validate_embedding_dimensions(embeddings, expected_dimension=384)
 
@@ -317,12 +296,9 @@ class TestDimensionValidationIntegration:
             for _, dim2 in model_dimensions.items():
                 # Test compatibility
                 from shared.database.exceptions import DimensionMismatchError
+
                 try:
-                    validate_dimension_compatibility(
-                        expected_dimension=dim2,
-                        actual_dimension=dim1,
-                        model_name=model1
-                    )
+                    validate_dimension_compatibility(expected_dimension=dim2, actual_dimension=dim1, model_name=model1)
                     is_compatible = True
                 except DimensionMismatchError:
                     is_compatible = False

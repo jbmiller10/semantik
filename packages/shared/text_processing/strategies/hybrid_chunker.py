@@ -29,9 +29,11 @@ MAX_TEXT_LENGTH = 5_000_000  # 5MB text limit to prevent DOS
 
 # Platform-specific timeout implementation
 if platform.system() != "Windows":
+
     @contextmanager
     def timeout(seconds: int) -> Iterator[None]:
         """Context manager for timeout enforcement using signal alarm (Unix/Linux)."""
+
         def timeout_handler(signum: int, frame: Any) -> None:  # noqa: ARG001
             raise TimeoutError("Regex execution timeout")
 
@@ -45,6 +47,7 @@ if platform.system() != "Windows":
             # Restore the old handler and cancel the alarm
             signal.alarm(0)
             signal.signal(signal.SIGALRM, old_handler)
+
 else:
     # Windows-compatible timeout using threading
     @contextmanager
@@ -441,7 +444,7 @@ class HybridChunker(BaseChunker):
                 logger.warning("Attempting fallback strategy")
                 try:
                     fallback_chunker = self._get_chunker(self.fallback_strategy)
-                    chunks = fallback_chunker.chunk_text(text, doc_id, enhanced_metadata)
+                    chunks: list[ChunkResult] = fallback_chunker.chunk_text(text, doc_id, enhanced_metadata)
 
                     # Update metadata to reflect fallback
                     for chunk in chunks:
@@ -521,7 +524,7 @@ class HybridChunker(BaseChunker):
             chunker = self._get_chunker(strategy.value, params)
 
             # Perform async chunking
-            chunks = await chunker.chunk_text_async(text, doc_id, enhanced_metadata)
+            chunks: list[ChunkResult] = await chunker.chunk_text_async(text, doc_id, enhanced_metadata)
 
             # Add hybrid chunker metadata to each chunk
             for chunk in chunks:
@@ -541,7 +544,7 @@ class HybridChunker(BaseChunker):
                 logger.warning("Attempting fallback strategy")
                 try:
                     fallback_chunker = self._get_chunker(self.fallback_strategy)
-                    chunks = await fallback_chunker.chunk_text_async(text, doc_id, enhanced_metadata)
+                    chunks: list[ChunkResult] = await fallback_chunker.chunk_text_async(text, doc_id, enhanced_metadata)
 
                     # Update metadata to reflect fallback
                     for chunk in chunks:

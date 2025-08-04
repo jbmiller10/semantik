@@ -46,11 +46,17 @@ class TestExceptionHierarchy:
 
         # All exceptions should ultimately inherit from TextProcessingError
         all_exceptions = [
-            ChunkSizeError, HierarchyDepthError, TextLengthError,
-            TransientEmbeddingError, PermanentEmbeddingError,
-            DimensionMismatchError, EmbeddingServiceNotInitializedError,
-            ConfigValidationError, RegexTimeoutError,
-            ChunkerCreationError, UnknownStrategyError
+            ChunkSizeError,
+            HierarchyDepthError,
+            TextLengthError,
+            TransientEmbeddingError,
+            PermanentEmbeddingError,
+            DimensionMismatchError,
+            EmbeddingServiceNotInitializedError,
+            ConfigValidationError,
+            RegexTimeoutError,
+            ChunkerCreationError,
+            UnknownStrategyError,
         ]
 
         for exc_class in all_exceptions:
@@ -163,7 +169,7 @@ class TestExceptionHierarchy:
             except ValueError as e:
                 # Wrap in domain-specific error
                 raise DimensionMismatchError("Dimension must be positive") from e
-                
+
         assert str(exc_info.value) == "Dimension must be positive"
         assert exc_info.value.__cause__ is not None
         assert isinstance(exc_info.value.__cause__, ValueError)
@@ -171,6 +177,7 @@ class TestExceptionHierarchy:
 
     def test_exception_type_checking(self):
         """Test type checking for exception handling decisions."""
+
         def handle_embedding_error(error: EmbeddingError) -> str:
             """Determine how to handle an embedding error."""
             if isinstance(error, TransientEmbeddingError):
@@ -208,9 +215,7 @@ class TestExceptionHierarchy:
         text = "a" * 100
         timeout = 1.0
 
-        error = RegexTimeoutError(
-            f"Regex pattern '{pattern}' timed out after {timeout}s on text of length {len(text)}"
-        )
+        error = RegexTimeoutError(f"Regex pattern '{pattern}' timed out after {timeout}s on text of length {len(text)}")
 
         assert isinstance(error, ValidationError)
         assert isinstance(error, TextProcessingError)
@@ -223,16 +228,12 @@ class TestExceptionHierarchy:
         max_length = 5_000_000
         actual_length = 10_000_000
 
-        error = TextLengthError(
-            f"Text length {actual_length:,} exceeds maximum {max_length:,}"
-        )
+        error = TextLengthError(f"Text length {actual_length:,} exceeds maximum {max_length:,}")
         assert "10,000,000" in str(error)
         assert "5,000,000" in str(error)
 
         # Hierarchy depth validation
         max_depth = 5
-        error = HierarchyDepthError(
-            f"Hierarchy depth {max_depth + 1} exceeds maximum {max_depth}"
-        )
+        error = HierarchyDepthError(f"Hierarchy depth {max_depth + 1} exceeds maximum {max_depth}")
         assert "6" in str(error)
         assert "5" in str(error)

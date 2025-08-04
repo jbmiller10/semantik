@@ -1279,6 +1279,7 @@ async def _process_index_operation(
         # Validate model dimension before creating collection
         actual_model_name = collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
         from shared.embedding.validation import get_model_dimension
+
         actual_model_dim = get_model_dimension(actual_model_name)
 
         if actual_model_dim and actual_model_dim != vector_dim:
@@ -1299,6 +1300,7 @@ async def _process_index_operation(
 
         # Store collection metadata including the expected model
         from shared.database.collection_metadata import store_collection_metadata
+
         try:
             store_collection_metadata(
                 qdrant_client,
@@ -1309,7 +1311,7 @@ async def _process_index_operation(
                     "instruction": config.get("instruction"),
                     "dimension": vector_dim,
                     "created_at": datetime.now(UTC).isoformat(),
-                }
+                },
             )
         except Exception as e:
             logger.warning(f"Failed to store collection metadata: {e}")
@@ -1974,7 +1976,9 @@ async def _process_reindex_operation(
                             # Get expected dimension from staging collection
                             expected_dim = get_collection_dimension(qdrant_client, staging_collection_name)
                             if expected_dim is None:
-                                logger.warning(f"Could not get dimension for staging collection {staging_collection_name}")
+                                logger.warning(
+                                    f"Could not get dimension for staging collection {staging_collection_name}"
+                                )
                             else:
                                 actual_dim = len(embeddings[0]) if embeddings else 0
 

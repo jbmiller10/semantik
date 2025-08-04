@@ -48,11 +48,11 @@ class LocalEmbeddingAdapter(BaseEmbedding):
             # Get dimension from the actual embedding service
             try:
                 # Access the underlying DenseEmbeddingService instance
-                if hasattr(embedding_service, '_service') and hasattr(embedding_service._service, 'get_dimension'):
+                if hasattr(embedding_service, "_service") and hasattr(embedding_service._service, "get_dimension"):
                     self._embed_dim = embedding_service._service.get_dimension()
-                elif hasattr(embedding_service, '_instance') and embedding_service._instance is not None:
+                elif hasattr(embedding_service, "_instance") and embedding_service._instance is not None:
                     # For lazy loading case
-                    if hasattr(embedding_service._instance, '_service'):
+                    if hasattr(embedding_service._instance, "_service"):
                         self._embed_dim = embedding_service._instance._service.get_dimension()
                     else:
                         raise RuntimeError("Embedding service structure not as expected")
@@ -81,9 +81,7 @@ class LocalEmbeddingAdapter(BaseEmbedding):
             try:
                 loop = asyncio.get_running_loop()
                 # If we're in an async context, we need to use run_coroutine_threadsafe
-                future = asyncio.run_coroutine_threadsafe(
-                    embedding_service.embed_single(query), loop
-                )
+                future = asyncio.run_coroutine_threadsafe(embedding_service.embed_single(query), loop)
                 embedding = future.result()
             except RuntimeError:
                 # No running loop, create a new one
@@ -158,9 +156,7 @@ class LocalEmbeddingAdapter(BaseEmbedding):
             try:
                 loop = asyncio.get_running_loop()
                 # If we're in an async context, we need to use run_coroutine_threadsafe
-                future = asyncio.run_coroutine_threadsafe(
-                    embedding_service.embed_texts(texts), loop
-                )
+                future = asyncio.run_coroutine_threadsafe(embedding_service.embed_texts(texts), loop)
                 embeddings = future.result()
             except RuntimeError:
                 # No running loop, create a new one

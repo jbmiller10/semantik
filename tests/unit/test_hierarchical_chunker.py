@@ -753,5 +753,5 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
         for chunk in chunks[:5]:  # Check first 5 chunks
             # The text at the offset should match the chunk text
             # Allow for whitespace differences
-            actual_text = text[chunk.start_offset:chunk.end_offset]
+            actual_text = text[chunk.start_offset : chunk.end_offset]
             assert actual_text.strip() == chunk.text.strip() or chunk.text.strip() in actual_text.strip()
