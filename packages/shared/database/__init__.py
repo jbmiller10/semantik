@@ -46,14 +46,14 @@ from .factory import (
     get_db_session,
 )
 
+# Partition utilities for working with partitioned tables
+from .partition_utils import ChunkPartitionHelper, PartitionAwareMixin
+
 # PostgreSQL database management
 from .postgres_database import check_postgres_connection, get_postgres_db, pg_connection_manager
 
 # Utilities
 from .utils import parse_user_id
-
-# Partition utilities for working with partitioned tables
-from .partition_utils import ChunkPartitionHelper, PartitionAwareMixin
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

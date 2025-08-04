@@ -195,18 +195,8 @@ def upgrade() -> None:
     """
     )
 
-    # Step 7: Insert default chunking strategies
-    op.execute(
-        """
-        INSERT INTO chunking_strategies (name, description, is_active, meta) VALUES
-        ('character', 'Simple fixed-size character-based chunking using TokenTextSplitter', true, '{"supports_streaming": true}'),
-        ('recursive', 'Smart sentence-aware splitting using SentenceSplitter', true, '{"supports_streaming": true, "recommended_default": true}'),
-        ('markdown', 'Respects markdown structure using MarkdownNodeParser', true, '{"supports_streaming": true, "file_types": [".md", ".mdx"]}'),
-        ('semantic', 'Uses AI embeddings to find natural boundaries using SemanticSplitterNodeParser', false, '{"supports_streaming": false, "requires_embeddings": true}'),
-        ('hierarchical', 'Creates parent-child chunks using HierarchicalNodeParser', false, '{"supports_streaming": false}'),
-        ('hybrid', 'Automatically selects strategy based on content', false, '{"supports_streaming": false}');
-    """
-    )
+    # Step 7: Default chunking strategies are now handled in a separate data migration
+    # See migration: a1b2c3d4e5f6_add_default_chunking_strategies.py
 
 
 def downgrade() -> None:

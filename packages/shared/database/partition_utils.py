@@ -8,6 +8,7 @@ by collection_id.
 """
 
 import logging
+import re
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any, TypeVar
 
@@ -19,6 +20,154 @@ from packages.shared.database.models import Chunk
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+
+class PartitionValidation:
+    """Validation utilities for partition operations."""
+
+    # UUID v4 pattern
+    UUID_PATTERN = re.compile(r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$", re.IGNORECASE)
+
+    # Limits for validation
+    MAX_BATCH_SIZE = 10000  # Maximum items in a single batch operation
+    MAX_STRING_LENGTH = 1000000  # 1MB max for content fields
+
+    @classmethod
+    def validate_uuid(cls, value: Any, field_name: str = "id") -> str:
+        """Validate UUID format.
+
+        Args:
+            value: Value to validate
+            field_name: Name of the field for error messages
+
+        Returns:
+            Validated UUID string
+
+        Raises:
+            ValueError: If value is not a valid UUID
+            TypeError: If value is not a string
+        """
+        if not isinstance(value, str):
+            raise TypeError(f"{field_name} must be a string, got {type(value).__name__}")
+
+        if not value:
+            raise ValueError(f"{field_name} cannot be empty")
+
+        if not cls.UUID_PATTERN.match(value):
+            raise ValueError(f"{field_name} must be a valid UUID v4, got: {value}")
+
+        return value.lower()  # Normalize to lowercase
+
+    @classmethod
+    def validate_partition_key(cls, value: Any, field_name: str = "collection_id") -> str:
+        """Validate partition key value.
+
+        Args:
+            value: Partition key value
+            field_name: Name of the field
+
+        Returns:
+            Validated partition key
+
+        Raises:
+            ValueError: If invalid
+            TypeError: If wrong type
+        """
+        # For now, partition keys are UUIDs
+        return cls.validate_uuid(value, field_name)
+
+    @classmethod
+    def validate_chunk_data(cls, chunk_data: dict[str, Any]) -> dict[str, Any]:
+        """Validate chunk data before database operations.
+
+        Args:
+            chunk_data: Chunk data dictionary
+
+        Returns:
+            Validated chunk data
+
+        Raises:
+            ValueError: If data is invalid
+            TypeError: If types are incorrect
+        """
+        if not isinstance(chunk_data, dict):
+            raise TypeError(f"chunk_data must be a dictionary, got {type(chunk_data).__name__}")
+
+        # Required fields
+        if "collection_id" not in chunk_data:
+            raise ValueError("collection_id is required for chunks (partition key)")
+
+        # Validate collection_id
+        chunk_data["collection_id"] = cls.validate_partition_key(chunk_data["collection_id"], "collection_id")
+
+        # Validate document_id if present
+        if "document_id" in chunk_data and chunk_data["document_id"] is not None:
+            chunk_data["document_id"] = cls.validate_uuid(chunk_data["document_id"], "document_id")
+
+        # Validate id if present
+        if "id" in chunk_data and chunk_data["id"] is not None:
+            chunk_data["id"] = cls.validate_uuid(chunk_data["id"], "id")
+
+        # Validate chunk_index
+        if "chunk_index" in chunk_data:
+            if not isinstance(chunk_data["chunk_index"], int):
+                raise TypeError("chunk_index must be an integer")
+            if chunk_data["chunk_index"] < 0:
+                raise ValueError("chunk_index must be non-negative")
+
+        # Validate content length
+        if "content" in chunk_data:
+            if not isinstance(chunk_data["content"], str):
+                raise TypeError("content must be a string")
+            if len(chunk_data["content"]) > cls.MAX_STRING_LENGTH:
+                raise ValueError(f"content exceeds maximum length of {cls.MAX_STRING_LENGTH} characters")
+
+        # Validate metadata if present
+        if "metadata" in chunk_data and chunk_data["metadata"] is not None:
+            if not isinstance(chunk_data["metadata"], dict):
+                raise TypeError("metadata must be a dictionary")
+
+        return chunk_data
+
+    @classmethod
+    def validate_batch_size(cls, items: Sequence[Any], operation: str = "bulk operation") -> None:
+        """Validate batch size for bulk operations.
+
+        Args:
+            items: Items to validate
+            operation: Operation name for error message
+
+        Raises:
+            ValueError: If batch size exceeds limit
+        """
+        if len(items) > cls.MAX_BATCH_SIZE:
+            raise ValueError(
+                f"{operation} batch size ({len(items)}) exceeds maximum allowed "
+                f"({cls.MAX_BATCH_SIZE}). Please split into smaller batches."
+            )
+
+    @classmethod
+    def sanitize_string(cls, value: str, max_length: int = 255) -> str:
+        """Sanitize string input for database operations.
+
+        Args:
+            value: String to sanitize
+            max_length: Maximum allowed length
+
+        Returns:
+            Sanitized string
+        """
+        if not isinstance(value, str):
+            return str(value)
+
+        # Truncate if too long
+        if len(value) > max_length:
+            value = value[:max_length]
+
+        # Remove null bytes which PostgreSQL doesn't like
+        value = value.replace("\x00", "")
+
+        return value
 
 
 class PartitionAwareMixin:
@@ -50,7 +199,9 @@ class PartitionAwareMixin:
             )
         """
         if partition_key_value is not None:
-            return query.where(partition_key_column == partition_key_value)
+            # Validate partition key format
+            validated_key = PartitionValidation.validate_partition_key(partition_key_value)
+            return query.where(partition_key_column == validated_key)
 
         logger.warning("Query on partitioned table without partition key - this will scan all partitions")
         return query
@@ -98,13 +249,25 @@ class PartitionAwareMixin:
         if not items:
             return
 
-        # Group by partition key
+        # Validate batch size
+        PartitionValidation.validate_batch_size(items, "bulk insert")
+
+        # Validate and group by partition key
         items_by_partition: dict[str, list[dict[str, Any]]] = {}
         for item in items:
             key = item.get(partition_key_field)
             if key is None:
                 raise ValueError(f"Partition key '{partition_key_field}' is required for all items")
-            items_by_partition.setdefault(key, []).append(item)
+
+            # Validate partition key format
+            validated_key = PartitionValidation.validate_partition_key(key, partition_key_field)
+            item[partition_key_field] = validated_key  # Update with validated key
+
+            # Additional validation for chunk data
+            if model_class.__name__ == "Chunk":
+                item = PartitionValidation.validate_chunk_data(item)
+
+            items_by_partition.setdefault(validated_key, []).append(item)
 
         # Insert in batches by partition
         for partition_key, partition_items in items_by_partition.items():
@@ -142,7 +305,10 @@ class PartitionAwareMixin:
         Returns:
             Number of deleted records
         """
-        filters = [partition_key_column == partition_key_value]
+        # Validate partition key
+        validated_key = PartitionValidation.validate_partition_key(partition_key_value)
+
+        filters = [partition_key_column == validated_key]
         if additional_filters:
             filters.extend(additional_filters)
 
@@ -178,7 +344,10 @@ class ChunkPartitionHelper:
                 [Chunk.document_id == doc_id]
             )
         """
-        query = select(Chunk).where(Chunk.collection_id == collection_id)
+        # Validate collection_id
+        validated_id = PartitionValidation.validate_partition_key(collection_id, "collection_id")
+
+        query = select(Chunk).where(Chunk.collection_id == validated_id)
 
         if additional_filters:
             query = query.where(and_(*additional_filters))
@@ -193,10 +362,11 @@ class ChunkPartitionHelper:
             chunk_data: Chunk data dictionary
 
         Raises:
-            ValueError: If collection_id is missing
+            ValueError: If collection_id is missing or invalid
+            TypeError: If chunk_data is not a dictionary
         """
-        if "collection_id" not in chunk_data or not chunk_data["collection_id"]:
-            raise ValueError("collection_id is required for chunks table (partition key)")
+        # Delegate to comprehensive validation
+        PartitionValidation.validate_chunk_data(chunk_data)
 
     @staticmethod
     async def get_partition_statistics(session: AsyncSession, collection_id: str) -> dict[str, Any]:
@@ -211,31 +381,55 @@ class ChunkPartitionHelper:
         """
         from sqlalchemy import func
 
-        # Count chunks in this partition
-        chunk_count = await session.scalar(
-            select(func.count()).select_from(Chunk).where(Chunk.collection_id == collection_id)
-        )
+        # Validate collection_id
+        validated_id = PartitionValidation.validate_partition_key(collection_id, "collection_id")
 
-        # Get size statistics
-        stats_query = select(
-            func.count().label("count"),
-            func.avg(func.length(Chunk.content)).label("avg_content_length"),
-            func.sum(func.length(Chunk.content)).label("total_content_length"),
-            func.min(Chunk.created_at).label("oldest_chunk"),
-            func.max(Chunk.created_at).label("newest_chunk"),
-        ).where(Chunk.collection_id == collection_id)
+        try:
+            # Count chunks in this partition
+            chunk_count = await session.scalar(
+                select(func.count()).select_from(Chunk).where(Chunk.collection_id == validated_id)
+            )
 
-        result = await session.execute(stats_query)
-        stats = result.one()
+            # Get size statistics
+            stats_query = select(
+                func.count().label("count"),
+                func.avg(func.length(Chunk.content)).label("avg_content_length"),
+                func.sum(func.length(Chunk.content)).label("total_content_length"),
+                func.min(Chunk.created_at).label("oldest_chunk"),
+                func.max(Chunk.created_at).label("newest_chunk"),
+            ).where(Chunk.collection_id == validated_id)
 
-        return {
-            "collection_id": collection_id,
-            "chunk_count": chunk_count or 0,
-            "avg_content_length": float(stats.avg_content_length or 0),
-            "total_content_length": stats.total_content_length or 0,
-            "oldest_chunk": stats.oldest_chunk,
-            "newest_chunk": stats.newest_chunk,
-        }
+            result = await session.execute(stats_query)
+            stats = result.one()
+
+            # Handle null/None values safely
+            avg_length = 0.0
+            if stats.avg_content_length is not None:
+                try:
+                    avg_length = float(stats.avg_content_length)
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid avg_content_length value: {stats.avg_content_length}")
+                    avg_length = 0.0
+
+            return {
+                "collection_id": validated_id,
+                "chunk_count": int(chunk_count or 0),
+                "avg_content_length": avg_length,
+                "total_content_length": int(stats.total_content_length or 0),
+                "oldest_chunk": stats.oldest_chunk,
+                "newest_chunk": stats.newest_chunk,
+            }
+        except Exception as e:
+            logger.error(f"Error getting partition statistics for collection {validated_id}: {e}")
+            # Return safe defaults on error
+            return {
+                "collection_id": validated_id,
+                "chunk_count": 0,
+                "avg_content_length": 0.0,
+                "total_content_length": 0,
+                "oldest_chunk": None,
+                "newest_chunk": None,
+            }
 
 
 # Usage example for bulk operations
@@ -247,9 +441,9 @@ async def example_bulk_chunk_insert(session: AsyncSession, chunks_data: list[dic
     """
     helper = PartitionAwareMixin()
 
-    # Validate all chunks have collection_id
-    for chunk in chunks_data:
-        ChunkPartitionHelper.validate_chunk_partition_key(chunk)
+    # Validation is now handled internally by bulk_insert_partitioned
+    # which includes batch size validation, partition key validation,
+    # and comprehensive chunk data validation
 
     # Perform partitioned bulk insert
     await helper.bulk_insert_partitioned(session, Chunk, chunks_data, partition_key_field="collection_id")

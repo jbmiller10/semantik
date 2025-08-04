@@ -294,123 +294,40 @@ def monitor_partition_health() -> dict[str, Any]:
     """
     import asyncio
 
-    from sqlalchemy import text
+    from shared.database.database import AsyncSessionLocal
 
-    results: dict[str, Any] = {
-        "status": "success",
-        "timestamp": datetime.now(UTC).isoformat(),
-        "alerts": [],
-        "metrics": {},
-        "error": None,
-    }
+    from packages.webui.services.partition_monitoring_service import PartitionMonitoringService
 
     try:
         logger.info("Starting partition health monitoring")
 
         async def _check_health() -> dict[str, Any]:
-            from shared.database.database import AsyncSessionLocal
-
             async with AsyncSessionLocal() as session:
-                # Get partition health summary
-                health_result = await session.execute(
-                    text(
-                        """
-                    SELECT * FROM partition_health_summary
-                    ORDER BY chunk_skew DESC
-                """
-                    )
-                )
-                health_data = health_result.fetchall()
-
-                # Get skew analysis
-                skew_result = await session.execute(text("SELECT * FROM analyze_partition_skew()"))
-                skew_data = skew_result.fetchall()
-
-                # Process health data
-                unbalanced_count = 0
-                warning_count = 0
-                critical_partitions = []
-
-                for row in health_data:
-                    if row.health_status == "UNBALANCED":
-                        unbalanced_count += 1
-                        critical_partitions.append(
-                            {
-                                "partition": row.partition_num,
-                                "chunk_percentage": float(row.chunk_percentage),
-                                "size_percentage": float(row.size_percentage),
-                                "recommendation": row.recommendation,
-                            }
-                        )
-                    elif row.health_status == "WARNING":
-                        warning_count += 1
-
-                # Process skew metrics
-                skew_metrics = {}
-                for metric in skew_data:
-                    skew_metrics[metric.metric] = {
-                        "value": float(metric.value),
-                        "status": metric.status,
-                        "details": metric.details,
-                    }
+                # Use the service for monitoring
+                service = PartitionMonitoringService(session)
+                monitoring_result = await service.check_partition_health()
 
                 return {
-                    "unbalanced_count": unbalanced_count,
-                    "warning_count": warning_count,
-                    "critical_partitions": critical_partitions,
-                    "skew_metrics": skew_metrics,
-                    "total_partitions": len(health_data),
+                    "status": monitoring_result.status,
+                    "timestamp": monitoring_result.timestamp,
+                    "alerts": monitoring_result.alerts,
+                    "metrics": monitoring_result.metrics,
+                    "error": monitoring_result.error,
                 }
 
         # Run the async function
-        health_info = asyncio.run(_check_health())
+        results = asyncio.run(_check_health())
 
-        results["metrics"] = health_info
-
-        # Generate alerts based on thresholds
-        if health_info["unbalanced_count"] > 0:
-            alert = {
-                "level": "CRITICAL",
-                "message": f"{health_info['unbalanced_count']} partition(s) are significantly unbalanced",
-                "details": health_info["critical_partitions"],
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
-            results["alerts"].append(alert)
-            logger.error(f"CRITICAL: Partition imbalance detected - {alert['message']}")
-
-            # In production, send alert here (email, Slack, etc.)
-            # Example: send_alert_to_slack(alert)
-
-        elif health_info["warning_count"] > 2:
-            alert = {
-                "level": "WARNING",
-                "message": f"{health_info['warning_count']} partitions showing signs of imbalance",
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
-            results["alerts"].append(alert)
-            logger.warning(f"WARNING: Multiple partitions showing imbalance - {alert['message']}")
-
-        # Check for extreme skew
-        skew_factor = health_info["skew_metrics"].get("Overall Skew Factor", {})
-        if skew_factor.get("status") == "CRITICAL":
-            alert = {
-                "level": "CRITICAL",
-                "message": f"Overall partition skew factor is critical: {skew_factor.get('value', 0):.2f}",
-                "details": skew_factor.get("details", ""),
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
-            results["alerts"].append(alert)
-            logger.error(f"CRITICAL: {alert['message']}")
-
-        # Log summary
-        if not results["alerts"]:
-            logger.info("Partition health check completed - all partitions healthy")
-        else:
-            logger.warning(f"Partition health check completed - {len(results['alerts'])} alert(s) triggered")
+        # The service already handles logging and alert generation
+        # In production, you could extend this to send alerts via email, Slack, etc.
+        # Example:
+        # for alert in results.get("alerts", []):
+        #     if alert["level"] == "CRITICAL":
+        #         send_alert_to_slack(alert)
+        #     elif alert["level"] == "ERROR":
+        #         send_alert_to_pagerduty(alert)
 
     except Exception as e:
-        results["status"] = "failed"
-        results["error"] = str(e)
         logger.error(f"Partition health monitoring failed: {e}")
         raise  # Re-raise to trigger Celery retry if configured
 

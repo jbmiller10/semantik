@@ -11,11 +11,11 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, delete, func, select, update
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database.models import Chunk
-from packages.shared.database.partition_utils import ChunkPartitionHelper, PartitionAwareMixin
+from packages.shared.database.partition_utils import ChunkPartitionHelper, PartitionAwareMixin, PartitionValidation
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +45,11 @@ class ChunkRepository(PartitionAwareMixin):
             Created chunk instance
 
         Raises:
-            ValueError: If collection_id is missing
+            ValueError: If collection_id is missing or data is invalid
+            TypeError: If data types are incorrect
         """
-        # Validate partition key
-        ChunkPartitionHelper.validate_chunk_partition_key(chunk_data)
+        # Comprehensive validation
+        chunk_data = PartitionValidation.validate_chunk_data(chunk_data)
 
         # Generate ID if not provided
         if "id" not in chunk_data:
@@ -101,7 +102,15 @@ class ChunkRepository(PartitionAwareMixin):
 
         Returns:
             Chunk instance or None if not found
+
+        Raises:
+            ValueError: If IDs are invalid
+            TypeError: If IDs are not strings
         """
+        # Validate both IDs
+        chunk_id = PartitionValidation.validate_uuid(chunk_id, "chunk_id")
+        collection_id = PartitionValidation.validate_partition_key(collection_id, "collection_id")
+
         query = ChunkPartitionHelper.create_chunk_query_with_partition(collection_id, [Chunk.id == chunk_id])
 
         result = await self.session.execute(query)
@@ -120,7 +129,21 @@ class ChunkRepository(PartitionAwareMixin):
 
         Returns:
             List of chunks ordered by chunk_index
+
+        Raises:
+            ValueError: If IDs are invalid or limit/offset are negative
+            TypeError: If parameters have wrong types
         """
+        # Validate IDs
+        document_id = PartitionValidation.validate_uuid(document_id, "document_id")
+        collection_id = PartitionValidation.validate_partition_key(collection_id, "collection_id")
+
+        # Validate pagination parameters
+        if offset < 0:
+            raise ValueError("offset must be non-negative")
+        if limit is not None and limit < 0:
+            raise ValueError("limit must be non-negative")
+
         query = ChunkPartitionHelper.create_chunk_query_with_partition(
             collection_id, [Chunk.document_id == document_id]
         ).order_by(Chunk.chunk_index)
@@ -174,12 +197,38 @@ class ChunkRepository(PartitionAwareMixin):
 
         Returns:
             Number of chunks updated
+
+        Raises:
+            ValueError: If update data is invalid
+            TypeError: If update data has wrong types
         """
         if not chunk_updates:
             return 0
 
+        # Validate batch size
+        PartitionValidation.validate_batch_size(chunk_updates, "chunk embedding updates")
+
+        # Validate each update
+        validated_updates = []
+        for update in chunk_updates:
+            if not isinstance(update, dict):
+                raise TypeError("Each chunk update must be a dictionary")
+
+            # Validate required fields
+            if not all(key in update for key in ["id", "collection_id", "embedding_vector_id"]):
+                raise ValueError("Each update must have 'id', 'collection_id', and 'embedding_vector_id'")
+
+            validated_update = {
+                "id": PartitionValidation.validate_uuid(update["id"], "chunk id"),
+                "collection_id": PartitionValidation.validate_partition_key(update["collection_id"]),
+                "embedding_vector_id": PartitionValidation.validate_uuid(
+                    update["embedding_vector_id"], "embedding_vector_id"
+                ),
+            }
+            validated_updates.append(validated_update)
+
         # Group by collection for partition efficiency
-        updates_by_collection = self.group_by_partition_key(chunk_updates, lambda u: u["collection_id"])
+        updates_by_collection = self.group_by_partition_key(validated_updates, lambda u: u["collection_id"])
 
         total_updated = 0
         for collection_id, updates in updates_by_collection.items():
