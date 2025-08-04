@@ -193,7 +193,7 @@ def adjust_embeddings_dimension(
         current_dim = len(embedding)
         
         if current_dim == target_dimension:
-            adjusted_embeddings.append(embedding)
+            adjusted = embedding
         elif current_dim > target_dimension:
             # Truncate
             adjusted = embedding[:target_dimension]
