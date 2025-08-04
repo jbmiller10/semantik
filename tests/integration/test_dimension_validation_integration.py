@@ -115,19 +115,21 @@ class TestDimensionValidationIntegration:
         """Test that indexing tasks validate embedding dimensions."""
         pytest.skip("Indexing task test needs updating for new architecture")
 
-        with patch("packages.shared.embedding.dense.embedding_service", mock_embedding_service), \
-             patch("packages.worker.tasks.indexing_tasks.get_collection") as mock_get_collection:
-                mock_get_collection.return_value = mock_collection
+        with (
+            patch("packages.shared.embedding.dense.embedding_service", mock_embedding_service),
+            patch("packages.worker.tasks.indexing_tasks.get_collection") as mock_get_collection,
+        ):
+            mock_get_collection.return_value = mock_collection
 
-                # Mock document processing
-                with patch("packages.worker.tasks.indexing_tasks.process_documents") as mock_process:
-                    mock_process.return_value = AsyncMock()
+            # Mock document processing
+            with patch("packages.worker.tasks.indexing_tasks.process_documents") as mock_process:
+                mock_process.return_value = AsyncMock()
 
-                    # Run indexing task
-                    await index_collection_task(collection_id=mock_collection.id, operation_id="test-op")
+                # Run indexing task
+                await index_collection_task(collection_id=mock_collection.id, operation_id="test-op")
 
-                    # Verify dimension was checked
-                    assert mock_embedding_service._service.get_dimension.called
+                # Verify dimension was checked
+                assert mock_embedding_service._service.get_dimension.called
 
     @pytest.mark.asyncio()
     async def test_reindexing_task_dimension_validation(self, mock_collection, mock_embedding_service):
@@ -138,24 +140,26 @@ class TestDimensionValidationIntegration:
         mock_collection.expected_embedding_dimension = 384
         mock_embedding_service._service.get_dimension.return_value = 512
 
-        with patch("packages.shared.embedding.dense.embedding_service", mock_embedding_service), \
-             patch("packages.worker.tasks.reindexing_tasks.get_collection") as mock_get_collection:
-                mock_get_collection.return_value = mock_collection
+        with (
+            patch("packages.shared.embedding.dense.embedding_service", mock_embedding_service),
+            patch("packages.worker.tasks.reindexing_tasks.get_collection") as mock_get_collection,
+        ):
+            mock_get_collection.return_value = mock_collection
 
-                # Mock Qdrant operations
-                with patch("packages.worker.tasks.reindexing_tasks.recreate_collection") as mock_recreate:
-                    mock_recreate.return_value = AsyncMock()
+            # Mock Qdrant operations
+            with patch("packages.worker.tasks.reindexing_tasks.recreate_collection") as mock_recreate:
+                mock_recreate.return_value = AsyncMock()
 
-                    with patch("packages.worker.tasks.reindexing_tasks.process_documents") as mock_process:
-                        mock_process.return_value = AsyncMock()
+                with patch("packages.worker.tasks.reindexing_tasks.process_documents") as mock_process:
+                    mock_process.return_value = AsyncMock()
 
-                        # Run re-indexing task
-                        await reindex_collection_task(collection_id=mock_collection.id, operation_id="test-op")
+                    # Run re-indexing task
+                    await reindex_collection_task(collection_id=mock_collection.id, operation_id="test-op")
 
-                        # Verify collection was recreated with new dimension
-                        mock_recreate.assert_called_once()
-                        call_args = mock_recreate.call_args
-                        assert call_args is not None
+                    # Verify collection was recreated with new dimension
+                    mock_recreate.assert_called_once()
+                    call_args = mock_recreate.call_args
+                    assert call_args is not None
 
     def test_get_model_dimension(self):
         """Test getting model dimensions."""

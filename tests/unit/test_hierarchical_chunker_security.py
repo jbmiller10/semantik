@@ -41,7 +41,9 @@ class TestHierarchicalChunkerSecurity:
         # Create chunk sizes that exceed max depth
         too_many_levels = [1000 - (i * 100) for i in range(MAX_HIERARCHY_DEPTH + 2)]
 
-        with pytest.raises(ValueError, match=f"Too many hierarchy levels: {len(too_many_levels)} > {MAX_HIERARCHY_DEPTH}"):
+        with pytest.raises(
+            ValueError, match=f"Too many hierarchy levels: {len(too_many_levels)} > {MAX_HIERARCHY_DEPTH}"
+        ):
             HierarchicalChunker(chunk_sizes=too_many_levels)
 
         # Test exactly at limit (should work)
