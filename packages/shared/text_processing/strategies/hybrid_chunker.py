@@ -444,17 +444,17 @@ class HybridChunker(BaseChunker):
                 logger.warning("Attempting fallback strategy")
                 try:
                     fallback_chunker = self._get_chunker(self.fallback_strategy)
-                    chunks: list[ChunkResult] = fallback_chunker.chunk_text(text, doc_id, enhanced_metadata)
+                    fallback_chunks: list[ChunkResult] = fallback_chunker.chunk_text(text, doc_id, enhanced_metadata)
 
                     # Update metadata to reflect fallback
-                    for chunk in chunks:
+                    for chunk in fallback_chunks:
                         chunk.metadata["hybrid_chunker"] = True
                         chunk.metadata["selected_strategy"] = self.fallback_strategy
                         chunk.metadata["fallback_used"] = True
                         chunk.metadata["original_strategy_failed"] = strategy.value
 
                     logger.info("Successfully chunked using fallback strategy")
-                    return chunks
+                    return fallback_chunks
 
                 except Exception as fallback_error:
                     # Security: Don't expose fallback error details
@@ -544,17 +544,17 @@ class HybridChunker(BaseChunker):
                 logger.warning("Attempting fallback strategy")
                 try:
                     fallback_chunker = self._get_chunker(self.fallback_strategy)
-                    chunks: list[ChunkResult] = await fallback_chunker.chunk_text_async(text, doc_id, enhanced_metadata)
+                    fallback_chunks: list[ChunkResult] = await fallback_chunker.chunk_text_async(text, doc_id, enhanced_metadata)
 
                     # Update metadata to reflect fallback
-                    for chunk in chunks:
+                    for chunk in fallback_chunks:
                         chunk.metadata["hybrid_chunker"] = True
                         chunk.metadata["selected_strategy"] = self.fallback_strategy
                         chunk.metadata["fallback_used"] = True
                         chunk.metadata["original_strategy_failed"] = strategy.value
 
                     logger.info("Successfully chunked using fallback strategy")
-                    return chunks
+                    return fallback_chunks
 
                 except Exception as fallback_error:
                     # Security: Don't expose fallback error details
