@@ -701,10 +701,10 @@ More detailed content."""
         # Create highly coherent, topic-focused content
         coherent_text = (
             """
-Machine learning is transforming how we process data. Deep learning models, 
-particularly neural networks, have revolutionized pattern recognition. 
-Convolutional neural networks excel at image processing tasks. 
-Recurrent neural networks handle sequential data effectively. 
+Machine learning is transforming how we process data. Deep learning models,
+particularly neural networks, have revolutionized pattern recognition.
+Convolutional neural networks excel at image processing tasks.
+Recurrent neural networks handle sequential data effectively.
 Transformer models have advanced natural language processing significantly.
 The attention mechanism in transformers enables better context understanding.
 BERT and GPT models demonstrate the power of pre-trained language models.
