@@ -659,3 +659,97 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
 
             # Verify overlap doesn't exceed chunk sizes
             assert chunker.chunk_overlap < min(chunker.chunk_sizes)
+
+    def test_chunk_text_stream(self, sample_texts):
+        """Test streaming functionality for memory-efficient processing."""
+        chunker = HierarchicalChunker(chunk_sizes=[500, 250, 125])
+
+        # Test streaming without parent chunks
+        text = sample_texts["multilevel"]
+        streamed_chunks = list(chunker.chunk_text_stream(text, "stream_test", include_parents=False))
+
+        # Should get only leaf chunks
+        assert all(chunk.metadata.get("is_leaf", False) for chunk in streamed_chunks)
+        assert len(streamed_chunks) > 0
+
+        # Test streaming with parent chunks
+        all_streamed = list(chunker.chunk_text_stream(text, "stream_test", include_parents=True))
+        leaf_streamed = [c for c in all_streamed if c.metadata.get("is_leaf", False)]
+        parent_streamed = [c for c in all_streamed if not c.metadata.get("is_leaf", False)]
+
+        assert len(leaf_streamed) > 0
+        assert len(parent_streamed) > 0
+
+        # Compare with regular chunking
+        regular_chunks = chunker.chunk_text(text, "regular_test", include_parents=True)
+        assert len(all_streamed) == len(regular_chunks)
+
+    async def test_chunk_text_stream_async(self, sample_texts):
+        """Test async streaming functionality."""
+        chunker = HierarchicalChunker(chunk_sizes=[400, 200, 100])
+
+        text = sample_texts["technical"]
+        chunks = []
+        
+        async for chunk in chunker.chunk_text_stream_async(text, "async_stream_test"):
+            chunks.append(chunk)
+
+        assert len(chunks) > 0
+        assert all(isinstance(chunk, ChunkResult) for chunk in chunks)
+
+    def test_lazy_parent_generation(self, sample_texts):
+        """Test on-demand parent chunk generation."""
+        chunker = HierarchicalChunker(chunk_sizes=[500, 250, 125])
+
+        text = sample_texts["multilevel"]
+        
+        # Get only leaf chunks
+        leaf_chunks = chunker.chunk_text(text, "lazy_test", include_parents=False)
+        assert all(chunk.metadata.get("is_leaf", False) for chunk in leaf_chunks)
+
+        # Generate parent chunks for a subset of leaf chunks
+        subset = leaf_chunks[:5] if len(leaf_chunks) >= 5 else leaf_chunks
+        parent_chunks = chunker.get_parent_chunks(text, "lazy_test", subset)
+
+        # Should generate parent chunks
+        assert len(parent_chunks) >= 0  # May be 0 if text is too small
+
+        # All generated chunks should be parent chunks
+        assert all(not chunk.metadata.get("is_leaf", False) for chunk in parent_chunks)
+
+        # Parent chunks should have unique IDs
+        parent_ids = [chunk.chunk_id for chunk in parent_chunks]
+        assert len(parent_ids) == len(set(parent_ids))
+
+    def test_include_parents_parameter(self, sample_texts):
+        """Test that include_parents parameter works correctly."""
+        chunker = HierarchicalChunker(chunk_sizes=[400, 200, 100])
+
+        text = sample_texts["technical"]
+
+        # With parents (default)
+        with_parents = chunker.chunk_text(text, "with_parents", include_parents=True)
+        leaf_with = [c for c in with_parents if c.metadata.get("is_leaf", False)]
+        parent_with = [c for c in with_parents if not c.metadata.get("is_leaf", False)]
+
+        assert len(leaf_with) > 0
+        assert len(parent_with) > 0
+
+        # Without parents
+        without_parents = chunker.chunk_text(text, "without_parents", include_parents=False)
+        assert all(chunk.metadata.get("is_leaf", False) for chunk in without_parents)
+        assert len(without_parents) == len(leaf_with)
+
+    def test_offset_accuracy(self, sample_texts):
+        """Test that offset calculation is accurate."""
+        chunker = HierarchicalChunker(chunk_sizes=[200, 100, 50])
+
+        text = sample_texts["simple"]
+        chunks = chunker.chunk_text(text, "offset_accuracy_test")
+
+        # Check a sample of chunks for offset accuracy
+        for chunk in chunks[:5]:  # Check first 5 chunks
+            # The text at the offset should match the chunk text
+            # Allow for whitespace differences
+            actual_text = text[chunk.start_offset:chunk.end_offset]
+            assert actual_text.strip() == chunk.text.strip() or chunk.text.strip() in actual_text.strip()

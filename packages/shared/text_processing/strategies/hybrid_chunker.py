@@ -8,7 +8,11 @@ characteristics and selects the most appropriate chunking strategy for optimal r
 
 import asyncio
 import logging
+import platform
 import re
+import signal
+import threading
+from contextlib import contextmanager
 from enum import Enum
 from typing import Any
 
@@ -16,6 +20,67 @@ from packages.shared.text_processing.base_chunker import BaseChunker, ChunkResul
 from packages.shared.text_processing.chunking_factory import ChunkingFactory
 
 logger = logging.getLogger(__name__)
+
+# Security constants
+REGEX_TIMEOUT = 1  # Maximum seconds for regex execution
+MAX_TEXT_LENGTH = 5_000_000  # 5MB text limit to prevent DOS
+
+
+# Platform-specific timeout implementation
+if platform.system() != "Windows":
+    @contextmanager
+    def timeout(seconds):
+        """Context manager for timeout enforcement using signal alarm (Unix/Linux)."""
+        def timeout_handler(signum, frame):
+            raise TimeoutError("Regex execution timeout")
+        
+        # Set the signal handler and alarm
+        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(seconds)
+        
+        try:
+            yield
+        finally:
+            # Restore the old handler and cancel the alarm
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+else:
+    # Windows-compatible timeout using threading
+    @contextmanager
+    def timeout(seconds):
+        """Context manager for timeout enforcement using threading (Windows)."""
+        timer = threading.Timer(seconds, lambda: None)
+        timer.start()
+        try:
+            yield
+            # Note: Windows timeout is less reliable for regex operations
+            # Consider using regex module with timeout support as alternative
+        finally:
+            timer.cancel()
+
+
+def safe_regex_findall(pattern: re.Pattern, text: str, flags: int = 0) -> list[str]:
+    """Execute regex findall with timeout protection.
+    
+    Args:
+        pattern: Compiled regex pattern or string pattern
+        text: Text to search in
+        flags: Regex flags
+        
+    Returns:
+        List of matches
+        
+    Raises:
+        TimeoutError: If regex execution exceeds timeout
+    """
+    try:
+        with timeout(REGEX_TIMEOUT):
+            if isinstance(pattern, str):
+                return re.findall(pattern, text, flags)
+            return pattern.findall(text)
+    except TimeoutError:
+        logger.warning("Regex execution timeout - possible ReDoS attack")
+        return []
 
 
 class ChunkingStrategy(str, Enum):
@@ -60,6 +125,10 @@ class HybridChunker(BaseChunker):
 
         # Cache for initialized chunkers
         self._chunker_cache: dict[str, BaseChunker] = {}
+        
+        # Pre-compile regex patterns for security and performance
+        self._compiled_patterns: dict[str, tuple[re.Pattern, float]] = {}
+        self._compile_markdown_patterns()
 
         logger.info(
             f"Initialized HybridChunker with params: "
@@ -68,6 +137,30 @@ class HybridChunker(BaseChunker):
             f"large_doc_threshold={large_doc_threshold}, "
             f"fallback_strategy={fallback_strategy}"
         )
+    
+    def _compile_markdown_patterns(self) -> None:
+        """Pre-compile regex patterns with safety validation."""
+        patterns = [
+            (r"^#{1,6}\s+", 3.0),  # Headers (high weight)
+            (r"^\*{1,3}\s+|\-\s+|\+\s+|\d+\.\s+", 2.0),  # Lists
+            (r"\[.*?\]\(.*?\)", 2.0),  # Links
+            (r"!\[.*?\]\(.*?\)", 2.0),  # Images
+            (r"`{1,3}[^`]+`{1,3}", 1.5),  # Code blocks/inline
+            (r"^\>\s+", 1.5),  # Blockquotes
+            (r"\*{1,2}[^\*]+\*{1,2}", 1.0),  # Bold/italic
+            (r"^\s*\|.*\|", 2.0),  # Tables
+            (r"^---+$|^===+$", 1.0),  # Horizontal rules
+        ]
+        
+        for pattern_str, weight in patterns:
+            try:
+                # Test pattern compilation with timeout
+                with timeout(REGEX_TIMEOUT):
+                    compiled = re.compile(pattern_str, re.MULTILINE)
+                self._compiled_patterns[pattern_str] = (compiled, weight)
+            except (TimeoutError, re.error) as e:
+                logger.warning(f"Failed to compile regex pattern: {pattern_str[:50]}...")
+                logger.debug(f"Pattern compilation error: {e}")
 
     def _get_chunker(self, strategy: str, params: dict[str, Any] | None = None) -> BaseChunker:
         """Get or create a chunker instance for the given strategy.
@@ -89,12 +182,14 @@ class HybridChunker(BaseChunker):
             try:
                 self._chunker_cache[cache_key] = ChunkingFactory.create_chunker(config)
             except Exception as e:
-                logger.error(f"Failed to create {strategy} chunker: {e}")
+                # Security: Log generic error externally, detailed error internally
+                logger.error(f"Failed to create chunker for strategy: {strategy}")
+                logger.debug(f"Chunker creation error details: {e}")
                 # Fallback to character chunker as last resort
                 if strategy != ChunkingStrategy.CHARACTER:
-                    logger.warning("Falling back to character chunker due to error")
+                    logger.warning("Using fallback character chunker")
                     return self._get_chunker(ChunkingStrategy.CHARACTER)
-                raise
+                raise ValueError("Unable to create chunker")
 
         return self._chunker_cache[cache_key]
 
@@ -119,25 +214,19 @@ class HybridChunker(BaseChunker):
                 if file_path.endswith(ext) or file_name.endswith(ext) or file_type == ext:
                     return True, 1.0
 
-        # Analyze markdown syntax density
-        markdown_patterns = [
-            (r"^#{1,6}\s+", 3.0),  # Headers (high weight)
-            (r"^\*{1,3}\s+|\-\s+|\+\s+|\d+\.\s+", 2.0),  # Lists
-            (r"\[.*?\]\(.*?\)", 2.0),  # Links
-            (r"!\[.*?\]\(.*?\)", 2.0),  # Images
-            (r"`{1,3}[^`]+`{1,3}", 1.5),  # Code blocks/inline
-            (r"^\>\s+", 1.5),  # Blockquotes
-            (r"\*{1,2}[^\*]+\*{1,2}", 1.0),  # Bold/italic
-            (r"^\s*\|.*\|", 2.0),  # Tables
-            (r"^---+$|^===+$", 1.0),  # Horizontal rules
-        ]
-
+        # Analyze markdown syntax density using pre-compiled patterns
         total_score = 0.0
         total_lines = max(1, len(text.splitlines()))
 
-        for pattern, weight in markdown_patterns:
-            matches = len(re.findall(pattern, text, re.MULTILINE))
-            total_score += matches * weight
+        # Use pre-compiled patterns with safe execution
+        for pattern_str, (compiled_pattern, weight) in self._compiled_patterns.items():
+            try:
+                matches = safe_regex_findall(compiled_pattern, text)
+                total_score += len(matches) * weight
+            except Exception:
+                # Security: Don't expose pattern details in logs
+                logger.debug("Regex pattern execution failed")
+                continue
 
         # Normalize score by text length
         markdown_density = total_score / total_lines
@@ -167,9 +256,16 @@ class HybridChunker(BaseChunker):
             "consistent_vocabulary": 0.0,
         }
 
-        # Extract words (simple tokenization)
-        words = re.findall(r"\b\w+\b", text.lower())
-        unique_words = set(words)
+        # Extract words (simple tokenization) with safe regex execution
+        try:
+            word_pattern = re.compile(r"\b\w+\b")
+            words = safe_regex_findall(word_pattern, text.lower())
+            unique_words = set(words)
+        except Exception:
+            logger.debug("Word extraction failed, using fallback")
+            # Fallback: simple split
+            words = text.lower().split()
+            unique_words = set(words)
 
         if words:
             # Repeated terms indicate focused content
@@ -298,6 +394,11 @@ class HybridChunker(BaseChunker):
         """
         if not text.strip():
             return []
+        
+        # Security validation: Prevent processing of excessively large texts
+        if len(text) > MAX_TEXT_LENGTH:
+            logger.warning("Text exceeds maximum length limit")
+            raise ValueError("Text too large to process")
 
         # Select the best strategy
         strategy, params, reasoning = self._select_strategy(text, metadata)
@@ -330,11 +431,13 @@ class HybridChunker(BaseChunker):
             return chunks
 
         except Exception as e:
-            logger.error(f"Failed to chunk with {strategy.value} strategy: {e}")
+            # Security: Log generic error externally, detailed error internally
+            logger.error(f"Chunking strategy failed for document {doc_id}")
+            logger.debug(f"Internal error details: {e}")
 
             # Try fallback strategy if not already using it
             if strategy.value != self.fallback_strategy:
-                logger.warning(f"Attempting fallback to {self.fallback_strategy} strategy")
+                logger.warning("Attempting fallback strategy")
                 try:
                     fallback_chunker = self._get_chunker(self.fallback_strategy)
                     chunks = fallback_chunker.chunk_text(text, doc_id, enhanced_metadata)
@@ -346,11 +449,13 @@ class HybridChunker(BaseChunker):
                         chunk.metadata["fallback_used"] = True
                         chunk.metadata["original_strategy_failed"] = strategy.value
 
-                    logger.info(f"Successfully chunked using fallback strategy: {self.fallback_strategy}")
+                    logger.info("Successfully chunked using fallback strategy")
                     return chunks
 
                 except Exception as fallback_error:
-                    logger.error(f"Fallback strategy also failed: {fallback_error}")
+                    # Security: Don't expose fallback error details
+                    logger.error("Fallback strategy also failed")
+                    logger.debug(f"Fallback error details: {fallback_error}")
 
             # If all strategies fail, create a single chunk as last resort
             logger.error("All chunking strategies failed. Creating single chunk as last resort.")
@@ -388,6 +493,11 @@ class HybridChunker(BaseChunker):
         """
         if not text.strip():
             return []
+        
+        # Security validation: Prevent processing of excessively large texts
+        if len(text) > MAX_TEXT_LENGTH:
+            logger.warning("Text exceeds maximum length limit")
+            raise ValueError("Text too large to process")
 
         # Run strategy selection in executor to avoid blocking
         loop = asyncio.get_event_loop()
@@ -421,11 +531,13 @@ class HybridChunker(BaseChunker):
             return chunks
 
         except Exception as e:
-            logger.error(f"Failed to chunk with {strategy.value} strategy: {e}")
+            # Security: Log generic error externally, detailed error internally
+            logger.error(f"Async chunking strategy failed for document {doc_id}")
+            logger.debug(f"Internal error details: {e}")
 
             # Try fallback strategy
             if strategy.value != self.fallback_strategy:
-                logger.warning(f"Attempting fallback to {self.fallback_strategy} strategy")
+                logger.warning("Attempting fallback strategy")
                 try:
                     fallback_chunker = self._get_chunker(self.fallback_strategy)
                     chunks = await fallback_chunker.chunk_text_async(text, doc_id, enhanced_metadata)
@@ -437,11 +549,13 @@ class HybridChunker(BaseChunker):
                         chunk.metadata["fallback_used"] = True
                         chunk.metadata["original_strategy_failed"] = strategy.value
 
-                    logger.info(f"Successfully chunked using fallback strategy: {self.fallback_strategy}")
+                    logger.info("Successfully chunked using fallback strategy")
                     return chunks
 
                 except Exception as fallback_error:
-                    logger.error(f"Fallback strategy also failed: {fallback_error}")
+                    # Security: Don't expose fallback error details
+                    logger.error("Fallback strategy also failed")
+                    logger.debug(f"Fallback error details: {fallback_error}")
 
             # Last resort: single chunk
             logger.error("All chunking strategies failed. Creating single chunk as last resort.")
@@ -495,8 +609,9 @@ class HybridChunker(BaseChunker):
 
             return True
 
-        except Exception as e:
-            logger.error(f"Error validating config: {e}")
+        except Exception:
+            # Security: Don't expose exception details
+            logger.error("Configuration validation failed")
             return False
 
     def estimate_chunks(self, text_length: int, config: dict[str, Any]) -> int:

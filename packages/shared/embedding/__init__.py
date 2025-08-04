@@ -30,6 +30,14 @@ from .service import (
     get_embedding_service_sync,
     initialize_embedding_service,
 )
+from .validation import (
+    adjust_embeddings_dimension,
+    get_collection_dimension,
+    get_model_dimension,
+    validate_collection_model_compatibility,
+    validate_dimension_compatibility,
+    validate_embedding_dimensions,
+)
 
 __all__ = [
     # Core classes
@@ -61,4 +69,11 @@ __all__ = [
     "enhanced_embedding_service",
     "POPULAR_MODELS",
     "QUANTIZED_MODEL_INFO",
+    # Validation functions
+    "get_collection_dimension",
+    "get_model_dimension",
+    "validate_dimension_compatibility",
+    "validate_embedding_dimensions",
+    "validate_collection_model_compatibility",
+    "adjust_embeddings_dimension",
 ]

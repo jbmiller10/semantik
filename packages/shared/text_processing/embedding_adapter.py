@@ -11,10 +11,13 @@ import asyncio
 import logging
 from typing import Any, cast
 
-import numpy as np
 from llama_index.core.embeddings import BaseEmbedding
 
 from packages.shared.embedding.dense import embedding_service
+from packages.shared.text_processing.exceptions import (
+    EmbeddingError,
+    EmbeddingServiceNotInitializedError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,16 +42,26 @@ class LocalEmbeddingAdapter(BaseEmbedding):
             Embedding dimension
 
         Raises:
-            RuntimeError: If embedding service is not initialized
+            EmbeddingError: If embedding service is not initialized or dimension cannot be determined
         """
         if self._embed_dim is None:
-            # Try to get from the global embedding service
+            # Get dimension from the actual embedding service
             try:
-                self._embed_dim = embedding_service.get_dimension()
-            except RuntimeError:
-                # Default to common dimension if service not initialized
-                logger.warning("Embedding service not initialized, using default dimension 384")
-                self._embed_dim = 384
+                # Access the underlying DenseEmbeddingService instance
+                if hasattr(embedding_service, '_service') and hasattr(embedding_service._service, 'get_dimension'):
+                    self._embed_dim = embedding_service._service.get_dimension()
+                elif hasattr(embedding_service, '_instance') and embedding_service._instance is not None:
+                    # For lazy loading case
+                    if hasattr(embedding_service._instance, '_service'):
+                        self._embed_dim = embedding_service._instance._service.get_dimension()
+                    else:
+                        raise RuntimeError("Embedding service structure not as expected")
+                else:
+                    raise RuntimeError("Embedding service not properly initialized")
+            except (RuntimeError, AttributeError) as e:
+                raise EmbeddingServiceNotInitializedError(
+                    "Embedding service is not initialized. Cannot determine embedding dimension."
+                ) from e
         return self._embed_dim
 
     def _get_query_embedding(self, query: str) -> list[float]:
@@ -59,20 +72,34 @@ class LocalEmbeddingAdapter(BaseEmbedding):
 
         Returns:
             Embedding vector as list of floats
+
+        Raises:
+            EmbeddingError: If embedding generation fails
         """
         try:
-            # Run async method in sync context
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            # Check if there's already a running event loop
             try:
-                embedding = loop.run_until_complete(embedding_service.embed_single(query))
-                return cast(list[float], embedding.tolist())
-            finally:
-                loop.close()
+                loop = asyncio.get_running_loop()
+                # If we're in an async context, we need to use run_coroutine_threadsafe
+                import concurrent.futures
+                future = asyncio.run_coroutine_threadsafe(
+                    embedding_service.embed_single(query), loop
+                )
+                embedding = future.result()
+            except RuntimeError:
+                # No running loop, create a new one
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    embedding = loop.run_until_complete(embedding_service.embed_single(query))
+                finally:
+                    loop.close()
+                    asyncio.set_event_loop(None)
+            
+            return cast(list[float], embedding.tolist())
         except Exception as e:
             logger.error(f"Error getting query embedding: {e}")
-            # Return random embedding as fallback
-            return cast(list[float], np.random.randn(self.embed_dim).tolist())
+            raise EmbeddingError(f"Failed to generate embedding for query: {e}") from e
 
     async def _aget_query_embedding(self, query: str) -> list[float]:
         """Get embedding for a single query asynchronously.
@@ -82,14 +109,16 @@ class LocalEmbeddingAdapter(BaseEmbedding):
 
         Returns:
             Embedding vector as list of floats
+
+        Raises:
+            EmbeddingError: If embedding generation fails
         """
         try:
             embedding = await embedding_service.embed_single(query)
             return cast(list[float], embedding.tolist())
         except Exception as e:
             logger.error(f"Error getting async query embedding: {e}")
-            # Return random embedding as fallback
-            return cast(list[float], np.random.randn(self.embed_dim).tolist())
+            raise EmbeddingError(f"Failed to generate embedding for query: {e}") from e
 
     def _get_text_embedding(self, text: str) -> list[float]:
         """Get embedding for a single text.
@@ -121,20 +150,34 @@ class LocalEmbeddingAdapter(BaseEmbedding):
 
         Returns:
             List of embedding vectors
+
+        Raises:
+            EmbeddingError: If embedding generation fails
         """
         try:
-            # Run async method in sync context
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            # Check if there's already a running event loop
             try:
-                embeddings = loop.run_until_complete(embedding_service.embed_texts(texts))
-                return cast(list[list[float]], embeddings.tolist())
-            finally:
-                loop.close()
+                loop = asyncio.get_running_loop()
+                # If we're in an async context, we need to use run_coroutine_threadsafe
+                import concurrent.futures
+                future = asyncio.run_coroutine_threadsafe(
+                    embedding_service.embed_texts(texts), loop
+                )
+                embeddings = future.result()
+            except RuntimeError:
+                # No running loop, create a new one
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    embeddings = loop.run_until_complete(embedding_service.embed_texts(texts))
+                finally:
+                    loop.close()
+                    asyncio.set_event_loop(None)
+            
+            return cast(list[list[float]], embeddings.tolist())
         except Exception as e:
             logger.error(f"Error getting text embeddings: {e}")
-            # Return random embeddings as fallback
-            return cast(list[list[float]], [np.random.randn(self.embed_dim).tolist() for _ in texts])
+            raise EmbeddingError(f"Failed to generate embeddings for texts: {e}") from e
 
     async def _aget_text_embeddings(self, texts: list[str]) -> list[list[float]]:
         """Get embeddings for multiple texts asynchronously.
@@ -144,11 +187,13 @@ class LocalEmbeddingAdapter(BaseEmbedding):
 
         Returns:
             List of embedding vectors
+
+        Raises:
+            EmbeddingError: If embedding generation fails
         """
         try:
             embeddings = await embedding_service.embed_texts(texts)
             return cast(list[list[float]], embeddings.tolist())
         except Exception as e:
             logger.error(f"Error getting async text embeddings: {e}")
-            # Return random embeddings as fallback
-            return cast(list[list[float]], [np.random.randn(self.embed_dim).tolist() for _ in texts])
+            raise EmbeddingError(f"Failed to generate embeddings for texts: {e}") from e

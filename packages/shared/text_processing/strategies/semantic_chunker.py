@@ -194,11 +194,16 @@ class SemanticChunker(BaseChunker):
                 # Fallback to character-based chunking on embedding failures
                 if "embed" in str(e).lower() or "model" in str(e).lower():
                     logger.warning("Falling back to character-based chunking due to embedding error")
-                    from .character_chunker import CharacterChunker
+                    from packages.shared.text_processing.chunking_factory import ChunkingFactory
 
-                    fallback_chunker = CharacterChunker(
-                        chunk_size=self.max_chunk_size,
-                        chunk_overlap=100,
+                    fallback_chunker = ChunkingFactory.create_chunker(
+                        {
+                            "strategy": "character",
+                            "params": {
+                                "chunk_size": self.max_chunk_size,
+                                "chunk_overlap": 100,
+                            },
+                        }
                     )
                     return fallback_chunker.chunk_text(text, doc_id, metadata)
                 raise
@@ -242,11 +247,16 @@ class SemanticChunker(BaseChunker):
             # Fallback to character-based chunking
             if "embed" in str(e).lower() or "model" in str(e).lower():
                 logger.warning("Falling back to character-based chunking due to embedding error")
-                from .character_chunker import CharacterChunker
+                from ..chunking_factory import ChunkingFactory
 
-                fallback_chunker = CharacterChunker(
-                    chunk_size=self.max_chunk_size,
-                    chunk_overlap=100,
+                fallback_chunker = ChunkingFactory.create_chunker(
+                    {
+                        "strategy": "character",
+                        "params": {
+                            "chunk_size": self.max_chunk_size,
+                            "chunk_overlap": 100,
+                        },
+                    }
                 )
                 return await fallback_chunker.chunk_text_async(text, doc_id, metadata)
             raise

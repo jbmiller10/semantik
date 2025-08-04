@@ -1276,6 +1276,18 @@ async def _process_index_operation(
                 logger.warning(f"Unknown model {model_name}, using default dimension 1024")
                 vector_dim = 1024
 
+        # Validate model dimension before creating collection
+        actual_model_name = collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
+        from shared.embedding.validation import get_model_dimension
+        actual_model_dim = get_model_dimension(actual_model_name)
+        
+        if actual_model_dim and actual_model_dim != vector_dim:
+            logger.warning(
+                f"Model {actual_model_name} has dimension {actual_model_dim}, "
+                f"but collection will be created with dimension {vector_dim}. "
+                f"This may cause issues during indexing."
+            )
+        
         # Create collection in Qdrant with monitoring
         from qdrant_client.models import Distance, VectorParams
 
@@ -1284,6 +1296,23 @@ async def _process_index_operation(
                 collection_name=vector_store_name,
                 vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
             )
+        
+        # Store collection metadata including the expected model
+        from shared.database.collection_metadata import store_collection_metadata
+        try:
+            store_collection_metadata(
+                qdrant_client,
+                vector_store_name,
+                {
+                    "model_name": actual_model_name,
+                    "quantization": collection.get("quantization", "float16"),
+                    "instruction": config.get("instruction"),
+                    "dimension": vector_dim,
+                    "created_at": datetime.utcnow().isoformat(),
+                }
+            )
+        except Exception as e:
+            logger.warning(f"Failed to store collection metadata: {e}")
 
         # Verify collection was created successfully
         try:
@@ -1533,6 +1562,36 @@ async def _process_append_operation(
                         raise Exception("Failed to generate embeddings")
 
                     embeddings = embeddings_array  # Already a list from API response
+                    
+                    # Validate embedding dimensions before preparing points
+                    if embeddings:
+                        from shared.database.exceptions import DimensionMismatchError
+                        from shared.embedding.validation import get_collection_dimension, validate_dimension_compatibility
+                        
+                        # Get expected dimension from Qdrant collection
+                        expected_dim = get_collection_dimension(qdrant_client, qdrant_collection_name)
+                        if expected_dim is None:
+                            logger.warning(f"Could not get dimension for collection {qdrant_collection_name}")
+                        else:
+                            # Validate all embeddings have correct dimension
+                            for i, embedding in enumerate(embeddings):
+                                actual_dim = len(embedding)
+                                try:
+                                    validate_dimension_compatibility(
+                                        expected_dimension=expected_dim,
+                                        actual_dimension=actual_dim,
+                                        collection_name=qdrant_collection_name,
+                                        model_name=embedding_model,
+                                    )
+                                except DimensionMismatchError as e:
+                                    error_msg = (
+                                        f"Embedding dimension mismatch during indexing: {e}. "
+                                        f"Collection {qdrant_collection_name} expects {expected_dim}-dimensional vectors, "
+                                        f"but model {embedding_model} produced {actual_dim}-dimensional vectors. "
+                                        f"Please ensure you're using the same model that was used to create the collection."
+                                    )
+                                    logger.error(error_msg)
+                                    raise ValueError(error_msg) from e
 
                     # Prepare points for Qdrant
                     points = []
@@ -1899,27 +1958,49 @@ async def _process_reindex_operation(
                             raise Exception("Failed to generate embeddings")
 
                         embeddings = embeddings_array  # Already a list from API response
-
-                        # Handle dimension override if specified
-                        if vector_dim and len(embeddings) > 0:
-                            model_dim = len(embeddings[0])
-                            if vector_dim != model_dim:
-                                logger.info(f"Adjusting embeddings from {model_dim} to {vector_dim} dimensions")
-                                adjusted_embeddings = []
-                                for emb in embeddings:
-                                    if vector_dim < model_dim:
-                                        # Truncate
-                                        adjusted = emb[:vector_dim]
+                        
+                        # Validate embedding dimensions
+                        if embeddings:
+                            from shared.database.exceptions import DimensionMismatchError
+                            from shared.embedding.validation import (
+                                adjust_embeddings_dimension,
+                                get_collection_dimension,
+                                validate_dimension_compatibility,
+                            )
+                            
+                            # Get expected dimension from staging collection
+                            expected_dim = get_collection_dimension(qdrant_client, staging_collection_name)
+                            if expected_dim is None:
+                                logger.warning(f"Could not get dimension for staging collection {staging_collection_name}")
+                            else:
+                                actual_dim = len(embeddings[0]) if embeddings else 0
+                                
+                                # Check if dimensions match
+                                try:
+                                    validate_dimension_compatibility(
+                                        expected_dimension=expected_dim,
+                                        actual_dimension=actual_dim,
+                                        collection_name=staging_collection_name,
+                                        model_name=model_name,
+                                    )
+                                except DimensionMismatchError as e:
+                                    # If dimensions don't match, try to adjust if vector_dim is specified
+                                    if vector_dim and vector_dim == expected_dim:
+                                        logger.warning(
+                                            f"Dimension mismatch during reindexing: {e}. "
+                                            f"Adjusting embeddings from {actual_dim} to {expected_dim} dimensions."
+                                        )
+                                        embeddings = adjust_embeddings_dimension(
+                                            embeddings, target_dimension=expected_dim, normalize=True
+                                        )
                                     else:
-                                        # Pad with zeros
-                                        adjusted = emb + [0.0] * (vector_dim - model_dim)
-
-                                    # Renormalize
-                                    norm = sum(x**2 for x in adjusted) ** 0.5
-                                    if norm > 0:
-                                        adjusted = [x / norm for x in adjusted]
-                                    adjusted_embeddings.append(adjusted)
-                                embeddings = adjusted_embeddings
+                                        error_msg = (
+                                            f"Embedding dimension mismatch during reindexing: {e}. "
+                                            f"Staging collection {staging_collection_name} expects {expected_dim}-dimensional vectors, "
+                                            f"but model {model_name} produced {actual_dim}-dimensional vectors."
+                                        )
+                                        logger.error(error_msg)
+                                        raise ValueError(error_msg) from e
 
                         # Upload vectors to staging collection
                         points = []
