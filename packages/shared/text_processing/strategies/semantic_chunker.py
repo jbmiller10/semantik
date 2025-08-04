@@ -247,7 +247,7 @@ class SemanticChunker(BaseChunker):
             # Fallback to character-based chunking
             if "embed" in str(e).lower() or "model" in str(e).lower():
                 logger.warning("Falling back to character-based chunking due to embedding error")
-                from ..chunking_factory import ChunkingFactory
+                from packages.shared.text_processing.chunking_factory import ChunkingFactory
 
                 fallback_chunker = ChunkingFactory.create_chunker(
                     {

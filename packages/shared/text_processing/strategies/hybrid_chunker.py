@@ -31,13 +31,13 @@ if platform.system() != "Windows":
     @contextmanager
     def timeout(seconds):
         """Context manager for timeout enforcement using signal alarm (Unix/Linux)."""
-        def timeout_handler(signum, frame):
+        def timeout_handler(signum, frame):  # noqa: ARG001
             raise TimeoutError("Regex execution timeout")
-        
+
         # Set the signal handler and alarm
         old_handler = signal.signal(signal.SIGALRM, timeout_handler)
         signal.alarm(seconds)
-        
+
         try:
             yield
         finally:
@@ -61,15 +61,15 @@ else:
 
 def safe_regex_findall(pattern: re.Pattern, text: str, flags: int = 0) -> list[str]:
     """Execute regex findall with timeout protection.
-    
+
     Args:
         pattern: Compiled regex pattern or string pattern
         text: Text to search in
         flags: Regex flags
-        
+
     Returns:
         List of matches
-        
+
     Raises:
         TimeoutError: If regex execution exceeds timeout
     """
@@ -125,7 +125,7 @@ class HybridChunker(BaseChunker):
 
         # Cache for initialized chunkers
         self._chunker_cache: dict[str, BaseChunker] = {}
-        
+
         # Pre-compile regex patterns for security and performance
         self._compiled_patterns: dict[str, tuple[re.Pattern, float]] = {}
         self._compile_markdown_patterns()
@@ -137,7 +137,7 @@ class HybridChunker(BaseChunker):
             f"large_doc_threshold={large_doc_threshold}, "
             f"fallback_strategy={fallback_strategy}"
         )
-    
+
     def _compile_markdown_patterns(self) -> None:
         """Pre-compile regex patterns with safety validation."""
         patterns = [
@@ -151,7 +151,7 @@ class HybridChunker(BaseChunker):
             (r"^\s*\|.*\|", 2.0),  # Tables
             (r"^---+$|^===+$", 1.0),  # Horizontal rules
         ]
-        
+
         for pattern_str, weight in patterns:
             try:
                 # Test pattern compilation with timeout
@@ -189,7 +189,7 @@ class HybridChunker(BaseChunker):
                 if strategy != ChunkingStrategy.CHARACTER:
                     logger.warning("Using fallback character chunker")
                     return self._get_chunker(ChunkingStrategy.CHARACTER)
-                raise ValueError("Unable to create chunker")
+                raise ValueError("Unable to create chunker") from e
 
         return self._chunker_cache[cache_key]
 
@@ -219,7 +219,7 @@ class HybridChunker(BaseChunker):
         total_lines = max(1, len(text.splitlines()))
 
         # Use pre-compiled patterns with safe execution
-        for pattern_str, (compiled_pattern, weight) in self._compiled_patterns.items():
+        for _, (compiled_pattern, weight) in self._compiled_patterns.items():
             try:
                 matches = safe_regex_findall(compiled_pattern, text)
                 total_score += len(matches) * weight
@@ -394,7 +394,7 @@ class HybridChunker(BaseChunker):
         """
         if not text.strip():
             return []
-        
+
         # Security validation: Prevent processing of excessively large texts
         if len(text) > MAX_TEXT_LENGTH:
             logger.warning("Text exceeds maximum length limit")
@@ -493,7 +493,7 @@ class HybridChunker(BaseChunker):
         """
         if not text.strip():
             return []
-        
+
         # Security validation: Prevent processing of excessively large texts
         if len(text) > MAX_TEXT_LENGTH:
             logger.warning("Text exceeds maximum length limit")

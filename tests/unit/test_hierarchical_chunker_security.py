@@ -64,9 +64,12 @@ class TestHierarchicalChunkerSecurity:
         assert "Text too large to process" in str(exc_info.value)
         
         # Note: Testing exactly at MAX_TEXT_LENGTH (5MB) causes stack overflow in tiktoken
-        # This is a known limitation of the tokenizer. We test with a smaller size instead.
-        # This actually validates that our MAX_TEXT_LENGTH constant is set appropriately.
-        safe_large_text = "b" * 1_000_000  # 1MB is safe
+        # This is a known limitation of the tokenizer when processing very long repeated characters.
+        # We test with a more realistic document structure instead.
+        safe_large_sections = []
+        for i in range(1000):
+            safe_large_sections.append(f"Section {i}: This is content for section {i}. " * 10)
+        safe_large_text = "\n\n".join(safe_large_sections)
         chunks = chunker.chunk_text(safe_large_text, "test_doc")
         assert len(chunks) > 0
 

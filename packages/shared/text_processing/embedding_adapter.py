@@ -81,7 +81,6 @@ class LocalEmbeddingAdapter(BaseEmbedding):
             try:
                 loop = asyncio.get_running_loop()
                 # If we're in an async context, we need to use run_coroutine_threadsafe
-                import concurrent.futures
                 future = asyncio.run_coroutine_threadsafe(
                     embedding_service.embed_single(query), loop
                 )
@@ -95,7 +94,7 @@ class LocalEmbeddingAdapter(BaseEmbedding):
                 finally:
                     loop.close()
                     asyncio.set_event_loop(None)
-            
+
             return cast(list[float], embedding.tolist())
         except Exception as e:
             logger.error(f"Error getting query embedding: {e}")
@@ -159,7 +158,6 @@ class LocalEmbeddingAdapter(BaseEmbedding):
             try:
                 loop = asyncio.get_running_loop()
                 # If we're in an async context, we need to use run_coroutine_threadsafe
-                import concurrent.futures
                 future = asyncio.run_coroutine_threadsafe(
                     embedding_service.embed_texts(texts), loop
                 )
@@ -173,7 +171,7 @@ class LocalEmbeddingAdapter(BaseEmbedding):
                 finally:
                     loop.close()
                     asyncio.set_event_loop(None)
-            
+
             return cast(list[list[float]], embeddings.tolist())
         except Exception as e:
             logger.error(f"Error getting text embeddings: {e}")
