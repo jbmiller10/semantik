@@ -674,9 +674,16 @@ class TestSearchAPI:
 
     def test_upsert_endpoint(self, mock_qdrant_client, test_client_for_search_api):
         """Test /upsert endpoint."""
-        mock_response = Mock()
-        mock_response.raise_for_status = Mock()
-        mock_qdrant_client.put.return_value = mock_response
+        # Mock collection info first
+        mock_get_response = Mock()
+        mock_get_response.json.return_value = {"result": {"config": {"params": {"vectors": {"size": 768}}}}}
+        mock_get_response.raise_for_status = Mock()
+        mock_qdrant_client.get.return_value = mock_get_response
+        
+        # Mock upsert response
+        mock_put_response = Mock()
+        mock_put_response.raise_for_status = Mock()
+        mock_qdrant_client.put.return_value = mock_put_response
 
         response = test_client_for_search_api.post(
             "/upsert",
@@ -712,11 +719,16 @@ class TestSearchAPI:
         assert call_args[1]["json"]["wait"] is True
 
     @pytest.mark.asyncio()
-    @pytest.mark.asyncio()
     async def test_upsert_error_handling(self, mock_qdrant_client):
         """Test /upsert endpoint error handling."""
         with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
-            # Mock Qdrant error response
+            # Mock collection info first
+            mock_get_response = Mock()
+            mock_get_response.json.return_value = {"result": {"config": {"params": {"vectors": {"size": 768}}}}}
+            mock_get_response.raise_for_status = Mock()
+            mock_qdrant_client.get.return_value = mock_get_response
+            
+            # Mock Qdrant error response for PUT
             error_response = Mock()
             error_response.json.return_value = {"status": {"error": "Collection not found"}}
             mock_qdrant_client.put.side_effect = httpx.HTTPStatusError(
