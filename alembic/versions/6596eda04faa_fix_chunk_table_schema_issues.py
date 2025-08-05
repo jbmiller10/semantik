@@ -100,21 +100,38 @@ def upgrade() -> None:
     )
 
     # Step 4: Create all indexes including the new ones
-    op.create_index("ix_chunks_collection_id_document_id", "chunks", ["collection_id", "document_id"], unique=False)
-    op.create_index("ix_chunks_document_id", "chunks", ["document_id"], unique=False)
-    op.create_index("ix_chunks_chunking_config_id", "chunks", ["chunking_config_id"], unique=False)
-    op.create_index("ix_chunks_collection_id_chunk_index", "chunks", ["collection_id", "chunk_index"], unique=False)
-    op.create_index("ix_chunks_created_at", "chunks", ["created_at"], unique=False)
+    # Check for existing indexes first
+    from sqlalchemy import inspect
+    conn = op.get_bind()
+    inspector = inspect(conn)
+    existing_indexes = []
+    try:
+        existing_indexes = [idx['name'] for idx in inspector.get_indexes('chunks')]
+    except Exception:
+        pass
+
+    if "ix_chunks_collection_id_document_id" not in existing_indexes:
+        op.create_index("ix_chunks_collection_id_document_id", "chunks", ["collection_id", "document_id"], unique=False)
+    if "ix_chunks_document_id" not in existing_indexes:
+        op.create_index("ix_chunks_document_id", "chunks", ["document_id"], unique=False)
+    if "ix_chunks_chunking_config_id" not in existing_indexes:
+        op.create_index("ix_chunks_chunking_config_id", "chunks", ["chunking_config_id"], unique=False)
+    if "ix_chunks_collection_id_chunk_index" not in existing_indexes:
+        op.create_index("ix_chunks_collection_id_chunk_index", "chunks", ["collection_id", "chunk_index"], unique=False)
+    if "ix_chunks_created_at" not in existing_indexes:
+        op.create_index("ix_chunks_created_at", "chunks", ["created_at"], unique=False)
 
     # New indexes from the review
-    op.create_index("ix_chunks_embedding_vector_id", "chunks", ["embedding_vector_id"], unique=False)
+    if "ix_chunks_embedding_vector_id" not in existing_indexes:
+        op.create_index("ix_chunks_embedding_vector_id", "chunks", ["embedding_vector_id"], unique=False)
 
     # Add unique constraint on (collection_id, document_id, chunk_index)
     # Note: We can't use a regular unique constraint because collection_id is part of the partition key
     # Instead, we create a unique index which serves the same purpose
-    op.create_index(
-        "uq_chunks_collection_document_index", "chunks", ["collection_id", "document_id", "chunk_index"], unique=True
-    )
+    if "uq_chunks_collection_document_index" not in existing_indexes:
+        op.create_index(
+            "uq_chunks_collection_document_index", "chunks", ["collection_id", "document_id", "chunk_index"], unique=True
+        )
 
     # Step 5: Drop the old table and its partitions
     op.execute("DROP TABLE chunks_old CASCADE;")
