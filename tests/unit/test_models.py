@@ -57,10 +57,10 @@ def db_session() -> Generator[Session, None, None]:
             "DROP VIEW IF EXISTS active_chunking_configs CASCADE",
             "DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE",
         ]
-        
+
         for view_sql in views_to_drop:
             connection.execute(text(view_sql))
-        
+
         # Now drop all tables
         Base.metadata.drop_all(connection)
 

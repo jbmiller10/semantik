@@ -13,6 +13,8 @@ This migration fixes several issues identified in the code review:
 import os
 from collections.abc import Sequence
 
+from sqlalchemy.engine import Connection
+
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -22,30 +24,34 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
-def _index_exists(conn, index_name: str) -> bool:
+def _index_exists(conn: Connection, index_name: str) -> bool:
     """Check if an index exists in the database using pg_indexes."""
     from sqlalchemy import text
-    
+
     result = conn.execute(
-        text("""
+        text(
+            """
         SELECT EXISTS (
-            SELECT 1 
-            FROM pg_indexes 
+            SELECT 1
+            FROM pg_indexes
             WHERE indexname = :index_name
         )
-        """),
-        {"index_name": index_name}
+        """
+        ),
+        {"index_name": index_name},
     ).scalar()
     return bool(result)
 
 
-def _create_index_if_not_exists(conn, index_name: str, table_name: str, columns: list[str], unique: bool = False) -> None:
+def _create_index_if_not_exists(
+    conn: Connection, index_name: str, table_name: str, columns: list[str], unique: bool = False
+) -> None:
     """Create an index only if it doesn't already exist."""
     if not _index_exists(conn, index_name):
         op.create_index(index_name, table_name, columns, unique=unique)
 
 
-def _create_indexes_if_not_exist(conn) -> None:
+def _create_indexes_if_not_exist(conn: Connection) -> None:
     """Create all required indexes if they don't already exist."""
     # Standard indexes
     _create_index_if_not_exists(conn, "ix_chunks_collection_id_document_id", "chunks", ["collection_id", "document_id"])
@@ -53,14 +59,17 @@ def _create_indexes_if_not_exist(conn) -> None:
     _create_index_if_not_exists(conn, "ix_chunks_chunking_config_id", "chunks", ["chunking_config_id"])
     _create_index_if_not_exists(conn, "ix_chunks_collection_id_chunk_index", "chunks", ["collection_id", "chunk_index"])
     _create_index_if_not_exists(conn, "ix_chunks_created_at", "chunks", ["created_at"])
-    
+
     # New indexes from the review
     _create_index_if_not_exists(conn, "ix_chunks_embedding_vector_id", "chunks", ["embedding_vector_id"])
-    
+
     # Unique constraint as an index
     _create_index_if_not_exists(
-        conn, "uq_chunks_collection_document_index", "chunks", 
-        ["collection_id", "document_id", "chunk_index"], unique=True
+        conn,
+        "uq_chunks_collection_document_index",
+        "chunks",
+        ["collection_id", "document_id", "chunk_index"],
+        unique=True,
     )
 
 
@@ -83,7 +92,7 @@ def _create_or_replace_materialized_view() -> None:
         WITH DATA;
     """
     )
-    
+
     # Create index on the materialized view if it doesn't exist
     conn = op.get_bind()
     if not _index_exists(conn, "ix_collection_chunking_stats_id"):
@@ -104,44 +113,50 @@ def upgrade() -> None:
     # Check if the migration has already been applied
     conn = op.get_bind()
     from sqlalchemy import text
-    
+
     result = conn.execute(
-        text("""
+        text(
+            """
         SELECT EXISTS (
-            SELECT 1 
-            FROM information_schema.tables 
+            SELECT 1
+            FROM information_schema.tables
             WHERE table_name = 'chunks_old'
         )
-        """)
+        """
+        )
     ).scalar()
-    
+
     if result:
         # Migration was partially applied, clean up old tables first
         op.execute("DROP TABLE IF EXISTS chunks_old CASCADE;")
 
     # Check if chunks table exists and what type its id column is
     chunks_exists = conn.execute(
-        text("""
+        text(
+            """
         SELECT EXISTS (
-            SELECT 1 
-            FROM information_schema.tables 
+            SELECT 1
+            FROM information_schema.tables
             WHERE table_name = 'chunks'
         )
-        """)
+        """
+        )
     ).scalar()
-    
+
     if chunks_exists:
         # Check if id column is already VARCHAR (migration already complete)
         id_type = conn.execute(
-            text("""
-            SELECT data_type 
-            FROM information_schema.columns 
-            WHERE table_name = 'chunks' 
+            text(
+                """
+            SELECT data_type
+            FROM information_schema.columns
+            WHERE table_name = 'chunks'
             AND column_name = 'id'
             """
-        )).scalar()
-        
-        if id_type and id_type.upper() == 'CHARACTER VARYING':
+            )
+        ).scalar()
+
+        if id_type and id_type.upper() == "CHARACTER VARYING":
             # Migration already complete, just ensure indexes exist
             _create_indexes_if_not_exist(conn)
             _create_or_replace_materialized_view()
@@ -160,16 +175,18 @@ def upgrade() -> None:
     for i in range(partition_count):
         # Check if partition exists before renaming
         partition_exists = conn.execute(
-            text("""
+            text(
+                """
             SELECT EXISTS (
-                SELECT 1 
-                FROM information_schema.tables 
+                SELECT 1
+                FROM information_schema.tables
                 WHERE table_name = :table_name
             )
-            """),
-            {"table_name": f"chunks_p{i}"}
+            """
+            ),
+            {"table_name": f"chunks_p{i}"},
         ).scalar()
-        
+
         if partition_exists:
             op.execute(
                 f"""
@@ -252,13 +269,15 @@ def downgrade() -> None:
 
     # Check if chunks table exists
     chunks_exists = conn.execute(
-        text("""
+        text(
+            """
         SELECT EXISTS (
-            SELECT 1 
-            FROM information_schema.tables 
+            SELECT 1
+            FROM information_schema.tables
             WHERE table_name = 'chunks'
         )
-        """)
+        """
+        )
     ).scalar()
 
     if not chunks_exists:
@@ -267,15 +286,17 @@ def downgrade() -> None:
 
     # Check if id column is UUID (already downgraded)
     id_type = conn.execute(
-        text("""
-        SELECT data_type 
-        FROM information_schema.columns 
-        WHERE table_name = 'chunks' 
+        text(
+            """
+        SELECT data_type
+        FROM information_schema.columns
+        WHERE table_name = 'chunks'
         AND column_name = 'id'
-        """)
+        """
+        )
     ).scalar()
-    
-    if id_type and id_type.upper() == 'UUID':
+
+    if id_type and id_type.upper() == "UUID":
         # Already downgraded
         return
 
@@ -288,16 +309,18 @@ def downgrade() -> None:
     # Rename all partitions
     for i in range(partition_count):
         partition_exists = conn.execute(
-            text("""
+            text(
+                """
             SELECT EXISTS (
-                SELECT 1 
-                FROM information_schema.tables 
+                SELECT 1
+                FROM information_schema.tables
                 WHERE table_name = :table_name
             )
-            """),
-            {"table_name": f"chunks_p{i}"}
+            """
+            ),
+            {"table_name": f"chunks_p{i}"},
         ).scalar()
-        
+
         if partition_exists:
             op.execute(f"ALTER TABLE chunks_p{i} RENAME TO chunks_new_p{i};")
 

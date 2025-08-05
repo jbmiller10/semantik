@@ -123,7 +123,11 @@ class PartitionValidation:
                 raise ValueError(f"content exceeds maximum length of {cls.MAX_STRING_LENGTH} characters")
 
         # Validate metadata if present
-        if "metadata" in chunk_data and chunk_data["metadata"] is not None and not isinstance(chunk_data["metadata"], dict):
+        if (
+            "metadata" in chunk_data
+            and chunk_data["metadata"] is not None
+            and not isinstance(chunk_data["metadata"], dict)
+        ):
             raise TypeError("metadata must be a dictionary")
 
         return chunk_data

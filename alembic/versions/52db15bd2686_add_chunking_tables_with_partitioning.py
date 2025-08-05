@@ -10,6 +10,7 @@ import os
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from sqlalchemy.engine.reflection import Inspector
 
 from alembic import op
 
@@ -20,34 +21,34 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
-def table_exists(inspector, table_name: str) -> bool:
+def table_exists(inspector: Inspector, table_name: str) -> bool:
     """Check if a table exists in the database."""
     return table_name in inspector.get_table_names()
 
 
-def index_exists(inspector, table_name: str, index_name: str) -> bool:
+def index_exists(inspector: Inspector, table_name: str, index_name: str) -> bool:
     """Check if an index exists on a table."""
     try:
         indexes = inspector.get_indexes(table_name)
-        return any(idx['name'] == index_name for idx in indexes)
+        return any(idx["name"] == index_name for idx in indexes)
     except Exception:
         return False
 
 
-def foreign_key_exists(inspector, table_name: str, fk_name: str) -> bool:
+def foreign_key_exists(inspector: Inspector, table_name: str, fk_name: str) -> bool:
     """Check if a foreign key exists on a table."""
     try:
         fks = inspector.get_foreign_keys(table_name)
-        return any(fk['name'] == fk_name for fk in fks)
+        return any(fk["name"] == fk_name for fk in fks)
     except Exception:
         return False
 
 
-def column_exists(inspector, table_name: str, column_name: str) -> bool:
+def column_exists(inspector: Inspector, table_name: str, column_name: str) -> bool:
     """Check if a column exists in a table."""
     try:
         columns = inspector.get_columns(table_name)
-        return any(col['name'] == column_name for col in columns)
+        return any(col["name"] == column_name for col in columns)
     except Exception:
         return False
 
@@ -57,12 +58,12 @@ def upgrade() -> None:
 
     # Get partition count from environment variable, default to 16
     partition_count = int(os.environ.get("CHUNK_PARTITION_COUNT", "16"))
-    
+
     # Check if tables already exist
     from sqlalchemy import inspect
+
     conn = op.get_bind()
     inspector = inspect(conn)
-    existing_tables = inspector.get_table_names()
 
     # Step 1: Create chunking_strategies table
     if not table_exists(inspector, "chunking_strategies"):
@@ -78,7 +79,7 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint("id"),
             sa.UniqueConstraint("name"),
         )
-    
+
     # Create indexes for chunking_strategies table
     if not index_exists(inspector, "chunking_strategies", "ix_chunking_strategies_is_active"):
         op.create_index(op.f("ix_chunking_strategies_is_active"), "chunking_strategies", ["is_active"], unique=False)
@@ -101,7 +102,7 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint("id"),
             sa.UniqueConstraint("config_hash"),
         )
-    
+
     # Create indexes for chunking_configs table
     if not index_exists(inspector, "chunking_configs", "ix_chunking_configs_strategy_id"):
         op.create_index(op.f("ix_chunking_configs_strategy_id"), "chunking_configs", ["strategy_id"], unique=False)
@@ -285,9 +286,10 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Rollback chunking tables and related changes."""
-    
+
     # Get inspector for checking existence
     from sqlalchemy import inspect
+
     conn = op.get_bind()
     inspector = inspect(conn)
 
@@ -336,7 +338,7 @@ def downgrade() -> None:
             op.drop_index("ix_chunks_document_id", table_name="chunks")
         if index_exists(inspector, "chunks", "ix_chunks_collection_id_document_id"):
             op.drop_index("ix_chunks_collection_id_document_id", table_name="chunks")
-        
+
         # Drop all partition tables (PostgreSQL will drop them with the parent)
         op.execute("DROP TABLE chunks CASCADE")
 
