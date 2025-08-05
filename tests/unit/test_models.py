@@ -4,7 +4,7 @@ from collections.abc import Generator
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from packages.shared.database.models import (
@@ -46,9 +46,28 @@ def db_session() -> Generator[Session, None, None]:
 
     engine = create_engine(database_url)
 
-    # Drop and recreate all tables for test isolation
-    Base.metadata.drop_all(engine)
-    Base.metadata.create_all(engine)
+    # Helper function to drop views before tables
+    def drop_views_and_tables(connection):
+        # Drop views first (in dependency order)
+        views_to_drop = [
+            "DROP VIEW IF EXISTS partition_hot_spots CASCADE",
+            "DROP VIEW IF EXISTS partition_health_summary CASCADE",
+            "DROP VIEW IF EXISTS partition_size_distribution CASCADE",
+            "DROP VIEW IF EXISTS partition_chunk_distribution CASCADE",
+            "DROP VIEW IF EXISTS active_chunking_configs CASCADE",
+            "DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE",
+        ]
+        
+        for view_sql in views_to_drop:
+            connection.execute(text(view_sql))
+        
+        # Now drop all tables
+        Base.metadata.drop_all(connection)
+
+    # Drop all views and tables, then recreate for test isolation
+    with engine.begin() as conn:
+        drop_views_and_tables(conn)
+        Base.metadata.create_all(conn)
 
     session_factory = sessionmaker(bind=engine)
     session = session_factory()
