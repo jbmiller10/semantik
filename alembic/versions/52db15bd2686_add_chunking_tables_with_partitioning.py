@@ -20,6 +20,38 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def table_exists(inspector, table_name: str) -> bool:
+    """Check if a table exists in the database."""
+    return table_name in inspector.get_table_names()
+
+
+def index_exists(inspector, table_name: str, index_name: str) -> bool:
+    """Check if an index exists on a table."""
+    try:
+        indexes = inspector.get_indexes(table_name)
+        return any(idx['name'] == index_name for idx in indexes)
+    except Exception:
+        return False
+
+
+def foreign_key_exists(inspector, table_name: str, fk_name: str) -> bool:
+    """Check if a foreign key exists on a table."""
+    try:
+        fks = inspector.get_foreign_keys(table_name)
+        return any(fk['name'] == fk_name for fk in fks)
+    except Exception:
+        return False
+
+
+def column_exists(inspector, table_name: str, column_name: str) -> bool:
+    """Check if a column exists in a table."""
+    try:
+        columns = inspector.get_columns(table_name)
+        return any(col['name'] == column_name for col in columns)
+    except Exception:
+        return False
+
+
 def upgrade() -> None:
     """Add chunking tables with partitioning for scalable document processing."""
 
@@ -33,7 +65,7 @@ def upgrade() -> None:
     existing_tables = inspector.get_table_names()
 
     # Step 1: Create chunking_strategies table
-    if "chunking_strategies" not in existing_tables:
+    if not table_exists(inspector, "chunking_strategies"):
         op.create_table(
             "chunking_strategies",
             sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -46,10 +78,13 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint("id"),
             sa.UniqueConstraint("name"),
         )
+    
+    # Create indexes for chunking_strategies table
+    if not index_exists(inspector, "chunking_strategies", "ix_chunking_strategies_is_active"):
         op.create_index(op.f("ix_chunking_strategies_is_active"), "chunking_strategies", ["is_active"], unique=False)
 
     # Step 2: Create chunking_configs table (deduplicated)
-    if "chunking_configs" not in existing_tables:
+    if not table_exists(inspector, "chunking_configs"):
         op.create_table(
             "chunking_configs",
             sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -66,13 +101,18 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint("id"),
             sa.UniqueConstraint("config_hash"),
         )
+    
+    # Create indexes for chunking_configs table
+    if not index_exists(inspector, "chunking_configs", "ix_chunking_configs_strategy_id"):
         op.create_index(op.f("ix_chunking_configs_strategy_id"), "chunking_configs", ["strategy_id"], unique=False)
+    if not index_exists(inspector, "chunking_configs", "ix_chunking_configs_config_hash"):
         op.create_index(op.f("ix_chunking_configs_config_hash"), "chunking_configs", ["config_hash"], unique=True)
+    if not index_exists(inspector, "chunking_configs", "ix_chunking_configs_use_count"):
         op.create_index(op.f("ix_chunking_configs_use_count"), "chunking_configs", ["use_count"], unique=False)
 
     # Step 3: Create chunks table with partitioning
     # Create the parent table
-    if "chunks" not in existing_tables:
+    if not table_exists(inspector, "chunks"):
         op.execute(
             """
             CREATE TABLE chunks (
@@ -98,48 +138,38 @@ def upgrade() -> None:
 
         # Create partitions based on configuration
         for i in range(partition_count):
-            op.execute(
-                f"""
-                CREATE TABLE chunks_p{i} PARTITION OF chunks
-                FOR VALUES WITH (MODULUS {partition_count}, REMAINDER {i});
-            """
-            )
+            # Check if partition already exists
+            if not table_exists(inspector, f"chunks_p{i}"):
+                op.execute(
+                    f"""
+                    CREATE TABLE chunks_p{i} PARTITION OF chunks
+                    FOR VALUES WITH (MODULUS {partition_count}, REMAINDER {i});
+                """
+                )
 
-        # Create indexes on the parent table (will be inherited by partitions)
+    # Create indexes on the parent table (will be inherited by partitions)
+    if not index_exists(inspector, "chunks", "ix_chunks_collection_id_document_id"):
         op.create_index("ix_chunks_collection_id_document_id", "chunks", ["collection_id", "document_id"], unique=False)
+    if not index_exists(inspector, "chunks", "ix_chunks_document_id"):
         op.create_index("ix_chunks_document_id", "chunks", ["document_id"], unique=False)
+    if not index_exists(inspector, "chunks", "ix_chunks_chunking_config_id"):
         op.create_index("ix_chunks_chunking_config_id", "chunks", ["chunking_config_id"], unique=False)
+    if not index_exists(inspector, "chunks", "ix_chunks_collection_id_chunk_index"):
         op.create_index("ix_chunks_collection_id_chunk_index", "chunks", ["collection_id", "chunk_index"], unique=False)
+    if not index_exists(inspector, "chunks", "ix_chunks_created_at"):
         op.create_index("ix_chunks_created_at", "chunks", ["created_at"], unique=False)
 
     # Step 4: Add columns to existing tables
-    # Get existing columns for collections table
-    existing_columns = {}
-    try:
-        for table_name in ['collections', 'documents']:
-            columns = inspector.get_columns(table_name)
-            existing_columns[table_name] = [col['name'] for col in columns]
-    except Exception:
-        existing_columns = {'collections': [], 'documents': []}
-
     # Update collections table
-    if "default_chunking_config_id" not in existing_columns.get('collections', []):
+    if not column_exists(inspector, "collections", "default_chunking_config_id"):
         op.add_column("collections", sa.Column("default_chunking_config_id", sa.Integer(), nullable=True))
-    if "chunks_total_count" not in existing_columns.get('collections', []):
+    if not column_exists(inspector, "collections", "chunks_total_count"):
         op.add_column("collections", sa.Column("chunks_total_count", sa.Integer(), nullable=False, server_default="0"))
-    if "chunking_completed_at" not in existing_columns.get('collections', []):
+    if not column_exists(inspector, "collections", "chunking_completed_at"):
         op.add_column("collections", sa.Column("chunking_completed_at", sa.DateTime(timezone=True), nullable=True))
 
-    # Check for existing foreign keys and indexes
-    existing_fks = []
-    existing_indexes = []
-    try:
-        existing_fks = [fk['name'] for fk in inspector.get_foreign_keys('collections')]
-        existing_indexes = [idx['name'] for idx in inspector.get_indexes('collections')]
-    except Exception:
-        pass
-
-    if "fk_collections_default_chunking_config" not in existing_fks:
+    # Create foreign key and index for collections table
+    if not foreign_key_exists(inspector, "collections", "fk_collections_default_chunking_config"):
         op.create_foreign_key(
             "fk_collections_default_chunking_config",
             "collections",
@@ -147,36 +177,29 @@ def upgrade() -> None:
             ["default_chunking_config_id"],
             ["id"],
         )
-    if "ix_collections_default_chunking_config_id" not in existing_indexes:
+    if not index_exists(inspector, "collections", "ix_collections_default_chunking_config_id"):
         op.create_index(
             "ix_collections_default_chunking_config_id", "collections", ["default_chunking_config_id"], unique=False
         )
 
     # Update documents table
-    if "chunking_config_id" not in existing_columns.get('documents', []):
+    if not column_exists(inspector, "documents", "chunking_config_id"):
         op.add_column("documents", sa.Column("chunking_config_id", sa.Integer(), nullable=True))
-    if "chunks_count" not in existing_columns.get('documents', []):
+    if not column_exists(inspector, "documents", "chunks_count"):
         op.add_column("documents", sa.Column("chunks_count", sa.Integer(), nullable=False, server_default="0"))
-    if "chunking_started_at" not in existing_columns.get('documents', []):
+    if not column_exists(inspector, "documents", "chunking_started_at"):
         op.add_column("documents", sa.Column("chunking_started_at", sa.DateTime(timezone=True), nullable=True))
-    if "chunking_completed_at" not in existing_columns.get('documents', []):
+    if not column_exists(inspector, "documents", "chunking_completed_at"):
         op.add_column("documents", sa.Column("chunking_completed_at", sa.DateTime(timezone=True), nullable=True))
 
-    # Check for existing foreign keys and indexes on documents table
-    try:
-        doc_fks = [fk['name'] for fk in inspector.get_foreign_keys('documents')]
-        doc_indexes = [idx['name'] for idx in inspector.get_indexes('documents')]
-    except Exception:
-        doc_fks = []
-        doc_indexes = []
-
-    if "fk_documents_chunking_config" not in doc_fks:
+    # Create foreign key and indexes for documents table
+    if not foreign_key_exists(inspector, "documents", "fk_documents_chunking_config"):
         op.create_foreign_key(
             "fk_documents_chunking_config", "documents", "chunking_configs", ["chunking_config_id"], ["id"]
         )
-    if "ix_documents_chunking_config_id" not in doc_indexes:
+    if not index_exists(inspector, "documents", "ix_documents_chunking_config_id"):
         op.create_index("ix_documents_chunking_config_id", "documents", ["chunking_config_id"], unique=False)
-    if "ix_documents_collection_id_chunking_completed_at" not in doc_indexes:
+    if not index_exists(inspector, "documents", "ix_documents_collection_id_chunking_completed_at"):
         op.create_index(
             "ix_documents_collection_id_chunking_completed_at",
             "documents",
@@ -214,7 +237,8 @@ def upgrade() -> None:
         """
         )
 
-        # Create index on materialized view
+    # Create index on materialized view (check if it exists first)
+    if not index_exists(inspector, "collection_chunking_stats", "ix_collection_chunking_stats_id"):
         op.create_index("ix_collection_chunking_stats_id", "collection_chunking_stats", ["id"], unique=True)
 
     # Create refresh function for materialized view
@@ -261,6 +285,11 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Rollback chunking tables and related changes."""
+    
+    # Get inspector for checking existence
+    from sqlalchemy import inspect
+    conn = op.get_bind()
+    inspector = inspect(conn)
 
     # Drop views first
     op.execute("DROP VIEW IF EXISTS active_chunking_configs")
@@ -268,37 +297,61 @@ def downgrade() -> None:
     op.execute("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats")
 
     # Remove columns from documents table
-    op.drop_index("ix_documents_collection_id_chunking_completed_at", table_name="documents")
-    op.drop_index("ix_documents_chunking_config_id", table_name="documents")
-    op.drop_constraint("fk_documents_chunking_config", "documents", type_="foreignkey")
-    op.drop_column("documents", "chunking_completed_at")
-    op.drop_column("documents", "chunking_started_at")
-    op.drop_column("documents", "chunks_count")
-    op.drop_column("documents", "chunking_config_id")
+    if index_exists(inspector, "documents", "ix_documents_collection_id_chunking_completed_at"):
+        op.drop_index("ix_documents_collection_id_chunking_completed_at", table_name="documents")
+    if index_exists(inspector, "documents", "ix_documents_chunking_config_id"):
+        op.drop_index("ix_documents_chunking_config_id", table_name="documents")
+    if foreign_key_exists(inspector, "documents", "fk_documents_chunking_config"):
+        op.drop_constraint("fk_documents_chunking_config", "documents", type_="foreignkey")
+    if column_exists(inspector, "documents", "chunking_completed_at"):
+        op.drop_column("documents", "chunking_completed_at")
+    if column_exists(inspector, "documents", "chunking_started_at"):
+        op.drop_column("documents", "chunking_started_at")
+    if column_exists(inspector, "documents", "chunks_count"):
+        op.drop_column("documents", "chunks_count")
+    if column_exists(inspector, "documents", "chunking_config_id"):
+        op.drop_column("documents", "chunking_config_id")
 
     # Remove columns from collections table
-    op.drop_index("ix_collections_default_chunking_config_id", table_name="collections")
-    op.drop_constraint("fk_collections_default_chunking_config", "collections", type_="foreignkey")
-    op.drop_column("collections", "chunking_completed_at")
-    op.drop_column("collections", "chunks_total_count")
-    op.drop_column("collections", "default_chunking_config_id")
+    if index_exists(inspector, "collections", "ix_collections_default_chunking_config_id"):
+        op.drop_index("ix_collections_default_chunking_config_id", table_name="collections")
+    if foreign_key_exists(inspector, "collections", "fk_collections_default_chunking_config"):
+        op.drop_constraint("fk_collections_default_chunking_config", "collections", type_="foreignkey")
+    if column_exists(inspector, "collections", "chunking_completed_at"):
+        op.drop_column("collections", "chunking_completed_at")
+    if column_exists(inspector, "collections", "chunks_total_count"):
+        op.drop_column("collections", "chunks_total_count")
+    if column_exists(inspector, "collections", "default_chunking_config_id"):
+        op.drop_column("collections", "default_chunking_config_id")
 
     # Drop chunks table and all partitions
-    op.drop_index("ix_chunks_created_at", table_name="chunks")
-    op.drop_index("ix_chunks_collection_id_chunk_index", table_name="chunks")
-    op.drop_index("ix_chunks_chunking_config_id", table_name="chunks")
-    op.drop_index("ix_chunks_document_id", table_name="chunks")
-    op.drop_index("ix_chunks_collection_id_document_id", table_name="chunks")
-
-    # Drop all partition tables (PostgreSQL will drop them with the parent)
-    op.execute("DROP TABLE chunks CASCADE")
+    if table_exists(inspector, "chunks"):
+        if index_exists(inspector, "chunks", "ix_chunks_created_at"):
+            op.drop_index("ix_chunks_created_at", table_name="chunks")
+        if index_exists(inspector, "chunks", "ix_chunks_collection_id_chunk_index"):
+            op.drop_index("ix_chunks_collection_id_chunk_index", table_name="chunks")
+        if index_exists(inspector, "chunks", "ix_chunks_chunking_config_id"):
+            op.drop_index("ix_chunks_chunking_config_id", table_name="chunks")
+        if index_exists(inspector, "chunks", "ix_chunks_document_id"):
+            op.drop_index("ix_chunks_document_id", table_name="chunks")
+        if index_exists(inspector, "chunks", "ix_chunks_collection_id_document_id"):
+            op.drop_index("ix_chunks_collection_id_document_id", table_name="chunks")
+        
+        # Drop all partition tables (PostgreSQL will drop them with the parent)
+        op.execute("DROP TABLE chunks CASCADE")
 
     # Drop chunking_configs table
-    op.drop_index(op.f("ix_chunking_configs_use_count"), table_name="chunking_configs")
-    op.drop_index(op.f("ix_chunking_configs_config_hash"), table_name="chunking_configs")
-    op.drop_index(op.f("ix_chunking_configs_strategy_id"), table_name="chunking_configs")
-    op.drop_table("chunking_configs")
+    if table_exists(inspector, "chunking_configs"):
+        if index_exists(inspector, "chunking_configs", "ix_chunking_configs_use_count"):
+            op.drop_index(op.f("ix_chunking_configs_use_count"), table_name="chunking_configs")
+        if index_exists(inspector, "chunking_configs", "ix_chunking_configs_config_hash"):
+            op.drop_index(op.f("ix_chunking_configs_config_hash"), table_name="chunking_configs")
+        if index_exists(inspector, "chunking_configs", "ix_chunking_configs_strategy_id"):
+            op.drop_index(op.f("ix_chunking_configs_strategy_id"), table_name="chunking_configs")
+        op.drop_table("chunking_configs")
 
     # Drop chunking_strategies table
-    op.drop_index(op.f("ix_chunking_strategies_is_active"), table_name="chunking_strategies")
-    op.drop_table("chunking_strategies")
+    if table_exists(inspector, "chunking_strategies"):
+        if index_exists(inspector, "chunking_strategies", "ix_chunking_strategies_is_active"):
+            op.drop_index(op.f("ix_chunking_strategies_is_active"), table_name="chunking_strategies")
+        op.drop_table("chunking_strategies")
