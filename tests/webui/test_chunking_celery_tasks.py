@@ -1,8 +1,6 @@
 """Unit tests for chunking-related Celery tasks."""
 
-import asyncio
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -23,20 +21,20 @@ class TestChunkingCeleryTasks:
         mock_session.commit = AsyncMock()
         mock_session_local.return_value.__aenter__.return_value = mock_session
         mock_session_local.return_value.__aexit__.return_value = None
-        
+
         # Run the task
         with patch("asyncio.run") as mock_asyncio_run:
             # Simulate successful execution
             mock_asyncio_run.return_value = None
-            
+
             result = refresh_collection_chunking_stats()
-        
+
         # Verify result
         assert result["status"] == "success"
         assert "duration_seconds" in result
         assert result["duration_seconds"] >= 0
         assert result["error"] is None
-        
+
         # Verify logging
         assert mock_logger.info.call_count == 2
         mock_logger.info.assert_any_call("Starting refresh of collection_chunking_stats materialized view")
@@ -47,14 +45,14 @@ class TestChunkingCeleryTasks:
         """Test failed refresh of collection chunking stats."""
         # Mock the async context manager to raise an error
         error_msg = "Database connection failed"
-        
+
         with patch("asyncio.run") as mock_asyncio_run:
             mock_asyncio_run.side_effect = Exception(error_msg)
-            
+
             # The task should re-raise the exception
             with pytest.raises(Exception, match=error_msg):
                 refresh_collection_chunking_stats()
-        
+
         # Verify error logging
         mock_logger.error.assert_called_once()
         error_log = mock_logger.error.call_args[0][0]
@@ -82,12 +80,12 @@ class TestChunkingCeleryTasks:
         )
         mock_service.check_partition_health = AsyncMock(return_value=mock_monitoring_result)
         mock_service_class.return_value = mock_service
-        
+
         # Mock the session
         mock_session = AsyncMock()
         mock_session_local.return_value.__aenter__.return_value = mock_session
         mock_session_local.return_value.__aexit__.return_value = None
-        
+
         # Run the task
         with patch("asyncio.run") as mock_asyncio_run:
             # Return the expected dictionary structure
@@ -98,15 +96,15 @@ class TestChunkingCeleryTasks:
                 "metrics": mock_monitoring_result.metrics,
                 "error": mock_monitoring_result.error,
             }
-            
+
             result = monitor_partition_health()
-        
+
         # Verify result
         assert result["status"] == "success"
         assert result["alerts"] == []
         assert result["metrics"]["healthy_count"] == 3
         assert result["error"] is None
-        
+
         # Verify logging
         mock_logger.info.assert_any_call("Starting partition health monitoring")
 
@@ -137,12 +135,12 @@ class TestChunkingCeleryTasks:
         )
         mock_service.check_partition_health = AsyncMock(return_value=mock_monitoring_result)
         mock_service_class.return_value = mock_service
-        
+
         # Mock the session
         mock_session = AsyncMock()
         mock_session_local.return_value.__aenter__.return_value = mock_session
         mock_session_local.return_value.__aexit__.return_value = None
-        
+
         # Run the task
         with patch("asyncio.run") as mock_asyncio_run:
             # Return the expected dictionary structure
@@ -153,15 +151,15 @@ class TestChunkingCeleryTasks:
                 "metrics": mock_monitoring_result.metrics,
                 "error": mock_monitoring_result.error,
             }
-            
+
             result = monitor_partition_health()
-        
+
         # Verify result
         assert result["status"] == "success"
         assert len(result["alerts"]) == 1
         assert result["alerts"][0]["level"] == "WARNING"
         assert result["metrics"]["warning_count"] == 2
-        
+
         # Verify logging
         mock_logger.info.assert_any_call("Starting partition health monitoring")
 
@@ -197,12 +195,12 @@ class TestChunkingCeleryTasks:
         )
         mock_service.check_partition_health = AsyncMock(return_value=mock_monitoring_result)
         mock_service_class.return_value = mock_service
-        
+
         # Mock the session
         mock_session = AsyncMock()
         mock_session_local.return_value.__aenter__.return_value = mock_session
         mock_session_local.return_value.__aexit__.return_value = None
-        
+
         # Run the task
         with patch("asyncio.run") as mock_asyncio_run:
             # Return the expected dictionary structure
@@ -213,15 +211,15 @@ class TestChunkingCeleryTasks:
                 "metrics": mock_monitoring_result.metrics,
                 "error": mock_monitoring_result.error,
             }
-            
+
             result = monitor_partition_health()
-        
+
         # Verify result
         assert result["status"] == "success"
         assert len(result["alerts"]) == 1
         assert result["alerts"][0]["level"] == "ERROR"
         assert result["metrics"]["unbalanced_count"] == 3
-        
+
         # Verify logging
         mock_logger.info.assert_any_call("Starting partition health monitoring")
 
@@ -241,12 +239,12 @@ class TestChunkingCeleryTasks:
         )
         mock_service.check_partition_health = AsyncMock(return_value=mock_monitoring_result)
         mock_service_class.return_value = mock_service
-        
+
         # Mock the session
         mock_session = AsyncMock()
         mock_session_local.return_value.__aenter__.return_value = mock_session
         mock_session_local.return_value.__aexit__.return_value = None
-        
+
         # Run the task
         with patch("asyncio.run") as mock_asyncio_run:
             # Return the expected dictionary structure
@@ -257,13 +255,13 @@ class TestChunkingCeleryTasks:
                 "metrics": mock_monitoring_result.metrics,
                 "error": mock_monitoring_result.error,
             }
-            
+
             result = monitor_partition_health()
-        
+
         # Verify result
         assert result["status"] == "failed"
         assert result["error"] == "Failed to connect to database"
-        
+
         # Verify logging
         mock_logger.info.assert_any_call("Starting partition health monitoring")
 
@@ -272,14 +270,14 @@ class TestChunkingCeleryTasks:
     def test_monitor_partition_health_exception(self, mock_logger, mock_session_local):
         """Test partition health monitoring with unexpected exception."""
         error_msg = "Unexpected error occurred"
-        
+
         with patch("asyncio.run") as mock_asyncio_run:
             mock_asyncio_run.side_effect = Exception(error_msg)
-            
+
             # The task should re-raise the exception
             with pytest.raises(Exception, match=error_msg):
                 monitor_partition_health()
-        
+
         # Verify error logging
         mock_logger.error.assert_called_once()
         error_log = mock_logger.error.call_args[0][0]

@@ -1,14 +1,11 @@
 """Unit tests for partition utilities."""
 
-import re
 from datetime import UTC, datetime
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import Select, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database.models import Chunk
 from packages.shared.database.partition_utils import (
@@ -147,15 +144,15 @@ class TestPartitionValidation:
         """Test string sanitization."""
         # Test normal string
         assert PartitionValidation.sanitize_string("normal text") == "normal text"
-        
+
         # Test string with null bytes
         assert PartitionValidation.sanitize_string("text\x00with\x00nulls") == "textwithnulls"
-        
+
         # Test truncation
         long_text = "x" * 300
         sanitized = PartitionValidation.sanitize_string(long_text, max_length=255)
         assert len(sanitized) == 255
-        
+
         # Test non-string conversion
         assert PartitionValidation.sanitize_string(123) == "123"
 
@@ -168,11 +165,9 @@ class TestPartitionAwareMixin:
         mixin = PartitionAwareMixin()
         query = select(Chunk)
         collection_id = str(uuid4())
-        
-        result = mixin.ensure_partition_key_in_filter(
-            query, Chunk.collection_id, collection_id
-        )
-        
+
+        result = mixin.ensure_partition_key_in_filter(query, Chunk.collection_id, collection_id)
+
         # Verify the where clause was added
         assert result is not query  # New query object
         # The actual SQL would contain the WHERE clause
@@ -181,18 +176,16 @@ class TestPartitionAwareMixin:
         """Test query without partition key logs warning."""
         mixin = PartitionAwareMixin()
         query = select(Chunk)
-        
+
         with patch("packages.shared.database.partition_utils.logger") as mock_logger:
-            result = mixin.ensure_partition_key_in_filter(
-                query, Chunk.collection_id, None
-            )
+            result = mixin.ensure_partition_key_in_filter(query, Chunk.collection_id, None)
             mock_logger.warning.assert_called_once()
             assert result is query  # Same query object
 
     def test_group_by_partition_key(self):
         """Test grouping items by partition key."""
         mixin = PartitionAwareMixin()
-        
+
         # Create test items
         items = [
             {"id": 1, "collection_id": "col1"},
@@ -201,24 +194,24 @@ class TestPartitionAwareMixin:
             {"id": 4, "collection_id": "col2"},
             {"id": 5, "collection_id": "col3"},
         ]
-        
+
         result = mixin.group_by_partition_key(items, lambda x: x["collection_id"])
-        
+
         assert len(result) == 3
         assert len(result["col1"]) == 2
         assert len(result["col2"]) == 2
         assert len(result["col3"]) == 1
         assert result["col1"] == [items[0], items[2]]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_bulk_insert_partitioned(self):
         """Test bulk insert with partition grouping."""
         mixin = PartitionAwareMixin()
         session = AsyncMock()
-        
+
         # Mock run_sync to capture the bulk insert calls
         bulk_insert_calls = []
-        
+
         def capture_bulk_insert(func):
             # Create a mock sync session
             sync_session = Mock()
@@ -226,9 +219,9 @@ class TestPartitionAwareMixin:
                 side_effect=lambda model, items: bulk_insert_calls.append((model, items))
             )
             func(sync_session)
-        
+
         session.run_sync = AsyncMock(side_effect=capture_bulk_insert)
-        
+
         # Create test data with multiple partitions
         col1_id = str(uuid4())
         col2_id = str(uuid4())
@@ -237,12 +230,12 @@ class TestPartitionAwareMixin:
             {"collection_id": col2_id, "content": "chunk2"},
             {"collection_id": col1_id, "content": "chunk3"},
         ]
-        
+
         await mixin.bulk_insert_partitioned(session, Chunk, items)
-        
+
         # Verify items were grouped by partition
         assert len(bulk_insert_calls) == 2
-        
+
         # Check that items were properly grouped
         inserted_collections = set()
         for model, batch in bulk_insert_calls:
@@ -250,48 +243,48 @@ class TestPartitionAwareMixin:
             collection_ids = {item["collection_id"] for item in batch}
             assert len(collection_ids) == 1  # All items in batch have same collection_id
             inserted_collections.update(collection_ids)
-        
+
         assert inserted_collections == {col1_id, col2_id}
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_bulk_insert_partitioned_missing_partition_key(self):
         """Test bulk insert fails when partition key is missing."""
         mixin = PartitionAwareMixin()
         session = AsyncMock()
-        
+
         items = [{"content": "missing collection_id"}]
-        
+
         with pytest.raises(ValueError, match="Partition key 'collection_id' is required"):
             await mixin.bulk_insert_partitioned(session, Chunk, items)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_bulk_insert_partitioned_empty_list(self):
         """Test bulk insert with empty list does nothing."""
         mixin = PartitionAwareMixin()
         session = AsyncMock()
-        
+
         await mixin.bulk_insert_partitioned(session, Chunk, [])
         session.run_sync.assert_not_called()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_delete_by_partition_filter(self):
         """Test delete with partition filter."""
         mixin = PartitionAwareMixin()
         session = AsyncMock()
-        
+
         # Mock the query execution
         mock_records = [Mock(), Mock(), Mock()]
         mock_result = Mock()
         mock_result.scalars.return_value.all.return_value = mock_records
         session.execute.return_value = mock_result
-        
+
         collection_id = str(uuid4())
         additional_filters = [Chunk.document_id == "doc1"]
-        
+
         count = await mixin.delete_by_partition_filter(
             session, Chunk, Chunk.collection_id, collection_id, additional_filters
         )
-        
+
         assert count == 3
         assert session.delete.call_count == 3
         for record in mock_records:
@@ -305,7 +298,7 @@ class TestChunkPartitionHelper:
         """Test creating chunk query with partition key."""
         collection_id = str(uuid4())
         query = ChunkPartitionHelper.create_chunk_query_with_partition(collection_id)
-        
+
         # The query should be a Select statement
         assert isinstance(query, Select)
         # Would need to compile the query to verify WHERE clause
@@ -315,11 +308,9 @@ class TestChunkPartitionHelper:
         collection_id = str(uuid4())
         doc_id = str(uuid4())
         additional_filters = [Chunk.document_id == doc_id]
-        
-        query = ChunkPartitionHelper.create_chunk_query_with_partition(
-            collection_id, additional_filters
-        )
-        
+
+        query = ChunkPartitionHelper.create_chunk_query_with_partition(collection_id, additional_filters)
+
         assert isinstance(query, Select)
 
     def test_validate_chunk_partition_key(self):
@@ -328,20 +319,20 @@ class TestChunkPartitionHelper:
         chunk_data = {"collection_id": str(uuid4())}
         # Should not raise
         ChunkPartitionHelper.validate_chunk_partition_key(chunk_data)
-        
+
         # Invalid data
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="collection_id is required"):
             ChunkPartitionHelper.validate_chunk_partition_key({})
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_partition_statistics_success(self):
         """Test getting partition statistics successfully."""
         session = AsyncMock()
         collection_id = str(uuid4())
-        
+
         # Mock the count query
         session.scalar.return_value = 100
-        
+
         # Mock the stats query
         mock_stats = Mock(
             count=100,
@@ -353,9 +344,9 @@ class TestChunkPartitionHelper:
         mock_result = Mock()
         mock_result.one.return_value = mock_stats
         session.execute.return_value = mock_result
-        
+
         stats = await ChunkPartitionHelper.get_partition_statistics(session, collection_id)
-        
+
         assert stats["collection_id"] == collection_id.lower()
         assert stats["chunk_count"] == 100
         assert stats["avg_content_length"] == 500.5
@@ -363,15 +354,15 @@ class TestChunkPartitionHelper:
         assert stats["oldest_chunk"] == mock_stats.oldest_chunk
         assert stats["newest_chunk"] == mock_stats.newest_chunk
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_partition_statistics_none_values(self):
         """Test handling None values in statistics."""
         session = AsyncMock()
         collection_id = str(uuid4())
-        
+
         # Mock the count query
         session.scalar.return_value = None
-        
+
         # Mock the stats query with None values
         mock_stats = Mock(
             count=None,
@@ -383,22 +374,22 @@ class TestChunkPartitionHelper:
         mock_result = Mock()
         mock_result.one.return_value = mock_stats
         session.execute.return_value = mock_result
-        
+
         stats = await ChunkPartitionHelper.get_partition_statistics(session, collection_id)
-        
+
         assert stats["chunk_count"] == 0
         assert stats["avg_content_length"] == 0.0
         assert stats["total_content_length"] == 0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_partition_statistics_error(self):
         """Test error handling in partition statistics."""
         session = AsyncMock()
         session.scalar.side_effect = Exception("Database error")
         collection_id = str(uuid4())
-        
+
         stats = await ChunkPartitionHelper.get_partition_statistics(session, collection_id)
-        
+
         # Should return safe defaults
         assert stats["collection_id"] == collection_id.lower()
         assert stats["chunk_count"] == 0
@@ -411,12 +402,12 @@ class TestChunkPartitionHelper:
 class TestBulkOperationsExample:
     """Test the example bulk operations function."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_example_bulk_chunk_insert(self):
         """Test the example bulk insert function."""
         session = AsyncMock()
         session.run_sync = AsyncMock()
-        
+
         chunks_data = [
             {
                 "collection_id": str(uuid4()),
@@ -429,8 +420,8 @@ class TestBulkOperationsExample:
                 "chunk_index": 1,
             },
         ]
-        
+
         await example_bulk_chunk_insert(session, chunks_data)
-        
+
         # Verify bulk_insert_partitioned was called
         assert session.run_sync.called
