@@ -57,7 +57,7 @@ export function ChunkingComparisonView({
   };
 
   const handleExport = () => {
-    const data = Array.from(comparisonResults.entries()).map(([strategy, result]) => ({
+    const data = Object.entries(comparisonResults).map(([strategy, result]) => ({
       strategy,
       ...result.preview.statistics,
       processingTime: result.preview.performance.processingTimeMs,
@@ -71,6 +71,7 @@ export function ChunkingComparisonView({
       a.href = url;
       a.download = `chunking-comparison-${new Date().toISOString()}.json`;
       a.click();
+      URL.revokeObjectURL(url);
     } else {
       // CSV export
       const headers = ['Strategy', 'Total Chunks', 'Avg Size', 'Min Size', 'Max Size', 'Processing Time (ms)', 'Quality Score', 'Performance Score'];
@@ -92,6 +93,7 @@ export function ChunkingComparisonView({
       a.href = url;
       a.download = `chunking-comparison-${new Date().toISOString()}.csv`;
       a.click();
+      URL.revokeObjectURL(url);
     }
   };
 
@@ -147,7 +149,7 @@ export function ChunkingComparisonView({
           </button>
 
           {/* Export Button */}
-          {comparisonResults.size > 0 && (
+          {Object.keys(comparisonResults).length > 0 && (
             <div className="flex items-center space-x-1">
               <select
                 value={exportFormat}
@@ -199,7 +201,7 @@ export function ChunkingComparisonView({
                       onClick={() => handleAddStrategy(strategy)}
                       className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                     >
-                      {CHUNKING_STRATEGIES[strategy].name}
+                      {CHUNKING_STRATEGIES[strategy as ChunkingStrategyType].name}
                     </button>
                   ))}
                 </div>
@@ -236,11 +238,11 @@ export function ChunkingComparisonView({
         </div>
       )}
 
-      {comparisonResults.size > 0 && !comparisonLoading && (
+      {Object.keys(comparisonResults).length > 0 && !comparisonLoading && (
         <div className="space-y-6">
           {/* Metrics Summary */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {Array.from(comparisonResults.entries()).map(([strategy, result]) => {
+            {Object.entries(comparisonResults).map(([strategy, result]) => {
               const isCurrentStrategy = strategy === selectedStrategy;
               const stats = result.preview.statistics;
               const perf = result.preview.performance;
@@ -255,7 +257,7 @@ export function ChunkingComparisonView({
                 >
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="font-medium text-gray-900">
-                      {CHUNKING_STRATEGIES[strategy].name}
+                      {CHUNKING_STRATEGIES[strategy as ChunkingStrategyType].name}
                     </h4>
                     {isCurrentStrategy && (
                       <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
@@ -338,9 +340,9 @@ export function ChunkingComparisonView({
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                       Metric
                     </th>
-                    {Array.from(comparisonResults.keys()).map(strategy => (
+                    {Object.keys(comparisonResults).map(strategy => (
                       <th key={strategy} className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                        {CHUNKING_STRATEGIES[strategy].name}
+                        {CHUNKING_STRATEGIES[strategy as ChunkingStrategyType].name}
                       </th>
                     ))}
                   </tr>
@@ -348,7 +350,7 @@ export function ChunkingComparisonView({
                 <tbody className="bg-white divide-y divide-gray-200">
                   <tr>
                     <td className="px-4 py-2 text-sm text-gray-600">Total Chunks</td>
-                    {Array.from(comparisonResults.values()).map((result, i) => (
+                    {Object.values(comparisonResults).map((result, i) => (
                       <td key={i} className="px-4 py-2 text-sm font-medium">
                         {result.preview.statistics.totalChunks}
                       </td>
@@ -356,7 +358,7 @@ export function ChunkingComparisonView({
                   </tr>
                   <tr>
                     <td className="px-4 py-2 text-sm text-gray-600">Average Size</td>
-                    {Array.from(comparisonResults.values()).map((result, i) => (
+                    {Object.values(comparisonResults).map((result, i) => (
                       <td key={i} className="px-4 py-2 text-sm font-medium">
                         {result.preview.statistics.avgChunkSize} chars
                       </td>
@@ -364,7 +366,7 @@ export function ChunkingComparisonView({
                   </tr>
                   <tr>
                     <td className="px-4 py-2 text-sm text-gray-600">Size Range</td>
-                    {Array.from(comparisonResults.values()).map((result, i) => (
+                    {Object.values(comparisonResults).map((result, i) => (
                       <td key={i} className="px-4 py-2 text-sm font-medium">
                         {result.preview.statistics.minChunkSize} - {result.preview.statistics.maxChunkSize}
                       </td>
@@ -372,7 +374,7 @@ export function ChunkingComparisonView({
                   </tr>
                   <tr>
                     <td className="px-4 py-2 text-sm text-gray-600">Processing Time</td>
-                    {Array.from(comparisonResults.values()).map((result, i) => (
+                    {Object.values(comparisonResults).map((result, i) => (
                       <td key={i} className="px-4 py-2 text-sm font-medium">
                         {result.preview.performance.processingTimeMs}ms
                       </td>
@@ -380,16 +382,16 @@ export function ChunkingComparisonView({
                   </tr>
                   <tr>
                     <td className="px-4 py-2 text-sm text-gray-600">Est. Full Time</td>
-                    {Array.from(comparisonResults.values()).map((result, i) => (
+                    {Object.values(comparisonResults).map((result, i) => (
                       <td key={i} className="px-4 py-2 text-sm font-medium">
                         {(result.preview.performance.estimatedFullProcessingTimeMs / 1000).toFixed(1)}s
                       </td>
                     ))}
                   </tr>
-                  {comparisonResults.values().next().value?.preview.statistics.overlapPercentage !== undefined && (
+                  {Object.values(comparisonResults)[0]?.preview.statistics.overlapPercentage !== undefined && (
                     <tr>
                       <td className="px-4 py-2 text-sm text-gray-600">Overlap %</td>
-                      {Array.from(comparisonResults.values()).map((result, i) => (
+                      {Object.values(comparisonResults).map((result, i) => (
                         <td key={i} className="px-4 py-2 text-sm font-medium">
                           {result.preview.statistics.overlapPercentage || 0}%
                         </td>
@@ -408,10 +410,10 @@ export function ChunkingComparisonView({
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 divide-x divide-gray-200">
-              {Array.from(comparisonResults.entries()).map(([strategy, result], index) => (
+              {Object.entries(comparisonResults).map(([strategy, result], index) => (
                 <div key={strategy} className="p-4">
                   <h5 className="text-sm font-medium text-gray-700 mb-3">
-                    {CHUNKING_STRATEGIES[strategy].name}
+                    {CHUNKING_STRATEGIES[strategy as ChunkingStrategyType].name}
                   </h5>
                   <div 
                     className="comparison-scroll-container h-64 overflow-y-auto space-y-2"

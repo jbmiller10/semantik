@@ -57,6 +57,7 @@ export function ChunkingAnalyticsDashboard({
     a.href = url;
     a.download = `chunking-analytics-${new Date().toISOString()}.json`;
     a.click();
+    URL.revokeObjectURL(url);
   };
 
   const applyRecommendation = (recommendation: ChunkingRecommendation) => {

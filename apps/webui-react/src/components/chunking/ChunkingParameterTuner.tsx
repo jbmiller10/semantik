@@ -12,6 +12,7 @@ import { useChunkingStore } from '../../stores/chunkingStore';
 import { CHUNKING_STRATEGIES, CHUNKING_PRESETS } from '../../types/chunking';
 import type { ChunkingParameter } from '../../types/chunking';
 import { getInputClassName } from '../../utils/formStyles';
+import './ChunkingParameterTuner.css';
 
 interface ChunkingParameterTunerProps {
   showPreview?: boolean;
@@ -387,36 +388,3 @@ export function ChunkingParameterTuner({
     </div>
   );
 }
-
-// Add custom styles for the range slider
-const style = document.createElement('style');
-style.textContent = `
-  .slider::-webkit-slider-thumb {
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    background: #3B82F6;
-    border-radius: 50%;
-    cursor: pointer;
-    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-  }
-  
-  .slider::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
-    background: #3B82F6;
-    border-radius: 50%;
-    cursor: pointer;
-    border: none;
-    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-  }
-  
-  .slider:disabled::-webkit-slider-thumb {
-    cursor: not-allowed;
-  }
-  
-  .slider:disabled::-moz-range-thumb {
-    cursor: not-allowed;
-  }
-`;
-document.head.appendChild(style);

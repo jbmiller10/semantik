@@ -26,7 +26,7 @@ interface ChunkingStore {
   
   // Comparison State
   comparisonStrategies: ChunkingStrategyType[];
-  comparisonResults: Map<ChunkingStrategyType, ChunkingComparisonResult>;
+  comparisonResults: Record<ChunkingStrategyType, ChunkingComparisonResult>;
   comparisonLoading: boolean;
   comparisonError: string | null;
   
@@ -42,7 +42,7 @@ interface ChunkingStore {
   setStrategy: (strategy: ChunkingStrategyType) => void;
   updateConfiguration: (updates: Partial<ChunkingConfiguration['parameters']>) => void;
   applyPreset: (presetId: string) => void;
-  saveCustomPreset: (preset: Omit<ChunkingPreset, 'id'>) => void;
+  saveCustomPreset: (preset: Omit<ChunkingPreset, 'id'>) => string;
   deleteCustomPreset: (presetId: string) => void;
   
   // Actions - Preview
@@ -86,7 +86,7 @@ const initialState = {
   previewLoading: false,
   previewError: null,
   comparisonStrategies: [],
-  comparisonResults: new Map(),
+  comparisonResults: {} as Record<ChunkingStrategyType, ChunkingComparisonResult>,
   comparisonLoading: false,
   comparisonError: null,
   analyticsData: null,
@@ -262,10 +262,14 @@ export const useChunkingStore = create<ChunkingStore>()(
       },
 
       removeComparisonStrategy: (strategy) => {
-        set(state => ({
-          comparisonStrategies: state.comparisonStrategies.filter(s => s !== strategy),
-          comparisonResults: new Map([...state.comparisonResults].filter(([key]) => key !== strategy))
-        }));
+        set(state => {
+          const newResults = { ...state.comparisonResults };
+          delete newResults[strategy];
+          return {
+            comparisonStrategies: state.comparisonStrategies.filter(s => s !== strategy),
+            comparisonResults: newResults
+          };
+        });
       },
 
       compareStrategies: async () => {
@@ -293,9 +297,9 @@ export const useChunkingStore = create<ChunkingStore>()(
           // Simulate API response
           await new Promise(resolve => setTimeout(resolve, 1500));
           
-          const mockResults = new Map<ChunkingStrategyType, ChunkingComparisonResult>();
+          const mockResults = {} as Record<ChunkingStrategyType, ChunkingComparisonResult>;
           comparisonStrategies.forEach(strategy => {
-            mockResults.set(strategy, {
+            mockResults[strategy] = {
               strategy,
               configuration: getDefaultConfiguration(strategy),
               preview: {
@@ -317,7 +321,7 @@ export const useChunkingStore = create<ChunkingStore>()(
                 performance: Math.random() * 30 + 70,
                 overall: Math.random() * 30 + 70
               }
-            });
+            };
           });
 
           set({
@@ -335,7 +339,7 @@ export const useChunkingStore = create<ChunkingStore>()(
       clearComparison: () => {
         set({
           comparisonStrategies: [],
-          comparisonResults: new Map(),
+          comparisonResults: {} as Record<ChunkingStrategyType, ChunkingComparisonResult>,
           comparisonError: null
         });
       },
