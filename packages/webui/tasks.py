@@ -234,6 +234,106 @@ def cleanup_old_results(days_to_keep: int = DEFAULT_DAYS_TO_KEEP) -> dict[str, A
         return stats
 
 
+@celery_app.task(name="webui.tasks.refresh_collection_chunking_stats")
+def refresh_collection_chunking_stats() -> dict[str, Any]:
+    """Refresh the collection_chunking_stats materialized view.
+
+    This task is scheduled to run periodically to keep the materialized view
+    up-to-date with the latest chunking statistics.
+
+    Returns:
+        Dictionary with refresh status and timing information
+    """
+    import time
+
+    from sqlalchemy import text
+
+    stats: dict[str, Any] = {"status": "success", "duration_seconds": 0.0, "error": None}
+    start_time = time.time()
+
+    try:
+        logger.info("Starting refresh of collection_chunking_stats materialized view")
+
+        # Import here to avoid circular dependencies
+        # Use asyncio to run the async database operation
+        import asyncio
+
+        from shared.database.database import AsyncSessionLocal
+
+        async def _refresh_view() -> None:
+            async with AsyncSessionLocal() as session:
+                await session.execute(text("SELECT refresh_collection_chunking_stats()"))
+                await session.commit()
+
+        # Run the async function
+        asyncio.run(_refresh_view())
+
+        stats["duration_seconds"] = time.time() - start_time
+        logger.info(f"Successfully refreshed collection_chunking_stats in {stats['duration_seconds']:.2f} seconds")
+
+    except Exception as e:
+        stats["status"] = "failed"
+        stats["error"] = str(e)
+        stats["duration_seconds"] = time.time() - start_time
+        logger.error(f"Failed to refresh collection_chunking_stats: {e}")
+        raise  # Re-raise to trigger Celery retry if configured
+
+    return stats
+
+
+@celery_app.task(name="webui.tasks.monitor_partition_health")
+def monitor_partition_health() -> dict[str, Any]:
+    """Monitor partition health and alert on imbalances.
+
+    This task checks partition health metrics and logs warnings or errors
+    when partitions become unbalanced. In a production environment, this
+    could be extended to send alerts via email, Slack, PagerDuty, etc.
+
+    Returns:
+        Dictionary with monitoring results and any alerts triggered
+    """
+    import asyncio
+
+    from shared.database.database import AsyncSessionLocal
+
+    from packages.webui.services.partition_monitoring_service import PartitionMonitoringService
+
+    try:
+        logger.info("Starting partition health monitoring")
+
+        async def _check_health() -> dict[str, Any]:
+            async with AsyncSessionLocal() as session:
+                # Use the service for monitoring
+                service = PartitionMonitoringService(session)
+                monitoring_result = await service.check_partition_health()
+
+                return {
+                    "status": monitoring_result.status,
+                    "timestamp": monitoring_result.timestamp,
+                    "alerts": monitoring_result.alerts,
+                    "metrics": monitoring_result.metrics,
+                    "error": monitoring_result.error,
+                }
+
+        # Run the async function
+        results = asyncio.run(_check_health())
+
+        # The service already handles logging and alert generation
+        # In production, you could extend this to send alerts via email, Slack, etc.
+        # Example:
+        # for alert in results.get("alerts", []):
+        #     if alert["level"] == "CRITICAL":
+        #         send_alert_to_slack(alert)
+        #     elif alert["level"] == "ERROR":
+        #         send_alert_to_pagerduty(alert)
+
+    except Exception as e:
+        logger.error(f"Partition health monitoring failed: {e}")
+        raise  # Re-raise to trigger Celery retry if configured
+
+    return results
+
+
 @celery_app.task(
     name="webui.tasks.cleanup_old_collections",
     max_retries=3,

@@ -34,6 +34,7 @@ from .api.v2 import collections as v2_collections  # noqa: E402
 from .api.v2 import directory_scan as v2_directory_scan  # noqa: E402
 from .api.v2 import documents as v2_documents  # noqa: E402
 from .api.v2 import operations as v2_operations  # noqa: E402
+from .api.v2 import partition_monitoring as v2_partition_monitoring  # noqa: E402
 from .api.v2 import search as v2_search  # noqa: E402
 from .api.v2 import system as v2_system  # noqa: E402
 from .api.v2.directory_scan import directory_scan_websocket  # noqa: E402
@@ -140,6 +141,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     await ws_manager.startup()
     logger.info("WebSocket manager initialization complete")
 
+    # Ensure default data exists
+    try:
+        from .startup_tasks import ensure_default_data
+
+        await ensure_default_data()
+    except Exception as e:
+        logger.error(f"Error running startup tasks: {e}")
+        # Don't fail startup if default data can't be created
+
     # Configure global embedding service
     _configure_embedding_service()
 
@@ -222,6 +232,7 @@ def create_app() -> FastAPI:
     app.include_router(v2_directory_scan.router)
     app.include_router(v2_documents.router)
     app.include_router(v2_operations.router)
+    app.include_router(v2_partition_monitoring.router)
     app.include_router(v2_search.router)
     app.include_router(v2_system.router)
 
