@@ -13,6 +13,18 @@ timezones with datetime values, preventing timezone-related bugs.
 We use DateTime columns for new tables but maintain String columns for existing
 user-related tables for backward compatibility. A future migration could convert
 these to proper DateTime columns.
+
+Partitioned Tables:
+The chunks table is partitioned by HASH(collection_id) to improve performance and
+scalability. When working with partitioned tables:
+
+1. ALWAYS include the partition key (collection_id) in WHERE clauses
+2. Group bulk operations by partition key for efficiency
+3. Be aware that cross-partition queries are expensive
+4. The partition key must be part of any unique constraint or primary key
+
+See the Chunk model and packages.shared.database.partition_utils for detailed
+examples and utilities for working with partitioned tables.
 """
 
 import enum
@@ -143,6 +155,11 @@ class Collection(Base):
     vector_count = Column(Integer, nullable=False, default=0)
     total_size_bytes = Column(Integer, nullable=False, default=0)
 
+    # New chunking-related fields
+    default_chunking_config_id = Column(Integer, ForeignKey("chunking_configs.id"), nullable=True, index=True)
+    chunks_total_count = Column(Integer, nullable=False, default=0)
+    chunking_completed_at = Column(DateTime(timezone=True), nullable=True)
+
     # Relationships
     owner = relationship("User", back_populates="collections")
     documents = relationship("Document", back_populates="collection", cascade="all, delete-orphan")
@@ -153,6 +170,10 @@ class Collection(Base):
     resource_limits = relationship(
         "CollectionResourceLimits", back_populates="collection", uselist=False, cascade="all, delete-orphan"
     )
+    default_chunking_config = relationship(
+        "ChunkingConfig", foreign_keys=[default_chunking_config_id], back_populates="collections"
+    )
+    chunks = relationship("Chunk", back_populates="collection", cascade="all, delete-orphan")
 
 
 class Document(Base):
@@ -175,12 +196,23 @@ class Document(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     meta = Column(JSON)
 
+    # New chunking-related fields
+    chunking_config_id = Column(Integer, ForeignKey("chunking_configs.id"), nullable=True, index=True)
+    chunks_count = Column(Integer, nullable=False, default=0)
+    chunking_started_at = Column(DateTime(timezone=True), nullable=True)
+    chunking_completed_at = Column(DateTime(timezone=True), nullable=True)
+
     # Relationships
     collection = relationship("Collection", back_populates="documents")
     source = relationship("CollectionSource", back_populates="documents")
+    chunking_config = relationship("ChunkingConfig", back_populates="documents")
+    chunks = relationship("Chunk", back_populates="document", cascade="all, delete-orphan")
 
     # Indexes
-    __table_args__ = (Index("ix_documents_collection_content_hash", "collection_id", "content_hash", unique=True),)
+    __table_args__ = (
+        Index("ix_documents_collection_content_hash", "collection_id", "content_hash", unique=True),
+        Index("ix_documents_collection_id_chunking_completed_at", "collection_id", "chunking_completed_at"),
+    )
 
 
 class ApiKey(Base):
@@ -363,3 +395,116 @@ class OperationMetrics(Base):
 
     # Relationships
     operation = relationship("Operation", back_populates="metrics")
+
+
+class ChunkingStrategy(Base):
+    """Chunking strategy model for document processing."""
+
+    __tablename__ = "chunking_strategies"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, unique=True, nullable=False)
+    description = Column(Text)
+    version = Column(String, nullable=False, default="1.0.0")
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    meta = Column(JSON)
+
+    # Relationships
+    configs = relationship("ChunkingConfig", back_populates="strategy")
+
+
+class ChunkingConfig(Base):
+    """Chunking configuration model (deduplicated)."""
+
+    __tablename__ = "chunking_configs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    strategy_id = Column(Integer, ForeignKey("chunking_strategies.id"), nullable=False, index=True)
+    config_hash = Column(String(64), unique=True, nullable=False, index=True)
+    config_data = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    use_count = Column(Integer, nullable=False, default=0, index=True)
+    last_used_at = Column(DateTime(timezone=True))
+
+    # Relationships
+    strategy = relationship("ChunkingStrategy", back_populates="configs")
+    chunks = relationship("Chunk", back_populates="chunking_config")
+    collections = relationship(
+        "Collection", foreign_keys="Collection.default_chunking_config_id", back_populates="default_chunking_config"
+    )
+    documents = relationship("Document", back_populates="chunking_config")
+
+
+class Chunk(Base):
+    """Chunk model for partitioned document storage.
+
+    IMPORTANT: This table is partitioned by HASH(collection_id) in PostgreSQL.
+
+    Partition Awareness:
+    - The collection_id is part of the primary key to support partitioning
+    - Always include collection_id in WHERE clauses for optimal partition pruning
+    - Bulk operations should be grouped by collection_id for efficiency
+    - Cross-collection queries will scan multiple partitions (use sparingly)
+
+    Usage Examples:
+        # Good - partition pruning enabled
+        chunks = session.query(Chunk).filter(
+            Chunk.collection_id == collection_id,
+            Chunk.document_id == document_id
+        ).all()
+
+        # Bad - scans all partitions
+        chunks = session.query(Chunk).filter(
+            Chunk.document_id == document_id
+        ).all()
+
+    Bulk Insert Example:
+        # Group chunks by collection_id for efficient partition routing
+        chunks_by_collection = {}
+        for chunk in chunks_to_insert:
+            chunks_by_collection.setdefault(chunk.collection_id, []).append(chunk)
+
+        for collection_id, chunks in chunks_by_collection.items():
+            session.bulk_insert_mappings(Chunk, chunks)
+    """
+
+    __tablename__ = "chunks"
+
+    # Primary key includes partition key (collection_id) for partitioned table support
+    id = Column(String, primary_key=True)  # UUID as string for consistency with other tables
+    collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True, nullable=False)
+
+    # Foreign keys and data columns
+    document_id = Column(String, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    chunking_config_id = Column(Integer, ForeignKey("chunking_configs.id"), nullable=False, index=True)
+    chunk_index = Column(Integer, nullable=False)
+    content = Column(Text, nullable=False)
+    start_offset = Column(Integer, nullable=False)
+    end_offset = Column(Integer, nullable=False)
+    token_count = Column(Integer)
+    embedding_vector_id = Column(String)  # Reference to Qdrant
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), index=True)
+    meta = Column(JSON)
+
+    # Relationships
+    collection = relationship("Collection", back_populates="chunks")
+    document = relationship("Document", back_populates="chunks")
+    chunking_config = relationship("ChunkingConfig", back_populates="chunks")
+
+    # Composite indexes optimized for partition pruning
+    __table_args__ = (
+        # Always include collection_id first for partition pruning
+        Index("ix_chunks_collection_id_document_id", "collection_id", "document_id"),
+        Index("ix_chunks_collection_id_chunk_index", "collection_id", "chunk_index"),
+        Index("ix_chunks_embedding_vector_id", "embedding_vector_id"),
+        UniqueConstraint("collection_id", "document_id", "chunk_index", name="uq_chunks_collection_document_index"),
+        {
+            "comment": "Partitioned by HASH(collection_id). Always include collection_id in queries.",
+            "info": {
+                "partition_key": "collection_id",
+                "partition_method": "HASH",
+                "partition_count": 16,  # Default, configurable via CHUNK_PARTITION_COUNT
+            },
+        },
+    )
