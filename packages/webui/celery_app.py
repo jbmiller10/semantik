@@ -58,6 +58,22 @@ celery_app.conf.update(
             "schedule": 86400.0,  # Run daily (24 hours)
             "args": (7,),  # Keep results for 7 days
         },
+        "refresh-collection-chunking-stats": {
+            "task": "webui.tasks.refresh_collection_chunking_stats",
+            "schedule": 3600.0,  # Run hourly
+            "options": {
+                "queue": "default",
+                "priority": 5,  # Medium priority
+            },
+        },
+        "monitor-partition-health": {
+            "task": "webui.tasks.monitor_partition_health",
+            "schedule": 21600.0,  # Run every 6 hours
+            "options": {
+                "queue": "default",
+                "priority": 3,  # Higher priority for monitoring
+            },
+        },
     },
 )
 
