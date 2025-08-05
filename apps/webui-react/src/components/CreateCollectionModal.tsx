@@ -3,9 +3,11 @@ import { useCreateCollection } from '../hooks/useCollections';
 import { useAddSource } from '../hooks/useCollectionOperations';
 import { useOperationProgress } from '../hooks/useOperationProgress';
 import { useUIStore } from '../stores/uiStore';
+import { useChunkingStore } from '../stores/chunkingStore';
 import { useNavigate } from 'react-router-dom';
 import { useDirectoryScan } from '../hooks/useDirectoryScan';
 import { getInputClassName, getInputClassNameWithBase } from '../utils/formStyles';
+import { ChunkingStrategySelector } from './chunking/ChunkingStrategySelector';
 import type { CreateCollectionRequest } from '../types/collection';
 
 interface CreateCollectionModalProps {
@@ -14,8 +16,6 @@ interface CreateCollectionModalProps {
 }
 
 const DEFAULT_EMBEDDING_MODEL = 'Qwen/Qwen3-Embedding-0.6B';
-const DEFAULT_CHUNK_SIZE = 512;
-const DEFAULT_CHUNK_OVERLAP = 50;
 const DEFAULT_QUANTIZATION = 'float16';
 
 // Utility function to format file sizes
@@ -33,6 +33,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
   const createCollectionMutation = useCreateCollection();
   const addSourceMutation = useAddSource();
   const { addToast } = useUIStore();
+  const { strategyConfig } = useChunkingStore();
   const navigate = useNavigate();
   const { scanning, scanResult, error: scanError, startScan, reset: resetScan } = useDirectoryScan();
   const formRef = useRef<HTMLFormElement>(null);
@@ -42,12 +43,11 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     description: '',
     embedding_model: DEFAULT_EMBEDDING_MODEL,
     quantization: DEFAULT_QUANTIZATION,
-    chunk_size: DEFAULT_CHUNK_SIZE,
-    chunk_overlap: DEFAULT_CHUNK_OVERLAP,
     is_public: false,
   });
   
   const [sourcePath, setSourcePath] = useState<string>('');
+  const [detectedFileType, setDetectedFileType] = useState<string | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
@@ -66,8 +66,8 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
             collectionId: collectionIdForSource,
             sourcePath: sourcePathForDelayedAdd,
             config: {
-              chunk_size: formData.chunk_size,
-              chunk_overlap: formData.chunk_overlap,
+              chunking_strategy: strategyConfig.strategy,
+              chunking_config: strategyConfig.parameters,
             }
           });
           
@@ -147,14 +147,6 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
       newErrors.sourcePath = 'Source path cannot be empty if provided';
     }
     
-    if (formData.chunk_size! < 100 || formData.chunk_size! > 2000) {
-      newErrors.chunk_size = 'Chunk size must be between 100 and 2000';
-    }
-    
-    if (formData.chunk_overlap! < 0 || formData.chunk_overlap! >= formData.chunk_size!) {
-      newErrors.chunk_overlap = 'Chunk overlap must be between 0 and chunk size';
-    }
-    
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -176,8 +168,12 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     setIsSubmitting(true);
     
     try {
-      // Step 1: Create the collection
-      const response = await createCollectionMutation.mutateAsync(formData);
+      // Step 1: Create the collection with chunking configuration
+      const response = await createCollectionMutation.mutateAsync({
+        ...formData,
+        chunking_strategy: strategyConfig.strategy,
+        chunking_config: strategyConfig.parameters,
+      });
       
       // The response should include the initial INDEX operation ID
       // Let's check if we have an operation in the response
@@ -248,6 +244,13 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     // Reset scan results when path changes
     if (scanResult) {
       resetScan();
+    }
+    // Detect file type from path for chunking recommendations
+    if (value.trim()) {
+      const extension = value.split('.').pop()?.toLowerCase();
+      setDetectedFileType(extension);
+    } else {
+      setDetectedFileType(undefined);
     }
   };
 
@@ -476,6 +479,14 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
               </p>
             </div>
 
+            {/* Chunking Strategy Selector */}
+            <div className="border-t pt-4">
+              <ChunkingStrategySelector 
+                disabled={isSubmitting}
+                fileType={detectedFileType}
+              />
+            </div>
+
             {/* Advanced Settings Accordion */}
             <div className="border-t pt-4">
               <button
@@ -498,52 +509,6 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
               
               {showAdvancedSettings && (
                 <div className="mt-4 space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    {/* Chunk Size */}
-                    <div>
-                      <label htmlFor="chunk_size" className="block text-sm font-medium text-gray-700">
-                        Chunk Size
-                      </label>
-                      <input
-                        type="number"
-                        id="chunk_size"
-                        value={formData.chunk_size}
-                        onChange={(e) => handleChange('chunk_size', parseInt(e.target.value) || DEFAULT_CHUNK_SIZE)}
-                        disabled={isSubmitting}
-                        min={100}
-                        max={2000}
-                        className={getInputClassName(!!errors.chunk_size, isSubmitting)}
-                      />
-                      {errors.chunk_size && (
-                        <p className="mt-1 text-sm text-red-600">{errors.chunk_size}</p>
-                      )}
-                    </div>
-
-                    {/* Chunk Overlap */}
-                    <div>
-                      <label htmlFor="chunk_overlap" className="block text-sm font-medium text-gray-700">
-                        Chunk Overlap
-                      </label>
-                      <input
-                        type="number"
-                        id="chunk_overlap"
-                        value={formData.chunk_overlap}
-                        onChange={(e) => handleChange('chunk_overlap', parseInt(e.target.value) || DEFAULT_CHUNK_OVERLAP)}
-                        disabled={isSubmitting}
-                        min={0}
-                        max={formData.chunk_size! - 1}
-                        className={getInputClassName(!!errors.chunk_overlap, isSubmitting)}
-                      />
-                      {errors.chunk_overlap && (
-                        <p className="mt-1 text-sm text-red-600">{errors.chunk_overlap}</p>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <p className="text-sm text-gray-500">
-                    Smaller chunks provide more precise results but may lose context
-                  </p>
-
                   {/* Public Collection */}
                   <div className="flex items-center">
                     <input
