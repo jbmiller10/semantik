@@ -479,14 +479,6 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
               </p>
             </div>
 
-            {/* Chunking Strategy Selector */}
-            <div className="border-t pt-4">
-              <ChunkingStrategySelector 
-                disabled={isSubmitting}
-                fileType={detectedFileType}
-              />
-            </div>
-
             {/* Advanced Settings Accordion */}
             <div className="border-t pt-4">
               <button
@@ -509,6 +501,12 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
               
               {showAdvancedSettings && (
                 <div className="mt-4 space-y-4">
+                  {/* Chunking Strategy Selector */}
+                  <ChunkingStrategySelector 
+                    disabled={isSubmitting}
+                    fileType={detectedFileType}
+                  />
+                  
                   {/* Public Collection */}
                   <div className="flex items-center">
                     <input

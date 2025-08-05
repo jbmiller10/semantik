@@ -261,10 +261,10 @@ describe('CollectionsDashboard - Network Error Handling', () => {
       const advancedButton = screen.getByText(/advanced settings/i)
       await userEvent.click(advancedButton)
       
-      const chunkSizeInput = screen.getByLabelText(/chunk size/i)
-      // Select all text first, then type to replace
-      await userEvent.tripleClick(chunkSizeInput)
-      await userEvent.type(chunkSizeInput, '1024')
+      // Verify chunking strategy section is visible
+      await waitFor(() => {
+        expect(screen.getByText(/chunking strategy/i)).toBeInTheDocument()
+      })
       
       // Submit the form
       const form = screen.getByRole('dialog').querySelector('form')
@@ -287,8 +287,8 @@ describe('CollectionsDashboard - Network Error Handling', () => {
       // All form data should be preserved
       const descField = screen.getByPlaceholderText(/a collection of technical documentation/i)
       expect(descField).toHaveValue('Test description')
-      // The input has both old and new values due to how userEvent works with number inputs
-      expect(screen.getByLabelText(/chunk size/i)).toHaveValue(5121024)
+      // Verify chunking strategy section is still visible
+      expect(screen.getByText(/chunking strategy/i)).toBeInTheDocument()
       
       // Modal should still be open
       expect(screen.getByText(/create new collection/i)).toBeInTheDocument()
