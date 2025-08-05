@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, delete, func, select
+from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database.models import Chunk
@@ -210,19 +210,19 @@ class ChunkRepository(PartitionAwareMixin):
 
         # Validate each update
         validated_updates = []
-        for update in chunk_updates:
-            if not isinstance(update, dict):
+        for chunk_update in chunk_updates:
+            if not isinstance(chunk_update, dict):
                 raise TypeError("Each chunk update must be a dictionary")
 
             # Validate required fields
-            if not all(key in update for key in ["id", "collection_id", "embedding_vector_id"]):
+            if not all(key in chunk_update for key in ["id", "collection_id", "embedding_vector_id"]):
                 raise ValueError("Each update must have 'id', 'collection_id', and 'embedding_vector_id'")
 
             validated_update = {
-                "id": PartitionValidation.validate_uuid(update["id"], "chunk id"),
-                "collection_id": PartitionValidation.validate_partition_key(update["collection_id"]),
+                "id": PartitionValidation.validate_uuid(chunk_update["id"], "chunk id"),
+                "collection_id": PartitionValidation.validate_partition_key(chunk_update["collection_id"]),
                 "embedding_vector_id": PartitionValidation.validate_uuid(
-                    update["embedding_vector_id"], "embedding_vector_id"
+                    chunk_update["embedding_vector_id"], "embedding_vector_id"
                 ),
             }
             validated_updates.append(validated_update)

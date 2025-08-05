@@ -8,7 +8,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database.database import AsyncSessionLocal
+from packages.shared.database.database import get_db
 from packages.webui.services.chunking_strategy_service import ChunkingStrategyService
 
 logger = logging.getLogger(__name__)
@@ -21,8 +21,9 @@ async def ensure_default_data() -> None:
     """
     logger.info("Running startup tasks to ensure default data...")
 
-    async with AsyncSessionLocal() as session:
+    async for session in get_db():
         await ensure_default_chunking_strategies(session)
+        break  # We only need one session
 
     logger.info("Startup tasks completed")
 

@@ -107,7 +107,7 @@ class ChunkingStrategyService:
         """
         query = select(ChunkingStrategy)
         if active_only:
-            query = query.where(ChunkingStrategy.is_active == True)
+            query = query.where(ChunkingStrategy.is_active.is_(True))
 
         result = await self.session.execute(query.order_by(ChunkingStrategy.name))
         return list(result.scalars().all())
@@ -132,7 +132,7 @@ class ChunkingStrategyService:
         """
         result = await self.session.execute(
             select(ChunkingStrategy).where(
-                ChunkingStrategy.is_active == True,
+                ChunkingStrategy.is_active.is_(True),
                 ChunkingStrategy.meta["recommended_default"].astext == "true",
             )
         )

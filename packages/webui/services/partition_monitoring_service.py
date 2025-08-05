@@ -100,7 +100,7 @@ class PartitionMonitoringService:
             result = await self.session.execute(
                 text(
                     """
-                    SELECT 
+                    SELECT
                         partition_num,
                         chunk_count,
                         total_chunks,
@@ -270,7 +270,7 @@ class PartitionMonitoringService:
                 # Single partition stats
                 query = text(
                     """
-                    SELECT 
+                    SELECT
                         partition_num,
                         chunk_count,
                         total_size_mb,
@@ -291,32 +291,40 @@ class PartitionMonitoringService:
                         "avg_chunk_size_kb": float(row.avg_chunk_size_kb),
                         "created_at": row.created_at.isoformat() if row.created_at else None,
                     }
-                else:
-                    return {}
+                return {}
 
-            else:
-                # All partitions stats
-                query = text(
-                    """
-                    SELECT 
-                        COUNT(DISTINCT partition_num) as partition_count,
-                        SUM(chunk_count) as total_chunks,
-                        SUM(total_size_mb) as total_size_mb,
-                        AVG(chunk_count) as avg_chunks_per_partition,
-                        STDDEV(chunk_count) as chunk_count_stddev
-                    FROM partition_stats
-                    """
-                )
-                result = await self.session.execute(query)
-                row = result.fetchone()
+            # All partitions stats
+            query = text(
+                """
+                SELECT
+                    COUNT(DISTINCT partition_num) as partition_count,
+                    SUM(chunk_count) as total_chunks,
+                    SUM(total_size_mb) as total_size_mb,
+                    AVG(chunk_count) as avg_chunks_per_partition,
+                    STDDEV(chunk_count) as chunk_count_stddev
+                FROM partition_stats
+                """
+            )
+            result = await self.session.execute(query)
+            row = result.fetchone()
 
+            if not row:
+                # This should never happen with aggregate queries, but satisfy mypy
                 return {
-                    "partition_count": row.partition_count or 0,
-                    "total_chunks": row.total_chunks or 0,
-                    "total_size_mb": float(row.total_size_mb or 0),
-                    "avg_chunks_per_partition": float(row.avg_chunks_per_partition or 0),
-                    "chunk_count_stddev": float(row.chunk_count_stddev or 0),
+                    "partition_count": 0,
+                    "total_chunks": 0,
+                    "total_size_mb": 0.0,
+                    "avg_chunks_per_partition": 0.0,
+                    "chunk_count_stddev": 0.0,
                 }
+
+            return {
+                "partition_count": row.partition_count or 0,
+                "total_chunks": row.total_chunks or 0,
+                "total_size_mb": float(row.total_size_mb or 0),
+                "avg_chunks_per_partition": float(row.avg_chunks_per_partition or 0),
+                "chunk_count_stddev": float(row.chunk_count_stddev or 0),
+            }
 
         except Exception as e:
             logger.error(f"Failed to get partition statistics: {e}")

@@ -128,14 +128,15 @@ class ChunkingServiceExample:
             # Each query hits only one partition
             chunks = await self.chunk_repo.get_chunks_by_collection(collection_id=collection_id, limit=100)
             # Process chunks...
+            _ = chunks  # In a real implementation, you would process the chunks here
 
 
-async def main():
+async def main() -> None:
     """Run the examples."""
     # This is just for demonstration - in real code, get session from dependency injection
-    from packages.shared.database import AsyncSessionLocal
+    from packages.shared.database import get_db
 
-    async with AsyncSessionLocal() as session:
+    async for session in get_db():
         service = ChunkingServiceExample(session)
 
         # Example collection and document IDs
@@ -163,6 +164,7 @@ async def main():
 
         # Commit the transaction
         await session.commit()
+        break  # We only need one session
 
 
 # Key Takeaways:

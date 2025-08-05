@@ -54,11 +54,11 @@ def downgrade() -> None:
     """
     op.execute(
         """
-        DELETE FROM chunking_strategies 
+        DELETE FROM chunking_strategies
         WHERE name IN ('character', 'recursive', 'markdown', 'semantic', 'hierarchical', 'hybrid')
         AND id NOT IN (
-            SELECT DISTINCT chunking_strategy_id 
-            FROM chunking_configs 
+            SELECT DISTINCT chunking_strategy_id
+            FROM chunking_configs
             WHERE chunking_strategy_id IS NOT NULL
         );
         """

@@ -123,9 +123,8 @@ class PartitionValidation:
                 raise ValueError(f"content exceeds maximum length of {cls.MAX_STRING_LENGTH} characters")
 
         # Validate metadata if present
-        if "metadata" in chunk_data and chunk_data["metadata"] is not None:
-            if not isinstance(chunk_data["metadata"], dict):
-                raise TypeError("metadata must be a dictionary")
+        if "metadata" in chunk_data and chunk_data["metadata"] is not None and not isinstance(chunk_data["metadata"], dict):
+            raise TypeError("metadata must be a dictionary")
 
         return chunk_data
 
@@ -165,9 +164,7 @@ class PartitionValidation:
             value = value[:max_length]
 
         # Remove null bytes which PostgreSQL doesn't like
-        value = value.replace("\x00", "")
-
-        return value
+        return value.replace("\x00", "")
 
 
 class PartitionAwareMixin:
