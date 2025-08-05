@@ -14,6 +14,7 @@ from .base import ApiKeyRepository, AuthRepository, UserRepository
 from .database import AsyncSessionLocal
 
 if TYPE_CHECKING:
+    from .repositories.chunk_repository import ChunkRepository
     from .repositories.collection_repository import CollectionRepository
     from .repositories.document_repository import DocumentRepository
     from .repositories.operation_repository import OperationRepository
@@ -105,6 +106,20 @@ def create_collection_repository(session: AsyncSession) -> "CollectionRepository
     return CollectionRepository(session)
 
 
+def create_chunk_repository(session: AsyncSession) -> "ChunkRepository":
+    """Create a chunk repository instance.
+
+    Args:
+        session: AsyncSession for database operations
+
+    Returns:
+        ChunkRepository instance with partition-aware operations
+    """
+    from .repositories.chunk_repository import ChunkRepository
+
+    return ChunkRepository(session)
+
+
 def create_all_repositories(session: AsyncSession) -> dict[str, object]:
     """Create all repository instances with the provided session.
 
@@ -121,6 +136,7 @@ def create_all_repositories(session: AsyncSession) -> dict[str, object]:
         "operation": create_operation_repository(session),
         "document": create_document_repository(session),
         "collection": create_collection_repository(session),
+        "chunk": create_chunk_repository(session),
     }
 
 

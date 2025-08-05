@@ -39,12 +39,16 @@ from .factory import (
     create_all_repositories,
     create_api_key_repository,
     create_auth_repository,
+    create_chunk_repository,
     create_collection_repository,
     create_document_repository,
     create_operation_repository,
     create_user_repository,
     get_db_session,
 )
+
+# Partition utilities for working with partitioned tables
+from .partition_utils import ChunkPartitionHelper, PartitionAwareMixin
 
 # PostgreSQL database management
 from .postgres_database import check_postgres_connection, get_postgres_db, pg_connection_manager
@@ -65,6 +69,7 @@ __all__ = [
     "create_all_repositories",
     "create_user_repository",
     "create_collection_repository",
+    "create_chunk_repository",
     "create_auth_repository",
     "create_api_key_repository",
     "create_operation_repository",
@@ -89,6 +94,9 @@ __all__ = [
     # Utility functions
     "parse_user_id",
     "pwd_context",
+    # Partition utilities
+    "ChunkPartitionHelper",
+    "PartitionAwareMixin",
     # Async database session management
     "AsyncSessionLocal",
     "get_db",
