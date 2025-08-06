@@ -6,13 +6,12 @@ This module provides the business logic for text chunking, including
 validation, caching, and progress tracking.
 """
 
-import asyncio
 import hashlib
 import json
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.config import settings
-from packages.shared.database.models import Document, DocumentStatus, OperationStatus, OperationType
+from packages.shared.database.models import Document, DocumentStatus, OperationStatus
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.database.repositories.operation_repository import OperationRepository
@@ -145,16 +144,16 @@ class ChunkingService:
             self.qdrant = qdrant_client
         else:
             self.qdrant = QdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
-        
+
         # Initialize progress throttle tracker
         self._chunking_progress_throttle: dict[str, float] = {}
 
     def _map_strategy_to_factory_name(self, strategy: str) -> str:
         """Map API strategy name to factory strategy name.
-        
+
         Args:
             strategy: API strategy name (e.g., "fixed_size", "sliding_window")
-            
+
         Returns:
             Factory strategy name (e.g., "character", "markdown")
         """
@@ -204,7 +203,7 @@ class ChunkingService:
                     operation_id=operation_id,
                 ) from e
 
-        return config
+        return config or {}
 
     async def _execute_chunking(
         self,
@@ -387,7 +386,7 @@ class ChunkingService:
             ChunkingStrategyError: If strategy initialization fails
         """
         correlation_id = get_correlation_id()
-        
+
         # Get text content
         if document_id:
             # Load from document
@@ -400,7 +399,7 @@ class ChunkingService:
                     operation_id=f"preview_{document_id}",
                 )
             text = await self._load_document_content(doc)
-            file_type = Path(doc.file_name).suffix if not file_type else file_type
+            file_type = file_type if file_type else Path(doc.file_name).suffix
         elif content:
             text = content
         else:
@@ -410,15 +409,12 @@ class ChunkingService:
                 field_errors={"content": ["No content provided"]},
                 operation_id="preview_unknown",
             )
-        
+
         operation_id = f"preview_{hashlib.sha256(text.encode()).hexdigest()[:8]}"
-        
+
         # Convert strategy to string if enum
-        if isinstance(strategy, ChunkingStrategy):
-            strategy_str = strategy.value
-        else:
-            strategy_str = strategy
-        
+        strategy_str = strategy.value if isinstance(strategy, ChunkingStrategy) else strategy
+
         # Get or create config
         if not config:
             config = {
@@ -433,7 +429,7 @@ class ChunkingService:
 
         # Generate preview ID for tracking
         preview_id = hashlib.sha256(f"{text[:100]}{strategy_str}{json.dumps(config)}".encode()).hexdigest()[:16]
-        
+
         # Check cache
         cache_key = self._generate_cache_key(text[:1000], strategy_str, config, user_id or 0)
         cached = await self._get_cached_preview_by_key(cache_key)
@@ -454,7 +450,7 @@ class ChunkingService:
 
         # Build response
         response = self._build_preview_response(chunks, config, file_type, processing_time, max_chunks)
-        
+
         # Convert response to dict format expected by tests
         result = {
             "preview_id": preview_id,
@@ -465,13 +461,13 @@ class ChunkingService:
             "is_code_file": response.is_code_file,
             "recommendations": response.recommendations,
         }
-        
+
         if include_metrics:
             result["metrics"] = response.performance_metrics
-        
+
         # Cache result
         await self._cache_preview_by_key(cache_key, result)
-        
+
         # Track usage if user_id provided
         if user_id:
             await self.track_preview_usage(user_id, strategy_str, file_type)
@@ -482,7 +478,7 @@ class ChunkingService:
         self,
         file_types: list[str] | None = None,
         file_paths: list[str] | None = None,
-        user_id: int | None = None,
+        user_id: int | None = None,  # noqa: ARG002
     ) -> dict[str, Any]:
         """Recommend optimal chunking strategy based on file types.
 
@@ -566,9 +562,11 @@ class ChunkingService:
         Returns:
             ChunkingStatistics with detailed metrics
         """
+        logger.info(f"User {user_id} retrieving chunking statistics for collection {collection_id}")
+
         try:
             # Calculate date range
-            end_date = datetime.utcnow()
+            end_date = datetime.now(UTC)
             start_date = end_date - timedelta(days=days)
 
             # Get documents for the collection within the date range
@@ -581,17 +579,17 @@ class ChunkingService:
             documents = result.scalars().all()
 
             total_documents = len(documents)
-            total_chunks = sum(doc.chunk_count for doc in documents)
+            total_chunks = int(sum(doc.chunk_count or 0 for doc in documents))
             average_chunk_size = DEFAULT_CHUNK_SIZE  # Default unless we have more detailed data
 
             # Get strategy breakdown from operations if available
             strategy_breakdown = {}
             if self.operation_repo:
-                ops_query = select(self.operation_repo.session.query(OperationType).subquery()).where(
-                    OperationType.collection_id == collection_id,
-                    OperationType.type == OperationType.CHUNKING,
-                    OperationType.created_at >= start_date,
-                )
+                # ops_query = select(self.operation_repo.session.query(OperationType).subquery()).where(
+                #     OperationType.collection_id == collection_id,
+                #     OperationType.type == OperationType.CHUNKING,
+                #     OperationType.created_at >= start_date,
+                # )
                 # Simplified - we'd need more detailed tracking in production
                 strategy_breakdown = {
                     "recursive": int(total_documents * 0.7),
@@ -645,12 +643,11 @@ class ChunkingService:
         Returns:
             Dictionary with validation results including estimated_time
         """
+        logger.debug(f"User {user_id} validating config for collection {collection_id}")
+
         # Convert strategy to string if enum
-        if isinstance(strategy, ChunkingStrategy):
-            strategy_str = strategy.value
-        else:
-            strategy_str = strategy
-        
+        strategy_str = strategy.value if isinstance(strategy, ChunkingStrategy) else strategy
+
         # Build full config
         if not config:
             config = {
@@ -659,7 +656,7 @@ class ChunkingService:
             }
         else:
             config["strategy"] = strategy_str
-        
+
         # Validate config
         self.security.validate_chunk_params(config.get("params", {}))
 
@@ -702,8 +699,8 @@ class ChunkingService:
             )
 
         # Estimate processing time based on chunk count
-        estimated_time = (total_estimated_chunks * 0.1)  # Rough estimate: 0.1 seconds per chunk
-        
+        estimated_time = total_estimated_chunks * 0.1  # Rough estimate: 0.1 seconds per chunk
+
         return {
             "is_valid": len(warnings) == 0,
             "sample_results": sample_results,
@@ -734,13 +731,19 @@ class ChunkingService:
         Returns:
             Tuple of (websocket_channel, validation_result)
         """
+        logger.info(f"User {user_id} starting chunking operation for collection {collection_id}")
+        if document_ids:
+            logger.debug(f"Processing specific documents: {document_ids}")
+
         operation_id = operation_data["uuid"]
         websocket_channel = f"chunking:{collection_id}:{operation_id}"
 
         # Validate configuration
         validation_result = await self.validate_config_for_collection(
             collection_id=collection_id,
-            config=config if config else {"strategy": strategy},
+            strategy=strategy,
+            config=config,
+            user_id=user_id,
         )
 
         # Send initial WebSocket notification
@@ -751,7 +754,7 @@ class ChunkingService:
                 "operation_id": operation_id,
                 "collection_id": collection_id,
                 "strategy": strategy,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             },
         )
 
@@ -832,7 +835,7 @@ class ChunkingService:
         user_key = f"chunking:preview:user:{user_id}:{strategy}"
         self.redis.incr(user_key)
         self.redis.expire(user_key, 3600)  # 1 hour TTL
-        
+
         # Track overall usage
         strategy_key = f"chunking:preview:usage:{strategy}"
         self.redis.incr(strategy_key)
@@ -879,7 +882,7 @@ class ChunkingService:
             # Estimate remaining time
             started_at = operation.started_at
             if started_at and processed_docs > 0:
-                elapsed = (datetime.utcnow() - started_at).total_seconds()
+                elapsed = (datetime.now(UTC) - started_at).total_seconds()
                 rate = processed_docs / elapsed
                 remaining_docs = total_docs - processed_docs
                 estimated_time_remaining = remaining_docs / rate if rate > 0 else 0
@@ -926,6 +929,8 @@ class ChunkingService:
             user_id: User ID
             websocket_channel: WebSocket channel for progress updates
         """
+        logger.info(f"User {user_id} processing chunking operation {operation_id} for collection {collection_id}")
+
         from packages.webui.websocket_manager import ws_manager
 
         operation_start_time = time.time()
@@ -939,7 +944,7 @@ class ChunkingService:
                 await self.operation_repo.update_status(
                     operation_id,
                     OperationStatus.PROCESSING,
-                    started_at=datetime.utcnow(),
+                    started_at=datetime.now(UTC),
                 )
 
             # Send initial progress
@@ -1070,7 +1075,7 @@ class ChunkingService:
                 await self.operation_repo.update_status(
                     operation_id,
                     OperationStatus.COMPLETED if not errors else OperationStatus.FAILED,
-                    completed_at=datetime.utcnow(),
+                    completed_at=datetime.now(UTC),
                     error_message=json.dumps(errors) if errors else None,
                 )
 
@@ -1101,7 +1106,7 @@ class ChunkingService:
                 await self.operation_repo.update_status(
                     operation_id,
                     OperationStatus.FAILED,
-                    completed_at=datetime.utcnow(),
+                    completed_at=datetime.now(UTC),
                     error_message=str(e),
                 )
 
@@ -1114,7 +1119,7 @@ class ChunkingService:
                     "error": str(e),
                     "documents_processed": documents_processed,
                     "chunks_created": total_chunks_created,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 },
             )
 
@@ -1280,7 +1285,7 @@ class ChunkingService:
             # Chunk the document
             chunks = await chunker.chunk_text_async(
                 text=content,
-                doc_id=document.id,
+                doc_id=str(document.id),
                 metadata=metadata,
             )
 
@@ -1289,7 +1294,7 @@ class ChunkingService:
                 return 0
 
             # Store chunks in Qdrant
-            await self._store_chunks(chunks, collection_name, document.id)
+            await self._store_chunks(chunks, collection_name, str(document.id))
 
             return len(chunks)
 
@@ -1323,10 +1328,8 @@ class ChunkingService:
 
             # Read file content
             # For now, assume text files - in production would use document parsers
-            with open(file_path, encoding="utf-8", errors="ignore") as f:
-                content = f.read()
-
-            return content
+            with Path(file_path).open(encoding="utf-8", errors="ignore") as f:
+                return f.read()
 
         except Exception as e:
             logger.error(f"Failed to load document content for {document.id}: {e}")
@@ -1450,7 +1453,7 @@ class ChunkingService:
                     "total_documents": total_documents,
                     "chunks_created": chunks_created,
                     "current_document": current_document,
-                    "updated_at": datetime.utcnow().isoformat(),
+                    "updated_at": datetime.now(UTC).isoformat(),
                 }
 
                 await self.db.flush()
@@ -1501,7 +1504,7 @@ class ChunkingService:
                         "progress": progress,
                         "status": status,
                         "message": message,
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(UTC).isoformat(),
                         **kwargs,
                     },
                 )
@@ -1517,13 +1520,13 @@ class ChunkingService:
         user_id: int,
     ) -> str:
         """Generate a unique cache key for preview results.
-        
+
         Args:
             content: Text content (first 1000 chars used)
             strategy: Chunking strategy
             config: Configuration dictionary
             user_id: User ID
-            
+
         Returns:
             Unique cache key string
         """
@@ -1538,10 +1541,10 @@ class ChunkingService:
         chunks: list[dict[str, Any]],
     ) -> dict[str, float]:
         """Calculate quality metrics for chunks.
-        
+
         Args:
             chunks: List of chunk dictionaries
-            
+
         Returns:
             Dictionary with quality metrics
         """
@@ -1551,23 +1554,23 @@ class ChunkingService:
                 "completeness": 0.0,
                 "size_consistency": 0.0,
             }
-        
+
         # Calculate size consistency
         sizes = [chunk.get("size", len(chunk.get("content", ""))) for chunk in chunks]
         avg_size = sum(sizes) / len(sizes)
         variance = sum((size - avg_size) ** 2 for size in sizes) / len(sizes)
-        std_dev = variance ** 0.5
-        
+        std_dev = variance**0.5
+
         # Size consistency: 1.0 if all chunks are same size, lower with more variance
         size_consistency = 1.0 - min(std_dev / avg_size if avg_size > 0 else 1.0, 1.0)
-        
+
         # Coherence: Rough estimate based on chunk count and sizes
         # More uniform chunks = higher coherence
         coherence = size_consistency * 0.8 + 0.2  # Baseline 0.2, up to 1.0
-        
+
         # Completeness: Assume complete if we have chunks
         completeness = min(len(chunks) / 10, 1.0)  # Normalize to 0-1
-        
+
         return {
             "coherence": round(coherence, 3),
             "completeness": round(completeness, 3),
@@ -1582,35 +1585,38 @@ class ChunkingService:
         metadata: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Chunk content using specified strategy.
-        
+
         Args:
             content: Text content to chunk
             strategy: Chunking strategy name
             config: Configuration for chunking
             metadata: Optional metadata
-            
+
         Returns:
             List of chunk dictionaries
         """
         # Build full config with mapped strategy
         full_config = {
             "strategy": self._map_strategy_to_factory_name(strategy),
-            "params": config.get("params", {
-                "chunk_size": config.get("chunk_size", DEFAULT_CHUNK_SIZE),
-                "chunk_overlap": config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
-            })
+            "params": config.get(
+                "params",
+                {
+                    "chunk_size": config.get("chunk_size", DEFAULT_CHUNK_SIZE),
+                    "chunk_overlap": config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
+                },
+            ),
         }
-        
+
         # Create chunker
         chunker = ChunkingFactory.create_chunker(full_config)
-        
+
         # Chunk the content
         chunks = await chunker.chunk_text_async(
             text=content,
             doc_id="preview",
             metadata=metadata or {},
         )
-        
+
         # Convert to dictionary format
         return [
             {
@@ -1632,7 +1638,7 @@ class ChunkingService:
         **kwargs: Any,
     ) -> None:
         """Update operation progress.
-        
+
         Args:
             operation_id: Operation ID
             progress: Progress percentage (0-100)
@@ -1647,19 +1653,19 @@ class ChunkingService:
                 if operation:
                     if not operation.meta:
                         operation.meta = {}
-                    
+
                     operation.meta["progress"] = {
                         "percentage": progress,
                         "status": status,
                         "message": message,
-                        "updated_at": datetime.utcnow().isoformat(),
+                        "updated_at": datetime.now(UTC).isoformat(),
                         **kwargs,
                     }
-                    
+
                     await self.db.flush()
             except Exception as e:
                 logger.error(f"Failed to update progress in database: {e}")
-        
+
         # Also store in Redis for quick access
         try:
             progress_key = f"operation:progress:{operation_id}"
@@ -1667,7 +1673,7 @@ class ChunkingService:
                 "percentage": progress,
                 "status": status,
                 "message": message,
-                "updated_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.now(UTC).isoformat(),
                 **kwargs,
             }
             self.redis.setex(
@@ -1683,20 +1689,21 @@ class ChunkingService:
         cache_key: str,
     ) -> dict[str, Any] | None:
         """Get cached preview by key.
-        
+
         Args:
             cache_key: Cache key
-            
+
         Returns:
             Cached preview data or None
         """
         try:
             cached_data = self.redis.get(cache_key)
             if cached_data:
-                return json.loads(cached_data)
+                preview_dict: dict[str, Any] = json.loads(cached_data)
+                return preview_dict
         except Exception as e:
             logger.warning(f"Failed to get cached preview: {e}")
-        
+
         return None
 
     async def _cache_preview_by_key(
@@ -1705,7 +1712,7 @@ class ChunkingService:
         data: dict[str, Any],
     ) -> None:
         """Cache preview data by key.
-        
+
         Args:
             cache_key: Cache key
             data: Data to cache
