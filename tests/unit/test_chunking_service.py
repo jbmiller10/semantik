@@ -5,7 +5,7 @@ Unit tests for ChunkingService.
 This module tests the ChunkingService business logic layer.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -326,15 +326,16 @@ Content under header 2.
 
         result = await chunking_service.validate_config_for_collection(
             collection_id="test-collection",
+            strategy="recursive",
             config=config,
             sample_size=2,
         )
 
-        assert isinstance(result, ChunkingValidationResult)
-        assert result.is_valid
-        assert len(result.sample_results) == 2
-        assert result.estimated_total_chunks > 0
-        assert len(result.warnings) == 0
+        assert isinstance(result, dict)
+        assert result["is_valid"]
+        assert len(result["sample_results"]) == 2
+        assert result["estimated_total_chunks"] > 0
+        assert len(result["warnings"]) == 0
 
     async def test_validate_config_invalid_params(
         self,
@@ -379,12 +380,14 @@ Content under header 2.
     ) -> None:
         """Test preview usage tracking."""
         await chunking_service.track_preview_usage(
+            user_id=1,
             strategy="recursive",
             file_type=".py",
         )
 
-        # Should increment counters
-        assert mock_redis.incr.call_count == 2
+        # Should increment counters (user, strategy, and file_type)
+        assert mock_redis.incr.call_count == 3
+        mock_redis.incr.assert_any_call("chunking:preview:user:1:recursive")
         mock_redis.incr.assert_any_call("chunking:preview:usage:recursive")
         mock_redis.incr.assert_any_call("chunking:preview:file_type:.py")
 
@@ -448,7 +451,7 @@ Content under header 2.
         # Mock the operation repository to return an operation
         mock_operation = MagicMock()
         mock_operation.status.value = "processing"
-        mock_operation.started_at = datetime.utcnow()
+        mock_operation.started_at = datetime.now(timezone.utc)
         mock_operation.completed_at = None
         mock_operation.meta = {
             "progress": {
@@ -465,6 +468,7 @@ Content under header 2.
         # Call with operation_id and user_id
         progress = await chunking_service.get_chunking_progress("test-operation", 1)
 
+        assert progress is not None
         assert progress["status"] == "processing"
         assert progress["documents_processed"] == 50
         assert progress["total_documents"] == 100

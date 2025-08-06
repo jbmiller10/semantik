@@ -12,7 +12,7 @@ from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import status
+from fastapi import HTTPException, status
 from fastapi.testclient import TestClient
 
 from packages.shared.database.exceptions import (
@@ -157,25 +157,30 @@ class TestStrategyManagement:
     def test_list_strategies_unauthenticated(self) -> None:
         """Test that listing strategies requires authentication."""
         from packages.webui.main import app
-        from packages.shared.config import settings
-        import os
+        from packages.webui.auth import get_current_user
         
-        # Temporarily disable auth bypass for this test
-        original_disable_auth = os.environ.get("DISABLE_AUTH", "false")
-        os.environ["DISABLE_AUTH"] = "false"
+        # Create a client without overriding authentication
+        client = TestClient(app)
+        
+        # Clear any existing dependency overrides
+        app.dependency_overrides.clear()
+        
+        # Mock the auth to always raise 401
+        def mock_get_current_user():
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        app.dependency_overrides[get_current_user] = mock_get_current_user
         
         try:
-            # Force settings to reload
-            settings.DISABLE_AUTH = False
-            
-            client = TestClient(app)
             response = client.get("/api/v2/chunking/strategies")
-            
             assert response.status_code == status.HTTP_401_UNAUTHORIZED
         finally:
-            # Restore original setting
-            os.environ["DISABLE_AUTH"] = original_disable_auth
-            settings.DISABLE_AUTH = original_disable_auth.lower() == "true"
+            # Clean up
+            app.dependency_overrides.clear()
 
     def test_get_strategy_details_success(self, client: TestClient) -> None:
         """Test getting details for a specific strategy."""
@@ -370,8 +375,8 @@ class TestPreviewOperations:
         
         response = client.post("/api/v2/chunking/preview", json=request_data)
         
-        # The test client might not handle this well, but in production it would return 413
-        assert response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_413_REQUEST_ENTITY_TOO_LARGE]
+        # ChunkingMemoryError returns 507 (Insufficient Storage)
+        assert response.status_code == status.HTTP_507_INSUFFICIENT_STORAGE
 
     def test_generate_preview_with_null_bytes(self, client: TestClient) -> None:
         """Test preview generation with invalid content containing null bytes."""
@@ -524,7 +529,7 @@ class TestCollectionProcessing:
         # Setup mocks
         operation_id = str(uuid.uuid4())
         mock_chunking_service.validate_config_for_collection.return_value = {
-            "valid": True,
+            "is_valid": True,
             "estimated_time": 60,
         }
         mock_collection_service.create_operation.return_value = {
@@ -544,7 +549,7 @@ class TestCollectionProcessing:
                 "preserve_sentences": True,
             },
             "document_ids": ["doc1", "doc2"],
-            "priority": "high",
+            "priority": 8,
         }
         
         response = client.post(
@@ -1071,7 +1076,7 @@ class TestEdgeCases:
         operation_ids = [str(uuid.uuid4()) for _ in range(3)]
         
         mock_chunking_service.validate_config_for_collection.return_value = {
-            "valid": True,
+            "is_valid": True,
             "estimated_time": 60,
         }
         

@@ -419,7 +419,11 @@ class TestChannelManagement:
         channel = f"chunking:coll-456:{operation_id}"
         
         # Add a consumer task
-        mock_task = MagicMock()
+        # Create a proper mock coroutine
+        async def mock_coro():
+            pass
+        
+        mock_task = asyncio.create_task(mock_coro())
         mock_task.cancel = MagicMock()
         ws_manager.consumer_tasks[operation_id] = mock_task
         
@@ -687,7 +691,11 @@ class TestPerformanceAndScaling:
         for i in range(100):
             key = f"user-{i}:operation:op-{i}"
             ws_manager.connections[key] = {AsyncMock(spec=WebSocket)}
-            mock_task = MagicMock()
+            # Create a proper mock coroutine
+            async def mock_coro():
+                pass
+            
+            mock_task = asyncio.create_task(mock_coro())
             mock_task.cancel = MagicMock()
             ws_manager.consumer_tasks[f"op-{i}"] = mock_task
         
