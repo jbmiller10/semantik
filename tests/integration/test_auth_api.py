@@ -2,7 +2,6 @@
 
 from collections.abc import Generator
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

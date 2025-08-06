@@ -628,9 +628,8 @@ class HierarchicalChunker(BaseChunker):
         if hasattr(node, "relationships") and node.relationships:
             # Check for parent relationship
             parent_rel = node.relationships.get("1")  # LlamaIndex uses "1" for parent relationship
-            if parent_rel:
-                if hasattr(parent_rel, "node_id") and parent_rel.node_id:
-                    hierarchy_info["parent_id"] = parent_rel.node_id
+            if parent_rel and hasattr(parent_rel, "node_id") and parent_rel.node_id:
+                hierarchy_info["parent_id"] = parent_rel.node_id
 
             # Check for child relationships
             child_rel = node.relationships.get("2")  # LlamaIndex uses "2" for child relationship

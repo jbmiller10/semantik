@@ -211,20 +211,20 @@ class TestStartupTasks:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Test when database is unavailable."""
+        # Mock the async generator to raise an exception
+        async def mock_db_generator():
+            raise Exception("Database connection refused")
+            yield  # This won't be reached
+
         with (
             patch("packages.webui.startup_tasks.get_db") as mock_get_db,
             caplog.at_level(logging.ERROR),
-            pytest.raises(Exception, match="Database connection refused"),
         ):
-            # Mock the async generator to raise an exception
-            async def mock_db_generator():
-                raise Exception("Database connection refused")
-                yield  # This won't be reached
-
             mock_get_db.return_value = mock_db_generator()
 
             # Should handle the error gracefully
-            await ensure_default_data()
+            with pytest.raises(Exception, match="Database connection refused"):
+                await ensure_default_data()
 
     @pytest.mark.asyncio()
     async def test_ensure_default_chunking_strategies_idempotent(
