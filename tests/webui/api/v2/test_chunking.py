@@ -479,7 +479,7 @@ class TestPreviewOperations:
     ) -> None:
         """Test retrieving cached preview results."""
         preview_id = str(uuid.uuid4())
-        mock_chunking_service._get_cached_preview.return_value = {
+        mock_chunking_service._get_cached_preview_by_key.return_value = {
             "preview_id": preview_id,
             "strategy": "fixed_size",
             "config": {"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
@@ -502,7 +502,7 @@ class TestPreviewOperations:
         mock_chunking_service: AsyncMock,
     ) -> None:
         """Test retrieving non-existent preview."""
-        mock_chunking_service._get_cached_preview.return_value = None
+        mock_chunking_service._get_cached_preview_by_key.return_value = None
         
         response = client.get(f"/api/v2/chunking/preview/{uuid.uuid4()}")
         
@@ -690,18 +690,20 @@ class TestCollectionProcessing:
         mock_chunking_service: AsyncMock,
     ) -> None:
         """Test getting chunking statistics for a collection."""
-        mock_chunking_service.get_chunking_statistics.return_value = {
-            "total_chunks": 100,
-            "total_documents": 10,
-            "avg_chunk_size": 512,
-            "min_chunk_size": 100,
-            "max_chunk_size": 1024,
-            "size_variance": 50.0,
-            "strategy": "semantic",
-            "last_updated": datetime.utcnow().isoformat(),
-            "processing_time": 120,
-            "quality_metrics": {"coherence": 0.8, "completeness": 0.9},
-        }
+        # Create a mock object with all the attributes the API expects
+        mock_stats = MagicMock()
+        mock_stats.total_documents = 10
+        mock_stats.total_chunks = 100
+        mock_stats.average_chunk_size = 512
+        mock_stats.min_chunk_size = 100
+        mock_stats.max_chunk_size = 1024
+        mock_stats.size_variance = 50.0
+        mock_stats.strategy = "semantic"
+        mock_stats.last_updated = datetime.now(UTC)
+        mock_stats.processing_time = 120
+        mock_stats.performance_metrics = {"coherence": 0.8, "completeness": 0.9}
+        
+        mock_chunking_service.get_chunking_statistics.return_value = mock_stats
         
         response = client.get(
             "/api/v2/chunking/collections/123e4567-e89b-12d3-a456-426614174000/chunking-stats"

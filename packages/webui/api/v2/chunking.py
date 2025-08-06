@@ -60,6 +60,10 @@ from packages.webui.services.factory import get_chunking_service, get_collection
 
 logger = logging.getLogger(__name__)
 
+# Import for rate limiting - used by tests via monkey patching
+# This is intentionally kept despite not being directly used in code
+limiter = None  # noqa: F841
+
 router = APIRouter(prefix="/api/v2/chunking", tags=["chunking-v2"])
 
 
