@@ -4,14 +4,15 @@ Unit tests for Document API endpoints
 
 import shutil
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 
 @pytest.fixture()
-def temp_test_dir() -> None:
+def temp_test_dir() -> Generator[Path, None, None]:
     """Create temporary directory for tests"""
     temp_dir = tempfile.mkdtemp()
     yield Path(temp_dir)
@@ -19,16 +20,14 @@ def temp_test_dir() -> None:
 
 
 @pytest.fixture()
-def mock_operation_repository() -> None:
+def mock_operation_repository() -> MagicMock:
     """Create a mock OperationRepository for testing."""
     return MagicMock()
 
 
 @pytest.fixture()
-def mock_document_repository() -> None:
+def mock_document_repository() -> AsyncMock:
     """Create a mock DocumentRepository for testing."""
-    from unittest.mock import AsyncMock
-
     return AsyncMock()
 
 
