@@ -205,7 +205,7 @@ class HierarchicalChunker(BaseChunker):
 
         # Check if this is a parent node
         if hasattr(node, "relationships") and node.relationships:
-            child_rel = node.relationships.get("2")  # LlamaIndex uses "2" for child
+            child_rel = node.relationships.get("2")  # LlamaIndex uses "2" for child relationship
             if child_rel:
                 # For parent nodes, use the span of their children
                 child_ids = []
@@ -281,9 +281,10 @@ class HierarchicalChunker(BaseChunker):
 
                     # Adjust node offsets for this segment
                     for node in segment_nodes:
-                        # Store original segment offset for later use
-                        if not hasattr(node, "_segment_offset"):
-                            node._segment_offset = segment_offset
+                        # Store original segment offset in metadata
+                        if node.metadata is None:
+                            node.metadata = {}
+                        node.metadata["_segment_offset"] = segment_offset
 
                     all_nodes.extend(segment_nodes)
                     segment_offset += len(segment)
@@ -563,8 +564,8 @@ class HierarchicalChunker(BaseChunker):
                     },
                 }
             )
-            result = fallback_chunker.chunk_text(text, doc_id, metadata)
-            return list(result) if result else []
+            fallback_results = fallback_chunker.chunk_text(text, doc_id, metadata)
+            return fallback_results if fallback_results else []
 
     async def chunk_text_async(
         self,
@@ -626,18 +627,21 @@ class HierarchicalChunker(BaseChunker):
         # Determine parent relationship
         if hasattr(node, "relationships") and node.relationships:
             # Check for parent relationship
-            parent_rel = node.relationships.get("1")  # LlamaIndex uses "1" for parent
-            if parent_rel and parent_rel.node_id:
+            parent_rel = node.relationships.get("1")  # LlamaIndex uses "1" for parent relationship
+            if parent_rel and hasattr(parent_rel, "node_id") and parent_rel.node_id:
                 hierarchy_info["parent_id"] = parent_rel.node_id
 
             # Check for child relationships
-            child_rel = node.relationships.get("2")  # LlamaIndex uses "2" for child
-            if child_rel and child_rel.node_id:
-                # Single child
-                hierarchy_info["child_ids"] = [child_rel.node_id]
-            elif hasattr(child_rel, "node_ids") and child_rel.node_ids:
-                # Multiple children
-                hierarchy_info["child_ids"] = list(child_rel.node_ids)
+            child_rel = node.relationships.get("2")  # LlamaIndex uses "2" for child relationship
+            if child_rel:
+                if hasattr(child_rel, "node_id") and child_rel.node_id:
+                    # Single child
+                    hierarchy_info["child_ids"] = [child_rel.node_id]
+                elif hasattr(child_rel, "node_ids"):
+                    # Multiple children
+                    node_ids = getattr(child_rel, "node_ids", None)
+                    if node_ids:
+                        hierarchy_info["child_ids"] = list(node_ids)
 
         # Determine hierarchy level based on chunk size used
         # This is an approximation based on content length
@@ -696,7 +700,7 @@ class HierarchicalChunker(BaseChunker):
             parent_nodes = []
             for node in all_nodes:
                 if hasattr(node, "relationships") and node.relationships:
-                    child_rel = node.relationships.get("2")
+                    child_rel = node.relationships.get("2")  # LlamaIndex uses "2" for child relationship
                     if child_rel:
                         child_ids = []
                         if hasattr(child_rel, "node_id") and child_rel.node_id:

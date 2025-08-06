@@ -1,6 +1,7 @@
 """Unit tests for ModelManager lifecycle and memory management."""
 
 import asyncio
+from collections.abc import Generator
 from unittest.mock import Mock, patch
 
 import pytest
@@ -10,7 +11,7 @@ from packages.vecpipe.model_manager import ModelManager
 
 
 @pytest.fixture()
-def mock_embedding_service() -> None:
+def mock_embedding_service() -> Generator[Mock, None, None]:
     """Create a mock EmbeddingService."""
     with patch("packages.vecpipe.model_manager.EmbeddingService") as mock:
         instance = mock.return_value
@@ -25,7 +26,7 @@ def mock_embedding_service() -> None:
 
 
 @pytest.fixture()
-def mock_reranker() -> None:
+def mock_reranker() -> Generator[Mock, None, None]:
     """Create a mock CrossEncoderReranker."""
     with patch("packages.vecpipe.model_manager.CrossEncoderReranker") as mock:
         instance = mock.return_value
@@ -37,7 +38,7 @@ def mock_reranker() -> None:
 
 
 @pytest.fixture()
-def model_manager() -> None:
+def model_manager() -> ModelManager:
     """Create a ModelManager instance with a short unload timeout for testing."""
     return ModelManager(unload_after_seconds=1)
 

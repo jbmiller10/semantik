@@ -1274,12 +1274,12 @@ class DockerSetupTUI:
                 task = progress.add_task(description, total=None)
 
                 try:
-                    result: subprocess.CompletedProcess[str] = subprocess.run(cmd, capture_output=True, text=True)
+                    cmd_result: subprocess.CompletedProcess[str] = subprocess.run(cmd, capture_output=True, text=True)
 
-                    if result.returncode == 0:
+                    if cmd_result.returncode == 0:
                         progress.update(task, completed=True)
                         return True
-                    error_msg = result.stderr if result.stderr else "Unknown error"
+                    error_msg = cmd_result.stderr if cmd_result.stderr else "Unknown error"
                     console.print(f"\n[red]Error: {error_msg}[/red]")
                     return False
                 except Exception as e:
