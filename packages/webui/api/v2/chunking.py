@@ -21,7 +21,6 @@ from fastapi import (
 )
 
 from packages.webui.api.chunking_exceptions import (
-    ChunkingConfigurationError,
     ChunkingMemoryError,
     ChunkingTimeoutError,
     ChunkingValidationError,
@@ -55,145 +54,14 @@ from packages.webui.auth import get_current_user
 from packages.webui.dependencies import get_collection_for_user
 from packages.webui.rate_limiter import limiter
 from packages.webui.services.chunking_service import ChunkingService
+from packages.webui.services.chunking_strategies import ChunkingStrategyRegistry
+from packages.webui.services.chunking_validation import ChunkingInputValidator
 from packages.webui.services.collection_service import CollectionService
 from packages.webui.services.factory import get_chunking_service, get_collection_service
-from packages.webui.websocket_manager import ws_manager
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/chunking", tags=["chunking-v2"])
-
-
-# Strategy definitions (would normally be in a config file or database)
-STRATEGY_DEFINITIONS = {
-    ChunkingStrategy.FIXED_SIZE: {
-        "id": "fixed_size",
-        "name": "Fixed Size Chunking",
-        "description": "Splits content into fixed-size chunks with optional overlap",
-        "best_for": ["txt", "log", "csv", "json"],
-        "pros": [
-            "Predictable chunk sizes",
-            "Fast processing",
-            "Low memory usage",
-            "Simple configuration",
-        ],
-        "cons": [
-            "May split sentences or paragraphs",
-            "No semantic awareness",
-            "Can break context",
-        ],
-        "performance_characteristics": {
-            "speed": "fast",
-            "memory_usage": "low",
-            "quality": "medium",
-        },
-    },
-    ChunkingStrategy.SEMANTIC: {
-        "id": "semantic",
-        "name": "Semantic Chunking",
-        "description": "Groups content based on semantic similarity",
-        "best_for": ["pdf", "docx", "md", "html"],
-        "pros": [
-            "Preserves semantic coherence",
-            "Better context retention",
-            "Improved search quality",
-        ],
-        "cons": [
-            "Slower processing",
-            "Higher memory usage",
-            "Requires embedding model",
-            "Variable chunk sizes",
-        ],
-        "performance_characteristics": {
-            "speed": "slow",
-            "memory_usage": "high",
-            "quality": "high",
-        },
-    },
-    ChunkingStrategy.RECURSIVE: {
-        "id": "recursive",
-        "name": "Recursive Text Splitting",
-        "description": "Recursively splits text using multiple separators",
-        "best_for": ["md", "rst", "code", "html"],
-        "pros": [
-            "Respects document structure",
-            "Good for structured content",
-            "Flexible separator configuration",
-        ],
-        "cons": [
-            "May produce uneven chunks",
-            "Requires tuning for different content types",
-        ],
-        "performance_characteristics": {
-            "speed": "medium",
-            "memory_usage": "medium",
-            "quality": "high",
-        },
-    },
-    ChunkingStrategy.SLIDING_WINDOW: {
-        "id": "sliding_window",
-        "name": "Sliding Window",
-        "description": "Creates overlapping chunks using a sliding window approach",
-        "best_for": ["txt", "log", "transcript"],
-        "pros": [
-            "Ensures context continuity",
-            "Good for sequential data",
-            "Reduces information loss at boundaries",
-        ],
-        "cons": [
-            "Creates redundant data",
-            "Higher storage requirements",
-            "More chunks to process",
-        ],
-        "performance_characteristics": {
-            "speed": "medium",
-            "memory_usage": "medium",
-            "quality": "medium",
-        },
-    },
-    ChunkingStrategy.DOCUMENT_STRUCTURE: {
-        "id": "document_structure",
-        "name": "Document Structure Based",
-        "description": "Chunks based on document structure (headings, sections, etc.)",
-        "best_for": ["pdf", "docx", "html", "xml"],
-        "pros": [
-            "Preserves document hierarchy",
-            "Maintains logical boundaries",
-            "Good for structured documents",
-        ],
-        "cons": [
-            "Requires document parsing",
-            "May create very large or small chunks",
-            "Not suitable for unstructured text",
-        ],
-        "performance_characteristics": {
-            "speed": "slow",
-            "memory_usage": "medium",
-            "quality": "high",
-        },
-    },
-    ChunkingStrategy.HYBRID: {
-        "id": "hybrid",
-        "name": "Hybrid Strategy",
-        "description": "Combines multiple strategies for optimal results",
-        "best_for": ["mixed", "complex documents"],
-        "pros": [
-            "Adaptable to content",
-            "Best of multiple strategies",
-            "Handles diverse content well",
-        ],
-        "cons": [
-            "Complex configuration",
-            "Slower processing",
-            "Higher resource usage",
-        ],
-        "performance_characteristics": {
-            "speed": "slow",
-            "memory_usage": "high",
-            "quality": "very high",
-        },
-    },
-}
 
 
 # Strategy Management Endpoints
@@ -211,7 +79,7 @@ async def list_strategies(
     """
     strategies = []
     for strategy_enum in ChunkingStrategy:
-        strategy_def = STRATEGY_DEFINITIONS.get(strategy_enum, {})
+        strategy_def = ChunkingStrategyRegistry.get_strategy_definition(strategy_enum)
 
         # Create default config based on strategy
         default_config = ChunkingConfigBase(
@@ -258,7 +126,7 @@ async def get_strategy_details(
             detail=f"Strategy '{strategy_id}' not found",
         )
 
-    strategy_def = STRATEGY_DEFINITIONS.get(strategy_enum, {})
+    strategy_def = ChunkingStrategyRegistry.get_strategy_definition(strategy_enum)
 
     default_config = ChunkingConfigBase(
         strategy=strategy_enum,
@@ -362,20 +230,18 @@ async def generate_preview(
 
         # Validate content if provided
         if preview_request.content:
-            # Check for potentially malicious patterns
-            if "\x00" in preview_request.content:  # Null bytes
-                raise ChunkingValidationError(
-                    "Invalid content: null bytes detected",
-                    correlation_id=correlation_id,
-                    field_errors={"content": ["Contains invalid characters"]},
-                )
+            # Comprehensive input validation
+            ChunkingInputValidator.validate_content(preview_request.content, correlation_id)
 
             # Check content size
             content_size = len(preview_request.content.encode("utf-8"))
             if content_size > 10 * 1024 * 1024:  # 10MB limit
                 raise ChunkingMemoryError(
-                    "Content too large for preview (max 10MB)",
+                    detail="Content too large for preview (max 10MB)",
                     correlation_id=correlation_id,
+                    operation_id="preview",
+                    memory_used=content_size,
+                    memory_limit=10 * 1024 * 1024,
                 )
 
         # Track usage for rate limiting
@@ -471,7 +337,7 @@ async def compare_strategies(
                     user_id=current_user["id"],
                 )
 
-                strategy_def = STRATEGY_DEFINITIONS.get(strategy, {})
+                strategy_def = ChunkingStrategyRegistry.get_strategy_definition(strategy)
 
                 comparisons.append(
                     StrategyComparison(
@@ -596,24 +462,7 @@ async def start_chunking_operation(
 
     Progress updates are sent via WebSocket on the returned channel.
     """
-    operation_id = str(uuid.uuid4())
-    websocket_channel = f"chunking:{collection_id}:{operation_id}"
-
     try:
-        # Validate configuration for collection
-        validation_result = await service.validate_config_for_collection(
-            collection_id=collection_id,
-            strategy=chunking_request.strategy,
-            config=chunking_request.config.model_dump() if chunking_request.config else None,
-            user_id=current_user["id"],
-        )
-
-        if not validation_result["valid"]:
-            raise ChunkingConfigurationError(
-                f"Invalid configuration: {validation_result['reason']}",
-                correlation_id=operation_id,
-            )
-
         # Create operation record
         operation = await collection_service.create_operation(
             collection_id=collection_id,
@@ -625,6 +474,16 @@ async def start_chunking_operation(
                 "priority": chunking_request.priority,
             },
             user_id=current_user["id"],
+        )
+
+        # Start chunking operation and get WebSocket channel
+        websocket_channel, validation_result = await service.start_chunking_operation(
+            collection_id=collection_id,
+            strategy=chunking_request.strategy.value,
+            config=chunking_request.config.model_dump() if chunking_request.config else None,
+            document_ids=chunking_request.document_ids,
+            user_id=current_user["id"],
+            operation_data=operation,
         )
 
         # Queue the chunking task
@@ -640,18 +499,6 @@ async def start_chunking_operation(
             service=service,
         )
 
-        # Send initial WebSocket notification
-        await ws_manager.send_message(
-            websocket_channel,
-            {
-                "type": "chunking_started",
-                "operation_id": operation["uuid"],
-                "collection_id": collection_id,
-                "strategy": chunking_request.strategy.value,
-                "timestamp": datetime.utcnow().isoformat(),
-            },
-        )
-
         return ChunkingOperationResponse(
             operation_id=operation["uuid"],
             collection_id=collection_id,
@@ -662,7 +509,7 @@ async def start_chunking_operation(
             websocket_channel=websocket_channel,
         )
 
-    except ChunkingConfigurationError:
+    except ChunkingValidationError:
         raise
     except Exception as e:
         logger.error(f"Failed to start chunking operation: {e}")
@@ -903,7 +750,7 @@ async def get_metrics_by_strategy(
                     avg_processing_time=1.5,
                     success_rate=0.95,
                     avg_quality_score=0.8,
-                    best_for_types=STRATEGY_DEFINITIONS[strategy].get("best_for", []),
+                    best_for_types=ChunkingStrategyRegistry.get_strategy_definition(strategy).get("best_for", []),
                 )
             )
 

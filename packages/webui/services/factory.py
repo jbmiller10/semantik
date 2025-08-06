@@ -1,12 +1,15 @@
 """Factory functions for creating service instances with dependencies."""
 
 import httpx
+import redis.asyncio as redis
 from fastapi import Depends
+from redis.asyncio import ConnectionPool
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from packages.shared.config import settings
 from packages.shared.database import get_db
 
 from .chunking_service import ChunkingService
@@ -16,6 +19,31 @@ from .document_scanning_service import DocumentScanningService
 from .operation_service import OperationService
 from .resource_manager import ResourceManager
 from .search_service import SearchService
+
+# Singleton Redis connection pool
+_redis_pool: ConnectionPool | None = None
+
+
+def get_redis_pool() -> ConnectionPool:
+    """Get or create the Redis connection pool.
+
+    This ensures we reuse connections efficiently instead of creating
+    new connections for each request.
+
+    Returns:
+        ConnectionPool instance for Redis
+    """
+    global _redis_pool
+    if _redis_pool is None:
+        _redis_pool = ConnectionPool.from_url(
+            settings.REDIS_URL,
+            max_connections=50,
+            decode_responses=True,
+            health_check_interval=30,
+            socket_keepalive=True,
+            retry_on_timeout=True,
+        )
+    return _redis_pool
 
 
 def create_collection_service(db: AsyncSession) -> CollectionService:
@@ -265,19 +293,12 @@ def create_chunking_service(db: AsyncSession) -> ChunkingService:
             return result
         ```
     """
-    import redis.asyncio as redis
-    from packages.shared.config import settings
-    
     # Create repository instances
     collection_repo = CollectionRepository(db)
     document_repo = DocumentRepository(db)
-    
-    # Create Redis client
-    redis_client = redis.from_url(
-        settings.REDIS_URL,
-        decode_responses=True,
-        health_check_interval=30,
-    )
+
+    # Create Redis client using connection pool
+    redis_client = redis.Redis(connection_pool=get_redis_pool())
 
     # Create and return service
     return ChunkingService(
