@@ -5,7 +5,7 @@ Unit tests for chunking_integration_example module.
 This module tests the example integration endpoints and services.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -42,12 +42,13 @@ class TestChunkingIntegrationExample:
         mock_correlation_id: str,
     ) -> None:
         """Test successful document processing."""
+
         # Override the dependency
         def override_get_correlation_id():
             return mock_correlation_id
-        
+
         app.dependency_overrides[get_correlation_id] = override_get_correlation_id
-        
+
         client = TestClient(app)
         response = client.post(
             "/api/v2/chunking/process",
@@ -65,27 +66,27 @@ class TestChunkingIntegrationExample:
         mock_correlation_id: str,
     ) -> None:
         """Test processing with missing document ID."""
+
         # Override the dependency
         def override_get_correlation_id():
             return mock_correlation_id
-        
+
         app.dependency_overrides[get_correlation_id] = override_get_correlation_id
-        
+
         # Register a basic exception handler for ChunkingValidationError
-        from fastapi import HTTPException
         from starlette.responses import JSONResponse
-        
+
         @app.exception_handler(ChunkingValidationError)
-        async def chunking_validation_handler(request, exc: ChunkingValidationError):
+        async def chunking_validation_handler(_request, exc: ChunkingValidationError):
             return JSONResponse(
                 status_code=400,
                 content={
                     "detail": exc.detail,
                     "correlation_id": exc.correlation_id,
                     "field_errors": exc.field_errors,
-                }
+                },
             )
-        
+
         client = TestClient(app)
         response = client.post(
             "/api/v2/chunking/process",
@@ -104,20 +105,21 @@ class TestChunkingIntegrationExample:
         mock_correlation_id: str,
     ) -> None:
         """Test that validation error is raised correctly."""
+        import asyncio
+
         from packages.webui.api.chunking_integration_example import process_document
 
         with patch("packages.webui.api.chunking_integration_example.get_correlation_id") as mock_get_id:
             mock_get_id.return_value = mock_correlation_id
 
             with pytest.raises(ChunkingValidationError) as exc_info:
-                import asyncio
                 asyncio.run(process_document("", mock_correlation_id))
 
             assert exc_info.value.detail == "Document ID is required"
             assert exc_info.value.correlation_id == mock_correlation_id
             assert exc_info.value.field_errors == {"document_id": ["This field is required"]}
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_chunking_service_process_large_document_success(
         self,
         mock_correlation_id: str,
@@ -125,9 +127,11 @@ class TestChunkingIntegrationExample:
         """Test successful document processing in ChunkingService."""
         service = ChunkingService()
 
-        with patch("packages.webui.api.chunking_integration_example.get_correlation_id") as mock_get_id, \
-             patch("packages.webui.api.chunking_integration_example.psutil.virtual_memory") as mock_memory:
-            
+        with (
+            patch("packages.webui.api.chunking_integration_example.get_correlation_id") as mock_get_id,
+            patch("packages.webui.api.chunking_integration_example.psutil.virtual_memory") as mock_memory,
+        ):
+
             mock_get_id.return_value = mock_correlation_id
             # Mock memory usage below threshold
             mock_memory_info = MagicMock()
@@ -139,7 +143,7 @@ class TestChunkingIntegrationExample:
             result = await service.process_large_document("test content")
             assert result == []  # Empty list as per the example
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_chunking_service_high_memory_usage(
         self,
         mock_correlation_id: str,
@@ -147,9 +151,11 @@ class TestChunkingIntegrationExample:
         """Test ChunkingService raises error when memory usage is high."""
         service = ChunkingService()
 
-        with patch("packages.webui.api.chunking_integration_example.get_correlation_id") as mock_get_id, \
-             patch("packages.webui.api.chunking_integration_example.psutil.virtual_memory") as mock_memory:
-            
+        with (
+            patch("packages.webui.api.chunking_integration_example.get_correlation_id") as mock_get_id,
+            patch("packages.webui.api.chunking_integration_example.psutil.virtual_memory") as mock_memory,
+        ):
+
             mock_get_id.return_value = mock_correlation_id
             # Mock high memory usage
             mock_memory_info = MagicMock()
@@ -168,7 +174,7 @@ class TestChunkingIntegrationExample:
             assert exc_info.value.memory_limit == mock_memory_info.total
             assert "Try processing smaller documents" in exc_info.value.recovery_hint
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_chunking_service_memory_threshold(
         self,
         mock_correlation_id: str,
@@ -176,9 +182,11 @@ class TestChunkingIntegrationExample:
         """Test ChunkingService at exactly 90% memory threshold."""
         service = ChunkingService()
 
-        with patch("packages.webui.api.chunking_integration_example.get_correlation_id") as mock_get_id, \
-             patch("packages.webui.api.chunking_integration_example.psutil.virtual_memory") as mock_memory:
-            
+        with (
+            patch("packages.webui.api.chunking_integration_example.get_correlation_id") as mock_get_id,
+            patch("packages.webui.api.chunking_integration_example.psutil.virtual_memory") as mock_memory,
+        ):
+
             mock_get_id.return_value = mock_correlation_id
             # Mock exactly at threshold
             mock_memory_info = MagicMock()
@@ -215,7 +223,7 @@ class TestChunkingIntegrationExample:
         assert process_document is not None
         assert router is not None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_correlation_id_dependency(
         self,
         mock_correlation_id: str,
@@ -227,11 +235,11 @@ class TestChunkingIntegrationExample:
             mock_get_id.return_value = mock_correlation_id
 
             result = await process_document("doc-456", mock_correlation_id)
-            
+
             assert result["correlation_id"] == mock_correlation_id
             assert result["status"] == "processed"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_chunking_service_empty_content(
         self,
         mock_correlation_id: str,
@@ -239,9 +247,11 @@ class TestChunkingIntegrationExample:
         """Test ChunkingService with empty content."""
         service = ChunkingService()
 
-        with patch("packages.webui.api.chunking_integration_example.get_correlation_id") as mock_get_id, \
-             patch("packages.webui.api.chunking_integration_example.psutil.virtual_memory") as mock_memory:
-            
+        with (
+            patch("packages.webui.api.chunking_integration_example.get_correlation_id") as mock_get_id,
+            patch("packages.webui.api.chunking_integration_example.psutil.virtual_memory") as mock_memory,
+        ):
+
             mock_get_id.return_value = mock_correlation_id
             # Mock normal memory usage
             mock_memory_info = MagicMock()
@@ -253,7 +263,7 @@ class TestChunkingIntegrationExample:
             result = await service.process_large_document("")
             assert result == []
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_chunking_service_large_content(
         self,
         mock_correlation_id: str,
@@ -262,9 +272,11 @@ class TestChunkingIntegrationExample:
         service = ChunkingService()
         large_content = "x" * 1000000  # 1MB of text
 
-        with patch("packages.webui.api.chunking_integration_example.get_correlation_id") as mock_get_id, \
-             patch("packages.webui.api.chunking_integration_example.psutil.virtual_memory") as mock_memory:
-            
+        with (
+            patch("packages.webui.api.chunking_integration_example.get_correlation_id") as mock_get_id,
+            patch("packages.webui.api.chunking_integration_example.psutil.virtual_memory") as mock_memory,
+        ):
+
             mock_get_id.return_value = mock_correlation_id
             # Mock normal memory usage
             mock_memory_info = MagicMock()
@@ -279,7 +291,7 @@ class TestChunkingIntegrationExample:
     def test_exception_details(self) -> None:
         """Test that exceptions have correct details."""
         correlation_id = "test-123"
-        
+
         # Test ChunkingValidationError
         validation_error = ChunkingValidationError(
             detail="Test validation error",

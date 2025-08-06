@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 import { useChunkingStore } from '../chunkingStore'
-import { CHUNKING_STRATEGIES, CHUNKING_PRESETS } from '@/types/chunking'
+import { CHUNKING_PRESETS } from '@/types/chunking'
 import type { ChunkingStrategyType, ChunkingPreset } from '@/types/chunking'
 
 // Mock API calls
@@ -109,9 +109,8 @@ describe('chunkingStore', () => {
         },
       }
       
-      let presetId: string
       act(() => {
-        presetId = result.current.saveCustomPreset(customPreset)
+        result.current.saveCustomPreset(customPreset)
       })
 
       expect(result.current.customPresets).toHaveLength(1)

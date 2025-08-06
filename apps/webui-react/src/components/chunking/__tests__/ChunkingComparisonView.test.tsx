@@ -3,7 +3,6 @@ import { render, screen, waitFor, fireEvent } from '@/tests/utils/test-utils'
 import userEvent from '@testing-library/user-event'
 import { ChunkingComparisonView } from '../ChunkingComparisonView'
 import { useChunkingStore } from '@/stores/chunkingStore'
-import { CHUNKING_STRATEGIES } from '@/types/chunking'
 import type { ChunkingComparisonResult, ChunkingStrategyType } from '@/types/chunking'
 
 // Mock the chunking store
@@ -19,7 +18,7 @@ global.URL.revokeObjectURL = vi.fn()
 const mockClick = vi.fn()
 const originalCreateElement = window.document.createElement.bind(window.document)
 window.document.createElement = vi.fn((tagName: string) => {
-  const element = originalCreateElement(tagName) as any
+  const element = originalCreateElement(tagName) as HTMLElement
   if (tagName === 'a') {
     element.click = mockClick
   }
@@ -174,7 +173,7 @@ describe('ChunkingComparisonView', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(useChunkingStore as any).mockReturnValue(defaultMockStore)
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue(defaultMockStore)
   })
 
   afterEach(() => {
@@ -200,7 +199,7 @@ describe('ChunkingComparisonView', () => {
   })
 
   it('shows loading state when comparing', () => {
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       ...defaultMockStore,
       comparisonLoading: true,
     })
@@ -214,7 +213,7 @@ describe('ChunkingComparisonView', () => {
 
   it('shows error state when comparison fails', () => {
     const errorMessage = 'Failed to compare strategies'
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       ...defaultMockStore,
       comparisonError: errorMessage,
     })
@@ -226,7 +225,7 @@ describe('ChunkingComparisonView', () => {
   })
 
   it('shows empty state when no strategies selected', () => {
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       ...defaultMockStore,
       comparisonStrategies: [],
       comparisonResults: {},
@@ -277,7 +276,7 @@ describe('ChunkingComparisonView', () => {
   })
 
   it('respects maximum strategies limit', () => {
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       ...defaultMockStore,
       comparisonStrategies: ['recursive', 'character', 'semantic'] as ChunkingStrategyType[],
     })
@@ -319,7 +318,7 @@ describe('ChunkingComparisonView', () => {
     expect(global.URL.revokeObjectURL).toHaveBeenCalled()
 
     // Check the blob was created with JSON data
-    const blobCall = (global.URL.createObjectURL as any).mock.calls[0]
+    const blobCall = (global.URL.createObjectURL as ReturnType<typeof vi.fn>).mock.calls[0]
     expect(blobCall).toBeDefined()
   })
 
@@ -388,7 +387,7 @@ describe('ChunkingComparisonView', () => {
   })
 
   it('shows warnings when present', () => {
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       ...defaultMockStore,
       comparisonResults: {
         semantic: mockComparisonResults.semantic,
@@ -404,10 +403,10 @@ describe('ChunkingComparisonView', () => {
   })
 
   it('highlights the best performing strategy', () => {
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       ...defaultMockStore,
       comparisonStrategies: ['recursive', 'character', 'semantic'] as ChunkingStrategyType[],
-      comparisonResults: mockComparisonResults as any,
+      comparisonResults: mockComparisonResults as Record<ChunkingStrategyType, ChunkingComparisonResult>,
     })
 
     render(<ChunkingComparisonView document={mockDocument} />)
@@ -484,7 +483,7 @@ describe('ChunkingComparisonView', () => {
   })
 
   it('handles empty comparison results gracefully', () => {
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       ...defaultMockStore,
       comparisonResults: {},
       comparisonStrategies: ['recursive'] as ChunkingStrategyType[],

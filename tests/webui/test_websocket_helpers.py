@@ -3,7 +3,7 @@
 import asyncio
 import contextlib
 import os
-from typing import Any
+from typing import Any, Optional
 from unittest.mock import AsyncMock
 
 from fastapi import WebSocket
@@ -61,7 +61,7 @@ class MockWebSocketClient:
         """Legacy method kept for compatibility."""
         # Messages are now captured directly in send_json side effect
 
-    async def get_received_messages(self, message_type: str = None) -> list[dict[str, Any]]:
+    async def get_received_messages(self, message_type: Optional[str] = None) -> list[dict[str, Any]]:
         """Get received messages, optionally filtered by type."""
         # Use lock to ensure thread safety
         async with self._message_lock:
@@ -183,7 +183,7 @@ class WebSocketTestHarness:
             self.clients.clear()
 
 
-async def simulate_operation_updates(updater, delays: list[float] = None):
+async def simulate_operation_updates(updater, delays: Optional[list[float]] = None):
     """Simulate a sequence of operation updates with optional delays."""
     if delays is None:
         delays = [0.1] * 6  # Default delays between updates
@@ -221,7 +221,7 @@ def assert_message_order(messages: list[dict[str, Any]], expected_types: list[st
 
 def count_message_types(messages: list[dict[str, Any]]) -> dict[str, int]:
     """Count occurrences of each message type."""
-    counts = {}
+    counts: dict[str, int] = {}
     for msg in messages:
         msg_type = msg.get("type", "unknown")
         counts[msg_type] = counts.get(msg_type, 0) + 1

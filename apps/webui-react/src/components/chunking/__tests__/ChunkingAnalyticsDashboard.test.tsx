@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@/tests/utils/test-utils'
+import { render, screen, waitFor } from '@/tests/utils/test-utils'
 import userEvent from '@testing-library/user-event'
 import { ChunkingAnalyticsDashboard } from '../ChunkingAnalyticsDashboard'
 import { useChunkingStore } from '@/stores/chunkingStore'
@@ -168,7 +168,7 @@ describe('ChunkingAnalyticsDashboard', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       analyticsData: mockAnalyticsData,
       analyticsLoading: false,
       loadAnalytics: mockLoadAnalytics,
@@ -205,7 +205,7 @@ describe('ChunkingAnalyticsDashboard', () => {
   })
 
   it('shows loading state when analytics are loading', () => {
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       analyticsData: null,
       analyticsLoading: true,
       loadAnalytics: mockLoadAnalytics,
@@ -222,7 +222,7 @@ describe('ChunkingAnalyticsDashboard', () => {
   })
 
   it('shows empty state when no analytics data', () => {
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       analyticsData: null,
       analyticsLoading: false,
       loadAnalytics: mockLoadAnalytics,
@@ -406,7 +406,7 @@ describe('ChunkingAnalyticsDashboard', () => {
   })
 
   it('handles empty recommendations gracefully', () => {
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       analyticsData: {
         ...mockAnalyticsData,
         recommendations: [],
@@ -432,7 +432,7 @@ describe('ChunkingAnalyticsDashboard', () => {
       description: 'Test description',
     }
 
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       analyticsData: {
         ...mockAnalyticsData,
         recommendations: [recommendationWithoutAction],
@@ -455,7 +455,7 @@ describe('ChunkingAnalyticsDashboard', () => {
   })
 
   it('does not export when no analytics data', () => {
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       analyticsData: null,
       analyticsLoading: false,
       loadAnalytics: mockLoadAnalytics,
@@ -475,7 +475,7 @@ describe('ChunkingAnalyticsDashboard', () => {
   })
 
   it('formats large numbers correctly', () => {
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       analyticsData: {
         ...mockAnalyticsData,
         strategyUsage: [
@@ -500,7 +500,7 @@ describe('ChunkingAnalyticsDashboard', () => {
   })
 
   it('handles loading state with existing data', () => {
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       analyticsData: mockAnalyticsData,
       analyticsLoading: true,
       loadAnalytics: mockLoadAnalytics,

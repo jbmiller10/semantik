@@ -99,7 +99,7 @@ describe('ChunkingPreviewPanel', () => {
       writable: true,
       configurable: true,
     })
-    ;(useChunkingStore as any).mockReturnValue(defaultMockStore)
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue(defaultMockStore)
   })
 
   afterEach(() => {
@@ -116,7 +116,7 @@ describe('ChunkingPreviewPanel', () => {
   })
 
   it('shows loading state when preview is loading', () => {
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       ...defaultMockStore,
       previewLoading: true,
     })
@@ -130,7 +130,7 @@ describe('ChunkingPreviewPanel', () => {
 
   it('shows error state when preview fails', () => {
     const errorMessage = 'Failed to generate preview'
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       ...defaultMockStore,
       previewError: errorMessage,
     })
@@ -142,7 +142,7 @@ describe('ChunkingPreviewPanel', () => {
   })
 
   it('shows empty state when no document is selected', () => {
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       ...defaultMockStore,
       previewDocument: null,
       previewChunks: [],
@@ -156,7 +156,7 @@ describe('ChunkingPreviewPanel', () => {
 
   it('calls onDocumentSelect when select button is clicked', async () => {
     const mockOnDocumentSelect = vi.fn()
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       ...defaultMockStore,
       previewDocument: null,
       previewChunks: [],
@@ -294,7 +294,6 @@ describe('ChunkingPreviewPanel', () => {
   })
 
   it('highlights chunk boundaries in original text', async () => {
-    const user = userEvent.setup()
     render(<ChunkingPreviewPanel />)
 
     // Default is already split view
@@ -355,7 +354,7 @@ describe('ChunkingPreviewPanel', () => {
   })
 
   it('handles empty chunks gracefully', () => {
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       ...defaultMockStore,
       previewChunks: [],
       previewStatistics: null,
@@ -452,7 +451,7 @@ describe('ChunkingPreviewPanel', () => {
       content: 'x'.repeat(100000), // 100KB document
     }
 
-    ;(useChunkingStore as any).mockReturnValue({
+    ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       ...defaultMockStore,
       previewDocument: largeDoc,
     })

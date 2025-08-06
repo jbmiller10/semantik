@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture()
-def mock_embedding_service() -> None:
+def mock_embedding_service() -> Mock:
     """Create a mock embedding service"""
     service = Mock()
     service.is_initialized = True
@@ -191,7 +191,7 @@ class TestVecpipeHealthEndpoints:
     """Test health endpoints in vecpipe"""
 
     @pytest.fixture()
-    def vecpipe_app(self) -> None:
+    def vecpipe_app(self) -> TestClient:
         """Create vecpipe app for testing"""
         from packages.vecpipe.search_api import app
 
