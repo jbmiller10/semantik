@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from packages.webui.api.chunking_exceptions import ChunkingMemoryError, ChunkingValidationError
 from packages.webui.api.chunking_integration_example import ChunkingService, router
+from packages.webui.middleware.correlation import get_correlation_id
 
 
 class TestChunkingIntegrationExample:
@@ -37,40 +38,66 @@ class TestChunkingIntegrationExample:
 
     def test_process_document_success(
         self,
-        client: TestClient,
+        app: FastAPI,
         mock_correlation_id: str,
     ) -> None:
         """Test successful document processing."""
-        with patch("packages.webui.api.chunking_integration_example.get_correlation_id") as mock_get_id:
-            mock_get_id.return_value = mock_correlation_id
+        # Override the dependency
+        def override_get_correlation_id():
+            return mock_correlation_id
+        
+        app.dependency_overrides[get_correlation_id] = override_get_correlation_id
+        
+        client = TestClient(app)
+        response = client.post(
+            "/api/v2/chunking/process",
+            params={"document_id": "doc-123"},
+        )
 
-            response = client.post(
-                "/api/v2/chunking/process",
-                params={"document_id": "doc-123"},
-            )
-
-            assert response.status_code == 200
-            data = response.json()
-            assert data["status"] == "processed"
-            assert data["correlation_id"] == mock_correlation_id
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "processed"
+        assert data["correlation_id"] == mock_correlation_id
 
     def test_process_document_missing_id(
         self,
-        client: TestClient,
+        app: FastAPI,
         mock_correlation_id: str,
     ) -> None:
         """Test processing with missing document ID."""
-        with patch("packages.webui.api.chunking_integration_example.get_correlation_id") as mock_get_id:
-            mock_get_id.return_value = mock_correlation_id
-
-            response = client.post(
-                "/api/v2/chunking/process",
-                params={"document_id": ""},
+        # Override the dependency
+        def override_get_correlation_id():
+            return mock_correlation_id
+        
+        app.dependency_overrides[get_correlation_id] = override_get_correlation_id
+        
+        # Register a basic exception handler for ChunkingValidationError
+        from fastapi import HTTPException
+        from starlette.responses import JSONResponse
+        
+        @app.exception_handler(ChunkingValidationError)
+        async def chunking_validation_handler(request, exc: ChunkingValidationError):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "detail": exc.detail,
+                    "correlation_id": exc.correlation_id,
+                    "field_errors": exc.field_errors,
+                }
             )
+        
+        client = TestClient(app)
+        response = client.post(
+            "/api/v2/chunking/process",
+            params={"document_id": ""},
+        )
 
-            # The exception will be raised but FastAPI will handle it
-            # In a real app with proper exception handlers, this would return 400
-            assert response.status_code == 500  # Without proper exception handler setup
+        # With the exception handler, it should return 400
+        assert response.status_code == 400
+        data = response.json()
+        assert data["detail"] == "Document ID is required"
+        assert data["correlation_id"] == mock_correlation_id
+        assert data["field_errors"] == {"document_id": ["This field is required"]}
 
     def test_process_document_with_validation_error(
         self,
