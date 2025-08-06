@@ -133,7 +133,7 @@ describe('ChunkingStrategySelector', () => {
     fireEvent.click(configureButton);
     
     // Parameter tuner should be visible (checking for presence of ChunkingParameterTuner)
-    expect(screen.getByText('Preset Configuration')).toBeInTheDocument();
+    expect(screen.getByText('Configuration')).toBeInTheDocument();
   });
 
   it('displays strategy-specific recommendations', () => {
