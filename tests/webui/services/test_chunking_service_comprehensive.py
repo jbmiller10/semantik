@@ -964,7 +964,7 @@ class TestProgressTracking:
         
         assert result["status"] == "in_progress"
         assert result["progress_percentage"] == 45.5
-        assert result["processed_documents"] == 5
+        assert result["documents_processed"] == 5
 
     @pytest.mark.asyncio
     async def test_update_progress(

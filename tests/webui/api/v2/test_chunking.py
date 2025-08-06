@@ -9,7 +9,7 @@ import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, List
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from fastapi import HTTPException, status
@@ -158,6 +158,11 @@ class TestStrategyManagement:
         """Test that listing strategies requires authentication."""
         from packages.webui.main import app
         from packages.webui.auth import get_current_user
+        from packages.shared.config import settings
+        
+        # Ensure auth is enabled for this test
+        original_disable_auth = settings.DISABLE_AUTH
+        settings.DISABLE_AUTH = False
         
         # Create a client without overriding authentication
         client = TestClient(app)
@@ -181,6 +186,8 @@ class TestStrategyManagement:
         finally:
             # Clean up
             app.dependency_overrides.clear()
+            # Restore original setting
+            settings.DISABLE_AUTH = original_disable_auth
 
     def test_get_strategy_details_success(self, client: TestClient) -> None:
         """Test getting details for a specific strategy."""
@@ -919,30 +926,44 @@ class TestProgressTracking:
 class TestSecurityAndValidation:
     """Test security and input validation."""
 
-    def test_authorization_checks(self) -> None:
+    @patch("packages.webui.auth.settings")
+    def test_authorization_checks(self, mock_settings: MagicMock) -> None:
         """Test that all endpoints require authentication."""
         from packages.webui.main import app
         
-        client = TestClient(app)
+        # Configure mock settings to ensure auth is enabled
+        mock_settings.DISABLE_AUTH = False
+        mock_settings.JWT_SECRET_KEY = "test-secret-key"
+        mock_settings.ALGORITHM = "HS256"
+        mock_settings.ACCESS_TOKEN_EXPIRE_MINUTES = 60
         
-        # Test various endpoints without authentication
-        endpoints = [
-            ("GET", "/api/v2/chunking/strategies"),
-            ("GET", "/api/v2/chunking/strategies/fixed_size"),
-            ("POST", "/api/v2/chunking/strategies/recommend"),
-            ("POST", "/api/v2/chunking/preview"),
-            ("GET", f"/api/v2/chunking/preview/{uuid.uuid4()}"),
-            ("POST", "/api/v2/chunking/compare"),
-            ("GET", "/api/v2/chunking/metrics"),
-        ]
+        # Clear any existing dependency overrides
+        app.dependency_overrides.clear()
         
-        for method, endpoint in endpoints:
-            if method == "GET":
-                response = client.get(endpoint)
-            else:
-                response = client.post(endpoint, json={})
+        try:
+            client = TestClient(app)
             
-            assert response.status_code == status.HTTP_401_UNAUTHORIZED, f"Endpoint {endpoint} should require auth"
+            # Test various endpoints without authentication
+            endpoints = [
+                ("GET", "/api/v2/chunking/strategies"),
+                ("GET", "/api/v2/chunking/strategies/fixed_size"),
+                ("POST", "/api/v2/chunking/strategies/recommend"),
+                ("POST", "/api/v2/chunking/preview"),
+                ("GET", f"/api/v2/chunking/preview/{uuid.uuid4()}"),
+                ("POST", "/api/v2/chunking/compare"),
+                ("GET", "/api/v2/chunking/metrics"),
+            ]
+            
+            for method, endpoint in endpoints:
+                if method == "GET":
+                    response = client.get(endpoint)
+                else:
+                    response = client.post(endpoint, json={})
+                
+                assert response.status_code == status.HTTP_401_UNAUTHORIZED, f"Endpoint {endpoint} should require auth but returned {response.status_code}"
+        finally:
+            # Clean up
+            app.dependency_overrides.clear()
 
     def test_input_validation_chunk_size(self, client: TestClient) -> None:
         """Test validation of chunk size parameters."""
