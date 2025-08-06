@@ -56,6 +56,9 @@ global.IntersectionObserver = vi.fn().mockImplementation(() => ({
 // Mock scrollTo
 window.scrollTo = vi.fn();
 
+// Mock scrollIntoView
+HTMLElement.prototype.scrollIntoView = vi.fn();
+
 // Clean up after each test
 afterEach(() => {
   vi.clearAllMocks();
