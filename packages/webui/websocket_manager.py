@@ -26,10 +26,13 @@ class RedisStreamWebSocketManager:
         self.consumer_tasks: dict[str, asyncio.Task] = {}
         self.consumer_group = f"webui-{uuid.uuid4().hex[:8]}"
         self.redis_url = settings.REDIS_URL
-        self.max_connections_per_user = 10  # Prevent DOS attacks
+        self.max_connections_per_user = 10  # Prevent DOS attacks per user
+        self.max_total_connections = 1000  # Global connection limit
         self._startup_lock = asyncio.Lock()
         self._startup_attempted = False
         self._get_operation_func = None  # Function to get operation by ID
+        self._chunking_progress_throttle = {}  # Track last progress update time per operation
+        self._chunking_progress_threshold = 0.5  # Minimum seconds between progress updates
 
     async def startup(self) -> None:
         """Initialize Redis connection on application startup with retry logic."""
@@ -87,6 +90,10 @@ class RedisStreamWebSocketManager:
                 with contextlib.suppress(Exception):
                     await websocket.close()
 
+        # Clear the dictionaries after cleanup
+        self.connections.clear()
+        self.consumer_tasks.clear()
+
         # Close Redis connection
         if self.redis:
             await self.redis.close()
@@ -108,6 +115,13 @@ class RedisStreamWebSocketManager:
             logger.info("Redis not connected, attempting to reconnect...")
             await self.startup()
 
+        # Check global connection limit first
+        total_connections = sum(len(sockets) for sockets in self.connections.values())
+        if total_connections >= self.max_total_connections:
+            logger.error(f"Global connection limit reached ({self.max_total_connections})")
+            await websocket.close(code=1008, reason="Server connection limit exceeded")
+            return
+
         # Check connection limit for this user
         user_connections = sum(
             len(sockets) for key, sockets in self.connections.items() if key.startswith(f"{user_id}:")
@@ -115,7 +129,7 @@ class RedisStreamWebSocketManager:
 
         if user_connections >= self.max_connections_per_user:
             logger.warning(f"User {user_id} exceeded connection limit ({self.max_connections_per_user})")
-            await websocket.close(code=1008, reason="Connection limit exceeded")
+            await websocket.close(code=1008, reason="User connection limit exceeded")
             return
 
         await websocket.accept()
@@ -442,6 +456,244 @@ class RedisStreamWebSocketManager:
 
         except Exception as e:
             logger.warning(f"Failed to clean up stream for operation {operation_id}: {e}")
+
+    async def cleanup_operation_channel(self, operation_id: str) -> None:
+        """Clean up all resources for a completed operation.
+
+        Args:
+            operation_id: The operation ID to clean up
+        """
+        # Cancel consumer task if exists
+        if operation_id in self.consumer_tasks:
+            task = self.consumer_tasks[operation_id]
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+            del self.consumer_tasks[operation_id]
+
+        # Clean up Redis stream
+        await self.cleanup_stream(operation_id)
+
+        # Close all connections for this operation
+        await self._close_connections(operation_id)
+
+        logger.info(f"Cleaned up all resources for operation {operation_id}")
+
+    async def broadcast_to_operation(
+        self,
+        operation_id: str,
+        message: dict,
+    ) -> None:
+        """Broadcast a message to all connections for an operation.
+
+        Args:
+            operation_id: The operation ID
+            message: The message to broadcast
+        """
+        await self._broadcast(operation_id, message)
+
+    async def _should_send_progress_update(
+        self,
+        operation_id: str,
+        message: dict,
+    ) -> bool:
+        """Check if a progress update should be sent based on throttling.
+
+        Args:
+            operation_id: The operation ID
+            message: The message to check
+
+        Returns:
+            True if the message should be sent, False if throttled
+        """
+        # Check if this is a progress update
+        if message.get("type") != "chunking_progress":
+            return True  # Non-progress messages always go through
+
+        # Check throttling
+        now = datetime.now(UTC)
+        if operation_id in self._chunking_progress_throttle:
+            time_since_last = (now - self._chunking_progress_throttle[operation_id]).total_seconds()
+            if time_since_last < self._chunking_progress_threshold:
+                # Too soon after last update, throttle it
+                return False
+
+        # Update timestamp for next check
+        self._chunking_progress_throttle[operation_id] = now
+        return True
+
+    async def send_chunking_progress(
+        self,
+        operation_id: str,
+        progress_percentage: float,
+        documents_processed: int,
+        total_documents: int,
+        chunks_created: int,
+        current_document: str | None = None,
+        throttle: bool = True,
+    ) -> None:
+        """Send chunking progress update with optional throttling.
+
+        Args:
+            operation_id: The chunking operation ID
+            progress_percentage: Completion percentage (0-100)
+            documents_processed: Number of documents processed
+            total_documents: Total documents to process
+            chunks_created: Number of chunks created so far
+            current_document: Currently processing document name
+            throttle: Whether to throttle progress updates
+        """
+        # Apply throttling to reduce WebSocket traffic
+        if throttle and operation_id in self._chunking_progress_throttle:
+            time_since_last = (datetime.now(UTC) - self._chunking_progress_throttle[operation_id]).total_seconds()
+            if time_since_last < self._chunking_progress_threshold:
+                # Skip this update if too soon after the last one
+                return
+
+        # Update throttle timestamp
+        self._chunking_progress_throttle[operation_id] = datetime.now(UTC)
+
+        # Send the progress update
+        await self.send_update(
+            operation_id,
+            "chunking_progress",
+            {
+                "progress_percentage": progress_percentage,
+                "documents_processed": documents_processed,
+                "total_documents": total_documents,
+                "chunks_created": chunks_created,
+                "current_document": current_document,
+            },
+        )
+
+    async def send_chunking_event(
+        self,
+        operation_id: str,
+        event_type: str,
+        data: dict,
+    ) -> None:
+        """Send a chunking-specific event.
+
+        Supported event types:
+        - chunking_started: Chunking operation has started
+        - chunking_document_start: Started processing a document
+        - chunking_document_complete: Completed processing a document
+        - chunking_completed: Entire chunking operation completed
+        - chunking_failed: Chunking operation failed
+        - chunking_cancelled: Chunking operation was cancelled
+        - chunking_strategy_changed: Chunking strategy was changed
+
+        Args:
+            operation_id: The chunking operation ID
+            event_type: Type of chunking event
+            data: Event-specific data
+        """
+        await self.send_update(operation_id, event_type, data)
+
+    async def send_message(self, channel: str, message: dict) -> None:
+        """Send a message to a specific channel.
+
+        This is used for custom WebSocket channels like chunking operations.
+
+        Args:
+            channel: The channel identifier (e.g., "chunking:collection_id:operation_id")
+            message: The message to send
+        """
+        if self.redis:
+            stream_key = f"stream:{channel}"
+
+            try:
+                # Add to stream with automatic ID
+                await self.redis.xadd(
+                    stream_key,
+                    {"message": json.dumps(message)},
+                    maxlen=100,  # Keep last 100 messages for channels
+                )
+
+                # Set TTL (1 hour for channel messages)
+                await self.redis.expire(stream_key, 3600)
+
+                logger.debug(f"Sent message to channel {channel}")
+            except Exception as e:
+                logger.error(f"Failed to send message to channel: {e}")
+                # Fall back to direct broadcast if we have connections
+                await self._broadcast_to_channel(channel, message)
+        else:
+            # Redis not available - send directly to connected clients
+            await self._broadcast_to_channel(channel, message)
+
+    async def _broadcast_to_channel(self, channel: str, message: dict) -> None:
+        """Broadcast a message to all connections on a channel.
+
+        Args:
+            channel: The channel identifier
+            message: The message to broadcast
+        """
+        # Find all connections for this channel
+        for key, websockets in list(self.connections.items()):
+            if channel in key:
+                for websocket in list(websockets):
+                    try:
+                        await websocket.send_json(message)
+                        logger.debug(f"Sent channel message to websocket: {channel}")
+                    except Exception as e:
+                        logger.warning(f"Failed to send channel message to websocket: {e}")
+                        # Remove broken connection
+                        websockets.discard(websocket)
+
+    async def connect_to_channel(self, websocket: WebSocket, channel: str, user_id: str) -> None:
+        """Connect a WebSocket to a custom channel.
+
+        Args:
+            websocket: The WebSocket connection
+            channel: The channel to connect to
+            user_id: The user ID making the connection
+        """
+        # Check global connection limit first
+        total_connections = sum(len(sockets) for sockets in self.connections.values())
+        if total_connections >= self.max_total_connections:
+            logger.error(f"Global connection limit reached ({self.max_total_connections})")
+            await websocket.close(code=1008, reason="Server connection limit exceeded")
+            return
+
+        # Check connection limit for this user
+        user_connections = sum(
+            len(sockets) for key, sockets in self.connections.items() if key.startswith(f"{user_id}:")
+        )
+
+        if user_connections >= self.max_connections_per_user:
+            logger.warning(f"User {user_id} exceeded connection limit ({self.max_connections_per_user})")
+            await websocket.close(code=1008, reason="User connection limit exceeded")
+            return
+
+        await websocket.accept()
+
+        # Store connection
+        key = f"{user_id}:channel:{channel}"
+        if key not in self.connections:
+            self.connections[key] = set()
+        self.connections[key].add(websocket)
+
+        logger.info(
+            f"Channel WebSocket connected: user={user_id}, channel={channel} "
+            f"(total user connections: {user_connections + 1})"
+        )
+
+    async def disconnect_from_channel(self, websocket: WebSocket, channel: str, user_id: str) -> None:
+        """Disconnect a WebSocket from a custom channel.
+
+        Args:
+            websocket: The WebSocket connection
+            channel: The channel to disconnect from
+            user_id: The user ID
+        """
+        key = f"{user_id}:channel:{channel}"
+        if key in self.connections:
+            self.connections[key].discard(websocket)
+            if not self.connections[key]:
+                del self.connections[key]
+
+        logger.info(f"Channel WebSocket disconnected: user={user_id}, channel={channel}")
 
 
 # Global instance

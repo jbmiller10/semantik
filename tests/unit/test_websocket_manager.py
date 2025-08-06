@@ -208,7 +208,7 @@ class TestWebSocketManager:
         await ws_manager.connect(mock_websocket, "op-new", "user-123")
 
         # Should reject connection
-        mock_websocket.close.assert_called_once_with(code=1008, reason="Connection limit exceeded")
+        mock_websocket.close.assert_called_once_with(code=1008, reason="User connection limit exceeded")
         mock_websocket.accept.assert_not_called()
 
     @pytest.mark.asyncio()
