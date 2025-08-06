@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 from .api import auth, health, internal, metrics, models, root, settings  # noqa: E402
 from .api.chunking_exception_handlers import register_chunking_exception_handlers  # noqa: E402
+from .api.v2 import chunking as v2_chunking  # noqa: E402
 from .api.v2 import collections as v2_collections  # noqa: E402
 from .api.v2 import directory_scan as v2_directory_scan  # noqa: E402
 from .api.v2 import documents as v2_documents  # noqa: E402
@@ -228,6 +229,7 @@ def create_app() -> FastAPI:
     app.include_router(internal.router)
 
     # Include v2 API routers
+    app.include_router(v2_chunking.router)
     app.include_router(v2_collections.router)
     app.include_router(v2_directory_scan.router)
     app.include_router(v2_documents.router)

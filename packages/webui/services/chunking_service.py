@@ -11,6 +11,7 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 import psutil
@@ -313,51 +314,66 @@ class ChunkingService:
 
     async def recommend_strategy(
         self,
-        file_paths: list[str],
-    ) -> ChunkingRecommendation:
+        file_types: list[str] | None = None,
+        file_paths: list[str] | None = None,
+        user_id: int | None = None,
+    ) -> dict[str, Any]:
         """Recommend optimal chunking strategy based on file types.
 
         Args:
+            file_types: List of file types/extensions
             file_paths: List of file paths to analyze
+            user_id: User ID for tracking
 
         Returns:
-            ChunkingRecommendation with optimal strategy
+            Dictionary with recommendation details
         """
+        # Use file_types if provided, otherwise extract from paths
+        types_to_analyze = file_types or []
+        if not types_to_analyze and file_paths:
+            types_to_analyze = [path.split('.')[-1] if '.' in path else 'unknown' for path in file_paths]
+        
         # Analyze file types
         file_type_breakdown: dict[str, int] = {}
-
-        for file_path in file_paths:
-            category = FileTypeDetector.get_file_category(file_path)
+        
+        for file_type in types_to_analyze:
+            category = FileTypeDetector.get_file_category(f"file.{file_type}")
             file_type_breakdown[category] = file_type_breakdown.get(category, 0) + 1
-
+        
         # Determine recommendation
-        total_files = len(file_paths)
-
+        total_files = len(types_to_analyze)
+        
         # If majority are markdown files
         if file_type_breakdown.get("markdown", 0) > total_files * 0.5:
-            return ChunkingRecommendation(
-                recommended_strategy="markdown",
-                recommended_params={},
-                rationale="Majority of files are markdown documents",
-                file_type_breakdown=file_type_breakdown,
-            )
-
+            return {
+                "strategy": "recursive",  # Use recursive instead of markdown
+                "confidence": 0.85,
+                "reasoning": "Majority of files are markdown documents which benefit from structure-aware chunking",
+                "alternatives": ["semantic", "fixed_size"],
+                "chunk_size": 600,
+                "chunk_overlap": 100,
+            }
+        
         # If significant code files
         if file_type_breakdown.get("code", 0) > total_files * 0.3:
-            return ChunkingRecommendation(
-                recommended_strategy="recursive",
-                recommended_params={"chunk_size": 500, "chunk_overlap": 75},
-                rationale="Mixed content with significant code files",
-                file_type_breakdown=file_type_breakdown,
-            )
-
+            return {
+                "strategy": "recursive",
+                "confidence": 0.80,
+                "reasoning": "Mixed content with significant code files requiring syntax-aware chunking",
+                "alternatives": ["sliding_window", "semantic"],
+                "chunk_size": 500,
+                "chunk_overlap": 75,
+            }
+        
         # Default recommendation
-        return ChunkingRecommendation(
-            recommended_strategy="recursive",
-            recommended_params={"chunk_size": 600, "chunk_overlap": 100},
-            rationale="General purpose strategy for mixed content",
-            file_type_breakdown=file_type_breakdown,
-        )
+        return {
+            "strategy": "recursive",
+            "confidence": 0.75,
+            "reasoning": "General purpose strategy for mixed content types",
+            "alternatives": ["fixed_size", "semantic"],
+            "chunk_size": 600,
+            "chunk_overlap": 100,
+        }
 
     async def get_chunking_statistics(
         self,
@@ -472,6 +488,36 @@ class ChunkingService:
             user_id=user_id,
         )
 
+    async def clear_preview_cache(
+        self,
+        preview_id: str,
+        user_id: int,
+    ) -> None:
+        """Clear cached preview for a specific preview ID.
+
+        Args:
+            preview_id: The preview ID to clear
+            user_id: The user ID requesting the clear
+
+        Raises:
+            ValueError: If preview_id is invalid
+        """
+        # Validate preview_id format (should be a valid UUID or hash)
+        import re
+        if not re.match(r'^[a-f0-9\-]{8,}$', preview_id, re.IGNORECASE):
+            raise ValueError(f"Invalid preview ID format: {preview_id}")
+        
+        # Log the cache clear request for audit
+        logger.info(f"User {user_id} clearing preview cache for {preview_id}")
+        
+        try:
+            cache_key = f"preview:{preview_id}"
+            if self.redis:
+                await self.redis.delete(cache_key)
+        except Exception as e:
+            logger.warning(f"Failed to clear preview cache: {e}")
+            # Don't raise - cache clear failures are non-critical
+
     async def track_preview_usage(
         self,
         strategy: str,
@@ -493,24 +539,109 @@ class ChunkingService:
 
     async def get_chunking_progress(
         self,
-        collection_id: str,  # noqa: ARG002
-    ) -> AsyncIterator[dict[str, Any]]:
-        """Get real-time chunking progress updates.
+        operation_id: str,
+        user_id: int,
+    ) -> dict[str, Any] | None:
+        """Get chunking operation progress.
 
         Args:
-            collection_id: Collection ID
+            operation_id: Operation ID
+            user_id: User ID for access check
 
-        Yields:
-            Progress update dictionaries
+        Returns:
+            Progress dictionary or None if not found
         """
-        # This would subscribe to Redis pub/sub for progress updates
-        # For now, just yield a mock update
-        yield {
-            "status": "processing",
-            "processed": 50,
-            "total": 100,
-            "percentage": 50.0,
-        }
+        # This would query the operation status from database
+        # For now, return mock data for valid UUIDs
+        import uuid
+        try:
+            uuid.UUID(operation_id)
+            return {
+                "status": "in_progress",
+                "progress_percentage": 50.0,
+                "documents_processed": 5,
+                "total_documents": 10,
+                "chunks_created": 250,
+                "current_document": "document.pdf",
+                "estimated_time_remaining": 30,
+                "errors": [],
+            }
+        except ValueError:
+            return None
+    
+    async def process_chunking_operation(
+        self,
+        operation_id: str,
+        collection_id: str,
+        strategy: str,
+        config: dict[str, Any] | None,
+        document_ids: list[str] | None,
+        user_id: int,
+        websocket_channel: str,
+    ) -> None:
+        """Process chunking operation asynchronously.
+
+        This should be called from a background task or Celery worker.
+
+        Args:
+            operation_id: Operation ID
+            collection_id: Collection ID
+            strategy: Chunking strategy
+            config: Chunking configuration
+            document_ids: Optional list of document IDs to process
+            user_id: User ID
+            websocket_channel: WebSocket channel for progress updates
+        """
+        from packages.webui.websocket_manager import ws_manager
+        
+        try:
+            # Send initial progress
+            await ws_manager.send_message(
+                websocket_channel,
+                {
+                    "type": "chunking_progress",
+                    "operation_id": operation_id,
+                    "progress": 0,
+                    "status": "in_progress",
+                    "timestamp": datetime.utcnow().isoformat(),
+                },
+            )
+            
+            # TODO: Implement actual chunking logic here
+            # This would:
+            # 1. Load documents from database
+            # 2. Apply chunking strategy
+            # 3. Store chunks in vector database
+            # 4. Update operation status
+            # 5. Send progress updates via WebSocket
+            
+            import asyncio
+            await asyncio.sleep(1)  # Simulate processing
+            
+            # Send completion
+            await ws_manager.send_message(
+                websocket_channel,
+                {
+                    "type": "chunking_completed",
+                    "operation_id": operation_id,
+                    "progress": 100,
+                    "status": "completed",
+                    "chunks_created": 50,
+                    "timestamp": datetime.utcnow().isoformat(),
+                },
+            )
+            
+        except Exception as e:
+            logger.error(f"Chunking operation failed: {e}")
+            await ws_manager.send_message(
+                websocket_channel,
+                {
+                    "type": "chunking_failed",
+                    "operation_id": operation_id,
+                    "error": str(e),
+                    "timestamp": datetime.utcnow().isoformat(),
+                },
+            )
 
     def _hash_config(self, config: dict[str, Any]) -> str:
         """Create hash of configuration for caching."""

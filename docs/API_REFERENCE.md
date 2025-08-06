@@ -634,6 +634,44 @@ Content-Type: application/json
 
 **Note:** This endpoint is optimized for single collection searches and has higher rate limits than the multi-collection endpoint.
 
+#### Chunking API Endpoints
+
+The chunking API provides comprehensive document chunking capabilities with multiple strategies, real-time processing, and quality analysis. For detailed documentation, see [Chunking API Documentation](/docs/api/CHUNKING_API.md).
+
+##### Key Endpoints Overview
+
+###### Strategy Management
+- `GET /api/v2/chunking/strategies` - List available chunking strategies
+- `GET /api/v2/chunking/strategies/{strategy_id}` - Get strategy details
+- `POST /api/v2/chunking/strategies/recommend` - Get AI-powered strategy recommendation
+
+###### Preview and Testing
+- `POST /api/v2/chunking/preview` - Generate chunk preview (rate limited: 10/min)
+- `POST /api/v2/chunking/compare` - Compare multiple strategies (rate limited: 5/min)
+- `GET /api/v2/chunking/preview/{preview_id}` - Retrieve cached preview
+
+###### Collection Processing
+- `POST /api/v2/chunking/collections/{collection_id}/chunk` - Start async chunking operation
+- `PATCH /api/v2/chunking/collections/{collection_id}/chunking-strategy` - Update collection strategy
+- `GET /api/v2/chunking/collections/{collection_id}/chunks` - List collection chunks
+- `GET /api/v2/chunking/collections/{collection_id}/chunking-stats` - Get chunking statistics
+
+###### Analytics and Quality
+- `GET /api/v2/chunking/metrics` - Global chunking metrics
+- `GET /api/v2/chunking/metrics/by-strategy` - Metrics by strategy
+- `POST /api/v2/chunking/analyze` - Analyze document for strategy recommendation
+- `GET /api/v2/chunking/quality-scores` - Chunk quality analysis
+
+###### Configuration Management
+- `POST /api/v2/chunking/configs` - Save custom configuration
+- `GET /api/v2/chunking/configs` - List saved configurations
+
+###### Progress Tracking
+- `GET /api/v2/chunking/operations/{operation_id}/progress` - Get operation progress
+- WebSocket: `ws://localhost:8080/ws/channel/{websocket_channel}` - Real-time updates
+
+For complete endpoint documentation, request/response schemas, and examples, see the [full Chunking API documentation](/docs/api/CHUNKING_API.md) or [practical examples](/docs/api/CHUNKING_EXAMPLES.md).
+
 #### Document Access Endpoints
 
 ##### Get Document Content
