@@ -26,28 +26,94 @@ document.createElement = vi.fn((tagName: string) => {
 })
 
 const mockAnalyticsData: ChunkingAnalytics = {
-  performance: {
-    avgChunkSize: 512,
-    avgOverlapSize: 50,
-    totalChunks: 1500,
-    avgProcessingTime: 0.25,
-    trend: 'up' as const,
-  },
-  quality: {
-    coherenceScore: 0.85,
-    completenessScore: 0.92,
-    redundancyScore: 0.15,
-    trend: 'stable' as const,
-  },
+  strategyUsage: [
+    {
+      strategy: 'recursive',
+      count: 600,
+      percentage: 60,
+      trend: 'up',
+    },
+    {
+      strategy: 'semantic',
+      count: 200,
+      percentage: 20,
+      trend: 'stable',
+    },
+    {
+      strategy: 'markdown',
+      count: 150,
+      percentage: 15,
+      trend: 'down',
+    },
+    {
+      strategy: 'character',
+      count: 50,
+      percentage: 5,
+      trend: 'stable',
+    },
+  ],
+  performanceMetrics: [
+    {
+      strategy: 'recursive',
+      avgProcessingTimeMs: 250,
+      avgChunksPerDocument: 10,
+      successRate: 95.5,
+    },
+    {
+      strategy: 'semantic',
+      avgProcessingTimeMs: 450,
+      avgChunksPerDocument: 8,
+      successRate: 98.2,
+    },
+    {
+      strategy: 'markdown',
+      avgProcessingTimeMs: 300,
+      avgChunksPerDocument: 12,
+      successRate: 96.8,
+    },
+    {
+      strategy: 'character',
+      avgProcessingTimeMs: 150,
+      avgChunksPerDocument: 15,
+      successRate: 92.0,
+    },
+  ],
+  fileTypeDistribution: [
+    {
+      fileType: 'pdf',
+      count: 450,
+      preferredStrategy: 'recursive',
+    },
+    {
+      fileType: 'md',
+      count: 250,
+      preferredStrategy: 'markdown',
+    },
+    {
+      fileType: 'txt',
+      count: 150,
+      preferredStrategy: 'recursive',
+    },
+    {
+      fileType: 'docx',
+      count: 100,
+      preferredStrategy: 'recursive',
+    },
+    {
+      fileType: 'html',
+      count: 50,
+      preferredStrategy: 'semantic',
+    },
+  ],
   recommendations: [
     {
-      type: 'performance',
+      id: 'rec-1',
+      type: 'strategy',
       priority: 'high',
       title: 'Optimize chunk size',
       description: 'Current chunk size may be too large for optimal retrieval',
-      impact: 'Reduce retrieval latency by 30%',
       action: {
-        type: 'adjust_parameters',
+        label: 'Apply recommendation',
         configuration: {
           strategy: 'recursive',
           parameters: {
@@ -58,13 +124,13 @@ const mockAnalyticsData: ChunkingAnalytics = {
       },
     },
     {
-      type: 'quality',
+      id: 'rec-2',
+      type: 'parameter',
       priority: 'medium',
       title: 'Increase chunk overlap',
       description: 'More overlap could improve context preservation',
-      impact: 'Improve coherence score by 10%',
       action: {
-        type: 'adjust_parameters',
+        label: 'Apply settings',
         configuration: {
           strategy: 'recursive',
           parameters: {
@@ -75,63 +141,21 @@ const mockAnalyticsData: ChunkingAnalytics = {
       },
     },
     {
-      type: 'cost',
+      id: 'rec-3',
+      type: 'general',
       priority: 'low',
       title: 'Consider semantic chunking',
       description: 'Semantic chunking may provide better results for your content',
-      impact: 'Improve quality scores by 15%',
       action: {
-        type: 'change_strategy',
+        label: 'Switch strategy',
         configuration: {
           strategy: 'semantic',
           parameters: {
-            embedding_batch_size: 32,
-            similarity_threshold: 0.7,
+            breakpoint_percentile_threshold: 90,
+            max_chunk_size: 1000,
           },
         },
       },
-    },
-  ],
-  strategyPerformance: {
-    recursive: {
-      usage: 0.6,
-      avgQuality: 0.85,
-      avgSpeed: 0.25,
-    },
-    fixed: {
-      usage: 0.2,
-      avgQuality: 0.75,
-      avgSpeed: 0.15,
-    },
-    semantic: {
-      usage: 0.15,
-      avgQuality: 0.92,
-      avgSpeed: 0.45,
-    },
-    markdown: {
-      usage: 0.05,
-      avgQuality: 0.88,
-      avgSpeed: 0.30,
-    },
-  },
-  historicalTrends: [
-    {
-      date: '2025-01-01',
-      avgChunkSize: 500,
-      avgQuality: 0.82,
-      totalOperations: 45,
-    },
-    {
-      date: '2025-01-08',
-      avgChunkSize: 510,
-      avgQuality: 0.84,
-      totalOperations: 52,
-    },
-    {
-      date: '2025-01-15',
-      avgChunkSize: 512,
-      avgQuality: 0.85,
-      totalOperations: 48,
     },
   ],
 }
@@ -160,18 +184,24 @@ describe('ChunkingAnalyticsDashboard', () => {
   it('renders analytics data correctly', () => {
     render(<ChunkingAnalyticsDashboard />)
 
-    // Check performance metrics
+    // Check headers
+    expect(screen.getByText('Chunking Analytics')).toBeInTheDocument()
+    expect(screen.getByText('Strategy Usage')).toBeInTheDocument()
     expect(screen.getByText('Performance Metrics')).toBeInTheDocument()
-    expect(screen.getByText('512')).toBeInTheDocument() // avg chunk size
-    expect(screen.getByText('50')).toBeInTheDocument() // avg overlap size
-    expect(screen.getByText('1,500')).toBeInTheDocument() // total chunks
-    expect(screen.getByText('0.25s')).toBeInTheDocument() // avg processing time
+    expect(screen.getByText('File Type Distribution')).toBeInTheDocument()
 
-    // Check quality metrics
-    expect(screen.getByText('Quality Metrics')).toBeInTheDocument()
-    expect(screen.getByText('85%')).toBeInTheDocument() // coherence score
-    expect(screen.getByText('92%')).toBeInTheDocument() // completeness score
-    expect(screen.getByText('15%')).toBeInTheDocument() // redundancy score
+    // Check strategy usage data - use getAllByText since "Recursive" appears multiple times
+    const recursiveElements = screen.getAllByText('Recursive')
+    expect(recursiveElements.length).toBeGreaterThan(0)
+    expect(screen.getByText('600 (60%)')).toBeInTheDocument()
+    
+    // Check performance metrics
+    expect(screen.getByText('250ms')).toBeInTheDocument() // processing time
+    expect(screen.getByText('95.5%')).toBeInTheDocument() // success rate
+    
+    // Check file type distribution
+    expect(screen.getByText('.pdf')).toBeInTheDocument()
+    expect(screen.getByText('450 files')).toBeInTheDocument()
   })
 
   it('shows loading state when analytics are loading', () => {
@@ -186,7 +216,9 @@ describe('ChunkingAnalyticsDashboard', () => {
     render(<ChunkingAnalyticsDashboard />)
 
     expect(screen.getByText('Loading analytics...')).toBeInTheDocument()
-    expect(screen.getByRole('progressbar')).toBeInTheDocument()
+    // The spinner is an SVG with animation, not a progressbar role
+    const spinner = document.querySelector('.animate-spin')
+    expect(spinner).toBeInTheDocument()
   })
 
   it('shows empty state when no analytics data', () => {
@@ -200,8 +232,8 @@ describe('ChunkingAnalyticsDashboard', () => {
 
     render(<ChunkingAnalyticsDashboard />)
 
-    expect(screen.getByText('No Analytics Available')).toBeInTheDocument()
-    expect(screen.getByText(/No chunking analytics data/)).toBeInTheDocument()
+    expect(screen.getByText('No analytics data available')).toBeInTheDocument()
+    expect(screen.getByText('Load Analytics')).toBeInTheDocument()
   })
 
   it('loads analytics on mount', () => {
@@ -213,7 +245,7 @@ describe('ChunkingAnalyticsDashboard', () => {
     const user = userEvent.setup()
     render(<ChunkingAnalyticsDashboard />)
 
-    const refreshButton = screen.getByRole('button', { name: /refresh/i })
+    const refreshButton = screen.getByTitle('Refresh analytics')
     await user.click(refreshButton)
 
     expect(mockLoadAnalytics).toHaveBeenCalledTimes(2) // Once on mount, once on refresh
@@ -223,7 +255,7 @@ describe('ChunkingAnalyticsDashboard', () => {
     const user = userEvent.setup()
     render(<ChunkingAnalyticsDashboard />)
 
-    const exportButton = screen.getByRole('button', { name: /export/i })
+    const exportButton = screen.getByTitle('Export analytics')
     await user.click(exportButton)
 
     expect(global.URL.createObjectURL).toHaveBeenCalled()
@@ -237,7 +269,9 @@ describe('ChunkingAnalyticsDashboard', () => {
     expect(screen.getByText('Recommendations')).toBeInTheDocument()
     expect(screen.getByText('Optimize chunk size')).toBeInTheDocument()
     expect(screen.getByText('Current chunk size may be too large for optimal retrieval')).toBeInTheDocument()
-    expect(screen.getByText('Reduce retrieval latency by 30%')).toBeInTheDocument()
+    // Check that all three recommendations are rendered
+    expect(screen.getByText('Increase chunk overlap')).toBeInTheDocument()
+    expect(screen.getByText('Consider semantic chunking')).toBeInTheDocument()
   })
 
   it('handles recommendation priority colors correctly', () => {
@@ -257,24 +291,27 @@ describe('ChunkingAnalyticsDashboard', () => {
     const user = userEvent.setup()
     render(<ChunkingAnalyticsDashboard />)
 
-    // Initially details should not be visible
-    expect(screen.queryByText('Current chunk size may be too large for optimal retrieval')).not.toBeVisible()
+    // Initially, the configuration JSON should not be visible
+    expect(screen.queryByText('Suggested Configuration:')).not.toBeInTheDocument()
 
     // Click to expand
-    const expandButton = screen.getAllByRole('button', { name: /chevron/i })[0]
-    await user.click(expandButton)
+    const detailsButton = screen.getAllByText('Details')[0]
+    await user.click(detailsButton)
 
-    // Details should now be visible
+    // Configuration should now be visible
     await waitFor(() => {
-      expect(screen.getByText('Current chunk size may be too large for optimal retrieval')).toBeVisible()
+      expect(screen.getByText('Suggested Configuration:')).toBeInTheDocument()
     })
 
-    // Click to collapse
-    await user.click(expandButton)
+    // The button text should change to 'Hide'
+    expect(screen.getByText('Hide')).toBeInTheDocument()
 
-    // Details should be hidden again
+    // Click to collapse
+    await user.click(screen.getByText('Hide'))
+
+    // Configuration should be hidden again
     await waitFor(() => {
-      expect(screen.queryByText('Current chunk size may be too large for optimal retrieval')).not.toBeVisible()
+      expect(screen.queryByText('Suggested Configuration:')).not.toBeInTheDocument()
     })
   })
 
@@ -282,13 +319,9 @@ describe('ChunkingAnalyticsDashboard', () => {
     const user = userEvent.setup()
     render(<ChunkingAnalyticsDashboard onApplyRecommendation={mockOnApplyRecommendation} />)
 
-    // Expand first recommendation
-    const expandButton = screen.getAllByRole('button', { name: /chevron/i })[0]
-    await user.click(expandButton)
-
     // Click apply button
-    const applyButton = screen.getByRole('button', { name: /apply recommendation/i })
-    await user.click(applyButton)
+    const applyButtons = screen.getAllByText('Apply')
+    await user.click(applyButtons[0])
 
     expect(mockSetStrategy).toHaveBeenCalledWith('recursive')
     expect(mockUpdateConfiguration).toHaveBeenCalledWith({
@@ -302,49 +335,74 @@ describe('ChunkingAnalyticsDashboard', () => {
     const user = userEvent.setup()
     render(<ChunkingAnalyticsDashboard />)
 
-    // Check initial state
-    expect(screen.getByRole('button', { name: /30d/i })).toHaveClass('bg-blue-600')
+    // Find the select element
+    const timeRangeSelect = screen.getByRole('combobox')
+    
+    // Check initial value
+    expect(timeRangeSelect).toHaveValue('30d')
 
-    // Click 7d button
-    const sevenDayButton = screen.getByRole('button', { name: /7d/i })
-    await user.click(sevenDayButton)
+    // Change to 7 days
+    await user.selectOptions(timeRangeSelect, '7d')
 
-    expect(sevenDayButton).toHaveClass('bg-blue-600')
-    expect(screen.getByRole('button', { name: /30d/i })).not.toHaveClass('bg-blue-600')
+    expect(timeRangeSelect).toHaveValue('7d')
   })
 
   it('renders strategy performance correctly', () => {
     render(<ChunkingAnalyticsDashboard />)
 
-    expect(screen.getByText('Strategy Performance')).toBeInTheDocument()
+    expect(screen.getByText('Performance Metrics')).toBeInTheDocument()
     
-    // Check recursive strategy stats
-    expect(screen.getByText('Recursive')).toBeInTheDocument()
-    expect(screen.getByText('60%')).toBeInTheDocument() // usage
-    expect(screen.getByText('0.85')).toBeInTheDocument() // quality
-    expect(screen.getByText('0.25s')).toBeInTheDocument() // speed
+    // Check table headers
+    expect(screen.getByText('Strategy')).toBeInTheDocument()
+    expect(screen.getByText('Avg Time')).toBeInTheDocument()
+    expect(screen.getByText('Avg Chunks')).toBeInTheDocument()
+    expect(screen.getByText('Success Rate')).toBeInTheDocument()
+    
+    // Check performance metrics values
+    expect(screen.getByText('250ms')).toBeInTheDocument()
+    expect(screen.getByText('10')).toBeInTheDocument() // avg chunks per document
+    expect(screen.getByText('95.5%')).toBeInTheDocument()
+    
+    // Check that Semantic strategy appears (multiple times is OK)
+    const semanticElements = screen.getAllByText('Semantic')
+    expect(semanticElements.length).toBeGreaterThan(0)
+    expect(screen.getByText('450ms')).toBeInTheDocument()
+    expect(screen.getByText('98.2%')).toBeInTheDocument()
   })
 
   it('renders historical trends', () => {
     render(<ChunkingAnalyticsDashboard />)
 
-    expect(screen.getByText('Historical Trends')).toBeInTheDocument()
+    // The component doesn't render historical trends anymore,
+    // it renders summary stats instead
+    expect(screen.getByText('Total Documents Processed')).toBeInTheDocument()
+    expect(screen.getByText('Most Used Strategy')).toBeInTheDocument()
+    expect(screen.getByText('Average Success Rate')).toBeInTheDocument()
     
-    // Check if chart container is rendered
-    const chartContainer = screen.getByTestId('historical-trends-chart')
-    expect(chartContainer).toBeInTheDocument()
+    // Check the calculated values
+    expect(screen.getByText('1,000')).toBeInTheDocument() // total documents (600+200+150+50)
+    // Average success rate calculation: (95.5 + 98.2 + 96.8 + 92.0) / 4 = 95.625, rounds to 95.6%
+    expect(screen.getByText('95.6%')).toBeInTheDocument()
   })
 
   it('handles trend icons correctly', () => {
     render(<ChunkingAnalyticsDashboard />)
 
-    // Check for up trend icon
-    const upTrendIcon = screen.getByTestId('trend-up-icon')
-    expect(upTrendIcon).toHaveClass('text-green-600')
-
-    // Check for stable trend icon
-    const stableTrendIcon = screen.getByTestId('trend-stable-icon')
-    expect(stableTrendIcon).toHaveClass('text-gray-600')
+    // The component uses lucide icons without test-ids
+    // Check that the icons are rendered in the strategy usage section
+    const strategyUsageSection = screen.getByText('Strategy Usage').closest('.bg-white')
+    
+    // Check for trend icons - they are SVG elements with specific classes
+    const trendIcons = strategyUsageSection?.querySelectorAll('svg.h-4.w-4')
+    expect(trendIcons?.length).toBeGreaterThan(0)
+    
+    // At least one should have green color for 'up' trend
+    const upTrendIcon = strategyUsageSection?.querySelector('svg.text-green-600')
+    expect(upTrendIcon).toBeInTheDocument()
+    
+    // At least one should have gray color for 'stable' trend
+    const stableTrendIcon = strategyUsageSection?.querySelector('svg.text-gray-600')
+    expect(stableTrendIcon).toBeInTheDocument()
   })
 
   it('handles empty recommendations gracefully', () => {
@@ -361,16 +419,17 @@ describe('ChunkingAnalyticsDashboard', () => {
 
     render(<ChunkingAnalyticsDashboard />)
 
-    expect(screen.getByText('No recommendations available')).toBeInTheDocument()
+    // When there are no recommendations, the recommendations section is not rendered at all
+    expect(screen.queryByText('Recommendations')).not.toBeInTheDocument()
   })
 
   it('handles missing action in recommendation', async () => {
     const recommendationWithoutAction: ChunkingRecommendation = {
-      type: 'performance',
+      id: 'rec-no-action',
+      type: 'general',
       priority: 'high',
       title: 'Test recommendation',
       description: 'Test description',
-      impact: 'Test impact',
     }
 
     ;(useChunkingStore as any).mockReturnValue({
@@ -384,18 +443,18 @@ describe('ChunkingAnalyticsDashboard', () => {
       updateConfiguration: mockUpdateConfiguration,
     })
 
-    const user = userEvent.setup()
     render(<ChunkingAnalyticsDashboard onApplyRecommendation={mockOnApplyRecommendation} />)
 
-    // Expand recommendation
-    const expandButton = screen.getByRole('button', { name: /chevron/i })
-    await user.click(expandButton)
-
-    // Apply button should not be rendered
-    expect(screen.queryByRole('button', { name: /apply recommendation/i })).not.toBeInTheDocument()
+    // When there's no action, neither Details nor Apply buttons should be rendered
+    expect(screen.queryByText('Details')).not.toBeInTheDocument()
+    expect(screen.queryByText('Apply')).not.toBeInTheDocument()
+    
+    // But the recommendation itself should still be shown
+    expect(screen.getByText('Test recommendation')).toBeInTheDocument()
+    expect(screen.getByText('Test description')).toBeInTheDocument()
   })
 
-  it('does not export when no analytics data', async () => {
+  it('does not export when no analytics data', () => {
     ;(useChunkingStore as any).mockReturnValue({
       analyticsData: null,
       analyticsLoading: false,
@@ -404,25 +463,29 @@ describe('ChunkingAnalyticsDashboard', () => {
       updateConfiguration: mockUpdateConfiguration,
     })
 
-    const user = userEvent.setup()
     render(<ChunkingAnalyticsDashboard />)
 
-    // Export button should be disabled or not present
-    const exportButton = screen.queryByRole('button', { name: /export/i })
-    if (exportButton) {
-      await user.click(exportButton)
-      expect(global.URL.createObjectURL).not.toHaveBeenCalled()
-    }
+    // When no analytics data, the export button should not be present
+    // (the whole analytics dashboard shows an empty state)
+    const exportButton = screen.queryByTitle('Export analytics')
+    expect(exportButton).not.toBeInTheDocument()
+    
+    // Verify empty state is shown instead
+    expect(screen.getByText('No analytics data available')).toBeInTheDocument()
   })
 
   it('formats large numbers correctly', () => {
     ;(useChunkingStore as any).mockReturnValue({
       analyticsData: {
         ...mockAnalyticsData,
-        performance: {
-          ...mockAnalyticsData.performance,
-          totalChunks: 1234567,
-        },
+        strategyUsage: [
+          {
+            strategy: 'recursive',
+            count: 1234567,
+            percentage: 100,
+            trend: 'up',
+          },
+        ],
       },
       analyticsLoading: false,
       loadAnalytics: mockLoadAnalytics,
@@ -432,6 +495,7 @@ describe('ChunkingAnalyticsDashboard', () => {
 
     render(<ChunkingAnalyticsDashboard />)
 
+    // The total documents processed should be formatted with commas
     expect(screen.getByText('1,234,567')).toBeInTheDocument()
   })
 
@@ -446,10 +510,13 @@ describe('ChunkingAnalyticsDashboard', () => {
 
     render(<ChunkingAnalyticsDashboard />)
 
-    // Should still show data while loading
+    // Should still show data while loading (component doesn't hide data when loading with existing data)
     expect(screen.getByText('Performance Metrics')).toBeInTheDocument()
+    expect(screen.getByText('Strategy Usage')).toBeInTheDocument()
     
-    // Should show loading indicator
-    expect(screen.getByRole('progressbar')).toBeInTheDocument()
+    // Should show loading indicator in refresh button
+    const refreshButton = screen.getByTitle('Refresh analytics')
+    const spinner = refreshButton.querySelector('.animate-spin')
+    expect(spinner).toBeInTheDocument()
   })
 })
