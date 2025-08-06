@@ -250,7 +250,7 @@ class TestProgressUpdates:
         mock_redis_client.xadd.assert_called_once()
         call_args = mock_redis_client.xadd.call_args
         assert call_args[0][0] == f"stream:{channel}"
-        assert json.loads(call_args[0][1]["data"]) == progress_data
+        assert json.loads(call_args[0][1]["message"]) == progress_data
 
     @pytest.mark.asyncio
     async def test_progress_throttling(
@@ -419,7 +419,8 @@ class TestChannelManagement:
         channel = f"chunking:coll-456:{operation_id}"
         
         # Add a consumer task
-        mock_task = AsyncMock()
+        mock_task = MagicMock()
+        mock_task.cancel = MagicMock()
         ws_manager.consumer_tasks[operation_id] = mock_task
         
         # Send completion message
@@ -686,7 +687,9 @@ class TestPerformanceAndScaling:
         for i in range(100):
             key = f"user-{i}:operation:op-{i}"
             ws_manager.connections[key] = {AsyncMock(spec=WebSocket)}
-            ws_manager.consumer_tasks[f"op-{i}"] = AsyncMock()
+            mock_task = MagicMock()
+            mock_task.cancel = MagicMock()
+            ws_manager.consumer_tasks[f"op-{i}"] = mock_task
         
         # Measure cleanup time
         import time

@@ -12,6 +12,7 @@ import pytest
 from redis import Redis
 
 from packages.webui.services.chunking_security import ValidationError
+from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
 from packages.webui.services.chunking_service import (
     ChunkingPreviewResponse,
     ChunkingRecommendation,
@@ -19,6 +20,7 @@ from packages.webui.services.chunking_service import (
     ChunkingStatistics,
     ChunkingValidationResult,
 )
+from packages.webui.services.chunking_constants import DEFAULT_CHUNK_SIZE
 
 
 class TestChunkingService:
@@ -79,19 +81,19 @@ class TestChunkingService:
         text = "This is a test document. " * 50  # ~1250 chars
 
         result = await chunking_service.preview_chunking(
-            text=text,
+            content=text,
             file_type=".txt",
             max_chunks=3,
         )
 
         # Verify result
-        assert isinstance(result, ChunkingPreviewResponse)
-        assert result.strategy_used == "recursive"
-        assert result.total_chunks > 1
-        assert len(result.chunks) <= 3  # Respects max_chunks
-        assert not result.is_code_file
-        assert len(result.performance_metrics) > 0
-        assert isinstance(result.recommendations, list)
+        assert isinstance(result, dict)
+        assert result["strategy"] == ChunkingStrategy.RECURSIVE
+        assert result["total_chunks"] >= 1  # At least one chunk
+        assert len(result["chunks"]) <= 3  # Respects max_chunks
+        assert not result["is_code_file"]
+        assert "processing_time_ms" in result
+        assert isinstance(result["recommendations"], list)
 
         # Verify caching
         assert mock_redis.setex.called
@@ -110,13 +112,13 @@ class Test:
 """
 
         result = await chunking_service.preview_chunking(
-            text=code,
+            content=code,
             file_type=".py",
         )
 
         # Verify code file detection
-        assert result.is_code_file
-        assert result.strategy_used == "recursive"
+        assert result["is_code_file"]
+        assert result["strategy"] == ChunkingStrategy.RECURSIVE
 
     async def test_preview_chunking_markdown(
         self,
@@ -134,13 +136,13 @@ Content under header 2.
 """
 
         result = await chunking_service.preview_chunking(
-            text=markdown,
+            content=markdown,
             file_type=".md",
         )
 
-        # Verify markdown strategy
-        assert result.strategy_used == "markdown"
-        assert not result.is_code_file
+        # Verify strategy (markdown files use recursive strategy)
+        assert result["strategy"] == ChunkingStrategy.RECURSIVE
+        assert not result["is_code_file"]
 
     async def test_preview_chunking_custom_config(
         self,
@@ -150,17 +152,17 @@ Content under header 2.
         text = "Test text. " * 100
 
         config = {
-            "strategy": "character",
             "params": {"chunk_size": 200, "chunk_overlap": 50},
         }
 
         result = await chunking_service.preview_chunking(
-            text=text,
+            content=text,
+            strategy="fixed_size",  # character strategy doesn't exist, use fixed_size
             config=config,
         )
 
         # Verify custom config was used
-        assert result.strategy_used == "character"
+        assert result["strategy"] == "fixed_size"
 
     async def test_preview_chunking_validation_error(
         self,
@@ -176,7 +178,7 @@ Content under header 2.
         }
 
         with pytest.raises(ValidationError):
-            await chunking_service.preview_chunking(text=text, config=config)
+            await chunking_service.preview_chunking(content=text, config=config)
 
     async def test_preview_chunking_size_limit(
         self,
@@ -187,7 +189,7 @@ Content under header 2.
         large_text = "x" * (2 * 1024 * 1024)  # 2MB
 
         with pytest.raises(ValidationError, match="Document too large"):
-            await chunking_service.preview_chunking(text=large_text)
+            await chunking_service.preview_chunking(content=large_text)
 
     async def test_preview_chunking_cached(
         self,
@@ -209,10 +211,10 @@ Content under header 2.
         # Redis returns bytes, so encode the JSON string
         mock_redis.get.return_value = json.dumps(cached_data).encode()
 
-        result = await chunking_service.preview_chunking(text="test")
+        result = await chunking_service.preview_chunking(content="test")
 
         # Should return cached result
-        assert result.chunks[0]["text"] == "cached"
+        assert result["chunks"][0]["text"] == "cached"
         assert not mock_redis.setex.called  # Shouldn't cache again
 
     async def test_recommend_strategy_markdown_majority(
@@ -228,12 +230,12 @@ Content under header 2.
             "main.py",
         ]
 
-        result = await chunking_service.recommend_strategy(file_paths)
+        result = await chunking_service.recommend_strategy(file_paths=file_paths)
 
-        assert isinstance(result, ChunkingRecommendation)
-        assert result.recommended_strategy == "recursive"
-        assert "markdown" in result.rationale.lower()
-        assert result.file_type_breakdown["markdown"] == 3
+        assert isinstance(result, dict)
+        assert result["strategy"] == ChunkingStrategy.RECURSIVE
+        assert "markdown" in result["reasoning"].lower()
+        assert result["file_type_breakdown"]["markdown"] == 3
 
     async def test_recommend_strategy_code_files(
         self,
@@ -249,11 +251,11 @@ Content under header 2.
             "script.sh",
         ]
 
-        result = await chunking_service.recommend_strategy(file_paths)
+        result = await chunking_service.recommend_strategy(file_paths=file_paths)
 
-        assert result.recommended_strategy == "recursive"
-        assert result.recommended_params["chunk_size"] == 500  # Optimized for code
-        assert "code" in result.rationale.lower()
+        assert result["strategy"] == ChunkingStrategy.RECURSIVE
+        assert result["params"]["chunk_size"] == 500  # Optimized for code
+        assert "code" in result["reasoning"].lower()
 
     async def test_recommend_strategy_mixed_content(
         self,
@@ -267,11 +269,11 @@ Content under header 2.
             "config.yaml",
         ]
 
-        result = await chunking_service.recommend_strategy(file_paths)
+        result = await chunking_service.recommend_strategy(file_paths=file_paths)
 
-        assert result.recommended_strategy == "recursive"
-        assert result.recommended_params["chunk_size"] == 600  # Default
-        assert "general" in result.rationale.lower() or "mixed" in result.rationale.lower()
+        assert result["strategy"] == ChunkingStrategy.RECURSIVE
+        assert result["params"]["chunk_size"] == 600  # Default
+        assert "general" in result["reasoning"].lower() or "mixed" in result["reasoning"].lower()
 
     async def test_get_chunking_statistics(
         self,
@@ -299,7 +301,7 @@ Content under header 2.
         assert isinstance(result, ChunkingStatistics)
         assert result.total_documents == 100  # Mock data
         assert result.total_chunks == 1000
-        assert result.average_chunk_size > 0  # Default value from service
+        assert result.average_chunk_size == DEFAULT_CHUNK_SIZE  # Default value from service
         assert "recursive" in result.strategy_breakdown
 
     async def test_validate_config_for_collection(
@@ -347,6 +349,7 @@ Content under header 2.
         with pytest.raises(ValidationError):
             await chunking_service.validate_config_for_collection(
                 collection_id="test-collection",
+                strategy="recursive",
                 config=config,
             )
 

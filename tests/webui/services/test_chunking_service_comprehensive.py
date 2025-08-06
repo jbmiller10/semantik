@@ -6,6 +6,7 @@ preview functionality, strategy recommendations, configuration management,
 caching behavior, and error handling.
 """
 
+import asyncio
 import hashlib
 import json
 import uuid
@@ -635,7 +636,7 @@ class TestErrorHandling:
         mock_document_service: AsyncMock,
     ) -> None:
         """Test handling when document is not found."""
-        mock_document_service.get_document.side_effect = EntityNotFoundError("Document not found")
+        mock_document_service.get_document.side_effect = EntityNotFoundError("Document", "non-existent")
         
         with pytest.raises(EntityNotFoundError):
             await chunking_service.preview_chunking(

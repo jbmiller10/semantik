@@ -157,7 +157,7 @@ class TestStrategyManagement:
     def test_list_strategies_unauthenticated(self) -> None:
         """Test that listing strategies requires authentication."""
         from packages.webui.main import app
-        from packages.webui.config import settings
+        from packages.shared.config import settings
         import os
         
         # Temporarily disable auth bypass for this test

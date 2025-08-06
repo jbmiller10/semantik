@@ -6,6 +6,7 @@ This module provides the business logic for text chunking, including
 validation, caching, and progress tracking.
 """
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -35,6 +36,7 @@ from packages.webui.api.chunking_exceptions import (
     ChunkingTimeoutError,
     ChunkingValidationError,
 )
+from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
 from packages.webui.middleware.correlation import get_correlation_id
 from packages.webui.services.chunking_config import CHUNKING_CACHE, CHUNKING_LIMITS, CHUNKING_TIMEOUTS
 from packages.webui.services.chunking_constants import (
@@ -133,6 +135,9 @@ class ChunkingService:
             self.qdrant = qdrant_client
         else:
             self.qdrant = QdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
+        
+        # Initialize progress throttle tracker
+        self._chunking_progress_throttle: dict[str, float] = {}
 
     async def _validate_preview_input(
         self,
@@ -329,21 +334,29 @@ class ChunkingService:
 
     async def preview_chunking(
         self,
-        text: str,
-        file_type: str | None = None,
+        document_id: str | None = None,
+        content: str | None = None,
+        strategy: ChunkingStrategy | str = ChunkingStrategy.RECURSIVE,
         config: dict[str, Any] | None = None,
         max_chunks: int = 5,
-    ) -> ChunkingPreviewResponse:
+        include_metrics: bool = True,
+        user_id: int | None = None,
+        file_type: str | None = None,
+    ) -> dict[str, Any]:
         """Preview chunking with validation and caching.
 
         Args:
-            text: Text to preview chunking for
-            file_type: Optional file type/extension
+            document_id: Optional document ID to load content from
+            content: Optional text content to chunk (if document_id not provided)
+            strategy: Chunking strategy to use
             config: Optional chunking configuration
             max_chunks: Maximum number of chunks to return in preview
+            include_metrics: Whether to include performance metrics
+            user_id: User ID for access control
+            file_type: Optional file type/extension
 
         Returns:
-            ChunkingPreviewResponse with preview results
+            Dictionary with preview results
 
         Raises:
             ChunkingValidationError: If validation fails
@@ -351,25 +364,56 @@ class ChunkingService:
             ChunkingStrategyError: If strategy initialization fails
         """
         correlation_id = get_correlation_id()
+        
+        # Get text content
+        if document_id:
+            # Load from document
+            doc = await self.document_repo.get_by_id(document_id)
+            if not doc:
+                raise ChunkingValidationError(
+                    detail=f"Document {document_id} not found",
+                    correlation_id=correlation_id,
+                    field_errors={"document_id": ["Document not found"]},
+                    operation_id=f"preview_{document_id}",
+                )
+            text = await self._load_document_content(doc)
+            file_type = Path(doc.file_name).suffix if not file_type else file_type
+        elif content:
+            text = content
+        else:
+            raise ChunkingValidationError(
+                detail="Either document_id or content must be provided",
+                correlation_id=correlation_id,
+                field_errors={"content": ["No content provided"]},
+                operation_id="preview_unknown",
+            )
+        
         operation_id = f"preview_{hashlib.sha256(text.encode()).hexdigest()[:8]}"
-
+        
+        # Convert strategy to string if enum
+        if isinstance(strategy, ChunkingStrategy):
+            strategy_str = strategy.value
+        else:
+            strategy_str = strategy
+        
         # Get or create config
         if not config:
-            if file_type:
-                config = FileTypeDetector.get_optimal_config(file_type)
-            else:
-                config = {
-                    "strategy": "recursive",
-                    "params": {"chunk_size": 100, "chunk_overlap": 20},
-                }
+            config = {
+                "strategy": strategy_str,
+                "params": {"chunk_size": DEFAULT_CHUNK_SIZE, "chunk_overlap": DEFAULT_CHUNK_OVERLAP},
+            }
+        else:
+            config["strategy"] = strategy_str
 
         # Validate input and config
         config = await self._validate_preview_input(text, config, correlation_id, operation_id)
 
+        # Generate preview ID for tracking
+        preview_id = hashlib.sha256(f"{text[:100]}{strategy_str}{json.dumps(config)}".encode()).hexdigest()[:16]
+        
         # Check cache
-        config_hash = self._hash_config(config)
-        text_preview = text[:1000]
-        cached = await self._get_cached_preview(config_hash, text_preview)
+        cache_key = self._generate_cache_key(text[:1000], strategy_str, config, user_id or 0)
+        cached = await self._get_cached_preview_by_key(cache_key)
         if cached:
             logger.debug("Returning cached preview")
             return cached
@@ -387,18 +431,36 @@ class ChunkingService:
 
         # Build response
         response = self._build_preview_response(chunks, config, file_type, processing_time, max_chunks)
-
+        
+        # Convert response to dict format expected by tests
+        result = {
+            "preview_id": preview_id,
+            "strategy": strategy,
+            "chunks": response.chunks,
+            "total_chunks": response.total_chunks,
+            "processing_time_ms": int(processing_time * 1000),
+            "is_code_file": response.is_code_file,
+            "recommendations": response.recommendations,
+        }
+        
+        if include_metrics:
+            result["metrics"] = response.performance_metrics
+        
         # Cache result
-        await self._cache_preview(config_hash, text_preview, response)
+        await self._cache_preview_by_key(cache_key, result)
+        
+        # Track usage if user_id provided
+        if user_id:
+            await self.track_preview_usage(user_id, strategy_str, file_type)
 
-        return response
+        return result
 
     async def recommend_strategy(
         self,
         file_types: list[str] | None = None,
         file_paths: list[str] | None = None,
         user_id: int | None = None,
-    ) -> ChunkingRecommendation:
+    ) -> dict[str, Any]:
         """Recommend optimal chunking strategy based on file types.
 
         Args:
@@ -407,7 +469,7 @@ class ChunkingService:
             user_id: User ID for tracking
 
         Returns:
-            ChunkingRecommendation instance with recommendation details
+            Dictionary with recommendation details
         """
         # Use file_types if provided, otherwise extract from paths
         types_to_analyze = file_types or []
@@ -426,55 +488,57 @@ class ChunkingService:
 
         # If majority are markdown files
         if file_type_breakdown.get("markdown", 0) > total_files * 0.5:
-            return ChunkingRecommendation(
-                recommended_strategy="recursive",
-                recommended_params={
+            return {
+                "strategy": ChunkingStrategy.RECURSIVE,
+                "params": {
                     "chunk_size": 600,
                     "chunk_overlap": 100,
-                    "confidence": 0.85,
-                    "alternatives": ["semantic", "fixed_size"],
                 },
-                rationale="Majority of files are markdown documents which benefit from structure-aware chunking",
-                file_type_breakdown=file_type_breakdown,
-            )
+                "confidence": 0.85,
+                "alternatives": [ChunkingStrategy.SEMANTIC, ChunkingStrategy.FIXED_SIZE],
+                "reasoning": "Majority of files are markdown documents which benefit from structure-aware chunking",
+                "file_type_breakdown": file_type_breakdown,
+            }
 
         # If significant code files
         if file_type_breakdown.get("code", 0) > total_files * 0.3:
-            return ChunkingRecommendation(
-                recommended_strategy="recursive",
-                recommended_params={
+            return {
+                "strategy": ChunkingStrategy.RECURSIVE,
+                "params": {
                     "chunk_size": 500,
                     "chunk_overlap": 75,
-                    "confidence": 0.80,
-                    "alternatives": ["sliding_window", "semantic"],
                 },
-                rationale="Mixed content with significant code files requiring syntax-aware chunking",
-                file_type_breakdown=file_type_breakdown,
-            )
+                "confidence": 0.80,
+                "alternatives": [ChunkingStrategy.SLIDING_WINDOW, ChunkingStrategy.SEMANTIC],
+                "reasoning": "Mixed content with significant code files requiring syntax-aware chunking",
+                "file_type_breakdown": file_type_breakdown,
+            }
 
         # Default recommendation
-        return ChunkingRecommendation(
-            recommended_strategy="recursive",
-            recommended_params={
+        return {
+            "strategy": ChunkingStrategy.RECURSIVE,
+            "params": {
                 "chunk_size": 600,
                 "chunk_overlap": 100,
-                "confidence": 0.75,
-                "alternatives": ["fixed_size", "semantic"],
             },
-            rationale="General purpose strategy for mixed content types",
-            file_type_breakdown=file_type_breakdown,
-        )
+            "confidence": 0.75,
+            "alternatives": [ChunkingStrategy.FIXED_SIZE, ChunkingStrategy.SEMANTIC],
+            "reasoning": "General purpose strategy for mixed content types",
+            "file_type_breakdown": file_type_breakdown,
+        }
 
     async def get_chunking_statistics(
         self,
         collection_id: str,
         days: int = 30,
+        user_id: int | None = None,
     ) -> ChunkingStatistics:
         """Get detailed chunking statistics for a collection.
 
         Args:
             collection_id: Collection ID
             days: Number of days to look back
+            user_id: Optional user ID for access control
 
         Returns:
             ChunkingStatistics with detailed metrics
@@ -541,19 +605,38 @@ class ChunkingService:
     async def validate_config_for_collection(
         self,
         collection_id: str,
-        config: dict[str, Any],
+        strategy: ChunkingStrategy | str,
+        config: dict[str, Any] | None = None,
         sample_size: int = 5,
-    ) -> ChunkingValidationResult:
+        user_id: int | None = None,
+    ) -> dict[str, Any]:
         """Validate chunking config against collection documents.
 
         Args:
             collection_id: Collection ID
-            config: Chunking configuration to validate
+            strategy: Chunking strategy to validate
+            config: Optional chunking configuration to validate
             sample_size: Number of documents to sample
+            user_id: Optional user ID for access control
 
         Returns:
-            ChunkingValidationResult with validation results
+            Dictionary with validation results including estimated_time
         """
+        # Convert strategy to string if enum
+        if isinstance(strategy, ChunkingStrategy):
+            strategy_str = strategy.value
+        else:
+            strategy_str = strategy
+        
+        # Build full config
+        if not config:
+            config = {
+                "strategy": strategy_str,
+                "params": {"chunk_size": DEFAULT_CHUNK_SIZE, "chunk_overlap": DEFAULT_CHUNK_OVERLAP},
+            }
+        else:
+            config["strategy"] = strategy_str
+        
         # Validate config
         self.security.validate_chunk_params(config.get("params", {}))
 
@@ -593,12 +676,16 @@ class ChunkingService:
                 f"maximum allowed ({ChunkingSecurityValidator.MAX_CHUNKS_PER_DOCUMENT})"
             )
 
-        return ChunkingValidationResult(
-            is_valid=len(warnings) == 0,
-            sample_results=sample_results,
-            warnings=warnings,
-            estimated_total_chunks=total_estimated_chunks,
-        )
+        # Estimate processing time based on chunk count
+        estimated_time = (total_estimated_chunks * 0.1)  # Rough estimate: 0.1 seconds per chunk
+        
+        return {
+            "is_valid": len(warnings) == 0,
+            "sample_results": sample_results,
+            "warnings": warnings,
+            "estimated_total_chunks": total_estimated_chunks,
+            "estimated_time": estimated_time,
+        }
 
     async def start_chunking_operation(
         self,
@@ -689,31 +776,47 @@ class ChunkingService:
         logger.info(f"User {user_id} clearing preview cache for {preview_id}")
 
         try:
-            cache_key = f"preview:{preview_id}"
+            # Clear all cache entries related to this preview
+            pattern = f"preview:{preview_id}*"
             if self.redis:
-                await self.redis.delete(cache_key)
+                # Get all matching keys
+                keys = self.redis.keys(pattern)
+                if keys:
+                    self.redis.delete(*keys)
+                else:
+                    # Try exact match
+                    self.redis.delete(f"preview:{preview_id}")
         except Exception as e:
             logger.warning(f"Failed to clear preview cache: {e}")
             # Don't raise - cache clear failures are non-critical
 
     async def track_preview_usage(
         self,
+        user_id: int,
         strategy: str,
         file_type: str | None = None,
     ) -> None:
-        """Track preview usage for analytics.
+        """Track preview usage for analytics and rate limiting.
 
         Args:
+            user_id: User ID
             strategy: Strategy used
             file_type: File type if known
         """
-        # Increment counters in Redis
-        key = f"chunking:preview:usage:{strategy}"
-        self.redis.incr(key)
+        # Track user usage for rate limiting
+        user_key = f"chunking:preview:user:{user_id}:{strategy}"
+        self.redis.incr(user_key)
+        self.redis.expire(user_key, 3600)  # 1 hour TTL
+        
+        # Track overall usage
+        strategy_key = f"chunking:preview:usage:{strategy}"
+        self.redis.incr(strategy_key)
+        self.redis.expire(strategy_key, 86400)  # 24 hour TTL
 
         if file_type:
-            key = f"chunking:preview:file_type:{file_type}"
-            self.redis.incr(key)
+            file_key = f"chunking:preview:file_type:{file_type}"
+            self.redis.incr(file_key)
+            self.redis.expire(file_key, 86400)  # 24 hour TTL
 
     async def get_chunking_progress(
         self,
@@ -1378,3 +1481,213 @@ class ChunkingService:
         except Exception as e:
             logger.error(f"Failed to send progress update: {e}")
             # Don't raise - WebSocket updates are non-critical
+
+    def _generate_cache_key(
+        self,
+        content: str,
+        strategy: str,
+        config: dict[str, Any] | None,
+        user_id: int,
+    ) -> str:
+        """Generate a unique cache key for preview results.
+        
+        Args:
+            content: Text content (first 1000 chars used)
+            strategy: Chunking strategy
+            config: Configuration dictionary
+            user_id: User ID
+            
+        Returns:
+            Unique cache key string
+        """
+        # Create a stable hash from inputs
+        content_preview = content[:1000]
+        config_str = json.dumps(config or {}, sort_keys=True)
+        key_data = f"{content_preview}:{strategy}:{config_str}:{user_id}"
+        return f"chunking:preview:{hashlib.sha256(key_data.encode()).hexdigest()}"
+
+    def _calculate_quality_metrics(
+        self,
+        chunks: list[dict[str, Any]],
+    ) -> dict[str, float]:
+        """Calculate quality metrics for chunks.
+        
+        Args:
+            chunks: List of chunk dictionaries
+            
+        Returns:
+            Dictionary with quality metrics
+        """
+        if not chunks:
+            return {
+                "coherence": 0.0,
+                "completeness": 0.0,
+                "size_consistency": 0.0,
+            }
+        
+        # Calculate size consistency
+        sizes = [chunk.get("size", len(chunk.get("content", ""))) for chunk in chunks]
+        avg_size = sum(sizes) / len(sizes)
+        variance = sum((size - avg_size) ** 2 for size in sizes) / len(sizes)
+        std_dev = variance ** 0.5
+        
+        # Size consistency: 1.0 if all chunks are same size, lower with more variance
+        size_consistency = 1.0 - min(std_dev / avg_size if avg_size > 0 else 1.0, 1.0)
+        
+        # Coherence: Rough estimate based on chunk count and sizes
+        # More uniform chunks = higher coherence
+        coherence = size_consistency * 0.8 + 0.2  # Baseline 0.2, up to 1.0
+        
+        # Completeness: Assume complete if we have chunks
+        completeness = min(len(chunks) / 10, 1.0)  # Normalize to 0-1
+        
+        return {
+            "coherence": round(coherence, 3),
+            "completeness": round(completeness, 3),
+            "size_consistency": round(size_consistency, 3),
+        }
+
+    async def _chunk_content(
+        self,
+        content: str,
+        strategy: str,
+        config: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Chunk content using specified strategy.
+        
+        Args:
+            content: Text content to chunk
+            strategy: Chunking strategy name
+            config: Configuration for chunking
+            metadata: Optional metadata
+            
+        Returns:
+            List of chunk dictionaries
+        """
+        # Build full config with strategy
+        full_config = {
+            "strategy": strategy,
+            "params": config.get("params", {
+                "chunk_size": config.get("chunk_size", DEFAULT_CHUNK_SIZE),
+                "chunk_overlap": config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
+            })
+        }
+        
+        # Create chunker
+        chunker = ChunkingFactory.create_chunker(full_config)
+        
+        # Chunk the content
+        chunks = await chunker.chunk_text_async(
+            text=content,
+            doc_id="preview",
+            metadata=metadata or {},
+        )
+        
+        # Convert to dictionary format
+        return [
+            {
+                "content": chunk.text,
+                "size": len(chunk.text),
+                "start_offset": chunk.start_offset,
+                "end_offset": chunk.end_offset,
+                "metadata": chunk.metadata,
+            }
+            for chunk in chunks
+        ]
+
+    async def _update_progress(
+        self,
+        operation_id: str,
+        progress: float,
+        status: str = "processing",
+        message: str = "",
+        **kwargs: Any,
+    ) -> None:
+        """Update operation progress.
+        
+        Args:
+            operation_id: Operation ID
+            progress: Progress percentage (0-100)
+            status: Status string
+            message: Optional message
+            **kwargs: Additional data
+        """
+        # Update in database if operation repo available
+        if self.operation_repo:
+            try:
+                operation = await self.operation_repo.get_by_uuid(operation_id)
+                if operation:
+                    if not operation.meta:
+                        operation.meta = {}
+                    
+                    operation.meta["progress"] = {
+                        "percentage": progress,
+                        "status": status,
+                        "message": message,
+                        "updated_at": datetime.utcnow().isoformat(),
+                        **kwargs,
+                    }
+                    
+                    await self.db.flush()
+            except Exception as e:
+                logger.error(f"Failed to update progress in database: {e}")
+        
+        # Also store in Redis for quick access
+        try:
+            progress_key = f"operation:progress:{operation_id}"
+            progress_data = {
+                "percentage": progress,
+                "status": status,
+                "message": message,
+                "updated_at": datetime.utcnow().isoformat(),
+                **kwargs,
+            }
+            self.redis.setex(
+                progress_key,
+                300,  # 5 minute TTL
+                json.dumps(progress_data),
+            )
+        except Exception as e:
+            logger.error(f"Failed to update progress in Redis: {e}")
+
+    async def _get_cached_preview_by_key(
+        self,
+        cache_key: str,
+    ) -> dict[str, Any] | None:
+        """Get cached preview by key.
+        
+        Args:
+            cache_key: Cache key
+            
+        Returns:
+            Cached preview data or None
+        """
+        try:
+            cached_data = self.redis.get(cache_key)
+            if cached_data:
+                return json.loads(cached_data)
+        except Exception as e:
+            logger.warning(f"Failed to get cached preview: {e}")
+        
+        return None
+
+    async def _cache_preview_by_key(
+        self,
+        cache_key: str,
+        data: dict[str, Any],
+    ) -> None:
+        """Cache preview data by key.
+        
+        Args:
+            cache_key: Cache key
+            data: Data to cache
+        """
+        try:
+            self.redis.setex(
+                cache_key,
+                CHUNKING_CACHE.PREVIEW_CACHE_TTL_SECONDS,
+                json.dumps(data),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to cache preview: {e}")
