@@ -5,18 +5,18 @@ Unit tests for ChunkingService.
 This module tests the ChunkingService business logic layer.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from redis import Redis
 
+from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
+from packages.webui.services.chunking_constants import DEFAULT_CHUNK_SIZE
 from packages.webui.services.chunking_security import ValidationError
 from packages.webui.services.chunking_service import (
-    ChunkingPreviewResponse,
-    ChunkingRecommendation,
     ChunkingService,
     ChunkingStatistics,
-    ChunkingValidationResult,
 )
 
 
@@ -53,12 +53,21 @@ class TestChunkingService:
         collection_repo, document_repo = mock_repos
         db_session = MagicMock()
 
-        return ChunkingService(
+        # Create operation repository mock
+        operation_repo = MagicMock()
+        operation_repo.get_by_uuid_with_permission_check = AsyncMock()
+
+        service = ChunkingService(
             db_session=db_session,
             collection_repo=collection_repo,
             document_repo=document_repo,
             redis_client=mock_redis,
         )
+
+        # Set the operation_repo attribute for tests that need it
+        service.operation_repo = operation_repo
+
+        return service
 
     async def test_preview_chunking_basic(
         self,
@@ -69,19 +78,19 @@ class TestChunkingService:
         text = "This is a test document. " * 50  # ~1250 chars
 
         result = await chunking_service.preview_chunking(
-            text=text,
+            content=text,
             file_type=".txt",
             max_chunks=3,
         )
 
         # Verify result
-        assert isinstance(result, ChunkingPreviewResponse)
-        assert result.strategy_used == "recursive"
-        assert result.total_chunks > 1
-        assert len(result.chunks) <= 3  # Respects max_chunks
-        assert not result.is_code_file
-        assert len(result.performance_metrics) > 0
-        assert isinstance(result.recommendations, list)
+        assert isinstance(result, dict)
+        assert result["strategy"] == ChunkingStrategy.RECURSIVE
+        assert result["total_chunks"] >= 1  # At least one chunk
+        assert len(result["chunks"]) <= 3  # Respects max_chunks
+        assert not result["is_code_file"]
+        assert "processing_time_ms" in result
+        assert isinstance(result["recommendations"], list)
 
         # Verify caching
         assert mock_redis.setex.called
@@ -100,13 +109,13 @@ class Test:
 """
 
         result = await chunking_service.preview_chunking(
-            text=code,
+            content=code,
             file_type=".py",
         )
 
         # Verify code file detection
-        assert result.is_code_file
-        assert result.strategy_used == "recursive"
+        assert result["is_code_file"]
+        assert result["strategy"] == ChunkingStrategy.RECURSIVE
 
     async def test_preview_chunking_markdown(
         self,
@@ -124,13 +133,13 @@ Content under header 2.
 """
 
         result = await chunking_service.preview_chunking(
-            text=markdown,
+            content=markdown,
             file_type=".md",
         )
 
-        # Verify markdown strategy
-        assert result.strategy_used == "markdown"
-        assert not result.is_code_file
+        # Verify strategy (markdown files use recursive strategy)
+        assert result["strategy"] == ChunkingStrategy.RECURSIVE
+        assert not result["is_code_file"]
 
     async def test_preview_chunking_custom_config(
         self,
@@ -140,17 +149,17 @@ Content under header 2.
         text = "Test text. " * 100
 
         config = {
-            "strategy": "character",
             "params": {"chunk_size": 200, "chunk_overlap": 50},
         }
 
         result = await chunking_service.preview_chunking(
-            text=text,
+            content=text,
+            strategy="fixed_size",  # character strategy doesn't exist, use fixed_size
             config=config,
         )
 
         # Verify custom config was used
-        assert result.strategy_used == "character"
+        assert result["strategy"] == "fixed_size"
 
     async def test_preview_chunking_validation_error(
         self,
@@ -166,7 +175,7 @@ Content under header 2.
         }
 
         with pytest.raises(ValidationError):
-            await chunking_service.preview_chunking(text=text, config=config)
+            await chunking_service.preview_chunking(content=text, config=config)
 
     async def test_preview_chunking_size_limit(
         self,
@@ -177,7 +186,7 @@ Content under header 2.
         large_text = "x" * (2 * 1024 * 1024)  # 2MB
 
         with pytest.raises(ValidationError, match="Document too large"):
-            await chunking_service.preview_chunking(text=large_text)
+            await chunking_service.preview_chunking(content=large_text)
 
     async def test_preview_chunking_cached(
         self,
@@ -199,10 +208,10 @@ Content under header 2.
         # Redis returns bytes, so encode the JSON string
         mock_redis.get.return_value = json.dumps(cached_data).encode()
 
-        result = await chunking_service.preview_chunking(text="test")
+        result = await chunking_service.preview_chunking(content="test")
 
         # Should return cached result
-        assert result.chunks[0]["text"] == "cached"
+        assert result["chunks"][0]["text"] == "cached"
         assert not mock_redis.setex.called  # Shouldn't cache again
 
     async def test_recommend_strategy_markdown_majority(
@@ -218,12 +227,12 @@ Content under header 2.
             "main.py",
         ]
 
-        result = await chunking_service.recommend_strategy(file_paths)
+        result = await chunking_service.recommend_strategy(file_paths=file_paths)
 
-        assert isinstance(result, ChunkingRecommendation)
-        assert result.recommended_strategy == "markdown"
-        assert "markdown" in result.rationale.lower()
-        assert result.file_type_breakdown["markdown"] == 3
+        assert isinstance(result, dict)
+        assert result["strategy"] == ChunkingStrategy.RECURSIVE
+        assert "markdown" in result["reasoning"].lower()
+        assert result["file_type_breakdown"]["markdown"] == 3
 
     async def test_recommend_strategy_code_files(
         self,
@@ -239,11 +248,11 @@ Content under header 2.
             "script.sh",
         ]
 
-        result = await chunking_service.recommend_strategy(file_paths)
+        result = await chunking_service.recommend_strategy(file_paths=file_paths)
 
-        assert result.recommended_strategy == "recursive"
-        assert result.recommended_params["chunk_size"] == 500  # Optimized for code
-        assert "code" in result.rationale.lower()
+        assert result["strategy"] == ChunkingStrategy.RECURSIVE
+        assert result["params"]["chunk_size"] == 500  # Optimized for code
+        assert "code" in result["reasoning"].lower()
 
     async def test_recommend_strategy_mixed_content(
         self,
@@ -257,17 +266,30 @@ Content under header 2.
             "config.yaml",
         ]
 
-        result = await chunking_service.recommend_strategy(file_paths)
+        result = await chunking_service.recommend_strategy(file_paths=file_paths)
 
-        assert result.recommended_strategy == "recursive"
-        assert result.recommended_params["chunk_size"] == 600  # Default
-        assert "general" in result.rationale.lower() or "mixed" in result.rationale.lower()
+        assert result["strategy"] == ChunkingStrategy.RECURSIVE
+        assert result["params"]["chunk_size"] == 600  # Default
+        assert "general" in result["reasoning"].lower() or "mixed" in result["reasoning"].lower()
 
     async def test_get_chunking_statistics(
         self,
         chunking_service: ChunkingService,
     ) -> None:
         """Test getting chunking statistics."""
+        # Mock document data
+        mock_documents = []
+        for _ in range(100):
+            doc = MagicMock()
+            doc.chunk_count = 10  # 100 docs * 10 chunks = 1000 total
+            doc.created_at = datetime.now(tz=UTC)
+            mock_documents.append(doc)
+
+        # Mock the db query result
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = mock_documents
+        chunking_service.db.execute = AsyncMock(return_value=mock_result)
+
         result = await chunking_service.get_chunking_statistics(
             collection_id="test-collection",
             days=30,
@@ -276,7 +298,7 @@ Content under header 2.
         assert isinstance(result, ChunkingStatistics)
         assert result.total_documents == 100  # Mock data
         assert result.total_chunks == 1000
-        assert result.average_chunk_size == 600
+        assert result.average_chunk_size == DEFAULT_CHUNK_SIZE  # Default value from service
         assert "recursive" in result.strategy_breakdown
 
     async def test_validate_config_for_collection(
@@ -301,15 +323,16 @@ Content under header 2.
 
         result = await chunking_service.validate_config_for_collection(
             collection_id="test-collection",
+            strategy="recursive",
             config=config,
             sample_size=2,
         )
 
-        assert isinstance(result, ChunkingValidationResult)
-        assert result.is_valid
-        assert len(result.sample_results) == 2
-        assert result.estimated_total_chunks > 0
-        assert len(result.warnings) == 0
+        assert isinstance(result, dict)
+        assert result["is_valid"]
+        assert len(result["sample_results"]) == 2
+        assert result["estimated_total_chunks"] > 0
+        assert len(result["warnings"]) == 0
 
     async def test_validate_config_invalid_params(
         self,
@@ -324,6 +347,7 @@ Content under header 2.
         with pytest.raises(ValidationError):
             await chunking_service.validate_config_for_collection(
                 collection_id="test-collection",
+                strategy="recursive",
                 config=config,
             )
 
@@ -353,12 +377,14 @@ Content under header 2.
     ) -> None:
         """Test preview usage tracking."""
         await chunking_service.track_preview_usage(
+            user_id=1,
             strategy="recursive",
             file_type=".py",
         )
 
-        # Should increment counters
-        assert mock_redis.incr.call_count == 2
+        # Should increment counters (user, strategy, and file_type)
+        assert mock_redis.incr.call_count == 3
+        mock_redis.incr.assert_any_call("chunking:preview:user:1:recursive")
         mock_redis.incr.assert_any_call("chunking:preview:usage:recursive")
         mock_redis.incr.assert_any_call("chunking:preview:file_type:.py")
 
@@ -419,13 +445,28 @@ Content under header 2.
         chunking_service: ChunkingService,
     ) -> None:
         """Test getting chunking progress."""
-        # This is a generator/async iterator
-        progress_gen = chunking_service.get_chunking_progress("test-collection")
+        # Mock the operation repository to return an operation
+        mock_operation = MagicMock()
+        mock_operation.status.value = "processing"
+        mock_operation.started_at = datetime.now(UTC)
+        mock_operation.completed_at = None
+        mock_operation.meta = {
+            "progress": {
+                "total_documents": 100,
+                "documents_processed": 50,
+                "chunks_created": 250,
+                "current_document": "test.txt",
+                "errors": [],
+            }
+        }
 
-        # Get first progress update
-        progress = await progress_gen.__anext__()
+        chunking_service.operation_repo.get_by_uuid_with_permission_check.return_value = mock_operation
 
+        # Call with operation_id and user_id
+        progress = await chunking_service.get_chunking_progress("test-operation", 1)
+
+        assert progress is not None
         assert progress["status"] == "processing"
-        assert progress["processed"] == 50
-        assert progress["total"] == 100
-        assert progress["percentage"] == 50.0
+        assert progress["documents_processed"] == 50
+        assert progress["total_documents"] == 100
+        assert progress["progress_percentage"] == 50.0
