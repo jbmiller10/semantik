@@ -6,7 +6,12 @@ from typing import Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database.exceptions import AccessDeniedError, EntityAlreadyExistsError, InvalidStateError
+from packages.shared.database.exceptions import (
+    AccessDeniedError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+    InvalidStateError,
+)
 from packages.shared.database.models import Collection, CollectionStatus, OperationType
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
@@ -578,3 +583,89 @@ class CollectionService:
         )
 
         return operations, total
+
+    async def create_operation(
+        self,
+        collection_id: str,
+        operation_type: str,
+        config: dict[str, Any],
+        user_id: int,
+    ) -> dict[str, Any]:
+        """Create a new operation for a collection.
+
+        Args:
+            collection_id: Collection UUID
+            operation_type: Type of operation
+            config: Operation configuration
+            user_id: User ID
+
+        Returns:
+            Created operation data
+        """
+        from packages.shared.database.models import OperationStatus, OperationType
+
+        # Get collection
+        collection = await self.collection_repo.get_by_uuid_with_permission_check(
+            collection_uuid=collection_id,
+            user_id=user_id,
+        )
+
+        if not collection:
+            raise EntityNotFoundError(f"Collection {collection_id} not found")
+
+        # Map operation type string to enum
+        operation_type_enum = {
+            "chunking": OperationType.CHUNKING,
+            "rechunking": OperationType.CHUNKING,
+            "index": OperationType.INDEX,
+            "reindex": OperationType.REINDEX,
+        }.get(operation_type, OperationType.INDEX)
+
+        # Create operation
+        operation = await self.operation_repo.create(
+            collection_id=collection.id,
+            type=operation_type_enum,
+            status=OperationStatus.PENDING,
+            meta=config,
+        )
+
+        await self.db_session.commit()
+
+        return {
+            "uuid": operation.uuid,
+            "collection_id": collection_id,
+            "type": operation.type.value,
+            "status": operation.status.value,
+            "meta": operation.meta,
+            "created_at": operation.created_at.isoformat() if operation.created_at else None,
+        }
+
+    async def update_collection(
+        self,
+        collection_id: str,
+        updates: dict[str, Any],
+        user_id: int,
+    ) -> None:
+        """Update collection settings.
+
+        Args:
+            collection_id: Collection UUID
+            updates: Fields to update
+            user_id: User ID
+        """
+        # Get collection with permission check
+        collection = await self.collection_repo.get_by_uuid_with_permission_check(
+            collection_uuid=collection_id,
+            user_id=user_id,
+        )
+
+        if not collection:
+            raise EntityNotFoundError(f"Collection {collection_id} not found")
+
+        # Update allowed fields
+        allowed_fields = ["name", "description", "chunking_strategy", "chunking_config", "meta"]
+        for field, value in updates.items():
+            if field in allowed_fields:
+                setattr(collection, field, value)
+
+        await self.db_session.commit()
