@@ -63,7 +63,7 @@ def mock_websocket() -> AsyncMock:
     async def accept_connection():
         mock.client_state["connected"] = True
 
-    async def close_connection(_code=1000, _reason=""):
+    async def close_connection(code=1000, reason=""):  # noqa: ARG001
         mock.client_state["connected"] = False
 
     mock.accept.side_effect = accept_connection
