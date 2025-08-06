@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from typing import Any
 
 import pytest
 from llama_index.core.embeddings import MockEmbedding
@@ -93,7 +94,7 @@ class TestChunkingStrategiesIntegration:
     ) -> None:
         """Test that each strategy meets minimum performance targets."""
         # Use mock embedding for consistent performance
-        config = {"strategy": strategy, "params": {}}
+        config: dict[str, Any] = {"strategy": strategy, "params": {}}
         if strategy in ["semantic", "hybrid"]:
             config["params"]["embed_model"] = MockEmbedding(embed_dim=384)
 
@@ -144,7 +145,7 @@ class TestChunkingStrategiesIntegration:
         strategies = ["character", "recursive", "markdown", "semantic", "hierarchical", "hybrid"]
 
         for strategy in strategies:
-            config = {"strategy": strategy}
+            config: dict[str, Any] = {"strategy": strategy}
             if strategy in ["semantic", "hybrid"]:
                 config["params"] = {"embed_model": MockEmbedding(embed_dim=384)}
 
@@ -160,7 +161,7 @@ class TestChunkingStrategiesIntegration:
 
         tasks = []
         for strategy in strategies:
-            config = {"strategy": strategy}
+            config: dict[str, Any] = {"strategy": strategy}
             if strategy in ["semantic", "hybrid"]:
                 config["params"] = {"embed_model": MockEmbedding(embed_dim=384)}
 
@@ -234,7 +235,7 @@ class TestChunkingStrategiesIntegration:
         strategies = ["character", "recursive", "markdown"]
 
         for strategy in strategies:
-            config = {"strategy": strategy}
+            config: dict[str, Any] = {"strategy": strategy}
             chunker = ChunkingFactory.create_chunker(config)
 
             with monitor.measure_chunking(
@@ -257,7 +258,7 @@ class TestChunkingStrategiesIntegration:
         strategies = ["character", "recursive", "markdown", "hierarchical"]
 
         for strategy in strategies:
-            config = {"strategy": strategy}
+            config: dict[str, Any] = {"strategy": strategy}
             chunker = ChunkingFactory.create_chunker(config)
 
             # Empty text should return empty list

@@ -41,7 +41,7 @@ class TestEmbeddingIntegration(unittest.TestCase):
         # This tests thread safety of the sync wrapper
         from packages.shared.embedding import get_embedding_service_sync
 
-        def make_request(i) -> None:
+        def make_request(i) -> str:
             try:
                 service = get_embedding_service_sync()
                 # Just verify we can get the service

@@ -797,7 +797,7 @@ Model optimization techniques improve inference speed and accuracy.
         assert chunker.validate_config(valid_config) is True
 
         # Invalid threshold values
-        invalid_configs = [
+        invalid_configs: list[dict[str, Any]] = [
             {"markdown_threshold": -0.1},
             {"markdown_threshold": 1.5},
             {"semantic_coherence_threshold": "high"},

@@ -314,7 +314,7 @@ class TestRelevanceScoring:
         # Mock CPU tensor conversion
         mock_yes_probs = MagicMock()
         mock_yes_probs.cpu.return_value.tolist.return_value = [0.9, 0.7, 0.5, 0.3, 0.1]
-        mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())  # type: ignore[assignment, method-assign, misc]
+        mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())
 
         scores = reranker_loaded.compute_relevance_scores(query, sample_documents)
 
@@ -355,7 +355,7 @@ class TestRelevanceScoring:
         # Mock CPU tensor conversion
         mock_yes_probs = MagicMock()
         mock_yes_probs.cpu.return_value.tolist.return_value = [0.5, 0.5, 0.5, 0.5]
-        mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())  # type: ignore[assignment, method-assign, misc]
+        mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())
 
         # Should handle gracefully without errors
         scores = reranker_loaded.compute_relevance_scores(query, documents)
@@ -540,7 +540,7 @@ class TestEdgeCases:
         mock_probs = MagicMock()
         mock_yes_probs = MagicMock()
         mock_yes_probs.cpu.return_value.tolist.return_value = [0.75]
-        mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())  # type: ignore[assignment, method-assign, misc]
+        mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())
         mock_softmax.return_value = mock_probs
         mock_stack.return_value = torch.rand(1, 2)
 
@@ -622,7 +622,7 @@ class TestEdgeCases:
         mock_probs = MagicMock()
         mock_yes_probs = MagicMock()
         mock_yes_probs.cpu.return_value.tolist.return_value = [0.85]
-        mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())  # type: ignore[assignment, method-assign, misc]
+        mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())
         mock_softmax.return_value = mock_probs
         mock_stack.return_value = torch.rand(1, 2)
 
@@ -998,7 +998,7 @@ class TestAdditionalCoverage:
                 return batch_scores
 
             mock_yes_probs.cpu.return_value.tolist.side_effect = get_batch_scores
-            mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())  # type: ignore[assignment, method-assign, misc]
+            mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())
             mock_softmax.return_value = mock_probs
 
             # Run with custom batch size

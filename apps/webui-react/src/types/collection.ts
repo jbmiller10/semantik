@@ -27,8 +27,10 @@ export interface Collection {
   vector_store_name: string;       // Qdrant collection name
   embedding_model: string;
   quantization: string;          // float32, float16, or int8
-  chunk_size: number;
-  chunk_overlap: number;
+  chunk_size: number;              // Deprecated: for backward compatibility
+  chunk_overlap: number;           // Deprecated: for backward compatibility
+  chunking_strategy?: string;      // New: chunking strategy type
+  chunking_config?: Record<string, number | boolean | string>; // New: strategy-specific configuration
   is_public: boolean;
   status: CollectionStatus;
   status_message?: string;
@@ -67,8 +69,10 @@ export interface CreateCollectionRequest {
   description?: string;
   embedding_model?: string;
   quantization?: string;         // float32, float16, or int8
-  chunk_size?: number;
-  chunk_overlap?: number;
+  chunk_size?: number;           // Deprecated: use chunking_config instead
+  chunk_overlap?: number;         // Deprecated: use chunking_config instead
+  chunking_strategy?: string;     // New: chunking strategy type
+  chunking_config?: Record<string, number | boolean | string>; // New: strategy-specific configuration
   is_public?: boolean;
   metadata?: Record<string, unknown>;
 }
@@ -83,8 +87,10 @@ export interface UpdateCollectionRequest {
 export interface AddSourceRequest {
   source_path: string;
   config?: {
-    chunk_size?: number;
-    chunk_overlap?: number;
+    chunk_size?: number;         // Deprecated: use chunking_config instead
+    chunk_overlap?: number;      // Deprecated: use chunking_config instead
+    chunking_strategy?: string;  // New: chunking strategy type
+    chunking_config?: Record<string, number | boolean | string>; // New: strategy-specific configuration
     metadata?: Record<string, unknown>;
   };
 }
@@ -96,8 +102,10 @@ export interface RemoveSourceRequest {
 export interface ReindexRequest {
   embedding_model?: string;
   quantization?: string;         // float32, float16, or int8
-  chunk_size?: number;
-  chunk_overlap?: number;
+  chunk_size?: number;           // Deprecated: use chunking_config instead
+  chunk_overlap?: number;         // Deprecated: use chunking_config instead
+  chunking_strategy?: string;     // New: chunking strategy type
+  chunking_config?: Record<string, number | boolean | string>; // New: strategy-specific configuration
 }
 
 // Response types
