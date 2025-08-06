@@ -5,67 +5,30 @@ Comprehensive test coverage for all chunking-related endpoints including
 strategy management, preview operations, collection processing, and analytics.
 """
 
-import json
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Any, Dict, List
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException, status
 from fastapi.testclient import TestClient
 
-from packages.shared.database.exceptions import (
-    AccessDeniedError,
-    EntityNotFoundError,
-    InvalidStateError,
-    ValidationError as DBValidationError,
-)
-from packages.webui.api.chunking_exceptions import (
-    ChunkingConfigurationError,
-    ChunkingMemoryError,
-    ChunkingResourceLimitError,
-    ChunkingStrategyError,
-    ChunkingTimeoutError,
-    ChunkingValidationError,
-)
 from packages.webui.api.v2.chunking_schemas import (
-    ChunkingConfigBase,
-    ChunkingOperationRequest,
-    ChunkingOperationResponse,
-    ChunkingProgress,
-    ChunkingStats,
-    ChunkingStatus,
     ChunkingStrategy,
-    ChunkingStrategyUpdate,
-    ChunkListResponse,
-    CompareRequest,
-    CompareResponse,
-    CreateConfigurationRequest,
-    DocumentAnalysisRequest,
-    DocumentAnalysisResponse,
-    GlobalMetrics,
-    PreviewRequest,
-    PreviewResponse,
-    QualityAnalysis,
-    SavedConfiguration,
-    StrategyComparison,
-    StrategyInfo,
-    StrategyMetrics,
-    StrategyRecommendation,
 )
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.collection_service import CollectionService
 
 
 @pytest.fixture()
-def mock_user() -> Dict[str, Any]:
+def mock_user() -> dict[str, Any]:
     """Mock authenticated user."""
     return {"id": 1, "username": "testuser", "email": "test@example.com"}
 
 
 @pytest.fixture()
-def mock_collection() -> Dict[str, Any]:
+def mock_collection() -> dict[str, Any]:
     """Mock collection object."""
     return {
         "id": "123e4567-e89b-12d3-a456-426614174000",
@@ -98,10 +61,10 @@ def mock_ws_manager() -> AsyncMock:
 
 @pytest.fixture()
 def client(
-    mock_user: Dict[str, Any],
+    mock_user: dict[str, Any],
     mock_chunking_service: AsyncMock,
     mock_collection_service: AsyncMock,
-    mock_collection: Dict[str, Any],
+    mock_collection: dict[str, Any],
     mock_ws_manager: AsyncMock,
 ) -> TestClient:
     """Create a test client with mocked dependencies."""
@@ -109,7 +72,6 @@ def client(
     from packages.webui.dependencies import get_collection_for_user
     from packages.webui.main import app
     from packages.webui.services.factory import get_chunking_service, get_collection_service
-    from packages.webui.websocket_manager import ws_manager
 
     # Override dependencies
     app.dependency_overrides[get_current_user] = lambda: mock_user
@@ -157,9 +119,9 @@ class TestStrategyManagement:
 
     def test_list_strategies_unauthenticated(self) -> None:
         """Test that listing strategies requires authentication."""
-        from packages.webui.main import app
-        from packages.webui.auth import get_current_user
         from packages.shared.config import settings
+        from packages.webui.auth import get_current_user
+        from packages.webui.main import app
 
         # Ensure auth is enabled for this test
         original_disable_auth = settings.DISABLE_AUTH
@@ -511,7 +473,7 @@ class TestPreviewOperations:
             "total_chunks": 5,
             "processing_time_ms": 100,
             "cached": True,
-            "expires_at": (datetime.utcnow() + timedelta(minutes=15)).isoformat(),
+            "expires_at": (datetime.now(tz=UTC) + timedelta(minutes=15)).isoformat(),
         }
 
         response = client.get(f"/api/v2/chunking/preview/{preview_id}")
@@ -979,10 +941,7 @@ class TestSecurityAndValidation:
             ]
 
             for method, endpoint in endpoints:
-                if method == "GET":
-                    response = client.get(endpoint)
-                else:
-                    response = client.post(endpoint, json={})
+                response = client.get(endpoint) if method == "GET" else client.post(endpoint, json={})
 
                 assert (
                     response.status_code == status.HTTP_401_UNAUTHORIZED

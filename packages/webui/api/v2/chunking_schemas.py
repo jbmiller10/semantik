@@ -56,7 +56,7 @@ class ChunkingConfigBase(BaseModel):
     metadata: dict[str, Any] | None = Field(default=None, description="Additional configuration metadata")
 
     @field_validator("chunk_overlap")
-    def validate_overlap(cls, v: int, values: dict[str, Any]) -> int:
+    def validate_overlap(self, v: int, values: dict[str, Any]) -> int:
         """Ensure overlap is less than chunk size."""
         if "chunk_size" in values.data and v >= values.data["chunk_size"]:
             raise ValueError("Chunk overlap must be less than chunk size")

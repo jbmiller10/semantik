@@ -5,22 +5,19 @@ Unit tests for ChunkingService.
 This module tests the ChunkingService business logic layer.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from redis import Redis
 
-from packages.webui.services.chunking_security import ValidationError
 from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
+from packages.webui.services.chunking_constants import DEFAULT_CHUNK_SIZE
+from packages.webui.services.chunking_security import ValidationError
 from packages.webui.services.chunking_service import (
-    ChunkingPreviewResponse,
-    ChunkingRecommendation,
     ChunkingService,
     ChunkingStatistics,
-    ChunkingValidationResult,
 )
-from packages.webui.services.chunking_constants import DEFAULT_CHUNK_SIZE
 
 
 class TestChunkingService:
@@ -282,10 +279,10 @@ Content under header 2.
         """Test getting chunking statistics."""
         # Mock document data
         mock_documents = []
-        for i in range(100):
+        for _ in range(100):
             doc = MagicMock()
             doc.chunk_count = 10  # 100 docs * 10 chunks = 1000 total
-            doc.created_at = datetime.utcnow()
+            doc.created_at = datetime.now(tz=UTC)
             mock_documents.append(doc)
 
         # Mock the db query result
@@ -451,7 +448,7 @@ Content under header 2.
         # Mock the operation repository to return an operation
         mock_operation = MagicMock()
         mock_operation.status.value = "processing"
-        mock_operation.started_at = datetime.now(timezone.utc)
+        mock_operation.started_at = datetime.now(UTC)
         mock_operation.completed_at = None
         mock_operation.meta = {
             "progress": {

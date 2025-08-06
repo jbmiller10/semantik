@@ -6,12 +6,13 @@ This module tests the mapping between API enum values and factory strategy names
 to ensure compatibility between the API layer and the chunking factory.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from packages.shared.text_processing.chunking_factory import ChunkingFactory
 from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
 from packages.webui.services.chunking_service import ChunkingService
-from packages.shared.text_processing.chunking_factory import ChunkingFactory
 
 
 class TestChunkingStrategyMapping:
@@ -36,7 +37,7 @@ class TestChunkingStrategyMapping:
             "hybrid": "hybrid",
         }
 
-        assert ChunkingService.STRATEGY_MAPPING == expected_mapping
+        assert expected_mapping == ChunkingService.STRATEGY_MAPPING
 
     def test_map_strategy_to_factory_name(self):
         """Test the _map_strategy_to_factory_name method."""
@@ -129,7 +130,7 @@ class TestChunkingStrategyMapping:
             ), f"Mapped strategy '{strategy}' is not registered in ChunkingFactory"
 
     @pytest.mark.parametrize(
-        "api_strategy,factory_strategy",
+        ("api_strategy", "factory_strategy"),
         [
             (ChunkingStrategy.FIXED_SIZE, "character"),
             (ChunkingStrategy.SLIDING_WINDOW, "character"),

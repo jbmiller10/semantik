@@ -6,15 +6,14 @@ channel management, and error scenarios related to chunking operations.
 """
 
 import asyncio
+import contextlib
 import json
 import uuid
 from datetime import UTC, datetime
-from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import WebSocket
-from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from packages.webui.api.v2.chunking_schemas import ChunkingStatus
@@ -64,7 +63,7 @@ def mock_websocket() -> AsyncMock:
     async def accept_connection():
         mock.client_state["connected"] = True
 
-    async def close_connection(code=1000, reason=""):
+    async def close_connection(_code=1000, _reason=""):
         mock.client_state["connected"] = False
 
     mock.accept.side_effect = accept_connection
@@ -106,7 +105,7 @@ def mock_operation():
 class TestWebSocketConnection:
     """Test WebSocket connection establishment and lifecycle."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_successful_connection(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -135,7 +134,7 @@ class TestWebSocketConnection:
         assert key in ws_manager.connections
         assert mock_websocket in ws_manager.connections[key]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_connection_limit_per_user(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -162,7 +161,7 @@ class TestWebSocketConnection:
 
         websockets[3].close.assert_called_once_with(code=1008, reason="User connection limit exceeded")
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_global_connection_limit(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -180,7 +179,7 @@ class TestWebSocketConnection:
 
         mock_websocket.close.assert_called_once_with(code=1008, reason="Server connection limit exceeded")
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_disconnect_cleanup(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -200,7 +199,7 @@ class TestWebSocketConnection:
         # Verify cleanup
         assert key not in ws_manager.connections or mock_websocket not in ws_manager.connections.get(key, set())
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_redis_reconnection_attempt(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -217,7 +216,7 @@ class TestWebSocketConnection:
 class TestProgressUpdates:
     """Test WebSocket progress update functionality."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_send_chunking_progress(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -236,7 +235,7 @@ class TestProgressUpdates:
             "chunks_created": 250,
             "current_document": "document_6.pdf",
             "estimated_time_remaining": 120,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(tz=UTC).isoformat(),
         }
 
         # Send message
@@ -248,7 +247,7 @@ class TestProgressUpdates:
         assert call_args[0][0] == f"stream:{channel}"
         assert json.loads(call_args[0][1]["message"]) == progress_data
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_progress_throttling(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -256,7 +255,6 @@ class TestProgressUpdates:
     ) -> None:
         """Test that progress updates are throttled to prevent spam."""
         operation_id = "op-123"
-        channel = f"chunking:collection:123:{operation_id}"
 
         # Set throttle threshold
         ws_manager._chunking_progress_threshold = 1.0  # 1 second between updates
@@ -290,7 +288,7 @@ class TestProgressUpdates:
         should_send = await ws_manager._should_send_progress_update(operation_id, progress2)
         assert should_send is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_operation_completion_notification(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -306,7 +304,7 @@ class TestProgressUpdates:
             "total_chunks_created": 500,
             "total_documents_processed": 11,
             "processing_time_seconds": 240,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(tz=UTC).isoformat(),
         }
 
         await ws_manager.send_message(channel, completion_data)
@@ -318,7 +316,7 @@ class TestProgressUpdates:
         assert sent_data["type"] == "chunking_completed"
         assert sent_data["status"] == ChunkingStatus.COMPLETED.value
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_operation_failure_notification(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -335,7 +333,7 @@ class TestProgressUpdates:
             "error_code": "CHUNKING_MEMORY_ERROR",
             "failed_at_document": "large_document.pdf",
             "documents_processed": 3,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(tz=UTC).isoformat(),
         }
 
         await ws_manager.send_message(channel, failure_data)
@@ -351,7 +349,7 @@ class TestProgressUpdates:
 class TestChannelManagement:
     """Test WebSocket channel management."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_create_unique_channels(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -374,7 +372,7 @@ class TestChannelManagement:
             assert parts[0] == "chunking"
             assert parts[1] == collection_id
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_broadcast_to_multiple_clients(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -405,7 +403,7 @@ class TestChannelManagement:
         # Verify Redis stream was used for broadcast
         mock_redis_client.xadd.assert_called_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_channel_cleanup_on_completion(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -443,7 +441,7 @@ class TestChannelManagement:
 class TestErrorHandling:
     """Test error handling in WebSocket operations."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_handle_websocket_disconnect_error(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -465,7 +463,7 @@ class TestErrorHandling:
         # Connection should be removed
         assert mock_websocket not in ws_manager.connections.get(key, set())
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_handle_redis_connection_error(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -480,7 +478,7 @@ class TestErrorHandling:
         # Should return False or handle error gracefully
         assert result is False or result is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_handle_malformed_message(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -495,13 +493,11 @@ class TestErrorHandling:
         }
 
         # Should handle without crashing
-        try:
-            await ws_manager.send_message("test-channel", malformed_message)
-        except TypeError:
+        with contextlib.suppress(TypeError):
             # Expected for non-serializable object
-            pass
+            await ws_manager.send_message("test-channel", malformed_message)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_recovery_from_redis_stream_error(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -529,7 +525,7 @@ class TestErrorHandling:
 class TestConcurrentOperations:
     """Test handling of concurrent WebSocket operations."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_multiple_operations_same_user(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -563,7 +559,7 @@ class TestConcurrentOperations:
         # Verify all messages were sent
         assert mock_redis_client.xadd.call_count == 3
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_operation_isolation(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -589,7 +585,7 @@ class TestConcurrentOperations:
         assert "op1" in calls[0][0][0]
         assert "op2" in calls[1][0][0]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_concurrent_connection_attempts(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -624,7 +620,7 @@ class TestConcurrentOperations:
 class TestPerformanceAndScaling:
     """Test performance and scaling aspects of WebSocket handling."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_large_message_handling(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -649,7 +645,7 @@ class TestPerformanceAndScaling:
         await ws_manager.send_message("test-channel", large_message)
         mock_redis_client.xadd.assert_called_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_message_ordering(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -659,7 +655,7 @@ class TestPerformanceAndScaling:
         messages = []
 
         # Capture messages as they're sent
-        async def capture_xadd(stream, data, **kwargs):
+        async def capture_xadd(_stream, data, **_kwargs):
             messages.append(json.loads(data.get("message", data.get("data", "{}"))))
             return f"{len(messages)}-0"
 
@@ -673,7 +669,7 @@ class TestPerformanceAndScaling:
         for i, msg in enumerate(messages):
             assert msg["sequence"] == i
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_cleanup_performance(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -710,7 +706,7 @@ class TestPerformanceAndScaling:
 class TestIntegrationScenarios:
     """Test complete integration scenarios."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_complete_chunking_workflow(
         self,
         ws_manager: RedisStreamWebSocketManager,
@@ -773,7 +769,7 @@ class TestIntegrationScenarios:
         # Verify all messages were sent
         assert mock_redis_client.xadd.call_count >= 7  # start + 5 progress + completion
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_failed_chunking_workflow(
         self,
         ws_manager: RedisStreamWebSocketManager,

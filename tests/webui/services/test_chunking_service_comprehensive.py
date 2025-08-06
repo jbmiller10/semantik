@@ -7,28 +7,22 @@ caching behavior, and error handling.
 """
 
 import asyncio
-import hashlib
 import json
 import uuid
-from datetime import UTC, datetime, timedelta
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from packages.shared.database.exceptions import (
     EntityNotFoundError,
-    ValidationError as DBValidationError,
 )
 from packages.webui.api.chunking_exceptions import (
-    ChunkingConfigurationError,
     ChunkingMemoryError,
-    ChunkingResourceLimitError,
     ChunkingStrategyError,
     ChunkingTimeoutError,
-    ChunkingValidationError,
 )
-from packages.webui.api.v2.chunking_schemas import ChunkingStrategy, ChunkingStatus
+from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
 from packages.webui.services.chunking_service import ChunkingService
 
 
@@ -191,7 +185,7 @@ def chunking_service(
 class TestPreviewFunctionality:
     """Test preview generation and caching."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_with_content(
         self,
         chunking_service: ChunkingService,
@@ -219,7 +213,7 @@ class TestPreviewFunctionality:
         # Verify caching attempted
         mock_redis.setex.assert_called()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     @patch("packages.webui.services.chunking_service.ChunkingFactory")
     async def test_preview_with_document_id(
         self,
@@ -257,7 +251,7 @@ class TestPreviewFunctionality:
         # Verify document was fetched
         mock_document_service.get_document.assert_called_with("doc-123", user_id=1)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_caching(
         self,
         chunking_service: ChunkingService,
@@ -291,7 +285,7 @@ class TestPreviewFunctionality:
         # Second call should have same content if cached
         assert result2["preview_id"] == result1["preview_id"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_cache_key_generation(
         self,
         chunking_service: ChunkingService,
@@ -314,7 +308,7 @@ class TestPreviewFunctionality:
         key4 = chunking_service._generate_cache_key(content, strategy, config, 2)
         assert key4 != key1
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_clear_preview_cache(
         self,
         chunking_service: ChunkingService,
@@ -331,7 +325,7 @@ class TestPreviewFunctionality:
 class TestStrategyRecommendation:
     """Test strategy recommendation functionality."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_recommend_strategy_for_pdf(
         self,
         chunking_service: ChunkingService,
@@ -350,7 +344,7 @@ class TestStrategyRecommendation:
         assert "reasoning" in result
         assert "alternatives" in result
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_recommend_strategy_for_code(
         self,
         chunking_service: ChunkingService,
@@ -367,7 +361,7 @@ class TestStrategyRecommendation:
         ]
         assert "code" in result["reasoning"].lower() or "programming" in result["reasoning"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_recommend_strategy_for_mixed_types(
         self,
         chunking_service: ChunkingService,
@@ -384,7 +378,7 @@ class TestStrategyRecommendation:
         ]
         assert len(result.get("alternatives", [])) > 0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_recommend_strategy_with_no_file_types(
         self,
         chunking_service: ChunkingService,
@@ -403,7 +397,7 @@ class TestStrategyRecommendation:
 class TestConfigurationValidation:
     """Test configuration validation for collections."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_validate_valid_config(
         self,
         chunking_service: ChunkingService,
@@ -420,7 +414,7 @@ class TestConfigurationValidation:
         assert result["is_valid"] is True
         assert "estimated_time" in result
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_validate_invalid_chunk_size(
         self,
         chunking_service: ChunkingService,
@@ -442,7 +436,7 @@ class TestConfigurationValidation:
         assert result["is_valid"] is False
         assert "reason" in result
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_validate_semantic_requirements(
         self,
         chunking_service: ChunkingService,
@@ -460,7 +454,7 @@ class TestConfigurationValidation:
         if not result["is_valid"]:
             assert "embedding" in result.get("reason", "").lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_estimate_processing_time(
         self,
         chunking_service: ChunkingService,
@@ -488,7 +482,7 @@ class TestConfigurationValidation:
 class TestChunkingOperations:
     """Test chunking operation processing."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_process_chunking_operation_success(
         self,
         chunking_service: ChunkingService,
@@ -519,7 +513,7 @@ class TestChunkingOperations:
             completion_calls = [call for call in calls if "completed" in str(call)]
             assert len(completion_calls) > 0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_process_chunking_with_specific_documents(
         self,
         chunking_service: ChunkingService,
@@ -551,7 +545,7 @@ class TestChunkingOperations:
             # Should have progress for 3 documents
             assert len(progress_calls) <= len(document_ids)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_process_chunking_operation_failure(
         self,
         chunking_service: ChunkingService,
@@ -566,7 +560,7 @@ class TestChunkingOperations:
         with patch("packages.webui.services.chunking_service.ws_manager") as mock_ws:
             mock_ws.send_message = AsyncMock()
 
-            with pytest.raises(Exception):
+            with pytest.raises(Exception, match="Document read error"):
                 await chunking_service.process_chunking_operation(
                     operation_id=operation_id,
                     collection_id="coll-123",
@@ -585,7 +579,7 @@ class TestChunkingOperations:
 class TestStatisticsAndMetrics:
     """Test statistics and metrics calculation."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_chunking_statistics(
         self,
         chunking_service: ChunkingService,
@@ -611,7 +605,7 @@ class TestStatisticsAndMetrics:
         assert "average_chunks_per_document" in stats.performance_metrics
         assert stats.performance_metrics["average_chunks_per_document"] == 25.0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_calculate_quality_metrics(
         self,
         chunking_service: ChunkingService,
@@ -631,7 +625,7 @@ class TestStatisticsAndMetrics:
         assert 0 <= metrics["coherence"] <= 1
         assert 0 <= metrics["completeness"] <= 1
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_track_preview_usage(
         self,
         chunking_service: ChunkingService,
@@ -651,7 +645,7 @@ class TestStatisticsAndMetrics:
 class TestErrorHandling:
     """Test error handling in chunking service."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_handle_memory_error(
         self,
         chunking_service: ChunkingService,
@@ -667,22 +661,21 @@ class TestErrorHandling:
                 user_id=1,
             )
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_handle_timeout_error(
         self,
         chunking_service: ChunkingService,
     ) -> None:
         """Test handling of timeout errors."""
         # Mock slow processing
-        with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
-            with pytest.raises(ChunkingTimeoutError):
-                await chunking_service.preview_chunking(
-                    content="Test content",
-                    strategy=ChunkingStrategy.SEMANTIC,
-                    user_id=1,
-                )
+        with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError), pytest.raises(ChunkingTimeoutError):
+            await chunking_service.preview_chunking(
+                content="Test content",
+                strategy=ChunkingStrategy.SEMANTIC,
+                user_id=1,
+            )
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_handle_invalid_strategy(
         self,
         chunking_service: ChunkingService,
@@ -695,7 +688,7 @@ class TestErrorHandling:
                 user_id=1,
             )
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_handle_document_not_found(
         self,
         chunking_service: ChunkingService,
@@ -711,7 +704,7 @@ class TestErrorHandling:
                 user_id=1,
             )
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_handle_redis_connection_error(
         self,
         chunking_service: ChunkingService,
@@ -736,7 +729,7 @@ class TestErrorHandling:
 class TestChunkingAlgorithms:
     """Test actual chunking algorithm implementations."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_fixed_size_chunking(
         self,
         chunking_service: ChunkingService,
@@ -757,7 +750,7 @@ class TestChunkingAlgorithms:
         for chunk in chunks[:-1]:  # All but last chunk
             assert 90 <= len(chunk["content"]) <= 110
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_recursive_chunking(
         self,
         chunking_service: ChunkingService,
@@ -789,7 +782,7 @@ Sub-content.
         assert any("Header 1" in text for text in chunk_texts)
         assert any("Header 2" in text for text in chunk_texts)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_sliding_window_chunking(
         self,
         chunking_service: ChunkingService,
@@ -812,7 +805,7 @@ Sub-content.
             overlap = chunk1[25:]  # Last half of chunk1
             assert overlap in chunk2 or len(overlap) == 0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preserve_sentences(
         self,
         chunking_service: ChunkingService,
@@ -841,7 +834,7 @@ Sub-content.
 class TestConcurrency:
     """Test concurrent operation handling."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_concurrent_preview_requests(
         self,
         chunking_service: ChunkingService,
@@ -869,7 +862,7 @@ class TestConcurrency:
         preview_ids = [r["preview_id"] for r in results]
         assert len(set(preview_ids)) == 10
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_concurrent_cache_access(
         self,
         chunking_service: ChunkingService,
@@ -899,7 +892,7 @@ class TestConcurrency:
 
         # Multiple concurrent requests for same content
         tasks = []
-        for i in range(20):
+        for _ in range(20):
             task = chunking_service.preview_chunking(
                 content=content,
                 strategy=ChunkingStrategy.FIXED_SIZE,
@@ -917,7 +910,7 @@ class TestConcurrency:
 class TestProgressTracking:
     """Test operation progress tracking."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_chunking_progress(
         self,
         chunking_service: ChunkingService,
@@ -927,7 +920,6 @@ class TestProgressTracking:
         operation_id = str(uuid.uuid4())
 
         # Mock operation with progress data
-        from datetime import datetime, UTC
         from types import SimpleNamespace
 
         mock_operation = SimpleNamespace(
@@ -958,7 +950,7 @@ class TestProgressTracking:
         assert result["progress_percentage"] == 45.5
         assert result["documents_processed"] == 5
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_update_progress(
         self,
         chunking_service: ChunkingService,
