@@ -661,7 +661,7 @@ class TestPerformanceAndScaling:
         
         # Capture messages as they're sent
         async def capture_xadd(stream, data, **kwargs):
-            messages.append(json.loads(data["data"]))
+            messages.append(json.loads(data.get("message", data.get("data", "{}")))
             return f"{len(messages)}-0"
         
         mock_redis_client.xadd.side_effect = capture_xadd
@@ -804,6 +804,6 @@ class TestIntegrationScenarios:
         # Verify error was sent
         calls = mock_redis_client.xadd.call_args_list
         last_call = calls[-1]
-        last_message = json.loads(last_call[0][1]["data"])
+        last_message = json.loads(last_call[0][1].get("message", last_call[0][1].get("data", "{}")))
         assert last_message["type"] == "chunking_failed"
         assert last_message["error_code"] == "MEMORY_ERROR"

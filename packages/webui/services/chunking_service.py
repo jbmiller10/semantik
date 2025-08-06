@@ -99,6 +99,16 @@ class ChunkingValidationResult:
 class ChunkingService:
     """Service layer for chunking operations."""
 
+    # Mapping from API enum values to factory strategy names
+    STRATEGY_MAPPING = {
+        "fixed_size": "character",  # Fixed size maps to character chunker
+        "sliding_window": "character",  # Sliding window can also use character with overlap
+        "semantic": "semantic",
+        "recursive": "recursive",
+        "document_structure": "markdown",  # Document structure maps to markdown chunker
+        "hybrid": "hybrid",
+    }
+
     def __init__(
         self,
         db_session: AsyncSession,
@@ -138,6 +148,17 @@ class ChunkingService:
         
         # Initialize progress throttle tracker
         self._chunking_progress_throttle: dict[str, float] = {}
+
+    def _map_strategy_to_factory_name(self, strategy: str) -> str:
+        """Map API strategy name to factory strategy name.
+        
+        Args:
+            strategy: API strategy name (e.g., "fixed_size", "sliding_window")
+            
+        Returns:
+            Factory strategy name (e.g., "character", "markdown")
+        """
+        return self.STRATEGY_MAPPING.get(strategy, strategy)
 
     async def _validate_preview_input(
         self,
@@ -217,9 +238,11 @@ class ChunkingService:
         initial_memory = process.memory_info().rss
         memory_limit = CHUNKING_LIMITS.PREVIEW_MEMORY_LIMIT_BYTES
 
-        # Create chunker
+        # Create chunker with mapped strategy
         try:
-            chunker = ChunkingFactory.create_chunker(config)
+            mapped_config = config.copy()
+            mapped_config["strategy"] = self._map_strategy_to_factory_name(config.get("strategy", "recursive"))
+            chunker = ChunkingFactory.create_chunker(mapped_config)
         except Exception as e:
             error_result = await self.error_handler.handle_with_correlation(
                 operation_id=operation_id,
@@ -647,8 +670,10 @@ class ChunkingService:
             limit=sample_size,
         )
 
-        # Test chunking on samples
-        chunker = ChunkingFactory.create_chunker(config)
+        # Test chunking on samples with mapped strategy
+        mapped_config = config.copy()
+        mapped_config["strategy"] = self._map_strategy_to_factory_name(config.get("strategy", "recursive"))
+        chunker = ChunkingFactory.create_chunker(mapped_config)
         sample_results = []
         warnings = []
         total_estimated_chunks = 0
@@ -1237,8 +1262,10 @@ class ChunkingService:
                 logger.warning(f"Document {document.id} has no content")
                 return 0
 
-            # Create chunker
-            chunker = ChunkingFactory.create_chunker(config)
+            # Create chunker with mapped strategy
+            mapped_config = config.copy()
+            mapped_config["strategy"] = self._map_strategy_to_factory_name(config.get("strategy", "recursive"))
+            chunker = ChunkingFactory.create_chunker(mapped_config)
 
             # Prepare metadata
             metadata = {
@@ -1565,9 +1592,9 @@ class ChunkingService:
         Returns:
             List of chunk dictionaries
         """
-        # Build full config with strategy
+        # Build full config with mapped strategy
         full_config = {
-            "strategy": strategy,
+            "strategy": self._map_strategy_to_factory_name(strategy),
             "params": config.get("params", {
                 "chunk_size": config.get("chunk_size", DEFAULT_CHUNK_SIZE),
                 "chunk_overlap": config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
