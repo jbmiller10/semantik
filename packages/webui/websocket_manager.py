@@ -453,6 +453,73 @@ class RedisStreamWebSocketManager:
         except Exception as e:
             logger.warning(f"Failed to clean up stream for operation {operation_id}: {e}")
 
+    async def cleanup_operation_channel(self, operation_id: str) -> None:
+        """Clean up all resources for a completed operation.
+        
+        Args:
+            operation_id: The operation ID to clean up
+        """
+        # Cancel consumer task if exists
+        if operation_id in self.consumer_tasks:
+            task = self.consumer_tasks[operation_id]
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+            del self.consumer_tasks[operation_id]
+        
+        # Clean up Redis stream
+        await self.cleanup_stream(operation_id)
+        
+        # Close all connections for this operation
+        await self._close_connections(operation_id)
+        
+        logger.info(f"Cleaned up all resources for operation {operation_id}")
+    
+    async def broadcast_to_operation(
+        self,
+        operation_id: str,
+        message: dict,
+    ) -> None:
+        """Broadcast a message to all connections for an operation.
+        
+        Args:
+            operation_id: The operation ID
+            message: The message to broadcast
+        """
+        await self._broadcast(operation_id, message)
+
+    async def _should_send_progress_update(
+        self,
+        operation_id: str,
+        message: dict,
+    ) -> bool:
+        """Check if a progress update should be sent based on throttling.
+        
+        Args:
+            operation_id: The operation ID
+            message: The message to check
+            
+        Returns:
+            True if the message should be sent, False if throttled
+        """
+        # Check if this is a progress update
+        if message.get("type") != "chunking_progress":
+            return True  # Non-progress messages always go through
+        
+        # Check throttling
+        now = datetime.now(UTC)
+        if operation_id in self._chunking_progress_throttle:
+            time_since_last = (
+                now - self._chunking_progress_throttle[operation_id]
+            ).total_seconds()
+            if time_since_last < self._chunking_progress_threshold:
+                # Too soon after last update, throttle it
+                return False
+        
+        # Update timestamp for next check
+        self._chunking_progress_throttle[operation_id] = now
+        return True
+
     async def send_chunking_progress(
         self,
         operation_id: str,
@@ -533,7 +600,7 @@ class RedisStreamWebSocketManager:
             message: The message to send
         """
         if self.redis:
-            stream_key = f"channel:{channel}"
+            stream_key = f"stream:{channel}"
             
             try:
                 # Add to stream with automatic ID

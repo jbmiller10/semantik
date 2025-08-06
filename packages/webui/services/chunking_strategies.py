@@ -16,7 +16,7 @@ class ChunkingStrategyRegistry:
     # Strategy definitions with metadata
     STRATEGY_DEFINITIONS: dict[ChunkingStrategy, dict[str, Any]] = {
         ChunkingStrategy.FIXED_SIZE: {
-            "name": "Fixed Size",
+            "name": "Fixed Size Chunking",
             "description": "Simple fixed-size chunking with consistent chunk sizes",
             "best_for": ["txt", "log", "csv", "json"],
             "pros": ["Predictable chunk sizes", "Fast processing", "Low memory usage", "Good for structured data"],

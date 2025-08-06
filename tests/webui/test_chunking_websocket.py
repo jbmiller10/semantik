@@ -317,7 +317,7 @@ class TestProgressUpdates:
         # Verify message was sent
         mock_redis_client.xadd.assert_called_once()
         call_args = mock_redis_client.xadd.call_args
-        sent_data = json.loads(call_args[0][1]["data"])
+        sent_data = json.loads(call_args[0][1]["message"])
         assert sent_data["type"] == "chunking_completed"
         assert sent_data["status"] == ChunkingStatus.COMPLETED.value
 
@@ -346,7 +346,7 @@ class TestProgressUpdates:
         # Verify error was sent
         mock_redis_client.xadd.assert_called_once()
         call_args = mock_redis_client.xadd.call_args
-        sent_data = json.loads(call_args[0][1]["data"])
+        sent_data = json.loads(call_args[0][1]["message"])
         assert sent_data["type"] == "chunking_failed"
         assert sent_data["error_code"] == "CHUNKING_MEMORY_ERROR"
 

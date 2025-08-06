@@ -101,11 +101,27 @@ def chunking_service(
     mock_collection_service: AsyncMock,
 ) -> ChunkingService:
     """Create a ChunkingService instance with mocked dependencies."""
-    service = ChunkingService()
-    service.redis = mock_redis
-    service.db = mock_db_session
+    # Create mock repositories
+    mock_collection_repo = MagicMock()
+    mock_document_repo = MagicMock()
+    
+    # Setup mock repository methods
+    mock_collection_repo.get_by_uuid_with_permission_check = AsyncMock()
+    mock_document_repo.list_by_collection = AsyncMock(return_value=([], 0))
+    mock_document_repo.get_by_id = AsyncMock()
+    
+    # Create service with mocked dependencies
+    service = ChunkingService(
+        db_session=mock_db_session,
+        collection_repo=mock_collection_repo,
+        document_repo=mock_document_repo,
+        redis_client=mock_redis,
+    )
+    
+    # Also set the services as attributes for tests that might use them
     service.document_service = mock_document_service
     service.collection_service = mock_collection_service
+    
     return service
 
 

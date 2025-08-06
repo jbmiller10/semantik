@@ -157,11 +157,25 @@ class TestStrategyManagement:
     def test_list_strategies_unauthenticated(self) -> None:
         """Test that listing strategies requires authentication."""
         from packages.webui.main import app
+        from packages.webui.config import settings
+        import os
         
-        client = TestClient(app)
-        response = client.get("/api/v2/chunking/strategies")
+        # Temporarily disable auth bypass for this test
+        original_disable_auth = os.environ.get("DISABLE_AUTH", "false")
+        os.environ["DISABLE_AUTH"] = "false"
         
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        try:
+            # Force settings to reload
+            settings.DISABLE_AUTH = False
+            
+            client = TestClient(app)
+            response = client.get("/api/v2/chunking/strategies")
+            
+            assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        finally:
+            # Restore original setting
+            os.environ["DISABLE_AUTH"] = original_disable_auth
+            settings.DISABLE_AUTH = original_disable_auth.lower() == "true"
 
     def test_get_strategy_details_success(self, client: TestClient) -> None:
         """Test getting details for a specific strategy."""
