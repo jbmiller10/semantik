@@ -661,7 +661,7 @@ class TestPerformanceAndScaling:
         
         # Capture messages as they're sent
         async def capture_xadd(stream, data, **kwargs):
-            messages.append(json.loads(data.get("message", data.get("data", "{}")))
+            messages.append(json.loads(data.get("message", data.get("data", "{}"))))
             return f"{len(messages)}-0"
         
         mock_redis_client.xadd.side_effect = capture_xadd
