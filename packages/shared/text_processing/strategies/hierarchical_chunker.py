@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING, Any
 
 from llama_index.core import Document
 from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
-from llama_index.core.schema import NodeRelationship
 
 from packages.shared.text_processing.base_chunker import BaseChunker, ChunkResult
 
@@ -206,7 +205,7 @@ class HierarchicalChunker(BaseChunker):
 
         # Check if this is a parent node
         if hasattr(node, "relationships") and node.relationships:
-            child_rel = node.relationships.get(NodeRelationship.CHILD)
+            child_rel = node.relationships.get("2")  # LlamaIndex uses "2" for child relationship
             if child_rel:
                 # For parent nodes, use the span of their children
                 child_ids = []
@@ -628,13 +627,13 @@ class HierarchicalChunker(BaseChunker):
         # Determine parent relationship
         if hasattr(node, "relationships") and node.relationships:
             # Check for parent relationship
-            parent_rel = node.relationships.get(NodeRelationship.PARENT)
+            parent_rel = node.relationships.get("1")  # LlamaIndex uses "1" for parent relationship
             if parent_rel:
                 if hasattr(parent_rel, "node_id") and parent_rel.node_id:
                     hierarchy_info["parent_id"] = parent_rel.node_id
 
             # Check for child relationships
-            child_rel = node.relationships.get(NodeRelationship.CHILD)
+            child_rel = node.relationships.get("2")  # LlamaIndex uses "2" for child relationship
             if child_rel:
                 if hasattr(child_rel, "node_id") and child_rel.node_id:
                     # Single child
@@ -702,7 +701,7 @@ class HierarchicalChunker(BaseChunker):
             parent_nodes = []
             for node in all_nodes:
                 if hasattr(node, "relationships") and node.relationships:
-                    child_rel = node.relationships.get(NodeRelationship.CHILD)
+                    child_rel = node.relationships.get("2")  # LlamaIndex uses "2" for child relationship
                     if child_rel:
                         child_ids = []
                         if hasattr(child_rel, "node_id") and child_rel.node_id:
