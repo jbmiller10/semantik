@@ -538,6 +538,12 @@ class TestCollectionProcessing:
             "type": "chunking",
             "status": "pending",
         }
+        # Add missing mock for start_chunking_operation
+        websocket_channel = f"chunking:123e4567-e89b-12d3-a456-426614174000:{operation_id}"
+        mock_chunking_service.start_chunking_operation.return_value = (
+            websocket_channel,
+            {"is_valid": True, "estimated_time": 60}
+        )
         mock_ws_manager.send_message.return_value = None
         
         request_data = {
@@ -572,7 +578,7 @@ class TestCollectionProcessing:
     ) -> None:
         """Test starting operation with invalid configuration."""
         mock_chunking_service.validate_config_for_collection.return_value = {
-            "valid": False,
+            "is_valid": False,
             "reason": "Invalid chunk size for this collection",
         }
         
@@ -580,7 +586,7 @@ class TestCollectionProcessing:
             "strategy": "fixed_size",
             "config": {
                 "strategy": "fixed_size",
-                "chunk_size": 10000,  # Too large
+                "chunk_size": 4000,  # Valid for schema but will fail custom validation
                 "chunk_overlap": 50,
                 "preserve_sentences": True,
             },
@@ -974,8 +980,19 @@ class TestSecurityAndValidation:
         # Should fail validation due to overlap being greater than chunk size
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
-    def test_sql_injection_attempt(self, client: TestClient) -> None:
+    def test_sql_injection_attempt(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test that SQL injection attempts are properly handled."""
+        # Setup mock to return a valid response if validation passes
+        mock_chunking_service.track_preview_usage.return_value = None
+        mock_chunking_service.preview_chunking.return_value = {
+            "preview_id": str(uuid.uuid4()),
+            "strategy": ChunkingStrategy.FIXED_SIZE,
+            "config": {"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
+            "chunks": [],
+            "total_chunks": 0,
+            "processing_time_ms": 10,
+        }
+        
         # Attempt SQL injection in various parameters
         malicious_inputs = [
             "'; DROP TABLE users; --",
@@ -1088,6 +1105,13 @@ class TestEdgeCases:
                 "type": "chunking",
                 "status": "pending",
             }
+            
+            # Add missing mock for start_chunking_operation
+            websocket_channel = f"chunking:123e4567-e89b-12d3-a456-426614174000:{op_id}"
+            mock_chunking_service.start_chunking_operation.return_value = (
+                websocket_channel,
+                {"is_valid": True, "estimated_time": 60}
+            )
             
             request_data = {
                 "strategy": "fixed_size",

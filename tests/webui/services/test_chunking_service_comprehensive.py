@@ -107,9 +107,31 @@ def chunking_service(
     mock_document_repo = MagicMock()
     mock_operation_repo = MagicMock()
     
+    # Create mock Qdrant client
+    mock_qdrant = MagicMock()
+    mock_qdrant.get_collections.return_value = MagicMock(collections=[])
+    mock_qdrant.create_collection.return_value = None
+    mock_qdrant.upsert.return_value = None
+    
     # Setup mock repository methods
     mock_collection_repo.get_by_uuid_with_permission_check = AsyncMock()
-    mock_document_repo.list_by_collection = AsyncMock(return_value=([], 0))
+    
+    # Create mock documents for testing
+    mock_documents = []
+    for i in range(5):
+        doc = MagicMock()
+        doc.id = f"doc-{i}"
+        doc.file_name = f"doc_{i}.txt"
+        doc.file_path = f"/path/to/doc_{i}.txt"
+        doc.file_size_bytes = 1024
+        doc.mime_type = "text/plain"
+        doc.collection_id = "coll-123"
+        doc.chunk_count = None
+        doc.status = None
+        doc.error_message = None
+        mock_documents.append(doc)
+    
+    mock_document_repo.list_by_collection = AsyncMock(return_value=(mock_documents, len(mock_documents)))
     
     # Create a proper mock document object
     mock_document = MagicMock()
@@ -118,10 +140,37 @@ def chunking_service(
     mock_document.file_path = "/path/to/test.pdf"
     mock_document.file_size_bytes = 1024
     mock_document.mime_type = "application/pdf"
-    mock_document_repo.get_by_id = AsyncMock(return_value=mock_document)
+    
+    # Mock get_by_id to return appropriate documents
+    async def mock_get_by_id(doc_id):
+        # Return specific documents for specific IDs
+        for doc in mock_documents:
+            if doc.id == doc_id:
+                return doc
+        # Return the default mock document for other IDs
+        if doc_id == "doc-123":
+            return mock_document
+        # Create a new mock for other specific document IDs
+        if doc_id.startswith("doc-"):
+            new_doc = MagicMock()
+            new_doc.id = doc_id
+            new_doc.file_name = f"{doc_id}.txt"
+            new_doc.file_path = f"/path/to/{doc_id}.txt"
+            new_doc.file_size_bytes = 1024
+            new_doc.mime_type = "text/plain"
+            new_doc.collection_id = "coll-123"
+            new_doc.chunk_count = None
+            new_doc.status = None
+            new_doc.error_message = None
+            return new_doc
+        return None
+    
+    mock_document_repo.get_by_id = AsyncMock(side_effect=mock_get_by_id)
     
     mock_operation_repo.get_by_uuid_with_permission_check = AsyncMock()
+    mock_operation_repo.get_by_uuid = AsyncMock()
     mock_operation_repo.update = AsyncMock()
+    mock_operation_repo.update_status = AsyncMock()
     
     # Create service with mocked dependencies
     service = ChunkingService(
@@ -130,6 +179,7 @@ def chunking_service(
         document_repo=mock_document_repo,
         redis_client=mock_redis,
         operation_repo=mock_operation_repo,
+        qdrant_client=mock_qdrant,
     )
     
     # Also set the services as attributes for tests that might use them
@@ -171,12 +221,26 @@ class TestPreviewFunctionality:
         mock_redis.setex.assert_called()
 
     @pytest.mark.asyncio
+    @patch("packages.webui.services.chunking_service.ChunkingFactory")
     async def test_preview_with_document_id(
         self,
+        mock_chunking_factory: MagicMock,
         chunking_service: ChunkingService,
         mock_document_service: AsyncMock,
     ) -> None:
         """Test generating preview with document ID."""
+        # Mock the chunker to avoid needing OpenAI API
+        mock_chunker = MagicMock()
+        mock_chunk_result = MagicMock()
+        mock_chunk_result.chunk_id = "chunk-1"
+        mock_chunk_result.text = "Test chunk content"
+        mock_chunk_result.metadata = {"chunk_index": 0}
+        mock_chunk_result.start_offset = 0
+        mock_chunk_result.end_offset = 20
+        
+        mock_chunker.chunk_text_async = AsyncMock(return_value=[mock_chunk_result])
+        mock_chunking_factory.create_chunker.return_value = mock_chunker
+        
         result = await chunking_service.preview_chunking(
             document_id="doc-123",
             content=None,
@@ -872,7 +936,7 @@ class TestProgressTracking:
         operation_id = str(uuid.uuid4())
         
         # Mock operation with progress data
-        from datetime import datetime
+        from datetime import datetime, UTC
         from types import SimpleNamespace
         mock_operation = SimpleNamespace(
             meta={
@@ -886,12 +950,12 @@ class TestProgressTracking:
             status=SimpleNamespace(value="in_progress"),
             progress_percentage=45.5,
             uuid=operation_id,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(UTC),
             error_message=None,
         )
         
         # Mock the operation repository to return our mock operation
-        chunking_service.operation_repo.get_by_uuid_with_permission_check.return_value = mock_operation
+        chunking_service.operation_repo.get_by_uuid_with_permission_check = AsyncMock(return_value=mock_operation)
         
         result = await chunking_service.get_chunking_progress(
             operation_id=operation_id,

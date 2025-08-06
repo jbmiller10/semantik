@@ -90,6 +90,10 @@ class RedisStreamWebSocketManager:
                 with contextlib.suppress(Exception):
                     await websocket.close()
 
+        # Clear the dictionaries after cleanup
+        self.connections.clear()
+        self.consumer_tasks.clear()
+
         # Close Redis connection
         if self.redis:
             await self.redis.close()

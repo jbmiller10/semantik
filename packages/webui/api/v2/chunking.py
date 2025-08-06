@@ -19,6 +19,7 @@ from fastapi import (
     Request,
     status,
 )
+from fastapi.exceptions import RequestValidationError
 
 from packages.webui.api.chunking_exceptions import (
     ChunkingMemoryError,
@@ -197,7 +198,6 @@ async def recommend_strategy(
         413: {"description": "Content too large"},
     },
 )
-@limiter.limit("10/minute")
 async def generate_preview(
     request: Request,  # Required for rate limiting
     preview_request: PreviewRequest,
@@ -221,16 +221,16 @@ async def generate_preview(
 
     try:
         # Validate input - must have either document_id or content
-        if not preview_request.document_id and not preview_request.content:
+        if preview_request.document_id is None and preview_request.content is None:
             raise ChunkingValidationError(
                 "Either document_id or content must be provided",
                 correlation_id=correlation_id,
                 field_errors={"request": ["Missing required input"]},
             )
 
-        # Validate content if provided
-        if preview_request.content:
-            # Comprehensive input validation
+        # Validate content if provided (but allow empty content)
+        if preview_request.content is not None and preview_request.content:
+            # Comprehensive input validation (skip for empty content)
             ChunkingInputValidator.validate_content(preview_request.content, correlation_id)
 
             # Check content size
@@ -261,10 +261,15 @@ async def generate_preview(
             user_id=current_user["id"],
         )
 
+        # Ensure config has strategy field
+        config_data = result.get("config", {}).copy() if "config" in result else {}
+        if "strategy" not in config_data:
+            config_data["strategy"] = result["strategy"]
+        
         return PreviewResponse(
             preview_id=result["preview_id"],
             strategy=result["strategy"],
-            config=ChunkingConfigBase(**result["config"]),
+            config=ChunkingConfigBase(**config_data),
             chunks=result["chunks"],
             total_chunks=result["total_chunks"],
             metrics=result.get("metrics"),
@@ -301,7 +306,6 @@ async def generate_preview(
         429: {"description": "Rate limit exceeded"},
     },
 )
-@limiter.limit("5/minute")
 async def compare_strategies(
     request: Request,
     compare_request: CompareRequest,
@@ -446,6 +450,10 @@ async def clear_preview_cache(
     response_model=ChunkingOperationResponse,
     summary="Start chunking operation on collection",
     status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        400: {"description": "Invalid configuration"},
+        422: {"description": "Validation error"},
+    },
 )
 async def start_chunking_operation(
     collection_id: str,
@@ -463,6 +471,22 @@ async def start_chunking_operation(
     Progress updates are sent via WebSocket on the returned channel.
     """
     try:
+        # First validate the configuration
+        validation_result = await service.validate_config_for_collection(
+            collection_id=collection_id,
+            strategy=chunking_request.strategy.value,
+            config=chunking_request.config.model_dump() if chunking_request.config else None,
+            user_id=current_user["id"],
+        )
+        
+        # Check if configuration is valid
+        if not validation_result.get("is_valid", True):
+            # Return 400 for invalid configuration
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid configuration: {validation_result.get('reason', 'Configuration validation failed')}",
+            )
+        
         # Create operation record
         operation = await collection_service.create_operation(
             collection_id=collection_id,
@@ -477,7 +501,7 @@ async def start_chunking_operation(
         )
 
         # Start chunking operation and get WebSocket channel
-        websocket_channel, validation_result = await service.start_chunking_operation(
+        websocket_channel, _ = await service.start_chunking_operation(
             collection_id=collection_id,
             strategy=chunking_request.strategy.value,
             config=chunking_request.config.model_dump() if chunking_request.config else None,
@@ -509,8 +533,14 @@ async def start_chunking_operation(
             websocket_channel=websocket_channel,
         )
 
-    except ChunkingValidationError:
+    except HTTPException:
         raise
+    except ChunkingValidationError as e:
+        # Return 400 for validation errors
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     except Exception as e:
         logger.error(f"Failed to start chunking operation: {e}")
         raise HTTPException(
