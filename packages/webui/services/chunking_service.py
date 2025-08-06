@@ -398,7 +398,7 @@ class ChunkingService:
         file_types: list[str] | None = None,
         file_paths: list[str] | None = None,
         user_id: int | None = None,
-    ) -> ChunkingRecommendation:
+    ) -> dict[str, Any]:
         """Recommend optimal chunking strategy based on file types.
 
         Args:
@@ -407,7 +407,7 @@ class ChunkingService:
             user_id: User ID for tracking
 
         Returns:
-            ChunkingRecommendation with strategy details
+            Dictionary with recommendation details
         """
         # Use file_types if provided, otherwise extract from paths
         types_to_analyze = file_types or []
@@ -426,38 +426,35 @@ class ChunkingService:
 
         # If majority are markdown files
         if file_type_breakdown.get("markdown", 0) > total_files * 0.5:
-            return ChunkingRecommendation(
-                recommended_strategy="recursive",
-                recommended_params={
-                    "chunk_size": 600,
-                    "chunk_overlap": 100,
-                },
-                rationale="Majority of files are markdown documents which benefit from structure-aware chunking",
-                file_type_breakdown=file_type_breakdown,
-            )
+            return {
+                "strategy": "recursive",  # Use recursive instead of markdown
+                "confidence": 0.85,
+                "reasoning": "Majority of files are markdown documents which benefit from structure-aware chunking",
+                "alternatives": ["semantic", "fixed_size"],
+                "chunk_size": 600,
+                "chunk_overlap": 100,
+            }
 
         # If significant code files
         if file_type_breakdown.get("code", 0) > total_files * 0.3:
-            return ChunkingRecommendation(
-                recommended_strategy="recursive",
-                recommended_params={
-                    "chunk_size": 500,
-                    "chunk_overlap": 75,
-                },
-                rationale="Mixed content with significant code files requiring syntax-aware chunking",
-                file_type_breakdown=file_type_breakdown,
-            )
+            return {
+                "strategy": "recursive",
+                "confidence": 0.80,
+                "reasoning": "Mixed content with significant code files requiring syntax-aware chunking",
+                "alternatives": ["sliding_window", "semantic"],
+                "chunk_size": 500,
+                "chunk_overlap": 75,
+            }
 
         # Default recommendation
-        return ChunkingRecommendation(
-            recommended_strategy="recursive",
-            recommended_params={
-                "chunk_size": 600,
-                "chunk_overlap": 100,
-            },
-            rationale="General purpose strategy for mixed content types",
-            file_type_breakdown=file_type_breakdown,
-        )
+        return {
+            "strategy": "recursive",
+            "confidence": 0.75,
+            "reasoning": "General purpose strategy for mixed content types",
+            "alternatives": ["fixed_size", "semantic"],
+            "chunk_size": 600,
+            "chunk_overlap": 100,
+        }
 
     async def get_chunking_statistics(
         self,

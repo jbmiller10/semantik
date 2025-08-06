@@ -266,7 +266,7 @@ class TestRedisStreamWebSocketManager:
         await manager.connect(mock_websocket, "operation_new", "user1")
 
         # Verify connection rejected
-        mock_websocket.close.assert_called_once_with(code=1008, reason="User connection limit exceeded")
+        mock_websocket.close.assert_called_once_with(code=1008, reason="Connection limit exceeded")
 
     @pytest.mark.asyncio()
     async def test_disconnect(self, manager: RedisStreamWebSocketManager, mock_websocket: AsyncMock) -> None:
