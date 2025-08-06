@@ -459,7 +459,7 @@ class RedisStreamWebSocketManager:
 
     async def cleanup_operation_channel(self, operation_id: str) -> None:
         """Clean up all resources for a completed operation.
-        
+
         Args:
             operation_id: The operation ID to clean up
         """
@@ -470,22 +470,22 @@ class RedisStreamWebSocketManager:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
             del self.consumer_tasks[operation_id]
-        
+
         # Clean up Redis stream
         await self.cleanup_stream(operation_id)
-        
+
         # Close all connections for this operation
         await self._close_connections(operation_id)
-        
+
         logger.info(f"Cleaned up all resources for operation {operation_id}")
-    
+
     async def broadcast_to_operation(
         self,
         operation_id: str,
         message: dict,
     ) -> None:
         """Broadcast a message to all connections for an operation.
-        
+
         Args:
             operation_id: The operation ID
             message: The message to broadcast
@@ -498,28 +498,26 @@ class RedisStreamWebSocketManager:
         message: dict,
     ) -> bool:
         """Check if a progress update should be sent based on throttling.
-        
+
         Args:
             operation_id: The operation ID
             message: The message to check
-            
+
         Returns:
             True if the message should be sent, False if throttled
         """
         # Check if this is a progress update
         if message.get("type") != "chunking_progress":
             return True  # Non-progress messages always go through
-        
+
         # Check throttling
         now = datetime.now(UTC)
         if operation_id in self._chunking_progress_throttle:
-            time_since_last = (
-                now - self._chunking_progress_throttle[operation_id]
-            ).total_seconds()
+            time_since_last = (now - self._chunking_progress_throttle[operation_id]).total_seconds()
             if time_since_last < self._chunking_progress_threshold:
                 # Too soon after last update, throttle it
                 return False
-        
+
         # Update timestamp for next check
         self._chunking_progress_throttle[operation_id] = now
         return True
@@ -535,7 +533,7 @@ class RedisStreamWebSocketManager:
         throttle: bool = True,
     ) -> None:
         """Send chunking progress update with optional throttling.
-        
+
         Args:
             operation_id: The chunking operation ID
             progress_percentage: Completion percentage (0-100)
@@ -547,16 +545,14 @@ class RedisStreamWebSocketManager:
         """
         # Apply throttling to reduce WebSocket traffic
         if throttle and operation_id in self._chunking_progress_throttle:
-            time_since_last = (
-                datetime.now(UTC) - self._chunking_progress_throttle[operation_id]
-            ).total_seconds()
+            time_since_last = (datetime.now(UTC) - self._chunking_progress_throttle[operation_id]).total_seconds()
             if time_since_last < self._chunking_progress_threshold:
                 # Skip this update if too soon after the last one
                 return
-        
+
         # Update throttle timestamp
         self._chunking_progress_throttle[operation_id] = datetime.now(UTC)
-        
+
         # Send the progress update
         await self.send_update(
             operation_id,
@@ -577,7 +573,7 @@ class RedisStreamWebSocketManager:
         data: dict,
     ) -> None:
         """Send a chunking-specific event.
-        
+
         Supported event types:
         - chunking_started: Chunking operation has started
         - chunking_document_start: Started processing a document
@@ -586,7 +582,7 @@ class RedisStreamWebSocketManager:
         - chunking_failed: Chunking operation failed
         - chunking_cancelled: Chunking operation was cancelled
         - chunking_strategy_changed: Chunking strategy was changed
-        
+
         Args:
             operation_id: The chunking operation ID
             event_type: Type of chunking event
@@ -596,16 +592,16 @@ class RedisStreamWebSocketManager:
 
     async def send_message(self, channel: str, message: dict) -> None:
         """Send a message to a specific channel.
-        
+
         This is used for custom WebSocket channels like chunking operations.
-        
+
         Args:
             channel: The channel identifier (e.g., "chunking:collection_id:operation_id")
             message: The message to send
         """
         if self.redis:
             stream_key = f"stream:{channel}"
-            
+
             try:
                 # Add to stream with automatic ID
                 await self.redis.xadd(
@@ -613,10 +609,10 @@ class RedisStreamWebSocketManager:
                     {"message": json.dumps(message)},
                     maxlen=100,  # Keep last 100 messages for channels
                 )
-                
+
                 # Set TTL (1 hour for channel messages)
                 await self.redis.expire(stream_key, 3600)
-                
+
                 logger.debug(f"Sent message to channel {channel}")
             except Exception as e:
                 logger.error(f"Failed to send message to channel: {e}")
@@ -628,7 +624,7 @@ class RedisStreamWebSocketManager:
 
     async def _broadcast_to_channel(self, channel: str, message: dict) -> None:
         """Broadcast a message to all connections on a channel.
-        
+
         Args:
             channel: The channel identifier
             message: The message to broadcast
@@ -645,11 +641,9 @@ class RedisStreamWebSocketManager:
                         # Remove broken connection
                         websockets.discard(websocket)
 
-    async def connect_to_channel(
-        self, websocket: WebSocket, channel: str, user_id: str
-    ) -> None:
+    async def connect_to_channel(self, websocket: WebSocket, channel: str, user_id: str) -> None:
         """Connect a WebSocket to a custom channel.
-        
+
         Args:
             websocket: The WebSocket connection
             channel: The channel to connect to
@@ -661,39 +655,33 @@ class RedisStreamWebSocketManager:
             logger.error(f"Global connection limit reached ({self.max_total_connections})")
             await websocket.close(code=1008, reason="Server connection limit exceeded")
             return
-        
+
         # Check connection limit for this user
         user_connections = sum(
-            len(sockets)
-            for key, sockets in self.connections.items()
-            if key.startswith(f"{user_id}:")
+            len(sockets) for key, sockets in self.connections.items() if key.startswith(f"{user_id}:")
         )
-        
+
         if user_connections >= self.max_connections_per_user:
-            logger.warning(
-                f"User {user_id} exceeded connection limit ({self.max_connections_per_user})"
-            )
+            logger.warning(f"User {user_id} exceeded connection limit ({self.max_connections_per_user})")
             await websocket.close(code=1008, reason="User connection limit exceeded")
             return
-        
+
         await websocket.accept()
-        
+
         # Store connection
         key = f"{user_id}:channel:{channel}"
         if key not in self.connections:
             self.connections[key] = set()
         self.connections[key].add(websocket)
-        
+
         logger.info(
             f"Channel WebSocket connected: user={user_id}, channel={channel} "
             f"(total user connections: {user_connections + 1})"
         )
 
-    async def disconnect_from_channel(
-        self, websocket: WebSocket, channel: str, user_id: str
-    ) -> None:
+    async def disconnect_from_channel(self, websocket: WebSocket, channel: str, user_id: str) -> None:
         """Disconnect a WebSocket from a custom channel.
-        
+
         Args:
             websocket: The WebSocket connection
             channel: The channel to disconnect from
@@ -704,7 +692,7 @@ class RedisStreamWebSocketManager:
             self.connections[key].discard(websocket)
             if not self.connections[key]:
                 del self.connections[key]
-        
+
         logger.info(f"Channel WebSocket disconnected: user={user_id}, channel={channel}")
 
 

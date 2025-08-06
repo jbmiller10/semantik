@@ -202,8 +202,9 @@ class TestChunkingServiceErrorHandling:
 
         error = exc_info.value
         # The service might use either 'text' or 'content' as the field name
-        assert error.field_errors == {"text": ["Document size exceeds preview limits"]} or \
-               error.field_errors == {"content": ["Document size exceeds preview limits"]}
+        assert error.field_errors == {"text": ["Document size exceeds preview limits"]} or error.field_errors == {
+            "content": ["Document size exceeds preview limits"]
+        }
         assert "Document size exceeds maximum allowed size" in str(error.detail)
 
     async def test_validation_error_chunk_params(

@@ -55,7 +55,7 @@ class TestChunkingService:
         """Create ChunkingService instance."""
         collection_repo, document_repo = mock_repos
         db_session = MagicMock()
-        
+
         # Create operation repository mock
         operation_repo = MagicMock()
         operation_repo.get_by_uuid_with_permission_check = AsyncMock()
@@ -66,10 +66,10 @@ class TestChunkingService:
             document_repo=document_repo,
             redis_client=mock_redis,
         )
-        
+
         # Set the operation_repo attribute for tests that need it
         service.operation_repo = operation_repo
-        
+
         return service
 
     async def test_preview_chunking_basic(
@@ -287,12 +287,12 @@ Content under header 2.
             doc.chunk_count = 10  # 100 docs * 10 chunks = 1000 total
             doc.created_at = datetime.utcnow()
             mock_documents.append(doc)
-        
+
         # Mock the db query result
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = mock_documents
         chunking_service.db.execute = AsyncMock(return_value=mock_result)
-        
+
         result = await chunking_service.get_chunking_statistics(
             collection_id="test-collection",
             days=30,
@@ -462,9 +462,9 @@ Content under header 2.
                 "errors": [],
             }
         }
-        
+
         chunking_service.operation_repo.get_by_uuid_with_permission_check.return_value = mock_operation
-        
+
         # Call with operation_id and user_id
         progress = await chunking_service.get_chunking_progress("test-operation", 1)
 

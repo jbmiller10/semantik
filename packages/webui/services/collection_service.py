@@ -587,27 +587,27 @@ class CollectionService:
         user_id: int,
     ) -> dict[str, Any]:
         """Create a new operation for a collection.
-        
+
         Args:
             collection_id: Collection UUID
             operation_type: Type of operation
             config: Operation configuration
             user_id: User ID
-            
+
         Returns:
             Created operation data
         """
         from packages.shared.database.models import OperationStatus, OperationType
-        
+
         # Get collection
         collection = await self.collection_repo.get_by_uuid_with_permission_check(
             collection_uuid=collection_id,
             user_id=user_id,
         )
-        
+
         if not collection:
             raise EntityNotFoundError(f"Collection {collection_id} not found")
-        
+
         # Map operation type string to enum
         operation_type_enum = {
             "chunking": OperationType.CHUNKING,
@@ -615,7 +615,7 @@ class CollectionService:
             "index": OperationType.INDEX,
             "reindex": OperationType.REINDEX,
         }.get(operation_type, OperationType.INDEX)
-        
+
         # Create operation
         operation = await self.operation_repo.create(
             collection_id=collection.id,
@@ -623,9 +623,9 @@ class CollectionService:
             status=OperationStatus.PENDING,
             meta=config,
         )
-        
+
         await self.db_session.commit()
-        
+
         return {
             "uuid": operation.uuid,
             "collection_id": collection_id,
@@ -634,7 +634,7 @@ class CollectionService:
             "meta": operation.meta,
             "created_at": operation.created_at.isoformat() if operation.created_at else None,
         }
-    
+
     async def update_collection(
         self,
         collection_id: str,
@@ -642,7 +642,7 @@ class CollectionService:
         user_id: int,
     ) -> None:
         """Update collection settings.
-        
+
         Args:
             collection_id: Collection UUID
             updates: Fields to update
@@ -653,14 +653,14 @@ class CollectionService:
             collection_uuid=collection_id,
             user_id=user_id,
         )
-        
+
         if not collection:
             raise EntityNotFoundError(f"Collection {collection_id} not found")
-        
+
         # Update allowed fields
         allowed_fields = ["name", "description", "chunking_strategy", "chunking_config", "meta"]
         for field, value in updates.items():
             if field in allowed_fields:
                 setattr(collection, field, value)
-        
+
         await self.db_session.commit()

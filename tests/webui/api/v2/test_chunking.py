@@ -119,6 +119,7 @@ def client(
 
     # Replace ws_manager
     import packages.webui.api.v2.chunking as chunking_module
+
     chunking_module.ws_manager = mock_ws_manager
 
     # Create test client
@@ -136,13 +137,13 @@ class TestStrategyManagement:
     def test_list_strategies_success(self, client: TestClient) -> None:
         """Test successful listing of all strategies."""
         response = client.get("/api/v2/chunking/strategies")
-        
+
         assert response.status_code == status.HTTP_200_OK
         strategies = response.json()
-        
+
         assert isinstance(strategies, list)
         assert len(strategies) == 6  # Should have all 6 strategies
-        
+
         # Check first strategy structure
         strategy = strategies[0]
         assert "id" in strategy
@@ -159,17 +160,17 @@ class TestStrategyManagement:
         from packages.webui.main import app
         from packages.webui.auth import get_current_user
         from packages.shared.config import settings
-        
+
         # Ensure auth is enabled for this test
         original_disable_auth = settings.DISABLE_AUTH
         settings.DISABLE_AUTH = False
-        
+
         # Create a client without overriding authentication
         client = TestClient(app)
-        
+
         # Clear any existing dependency overrides
         app.dependency_overrides.clear()
-        
+
         # Mock the auth to always raise 401
         def mock_get_current_user():
             raise HTTPException(
@@ -177,9 +178,9 @@ class TestStrategyManagement:
                 detail="Not authenticated",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
+
         app.dependency_overrides[get_current_user] = mock_get_current_user
-        
+
         try:
             response = client.get("/api/v2/chunking/strategies")
             assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -192,10 +193,10 @@ class TestStrategyManagement:
     def test_get_strategy_details_success(self, client: TestClient) -> None:
         """Test getting details for a specific strategy."""
         response = client.get("/api/v2/chunking/strategies/fixed_size")
-        
+
         assert response.status_code == status.HTTP_200_OK
         strategy = response.json()
-        
+
         assert strategy["id"] == "fixed_size"
         assert strategy["name"] == "Fixed Size Chunking"
         assert "description" in strategy
@@ -206,7 +207,7 @@ class TestStrategyManagement:
     def test_get_strategy_details_not_found(self, client: TestClient) -> None:
         """Test getting details for non-existent strategy."""
         response = client.get("/api/v2/chunking/strategies/invalid_strategy")
-        
+
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "not found" in response.json()["detail"].lower()
 
@@ -225,15 +226,15 @@ class TestStrategyManagement:
             "chunk_size": 512,
             "chunk_overlap": 50,
         }
-        
+
         response = client.post(
             "/api/v2/chunking/strategies/recommend",
             params={"file_types": ["pdf", "docx"]},
         )
-        
+
         assert response.status_code == status.HTTP_200_OK
         recommendation = response.json()
-        
+
         assert recommendation["recommended_strategy"] == "semantic"
         assert recommendation["confidence"] == 0.85
         assert "reasoning" in recommendation
@@ -247,12 +248,12 @@ class TestStrategyManagement:
     ) -> None:
         """Test strategy recommendation when service fails."""
         mock_chunking_service.recommend_strategy.side_effect = Exception("Service error")
-        
+
         response = client.post(
             "/api/v2/chunking/strategies/recommend",
             params={"file_types": ["txt"]},
         )
-        
+
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
 
 
@@ -296,7 +297,7 @@ class TestPreviewOperations:
             "processing_time_ms": 100,
             "cached": False,
         }
-        
+
         request_data = {
             "content": "This is a test document for chunking preview.",
             "strategy": "fixed_size",
@@ -309,12 +310,12 @@ class TestPreviewOperations:
             "max_chunks": 10,
             "include_metrics": True,
         }
-        
+
         response = client.post("/api/v2/chunking/preview", json=request_data)
-        
+
         assert response.status_code == status.HTTP_200_OK
         preview = response.json()
-        
+
         assert preview["preview_id"] == preview_id
         assert preview["strategy"] == "fixed_size"
         assert len(preview["chunks"]) == 1
@@ -345,17 +346,17 @@ class TestPreviewOperations:
             "processing_time_ms": 200,
             "cached": True,
         }
-        
+
         request_data = {
             "document_id": "doc-123",
             "strategy": "semantic",
         }
-        
+
         response = client.post("/api/v2/chunking/preview", json=request_data)
-        
+
         assert response.status_code == status.HTTP_200_OK
         preview = response.json()
-        
+
         assert preview["preview_id"] == preview_id
         assert preview["cached"] is True
 
@@ -364,9 +365,9 @@ class TestPreviewOperations:
         request_data = {
             "strategy": "fixed_size",
         }
-        
+
         response = client.post("/api/v2/chunking/preview", json=request_data)
-        
+
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "document_id or content must be provided" in response.json()["detail"]
 
@@ -374,14 +375,14 @@ class TestPreviewOperations:
         """Test preview generation with content exceeding size limit."""
         # Create content larger than 10MB
         large_content = "x" * (11 * 1024 * 1024)
-        
+
         request_data = {
             "content": large_content,
             "strategy": "fixed_size",
         }
-        
+
         response = client.post("/api/v2/chunking/preview", json=request_data)
-        
+
         # ChunkingMemoryError returns 507 (Insufficient Storage)
         assert response.status_code == status.HTTP_507_INSUFFICIENT_STORAGE
 
@@ -391,9 +392,9 @@ class TestPreviewOperations:
             "content": "test\x00content",
             "strategy": "fixed_size",
         }
-        
+
         response = client.post("/api/v2/chunking/preview", json=request_data)
-        
+
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "null bytes" in response.json()["detail"].lower()
 
@@ -407,14 +408,14 @@ class TestPreviewOperations:
         """Test that preview generation is rate limited."""
         # Mock rate limiter to simulate rate limit exceeded
         mock_limiter.limit.return_value = lambda f: f
-        
+
         # This test verifies the decorator is present
         # In a real scenario, we'd need to test with actual rate limiting
         request_data = {
             "content": "test",
             "strategy": "fixed_size",
         }
-        
+
         mock_chunking_service.track_preview_usage.return_value = None
         mock_chunking_service.preview_chunking.return_value = {
             "preview_id": str(uuid.uuid4()),
@@ -424,7 +425,7 @@ class TestPreviewOperations:
             "total_chunks": 0,
             "processing_time_ms": 100,
         }
-        
+
         response = client.post("/api/v2/chunking/preview", json=request_data)
         assert response.status_code == status.HTTP_200_OK
 
@@ -439,8 +440,22 @@ class TestPreviewOperations:
             {
                 "preview_id": str(uuid.uuid4()),
                 "strategy": ChunkingStrategy.FIXED_SIZE,
-                "config": {"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
-                "chunks": [{"index": 0, "content": "chunk1", "token_count": 5, "char_count": 6, "metadata": {}, "quality_score": 0.7}],
+                "config": {
+                    "strategy": "fixed_size",
+                    "chunk_size": 512,
+                    "chunk_overlap": 50,
+                    "preserve_sentences": True,
+                },
+                "chunks": [
+                    {
+                        "index": 0,
+                        "content": "chunk1",
+                        "token_count": 5,
+                        "char_count": 6,
+                        "metadata": {},
+                        "quality_score": 0.7,
+                    }
+                ],
                 "total_chunks": 10,
                 "metrics": {"avg_chunk_size": 500, "size_variance": 10.0, "quality_score": 0.7},
                 "processing_time_ms": 100,
@@ -449,24 +464,33 @@ class TestPreviewOperations:
                 "preview_id": str(uuid.uuid4()),
                 "strategy": ChunkingStrategy.SEMANTIC,
                 "config": {"strategy": "semantic", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
-                "chunks": [{"index": 0, "content": "chunk1", "token_count": 8, "char_count": 10, "metadata": {}, "quality_score": 0.85}],
+                "chunks": [
+                    {
+                        "index": 0,
+                        "content": "chunk1",
+                        "token_count": 8,
+                        "char_count": 10,
+                        "metadata": {},
+                        "quality_score": 0.85,
+                    }
+                ],
                 "total_chunks": 8,
                 "metrics": {"avg_chunk_size": 600, "size_variance": 20.0, "quality_score": 0.85},
                 "processing_time_ms": 200,
             },
         ]
-        
+
         request_data = {
             "content": "Test document for comparison",
             "strategies": ["fixed_size", "semantic"],
             "max_chunks_per_strategy": 5,
         }
-        
+
         response = client.post("/api/v2/chunking/compare", json=request_data)
-        
+
         assert response.status_code == status.HTTP_200_OK
         comparison = response.json()
-        
+
         assert "comparison_id" in comparison
         assert len(comparison["comparisons"]) == 2
         assert comparison["recommendation"]["recommended_strategy"] == "semantic"  # Higher quality score
@@ -489,9 +513,9 @@ class TestPreviewOperations:
             "cached": True,
             "expires_at": (datetime.utcnow() + timedelta(minutes=15)).isoformat(),
         }
-        
+
         response = client.get(f"/api/v2/chunking/preview/{preview_id}")
-        
+
         assert response.status_code == status.HTTP_200_OK
         preview = response.json()
         assert preview["preview_id"] == preview_id
@@ -503,9 +527,9 @@ class TestPreviewOperations:
     ) -> None:
         """Test retrieving non-existent preview."""
         mock_chunking_service._get_cached_preview_by_key.return_value = None
-        
+
         response = client.get(f"/api/v2/chunking/preview/{uuid.uuid4()}")
-        
+
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
     def test_clear_preview_cache_success(
@@ -516,9 +540,9 @@ class TestPreviewOperations:
         """Test clearing preview cache."""
         preview_id = str(uuid.uuid4())
         mock_chunking_service.clear_preview_cache.return_value = None
-        
+
         response = client.delete(f"/api/v2/chunking/preview/{preview_id}")
-        
+
         assert response.status_code == status.HTTP_204_NO_CONTENT
 
 
@@ -549,10 +573,10 @@ class TestCollectionProcessing:
         websocket_channel = f"chunking:123e4567-e89b-12d3-a456-426614174000:{operation_id}"
         mock_chunking_service.start_chunking_operation.return_value = (
             websocket_channel,
-            {"is_valid": True, "estimated_time": 60}
+            {"is_valid": True, "estimated_time": 60},
         )
         mock_ws_manager.send_message.return_value = None
-        
+
         request_data = {
             "strategy": "semantic",
             "config": {
@@ -564,15 +588,15 @@ class TestCollectionProcessing:
             "document_ids": ["doc1", "doc2"],
             "priority": 8,
         }
-        
+
         response = client.post(
             "/api/v2/chunking/collections/123e4567-e89b-12d3-a456-426614174000/chunk",
             json=request_data,
         )
-        
+
         assert response.status_code == status.HTTP_202_ACCEPTED
         operation_response = response.json()
-        
+
         assert operation_response["operation_id"] == operation_id
         assert operation_response["status"] == "pending"
         assert operation_response["strategy"] == "semantic"
@@ -588,7 +612,7 @@ class TestCollectionProcessing:
             "is_valid": False,
             "reason": "Invalid chunk size for this collection",
         }
-        
+
         request_data = {
             "strategy": "fixed_size",
             "config": {
@@ -598,12 +622,12 @@ class TestCollectionProcessing:
                 "preserve_sentences": True,
             },
         }
-        
+
         response = client.post(
             "/api/v2/chunking/collections/123e4567-e89b-12d3-a456-426614174000/chunk",
             json=request_data,
         )
-        
+
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "Invalid configuration" in response.json()["detail"]
 
@@ -621,7 +645,7 @@ class TestCollectionProcessing:
             "type": "rechunking",
             "status": "pending",
         }
-        
+
         request_data = {
             "strategy": "semantic",
             "config": {
@@ -632,12 +656,12 @@ class TestCollectionProcessing:
             },
             "reprocess_existing": True,
         }
-        
+
         response = client.patch(
             "/api/v2/chunking/collections/123e4567-e89b-12d3-a456-426614174000/chunking-strategy",
             json=request_data,
         )
-        
+
         assert response.status_code == status.HTTP_200_OK
         operation_response = response.json()
         assert operation_response["operation_id"] == operation_id
@@ -650,17 +674,17 @@ class TestCollectionProcessing:
     ) -> None:
         """Test updating chunking strategy without reprocessing."""
         mock_collection_service.update_collection.return_value = None
-        
+
         request_data = {
             "strategy": "recursive",
             "reprocess_existing": False,
         }
-        
+
         response = client.patch(
             "/api/v2/chunking/collections/123e4567-e89b-12d3-a456-426614174000/chunking-strategy",
             json=request_data,
         )
-        
+
         assert response.status_code == status.HTTP_200_OK
         operation_response = response.json()
         assert operation_response["status"] == "completed"
@@ -675,10 +699,10 @@ class TestCollectionProcessing:
             "/api/v2/chunking/collections/123e4567-e89b-12d3-a456-426614174000/chunks",
             params={"page": 1, "page_size": 20},
         )
-        
+
         assert response.status_code == status.HTTP_200_OK
         chunk_list = response.json()
-        
+
         assert "chunks" in chunk_list
         assert "total" in chunk_list
         assert chunk_list["page"] == 1
@@ -702,16 +726,14 @@ class TestCollectionProcessing:
         mock_stats.last_updated = datetime.now(UTC)
         mock_stats.processing_time = 120
         mock_stats.performance_metrics = {"coherence": 0.8, "completeness": 0.9}
-        
+
         mock_chunking_service.get_chunking_statistics.return_value = mock_stats
-        
-        response = client.get(
-            "/api/v2/chunking/collections/123e4567-e89b-12d3-a456-426614174000/chunking-stats"
-        )
-        
+
+        response = client.get("/api/v2/chunking/collections/123e4567-e89b-12d3-a456-426614174000/chunking-stats")
+
         assert response.status_code == status.HTTP_200_OK
         stats = response.json()
-        
+
         assert stats["total_chunks"] == 100
         assert stats["total_documents"] == 10
         assert stats["avg_chunk_size"] == 512
@@ -731,10 +753,10 @@ class TestAnalyticsEndpoints:
             "/api/v2/chunking/metrics",
             params={"period_days": 30},
         )
-        
+
         assert response.status_code == status.HTTP_200_OK
         metrics = response.json()
-        
+
         assert "total_collections_processed" in metrics
         assert "total_chunks_created" in metrics
         assert "total_documents_processed" in metrics
@@ -752,13 +774,13 @@ class TestAnalyticsEndpoints:
             "/api/v2/chunking/metrics/by-strategy",
             params={"period_days": 30},
         )
-        
+
         assert response.status_code == status.HTTP_200_OK
         metrics_list = response.json()
-        
+
         assert isinstance(metrics_list, list)
         assert len(metrics_list) == 6  # One for each strategy
-        
+
         first_metric = metrics_list[0]
         assert "strategy" in first_metric
         assert "usage_count" in first_metric
@@ -776,10 +798,10 @@ class TestAnalyticsEndpoints:
             "/api/v2/chunking/quality-scores",
             params={"collection_id": "123e4567-e89b-12d3-a456-426614174000"},
         )
-        
+
         assert response.status_code == status.HTTP_200_OK
         quality = response.json()
-        
+
         assert quality["overall_quality"] in ["excellent", "good", "fair", "poor"]
         assert 0 <= quality["quality_score"] <= 1
         assert "coherence_score" in quality
@@ -799,18 +821,18 @@ class TestAnalyticsEndpoints:
             "reasoning": "Document has clear structure with headings",
             "alternatives": [ChunkingStrategy.SEMANTIC],
         }
-        
+
         request_data = {
             "document_id": "doc-123",
             "file_type": "pdf",
             "content_sample": "# Heading 1\nContent...\n## Heading 2\nMore content...",
         }
-        
+
         response = client.post("/api/v2/chunking/analyze", json=request_data)
-        
+
         assert response.status_code == status.HTTP_200_OK
         analysis = response.json()
-        
+
         assert analysis["document_type"] == "pdf"
         assert "content_structure" in analysis
         assert "recommended_strategy" in analysis
@@ -840,12 +862,12 @@ class TestConfigurationManagement:
             "is_default": False,
             "tags": ["technical", "documentation"],
         }
-        
+
         response = client.post("/api/v2/chunking/configs", json=request_data)
-        
+
         assert response.status_code == status.HTTP_201_CREATED
         saved_config = response.json()
-        
+
         assert "id" in saved_config
         assert saved_config["name"] == "My Custom Config"
         assert saved_config["strategy"] == "recursive"
@@ -859,7 +881,7 @@ class TestConfigurationManagement:
     ) -> None:
         """Test listing saved configurations."""
         response = client.get("/api/v2/chunking/configs")
-        
+
         assert response.status_code == status.HTTP_200_OK
         configs = response.json()
         assert isinstance(configs, list)
@@ -874,7 +896,7 @@ class TestConfigurationManagement:
             "/api/v2/chunking/configs",
             params={"strategy": "semantic"},
         )
-        
+
         assert response.status_code == status.HTTP_200_OK
         configs = response.json()
         assert isinstance(configs, list)
@@ -900,12 +922,12 @@ class TestProgressTracking:
             "estimated_time_remaining": 120,
             "errors": [],
         }
-        
+
         response = client.get(f"/api/v2/chunking/operations/{operation_id}/progress")
-        
+
         assert response.status_code == status.HTTP_200_OK
         progress = response.json()
-        
+
         assert progress["operation_id"] == operation_id
         assert progress["status"] == "in_progress"
         assert progress["progress_percentage"] == 45.5
@@ -919,9 +941,9 @@ class TestProgressTracking:
     ) -> None:
         """Test getting progress for non-existent operation."""
         mock_chunking_service.get_chunking_progress.return_value = None
-        
+
         response = client.get(f"/api/v2/chunking/operations/{uuid.uuid4()}/progress")
-        
+
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
@@ -932,19 +954,19 @@ class TestSecurityAndValidation:
     def test_authorization_checks(self, mock_settings: MagicMock) -> None:
         """Test that all endpoints require authentication."""
         from packages.webui.main import app
-        
+
         # Configure mock settings to ensure auth is enabled
         mock_settings.DISABLE_AUTH = False
         mock_settings.JWT_SECRET_KEY = "test-secret-key"
         mock_settings.ALGORITHM = "HS256"
         mock_settings.ACCESS_TOKEN_EXPIRE_MINUTES = 60
-        
+
         # Clear any existing dependency overrides
         app.dependency_overrides.clear()
-        
+
         try:
             client = TestClient(app)
-            
+
             # Test various endpoints without authentication
             endpoints = [
                 ("GET", "/api/v2/chunking/strategies"),
@@ -955,14 +977,16 @@ class TestSecurityAndValidation:
                 ("POST", "/api/v2/chunking/compare"),
                 ("GET", "/api/v2/chunking/metrics"),
             ]
-            
+
             for method, endpoint in endpoints:
                 if method == "GET":
                     response = client.get(endpoint)
                 else:
                     response = client.post(endpoint, json={})
-                
-                assert response.status_code == status.HTTP_401_UNAUTHORIZED, f"Endpoint {endpoint} should require auth but returned {response.status_code}"
+
+                assert (
+                    response.status_code == status.HTTP_401_UNAUTHORIZED
+                ), f"Endpoint {endpoint} should require auth but returned {response.status_code}"
         finally:
             # Clean up
             app.dependency_overrides.clear()
@@ -979,9 +1003,9 @@ class TestSecurityAndValidation:
                 "preserve_sentences": True,
             },
         }
-        
+
         response = client.post("/api/v2/chunking/preview", json=request_data)
-        
+
         # Should fail validation due to chunk_size being below minimum (100)
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
@@ -997,9 +1021,9 @@ class TestSecurityAndValidation:
                 "preserve_sentences": True,
             },
         }
-        
+
         response = client.post("/api/v2/chunking/preview", json=request_data)
-        
+
         # Should fail validation due to overlap being greater than chunk size
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
@@ -1015,36 +1039,36 @@ class TestSecurityAndValidation:
             "total_chunks": 0,
             "processing_time_ms": 10,
         }
-        
+
         # Attempt SQL injection in various parameters
         malicious_inputs = [
             "'; DROP TABLE users; --",
             "1' OR '1'='1",
             "admin'--",
         ]
-        
+
         for malicious_input in malicious_inputs:
             request_data = {
                 "content": malicious_input,
                 "strategy": "fixed_size",
             }
-            
+
             response = client.post("/api/v2/chunking/preview", json=request_data)
-            
+
             # Should process normally without executing SQL
             assert response.status_code in [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST]
 
     def test_xss_prevention(self, client: TestClient) -> None:
         """Test that XSS attempts are properly sanitized."""
         xss_payload = "<script>alert('XSS')</script>"
-        
+
         request_data = {
             "content": xss_payload,
             "strategy": "fixed_size",
         }
-        
+
         response = client.post("/api/v2/chunking/preview", json=request_data)
-        
+
         # Should process without executing script
         assert response.status_code in [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST]
 
@@ -1067,14 +1091,14 @@ class TestEdgeCases:
             "total_chunks": 0,
             "processing_time_ms": 10,
         }
-        
+
         request_data = {
             "content": "",
             "strategy": "fixed_size",
         }
-        
+
         response = client.post("/api/v2/chunking/preview", json=request_data)
-        
+
         assert response.status_code == status.HTTP_200_OK
         preview = response.json()
         assert preview["total_chunks"] == 0
@@ -1090,18 +1114,27 @@ class TestEdgeCases:
             "preview_id": str(uuid.uuid4()),
             "strategy": ChunkingStrategy.FIXED_SIZE,
             "config": {"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
-            "chunks": [{"index": 0, "content": "你好世界", "token_count": 2, "char_count": 4, "metadata": {}, "quality_score": 0.8}],
+            "chunks": [
+                {
+                    "index": 0,
+                    "content": "你好世界",
+                    "token_count": 2,
+                    "char_count": 4,
+                    "metadata": {},
+                    "quality_score": 0.8,
+                }
+            ],
             "total_chunks": 1,
             "processing_time_ms": 50,
         }
-        
+
         request_data = {
             "content": "你好世界 Hello World مرحبا بالعالم",
             "strategy": "fixed_size",
         }
-        
+
         response = client.post("/api/v2/chunking/preview", json=request_data)
-        
+
         assert response.status_code == status.HTTP_200_OK
 
     def test_concurrent_operations_same_collection(
@@ -1114,12 +1147,12 @@ class TestEdgeCases:
         """Test handling concurrent chunking operations on same collection."""
         # Setup for multiple operations
         operation_ids = [str(uuid.uuid4()) for _ in range(3)]
-        
+
         mock_chunking_service.validate_config_for_collection.return_value = {
             "is_valid": True,
             "estimated_time": 60,
         }
-        
+
         # Simulate multiple operations
         for i, op_id in enumerate(operation_ids):
             mock_collection_service.create_operation.return_value = {
@@ -1128,24 +1161,24 @@ class TestEdgeCases:
                 "type": "chunking",
                 "status": "pending",
             }
-            
+
             # Add missing mock for start_chunking_operation
             websocket_channel = f"chunking:123e4567-e89b-12d3-a456-426614174000:{op_id}"
             mock_chunking_service.start_chunking_operation.return_value = (
                 websocket_channel,
-                {"is_valid": True, "estimated_time": 60}
+                {"is_valid": True, "estimated_time": 60},
             )
-            
+
             request_data = {
                 "strategy": "fixed_size",
                 "document_ids": [f"doc{i}"],
             }
-            
+
             response = client.post(
                 "/api/v2/chunking/collections/123e4567-e89b-12d3-a456-426614174000/chunk",
                 json=request_data,
             )
-            
+
             assert response.status_code == status.HTTP_202_ACCEPTED
 
     def test_invalid_strategy_enum_value(self, client: TestClient) -> None:
@@ -1154,9 +1187,9 @@ class TestEdgeCases:
             "content": "test",
             "strategy": "invalid_strategy_name",
         }
-        
+
         response = client.post("/api/v2/chunking/preview", json=request_data)
-        
+
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
 
@@ -1171,7 +1204,7 @@ class TestPerformance:
         """Test handling of large documents."""
         # Create a large but valid document (under 10MB limit)
         large_content = "Lorem ipsum " * 100000  # Approximately 1.2MB
-        
+
         mock_chunking_service.track_preview_usage.return_value = None
         mock_chunking_service.preview_chunking.return_value = {
             "preview_id": str(uuid.uuid4()),
@@ -1181,14 +1214,14 @@ class TestPerformance:
             "total_chunks": 1000,
             "processing_time_ms": 5000,
         }
-        
+
         request_data = {
             "content": large_content,
             "strategy": "fixed_size",
         }
-        
+
         response = client.post("/api/v2/chunking/preview", json=request_data)
-        
+
         assert response.status_code == status.HTTP_200_OK
 
     def test_preview_caching_behavior(
@@ -1198,7 +1231,7 @@ class TestPerformance:
     ) -> None:
         """Test that preview results are cached properly."""
         preview_id = str(uuid.uuid4())
-        
+
         # First call - not cached
         mock_chunking_service.track_preview_usage.return_value = None
         mock_chunking_service.preview_chunking.return_value = {
@@ -1210,20 +1243,20 @@ class TestPerformance:
             "processing_time_ms": 200,
             "cached": False,
         }
-        
+
         request_data = {
             "content": "Test content for caching",
             "strategy": "fixed_size",
         }
-        
+
         response1 = client.post("/api/v2/chunking/preview", json=request_data)
         assert response1.status_code == status.HTTP_200_OK
         assert response1.json()["cached"] is False
-        
+
         # Second call - should be cached
         mock_chunking_service.preview_chunking.return_value["cached"] = True
         mock_chunking_service.preview_chunking.return_value["processing_time_ms"] = 10
-        
+
         response2 = client.post("/api/v2/chunking/preview", json=request_data)
         assert response2.status_code == status.HTTP_200_OK
         assert response2.json()["cached"] is True

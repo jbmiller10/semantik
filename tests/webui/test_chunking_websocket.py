@@ -57,33 +57,35 @@ def mock_websocket() -> AsyncMock:
     mock.send_text = AsyncMock()
     mock.receive_json = AsyncMock()
     mock.close = AsyncMock()
-    
+
     # Track state
     mock.client_state = {"connected": False}
-    
+
     async def accept_connection():
         mock.client_state["connected"] = True
-    
+
     async def close_connection(code=1000, reason=""):
         mock.client_state["connected"] = False
-    
+
     mock.accept.side_effect = accept_connection
     mock.close.side_effect = close_connection
-    
+
     return mock
 
 
 @pytest.fixture()
 def mock_operation():
     """Create a mock operation object."""
-    
+
     class MockEnum:
         """Mock enum with value attribute."""
+
         def __init__(self, value):
             self.value = value
-    
+
     class MockOperation:
         """Mock operation with required attributes."""
+
         def __init__(self):
             self.uuid = str(uuid.uuid4())
             self.collection_id = "test-collection-123"
@@ -97,7 +99,7 @@ def mock_operation():
             self.created_at = datetime.now(UTC)
             self.completed_at = None
             self.error_message = None
-            
+
     return MockOperation()
 
 
@@ -114,20 +116,20 @@ class TestWebSocketConnection:
         """Test successful WebSocket connection establishment."""
         user_id = "user-123"
         operation_id = mock_operation.uuid
-        
+
         # Set up operation getter
         async def get_operation(op_id):
             return mock_operation if op_id == operation_id else None
-        
+
         ws_manager.set_operation_getter(get_operation)
-        
+
         # Connect
         await ws_manager.connect(mock_websocket, operation_id, user_id)
-        
+
         # Verify
         mock_websocket.accept.assert_called_once()
         mock_websocket.send_json.assert_called()
-        
+
         # Check connection was stored
         key = f"{user_id}:operation:{operation_id}"
         assert key in ws_manager.connections
@@ -142,26 +144,23 @@ class TestWebSocketConnection:
         """Test that connection limits per user are enforced."""
         user_id = "user-123"
         ws_manager.max_connections_per_user = 3
-        
+
         # Create multiple mock websockets
         websockets = [AsyncMock(spec=WebSocket) for _ in range(5)]
         for ws in websockets:
             ws.accept = AsyncMock()
             ws.close = AsyncMock()
             ws.send_json = AsyncMock()
-        
+
         # Add connections up to the limit
         for i in range(3):
             key = f"{user_id}:operation:op-{i}"
             ws_manager.connections[key] = {websockets[i]}
-        
+
         # Try to add one more - should be rejected
         await ws_manager.connect(websockets[3], "op-new", user_id)
-        
-        websockets[3].close.assert_called_once_with(
-            code=1008,
-            reason="User connection limit exceeded"
-        )
+
+        websockets[3].close.assert_called_once_with(code=1008, reason="User connection limit exceeded")
 
     @pytest.mark.asyncio
     async def test_global_connection_limit(
@@ -171,18 +170,15 @@ class TestWebSocketConnection:
     ) -> None:
         """Test that global connection limits are enforced."""
         ws_manager.max_total_connections = 2
-        
+
         # Fill up to global limit with different users
         ws_manager.connections["user1:operation:op1"] = {AsyncMock()}
         ws_manager.connections["user2:operation:op2"] = {AsyncMock()}
-        
+
         # Try to add one more - should be rejected
         await ws_manager.connect(mock_websocket, "op3", "user3")
-        
-        mock_websocket.close.assert_called_once_with(
-            code=1008,
-            reason="Server connection limit exceeded"
-        )
+
+        mock_websocket.close.assert_called_once_with(code=1008, reason="Server connection limit exceeded")
 
     @pytest.mark.asyncio
     async def test_disconnect_cleanup(
@@ -194,13 +190,13 @@ class TestWebSocketConnection:
         user_id = "user-123"
         operation_id = "op-123"
         key = f"{user_id}:operation:{operation_id}"
-        
+
         # Add connection
         ws_manager.connections[key] = {mock_websocket}
-        
+
         # Disconnect
         await ws_manager.disconnect(mock_websocket, operation_id, user_id)
-        
+
         # Verify cleanup
         assert key not in ws_manager.connections or mock_websocket not in ws_manager.connections.get(key, set())
 
@@ -212,7 +208,7 @@ class TestWebSocketConnection:
     ) -> None:
         """Test that manager attempts to reconnect to Redis if disconnected."""
         ws_manager.redis = None  # Simulate disconnected state
-        
+
         with patch.object(ws_manager, "startup", new_callable=AsyncMock) as mock_startup:
             await ws_manager.connect(mock_websocket, "op-123", "user-123")
             mock_startup.assert_called_once()
@@ -242,10 +238,10 @@ class TestProgressUpdates:
             "estimated_time_remaining": 120,
             "timestamp": datetime.utcnow().isoformat(),
         }
-        
+
         # Send message
         await ws_manager.send_message(channel, progress_data)
-        
+
         # Verify Redis stream was used
         mock_redis_client.xadd.assert_called_once()
         call_args = mock_redis_client.xadd.call_args
@@ -261,34 +257,35 @@ class TestProgressUpdates:
         """Test that progress updates are throttled to prevent spam."""
         operation_id = "op-123"
         channel = f"chunking:collection:123:{operation_id}"
-        
+
         # Set throttle threshold
         ws_manager._chunking_progress_threshold = 1.0  # 1 second between updates
-        
+
         # Send first update - should go through
         progress1 = {
             "type": "chunking_progress",
             "operation_id": operation_id,
             "progress_percentage": 10.0,
         }
-        
+
         should_send = await ws_manager._should_send_progress_update(operation_id, progress1)
         assert should_send is True
-        
+
         # Send immediate second update - should be throttled
         progress2 = {
             "type": "chunking_progress",
             "operation_id": operation_id,
             "progress_percentage": 11.0,
         }
-        
+
         should_send = await ws_manager._should_send_progress_update(operation_id, progress2)
         assert should_send is False
-        
+
         # Simulate time passing
         import time
+
         time.sleep(1.1)
-        
+
         # Now update should go through
         should_send = await ws_manager._should_send_progress_update(operation_id, progress2)
         assert should_send is True
@@ -311,9 +308,9 @@ class TestProgressUpdates:
             "processing_time_seconds": 240,
             "timestamp": datetime.utcnow().isoformat(),
         }
-        
+
         await ws_manager.send_message(channel, completion_data)
-        
+
         # Verify message was sent
         mock_redis_client.xadd.assert_called_once()
         call_args = mock_redis_client.xadd.call_args
@@ -340,9 +337,9 @@ class TestProgressUpdates:
             "documents_processed": 3,
             "timestamp": datetime.utcnow().isoformat(),
         }
-        
+
         await ws_manager.send_message(channel, failure_data)
-        
+
         # Verify error was sent
         mock_redis_client.xadd.assert_called_once()
         call_args = mock_redis_client.xadd.call_args
@@ -362,15 +359,15 @@ class TestChannelManagement:
         """Test that unique channels are created for each operation."""
         collection_id = "coll-123"
         operation_ids = [str(uuid.uuid4()) for _ in range(3)]
-        
+
         channels = []
         for op_id in operation_ids:
             channel = f"chunking:{collection_id}:{op_id}"
             channels.append(channel)
-        
+
         # All channels should be unique
         assert len(set(channels)) == len(channels)
-        
+
         # All should follow the expected pattern
         for channel in channels:
             parts = channel.split(":")
@@ -386,25 +383,25 @@ class TestChannelManagement:
         """Test broadcasting updates to multiple connected clients."""
         operation_id = "op-123"
         channel = f"chunking:coll-456:{operation_id}"
-        
+
         # Create multiple mock websockets for same operation
         websockets = [AsyncMock(spec=WebSocket) for _ in range(3)]
-        
+
         # Add all to same operation channel
         for i, ws in enumerate(websockets):
             ws.send_json = AsyncMock()
             key = f"user-{i}:operation:{operation_id}"
             ws_manager.connections[key] = {ws}
-        
+
         # Send broadcast message
         message = {
             "type": "chunking_progress",
             "operation_id": operation_id,
             "progress_percentage": 50.0,
         }
-        
+
         await ws_manager.send_message(channel, message)
-        
+
         # Verify Redis stream was used for broadcast
         mock_redis_client.xadd.assert_called_once()
 
@@ -417,27 +414,27 @@ class TestChannelManagement:
         """Test that channels are cleaned up after operation completion."""
         operation_id = "op-123"
         channel = f"chunking:coll-456:{operation_id}"
-        
+
         # Add a consumer task
         # Create a proper mock coroutine
         async def mock_coro():
             pass
-        
+
         mock_task = asyncio.create_task(mock_coro())
         mock_task.cancel = MagicMock()
         ws_manager.consumer_tasks[operation_id] = mock_task
-        
+
         # Send completion message
         completion_msg = {
             "type": "chunking_completed",
             "operation_id": operation_id,
         }
-        
+
         await ws_manager.send_message(channel, completion_msg)
-        
+
         # After processing completion, cleanup should be triggered
         await ws_manager.cleanup_operation_channel(operation_id)
-        
+
         # Verify cleanup
         assert operation_id not in ws_manager.consumer_tasks
         mock_task.cancel.assert_called_once()
@@ -455,16 +452,16 @@ class TestErrorHandling:
         """Test handling of WebSocket disconnect errors."""
         user_id = "user-123"
         operation_id = "op-123"
-        
+
         # Simulate disconnect error
         mock_websocket.send_json.side_effect = WebSocketDisconnect
-        
+
         # Should handle gracefully
         key = f"{user_id}:operation:{operation_id}"
         ws_manager.connections[key] = {mock_websocket}
-        
+
         await ws_manager.broadcast_to_operation(operation_id, {"test": "data"})
-        
+
         # Connection should be removed
         assert mock_websocket not in ws_manager.connections.get(key, set())
 
@@ -476,10 +473,10 @@ class TestErrorHandling:
     ) -> None:
         """Test handling of Redis connection errors."""
         ws_manager.redis = None  # Simulate Redis disconnection
-        
+
         # Should handle gracefully without crashing
         result = await ws_manager.send_message("test-channel", {"test": "data"})
-        
+
         # Should return False or handle error gracefully
         assert result is False or result is None
 
@@ -496,7 +493,7 @@ class TestErrorHandling:
             "type": "progress",
             "data": object(),  # Can't be JSON serialized
         }
-        
+
         # Should handle without crashing
         try:
             await ws_manager.send_message("test-channel", malformed_message)
@@ -513,17 +510,17 @@ class TestErrorHandling:
         """Test recovery from Redis stream errors."""
         # Simulate Redis stream error
         mock_redis_client.xadd.side_effect = Exception("Redis stream error")
-        
+
         # Should handle error gracefully
         result = await ws_manager.send_message("test-channel", {"test": "data"})
-        
+
         # Should indicate failure
         assert result is False or result is None
-        
+
         # Reset error
         mock_redis_client.xadd.side_effect = None
         mock_redis_client.xadd.return_value = "123-0"
-        
+
         # Should work again
         result = await ws_manager.send_message("test-channel", {"test": "data"})
         assert result is not False
@@ -542,17 +539,17 @@ class TestConcurrentOperations:
         user_id = "user-123"
         operation_ids = [f"op-{i}" for i in range(3)]
         websockets = []
-        
+
         # Connect multiple operations for same user
         for op_id in operation_ids:
             ws = AsyncMock(spec=WebSocket)
             ws.accept = AsyncMock()
             ws.send_json = AsyncMock()
             websockets.append(ws)
-            
+
             key = f"{user_id}:operation:{op_id}"
             ws_manager.connections[key] = {ws}
-        
+
         # Send different updates to each operation
         for i, op_id in enumerate(operation_ids):
             channel = f"chunking:coll:{op_id}"
@@ -562,7 +559,7 @@ class TestConcurrentOperations:
                 "progress": i * 10,
             }
             await ws_manager.send_message(channel, message)
-        
+
         # Verify all messages were sent
         assert mock_redis_client.xadd.call_count == 3
 
@@ -576,16 +573,16 @@ class TestConcurrentOperations:
         # Create connections for different operations
         op1_ws = AsyncMock(spec=WebSocket)
         op2_ws = AsyncMock(spec=WebSocket)
-        
+
         ws_manager.connections["user1:operation:op1"] = {op1_ws}
         ws_manager.connections["user2:operation:op2"] = {op2_ws}
-        
+
         # Send message to op1 channel
         await ws_manager.send_message("chunking:coll:op1", {"op": 1})
-        
+
         # Send message to op2 channel
         await ws_manager.send_message("chunking:coll:op2", {"op": 2})
-        
+
         # Verify messages went to correct channels
         calls = mock_redis_client.xadd.call_args_list
         assert len(calls) == 2
@@ -600,25 +597,23 @@ class TestConcurrentOperations:
         """Test handling of concurrent connection attempts."""
         user_id = "user-123"
         operation_id = "op-456"
-        
+
         # Create multiple websockets trying to connect simultaneously
         websockets = [AsyncMock(spec=WebSocket) for _ in range(5)]
         for ws in websockets:
             ws.accept = AsyncMock()
             ws.close = AsyncMock()
             ws.send_json = AsyncMock()
-        
+
         # Simulate concurrent connections
         tasks = []
         for ws in websockets:
-            task = asyncio.create_task(
-                ws_manager.connect(ws, operation_id, user_id)
-            )
+            task = asyncio.create_task(ws_manager.connect(ws, operation_id, user_id))
             tasks.append(task)
-        
+
         # Wait for all to complete
         await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # Only one should be connected per operation
         key = f"{user_id}:operation:{operation_id}"
         if key in ws_manager.connections:
@@ -649,7 +644,7 @@ class TestPerformanceAndScaling:
                 for i in range(100)
             ],
         }
-        
+
         # Should handle without issues
         await ws_manager.send_message("test-channel", large_message)
         mock_redis_client.xadd.assert_called_once()
@@ -662,21 +657,18 @@ class TestPerformanceAndScaling:
     ) -> None:
         """Test that messages maintain order."""
         messages = []
-        
+
         # Capture messages as they're sent
         async def capture_xadd(stream, data, **kwargs):
             messages.append(json.loads(data.get("message", data.get("data", "{}"))))
             return f"{len(messages)}-0"
-        
+
         mock_redis_client.xadd.side_effect = capture_xadd
-        
+
         # Send messages in order
         for i in range(10):
-            await ws_manager.send_message(
-                "test-channel",
-                {"sequence": i, "type": "progress"}
-            )
-        
+            await ws_manager.send_message("test-channel", {"sequence": i, "type": "progress"})
+
         # Verify order is maintained
         for i, msg in enumerate(messages):
             assert msg["sequence"] == i
@@ -691,23 +683,25 @@ class TestPerformanceAndScaling:
         for i in range(100):
             key = f"user-{i}:operation:op-{i}"
             ws_manager.connections[key] = {AsyncMock(spec=WebSocket)}
+
             # Create a proper mock coroutine
             async def mock_coro():
                 pass
-            
+
             mock_task = asyncio.create_task(mock_coro())
             mock_task.cancel = MagicMock()
             ws_manager.consumer_tasks[f"op-{i}"] = mock_task
-        
+
         # Measure cleanup time
         import time
+
         start = time.time()
         await ws_manager.shutdown()
         duration = time.time() - start
-        
+
         # Should complete reasonably quickly
         assert duration < 5.0  # 5 seconds for 100 connections
-        
+
         # Verify cleanup
         assert len(ws_manager.connections) == 0
         assert len(ws_manager.consumer_tasks) == 0
@@ -728,7 +722,7 @@ class TestIntegrationScenarios:
         operation_id = str(uuid.uuid4())
         collection_id = "coll-456"
         channel = f"chunking:{collection_id}:{operation_id}"
-        
+
         # 1. Connect WebSocket
         async def get_operation(op_id):
             return {
@@ -736,37 +730,46 @@ class TestIntegrationScenarios:
                 "status": "pending",
                 "progress_percentage": 0,
             }
-        
+
         ws_manager.set_operation_getter(get_operation)
         await ws_manager.connect(mock_websocket, operation_id, user_id)
-        
+
         # 2. Send start notification
-        await ws_manager.send_message(channel, {
-            "type": "chunking_started",
-            "operation_id": operation_id,
-            "total_documents": 5,
-        })
-        
+        await ws_manager.send_message(
+            channel,
+            {
+                "type": "chunking_started",
+                "operation_id": operation_id,
+                "total_documents": 5,
+            },
+        )
+
         # 3. Send progress updates
         for i in range(1, 6):
-            await ws_manager.send_message(channel, {
-                "type": "chunking_progress",
-                "operation_id": operation_id,
-                "documents_processed": i,
-                "total_documents": 5,
-                "progress_percentage": i * 20,
-                "current_document": f"doc_{i}.pdf",
-            })
+            await ws_manager.send_message(
+                channel,
+                {
+                    "type": "chunking_progress",
+                    "operation_id": operation_id,
+                    "documents_processed": i,
+                    "total_documents": 5,
+                    "progress_percentage": i * 20,
+                    "current_document": f"doc_{i}.pdf",
+                },
+            )
             await asyncio.sleep(0.1)  # Simulate processing time
-        
+
         # 4. Send completion
-        await ws_manager.send_message(channel, {
-            "type": "chunking_completed",
-            "operation_id": operation_id,
-            "total_chunks_created": 250,
-            "processing_time_seconds": 30,
-        })
-        
+        await ws_manager.send_message(
+            channel,
+            {
+                "type": "chunking_completed",
+                "operation_id": operation_id,
+                "total_chunks_created": 250,
+                "processing_time_seconds": 30,
+            },
+        )
+
         # Verify all messages were sent
         assert mock_redis_client.xadd.call_count >= 7  # start + 5 progress + completion
 
@@ -782,33 +785,42 @@ class TestIntegrationScenarios:
         operation_id = str(uuid.uuid4())
         collection_id = "coll-789"
         channel = f"chunking:{collection_id}:{operation_id}"
-        
+
         # Connect
         await ws_manager.connect(mock_websocket, operation_id, user_id)
-        
+
         # Start processing
-        await ws_manager.send_message(channel, {
-            "type": "chunking_started",
-            "operation_id": operation_id,
-        })
-        
+        await ws_manager.send_message(
+            channel,
+            {
+                "type": "chunking_started",
+                "operation_id": operation_id,
+            },
+        )
+
         # Some progress
-        await ws_manager.send_message(channel, {
-            "type": "chunking_progress",
-            "operation_id": operation_id,
-            "progress_percentage": 30,
-        })
-        
+        await ws_manager.send_message(
+            channel,
+            {
+                "type": "chunking_progress",
+                "operation_id": operation_id,
+                "progress_percentage": 30,
+            },
+        )
+
         # Failure occurs
-        await ws_manager.send_message(channel, {
-            "type": "chunking_failed",
-            "operation_id": operation_id,
-            "error_message": "Out of memory",
-            "error_code": "MEMORY_ERROR",
-            "documents_processed": 2,
-            "documents_failed": 1,
-        })
-        
+        await ws_manager.send_message(
+            channel,
+            {
+                "type": "chunking_failed",
+                "operation_id": operation_id,
+                "error_message": "Out of memory",
+                "error_code": "MEMORY_ERROR",
+                "documents_processed": 2,
+                "documents_failed": 1,
+            },
+        )
+
         # Verify error was sent
         calls = mock_redis_client.xadd.call_args_list
         last_call = calls[-1]
