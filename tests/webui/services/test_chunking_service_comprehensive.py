@@ -105,11 +105,14 @@ def chunking_service(
     # Create mock repositories
     mock_collection_repo = MagicMock()
     mock_document_repo = MagicMock()
+    mock_operation_repo = MagicMock()
     
     # Setup mock repository methods
     mock_collection_repo.get_by_uuid_with_permission_check = AsyncMock()
     mock_document_repo.list_by_collection = AsyncMock(return_value=([], 0))
     mock_document_repo.get_by_id = AsyncMock()
+    mock_operation_repo.get_by_uuid_with_permission_check = AsyncMock()
+    mock_operation_repo.update = AsyncMock()
     
     # Create service with mocked dependencies
     service = ChunkingService(
@@ -117,6 +120,7 @@ def chunking_service(
         collection_repo=mock_collection_repo,
         document_repo=mock_document_repo,
         redis_client=mock_redis,
+        operation_repo=mock_operation_repo,
     )
     
     # Also set the services as attributes for tests that might use them
@@ -523,15 +527,14 @@ class TestStatisticsAndMetrics:
         mock_db_session: AsyncMock,
     ) -> None:
         """Test getting chunking statistics for a collection."""
+        # Mock Document objects with chunk_count attribute
+        mock_docs = [
+            MagicMock(chunk_count=25) for _ in range(20)
+        ]
+        
         # Mock database query results
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = {
-            "total_chunks": 500,
-            "total_documents": 20,
-            "avg_chunk_size": 512,
-            "min_chunk_size": 100,
-            "max_chunk_size": 1024,
-        }
+        mock_result.scalars.return_value.all.return_value = mock_docs
         mock_db_session.execute.return_value = mock_result
         
         stats = await chunking_service.get_chunking_statistics(
@@ -542,8 +545,8 @@ class TestStatisticsAndMetrics:
         assert stats.total_chunks == 500
         assert stats.total_documents == 20
         assert stats.average_chunk_size == 512
-        assert "size_variance" in stats.performance_metrics
-        assert "quality_metrics" in stats.performance_metrics
+        assert "average_chunks_per_document" in stats.performance_metrics
+        assert stats.performance_metrics["average_chunks_per_document"] == 25.0
 
     @pytest.mark.asyncio
     async def test_calculate_quality_metrics(
@@ -857,17 +860,27 @@ class TestProgressTracking:
         """Test getting chunking operation progress."""
         operation_id = str(uuid.uuid4())
         
-        # Mock progress data in Redis
-        progress_data = {
-            "status": "in_progress",
-            "progress_percentage": 45.5,
-            "documents_processed": 5,
-            "total_documents": 11,
-            "chunks_created": 250,
-            "current_document": "doc_6.pdf",
-            "estimated_time_remaining": 120,
-        }
-        mock_redis.hgetall.return_value = progress_data
+        # Mock operation with progress data
+        from datetime import datetime
+        from types import SimpleNamespace
+        mock_operation = SimpleNamespace(
+            meta={
+                "progress": {
+                    "total_documents": 11,
+                    "processed_documents": 5,
+                    "current_document": "doc_6.pdf",
+                    "chunks_created": 250,
+                }
+            },
+            status=SimpleNamespace(value="in_progress"),
+            progress_percentage=45.5,
+            uuid=operation_id,
+            started_at=datetime.utcnow(),
+            error_message=None,
+        )
+        
+        # Mock the operation repository to return our mock operation
+        chunking_service.operation_repo.get_by_uuid_with_permission_check.return_value = mock_operation
         
         result = await chunking_service.get_chunking_progress(
             operation_id=operation_id,
@@ -876,7 +889,7 @@ class TestProgressTracking:
         
         assert result["status"] == "in_progress"
         assert result["progress_percentage"] == 45.5
-        assert result["documents_processed"] == 5
+        assert result["processed_documents"] == 5
 
     @pytest.mark.asyncio
     async def test_update_progress(
@@ -889,8 +902,9 @@ class TestProgressTracking:
         
         await chunking_service._update_progress(
             operation_id=operation_id,
-            status=ChunkingStatus.IN_PROGRESS,
-            progress_percentage=60.0,
+            progress=60.0,
+            status="in_progress",
+            message="Processing doc_7.pdf",
             documents_processed=6,
             total_documents=10,
             current_document="doc_7.pdf",
