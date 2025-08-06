@@ -7,7 +7,7 @@ including strategy management, preview operations, collection processing, and an
 
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import (
@@ -19,7 +19,6 @@ from fastapi import (
     Request,
     status,
 )
-from fastapi.exceptions import RequestValidationError
 
 from packages.webui.api.chunking_exceptions import (
     ChunkingMemoryError,
@@ -53,7 +52,6 @@ from packages.webui.api.v2.chunking_schemas import (
 )
 from packages.webui.auth import get_current_user
 from packages.webui.dependencies import get_collection_for_user
-from packages.webui.rate_limiter import limiter
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.chunking_strategies import ChunkingStrategyRegistry
 from packages.webui.services.chunking_validation import ChunkingInputValidator
@@ -72,7 +70,7 @@ router = APIRouter(prefix="/api/v2/chunking", tags=["chunking-v2"])
     summary="List all available chunking strategies",
 )
 async def list_strategies(
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001  # noqa: ARG001
 ) -> list[StrategyInfo]:
     """
     Get a list of all available chunking strategies with their descriptions,
@@ -113,7 +111,7 @@ async def list_strategies(
 )
 async def get_strategy_details(
     strategy_id: str,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001  # noqa: ARG001
 ) -> StrategyInfo:
     """
     Get detailed information about a specific chunking strategy including
@@ -121,11 +119,11 @@ async def get_strategy_details(
     """
     try:
         strategy_enum = ChunkingStrategy(strategy_id)
-    except ValueError:
+    except ValueError as err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Strategy '{strategy_id}' not found",
-        )
+        ) from err
 
     strategy_def = ChunkingStrategyRegistry.get_strategy_definition(strategy_enum)
 
@@ -155,8 +153,8 @@ async def get_strategy_details(
 )
 async def recommend_strategy(
     file_types: list[str] = Query(..., description="List of file types to analyze"),
-    current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> StrategyRecommendation:
     """
     Get a strategy recommendation based on the provided file types.
@@ -185,7 +183,7 @@ async def recommend_strategy(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate strategy recommendation",
-        )
+        ) from e
 
 
 # Preview Operations
@@ -199,10 +197,10 @@ async def recommend_strategy(
     },
 )
 async def generate_preview(
-    request: Request,  # Required for rate limiting
+    request: Request,  # Required for rate limiting  # noqa: ARG001
     preview_request: PreviewRequest,
-    current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> PreviewResponse:
     """
     Generate a preview of how content would be chunked using a specific strategy.
@@ -265,7 +263,7 @@ async def generate_preview(
         config_data = result.get("config", {}).copy() if "config" in result else {}
         if "strategy" not in config_data:
             config_data["strategy"] = result["strategy"]
-        
+
         return PreviewResponse(
             preview_id=result["preview_id"],
             strategy=result["strategy"],
@@ -275,7 +273,7 @@ async def generate_preview(
             metrics=result.get("metrics"),
             processing_time_ms=result["processing_time_ms"],
             cached=result.get("cached", False),
-            expires_at=datetime.utcnow() + timedelta(minutes=15),
+            expires_at=datetime.now(UTC) + timedelta(minutes=15),
         )
 
     except ChunkingMemoryError:
@@ -284,18 +282,18 @@ async def generate_preview(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
     except ChunkingTimeoutError as e:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail=str(e),
-        )
+        ) from e
     except Exception as e:
         logger.error(f"Preview generation failed: {e}", extra={"correlation_id": correlation_id})
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate preview",
-        )
+        ) from e
 
 
 @router.post(
@@ -307,10 +305,10 @@ async def generate_preview(
     },
 )
 async def compare_strategies(
-    request: Request,
+    request: Request,  # noqa: ARG001
     compare_request: CompareRequest,
-    current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> CompareResponse:
     """
     Compare multiple chunking strategies on the same content.
@@ -322,7 +320,7 @@ async def compare_strategies(
 
     try:
         comparisons = []
-        processing_start = datetime.utcnow()
+        processing_start = datetime.now(UTC)
 
         # Process each strategy
         for strategy in compare_request.strategies:
@@ -372,7 +370,7 @@ async def compare_strategies(
             suggested_config=best_strategy.config,
         )
 
-        processing_time = int((datetime.utcnow() - processing_start).total_seconds() * 1000)
+        processing_time = int((datetime.now(UTC) - processing_start).total_seconds() * 1000)
 
         return CompareResponse(
             comparison_id=correlation_id,
@@ -386,7 +384,7 @@ async def compare_strategies(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to compare strategies",
-        )
+        ) from e
 
 
 @router.get(
@@ -396,15 +394,17 @@ async def compare_strategies(
 )
 async def get_cached_preview(
     preview_id: str,
-    current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> PreviewResponse:
     """
     Retrieve cached preview results by preview ID.
     Preview results are cached for 15 minutes after generation.
     """
     try:
-        result = await service._get_cached_preview(preview_id, user_id=current_user["id"])
+        # Get cached preview using the key-based method
+        cache_key = f"preview:{preview_id}:{current_user['id']}"
+        result = await service._get_cached_preview_by_key(cache_key)
 
         if not result:
             raise HTTPException(
@@ -412,7 +412,18 @@ async def get_cached_preview(
                 detail="Preview not found or expired",
             )
 
-        return PreviewResponse(**result)
+        # Map the result to PreviewResponse schema
+        return PreviewResponse(
+            preview_id=result["preview_id"],
+            strategy=result["strategy"],
+            config=ChunkingConfigBase(**result.get("config", {})),
+            chunks=result["chunks"],
+            total_chunks=result["total_chunks"],
+            metrics=result.get("metrics"),
+            processing_time_ms=result["processing_time_ms"],
+            cached=result.get("cached", False),
+            expires_at=result.get("expires_at", datetime.now(UTC) + timedelta(minutes=15)),
+        )
 
     except HTTPException:
         raise
@@ -421,7 +432,7 @@ async def get_cached_preview(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve preview",
-        )
+        ) from e
 
 
 @router.delete(
@@ -431,8 +442,8 @@ async def get_cached_preview(
 )
 async def clear_preview_cache(
     preview_id: str,
-    current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> None:
     """
     Clear cached preview results for a specific preview ID.
@@ -459,9 +470,9 @@ async def start_chunking_operation(
     collection_id: str,
     chunking_request: ChunkingOperationRequest,
     background_tasks: BackgroundTasks,
-    current_user: dict[str, Any] = Depends(get_current_user),
-    collection: dict = Depends(get_collection_for_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
     collection_service: CollectionService = Depends(get_collection_service),
 ) -> ChunkingOperationResponse:
     """
@@ -478,7 +489,7 @@ async def start_chunking_operation(
             config=chunking_request.config.model_dump() if chunking_request.config else None,
             user_id=current_user["id"],
         )
-        
+
         # Check if configuration is valid
         if not validation_result.get("is_valid", True):
             # Return 400 for invalid configuration
@@ -486,7 +497,7 @@ async def start_chunking_operation(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid configuration: {validation_result.get('reason', 'Configuration validation failed')}",
             )
-        
+
         # Create operation record
         operation = await collection_service.create_operation(
             collection_id=collection_id,
@@ -540,13 +551,13 @@ async def start_chunking_operation(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
     except Exception as e:
         logger.error(f"Failed to start chunking operation: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to start chunking operation",
-        )
+        ) from e
 
 
 @router.patch(
@@ -558,9 +569,9 @@ async def update_chunking_strategy(
     collection_id: str,
     update_request: ChunkingStrategyUpdate,
     background_tasks: BackgroundTasks,
-    current_user: dict[str, Any] = Depends(get_current_user),
-    collection: dict = Depends(get_collection_for_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
     collection_service: CollectionService = Depends(get_collection_service),
 ) -> ChunkingOperationResponse:
     """
@@ -613,22 +624,21 @@ async def update_chunking_strategy(
                 strategy=update_request.strategy,
                 websocket_channel=websocket_channel,
             )
-        else:
-            # Just update strategy without reprocessing
-            return ChunkingOperationResponse(
-                operation_id=operation_id,
-                collection_id=collection_id,
-                status=ChunkingStatus.COMPLETED,
-                strategy=update_request.strategy,
-                websocket_channel=websocket_channel,
-            )
+        # Just update strategy without reprocessing
+        return ChunkingOperationResponse(
+            operation_id=operation_id,
+            collection_id=collection_id,
+            status=ChunkingStatus.COMPLETED,
+            strategy=update_request.strategy,
+            websocket_channel=websocket_channel,
+        )
 
     except Exception as e:
         logger.error(f"Failed to update chunking strategy: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update chunking strategy",
-        )
+        ) from e
 
 
 @router.get(
@@ -637,13 +647,13 @@ async def update_chunking_strategy(
     summary="Get chunks with pagination",
 )
 async def get_collection_chunks(
-    collection_id: str,
+    collection_id: str,  # noqa: ARG001
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
-    document_id: str | None = Query(None, description="Filter by document"),
-    current_user: dict[str, Any] = Depends(get_current_user),
-    collection: dict = Depends(get_collection_for_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    document_id: str | None = Query(None, description="Filter by document"),  # noqa: ARG001
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> ChunkListResponse:
     """
     Get paginated list of chunks for a collection.
@@ -654,7 +664,7 @@ async def get_collection_chunks(
         # For now, returning mock data structure
         offset = (page - 1) * page_size
 
-        chunks = []  # Would fetch from database/storage
+        chunks: list[dict[str, Any]] = []  # Would fetch from database/storage
         total = 0  # Would get total count
 
         return ChunkListResponse(
@@ -670,7 +680,7 @@ async def get_collection_chunks(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch chunks",
-        )
+        ) from e
 
 
 @router.get(
@@ -680,9 +690,9 @@ async def get_collection_chunks(
 )
 async def get_chunking_stats(
     collection_id: str,
-    current_user: dict[str, Any] = Depends(get_current_user),
-    collection: dict = Depends(get_collection_for_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> ChunkingStats:
     """
     Get detailed chunking statistics and metrics for a collection.
@@ -694,16 +704,16 @@ async def get_chunking_stats(
         )
 
         return ChunkingStats(
-            total_chunks=stats["total_chunks"],
-            total_documents=stats["total_documents"],
-            avg_chunk_size=stats["avg_chunk_size"],
-            min_chunk_size=stats["min_chunk_size"],
-            max_chunk_size=stats["max_chunk_size"],
-            size_variance=stats["size_variance"],
-            strategy_used=ChunkingStrategy(stats["strategy"]),
-            last_updated=stats["last_updated"],
-            processing_time_seconds=stats["processing_time"],
-            quality_metrics=stats["quality_metrics"],
+            total_chunks=stats.total_chunks,
+            total_documents=stats.total_documents,
+            avg_chunk_size=stats.average_chunk_size,
+            min_chunk_size=getattr(stats, "min_chunk_size", 0),
+            max_chunk_size=getattr(stats, "max_chunk_size", 0),
+            size_variance=getattr(stats, "size_variance", 0.0),
+            strategy_used=ChunkingStrategy(getattr(stats, "strategy", "fixed_size")),
+            last_updated=getattr(stats, "last_updated", datetime.now(UTC)),
+            processing_time_seconds=getattr(stats, "processing_time", 0.0),
+            quality_metrics=stats.performance_metrics if hasattr(stats, "performance_metrics") else {},
         )
 
     except Exception as e:
@@ -711,7 +721,7 @@ async def get_chunking_stats(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch chunking statistics",
-        )
+        ) from e
 
 
 # Analytics Endpoints
@@ -721,9 +731,9 @@ async def get_chunking_stats(
     summary="Get global chunking metrics",
 )
 async def get_global_metrics(
-    period_days: int = Query(30, ge=1, le=365, description="Period in days"),
-    current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    period_days: int = Query(30, ge=1, le=365, description="Period in days"),  # noqa: ARG001
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> GlobalMetrics:
     """
     Get global chunking metrics across all collections for the specified period.
@@ -731,7 +741,7 @@ async def get_global_metrics(
     try:
         # This would aggregate metrics from database
         # For now, returning mock structure
-        period_end = datetime.utcnow()
+        period_end = datetime.now(UTC)
         period_start = period_end - timedelta(days=period_days)
 
         return GlobalMetrics(
@@ -751,7 +761,7 @@ async def get_global_metrics(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch global metrics",
-        )
+        ) from e
 
 
 @router.get(
@@ -760,9 +770,9 @@ async def get_global_metrics(
     summary="Get metrics grouped by strategy",
 )
 async def get_metrics_by_strategy(
-    period_days: int = Query(30, ge=1, le=365, description="Period in days"),
-    current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    period_days: int = Query(30, ge=1, le=365, description="Period in days"),  # noqa: ARG001
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> list[StrategyMetrics]:
     """
     Get chunking metrics grouped by strategy for the specified period.
@@ -791,7 +801,7 @@ async def get_metrics_by_strategy(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch strategy metrics",
-        )
+        ) from e
 
 
 @router.get(
@@ -800,9 +810,9 @@ async def get_metrics_by_strategy(
     summary="Get chunk quality analysis",
 )
 async def get_quality_scores(
-    collection_id: str | None = Query(None, description="Specific collection ID"),
-    current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    collection_id: str | None = Query(None, description="Specific collection ID"),  # noqa: ARG001
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> QualityAnalysis:
     """
     Analyze chunk quality across collections or for a specific collection.
@@ -830,7 +840,7 @@ async def get_quality_scores(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to analyze chunk quality",
-        )
+        ) from e
 
 
 @router.post(
@@ -840,8 +850,8 @@ async def get_quality_scores(
 )
 async def analyze_document(
     analysis_request: DocumentAnalysisRequest,
-    current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> DocumentAnalysisResponse:
     """
     Analyze a document to recommend the best chunking strategy.
@@ -891,7 +901,7 @@ async def analyze_document(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to analyze document",
-        )
+        ) from e
 
 
 # Configuration Management
@@ -903,8 +913,8 @@ async def analyze_document(
 )
 async def save_configuration(
     config_request: CreateConfigurationRequest,
-    current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> SavedConfiguration:
     """
     Save a custom chunking configuration for reuse.
@@ -914,28 +924,26 @@ async def save_configuration(
         config_id = str(uuid.uuid4())
 
         # Would save to database
-        saved_config = SavedConfiguration(
+        return SavedConfiguration(
             id=config_id,
             name=config_request.name,
             description=config_request.description,
             strategy=config_request.strategy,
             config=config_request.config,
             created_by=current_user["id"],
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             usage_count=0,
             is_default=config_request.is_default,
             tags=config_request.tags,
         )
-
-        return saved_config
 
     except Exception as e:
         logger.error(f"Failed to save configuration: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to save configuration",
-        )
+        ) from e
 
 
 @router.get(
@@ -944,10 +952,10 @@ async def save_configuration(
     summary="List saved configurations",
 )
 async def list_configurations(
-    strategy: ChunkingStrategy | None = Query(None, description="Filter by strategy"),
-    is_default: bool | None = Query(None, description="Filter default configs"),
-    current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    strategy: ChunkingStrategy | None = Query(None, description="Filter by strategy"),  # noqa: ARG001
+    is_default: bool | None = Query(None, description="Filter default configs"),  # noqa: ARG001
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> list[SavedConfiguration]:
     """
     List all saved chunking configurations for the current user.
@@ -955,7 +963,7 @@ async def list_configurations(
     """
     try:
         # Would fetch from database
-        configs = []
+        configs: list[SavedConfiguration] = []
 
         return configs
 
@@ -964,7 +972,7 @@ async def list_configurations(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list configurations",
-        )
+        ) from e
 
 
 # Progress tracking endpoint
@@ -975,8 +983,8 @@ async def list_configurations(
 )
 async def get_operation_progress(
     operation_id: str,
-    current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> ChunkingProgress:
     """
     Get the current progress of a chunking operation.
@@ -1012,7 +1020,7 @@ async def get_operation_progress(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get operation progress",
-        )
+        ) from e
 
 
 # Background task helper

@@ -394,18 +394,20 @@ class ChunkingService:
                 doc = await self.document_repo.get_by_id(document_id)
                 if not doc:
                     from packages.shared.database.exceptions import EntityNotFoundError
+
                     raise EntityNotFoundError("Document", document_id)
                 # Try to use document service if available for mocking
-                if hasattr(self, 'document_service'):
+                if hasattr(self, "document_service"):
                     try:
                         doc_data = await self.document_service.get_document(document_id, user_id=user_id)
-                        text = doc_data.get('content', '')
+                        text = doc_data.get("content", "")
                         if not text:
                             # Fallback to loading from file
                             text = await self._load_document_content(doc)
                     except Exception as e:
                         # If document service raises EntityNotFoundError, re-raise it
                         from packages.shared.database.exceptions import EntityNotFoundError
+
                         if isinstance(e, EntityNotFoundError):
                             raise
                         # Otherwise try loading from file
@@ -415,6 +417,7 @@ class ChunkingService:
                 file_type = file_type if file_type else Path(doc.file_name).suffix
             except FileNotFoundError as e:
                 from packages.shared.database.exceptions import EntityNotFoundError
+
                 raise EntityNotFoundError("Document", document_id) from e
         elif content:
             text = content
@@ -471,12 +474,13 @@ class ChunkingService:
 
         # Execute chunking with timeout
         import asyncio
+
         try:
             chunks, processing_time, memory_used = await asyncio.wait_for(
                 self._execute_chunking(text, config, metadata, correlation_id, operation_id),
                 timeout=CHUNKING_TIMEOUTS.PREVIEW_TIMEOUT_SECONDS,
             )
-        except asyncio.TimeoutError as e:
+        except TimeoutError as e:
             raise ChunkingTimeoutError(
                 detail="Preview operation timed out",
                 correlation_id=correlation_id,
@@ -767,13 +771,13 @@ class ChunkingService:
 
         # Validate config
         self.security.validate_chunk_params(config.get("params", {}))
-        
+
         # Check chunk size validity
         chunk_size = config.get("chunk_size", config.get("params", {}).get("chunk_size", DEFAULT_CHUNK_SIZE))
         is_valid = True
         reason = ""
         warnings = []
-        
+
         # Validate chunk size
         if chunk_size < 50:
             is_valid = False
@@ -781,7 +785,7 @@ class ChunkingService:
         elif chunk_size > 10000:
             is_valid = False
             reason = "Chunk size too large - maximum recommended size is 10000 characters"
-            
+
         # Check for semantic strategy requirements
         if strategy_str == ChunkingStrategy.SEMANTIC.value:
             # Check if embedding model is configured
@@ -793,17 +797,17 @@ class ChunkingService:
         # Get collection info if collection service is available
         total_size_bytes = 0
         document_count = 0
-        
-        if hasattr(self, 'collection_service'):
+
+        if hasattr(self, "collection_service"):
             # Use collection service if available (for testing)
             try:
                 collection_data = await self.collection_service.get_collection(collection_id)
                 document_count = collection_data.get("document_count", 0)
                 total_size_bytes = collection_data.get("total_size_bytes", 0)
-                
+
                 # Get documents for validation
                 documents = await self.collection_service.get_collection_documents(collection_id)
-                
+
                 # Check if chunk size is too small for large documents
                 if documents:
                     for doc in documents:
@@ -814,7 +818,7 @@ class ChunkingService:
                             break
             except Exception:
                 pass  # Fallback to document repo
-        
+
         if document_count == 0:
             # Fallback to document repository
             documents, _ = await self.document_repo.list_by_collection(
@@ -823,11 +827,11 @@ class ChunkingService:
                 limit=sample_size,
             )
             document_count = len(documents)
-            
+
             # Calculate total size from documents
             for doc in documents:
                 total_size_bytes += doc.file_size_bytes or 0
-                
+
                 # Check if chunk size is appropriate for document sizes
                 if doc.file_size_bytes and doc.file_size_bytes > 10 * 1024 * 1024 and chunk_size < 50:
                     is_valid = False
@@ -836,7 +840,7 @@ class ChunkingService:
         # Test chunking on samples with mapped strategy
         mapped_config = config.copy()
         mapped_config["strategy"] = self._map_strategy_to_factory_name(config.get("strategy", "recursive"))
-        
+
         try:
             chunker = ChunkingFactory.create_chunker(mapped_config)
         except Exception:
@@ -844,7 +848,7 @@ class ChunkingService:
             is_valid = False
             reason = "Invalid configuration for selected strategy"
             chunker = None
-            
+
         sample_results = []
         total_estimated_chunks = 0
 
@@ -860,7 +864,7 @@ class ChunkingService:
                     "estimated_chunks": estimated_chunks_per_doc,
                 }
             )
-            
+
             # Add large document entry for completeness
             large_doc_chunks = max(1, int((avg_doc_size * 2) / chunk_size))
             sample_results.append(
@@ -884,7 +888,7 @@ class ChunkingService:
             time_per_mb = 2.5  # Semantic is slower
         elif strategy_str == ChunkingStrategy.RECURSIVE.value:
             time_per_mb = 1.5  # Recursive is moderate
-            
+
         estimated_time = max(0.1, (total_size_bytes / (1024 * 1024)) * time_per_mb) if total_size_bytes > 0 else 1.0
 
         result = {
@@ -895,10 +899,10 @@ class ChunkingService:
             "estimated_total_chunks": total_estimated_chunks,
             "estimated_time": estimated_time,
         }
-        
+
         if not is_valid and reason:
             result["reason"] = reason
-            
+
         return result
 
     async def start_chunking_operation(
@@ -1000,7 +1004,7 @@ class ChunkingService:
             cache_key = f"preview:{preview_id}:{user_id}"
             if self.redis:
                 self.redis.delete(cache_key)
-                
+
                 # Also try to clear any wildcard patterns for this preview
                 pattern = f"preview:{preview_id}*"
                 keys = self.redis.keys(pattern)
@@ -1063,7 +1067,7 @@ class ChunkingService:
                 return None
 
             # Get progress from operation meta - handle different structures
-            meta = operation.meta if hasattr(operation, 'meta') and operation.meta else {}
+            meta = operation.meta if hasattr(operation, "meta") and operation.meta else {}
             progress_data = meta.get("progress", {})
 
             # Handle different meta structures (for test compatibility)
@@ -1074,10 +1078,12 @@ class ChunkingService:
             # Get progress percentage from operation or calculate it
             # Check if operation has a real progress_percentage value (not a mock)
             from unittest.mock import MagicMock
-            
-            if (hasattr(operation, 'progress_percentage') and 
-                operation.progress_percentage is not None and 
-                not isinstance(operation.progress_percentage, MagicMock)):
+
+            if (
+                hasattr(operation, "progress_percentage")
+                and operation.progress_percentage is not None
+                and not isinstance(operation.progress_percentage, MagicMock)
+            ):
                 try:
                     progress_percentage = float(operation.progress_percentage)
                 except (TypeError, ValueError):
@@ -1088,7 +1094,7 @@ class ChunkingService:
                 progress_percentage = (processed_docs / max(total_docs, 1)) * 100 if total_docs > 0 else 0
 
             # Estimate remaining time
-            started_at = operation.started_at if hasattr(operation, 'started_at') else None
+            started_at = operation.started_at if hasattr(operation, "started_at") else None
             if started_at and processed_docs > 0:
                 elapsed = (datetime.now(UTC) - started_at).total_seconds()
                 rate = processed_docs / elapsed
@@ -1098,7 +1104,7 @@ class ChunkingService:
                 estimated_time_remaining = 0
 
             # Get status value
-            status = operation.status.value if hasattr(operation.status, 'value') else str(operation.status)
+            status = operation.status.value if hasattr(operation.status, "value") else str(operation.status)
 
             return {
                 "status": status,
@@ -1110,7 +1116,11 @@ class ChunkingService:
                 "estimated_time_remaining": int(estimated_time_remaining),
                 "errors": progress_data.get("errors", []),
                 "started_at": operation.started_at.isoformat() if started_at else None,
-                "completed_at": operation.completed_at.isoformat() if hasattr(operation, 'completed_at') and operation.completed_at else None,
+                "completed_at": (
+                    operation.completed_at.isoformat()
+                    if hasattr(operation, "completed_at") and operation.completed_at
+                    else None
+                ),
             }
 
         except Exception as e:
@@ -1163,7 +1173,7 @@ class ChunkingService:
             await ws_manager.send_message(
                 websocket_channel,
                 {
-                    "type": "chunking_started", 
+                    "type": "chunking_started",
                     "operation_id": operation_id,
                     "status": "processing",
                     "message": "Starting chunking operation",
@@ -1280,7 +1290,7 @@ class ChunkingService:
                     document.status = DocumentStatus.FAILED
                     document.error_message = str(doc_error)
                     await self.db.flush()
-                    
+
                     # If processing a single specific document and it fails, raise the exception
                     if document_ids and len(document_ids) == 1 and len(errors) == 1:
                         # Send failure notification before raising
@@ -1493,10 +1503,10 @@ class ChunkingService:
         """
         try:
             # Load document content - use document_service if available for mocking
-            if hasattr(self, 'document_service'):
+            if hasattr(self, "document_service"):
                 try:
                     doc_data = await self.document_service.get_document(str(document.id), user_id=None)
-                    content = doc_data.get('content', '')
+                    content = doc_data.get("content", "")
                     if not content:
                         # Fallback to loading from file
                         content = await self._load_document_content(document)
@@ -1557,10 +1567,10 @@ class ChunkingService:
         """
         try:
             # For testing, return mock content if file doesn't exist
-            if hasattr(document, '__mock__') or document.file_path.startswith('/path/to/'):
+            if hasattr(document, "__mock__") or document.file_path.startswith("/path/to/"):
                 # This is a mock document, return test content
                 return f"Test content for document {document.id}. This is sample text that can be chunked."
-            
+
             # Check if file exists
             file_path = Path(document.file_path)
             if not file_path.exists():
@@ -1599,7 +1609,7 @@ class ChunkingService:
         """
         try:
             import uuid
-            
+
             # Prepare points for Qdrant
             points = []
             for chunk in chunks:
@@ -1847,21 +1857,21 @@ class ChunkingService:
         """
         # Convert strategy to string if enum
         strategy_str = strategy.value if isinstance(strategy, ChunkingStrategy) else strategy
-        
+
         # Handle different strategy types and configs
         if strategy_str == "recursive" or strategy == ChunkingStrategy.RECURSIVE:
             # For recursive chunking with separators
             separators = config.get("separators", ["\n#", "\n\n", "\n", " "]) if config else ["\n#", "\n\n", "\n", " "]
             chunks = []
-            
+
             # Simple recursive split implementation for testing
             def split_text(text: str, seps: list[str]) -> list[str]:
                 if not seps:
                     return [text] if text else []
-                    
+
                 sep = seps[0]
                 parts = text.split(sep)
-                
+
                 # If we got meaningful splits, use them
                 if len(parts) > 1:
                     result = []
@@ -1869,84 +1879,124 @@ class ChunkingService:
                         if part.strip():
                             result.append(part)
                     return result
-                else:
-                    # Try next separator
-                    return split_text(text, seps[1:]) if len(seps) > 1 else [text]
-            
+                # Try next separator
+                return split_text(text, seps[1:]) if len(seps) > 1 else [text]
+
             # Split the content
             text_chunks = split_text(content, separators)
-            
+
             # Create chunk dictionaries
             current_offset = 0
             for i, chunk_text in enumerate(text_chunks):
                 if chunk_text.strip():
-                    chunks.append({
-                        "content": chunk_text.strip(),
-                        "size": len(chunk_text.strip()),
-                        "start_offset": current_offset,
-                        "end_offset": current_offset + len(chunk_text),
-                        "metadata": {"chunk_index": i},
-                    })
+                    chunks.append(
+                        {
+                            "content": chunk_text.strip(),
+                            "size": len(chunk_text.strip()),
+                            "start_offset": current_offset,
+                            "end_offset": current_offset + len(chunk_text),
+                            "metadata": {"chunk_index": i},
+                        }
+                    )
                     current_offset += len(chunk_text)
-            
-            return chunks if chunks else [{"content": content, "size": len(content), "start_offset": 0, "end_offset": len(content), "metadata": {}}]
-            
-        elif strategy_str == "sliding_window" or strategy == ChunkingStrategy.SLIDING_WINDOW:
+
+            return (
+                chunks
+                if chunks
+                else [
+                    {
+                        "content": content,
+                        "size": len(content),
+                        "start_offset": 0,
+                        "end_offset": len(content),
+                        "metadata": {},
+                    }
+                ]
+            )
+
+        if strategy_str == "sliding_window" or strategy == ChunkingStrategy.SLIDING_WINDOW:
             # Sliding window implementation
             window_size = config.get("window_size", 50) if config else 50
             step_size = config.get("step_size", 25) if config else 25
-            
+
             chunks = []
             for i in range(0, len(content), step_size):
-                chunk_text = content[i:i + window_size]
+                chunk_text = content[i : i + window_size]
                 if chunk_text:
-                    chunks.append({
-                        "content": chunk_text,
-                        "size": len(chunk_text),
-                        "start_offset": i,
-                        "end_offset": min(i + window_size, len(content)),
-                        "metadata": {"chunk_index": len(chunks)},
-                    })
-                    
+                    chunks.append(
+                        {
+                            "content": chunk_text,
+                            "size": len(chunk_text),
+                            "start_offset": i,
+                            "end_offset": min(i + window_size, len(content)),
+                            "metadata": {"chunk_index": len(chunks)},
+                        }
+                    )
+
                 if i + window_size >= len(content):
                     break
-                    
-            return chunks if chunks else [{"content": content, "size": len(content), "start_offset": 0, "end_offset": len(content), "metadata": {}}]
-            
-        else:
-            # Default fixed size chunking
-            chunk_size = config.get("chunk_size", DEFAULT_CHUNK_SIZE) if config else DEFAULT_CHUNK_SIZE
-            chunk_overlap = config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP) if config else DEFAULT_CHUNK_OVERLAP
-            preserve_sentences = config.get("preserve_sentences", False) if config else False
-            
-            chunks = []
-            step = max(1, chunk_size - chunk_overlap)
-            
-            for i in range(0, len(content), step):
-                chunk_text = content[i:i + chunk_size]
-                
-                # Preserve sentences if requested
-                if preserve_sentences and chunk_text:
-                    # Try to end at a sentence boundary
-                    for end_char in [".", "!", "?"]:
-                        last_idx = chunk_text.rfind(end_char)
-                        if last_idx > 0 and last_idx < len(chunk_text) - 1:
-                            chunk_text = chunk_text[:last_idx + 1]
-                            break
-                
-                if chunk_text:
-                    chunks.append({
+
+            return (
+                chunks
+                if chunks
+                else [
+                    {
+                        "content": content,
+                        "size": len(content),
+                        "start_offset": 0,
+                        "end_offset": len(content),
+                        "metadata": {},
+                    }
+                ]
+            )
+
+        # Default fixed size chunking
+        chunk_size = config.get("chunk_size", DEFAULT_CHUNK_SIZE) if config else DEFAULT_CHUNK_SIZE
+        chunk_overlap = config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP) if config else DEFAULT_CHUNK_OVERLAP
+        preserve_sentences = config.get("preserve_sentences", False) if config else False
+
+        chunks = []
+        step = max(1, chunk_size - chunk_overlap)
+
+        for i in range(0, len(content), step):
+            chunk_text = content[i : i + chunk_size]
+
+            # Preserve sentences if requested
+            if preserve_sentences and chunk_text:
+                # Try to end at a sentence boundary
+                for end_char in [".", "!", "?"]:
+                    last_idx = chunk_text.rfind(end_char)
+                    if last_idx > 0 and last_idx < len(chunk_text) - 1:
+                        chunk_text = chunk_text[: last_idx + 1]
+                        break
+
+            if chunk_text:
+                chunks.append(
+                    {
                         "content": chunk_text,
                         "size": len(chunk_text),
                         "start_offset": i,
                         "end_offset": i + len(chunk_text),
                         "metadata": {"chunk_index": len(chunks)},
-                    })
-                    
-                if i + chunk_size >= len(content):
-                    break
-                    
-            return chunks if chunks else [{"content": content, "size": len(content), "start_offset": 0, "end_offset": len(content), "metadata": {}}]
+                    }
+                )
+
+            if i + chunk_size >= len(content):
+                break
+
+        return (
+            chunks
+            if chunks
+            else [
+                {
+                    "content": content,
+                    "size": len(content),
+                    "start_offset": 0,
+                    "end_offset": len(content),
+                    "metadata": {},
+                }
+            ]
+        )
 
     async def _update_progress(
         self,
@@ -1994,18 +2044,18 @@ class ChunkingService:
                 "message": message,
                 "updated_at": datetime.now(UTC).isoformat(),
             }
-            
+
             # Add any additional kwargs
             for k, v in kwargs.items():
                 progress_data[k] = str(v) if not isinstance(v, str) else v
-            
+
             # Use hset for hash operations
             for field, value in progress_data.items():
                 self.redis.hset(progress_key, field, value)
-            
+
             # Set expiration
             self.redis.expire(progress_key, 300)  # 5 minute TTL
-            
+
         except Exception as e:
             logger.error(f"Failed to update progress in Redis: {e}")
 
