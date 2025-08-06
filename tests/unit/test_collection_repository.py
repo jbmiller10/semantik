@@ -21,7 +21,7 @@ class TestCollectionRepository:
     """Test cases for CollectionRepository."""
 
     @pytest.fixture()
-    def mock_session(self) -> None:
+    def mock_session(self) -> AsyncMock:
         """Create a mock async session."""
         session = AsyncMock()
         # Make execute return completed coroutines immediately
@@ -33,12 +33,12 @@ class TestCollectionRepository:
         return session
 
     @pytest.fixture()
-    def repository(self, mock_session) -> None:
+    def repository(self, mock_session) -> CollectionRepository:
         """Create a CollectionRepository instance with mocked session."""
         return CollectionRepository(mock_session)
 
     @pytest.fixture()
-    def sample_collection(self) -> None:
+    def sample_collection(self) -> Collection:
         """Create a sample collection for testing."""
         return Collection(
             id=str(uuid4()),

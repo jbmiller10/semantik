@@ -7,7 +7,7 @@ import { useChunkingStore } from '../stores/chunkingStore';
 import { useNavigate } from 'react-router-dom';
 import { useDirectoryScan } from '../hooks/useDirectoryScan';
 import { getInputClassName, getInputClassNameWithBase } from '../utils/formStyles';
-import { ChunkingStrategySelector } from './chunking/ChunkingStrategySelector';
+import { SimplifiedChunkingStrategySelector } from './chunking/SimplifiedChunkingStrategySelector';
 import type { CreateCollectionRequest } from '../types/collection';
 
 interface CreateCollectionModalProps {
@@ -262,7 +262,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
 
   return (
     <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto relative" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div className="bg-white rounded-lg max-w-lg md:max-w-2xl lg:max-w-4xl w-full max-h-[90vh] overflow-y-auto relative" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         {/* Loading overlay */}
         {isSubmitting && (
           <div className="absolute inset-0 bg-white bg-opacity-90 flex items-center justify-center z-10 rounded-lg">
@@ -479,6 +479,12 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
               </p>
             </div>
 
+            {/* Chunking Strategy */}
+            <SimplifiedChunkingStrategySelector 
+              disabled={isSubmitting}
+              fileType={detectedFileType}
+            />
+
             {/* Advanced Settings Accordion */}
             <div className="border-t pt-4">
               <button
@@ -501,12 +507,6 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
               
               {showAdvancedSettings && (
                 <div className="mt-4 space-y-4">
-                  {/* Chunking Strategy Selector */}
-                  <ChunkingStrategySelector 
-                    disabled={isSubmitting}
-                    fileType={detectedFileType}
-                  />
-                  
                   {/* Public Collection */}
                   <div className="flex items-center">
                     <input

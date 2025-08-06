@@ -112,7 +112,7 @@ class TestProcessParquetFile:
         payload_column = MagicMock()
         payload_column.to_pylist.return_value = [{"text": "doc1"}]
 
-        def mock_column(name) -> None:
+        def mock_column(name):
             if name == "vector":
                 raise KeyError("Column 'vector' not found")
             return {"id": id_column, "payload": payload_column}[name]

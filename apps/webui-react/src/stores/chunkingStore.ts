@@ -91,7 +91,7 @@ const initialState = {
   comparisonError: null,
   analyticsData: null,
   analyticsLoading: false,
-  selectedPreset: 'default-documents',
+  selectedPreset: null,
   customPresets: []
 };
 
@@ -145,7 +145,7 @@ export const useChunkingStore = create<ChunkingStore>()(
       },
 
       saveCustomPreset: (preset) => {
-        const id = `custom-${Date.now()}`;
+        const id = `custom-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
         const newPreset = { ...preset, id };
         set(state => ({
           customPresets: [...state.customPresets, newPreset]
@@ -275,7 +275,13 @@ export const useChunkingStore = create<ChunkingStore>()(
       compareStrategies: async () => {
         const { previewDocument, comparisonStrategies } = get();
         
-        if (!previewDocument || comparisonStrategies.length === 0) {
+        if (!previewDocument) {
+          set({ comparisonError: 'No document selected for comparison' });
+          return;
+        }
+        
+        if (comparisonStrategies.length === 0) {
+          set({ comparisonError: 'No strategies selected for comparison' });
           return;
         }
 
@@ -406,23 +412,26 @@ export const useChunkingStore = create<ChunkingStore>()(
       },
 
       getRecommendedStrategy: (fileType) => {
-        if (!fileType) return 'hybrid';
+        if (!fileType) return 'recursive';
+        
+        // Remove leading dot if present
+        const cleanFileType = fileType.startsWith('.') ? fileType.slice(1) : fileType;
+        
+        // Special cases for markdown
+        if (['md', 'mdx', 'markdown'].includes(cleanFileType.toLowerCase())) {
+          return 'markdown';
+        }
         
         // Check presets for file type match
         const matchingPreset = CHUNKING_PRESETS.find(preset =>
-          preset.fileTypes?.includes(fileType.toLowerCase())
+          preset.fileTypes?.includes(cleanFileType.toLowerCase())
         );
         
         if (matchingPreset) {
           return matchingPreset.strategy;
         }
         
-        // Special cases
-        if (['md', 'mdx', 'markdown'].includes(fileType.toLowerCase())) {
-          return 'markdown';
-        }
-        
-        // Default to recursive for most files
+        // Default to recursive for most files (including code)
         return 'recursive';
       }
     }),

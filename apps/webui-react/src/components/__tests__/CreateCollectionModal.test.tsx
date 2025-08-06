@@ -447,21 +447,21 @@ describe('CreateCollectionModal', () => {
       const user = userEvent.setup();
       renderCreateCollectionModal(defaultProps);
 
-      // Initially hidden
-      expect(screen.queryByText(/chunking strategy/i)).not.toBeInTheDocument();
+      // Chunking strategy is always visible (not in advanced settings anymore)
+      expect(screen.getByText(/chunking strategy/i)).toBeInTheDocument();
+      
+      // Initially hidden - only public checkbox is in advanced settings
       expect(screen.queryByLabelText(/make this collection public/i)).not.toBeInTheDocument();
 
       // Click to expand
       const advancedButton = screen.getByText(/advanced settings/i);
       await user.click(advancedButton);
 
-      // Should show advanced fields
-      expect(screen.getByText(/chunking strategy/i)).toBeInTheDocument();
+      // Should show advanced fields (public checkbox)
       expect(screen.getByLabelText(/make this collection public/i)).toBeInTheDocument();
-
-      // Check that chunking strategy section is visible
-      const strategySection = screen.getByText(/chunking strategy/i).closest('div');
-      expect(strategySection).toBeInTheDocument();
+      
+      // Chunking strategy should still be visible (it's always visible)
+      expect(screen.getByText(/chunking strategy/i)).toBeInTheDocument();
       
       // Verify public toggle default value
       expect(screen.getByLabelText(/make this collection public/i)).not.toBeChecked();

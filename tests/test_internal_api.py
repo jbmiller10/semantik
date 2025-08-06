@@ -1,5 +1,6 @@
 """Tests for internal API endpoints."""
 
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -48,7 +49,7 @@ class TestInternalAPIEndpoints:
     """Test internal API endpoints."""
 
     @pytest.fixture()
-    def client_with_mocked_repos(self, mock_collection_repository) -> None:
+    def client_with_mocked_repos(self, mock_collection_repository) -> Generator[TestClient, None, None]:
         """Create test client with mocked repositories."""
         from unittest.mock import AsyncMock
 

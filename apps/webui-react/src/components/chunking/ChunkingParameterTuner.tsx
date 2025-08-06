@@ -2,11 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { 
   Sliders, 
   RotateCcw, 
-  Save, 
-  Info,
+  Save,
   ChevronDown,
-  ChevronUp,
-  Eye
+  Eye,
+  HelpCircle
 } from 'lucide-react';
 import { useChunkingStore } from '../../stores/chunkingStore';
 import { CHUNKING_STRATEGIES, CHUNKING_PRESETS } from '../../types/chunking';
@@ -106,26 +105,31 @@ export function ChunkingParameterTuner({
     switch (param.type) {
       case 'number':
         return (
-          <div key={param.key} className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700 flex items-center">
-                {param.name}
-                {param.description && (
-                  <div className="group relative ml-1">
-                    <Info className="h-3 w-3 text-gray-400" />
-                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block z-10">
-                      <div className="bg-gray-900 text-white text-xs rounded-lg py-2 px-3 max-w-xs whitespace-normal">
-                        {param.description}
-                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
-                          <div className="border-4 border-transparent border-t-gray-900"></div>
+          <div key={param.key} className="bg-gray-50 rounded-lg p-4 space-y-3">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <label className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                  {param.name}
+                  {param.description && (
+                    <div className="group relative">
+                      <HelpCircle className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600 cursor-help" />
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                        <div className="bg-gray-900 text-white text-xs rounded-lg py-2 px-3 max-w-xs whitespace-normal shadow-lg">
+                          {param.description}
+                          <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
+                            <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  )}
+                </label>
+                {param.unit && (
+                  <p className="text-xs text-gray-500 mt-1">Measured in {param.unit}</p>
                 )}
-              </label>
-              <span className="text-sm font-mono text-gray-600">
-                {value}{param.unit ? ` ${param.unit}` : ''}
+              </div>
+              <span className="text-sm font-mono font-medium text-gray-900 bg-white px-3 py-1 rounded-md border border-gray-200">
+                {value}
               </span>
             </div>
             <div className="relative">
@@ -147,7 +151,7 @@ export function ChunkingParameterTuner({
                   }%, #E5E7EB 100%)`
                 }}
               />
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
+              <div className="flex justify-between text-xs text-gray-400 mt-1">
                 <span>{param.min}</span>
                 <span>{param.max}</span>
               </div>
@@ -157,30 +161,35 @@ export function ChunkingParameterTuner({
 
       case 'boolean':
         return (
-          <div key={param.key} className="flex items-center justify-between">
-            <label className="text-sm font-medium text-gray-700 flex items-center">
-              {param.name}
-              {param.description && (
-                <div className="group relative ml-1">
-                  <Info className="h-3 w-3 text-gray-400" />
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block z-10">
-                    <div className="bg-gray-900 text-white text-xs rounded-lg py-2 px-3 max-w-xs whitespace-normal">
-                      {param.description}
-                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
-                        <div className="border-4 border-transparent border-t-gray-900"></div>
+          <div key={param.key} className="bg-gray-50 rounded-lg p-4 flex items-center justify-between">
+            <div className="flex-1">
+              <label className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                {param.name}
+                {param.description && (
+                  <div className="group relative">
+                    <HelpCircle className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600 cursor-help" />
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                      <div className="bg-gray-900 text-white text-xs rounded-lg py-2 px-3 max-w-xs whitespace-normal shadow-lg">
+                        {param.description}
+                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
+                          <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                )}
+              </label>
+              {param.description && (
+                <p className="text-xs text-gray-500 mt-1 sm:hidden">{param.description}</p>
               )}
-            </label>
+            </div>
             <button
               type="button"
               onClick={() => handleParameterChange(param.key, !value)}
               disabled={disabled}
               className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent 
                 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-                ${value ? 'bg-blue-600' : 'bg-gray-200'}
+                ${value ? 'bg-blue-600' : 'bg-gray-300'}
                 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               role="switch"
               aria-checked={value as boolean}
@@ -196,17 +205,17 @@ export function ChunkingParameterTuner({
 
       case 'select':
         return (
-          <div key={param.key} className="space-y-2">
-            <label className="text-sm font-medium text-gray-700 flex items-center">
+          <div key={param.key} className="bg-gray-50 rounded-lg p-4 space-y-2">
+            <label className="text-sm font-medium text-gray-900 flex items-center gap-2">
               {param.name}
               {param.description && (
-                <div className="group relative ml-1">
-                  <Info className="h-3 w-3 text-gray-400" />
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block z-10">
-                    <div className="bg-gray-900 text-white text-xs rounded-lg py-2 px-3 max-w-xs whitespace-normal">
+                <div className="group relative">
+                  <HelpCircle className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600 cursor-help" />
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                    <div className="bg-gray-900 text-white text-xs rounded-lg py-2 px-3 max-w-xs whitespace-normal shadow-lg">
                       {param.description}
                       <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
-                        <div className="border-4 border-transparent border-t-gray-900"></div>
+                        <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
                       </div>
                     </div>
                   </div>
@@ -217,7 +226,7 @@ export function ChunkingParameterTuner({
               value={value as string}
               onChange={(e) => handleParameterChange(param.key, e.target.value)}
               disabled={disabled}
-              className="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md"
+              className="block w-full pl-3 pr-10 py-2 text-sm bg-white border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 rounded-md"
             >
               {param.options?.map(option => (
                 <option key={option.value} value={option.value}>
@@ -235,35 +244,52 @@ export function ChunkingParameterTuner({
 
   return (
     <div className="space-y-4">
-      {/* Preset Selector */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <label className="text-sm font-medium text-gray-700">Preset Configuration</label>
-          <button
-            type="button"
-            onClick={() => setShowSavePreset(!showSavePreset)}
-            disabled={disabled}
-            className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center"
-          >
-            <Save className="h-3 w-3 mr-1" />
-            Save as Preset
-          </button>
+      {/* Preset Configuration */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-medium text-gray-900 flex items-center gap-2">
+            <Sliders className="h-4 w-4" />
+            Configuration
+          </h4>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleResetToDefaults}
+              disabled={disabled}
+              className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1 transition-colors"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSavePreset(!showSavePreset)}
+              disabled={disabled}
+              className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 transition-colors"
+            >
+              <Save className="h-3 w-3" />
+              Save Preset
+            </button>
+          </div>
         </div>
+        
         <select
           value={selectedPreset || 'custom'}
           onChange={(e) => handlePresetChange(e.target.value)}
           disabled={disabled}
-          className="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md"
+          className="block w-full pl-3 pr-10 py-2 text-sm bg-gray-50 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 rounded-md"
         >
           <option value="custom">Custom Configuration</option>
-          <optgroup label="Built-in Presets">
-            {CHUNKING_PRESETS.filter(p => p.strategy === selectedStrategy).map(preset => (
-              <option key={preset.id} value={preset.id}>
-                {preset.name}
-              </option>
-            ))}
-          </optgroup>
-          {customPresets.length > 0 && (
+          {CHUNKING_PRESETS.filter(p => p.strategy === selectedStrategy).length > 0 && (
+            <optgroup label="Built-in Presets">
+              {CHUNKING_PRESETS.filter(p => p.strategy === selectedStrategy).map(preset => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {customPresets.filter(p => p.strategy === selectedStrategy).length > 0 && (
             <optgroup label="Custom Presets">
               {customPresets.filter(p => p.strategy === selectedStrategy).map(preset => (
                 <option key={preset.id} value={preset.id}>
@@ -309,45 +335,32 @@ export function ChunkingParameterTuner({
         </div>
       )}
 
-      {/* Basic Parameters */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h4 className="text-sm font-medium text-gray-900 flex items-center">
-            <Sliders className="h-4 w-4 mr-2" />
-            Parameters
-          </h4>
-          <button
-            type="button"
-            onClick={handleResetToDefaults}
-            disabled={disabled}
-            className="text-xs text-gray-500 hover:text-gray-700 flex items-center"
-          >
-            <RotateCcw className="h-3 w-3 mr-1" />
-            Reset to defaults
-          </button>
+      {/* Parameters */}
+      {basicParameters.length > 0 && (
+        <div className="space-y-3">
+          <h5 className="text-xs font-medium text-gray-500 uppercase tracking-wider">Parameters</h5>
+          {basicParameters.map(param => renderParameter(param))}
         </div>
-        
-        {basicParameters.map(param => renderParameter(param))}
-      </div>
+      )}
 
       {/* Advanced Parameters */}
       {advancedParameters.length > 0 && (
-        <div className="border-t pt-4">
+        <div className="pt-2">
           <button
             type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="flex items-center justify-between w-full text-left focus:outline-none"
+            className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors w-full justify-between p-2 -m-2 rounded-md hover:bg-gray-50"
           >
-            <span className="text-sm font-medium text-gray-700">Advanced Parameters</span>
-            {showAdvanced ? (
-              <ChevronUp className="h-4 w-4 text-gray-400" />
-            ) : (
-              <ChevronDown className="h-4 w-4 text-gray-400" />
-            )}
+            <span>Advanced Parameters</span>
+            <ChevronDown
+              className={`h-4 w-4 text-gray-400 transition-transform ${
+                showAdvanced ? 'rotate-180' : ''
+              }`}
+            />
           </button>
           
           {showAdvanced && (
-            <div className="mt-4 space-y-4">
+            <div className="mt-3 space-y-3 animate-slideDown">
               {advancedParameters.map(param => renderParameter(param))}
             </div>
           )}

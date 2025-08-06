@@ -25,3 +25,57 @@
 .slider:disabled::-moz-range-thumb {
   cursor: not-allowed;
 }
+
+/* Smooth slide down animation */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slideDown {
+  animation: slideDown 0.2s ease-out;
+}
+
+/* Smooth fade in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.15s ease-out;
+}
+
+/* Improved focus states */
+.slider:focus {
+  outline: none;
+}
+
+.slider:focus::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+}
+
+.slider:focus::-moz-range-thumb {
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+}
+
+/* Smooth hover transitions */
+.slider:hover::-webkit-slider-thumb {
+  transform: scale(1.1);
+  transition: transform 0.1s ease-out;
+}
+
+.slider:hover::-moz-range-thumb {
+  transform: scale(1.1);
+  transition: transform 0.1s ease-out;
+}
