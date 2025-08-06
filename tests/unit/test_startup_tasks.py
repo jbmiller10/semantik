@@ -211,6 +211,7 @@ class TestStartupTasks:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Test when database is unavailable."""
+
         # Mock the async generator to raise an exception
         async def mock_db_generator():
             raise Exception("Database connection refused")
