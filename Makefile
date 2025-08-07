@@ -93,7 +93,7 @@ clean:
 # - Sets up document directories
 # - Creates optimized .env configuration
 wizard:
-	@python wizard_launcher.py
+	@python3 wizard_launcher.py
 
 docker-up:
 	@echo "Starting Semantik services with Docker Compose..."
