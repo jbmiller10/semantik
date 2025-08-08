@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from llama_index.core import Document
 from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
+from llama_index.core.schema import NodeRelationship
 
 from packages.shared.text_processing.base_chunker import BaseChunker, ChunkResult
 
@@ -205,14 +206,15 @@ class HierarchicalChunker(BaseChunker):
 
         # Check if this is a parent node
         if hasattr(node, "relationships") and node.relationships:
-            child_rel = node.relationships.get("2")  # LlamaIndex uses "2" for child relationship
+            child_rel = node.relationships.get(NodeRelationship.CHILD)
             if child_rel:
                 # For parent nodes, use the span of their children
                 child_ids = []
-                if hasattr(child_rel, "node_id") and child_rel.node_id:
+                # NodeRelationship.CHILD returns a list of RelatedNodeInfo objects
+                if isinstance(child_rel, list):
+                    child_ids = [child.node_id for child in child_rel if hasattr(child, "node_id")]
+                elif hasattr(child_rel, "node_id") and child_rel.node_id:
                     child_ids = [child_rel.node_id]
-                elif hasattr(child_rel, "node_ids") and child_rel.node_ids:
-                    child_ids = list(child_rel.node_ids)
 
                 if child_ids:
                     # Get min start and max end from children
@@ -607,7 +609,7 @@ class HierarchicalChunker(BaseChunker):
     def _build_hierarchy_info(
         self,
         node: BaseNode,
-        node_map: dict[str, BaseNode],  # noqa: ARG002
+        node_map: dict[str, BaseNode],
     ) -> dict[str, Any]:
         """Build hierarchy information for a node.
 
@@ -627,31 +629,45 @@ class HierarchicalChunker(BaseChunker):
         # Determine parent relationship
         if hasattr(node, "relationships") and node.relationships:
             # Check for parent relationship
-            parent_rel = node.relationships.get("1")  # LlamaIndex uses "1" for parent relationship
+            parent_rel = node.relationships.get(NodeRelationship.PARENT)
             if parent_rel and hasattr(parent_rel, "node_id") and parent_rel.node_id:
                 hierarchy_info["parent_id"] = parent_rel.node_id
 
             # Check for child relationships
-            child_rel = node.relationships.get("2")  # LlamaIndex uses "2" for child relationship
+            child_rel = node.relationships.get(NodeRelationship.CHILD)
             if child_rel:
-                if hasattr(child_rel, "node_id") and child_rel.node_id:
-                    # Single child
+                # NodeRelationship.CHILD returns a list of RelatedNodeInfo objects
+                if isinstance(child_rel, list):
+                    # Extract node_ids from the list of RelatedNodeInfo objects
+                    hierarchy_info["child_ids"] = [child.node_id for child in child_rel if hasattr(child, "node_id")]
+                elif hasattr(child_rel, "node_id") and child_rel.node_id:
+                    # Single child (legacy case, shouldn't happen with current LlamaIndex)
                     hierarchy_info["child_ids"] = [child_rel.node_id]
-                elif hasattr(child_rel, "node_ids"):
-                    # Multiple children
-                    node_ids = getattr(child_rel, "node_ids", None)
-                    if node_ids:
-                        hierarchy_info["child_ids"] = list(node_ids)
 
-        # Determine hierarchy level based on chunk size used
-        # This is an approximation based on content length
-        content_length = len(node.get_content())
-        for level, chunk_size in enumerate(self.chunk_sizes):
-            # Approximate token count (4 chars per token)
-            approx_tokens = content_length / 4
-            if approx_tokens <= chunk_size * 1.5:  # Allow some flexibility
-                hierarchy_info["level"] = level
+        # Determine hierarchy level based on position in hierarchy tree
+        # Count how many parent relationships we need to traverse to reach root
+        level = 0
+        current_node_id = node.node_id
+        visited_nodes = set()  # Prevent infinite loops
+
+        while current_node_id and current_node_id not in visited_nodes:
+            visited_nodes.add(current_node_id)
+            current_node = node_map.get(current_node_id)
+            if not current_node:
                 break
+
+            if hasattr(current_node, "relationships") and current_node.relationships:
+                parent_rel = current_node.relationships.get(NodeRelationship.PARENT)
+                if parent_rel and hasattr(parent_rel, "node_id") and parent_rel.node_id:
+                    current_node_id = parent_rel.node_id
+                    level += 1
+                else:
+                    break
+            else:
+                break
+
+        # Invert level so that root is 0
+        hierarchy_info["level"] = level
 
         return hierarchy_info
 
@@ -700,13 +716,14 @@ class HierarchicalChunker(BaseChunker):
             parent_nodes = []
             for node in all_nodes:
                 if hasattr(node, "relationships") and node.relationships:
-                    child_rel = node.relationships.get("2")  # LlamaIndex uses "2" for child relationship
+                    child_rel = node.relationships.get(NodeRelationship.CHILD)
                     if child_rel:
                         child_ids = []
-                        if hasattr(child_rel, "node_id") and child_rel.node_id:
+                        # NodeRelationship.CHILD returns a list of RelatedNodeInfo objects
+                        if isinstance(child_rel, list):
+                            child_ids = [child.node_id for child in child_rel if hasattr(child, "node_id")]
+                        elif hasattr(child_rel, "node_id") and child_rel.node_id:
                             child_ids = [child_rel.node_id]
-                        elif hasattr(child_rel, "node_ids") and child_rel.node_ids:
-                            child_ids = list(child_rel.node_ids)
 
                         # Check if any of this node's children are in our leaf set
                         if any(child_id in leaf_node_ids for child_id in child_ids):

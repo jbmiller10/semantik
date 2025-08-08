@@ -7,10 +7,11 @@ view statistics, and get rebalancing recommendations.
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database.database import get_db
+from packages.webui.auth import get_current_user
 from packages.webui.services.partition_monitoring_service import PartitionMonitoringService
 
 # TODO: Implement proper admin/API key authentication for partition monitoring endpoints
@@ -21,13 +22,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/v2/partitions",
     tags=["partition-monitoring"],
-    # TODO: Add authentication once require_api_key is implemented
-    # dependencies=[Depends(require_api_key)],
 )
 
 
 @router.get("/health", summary="Get partition health status")
-async def get_partition_health(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+async def get_partition_health(
+    current_user: dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
     """Get current partition health status.
 
     Returns comprehensive health information including:
@@ -37,6 +39,10 @@ async def get_partition_health(db: AsyncSession = Depends(get_db)) -> dict[str, 
     - Recommendations for optimization
     """
     try:
+        # Admin-only endpoint
+        if not current_user.get("is_superuser", False):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+
         service = PartitionMonitoringService(db)
         result = await service.check_partition_health()
 
@@ -55,7 +61,9 @@ async def get_partition_health(db: AsyncSession = Depends(get_db)) -> dict[str, 
 
 @router.get("/statistics", summary="Get partition statistics")
 async def get_partition_statistics(
-    partition_num: int | None = None, db: AsyncSession = Depends(get_db)
+    partition_num: int | None = None,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Get detailed statistics for partitions.
 
@@ -66,6 +74,10 @@ async def get_partition_statistics(
         Partition statistics including chunk counts, sizes, and distribution metrics
     """
     try:
+        # Admin-only endpoint
+        if not current_user.get("is_superuser", False):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+
         service = PartitionMonitoringService(db)
         stats = await service.get_partition_statistics(partition_num)
 
@@ -82,12 +94,19 @@ async def get_partition_statistics(
 
 
 @router.get("/recommendations", summary="Get rebalancing recommendations")
-async def get_rebalancing_recommendations(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+async def get_rebalancing_recommendations(
+    current_user: dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
     """Get recommendations for partition rebalancing.
 
     Returns recommendations based on current partition distribution and skew metrics.
     """
     try:
+        # Admin-only endpoint
+        if not current_user.get("is_superuser", False):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+
         service = PartitionMonitoringService(db)
         recommendations = await service.get_rebalancing_recommendations()
 
@@ -102,12 +121,19 @@ async def get_rebalancing_recommendations(db: AsyncSession = Depends(get_db)) ->
 
 
 @router.get("/health-summary", summary="Get partition health summary")
-async def get_partition_health_summary(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+async def get_partition_health_summary(
+    current_user: dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
     """Get a summary of partition health across all partitions.
 
     Returns a simplified view of partition health suitable for dashboards.
     """
     try:
+        # Admin-only endpoint
+        if not current_user.get("is_superuser", False):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+
         service = PartitionMonitoringService(db)
         health_data = await service.get_partition_health_summary()
 

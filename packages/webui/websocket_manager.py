@@ -31,7 +31,7 @@ class RedisStreamWebSocketManager:
         self._startup_lock = asyncio.Lock()
         self._startup_attempted = False
         self._get_operation_func = None  # Function to get operation by ID
-        self._chunking_progress_throttle = {}  # Track last progress update time per operation
+        self._chunking_progress_throttle: dict[str, datetime] = {}  # Track last progress update time per operation
         self._chunking_progress_threshold = 0.5  # Minimum seconds between progress updates
 
     async def startup(self) -> None:

@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from llama_index.core.node_parser import HierarchicalNodeParser
-from llama_index.core.schema import BaseNode
+from llama_index.core.schema import BaseNode, NodeRelationship
 
 from packages.shared.text_processing.base_chunker import ChunkResult
 from packages.shared.text_processing.strategies.hierarchical_chunker import HierarchicalChunker
@@ -482,18 +482,18 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
         # 1800 chars / 4 = 450 tokens
         # The loop checks: 450 <= 1000 * 1.5? Yes, so level 0 (breaks on first match)
         child_node.get_content.return_value = "B" * 1800
-        child_node.relationships = {"1": MagicMock(node_id="parent_1")}  # Parent relationship
+        child_node.relationships = {NodeRelationship.PARENT: MagicMock(node_id="parent_1")}  # Parent relationship
 
         grandchild_node = MagicMock()
         grandchild_node.node_id = "grandchild_1"
         # 800 chars / 4 = 200 tokens
         # The loop checks: 200 <= 1000 * 1.5? Yes, so level 0 (breaks on first match)
         grandchild_node.get_content.return_value = "C" * 800
-        grandchild_node.relationships = {"1": MagicMock(node_id="child_1")}  # Parent relationship
+        grandchild_node.relationships = {NodeRelationship.PARENT: MagicMock(node_id="child_1")}  # Parent relationship
 
         # Update parent and child with child relationships
-        parent_node.relationships["2"] = MagicMock(node_id="child_1")
-        child_node.relationships["2"] = MagicMock(node_id="grandchild_1")
+        parent_node.relationships[NodeRelationship.CHILD] = MagicMock(node_id="child_1")
+        child_node.relationships[NodeRelationship.CHILD] = MagicMock(node_id="grandchild_1")
 
         node_map = {"parent_1": parent_node, "child_1": child_node, "grandchild_1": grandchild_node}
 
@@ -501,20 +501,20 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
         parent_info = chunker._build_hierarchy_info(parent_node, node_map)
         assert parent_info["parent_id"] is None
         assert parent_info["child_ids"] == ["child_1"]
-        # Level assignment: 1300 tokens <= 1500, so level 0
+        # Level assignment: parent_node has no parent, so level 0 (root)
         assert parent_info["level"] == 0
 
         child_info = chunker._build_hierarchy_info(child_node, node_map)
         assert child_info["parent_id"] == "parent_1"
         assert child_info["child_ids"] == ["grandchild_1"]
-        # Level assignment: 450 tokens <= 1500, so level 0 (not 1, because it breaks on first match)
-        assert child_info["level"] == 0
+        # Level assignment: child_node has parent_node as parent, so level 1
+        assert child_info["level"] == 1
 
         grandchild_info = chunker._build_hierarchy_info(grandchild_node, node_map)
         assert grandchild_info["parent_id"] == "child_1"
         assert grandchild_info["child_ids"] == []
-        # Level assignment: 200 tokens <= 1500, so level 0 (not 2, because it breaks on first match)
-        assert grandchild_info["level"] == 0
+        # Level assignment: grandchild_node has child_node as parent, so level 2
+        assert grandchild_info["level"] == 2
 
     def test_chunk_id_format(self, sample_texts):
         """Test chunk ID formatting for both leaf and parent chunks."""
@@ -573,7 +573,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
         single_child_node.get_content.return_value = "Parent with single child"
         single_child_rel = MagicMock()
         single_child_rel.node_id = "child_1"
-        single_child_node.relationships = {"2": single_child_rel}
+        single_child_node.relationships = {NodeRelationship.CHILD: single_child_rel}
 
         mock_parser.get_nodes_from_documents.return_value = [orphan_node, single_child_node]
 

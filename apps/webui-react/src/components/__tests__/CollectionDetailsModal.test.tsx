@@ -349,9 +349,8 @@ describe('CollectionDetailsModal', () => {
         expect(screen.getByText('Collection Configuration')).toBeInTheDocument();
       });
 
-      expect(screen.getByLabelText('Chunk Size (characters)')).toBeInTheDocument();
-      expect(screen.getByLabelText('Chunk Overlap (characters)')).toBeInTheDocument();
-      expect(screen.getByLabelText('Embedding Instruction (Optional)')).toBeInTheDocument();
+      // Pre-release: settings shows read-only configuration and reindex affordance
+      expect(screen.getByText(/Current Chunking Strategy/i)).toBeInTheDocument();
     });
   });
 
@@ -558,60 +557,10 @@ describe('CollectionDetailsModal', () => {
 
       await user.click(screen.getByRole('button', { name: /settings/i }));
 
-      const chunkSizeInput = screen.getByLabelText('Chunk Size (characters)') as HTMLInputElement;
-      const chunkOverlapInput = screen.getByLabelText('Chunk Overlap (characters)') as HTMLInputElement;
-
-      expect(chunkSizeInput.value).toBe('512');
-      expect(chunkOverlapInput.value).toBe('50');
+      expect(screen.getByText(/Current Chunking Strategy/i)).toBeInTheDocument();
     });
 
-    it('should validate chunk size input', async () => {
-      render(
-        <TestWrapper>
-          <CollectionDetailsModal />
-        </TestWrapper>
-      );
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole('button', { name: /settings/i }));
-
-      const chunkSizeInput = screen.getByLabelText('Chunk Size (characters)') as HTMLInputElement;
-
-      // Simply check that validation happens on change
-      // Component shows recommended range by default
-      expect(screen.getByText('Recommended: 200-800 characters')).toBeInTheDocument();
-
-      // The component validates on input, but our test setup might not trigger the onChange properly
-      // So let's just verify the initial state and structure
-      expect(chunkSizeInput).toHaveAttribute('min', '100');
-      expect(chunkSizeInput).toHaveAttribute('max', '4000');
-      expect(chunkSizeInput.value).toBe('512');
-    });
-
-    it('should validate chunk overlap input', async () => {
-      render(
-        <TestWrapper>
-          <CollectionDetailsModal />
-        </TestWrapper>
-      );
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole('button', { name: /settings/i }));
-
-      const chunkOverlapInput = screen.getByLabelText('Chunk Overlap (characters)') as HTMLInputElement;
-
-      // Check initial state
-      expect(screen.getByText('Recommended: 10-20% of chunk size')).toBeInTheDocument();
-      expect(chunkOverlapInput).toHaveAttribute('min', '0');
-      expect(chunkOverlapInput).toHaveAttribute('max', '200');
-      expect(chunkOverlapInput.value).toBe('50');
-    });
+    // Skipped validation tests for legacy chunk size/overlap inputs removed in pre-release
 
     it('should show reindex button state', async () => {
       render(
@@ -628,9 +577,8 @@ describe('CollectionDetailsModal', () => {
 
       const reindexButton = screen.getByRole('button', { name: /re-index collection/i });
 
-      // Initially disabled because no changes were made
-      expect(reindexButton).toBeDisabled();
-      expect(screen.getByText('Make changes to configuration above to enable re-indexing')).toBeInTheDocument();
+      // Pre-release: button is present; enabling depends on strategy/model changes in modal
+      expect(reindexButton).toBeInTheDocument();
     });
 
     it('should show reindex warning', async () => {
@@ -936,29 +884,7 @@ describe('CollectionDetailsModal', () => {
       expect(screen.getByLabelText('Tabs')).toBeInTheDocument();
     });
 
-    it('should have proper ARIA attributes for form inputs', async () => {
-      render(
-        <TestWrapper>
-          <CollectionDetailsModal />
-        </TestWrapper>
-      );
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole('button', { name: /settings/i }));
-
-      const chunkSizeInput = screen.getByLabelText('Chunk Size (characters)');
-      expect(chunkSizeInput).toHaveAttribute('aria-describedby', expect.stringContaining('chunk-size-help'));
-
-      // Test invalid state
-      await user.clear(chunkSizeInput);
-      await user.type(chunkSizeInput, '50');
-
-      expect(chunkSizeInput).toHaveAttribute('aria-invalid', 'true');
-      expect(chunkSizeInput).toHaveAttribute('aria-describedby', expect.stringContaining('chunk-size-error'));
-    });
+    // Skipped ARIA tests for removed legacy inputs
 
     it('should have proper alert role for warning messages', async () => {
       render(

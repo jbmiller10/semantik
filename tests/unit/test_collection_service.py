@@ -104,6 +104,8 @@ class TestCollectionService:
             quantization="float16",
             chunk_size=1000,
             chunk_overlap=200,
+            chunking_strategy=None,
+            chunking_config=None,
             is_public=False,
             meta=None,
         )
@@ -189,6 +191,8 @@ class TestCollectionService:
             quantization="int8",
             chunk_size=512,
             chunk_overlap=100,
+            chunking_strategy=None,
+            chunking_config=None,
             is_public=True,
             meta={"custom": "metadata"},
         )
