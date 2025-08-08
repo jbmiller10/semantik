@@ -103,6 +103,8 @@ class TestCreateCollection:
             quantization="int8",
             chunk_size=500,
             chunk_overlap=100,
+            chunking_strategy=None,
+            chunking_config=None,
             is_public=True,
             meta={"custom": "data"},
         )

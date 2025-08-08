@@ -20,7 +20,7 @@ from pydantic import BaseModel, EmailStr, field_validator
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 # Import database module
 from shared.config import settings
-from shared.database import create_auth_repository, create_user_repository, get_db_session
+from shared.database import create_auth_repository, create_user_repository, get_db_session, pwd_context
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -29,7 +29,6 @@ logger = logging.getLogger(__name__)
 REFRESH_TOKEN_EXPIRE_DAYS = 30
 
 # Password hashing (use shared context to avoid duplication)
-from shared.database import pwd_context
 
 # Security
 security = HTTPBearer(auto_error=False)

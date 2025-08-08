@@ -162,6 +162,14 @@ class CollectionResponse(CollectionBase):
     @classmethod
     def from_collection(cls, collection: Any) -> "CollectionResponse":
         """Create response from ORM Collection object."""
+        # Safely coerce new chunking fields to expected types or None to avoid
+        # MagicMock leakage in tests where attributes exist but aren't set.
+        raw_strategy = getattr(collection, "chunking_strategy", None)
+        chunking_strategy = raw_strategy if isinstance(raw_strategy, str | type(None)) else None
+
+        raw_config = getattr(collection, "chunking_config", None)
+        chunking_config = raw_config if isinstance(raw_config, dict | type(None)) else None
+
         return cls(
             id=collection.id,
             name=collection.name,
@@ -172,8 +180,8 @@ class CollectionResponse(CollectionBase):
             quantization=collection.quantization,
             chunk_size=getattr(collection, "chunk_size", None),
             chunk_overlap=getattr(collection, "chunk_overlap", None),
-            chunking_strategy=getattr(collection, "chunking_strategy", None),
-            chunking_config=getattr(collection, "chunking_config", None),
+            chunking_strategy=chunking_strategy,
+            chunking_config=chunking_config,
             is_public=collection.is_public,
             metadata=collection.meta,
             created_at=collection.created_at,

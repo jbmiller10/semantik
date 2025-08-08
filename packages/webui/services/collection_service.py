@@ -70,22 +70,31 @@ class CollectionService:
 
         # Create collection in database
         try:
+            # Apply expected defaults for legacy chunking fields
+            embedding_model = (
+                config.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B") if config else "Qwen/Qwen3-Embedding-0.6B"
+            )
+            quantization = config.get("quantization", "float16") if config else "float16"
+            chunk_size = config.get("chunk_size", 1000) if config else 1000
+            chunk_overlap = config.get("chunk_overlap", 200) if config else 200
+            chunking_strategy = config.get("chunking_strategy") if config else None
+            chunking_config = config.get("chunking_config") if config else None
+            is_public = config.get("is_public", False) if config else False
+            meta = config.get("metadata") if config else None
+
+            # Create with new chunking fields
             collection = await self.collection_repo.create(
                 owner_id=user_id,
                 name=name,
                 description=description,
-                embedding_model=(
-                    config.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
-                    if config
-                    else "Qwen/Qwen3-Embedding-0.6B"
-                ),
-                quantization=config.get("quantization", "float16") if config else "float16",
-                chunk_size=config.get("chunk_size") if config else None,
-                chunk_overlap=config.get("chunk_overlap") if config else None,
-                chunking_strategy=config.get("chunking_strategy") if config else None,
-                chunking_config=config.get("chunking_config") if config else None,
-                is_public=config.get("is_public", False) if config else False,
-                meta=config.get("metadata") if config else None,
+                embedding_model=embedding_model,
+                quantization=quantization,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                chunking_strategy=chunking_strategy,
+                chunking_config=chunking_config,
+                is_public=is_public,
+                meta=meta,
             )
         except EntityAlreadyExistsError:
             # Re-raise EntityAlreadyExistsError to be handled by the API endpoint
@@ -126,6 +135,8 @@ class CollectionService:
             "quantization": collection.quantization,
             "chunk_size": collection.chunk_size,
             "chunk_overlap": collection.chunk_overlap,
+            "chunking_strategy": collection.chunking_strategy,
+            "chunking_config": collection.chunking_config,
             "is_public": collection.is_public,
             "metadata": collection.meta,
             "created_at": collection.created_at,
@@ -138,6 +149,8 @@ class CollectionService:
                 "quantization": collection.quantization,
                 "chunk_size": collection.chunk_size,
                 "chunk_overlap": collection.chunk_overlap,
+                "chunking_strategy": collection.chunking_strategy,
+                "chunking_config": collection.chunking_config,
                 "is_public": collection.is_public,
                 "metadata": collection.meta,
             },
