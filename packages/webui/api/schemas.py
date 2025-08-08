@@ -87,8 +87,12 @@ class CollectionBase(BaseModel):
         pattern="^(float32|float16|int8)$",
         description="Model quantization level (float32, float16, or int8)",
     )
-    chunk_size: int = Field(default=1000, ge=100, le=10000)
-    chunk_overlap: int = Field(default=200, ge=0, le=1000)
+    # Deprecated fields for backward compatibility
+    chunk_size: int | None = Field(default=None, ge=100, le=10000)
+    chunk_overlap: int | None = Field(default=None, ge=0, le=1000)
+    # New chunking strategy fields
+    chunking_strategy: str | None = Field(default=None, description="Chunking strategy type")
+    chunking_config: dict[str, Any] | None = Field(default=None, description="Strategy-specific configuration")
     is_public: bool = False
     metadata: dict[str, Any] | None = None
 
@@ -166,8 +170,10 @@ class CollectionResponse(CollectionBase):
             vector_store_name=collection.vector_store_name,
             embedding_model=collection.embedding_model,
             quantization=collection.quantization,
-            chunk_size=collection.chunk_size,
-            chunk_overlap=collection.chunk_overlap,
+            chunk_size=getattr(collection, "chunk_size", None),
+            chunk_overlap=getattr(collection, "chunk_overlap", None),
+            chunking_strategy=getattr(collection, "chunking_strategy", None),
+            chunking_config=getattr(collection, "chunking_config", None),
             is_public=collection.is_public,
             metadata=collection.meta,
             created_at=collection.created_at,

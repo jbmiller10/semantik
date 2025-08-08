@@ -80,8 +80,10 @@ class CollectionService:
                     else "Qwen/Qwen3-Embedding-0.6B"
                 ),
                 quantization=config.get("quantization", "float16") if config else "float16",
-                chunk_size=config.get("chunk_size", 1000) if config else 1000,
-                chunk_overlap=config.get("chunk_overlap", 200) if config else 200,
+                chunk_size=config.get("chunk_size") if config else None,
+                chunk_overlap=config.get("chunk_overlap") if config else None,
+                chunking_strategy=config.get("chunking_strategy") if config else None,
+                chunking_config=config.get("chunking_config") if config else None,
                 is_public=config.get("is_public", False) if config else False,
                 meta=config.get("metadata") if config else None,
             )
