@@ -72,9 +72,7 @@ class CollectionService:
         try:
             # Apply expected defaults for legacy chunking fields
             # Pull values from config while treating explicit None as "unspecified"
-            embedding_model = (
-                (config.get("embedding_model") if config else None) or "Qwen/Qwen3-Embedding-0.6B"
-            )
+            embedding_model = (config.get("embedding_model") if config else None) or "Qwen/Qwen3-Embedding-0.6B"
             quantization = (config.get("quantization") if config else None) or "float16"
             # If client sends null for legacy fields, fall back to safe defaults
             chunk_size = (config.get("chunk_size") if config else None) or 1000

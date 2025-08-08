@@ -225,6 +225,7 @@ class TestCreateCollection:
 
         # Minimal service return payload
         from datetime import UTC, datetime
+
         collection_data = {
             "id": str(uuid.uuid4()),
             "name": create_request["name"],
