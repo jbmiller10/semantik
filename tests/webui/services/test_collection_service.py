@@ -178,6 +178,8 @@ class TestCreateCollection:
             quantization="float16",
             chunk_size=1000,
             chunk_overlap=200,
+            chunking_strategy=None,
+            chunking_config=None,
             is_public=False,
             meta=None,
         )
