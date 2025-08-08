@@ -44,8 +44,8 @@ class ResourceManager:
         """Check if user can create a new collection."""
         try:
             # Get user's current collection count
-            collections = await self.collection_repo.list_by_user(user_id)
-            active_collections = [c for c in collections if c["status"] != "deleted"]
+            collections, _ = await self.collection_repo.list_for_user(user_id)
+            active_collections = [c for c in collections if c.status != "deleted"]
 
             # TODO: Get user's collection limit from user settings/subscription
             max_collections = 10  # Default limit
@@ -216,8 +216,8 @@ class ResourceManager:
     async def _get_user_resource_usage(self, user_id: int) -> dict[str, Any]:
         """Get total resource usage for a user."""
         try:
-            collections = await self.collection_repo.list_by_user(user_id)
-            total_storage_bytes = sum(c.get("total_size_bytes", 0) for c in collections)
+            collections, _ = await self.collection_repo.list_for_user(user_id)
+            total_storage_bytes = sum(c.total_size_bytes or 0 for c in collections)
 
             return {
                 "collections": len(collections),

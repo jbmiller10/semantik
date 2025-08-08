@@ -88,13 +88,30 @@ class CollectionBase(BaseModel):
         description="Model quantization level (float32, float16, or int8)",
     )
     # Deprecated fields for backward compatibility
-    chunk_size: int | None = Field(default=None, ge=100, le=10000)
-    chunk_overlap: int | None = Field(default=None, ge=0, le=1000)
+    # Use Annotated with custom validators for optional fields with constraints
+    chunk_size: int | None = Field(default=None, description="Chunk size (100-10000)")
+    chunk_overlap: int | None = Field(default=None, description="Chunk overlap (0-1000)")
     # New chunking strategy fields
     chunking_strategy: str | None = Field(default=None, description="Chunking strategy type")
     chunking_config: dict[str, Any] | None = Field(default=None, description="Strategy-specific configuration")
     is_public: bool = False
     metadata: dict[str, Any] | None = None
+
+    @field_validator("chunk_size")
+    @classmethod
+    def validate_chunk_size(cls, v: int | None) -> int | None:
+        """Validate chunk_size only if not None."""
+        if v is not None and (v < 100 or v > 10000):
+            raise ValueError("chunk_size must be between 100 and 10000")
+        return v
+
+    @field_validator("chunk_overlap")
+    @classmethod
+    def validate_chunk_overlap(cls, v: int | None) -> int | None:
+        """Validate chunk_overlap only if not None."""
+        if v is not None and (v < 0 or v > 1000):
+            raise ValueError("chunk_overlap must be between 0 and 1000")
+        return v
 
     @field_validator("name", mode="after")
     @classmethod
