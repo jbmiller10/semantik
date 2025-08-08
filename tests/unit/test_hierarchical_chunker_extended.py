@@ -130,9 +130,7 @@ class TestHierarchicalChunkerExtended:
             child_infos.append(child_info)
 
         # Set up parent relationships with list of children
-        parent_node.relationships = {
-            NodeRelationship.CHILD: child_infos
-        }
+        parent_node.relationships = {NodeRelationship.CHILD: child_infos}
 
         all_nodes = [parent_node] + child_nodes
         text = "Parent content Child 0 content Child 1 content Child 2 content"
@@ -161,9 +159,7 @@ class TestHierarchicalChunkerExtended:
         child_info = MagicMock(spec=RelatedNodeInfo)
         child_info.node_id = "child_single"
 
-        parent_node.relationships = {
-            NodeRelationship.CHILD: child_info
-        }
+        parent_node.relationships = {NodeRelationship.CHILD: child_info}
 
         child_node = MagicMock(spec=BaseNode)
         child_node.node_id = "child_single"
@@ -172,9 +168,7 @@ class TestHierarchicalChunkerExtended:
         all_nodes = [parent_node, child_node]
         text = "Parent content Single child content"
 
-        existing_offsets = {
-            "child_single": (15, 35)
-        }
+        existing_offsets = {"child_single": (15, 35)}
 
         offset = chunker._estimate_node_offset(parent_node, all_nodes, text, existing_offsets)
 
@@ -256,9 +250,7 @@ class TestHierarchicalChunkerExtended:
         chunker = HierarchicalChunker()
 
         # Create config with too many hierarchy levels
-        config = {
-            "chunk_sizes": [1000 - (i * 50) for i in range(MAX_HIERARCHY_DEPTH + 1)]
-        }
+        config = {"chunk_sizes": [1000 - (i * 50) for i in range(MAX_HIERARCHY_DEPTH + 1)]}
 
         assert chunker.validate_config(config) is False
 
@@ -266,9 +258,7 @@ class TestHierarchicalChunkerExtended:
         """Test config validation with chunk size exceeding maximum."""
         chunker = HierarchicalChunker()
 
-        config = {
-            "chunk_sizes": [MAX_CHUNK_SIZE + 1, 1000, 500]
-        }
+        config = {"chunk_sizes": [MAX_CHUNK_SIZE + 1, 1000, 500]}
 
         assert chunker.validate_config(config) is False
 
@@ -277,9 +267,7 @@ class TestHierarchicalChunkerExtended:
         chunker = HierarchicalChunker()
 
         # Invalid config that will cause exception
-        config = {
-            "chunk_sizes": None  # This will cause an exception
-        }
+        config = {"chunk_sizes": None}  # This will cause an exception
 
         with patch("packages.shared.text_processing.strategies.hierarchical_chunker.logger") as mock_logger:
             result = chunker.validate_config(config)
@@ -299,7 +287,7 @@ class TestHierarchicalChunkerExtended:
                 text=f"Leaf content {i}",
                 start_offset=i * 20,
                 end_offset=(i + 1) * 20,
-                metadata={"is_leaf": True}  # No node_id
+                metadata={"is_leaf": True},  # No node_id
             )
             leaf_chunks.append(chunk)
 
@@ -331,9 +319,7 @@ class TestHierarchicalChunkerExtended:
             child_info.node_id = f"leaf_{i}"
             child_infos.append(child_info)
 
-        parent_node.relationships = {
-            NodeRelationship.CHILD: child_infos
-        }
+        parent_node.relationships = {NodeRelationship.CHILD: child_infos}
 
         # Create leaf nodes
         leaf_nodes = []
@@ -354,7 +340,7 @@ class TestHierarchicalChunkerExtended:
                 text=f"Leaf {i}",
                 start_offset=i * 10,
                 end_offset=(i + 1) * 10,
-                metadata={"node_id": f"leaf_{i}", "is_leaf": True}
+                metadata={"node_id": f"leaf_{i}", "is_leaf": True},
             )
             leaf_chunks.append(chunk)
 
@@ -382,9 +368,7 @@ class TestHierarchicalChunkerExtended:
         child_info = MagicMock(spec=RelatedNodeInfo)
         child_info.node_id = "leaf_0"
 
-        parent_node.relationships = {
-            NodeRelationship.CHILD: child_info
-        }
+        parent_node.relationships = {NodeRelationship.CHILD: child_info}
 
         leaf_node = MagicMock(spec=BaseNode)
         leaf_node.node_id = "leaf_0"
@@ -398,7 +382,7 @@ class TestHierarchicalChunkerExtended:
             text="Single leaf",
             start_offset=0,
             end_offset=11,
-            metadata={"node_id": "leaf_0", "is_leaf": True}
+            metadata={"node_id": "leaf_0", "is_leaf": True},
         )
 
         text = "Parent content Single leaf"
@@ -421,11 +405,13 @@ class TestHierarchicalChunkerExtended:
             text="Leaf",
             start_offset=0,
             end_offset=4,
-            metadata={"node_id": "leaf_0", "is_leaf": True}
+            metadata={"node_id": "leaf_0", "is_leaf": True},
         )
 
-        with patch.object(chunker, "_parser", mock_parser), \
-             patch("packages.shared.text_processing.strategies.hierarchical_chunker.logger") as mock_logger:
+        with (
+            patch.object(chunker, "_parser", mock_parser),
+            patch("packages.shared.text_processing.strategies.hierarchical_chunker.logger") as mock_logger,
+        ):
             parent_chunks = chunker.get_parent_chunks("Test text", "test_doc", [leaf_chunk])
 
             # Should log error and return empty list
@@ -490,8 +476,10 @@ class TestHierarchicalChunkerExtended:
         mock_parser = MagicMock()
         mock_parser.get_nodes_from_documents.side_effect = Exception("Streaming error")
 
-        with patch.object(chunker, "_parser", mock_parser), \
-             patch("packages.shared.text_processing.strategies.hierarchical_chunker.logger") as mock_logger:
+        with (
+            patch.object(chunker, "_parser", mock_parser),
+            patch("packages.shared.text_processing.strategies.hierarchical_chunker.logger") as mock_logger,
+        ):
             chunks = list(chunker.chunk_text_stream("Test text for streaming", "stream_error"))
 
             # Should fall back to character chunking

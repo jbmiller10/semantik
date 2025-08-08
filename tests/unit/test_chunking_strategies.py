@@ -93,11 +93,7 @@ class TestChunkingStrategyRegistry:
         strategy = ChunkingStrategyRegistry.get_recommended_strategy(["txt"])
 
         # TXT can use multiple strategies
-        assert strategy in [
-            ChunkingStrategy.FIXED_SIZE,
-            ChunkingStrategy.RECURSIVE,
-            ChunkingStrategy.SLIDING_WINDOW
-        ]
+        assert strategy in [ChunkingStrategy.FIXED_SIZE, ChunkingStrategy.RECURSIVE, ChunkingStrategy.SLIDING_WINDOW]
 
     def test_get_recommended_strategy_mixed_files(self):
         """Test getting recommended strategy for mixed file types."""
