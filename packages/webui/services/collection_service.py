@@ -617,7 +617,7 @@ class CollectionService:
         Returns:
             Created operation data
         """
-        from packages.shared.database.models import OperationStatus, OperationType
+        from packages.shared.database.models import OperationType
 
         # Get collection
         collection = await self.collection_repo.get_by_uuid_with_permission_check(
@@ -626,12 +626,12 @@ class CollectionService:
         )
 
         if not collection:
-            raise EntityNotFoundError(f"Collection {collection_id} not found")
+            raise EntityNotFoundError("Collection", collection_id)
 
         # Map operation type string to enum
         operation_type_enum = {
-            "chunking": OperationType.CHUNKING,
-            "rechunking": OperationType.CHUNKING,
+            "chunking": OperationType.INDEX,  # Initial chunking uses INDEX type
+            "rechunking": OperationType.REINDEX,  # Re-chunking uses REINDEX type
             "index": OperationType.INDEX,
             "reindex": OperationType.REINDEX,
         }.get(operation_type, OperationType.INDEX)
@@ -639,9 +639,10 @@ class CollectionService:
         # Create operation
         operation = await self.operation_repo.create(
             collection_id=collection.id,
-            type=operation_type_enum,
-            status=OperationStatus.PENDING,
-            meta=config,
+            user_id=user_id,
+            operation_type=operation_type_enum,
+            config=config,
+            meta={"operation_type": operation_type},  # Store original operation type in meta
         )
 
         await self.db_session.commit()
@@ -675,7 +676,7 @@ class CollectionService:
         )
 
         if not collection:
-            raise EntityNotFoundError(f"Collection {collection_id} not found")
+            raise EntityNotFoundError("Collection", collection_id)
 
         # Update allowed fields
         allowed_fields = ["name", "description", "chunking_strategy", "chunking_config", "meta"]

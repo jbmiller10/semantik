@@ -135,7 +135,7 @@ class ChunkingStrategyRegistry:
 
         # Return the strategy with the highest score
         if strategy_scores:
-            return max(strategy_scores, key=strategy_scores.get)
+            return max(strategy_scores, key=lambda x: strategy_scores[x])
 
         # Default to recursive as a good general-purpose strategy
         return ChunkingStrategy.RECURSIVE
