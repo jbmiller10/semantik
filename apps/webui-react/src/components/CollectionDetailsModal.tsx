@@ -125,7 +125,7 @@ function CollectionDetailsModal() {
   };
 
   // Format chunking configuration for display
-  const formatChunkingConfig = (config: Record<string, any> | undefined) => {
+  const formatChunkingConfig = (config: Record<string, unknown> | undefined) => {
     if (!config) return [];
     
     const formatted: Array<{ label: string; value: string }> = [];
