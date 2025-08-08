@@ -9,7 +9,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 
 class ChunkingStrategy(str, Enum):
@@ -56,9 +56,10 @@ class ChunkingConfigBase(BaseModel):
     metadata: dict[str, Any] | None = Field(default=None, description="Additional configuration metadata")
 
     @field_validator("chunk_overlap")
-    def validate_overlap(cls, v: int, values: dict[str, Any]) -> int:  # noqa: N805
+    @classmethod
+    def validate_overlap(cls, v: int, info: ValidationInfo) -> int:  # noqa: N805
         """Ensure overlap is less than chunk size."""
-        if "chunk_size" in values.data and v >= values.data["chunk_size"]:
+        if info.data and "chunk_size" in info.data and v >= info.data["chunk_size"]:
             raise ValueError("Chunk overlap must be less than chunk size")
         return v
 

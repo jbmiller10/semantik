@@ -5,6 +5,7 @@ This module contains the strategy definitions and configurations
 that were previously hardcoded in the API router.
 """
 
+import copy
 from typing import Any
 
 from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
@@ -112,9 +113,9 @@ class ChunkingStrategyRegistry:
         """Get all strategy definitions.
 
         Returns:
-            Dictionary of all strategy definitions
+            Dictionary of all strategy definitions (deep copy)
         """
-        return cls.STRATEGY_DEFINITIONS.copy()
+        return copy.deepcopy(cls.STRATEGY_DEFINITIONS)
 
     @classmethod
     def get_recommended_strategy(cls, file_types: list[str]) -> ChunkingStrategy:
@@ -134,8 +135,10 @@ class ChunkingStrategyRegistry:
             strategy_scores[strategy] = score
 
         # Return the strategy with the highest score
-        if strategy_scores:
-            return max(strategy_scores, key=strategy_scores.get)
+        # If all scores are 0 or no file types provided, return RECURSIVE as default
+        max_score = max(strategy_scores.values()) if strategy_scores else 0
+        if max_score > 0:
+            return max(strategy_scores, key=lambda x: strategy_scores[x])
 
         # Default to recursive as a good general-purpose strategy
         return ChunkingStrategy.RECURSIVE
