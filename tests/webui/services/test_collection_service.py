@@ -240,6 +240,49 @@ class TestCreateCollection:
 
         assert "Database error" in str(exc_info.value)
 
+    @pytest.mark.asyncio()
+    async def test_create_collection_with_none_chunk_values_defaults_applied(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_operation_repo: AsyncMock,
+        mock_db_session: AsyncMock,
+        mock_collection: MagicMock,
+        mock_operation: MagicMock,
+    ) -> None:
+        """Explicit None for chunk fields should use default numeric values."""
+        mock_collection_repo.create.return_value = mock_collection
+        mock_operation_repo.create.return_value = mock_operation
+
+        with patch("packages.webui.celery_app.celery_app.send_task"):
+            await collection_service.create_collection(
+                user_id=1,
+                name="Test Collection",
+                config={
+                    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+                    "quantization": "float16",
+                    "chunk_size": None,
+                    "chunk_overlap": None,
+                    "is_public": False,
+                    "metadata": None,
+                },
+            )
+
+        # Verify defaults applied in repo call
+        mock_collection_repo.create.assert_called_once_with(
+            owner_id=1,
+            name="Test Collection",
+            description=None,
+            embedding_model="Qwen/Qwen3-Embedding-0.6B",
+            quantization="float16",
+            chunk_size=1000,
+            chunk_overlap=200,
+            chunking_strategy=None,
+            chunking_config=None,
+            is_public=False,
+            meta=None,
+        )
+
 
 class TestAddSource:
     """Test add_source method."""

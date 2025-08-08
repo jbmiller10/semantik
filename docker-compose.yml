@@ -268,8 +268,6 @@ services:
       target: runtime
     container_name: semantik-worker
     command: ["worker"]
-    profiles:
-      - backend
     environment:
       # Python path
       - PYTHONPATH=/app/packages
