@@ -151,8 +151,6 @@ class TestCreateCollection:
                 "quantization": create_request["quantization"],
                 "chunk_size": create_request["chunk_size"],
                 "chunk_overlap": create_request["chunk_overlap"],
-                "chunking_strategy": None,
-                "chunking_config": None,
                 "is_public": create_request["is_public"],
                 "metadata": create_request["metadata"],
             },
