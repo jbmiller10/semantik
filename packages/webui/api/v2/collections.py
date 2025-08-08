@@ -62,20 +62,29 @@ async def create_collection(
     be automatically triggered.
     """
     try:
+        # Build config, omitting fields that are None so the service can apply
+        # sensible defaults instead of passing explicit nulls downstream.
+        cfg: dict[str, Any] = {
+            "embedding_model": create_request.embedding_model,
+            "quantization": create_request.quantization,
+            "is_public": create_request.is_public,
+        }
+        if create_request.chunk_size is not None:
+            cfg["chunk_size"] = create_request.chunk_size
+        if create_request.chunk_overlap is not None:
+            cfg["chunk_overlap"] = create_request.chunk_overlap
+        if create_request.chunking_strategy is not None:
+            cfg["chunking_strategy"] = create_request.chunking_strategy
+        if create_request.chunking_config is not None:
+            cfg["chunking_config"] = create_request.chunking_config
+        if create_request.metadata is not None:
+            cfg["metadata"] = create_request.metadata
+
         collection, operation = await service.create_collection(
             user_id=int(current_user["id"]),
             name=create_request.name,
             description=create_request.description,
-            config={
-                "embedding_model": create_request.embedding_model,
-                "quantization": create_request.quantization,
-                "chunk_size": create_request.chunk_size,
-                "chunk_overlap": create_request.chunk_overlap,
-                "chunking_strategy": create_request.chunking_strategy,
-                "chunking_config": create_request.chunking_config,
-                "is_public": create_request.is_public,
-                "metadata": create_request.metadata,
-            },
+            config=cfg,
         )
 
         # Convert to response model and add operation uuid

@@ -71,15 +71,17 @@ class CollectionService:
         # Create collection in database
         try:
             # Apply expected defaults for legacy chunking fields
+            # Pull values from config while treating explicit None as "unspecified"
             embedding_model = (
-                config.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B") if config else "Qwen/Qwen3-Embedding-0.6B"
+                (config.get("embedding_model") if config else None) or "Qwen/Qwen3-Embedding-0.6B"
             )
-            quantization = config.get("quantization", "float16") if config else "float16"
-            chunk_size = config.get("chunk_size", 1000) if config else 1000
-            chunk_overlap = config.get("chunk_overlap", 200) if config else 200
+            quantization = (config.get("quantization") if config else None) or "float16"
+            # If client sends null for legacy fields, fall back to safe defaults
+            chunk_size = (config.get("chunk_size") if config else None) or 1000
+            chunk_overlap = (config.get("chunk_overlap") if config else None) or 200
             chunking_strategy = config.get("chunking_strategy") if config else None
             chunking_config = config.get("chunking_config") if config else None
-            is_public = config.get("is_public", False) if config else False
+            is_public = (config.get("is_public") if config else None) or False
             meta = config.get("metadata") if config else None
 
             # Create with new chunking fields

@@ -205,6 +205,74 @@ class TestCreateCollection:
         assert response.status_code == 500
         assert "Failed to create collection" in response.json()["detail"]
 
+    def test_create_collection_omits_null_chunk_fields(
+        self,
+        client: TestClient,
+        mock_collection_service: AsyncMock,
+    ) -> None:
+        """When chunk fields are null, API should omit them in config."""
+        # Setup request with explicit nulls
+        create_request = {
+            "name": "Null Chunks",
+            "description": None,
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "chunk_size": None,
+            "chunk_overlap": None,
+            "is_public": False,
+            "metadata": None,
+        }
+
+        # Minimal service return payload
+        from datetime import UTC, datetime
+        collection_data = {
+            "id": str(uuid.uuid4()),
+            "name": create_request["name"],
+            "description": None,
+            "owner_id": 1,
+            "vector_store_name": "qdrant_collection_name",
+            "embedding_model": create_request["embedding_model"],
+            "quantization": create_request["quantization"],
+            "chunk_size": 1000,
+            "chunk_overlap": 200,
+            "is_public": create_request["is_public"],
+            "metadata": None,
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+            "document_count": 0,
+            "vector_count": 0,
+            "status": "pending",
+            "status_message": None,
+        }
+        operation_data = {
+            "uuid": str(uuid.uuid4()),
+            "collection_id": collection_data["id"],
+            "type": "index",
+            "status": "pending",
+            "config": {},
+            "created_at": datetime.now(UTC),
+        }
+
+        mock_collection_service.create_collection.return_value = (collection_data, operation_data)
+
+        # Execute
+        response = client.post("/api/v2/collections", json=create_request)
+
+        # Verify
+        assert response.status_code == 201
+
+        # Capture call to service
+        assert mock_collection_service.create_collection.call_count == 1
+        _, kwargs = mock_collection_service.create_collection.call_args
+        cfg = kwargs["config"]
+        # Should not include null chunk fields
+        assert "chunk_size" not in cfg
+        assert "chunk_overlap" not in cfg
+        # Should include non-null values
+        assert cfg["embedding_model"] == create_request["embedding_model"]
+        assert cfg["quantization"] == create_request["quantization"]
+        assert cfg["is_public"] is False
+
 
 class TestListCollections:
     """Test list_collections endpoint."""
