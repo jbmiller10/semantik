@@ -67,11 +67,12 @@ class TestResourceManager:
         """Test can_create_collection when under limit"""
         # Mock user has 3 active collections
         mock_collections = [
-            {"id": "1", "status": "ready"},
-            {"id": "2", "status": "ready"},
-            {"id": "3", "status": "processing"},
+            Mock(id="1", status="ready"),
+            Mock(id="2", status="ready"),
+            Mock(id="3", status="processing"),
         ]
-        mock_collection_repo.list_by_user.return_value = mock_collections
+        # list_for_user returns (collections, count) tuple
+        mock_collection_repo.list_for_user.return_value = (mock_collections, len(mock_collections))
 
         # Should be able to create (3 < 10)
         result = await resource_manager.can_create_collection(123)
@@ -81,8 +82,9 @@ class TestResourceManager:
     async def test_can_create_collection_at_limit(self, resource_manager, mock_collection_repo):
         """Test can_create_collection when at limit"""
         # Mock user has 10 active collections
-        mock_collections = [{"id": str(i), "status": "ready"} for i in range(10)]
-        mock_collection_repo.list_by_user.return_value = mock_collections
+        mock_collections = [Mock(id=str(i), status="ready") for i in range(10)]
+        # list_for_user returns (collections, count) tuple
+        mock_collection_repo.list_for_user.return_value = (mock_collections, len(mock_collections))
 
         # Should not be able to create (10 >= 10)
         result = await resource_manager.can_create_collection(123)
@@ -92,9 +94,10 @@ class TestResourceManager:
     async def test_can_create_collection_excludes_deleted(self, resource_manager, mock_collection_repo):
         """Test can_create_collection excludes deleted collections"""
         # Mock user has 9 active + 5 deleted collections
-        mock_collections = [{"id": str(i), "status": "ready"} for i in range(9)]
-        mock_collections.extend([{"id": str(i + 9), "status": "deleted"} for i in range(5)])
-        mock_collection_repo.list_by_user.return_value = mock_collections
+        mock_collections = [Mock(id=str(i), status="ready") for i in range(9)]
+        mock_collections.extend([Mock(id=str(i + 9), status="deleted") for i in range(5)])
+        # list_for_user returns (collections, count) tuple
+        mock_collection_repo.list_for_user.return_value = (mock_collections, len(mock_collections))
 
         # Should be able to create (9 active < 10)
         result = await resource_manager.can_create_collection(123)
@@ -117,8 +120,9 @@ class TestResourceManager:
         mock_disk_usage.return_value = mock_disk
 
         # Mock user resource usage
-        mock_collections = [{"total_size_bytes": 1024 * 1024 * 1024}]  # 1GB
-        mock_collection_repo.list_by_user.return_value = mock_collections
+        mock_collections = [Mock(total_size_bytes=1024 * 1024 * 1024)]  # 1GB
+        # list_for_user returns (collections, count) tuple
+        mock_collection_repo.list_for_user.return_value = (mock_collections, len(mock_collections))
 
         # Request moderate resources
         resources = ResourceEstimate(memory_mb=1024, storage_gb=5.0)
@@ -252,11 +256,12 @@ class TestResourceManager:
         """Test getting total resource usage for user"""
         # Mock user's collections
         mock_collections = [
-            {"total_size_bytes": 1 * 1024 * 1024 * 1024},  # 1GB
-            {"total_size_bytes": 2 * 1024 * 1024 * 1024},  # 2GB
-            {"total_size_bytes": 5 * 1024 * 1024 * 1024},  # 5GB
+            Mock(total_size_bytes=1 * 1024 * 1024 * 1024),  # 1GB
+            Mock(total_size_bytes=2 * 1024 * 1024 * 1024),  # 2GB
+            Mock(total_size_bytes=5 * 1024 * 1024 * 1024),  # 5GB
         ]
-        mock_collection_repo.list_by_user.return_value = mock_collections
+        # list_for_user returns (collections, count) tuple
+        mock_collection_repo.list_for_user.return_value = (mock_collections, len(mock_collections))
 
         # Call private method directly
         usage = await resource_manager._get_user_resource_usage(123)
@@ -376,7 +381,8 @@ class TestResourceManagerIntegration:
         manager = ResourceManager(mock_collection_repo, mock_operation_repo)
 
         # Setup mocks
-        mock_collection_repo.list_by_user.return_value = []  # No existing collections
+        # list_for_user returns (collections, count) tuple
+        mock_collection_repo.list_for_user.return_value = ([], 0)  # No existing collections
         mock_collection_repo.get_by_id.return_value = {
             "id": "test-collection",
             "total_size_bytes": 1024 * 1024 * 1024,  # 1GB

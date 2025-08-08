@@ -394,33 +394,6 @@ function CollectionDetailsModal() {
                         </dl>
                       </div>
                     )}
-                    
-                    {/* Performance characteristics */}
-                    {CHUNKING_STRATEGIES[collection.chunking_strategy as ChunkingStrategyType]?.performance && (
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <div className="text-sm font-medium text-gray-700 mb-2">Performance Characteristics</div>
-                        <div className="flex gap-4 text-xs">
-                          <div>
-                            <span className="text-gray-500">Speed:</span>
-                            <span className="ml-1 font-medium capitalize">
-                              {CHUNKING_STRATEGIES[collection.chunking_strategy as ChunkingStrategyType].performance.speed}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-gray-500">Quality:</span>
-                            <span className="ml-1 font-medium capitalize">
-                              {CHUNKING_STRATEGIES[collection.chunking_strategy as ChunkingStrategyType].performance.quality}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-gray-500">Memory:</span>
-                            <span className="ml-1 font-medium capitalize">
-                              {CHUNKING_STRATEGIES[collection.chunking_strategy as ChunkingStrategyType].performance.memoryUsage}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 ) : (
                   // Fallback for collections using deprecated chunk_size/chunk_overlap
