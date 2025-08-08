@@ -80,6 +80,7 @@ class CollectionService:
             chunking_strategy = config.get("chunking_strategy") if config else None
             chunking_config = config.get("chunking_config") if config else None
             is_public = (config.get("is_public") if config else None) or False
+
             meta = config.get("metadata") if config else None
 
             # Create with new chunking fields
