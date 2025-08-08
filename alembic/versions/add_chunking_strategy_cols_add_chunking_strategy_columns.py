@@ -6,17 +6,18 @@ Create Date: 2025-08-08 00:00:00.000000
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
+
 # revision identifiers, used by Alembic.
 revision: str = "add_chunking_strategy_cols"
-down_revision: Union[str, None] = "a1b2c3d4e5f6"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "a1b2c3d4e5f6"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -27,7 +28,7 @@ def upgrade() -> None:
     # Update existing collections to use 'character' strategy with their current chunk_size/overlap
     op.execute(
         """
-        UPDATE collections 
+        UPDATE collections
         SET chunking_strategy = 'character',
             chunking_config = jsonb_build_object(
                 'chunk_size', chunk_size,
