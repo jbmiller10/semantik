@@ -70,20 +70,31 @@ class CollectionService:
 
         # Create collection in database
         try:
+            # Apply expected defaults for legacy chunking fields
+            embedding_model = (
+                config.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B") if config else "Qwen/Qwen3-Embedding-0.6B"
+            )
+            quantization = config.get("quantization", "float16") if config else "float16"
+            chunk_size = config.get("chunk_size", 1000) if config else 1000
+            chunk_overlap = config.get("chunk_overlap", 200) if config else 200
+            chunking_strategy = config.get("chunking_strategy") if config else None
+            chunking_config = config.get("chunking_config") if config else None
+            is_public = config.get("is_public", False) if config else False
+            meta = config.get("metadata") if config else None
+
+            # Create with new chunking fields
             collection = await self.collection_repo.create(
                 owner_id=user_id,
                 name=name,
                 description=description,
-                embedding_model=(
-                    config.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
-                    if config
-                    else "Qwen/Qwen3-Embedding-0.6B"
-                ),
-                quantization=config.get("quantization", "float16") if config else "float16",
-                chunk_size=config.get("chunk_size", 1000) if config else 1000,
-                chunk_overlap=config.get("chunk_overlap", 200) if config else 200,
-                is_public=config.get("is_public", False) if config else False,
-                meta=config.get("metadata") if config else None,
+                embedding_model=embedding_model,
+                quantization=quantization,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                chunking_strategy=chunking_strategy,
+                chunking_config=chunking_config,
+                is_public=is_public,
+                meta=meta,
             )
         except EntityAlreadyExistsError:
             # Re-raise EntityAlreadyExistsError to be handled by the API endpoint
@@ -124,6 +135,8 @@ class CollectionService:
             "quantization": collection.quantization,
             "chunk_size": collection.chunk_size,
             "chunk_overlap": collection.chunk_overlap,
+            "chunking_strategy": collection.chunking_strategy,
+            "chunking_config": collection.chunking_config,
             "is_public": collection.is_public,
             "metadata": collection.meta,
             "created_at": collection.created_at,
@@ -136,6 +149,8 @@ class CollectionService:
                 "quantization": collection.quantization,
                 "chunk_size": collection.chunk_size,
                 "chunk_overlap": collection.chunk_overlap,
+                "chunking_strategy": collection.chunking_strategy,
+                "chunking_config": collection.chunking_config,
                 "is_public": collection.is_public,
                 "metadata": collection.meta,
             },
@@ -602,7 +617,7 @@ class CollectionService:
         Returns:
             Created operation data
         """
-        from packages.shared.database.models import OperationStatus, OperationType
+        from packages.shared.database.models import OperationType
 
         # Get collection
         collection = await self.collection_repo.get_by_uuid_with_permission_check(
@@ -611,12 +626,12 @@ class CollectionService:
         )
 
         if not collection:
-            raise EntityNotFoundError(f"Collection {collection_id} not found")
+            raise EntityNotFoundError("Collection", collection_id)
 
         # Map operation type string to enum
         operation_type_enum = {
-            "chunking": OperationType.CHUNKING,
-            "rechunking": OperationType.CHUNKING,
+            "chunking": OperationType.INDEX,  # Initial chunking uses INDEX type
+            "rechunking": OperationType.REINDEX,  # Re-chunking uses REINDEX type
             "index": OperationType.INDEX,
             "reindex": OperationType.REINDEX,
         }.get(operation_type, OperationType.INDEX)
@@ -624,9 +639,10 @@ class CollectionService:
         # Create operation
         operation = await self.operation_repo.create(
             collection_id=collection.id,
-            type=operation_type_enum,
-            status=OperationStatus.PENDING,
-            meta=config,
+            user_id=user_id,
+            operation_type=operation_type_enum,
+            config=config,
+            meta={"operation_type": operation_type},  # Store original operation type in meta
         )
 
         await self.db_session.commit()
@@ -660,7 +676,7 @@ class CollectionService:
         )
 
         if not collection:
-            raise EntityNotFoundError(f"Collection {collection_id} not found")
+            raise EntityNotFoundError("Collection", collection_id)
 
         # Update allowed fields
         allowed_fields = ["name", "description", "chunking_strategy", "chunking_config", "meta"]

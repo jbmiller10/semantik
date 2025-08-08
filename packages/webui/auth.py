@@ -14,14 +14,13 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.exceptions import InvalidTokenError
-from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, field_validator
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 # Import database module
 from shared.config import settings
-from shared.database import create_auth_repository, create_user_repository, get_db_session
+from shared.database import create_auth_repository, create_user_repository, get_db_session, pwd_context
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -29,8 +28,7 @@ logger = logging.getLogger(__name__)
 # Constants
 REFRESH_TOKEN_EXPIRE_DAYS = 30
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Password hashing (use shared context to avoid duplication)
 
 # Security
 security = HTTPBearer(auto_error=False)

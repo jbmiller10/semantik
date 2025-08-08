@@ -18,7 +18,6 @@ from typing import Any
 import psutil
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
-from redis import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -113,7 +112,7 @@ class ChunkingService:
         db_session: AsyncSession,
         collection_repo: CollectionRepository,
         document_repo: DocumentRepository,
-        redis_client: Redis,
+        redis_client: Any,  # Can be sync or async Redis client
         operation_repo: OperationRepository | None = None,
         qdrant_client: QdrantClient | None = None,
         security_validator: ChunkingSecurityValidator | None = None,
