@@ -8,6 +8,9 @@ import RenameCollectionModal from './RenameCollectionModal';
 import DeleteCollectionModal from './DeleteCollectionModal';
 import ReindexCollectionModal from './ReindexCollectionModal';
 import type { DocumentResponse } from '../services/api/v2/types';
+import { CHUNKING_STRATEGIES } from '../types/chunking';
+import type { ChunkingStrategyType } from '../types/chunking';
+import { Type, GitBranch, FileText, Brain, Network, Sparkles } from 'lucide-react';
 
 // Type for aggregated source directories from documents
 interface SourceInfo {
@@ -25,15 +28,9 @@ function CollectionDetailsModal() {
   const [activeTab, setActiveTab] = useState<'overview' | 'jobs' | 'files' | 'settings'>('overview');
   const [filesPage, setFilesPage] = useState(1);
   const [configChanges, setConfigChanges] = useState<{
-    chunk_size?: number;
-    chunk_overlap?: number;
     instruction?: string;
   }>({});
   const [showReindexModal, setShowReindexModal] = useState(false);
-  const [validationErrors, setValidationErrors] = useState<{
-    chunk_size?: string;
-    chunk_overlap?: string;
-  }>({});
 
   // Fetch collection details using v2 API
   const { data: collection, isLoading, error } = useQuery({
@@ -114,6 +111,46 @@ function CollectionDetailsModal() {
     });
   };
 
+  // Get the icon component for a chunking strategy
+  const getStrategyIcon = (strategy: string) => {
+    const iconMap: Record<string, React.ReactNode> = {
+      character: <Type className="h-4 w-4" />,
+      recursive: <GitBranch className="h-4 w-4" />,
+      markdown: <FileText className="h-4 w-4" />,
+      semantic: <Brain className="h-4 w-4" />,
+      hierarchical: <Network className="h-4 w-4" />,
+      hybrid: <Sparkles className="h-4 w-4" />
+    };
+    return iconMap[strategy] || <Type className="h-4 w-4" />;
+  };
+
+  // Format chunking configuration for display
+  const formatChunkingConfig = (config: Record<string, unknown> | undefined) => {
+    if (!config) return [];
+    
+    const formatted: Array<{ label: string; value: string }> = [];
+    
+    Object.entries(config).forEach(([key, value]) => {
+      // Convert snake_case to Title Case
+      const label = key
+        .split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+      
+      // Format the value
+      let displayValue = String(value);
+      if (typeof value === 'boolean') {
+        displayValue = value ? 'Yes' : 'No';
+      } else if (typeof value === 'number') {
+        displayValue = value.toLocaleString();
+      }
+      
+      formatted.push({ label, value: displayValue });
+    });
+    
+    return formatted;
+  };
+
   const handleAddDataSuccess = () => {
     setShowAddDataModal(false);
     queryClient.invalidateQueries({ queryKey: ['collection-v2', showCollectionDetailsModal] });
@@ -143,54 +180,12 @@ function CollectionDetailsModal() {
   const handleReindexSuccess = () => {
     setShowReindexModal(false);
     setConfigChanges({});
-    setValidationErrors({});
     queryClient.invalidateQueries({ queryKey: ['collection-v2', showCollectionDetailsModal] });
     queryClient.invalidateQueries({ queryKey: ['collection-operations', showCollectionDetailsModal] });
     addToast({ 
       type: 'success', 
       message: 'Re-indexing started successfully. Check the Operations tab to monitor progress.' 
     });
-  };
-
-  const validateChunkSize = (value: number): string | undefined => {
-    if (value < 100) return 'Chunk size must be at least 100 tokens';
-    if (value > 4000) return 'Chunk size cannot exceed 4000 tokens';
-    return undefined;
-  };
-
-  const validateChunkOverlap = (value: number, chunkSize: number): string | undefined => {
-    if (value < 0) return 'Chunk overlap cannot be negative';
-    if (value > 200) return 'Chunk overlap cannot exceed 200 tokens';
-    if (value >= chunkSize) return 'Chunk overlap must be less than chunk size';
-    return undefined;
-  };
-
-  const handleChunkSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(e.target.value) || undefined;
-    setConfigChanges(prev => ({ ...prev, chunk_size: value }));
-    
-    if (value !== undefined) {
-      const error = validateChunkSize(value);
-      setValidationErrors(prev => ({ ...prev, chunk_size: error }));
-      
-      // Re-validate chunk overlap if it exists
-      const currentOverlap = configChanges.chunk_overlap ?? collection?.chunk_overlap;
-      if (currentOverlap !== undefined) {
-        const overlapError = validateChunkOverlap(currentOverlap, value);
-        setValidationErrors(prev => ({ ...prev, chunk_overlap: overlapError }));
-      }
-    }
-  };
-
-  const handleChunkOverlapChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(e.target.value) || undefined;
-    setConfigChanges(prev => ({ ...prev, chunk_overlap: value }));
-    
-    if (value !== undefined && collection) {
-      const chunkSize = configChanges.chunk_size ?? collection.chunk_size;
-      const error = validateChunkOverlap(value, chunkSize);
-      setValidationErrors(prev => ({ ...prev, chunk_overlap: error }));
-    }
   };
 
   if (!showCollectionDetailsModal) return null;
@@ -356,14 +351,6 @@ function CollectionDetailsModal() {
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">Chunk Size</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{collection.chunk_size} characters</dd>
-                  </div>
-                  <div>
-                    <dt className="text-sm font-medium text-gray-500">Chunk Overlap</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{collection.chunk_overlap} characters</dd>
-                  </div>
-                  <div>
                     <dt className="text-sm font-medium text-gray-500">Public</dt>
                     <dd className="mt-1 text-sm text-gray-900">{collection.is_public ? 'Yes' : 'No'}</dd>
                   </div>
@@ -372,6 +359,98 @@ function CollectionDetailsModal() {
                     <dd className="mt-1 text-sm text-gray-900">{formatDate(collection.created_at)}</dd>
                   </div>
                 </dl>
+              </div>
+
+              {/* Chunking Strategy */}
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Chunking Strategy</h3>
+                {collection.chunking_strategy ? (
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="text-blue-600">
+                        {getStrategyIcon(collection.chunking_strategy)}
+                      </div>
+                      <div>
+                        <div className="font-medium text-gray-900">
+                          {CHUNKING_STRATEGIES[collection.chunking_strategy as ChunkingStrategyType]?.name || collection.chunking_strategy}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {CHUNKING_STRATEGIES[collection.chunking_strategy as ChunkingStrategyType]?.description}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Strategy-specific configuration */}
+                    {collection.chunking_config && Object.keys(collection.chunking_config).length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <div className="text-sm font-medium text-gray-700 mb-2">Strategy Parameters</div>
+                        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {formatChunkingConfig(collection.chunking_config).map((item, index) => (
+                            <div key={index}>
+                              <dt className="text-xs font-medium text-gray-500">{item.label}</dt>
+                              <dd className="mt-0.5 text-sm text-gray-900">{item.value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </div>
+                    )}
+                    
+                    {/* Performance characteristics */}
+                    {CHUNKING_STRATEGIES[collection.chunking_strategy as ChunkingStrategyType]?.performance && (
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <div className="text-sm font-medium text-gray-700 mb-2">Performance Characteristics</div>
+                        <div className="flex gap-4 text-xs">
+                          <div>
+                            <span className="text-gray-500">Speed:</span>
+                            <span className="ml-1 font-medium capitalize">
+                              {CHUNKING_STRATEGIES[collection.chunking_strategy as ChunkingStrategyType].performance.speed}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Quality:</span>
+                            <span className="ml-1 font-medium capitalize">
+                              {CHUNKING_STRATEGIES[collection.chunking_strategy as ChunkingStrategyType].performance.quality}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Memory:</span>
+                            <span className="ml-1 font-medium capitalize">
+                              {CHUNKING_STRATEGIES[collection.chunking_strategy as ChunkingStrategyType].performance.memoryUsage}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  // Fallback for collections using deprecated chunk_size/chunk_overlap
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="text-yellow-600 mt-0.5">
+                        <Type className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-yellow-900">Legacy Configuration</div>
+                        <div className="text-sm text-yellow-700 mt-1">
+                          This collection uses deprecated chunking parameters.
+                        </div>
+                        <dl className="mt-3 grid grid-cols-2 gap-3">
+                          <div>
+                            <dt className="text-xs font-medium text-yellow-600">Chunk Size</dt>
+                            <dd className="mt-0.5 text-sm text-yellow-900">{collection.chunk_size} characters</dd>
+                          </div>
+                          <div>
+                            <dt className="text-xs font-medium text-yellow-600">Chunk Overlap</dt>
+                            <dd className="mt-0.5 text-sm text-yellow-900">{collection.chunk_overlap} characters</dd>
+                          </div>
+                        </dl>
+                        <p className="text-xs text-yellow-600 mt-3">
+                          Consider re-indexing with a modern chunking strategy for better performance.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Source Directories */}
@@ -536,7 +615,7 @@ function CollectionDetailsModal() {
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Collection Configuration</h3>
                 <p className="text-sm text-gray-600 mb-6">
-                  Adjust collection settings. Changes will require re-indexing to take effect.
+                  Current collection settings. To change the chunking strategy, use the re-index option below.
                 </p>
                 
                 <div className="space-y-4">
@@ -557,60 +636,71 @@ function CollectionDetailsModal() {
                     <p id="model-help" className="mt-1 text-xs text-gray-500">Cannot be changed after collection creation</p>
                   </div>
 
-                  {/* Chunk Size */}
+                  {/* Current Chunking Strategy */}
                   <div>
-                    <label htmlFor="chunk-size" className="block text-sm font-medium text-gray-700">
-                      Chunk Size (characters)
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Current Chunking Strategy
                     </label>
-                    <input
-                      id="chunk-size"
-                      type="number"
-                      value={configChanges.chunk_size ?? collection.chunk_size}
-                      onChange={handleChunkSizeChange}
-                      min="100"
-                      max="4000"
-                      className={`mt-1 block w-full rounded-md shadow-sm focus:ring-blue-500 sm:text-sm ${
-                        validationErrors.chunk_size
-                          ? 'border-red-300 focus:border-red-500'
-                          : 'border-gray-300 focus:border-blue-500'
-                      }`}
-                      aria-label="Chunk size in tokens"
-                      aria-describedby="chunk-size-help chunk-size-error"
-                      aria-invalid={!!validationErrors.chunk_size}
-                    />
-                    {validationErrors.chunk_size ? (
-                      <p id="chunk-size-error" className="mt-1 text-xs text-red-600">{validationErrors.chunk_size}</p>
+                    {collection.chunking_strategy ? (
+                      <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                        <div className="flex items-center gap-3">
+                          <div className="text-blue-600">
+                            {getStrategyIcon(collection.chunking_strategy)}
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-medium text-gray-900">
+                              {CHUNKING_STRATEGIES[collection.chunking_strategy as ChunkingStrategyType]?.name || collection.chunking_strategy}
+                            </div>
+                            <div className="text-sm text-gray-500 mt-1">
+                              {CHUNKING_STRATEGIES[collection.chunking_strategy as ChunkingStrategyType]?.description}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Current configuration */}
+                        {collection.chunking_config && Object.keys(collection.chunking_config).length > 0 && (
+                          <div className="mt-4 pt-4 border-t border-gray-200">
+                            <div className="text-sm font-medium text-gray-700 mb-2">Current Parameters</div>
+                            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              {formatChunkingConfig(collection.chunking_config).map((item, index) => (
+                                <div key={index}>
+                                  <dt className="text-xs font-medium text-gray-500">{item.label}</dt>
+                                  <dd className="mt-0.5 text-sm text-gray-900">{item.value}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          </div>
+                        )}
+                      </div>
                     ) : (
-                      <p id="chunk-size-help" className="mt-1 text-xs text-gray-500">Recommended: 200-800 characters</p>
+                      // Legacy configuration display
+                      <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+                        <div className="flex items-start gap-3">
+                          <div className="text-yellow-600 mt-0.5">
+                            <Type className="h-4 w-4" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-medium text-yellow-900">Legacy Character-based Chunking</div>
+                            <div className="text-sm text-yellow-700 mt-1">
+                              This collection uses deprecated chunking parameters.
+                            </div>
+                            <dl className="mt-3 grid grid-cols-2 gap-3">
+                              <div>
+                                <dt className="text-xs font-medium text-yellow-600">Chunk Size</dt>
+                                <dd className="mt-0.5 text-sm text-yellow-900">{collection.chunk_size} characters</dd>
+                              </div>
+                              <div>
+                                <dt className="text-xs font-medium text-yellow-600">Chunk Overlap</dt>
+                                <dd className="mt-0.5 text-sm text-yellow-900">{collection.chunk_overlap} characters</dd>
+                              </div>
+                            </dl>
+                          </div>
+                        </div>
+                      </div>
                     )}
-                  </div>
-
-                  {/* Chunk Overlap */}
-                  <div>
-                    <label htmlFor="chunk-overlap" className="block text-sm font-medium text-gray-700">
-                      Chunk Overlap (characters)
-                    </label>
-                    <input
-                      id="chunk-overlap"
-                      type="number"
-                      value={configChanges.chunk_overlap ?? collection.chunk_overlap}
-                      onChange={handleChunkOverlapChange}
-                      min="0"
-                      max="200"
-                      className={`mt-1 block w-full rounded-md shadow-sm focus:ring-blue-500 sm:text-sm ${
-                        validationErrors.chunk_overlap
-                          ? 'border-red-300 focus:border-red-500'
-                          : 'border-gray-300 focus:border-blue-500'
-                      }`}
-                      aria-label="Chunk overlap in tokens"
-                      aria-describedby="chunk-overlap-help chunk-overlap-error"
-                      aria-invalid={!!validationErrors.chunk_overlap}
-                    />
-                    {validationErrors.chunk_overlap ? (
-                      <p id="chunk-overlap-error" className="mt-1 text-xs text-red-600">{validationErrors.chunk_overlap}</p>
-                    ) : (
-                      <p id="chunk-overlap-help" className="mt-1 text-xs text-gray-500">Recommended: 10-20% of chunk size</p>
-                    )}
+                    <p className="mt-2 text-xs text-gray-500">
+                      To change the chunking strategy, use the re-index option below to select a new strategy and reprocess all documents.
+                    </p>
                   </div>
 
                   {/* Instruction */}
@@ -666,31 +756,14 @@ function CollectionDetailsModal() {
 
                 <button
                   onClick={() => setShowReindexModal(true)}
-                  disabled={
-                    Object.keys(configChanges).length === 0 || 
-                    Object.values(validationErrors).some(error => error !== undefined)
-                  }
-                  className={`px-4 py-2 rounded-md font-medium ${
-                    Object.keys(configChanges).length > 0 && 
-                    !Object.values(validationErrors).some(error => error !== undefined)
-                      ? 'bg-yellow-600 text-white hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500'
-                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  }`}
+                  className="px-4 py-2 rounded-md font-medium bg-yellow-600 text-white hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
                   aria-label="Re-index collection with new configuration"
                 >
                   Re-index Collection
                 </button>
-                {Object.keys(configChanges).length === 0 && (
-                  <p className="mt-2 text-sm text-gray-500">
-                    Make changes to configuration above to enable re-indexing
-                  </p>
-                )}
-                {Object.keys(configChanges).length > 0 && 
-                 Object.values(validationErrors).some(error => error !== undefined) && (
-                  <p className="mt-2 text-sm text-red-600">
-                    Fix validation errors before re-indexing
-                  </p>
-                )}
+                <p className="mt-2 text-sm text-gray-500">
+                  Click to change chunking strategy or other configuration options
+                </p>
               </div>
             </div>
           )}
@@ -735,7 +808,7 @@ function CollectionDetailsModal() {
           collection={collection}
           configChanges={{
             embedding_model: collection.embedding_model,
-            ...configChanges
+            instruction: configChanges.instruction
           }}
           onClose={() => setShowReindexModal(false)}
           onSuccess={handleReindexSuccess}

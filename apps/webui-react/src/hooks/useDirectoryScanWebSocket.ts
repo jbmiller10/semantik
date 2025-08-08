@@ -1,19 +1,10 @@
 import { useState, useCallback, useRef } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { directoryScanV2Api, generateScanId } from '../services/api/v2/directoryScan';
-import type { DirectoryScanProgress } from '../services/api/v2/types';
+import type { DirectoryScanProgress, DirectoryScanResponse } from '../services/api/v2/types';
 import { getErrorMessage } from '../utils/errorUtils';
 
-interface ScanResult {
-  files: string[];
-  total_files: number;
-  total_size: number;
-  warnings?: Array<{
-    type: string;
-    message: string;
-    severity: string;
-  }>;
-}
+type ScanResult = Pick<DirectoryScanResponse, 'files' | 'total_files' | 'total_size' | 'warnings'>;
 
 interface ScanProgress {
   current_path?: string;
@@ -67,18 +58,13 @@ export function useDirectoryScanWebSocket(scanId?: string) {
 
           case 'completed':
             setScanning(false);
-            // Note: The completed message doesn't include the full file list
-            // We need to make another API call or adjust the backend
-            setScanResult({
-              files: [], // Files will be populated from the initial API call
-              total_files: message.data.total_files || 0,
-              total_size: message.data.total_size || 0,
-              warnings: message.data.warnings?.map(w => ({
-                type: 'warning',
-                message: w,
-                severity: 'low',
-              })) || [],
-            });
+            // Completed message may not include files. Preserve files from initial preview.
+            setScanResult(prev => ({
+              files: prev?.files ?? [],
+              total_files: message.data.total_files || prev?.total_files || 0,
+              total_size: message.data.total_size || prev?.total_size || 0,
+              warnings: message.data.warnings || prev?.warnings || [],
+            }));
             setScanProgress(null);
             break;
             
@@ -87,11 +73,7 @@ export function useDirectoryScanWebSocket(scanId?: string) {
             if (message.data.message) {
               setScanResult(prev => prev ? {
                 ...prev,
-                warnings: [...(prev.warnings || []), {
-                  type: 'warning',
-                  message: message.data.message || '',
-                  severity: 'low',
-                }]
+                warnings: [...(prev.warnings || []), message.data.message || ''],
               } : null);
             }
             break;
@@ -133,16 +115,12 @@ export function useDirectoryScanWebSocket(scanId?: string) {
           recursive: true,
         });
 
-        // Convert response to legacy format for compatibility
+        // Use v2 response shape directly
         setScanResult({
-          files: response.files.map(f => f.file_path),
+          files: response.files,
           total_files: response.total_files,
           total_size: response.total_size,
-          warnings: response.warnings.filter(w => w !== 'Scan in progress - connect to WebSocket for real-time updates').map(w => ({
-            type: 'warning',
-            message: w,
-            severity: 'low',
-          })),
+          warnings: response.warnings.filter(w => w !== 'Scan in progress - connect to WebSocket for real-time updates'),
         });
       } catch (err) {
         setError(getErrorMessage(err));
@@ -187,14 +165,10 @@ export function useDirectoryScanWebSocket(scanId?: string) {
         if (response.files.length > 0 || !response.warnings.includes('Scan in progress - connect to WebSocket for real-time updates')) {
           setScanning(false);
           setScanResult({
-            files: response.files.map(f => f.file_path),
+            files: response.files,
             total_files: response.total_files,
             total_size: response.total_size,
-            warnings: response.warnings.filter(w => w !== 'Scan in progress - connect to WebSocket for real-time updates').map(w => ({
-              type: 'warning',
-              message: w,
-              severity: 'low',
-            })),
+            warnings: response.warnings.filter(w => w !== 'Scan in progress - connect to WebSocket for real-time updates'),
           });
         }
         // Otherwise, WebSocket updates will handle the progress
