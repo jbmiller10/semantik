@@ -19,7 +19,7 @@ from packages.webui.api.v2.schemas import (
     SingleCollectionSearchRequest,
 )
 from packages.webui.auth import get_current_user
-from packages.webui.rate_limiter import limiter
+from packages.webui.rate_limiter import create_rate_limit_decorator, limiter
 from packages.webui.services.factory import get_search_service
 from packages.webui.services.search_service import SearchService
 
@@ -40,7 +40,7 @@ router = APIRouter(prefix="/api/v2/search", tags=["search-v2"])
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
 )
-@limiter.limit("30/minute")
+@create_rate_limit_decorator("30/minute")
 async def multi_collection_search(
     request: Request,  # noqa: ARG001
     search_request: CollectionSearchRequest,
@@ -141,7 +141,7 @@ async def multi_collection_search(
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
 )
-@limiter.limit("60/minute")
+@create_rate_limit_decorator("60/minute")
 async def single_collection_search(
     request: Request,  # noqa: ARG001
     search_request: SingleCollectionSearchRequest,
