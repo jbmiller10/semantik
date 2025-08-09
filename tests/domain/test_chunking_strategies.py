@@ -90,7 +90,7 @@ class TestCharacterChunkingStrategy:
             progress_values.append(value)
 
         # Act
-        chunks = strategy.chunk(text, config, progress_callback=progress_callback)
+        _ = strategy.chunk(text, config, progress_callback=progress_callback)
 
         # Assert
         assert len(progress_values) > 0
@@ -289,8 +289,8 @@ A new restaurant opened downtown. The menu features Italian cuisine."""
     def test_high_similarity_preservation(self, strategy, config):
         """Test that high similarity sentences stay together."""
         # Arrange
-        text = """Machine learning is a subset of artificial intelligence. 
-        It enables computers to learn from data. 
+        text = """Machine learning is a subset of artificial intelligence.
+        It enables computers to learn from data.
         Neural networks are a key component of machine learning.
         Deep learning uses multiple layers of neural networks."""
 
@@ -781,7 +781,7 @@ Regular paragraph content.
         )
 
         # Technical content should favor semantic
-        technical_text = """Neural networks use backpropagation for training. 
+        technical_text = """Neural networks use backpropagation for training.
         Gradient descent optimizes the loss function.
         Convolutional layers extract features from images."""
 

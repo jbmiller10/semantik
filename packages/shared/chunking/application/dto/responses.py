@@ -52,7 +52,7 @@ class PreviewResponse:
     sample_size_bytes: int | None = None  # Alias for document_sample_size
     strategy_name: str | None = None  # Alias for strategy_used
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Post-initialization to populate aliases if not already set."""
         # Populate aliases if not set
         if self.preview_chunks is None:
@@ -233,7 +233,7 @@ class CompareStrategiesResponse:
     comparisons: list[StrategyComparison] | None = None  # Alias for metrics
     sample_size_bytes: int | None = None  # Sample size in bytes
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Post-initialization to populate aliases if not already set."""
         # Populate recommendation alias if not set
         if self.recommendation is None and self.recommended_strategy:

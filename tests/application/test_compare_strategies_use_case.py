@@ -400,7 +400,7 @@ class TestCompareStrategiesUseCase:
 
         start_time = time.time()
         response = await use_case.execute(valid_request)
-        execution_time = time.time() - start_time
+        _ = time.time() - start_time
 
         # Assert
         # Parallel execution should be faster than sequential
@@ -447,7 +447,7 @@ class TestCompareStrategiesUseCase:
     async def test_metrics_recording(self, use_case, valid_request):
         """Test that comparison metrics are recorded."""
         # Act
-        response = await use_case.execute(valid_request)
+        _ = await use_case.execute(valid_request)
 
         # Assert
         use_case.metrics_service.record_strategy_performance.assert_called()

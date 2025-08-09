@@ -8,6 +8,7 @@ including position, size, and semantic information.
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -36,7 +37,7 @@ class ChunkMetadata:
     section_title: str | None = None  # For document structure chunking
 
     # Strategy-specific metadata
-    custom_attributes: dict[str, any] = field(default_factory=dict)  # For strategy-specific data
+    custom_attributes: dict[str, Any] = field(default_factory=dict)  # For strategy-specific data
 
     # Temporal information
     created_at: datetime | None = None

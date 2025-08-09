@@ -6,6 +6,7 @@ preview functionality, strategy recommendations, configuration management,
 caching behavior, and error handling.
 """
 
+import asyncio
 import json
 import uuid
 from datetime import UTC, datetime
@@ -423,7 +424,6 @@ class TestChunkingOperations:
     ) -> None:
         """Test chunking operation with specific document IDs."""
         operation_id = str(uuid.uuid4())
-        document_ids = ["doc-1", "doc-2", "doc-3"]
 
         # The actual process_chunking_operation is a placeholder method
         # It takes only operation_id parameter
@@ -626,7 +626,7 @@ class TestChunkingAlgorithms:
 Paragraph 1 content. This is a longer paragraph with more text to ensure proper chunking.
 It contains multiple sentences and enough content to trigger the chunking mechanism.
 
-# Header 2  
+# Header 2
 Paragraph 2 content. Another substantial paragraph with meaningful content.
 More content here to ensure we have enough text for multiple chunks.
 This should help test the recursive chunking strategy properly.

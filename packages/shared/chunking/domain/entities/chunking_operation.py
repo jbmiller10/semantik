@@ -7,7 +7,7 @@ the chunking process and maintains operation-level invariants.
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.entities.chunk_collection import ChunkCollection
@@ -78,10 +78,10 @@ class ChunkingOperation:
 
         # Error information
         self._error_message: str | None = None
-        self._error_details: dict[str, any] | None = None
+        self._error_details: dict[str, Any] | None = None
 
         # Performance metrics
-        self._metrics: dict[str, any] = {}
+        self._metrics: dict[str, Any] = {}
 
     @property
     def id(self) -> str:
@@ -119,7 +119,7 @@ class ChunkingOperation:
         return self._error_message
 
     @property
-    def metrics(self) -> dict[str, any]:
+    def metrics(self) -> dict[str, Any]:
         """Get performance metrics."""
         return self._metrics.copy()
 
@@ -250,7 +250,7 @@ class ChunkingOperation:
 
         return len(issues) == 0, issues
 
-    def get_statistics(self) -> dict[str, any]:
+    def get_statistics(self) -> dict[str, Any]:
         """
         Get comprehensive statistics about the operation.
 
@@ -311,7 +311,7 @@ class ChunkingOperation:
         self._completed_at = datetime.utcnow()
         self._progress_percentage = 100.0
 
-    def _fail(self, error_message: str, error_details: dict[str, any] | None = None) -> None:
+    def _fail(self, error_message: str, error_details: dict[str, Any] | None = None) -> None:
         """
         Mark the operation as failed.
 

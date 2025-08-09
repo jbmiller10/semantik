@@ -14,7 +14,7 @@ from packages.shared.chunking.application.use_cases.preview_chunking import Prev
 
 
 @pytest.mark.asyncio()
-async def test_preview_success():
+async def test_preview_success() -> None:
     """Test successful preview generation with mocked dependencies."""
     # Arrange - Create mocked dependencies
     mock_doc_service = Mock()

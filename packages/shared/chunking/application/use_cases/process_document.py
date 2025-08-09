@@ -87,7 +87,7 @@ class ProcessDocumentUseCase:
                 request.validate()
 
                 # 2. Create or get document record
-                document_entity = await self.unit_of_work.documents.get_or_create(
+                _ = await self.unit_of_work.documents.get_or_create(
                     file_path=request.file_path, metadata=request.metadata or {}
                 )
 
@@ -196,7 +196,6 @@ class ProcessDocumentUseCase:
 
                     # Record metrics for batch
                     if self.metrics_service:
-                        batch_time = time.time()
                         for chunk_entity in chunk_entities:
                             await self.metrics_service.record_chunk_processing_time(
                                 operation_id=operation_id,

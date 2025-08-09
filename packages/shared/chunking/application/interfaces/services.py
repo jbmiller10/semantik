@@ -7,7 +7,7 @@ application layer depends on.
 
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any
+from typing import Any, Self
 
 # Import repository interfaces - forward reference to avoid circular imports
 from packages.shared.chunking.application.interfaces.repositories import (
@@ -289,11 +289,11 @@ class UnitOfWork(ABC):
     """
 
     @abstractmethod
-    async def __aenter__(self):
+    async def __aenter__(self) -> Self:
         """Begin a unit of work (transaction)."""
 
     @abstractmethod
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:
         """End unit of work (commit or rollback)."""
 
     @abstractmethod

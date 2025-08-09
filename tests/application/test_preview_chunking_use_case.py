@@ -327,7 +327,7 @@ class TestPreviewChunkingUseCase:
     async def test_metrics_recording(self, use_case, valid_request):
         """Test that metrics are properly recorded."""
         # Act
-        response = await use_case.execute(valid_request)
+        _ = await use_case.execute(valid_request)
 
         # Assert - Check actual methods called in the implementation
         use_case.metrics_service.record_operation_duration.assert_called_once()
@@ -400,7 +400,7 @@ class TestPreviewChunkingUseCase:
     async def test_progress_callback_integration(self, use_case, valid_request):
         """Test that progress callback is passed to strategy."""
         # Arrange
-        progress_values = []
+        _ = []
 
         def mock_chunk_with_progress(content, progress_callback=None):
             # Note: The actual implementation only passes content, not config
@@ -484,7 +484,7 @@ class TestPreviewChunkingUseCase:
     async def test_notification_on_success(self, use_case, valid_request):
         """Test that success notification is sent."""
         # Act
-        response = await use_case.execute(valid_request)
+        _ = await use_case.execute(valid_request)
 
         # Assert
         use_case.notification_service.notify_preview_generated.assert_called_once()

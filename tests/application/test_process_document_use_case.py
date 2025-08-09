@@ -307,7 +307,7 @@ class TestProcessDocumentUseCase:
     async def test_operation_persistence(self, use_case, valid_request):
         """Test that operation is properly persisted."""
         # Act
-        response = await use_case.execute(valid_request)
+        _ = await use_case.execute(valid_request)
 
         # Assert
         # Verify operation was created

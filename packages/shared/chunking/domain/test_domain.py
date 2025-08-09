@@ -14,7 +14,7 @@ from packages.shared.chunking.domain.services.chunking_strategies import (
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
 
-def test_domain_layer():
+def test_domain_layer() -> None:
     """Test the domain layer without any infrastructure."""
     print("Testing pure domain layer...")
 
@@ -74,7 +74,7 @@ def test_domain_layer():
     print("\n5. Testing business rule enforcement...")
     try:
         # Try invalid config
-        invalid_config = ChunkConfig(
+        _ = ChunkConfig(
             strategy_name="test",
             min_tokens=1000,
             max_tokens=100,  # Min > Max - should fail

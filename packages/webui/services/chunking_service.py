@@ -249,15 +249,6 @@ class ChunkingService:
                 # If it's already an internal name or unknown, use as-is
                 internal_strategy = strategy_str
 
-            # Create use case request
-            request = PreviewRequest(
-                file_path="",  # We're working with content directly, not a file
-                strategy_type=strategy,
-                min_tokens=config.get("chunk_size", 1000) if config else 1000,
-                max_tokens=config.get("chunk_size", 1000) if config else 1000,
-                overlap=config.get("chunk_overlap", 200) if config else 200,
-            )
-
             # Use the actual strategy pattern for chunking
             strategy_instance = get_strategy(internal_strategy)
 

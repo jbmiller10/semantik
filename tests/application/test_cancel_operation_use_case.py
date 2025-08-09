@@ -384,7 +384,7 @@ class TestCancelOperationUseCase:
         # Assert
         # First request should succeed, others should get ValueError
         successful_responses = [r for r in responses if isinstance(r, CancelOperationResponse)]
-        errors = [r for r in responses if isinstance(r, ValueError)]
+        _ = [r for r in responses if isinstance(r, ValueError)]
         assert len(successful_responses) >= 1  # At least one should succeed
         # Others should fail with ValueError
 

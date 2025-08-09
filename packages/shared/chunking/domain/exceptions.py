@@ -6,11 +6,13 @@ These exceptions represent business rule violations and domain errors,
 not technical infrastructure failures.
 """
 
+from typing import Any
+
 
 class ChunkingDomainError(Exception):
     """Base exception for all chunking domain errors."""
 
-    def __init__(self, message: str, details: dict[str, any] | None = None) -> None:
+    def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
         """Initialize domain error with message and optional details."""
         super().__init__(message)
         self.message = message
