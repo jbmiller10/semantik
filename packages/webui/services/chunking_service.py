@@ -19,6 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from packages.shared.chunking.application.dto.requests import (
     PreviewRequest,
 )
+from packages.shared.chunking.domain.exceptions import (
+    InvalidConfigurationError,
+)
 from packages.shared.chunking.domain.services.chunking_strategies import (
     get_strategy,
     STRATEGY_REGISTRY,
@@ -78,6 +81,16 @@ class SimpleChunkingStrategyFactory:
 
 class ChunkingService:
     """Service for managing chunking operations."""
+
+    # Mapping from API strategy names to factory strategy names
+    STRATEGY_MAPPING = {
+        "fixed_size": "character",
+        "sliding_window": "character",
+        "semantic": "semantic",
+        "recursive": "recursive",
+        "document_structure": "markdown",
+        "hybrid": "hybrid",
+    }
 
     def __init__(
         self,
@@ -232,25 +245,53 @@ class ChunkingService:
                 overlap=config.get("chunk_overlap", 200) if config else 200,
             )
 
-            # Note: For now, we'll handle preview directly without the use case
-            # since it expects file-based input and we have content
-            # TODO: Implement proper document service or adapt use case
+            # Use the actual strategy pattern for chunking
             strategy_instance = get_strategy(strategy)
             
-            # Generate chunks - for now, we'll use a simple approach
-            # Real chunking would use the strategy's actual chunk method
             import time
             start_time = time.time()
             
-            # Simple chunking for now - this should be replaced with actual strategy implementation
+            # Create ChunkConfig from the provided config dictionary
+            from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+            
             chunk_size = config.get("chunk_size", 1000) if config else 1000
             chunk_overlap = config.get("chunk_overlap", 200) if config else 200
             
-            chunks = []
-            for i in range(0, len(content), chunk_size - chunk_overlap):
-                chunk_content = content[i:i + chunk_size]
-                if chunk_content:
-                    chunks.append(chunk_content)
+            # Build ChunkConfig with proper parameters
+            chunk_config = ChunkConfig(
+                strategy_name=strategy,
+                min_tokens=chunk_size // 2,  # Set min to half of max for flexibility
+                max_tokens=chunk_size,
+                overlap_tokens=chunk_overlap,
+                preserve_structure=config.get("preserve_structure", True) if config else True,
+                semantic_threshold=config.get("semantic_threshold", 0.7) if config else 0.7,
+                hierarchy_levels=config.get("hierarchy_levels", 3) if config else 3,
+            )
+            
+            # Use the strategy to generate chunks properly
+            try:
+                chunk_entities = strategy_instance.chunk(
+                    content=content,
+                    config=chunk_config,
+                    progress_callback=None  # Could add progress tracking if needed
+                )
+                
+                # Extract text content from chunk entities
+                chunks = [chunk.content for chunk in chunk_entities]
+                
+            except Exception as strategy_error:
+                logger.warning(f"Strategy {strategy} failed, falling back to simple chunking: {strategy_error}")
+                # Fallback to simple chunking only if strategy fails
+                chunks = []
+                if chunk_overlap >= chunk_size:
+                    # If overlap is too large, reset to reasonable default
+                    chunk_overlap = min(chunk_overlap, chunk_size // 4)
+                
+                step_size = max(1, chunk_size - chunk_overlap)  # Ensure positive step
+                for i in range(0, len(content), step_size):
+                    chunk_content = content[i:i + chunk_size]
+                    if chunk_content.strip():  # Only add non-empty chunks
+                        chunks.append(chunk_content)
             
             processing_time_ms = (time.time() - start_time) * 1000
             avg_chunk_size = sum(len(c) for c in chunks) / len(chunks) if chunks else 0
@@ -302,15 +343,36 @@ class ChunkingService:
 
             return result
 
-        except Exception as e:
-            logger.error(f"Preview chunking failed: {e}")
-            # Return a basic error response
+        except InvalidConfigurationError as e:
+            logger.error(f"Invalid chunking configuration: {e}")
+            # Return safe error message without exposing internal details
             return {
-                "error": str(e),
+                "error": "Invalid chunking configuration provided",
                 "strategy": strategy or "recursive",
                 "chunks": [],
                 "total_chunks": 0,
-                "recommendations": ["An error occurred during chunking"],
+                "recommendations": ["Please check your chunking configuration parameters"],
+            }
+        except ValueError as e:
+            logger.error(f"Invalid input value: {e}")
+            # Return safe error message
+            return {
+                "error": "Invalid input parameters",
+                "strategy": strategy or "recursive",
+                "chunks": [],
+                "total_chunks": 0,
+                "recommendations": ["Please verify your input parameters"],
+            }
+        except Exception as e:
+            # Log the actual error internally but don't expose details to client
+            logger.error(f"Unexpected error during preview chunking: {type(e).__name__}: {e}")
+            # Return generic safe error response
+            return {
+                "error": "An unexpected error occurred during chunking",
+                "strategy": strategy or "recursive",
+                "chunks": [],
+                "total_chunks": 0,
+                "recommendations": ["Please try again or contact support if the issue persists"],
             }
 
     async def compare_strategies(
@@ -1022,6 +1084,57 @@ class ChunkingService:
             ],
         }
         return cons.get(strategy, [])
+    
+    def _map_strategy_to_factory_name(self, strategy: str) -> str:
+        """Map a strategy name to its factory name.
+        
+        This method provides mapping between user-friendly strategy names
+        and the internal factory names used by the chunking system.
+        
+        Args:
+            strategy: User-provided strategy name
+            
+        Returns:
+            Factory name for the strategy
+        """
+        # First check the primary STRATEGY_MAPPING
+        if strategy in self.STRATEGY_MAPPING:
+            return self.STRATEGY_MAPPING[strategy]
+        
+        # Map common variations to standard names
+        strategy_mapping = {
+            # Standard mappings
+            "character": "character",
+            "recursive": "recursive",
+            "markdown": "markdown",
+            "semantic": "semantic",
+            "hierarchical": "hierarchical",
+            "hybrid": "hybrid",
+            
+            # Alternative names and variations
+            "char": "character",
+            "simple": "character",
+            "recursive_text": "recursive",
+            "recursive_character": "recursive",
+            "md": "markdown",
+            "semantic_chunking": "semantic",
+            "ai": "semantic",
+            "hierarchy": "hierarchical",
+            "multi_level": "hierarchical",
+            "mixed": "hybrid",
+            "adaptive": "hybrid",
+            
+            # Handle case variations
+            "CHARACTER": "character",
+            "RECURSIVE": "recursive",
+            "MARKDOWN": "markdown",
+            "SEMANTIC": "semantic",
+            "HIERARCHICAL": "hierarchical",
+            "HYBRID": "hybrid",
+        }
+        
+        # Return mapped name or original if no mapping exists
+        return strategy_mapping.get(strategy, strategy)
 
     # Additional methods for completeness
 

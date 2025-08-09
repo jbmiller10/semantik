@@ -143,7 +143,12 @@ class CompareStrategiesUseCase:
                 chunks_created=sum(m.total_chunks for m in metrics_list)
             )
 
-            # 9. Return comparison response
+            # 9. Return comparison response - let __post_init__ handle the aliases
+            # Generate a meaningful document ID for the comparison
+            import hashlib
+            doc_id_hash = hashlib.md5(request.file_path.encode()).hexdigest()[:8]
+            document_id = f"compare-{doc_id_hash}-{operation_id[:8]}"
+            
             return CompareStrategiesResponse(
                 operation_id=operation_id,
                 strategies_compared=[s.value for s in request.strategies],
@@ -151,7 +156,10 @@ class CompareStrategiesUseCase:
                 metrics=metrics_list,
                 recommended_strategy=recommended_strategy,
                 recommendation_reason=recommendation_reason,
-                sample_chunks=sample_chunks_dict
+                sample_chunks=sample_chunks_dict,
+                # Set a meaningful document_id based on file and operation
+                document_id=document_id
+                # Don't set the aliases here - let __post_init__ handle them
             )
 
         except Exception as e:
@@ -384,7 +392,7 @@ class CompareStrategiesUseCase:
                 consistency = 1 - (size_range / avg_size)
                 score += consistency * 3
                 if consistency > 0.7:
-                    reasons.append("consistent chunk sizes")
+                    reasons.append("consistent chunks")
 
             # Semantic coherence score
             score += metrics.semantic_coherence * 5

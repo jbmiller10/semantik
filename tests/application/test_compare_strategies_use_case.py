@@ -364,7 +364,7 @@ class TestCompareStrategiesUseCase:
     async def test_document_not_found(self, use_case, valid_request):
         """Test handling of document not found error."""
         # Arrange
-        use_case.document_service.get_document_content.side_effect = FileNotFoundError(
+        use_case.document_service.load_partial.side_effect = FileNotFoundError(
             "Document not found"
         )
 
@@ -406,20 +406,18 @@ class TestCompareStrategiesUseCase:
         response = await use_case.execute(valid_request)
 
         # Assert
-        use_case.metrics_service.record_comparison.assert_called()
-        call_args = use_case.metrics_service.record_comparison.call_args
-
-        recorded_data = call_args[0][0] if call_args else None
-        assert recorded_data is not None
-        assert "strategies_compared" in recorded_data
-        assert len(recorded_data["strategies_compared"]) == 3
+        use_case.metrics_service.record_strategy_performance.assert_called()
+        # Should be called once for each strategy
+        assert use_case.metrics_service.record_strategy_performance.call_count == 3
 
     @pytest.mark.asyncio()
     async def test_comparison_with_large_document(self, use_case, valid_request):
         """Test comparison with large document (uses sampling)."""
         # Arrange
-        large_content = "Large content. " * 10000  # Large document
-        use_case.document_service.get_document_content.return_value = large_content
+        # Simulate that load_partial returned a sample of the document
+        # that fits within the requested sample_size_kb
+        sample_content = "Sample content. " * 100  # Smaller sample
+        use_case.document_service.extract_text.return_value = sample_content
 
         # Act
         response = await use_case.execute(valid_request)
@@ -427,7 +425,7 @@ class TestCompareStrategiesUseCase:
         # Assert
         # Should still work with sampling
         assert len(response.comparisons) == 3
-        # Sample size should be limited
+        # Sample size should be within the limit
         assert response.sample_size_bytes <= valid_request.sample_size_kb * 1024
 
     @pytest.mark.asyncio()

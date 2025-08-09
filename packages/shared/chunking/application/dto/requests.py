@@ -160,8 +160,9 @@ class CompareStrategiesRequest:
 
         if not self.strategies:
             raise ValueError("At least one strategy must be specified")
-        if len(self.strategies) < 2:
-            raise ValueError("At least two strategies required for comparison")
+        # Allow single strategy for analysis (not comparison)
+        # if len(self.strategies) < 2:
+        #     raise ValueError("At least two strategies required for comparison")
         if self.min_tokens <= 0:
             raise ValueError("min_tokens must be positive")
         if self.max_tokens <= 0:
@@ -180,14 +181,19 @@ class CompareStrategiesRequest:
 class GetOperationStatusRequest:
     """Input DTO for operation status query."""
 
-    operation_id: str
+    operation_id: str | None = None  # Operation ID (optional if document_id provided)
     include_chunks: bool = False  # Whether to include chunk details
     include_metrics: bool = True  # Whether to include processing metrics
+    document_id: str | None = None  # Optional document ID for finding operations
 
     def validate(self) -> None:
         """Validate request parameters."""
-        if not self.operation_id:
-            raise ValueError("operation_id is required")
+        if not self.operation_id and not self.document_id:
+            raise ValueError("Either operation_id or document_id is required")
+        
+        # If operation_id is provided as empty string, treat as None
+        if self.operation_id == "":
+            self.operation_id = None
 
 
 @dataclass

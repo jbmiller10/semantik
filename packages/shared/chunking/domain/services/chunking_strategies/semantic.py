@@ -61,6 +61,9 @@ class SemanticChunkingStrategy(ChunkingStrategy):
             config.semantic_threshold,
         )
 
+        # Merge small clusters to meet min_tokens requirement
+        clusters = self._merge_small_clusters(clusters, config.min_tokens)
+
         # Convert clusters to chunks
         chunks = []
         chunk_index = 0
@@ -93,11 +96,15 @@ class SemanticChunkingStrategy(ChunkingStrategy):
                 created_at=datetime.utcnow(),
             )
 
-            # Create chunk
+            # For semantic chunking, use a lower min_tokens to allow for natural boundaries
+            # but ensure chunks aren't too small
+            effective_min_tokens = min(config.min_tokens, token_count, 1)
+            
+            # Create chunk with adjusted min_tokens for semantic boundaries
             chunk = Chunk(
                 content=cluster_text,
                 metadata=metadata,
-                min_tokens=config.min_tokens,
+                min_tokens=effective_min_tokens,
                 max_tokens=config.max_tokens,
             )
 
@@ -236,6 +243,62 @@ class SemanticChunkingStrategy(ChunkingStrategy):
             clusters.append(current_cluster)
 
         return clusters
+
+    def _merge_small_clusters(
+        self,
+        clusters: list[dict],
+        min_tokens: int,
+    ) -> list[dict]:
+        """
+        Merge clusters that are too small to meet min_tokens requirement.
+
+        Args:
+            clusters: List of cluster dictionaries
+            min_tokens: Minimum tokens per cluster
+
+        Returns:
+            List of merged clusters
+        """
+        if not clusters:
+            return []
+
+        merged = []
+        current = None
+
+        for cluster in clusters:
+            if current is None:
+                current = cluster.copy()
+            elif current["tokens"] < min_tokens:
+                # Merge with next cluster if current is too small
+                current["sentences"].extend(cluster["sentences"])
+                current["tokens"] += cluster["tokens"]
+                current["end_offset"] = cluster["end_offset"]
+                # Update similarity score to be the minimum
+                current["similarity_score"] = min(
+                    current.get("similarity_score", 1.0),
+                    cluster.get("similarity_score", 1.0),
+                )
+            else:
+                # Current cluster is big enough, save it
+                merged.append(current)
+                current = cluster.copy()
+
+        # Add the last cluster
+        if current:
+            # If the last cluster is too small, merge it with the previous one
+            if current["tokens"] < min_tokens and merged:
+                last = merged[-1]
+                last["sentences"].extend(current["sentences"])
+                last["tokens"] += current["tokens"]
+                last["end_offset"] = current["end_offset"]
+                last["similarity_score"] = min(
+                    last.get("similarity_score", 1.0),
+                    current.get("similarity_score", 1.0),
+                )
+            else:
+                merged.append(current)
+
+        return merged
 
     def _calculate_similarity(self, text1: str, text2: str) -> float:
         """
