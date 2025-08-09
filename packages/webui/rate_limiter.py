@@ -3,6 +3,10 @@ Rate limiting implementation for the webui API.
 
 This module provides distributed rate limiting using Redis backend,
 circuit breaker pattern, and admin bypass functionality.
+
+Important: Headers are NOT automatically injected due to FastAPI returning
+dictionaries that are later converted to JSON responses. Rate limit headers
+are only added to rate limit exceeded responses via the error handler.
 """
 
 import logging
@@ -221,7 +225,7 @@ if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
     limiter = Limiter(
         key_func=get_user_or_ip,
         default_limits=["10000/second"],
-        headers_enabled=True,
+        headers_enabled=False,  # Disable automatic header injection (incompatible with dict responses)
     )
     logger.info("Rate limiter configured for testing with high limits")
 else:
@@ -230,7 +234,7 @@ else:
             key_func=get_user_or_ip,
             storage_uri=RateLimitConfig.REDIS_URL,
             default_limits=[RateLimitConfig.DEFAULT_LIMIT],
-            headers_enabled=True,  # Add rate limit headers to responses
+            headers_enabled=False,  # Disable automatic header injection (incompatible with dict responses)
             swallow_errors=False,  # Don't silently fail on Redis errors
         )
         logger.info(f"Rate limiter initialized with Redis backend: {RateLimitConfig.REDIS_URL}")
@@ -240,6 +244,28 @@ else:
         limiter = Limiter(
             key_func=get_user_or_ip,
             default_limits=[RateLimitConfig.DEFAULT_LIMIT],
-            headers_enabled=True,
+            headers_enabled=False,  # Disable automatic header injection (incompatible with dict responses)
         )
         logger.warning("Rate limiter falling back to in-memory storage")
+
+
+def add_rate_limit_headers(response: Response, limit: str, remaining: int, reset: int) -> Response:
+    """
+    Manually add rate limit headers to a Response object.
+    
+    This function should only be used when returning actual Response objects,
+    not when returning dictionaries that FastAPI will convert.
+    
+    Args:
+        response: The Response object to add headers to
+        limit: The rate limit (e.g., "10")
+        remaining: Number of requests remaining
+        reset: Unix timestamp when the rate limit resets
+    
+    Returns:
+        The response with added headers
+    """
+    response.headers["X-RateLimit-Limit"] = str(limit)
+    response.headers["X-RateLimit-Remaining"] = str(remaining)
+    response.headers["X-RateLimit-Reset"] = str(reset)
+    return response
