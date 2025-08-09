@@ -50,11 +50,10 @@ def rate_limit_handler(request: Request, exc: Exception) -> Response:
     """Wrapper to ensure proper type signature for rate limit handler"""
     if isinstance(exc, RateLimitExceeded):
         # Use our custom handler with circuit breaker support
-        response = rate_limit_exceeded_handler(request, exc)
-        # Ensure it's a proper Response object
-        return response
+        return rate_limit_exceeded_handler(request, exc)
     # This shouldn't happen, but handle gracefully
     from fastapi.responses import JSONResponse
+
     return JSONResponse(content={"detail": "Rate limit error"}, status_code=429)
 
 

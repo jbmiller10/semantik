@@ -229,7 +229,9 @@ class RedisStreamWebSocketManager:
             try:
                 # Add to stream with automatic ID and max length to prevent unbounded growth
                 await self.redis.xadd(
-                    stream_key, {"message": json.dumps(message)}, maxlen=1000  # Keep last 1000 messages
+                    stream_key,
+                    {"message": json.dumps(message)},
+                    maxlen=1000,  # Keep last 1000 messages
                 )
 
                 # Set TTL based on operation status
@@ -544,10 +546,12 @@ class RedisStreamWebSocketManager:
 
             for websocket in list(websockets):
                 try:
-                    # Try to ping the websocket to check if it's alive
-                    await asyncio.wait_for(websocket.ping(), timeout=1.0)
+                    # Try to send a ping frame to check if connection is alive
+                    # FastAPI WebSocket doesn't have a ping() method, so we use send_text
+                    # with a ping message and handle any exceptions
+                    await asyncio.wait_for(websocket.send_json({"type": "ping"}), timeout=1.0)
                 except Exception:
-                    # Connection is dead
+                    # Connection is dead or timed out
                     dead_sockets.append(websocket)
                     cleaned_count += 1
 
