@@ -1,0 +1,194 @@
+# Docker Compose override for horizontally scaled WebSocket deployment
+# Use with: docker compose -f docker-compose.yml -f docker-compose.websocket-scale.yml up -d
+
+services:
+  # HAProxy Load Balancer
+  haproxy:
+    image: haproxy:2.9-alpine
+    container_name: semantik-haproxy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8404:8404"  # HAProxy stats
+    volumes:
+      - ./deploy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./certs:/etc/ssl/certs:ro
+    depends_on:
+      - webui1
+      - webui2
+      - webui3
+    networks:
+      - semantik-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          memory: 1G
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Remove ports from original webui service
+  webui:
+    deploy:
+      replicas: 0  # Disable single instance
+
+  # WebUI Instance 1
+  webui1:
+    extends:
+      file: docker-compose.yml
+      service: webui
+    container_name: semantik-webui1
+    hostname: webui1
+    environment:
+      - INSTANCE_ID=webui1
+      - WEBSOCKET_MAX_CONNECTIONS=1000
+      - WEBSOCKET_HEARTBEAT_INTERVAL=30
+    ports: []  # No direct port exposure
+    networks:
+      - semantik-network
+
+  # WebUI Instance 2
+  webui2:
+    extends:
+      file: docker-compose.yml
+      service: webui
+    container_name: semantik-webui2
+    hostname: webui2
+    environment:
+      - INSTANCE_ID=webui2
+      - WEBSOCKET_MAX_CONNECTIONS=1000
+      - WEBSOCKET_HEARTBEAT_INTERVAL=30
+    ports: []  # No direct port exposure
+    networks:
+      - semantik-network
+
+  # WebUI Instance 3
+  webui3:
+    extends:
+      file: docker-compose.yml
+      service: webui
+    container_name: semantik-webui3
+    hostname: webui3
+    environment:
+      - INSTANCE_ID=webui3
+      - WEBSOCKET_MAX_CONNECTIONS=1000
+      - WEBSOCKET_HEARTBEAT_INTERVAL=30
+    ports: []  # No direct port exposure
+    networks:
+      - semantik-network
+
+  # Optional: Backup WebUI instance
+  webui_backup:
+    extends:
+      file: docker-compose.yml
+      service: webui
+    container_name: semantik-webui-backup
+    hostname: webui_backup
+    environment:
+      - INSTANCE_ID=webui_backup
+      - WEBSOCKET_MAX_CONNECTIONS=500
+      - WEBSOCKET_HEARTBEAT_INTERVAL=30
+    ports: []  # No direct port exposure
+    networks:
+      - semantik-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # Redis configuration for WebSocket pub/sub
+  redis:
+    environment:
+      - REDIS_MAX_CLIENTS=10000
+    command: 
+      - "redis-server"
+      - "--appendonly"
+      - "yes"
+      - "--maxclients"
+      - "10000"
+      - "--tcp-backlog"
+      - "511"
+      - "--tcp-keepalive"
+      - "60"
+      - "--timeout"
+      - "0"
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  # Additional monitoring for WebSocket connections
+  redis_exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: semantik-redis-exporter
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    ports:
+      - "9121:9121"
+    depends_on:
+      - redis
+    networks:
+      - semantik-network
+    restart: unless-stopped
+
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: semantik-prometheus
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - semantik-network
+    restart: unless-stopped
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: semantik-grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=redis-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deploy/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./deploy/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - semantik-network
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  semantik-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

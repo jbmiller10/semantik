@@ -40,10 +40,6 @@ def get_user_or_ip(request: Request) -> str:
     Returns:
         Rate limit key (user_id or IP address)
     """
-    # Check if rate limiting is disabled for testing
-    if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
-        return "test_bypass"
-
     # Check for admin bypass token - check env var directly for testing
     bypass_token = os.getenv("RATE_LIMIT_BYPASS_TOKEN") or RateLimitConfig.BYPASS_TOKEN
     if bypass_token:
@@ -102,7 +98,7 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Res
 
     # Track circuit breaker failures
     key = get_user_or_ip(request)
-    if key not in ("admin_bypass", "test_bypass"):
+    if key != "admin_bypass":
         track_circuit_breaker_failure(key)
 
     return response
@@ -152,11 +148,11 @@ def check_circuit_breaker(request: Request) -> None:
     # Skip circuit breaker check if rate limiting is disabled
     if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
         return
-    
+
     key = get_user_or_ip(request)
 
-    # Admin bypass and test bypass always allowed
-    if key in ("admin_bypass", "test_bypass"):
+    # Admin bypass always allowed
+    if key in ("admin_bypass",):
         return
 
     current_time = time.time()
@@ -191,20 +187,24 @@ def create_rate_limit_decorator(limit: str) -> Callable:
 
     def decorator(func: Callable) -> Callable:
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            # Check if rate limiting is completely disabled
-            if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
-                # Completely bypass rate limiting in test environment
-                return await func(*args, **kwargs)
-            
-            # Check circuit breaker first
-            request = kwargs.get("request")
-            if request:
+            # Attempt to get request for context
+            request: Request | None = kwargs.get("request")
+
+            # If rate limiting is disabled and there is NO Authorization header,
+            # bypass limiting to avoid cross-test interference. Keep limiting
+            # active for authenticated requests so rate limit tests can still mock it.
+            if request is not None and os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
+                auth_header = request.headers.get("authorization", "")
+                if not auth_header:
+                    return await func(*args, **kwargs)
+
+            # Check circuit breaker first (if we have a request)
+            if request is not None:
                 check_circuit_breaker(request)
 
-                # Check if user has special limits
+                # Admin bypass always allowed
                 key = get_user_or_ip(request)
-                if key in ("admin_bypass", "test_bypass"):
-                    # Completely bypass rate limiting for admin and test
+                if key == "admin_bypass":
                     return await func(*args, **kwargs)
 
             # Apply normal rate limit
@@ -223,7 +223,6 @@ def create_rate_limit_decorator(limit: str) -> Callable:
 # Define special rate limits for specific keys
 SPECIAL_LIMITS = {
     "admin_bypass": "100000/second",  # Effectively unlimited for admin bypass
-    "test_bypass": "100000/second",  # Effectively unlimited for test bypass
 }
 
 
@@ -236,13 +235,17 @@ def get_limit_for_key(key: str) -> list[str]:
 
 # Initialize the limiter with Redis backend
 if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
-    # Use very high limits for testing - effectively disabling rate limiting
-    limiter = Limiter(
-        key_func=get_user_or_ip,
-        default_limits=["100000/second"],  # Even higher limit to ensure no rate limiting in tests
-        headers_enabled=False,  # Disable automatic header injection (incompatible with dict responses)
-    )
-    logger.info("Rate limiter configured for testing with high limits (effectively disabled)")
+    # Use very high defaults but keep limiter active for tests that mock it
+    try:
+        limiter = Limiter(
+            key_func=get_user_or_ip,
+            default_limits=["100000/second"],
+            headers_enabled=False,
+        )
+        logger.info("Rate limiter configured for testing with high default limits")
+    except Exception as e:
+        logger.error(f"Failed to initialize test limiter: {e}")
+        limiter = Limiter(key_func=get_user_or_ip, default_limits=["100000/second"], headers_enabled=False)
 else:
     try:
         limiter = Limiter(

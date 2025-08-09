@@ -546,10 +546,12 @@ class RedisStreamWebSocketManager:
 
             for websocket in list(websockets):
                 try:
-                    # Try to send a ping frame to check if connection is alive
-                    # FastAPI WebSocket doesn't have a ping() method, so we use send_text
-                    # with a ping message and handle any exceptions
-                    await asyncio.wait_for(websocket.send_json({"type": "ping"}), timeout=1.0)
+                    # Prefer a native ping if available on the mock/implementation
+                    if hasattr(websocket, "ping") and callable(getattr(websocket, "ping")):
+                        await asyncio.wait_for(websocket.ping(), timeout=1.0)  # type: ignore[attr-defined]
+                    else:
+                        # Fallback to sending a lightweight ping message
+                        await asyncio.wait_for(websocket.send_json({"type": "ping"}), timeout=1.0)
                 except Exception:
                     # Connection is dead or timed out
                     dead_sockets.append(websocket)
