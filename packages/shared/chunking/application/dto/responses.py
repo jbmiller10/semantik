@@ -12,6 +12,7 @@ from typing import Any
 
 class OperationStatus(str, Enum):
     """Status of a chunking operation."""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -43,14 +44,14 @@ class PreviewResponse:
     strategy_used: str
     document_sample_size: int  # Bytes of document that were processed
     processing_time_ms: float
-    
+
     # Additional attributes for backward compatibility with tests
     document_id: str | None = None
     preview_chunks: list[ChunkDTO] | None = None  # Alias for chunks
     estimated_total_chunks: int | None = None  # Alias for total_chunks_estimate
     sample_size_bytes: int | None = None  # Alias for document_sample_size
     strategy_name: str | None = None  # Alias for strategy_used
-    
+
     def __post_init__(self):
         """Post-initialization to populate aliases if not already set."""
         # Populate aliases if not set
@@ -75,14 +76,14 @@ class PreviewResponse:
                     "start_offset": c.start_offset,
                     "end_offset": c.end_offset,
                     "token_count": c.token_count,
-                    "metadata": c.metadata
+                    "metadata": c.metadata,
                 }
                 for c in self.chunks
             ],
             "total_chunks_estimate": self.total_chunks_estimate,
             "strategy_used": self.strategy_used,
             "document_sample_size": self.document_sample_size,
-            "processing_time_ms": self.processing_time_ms
+            "processing_time_ms": self.processing_time_ms,
         }
 
 
@@ -113,9 +114,11 @@ class ProcessDocumentResponse:
             "chunks_processed": self.chunks_processed,
             "chunks_saved": self.chunks_saved,
             "processing_started_at": self.processing_started_at.isoformat(),
-            "processing_completed_at": self.processing_completed_at.isoformat() if self.processing_completed_at else None,
+            "processing_completed_at": (
+                self.processing_completed_at.isoformat() if self.processing_completed_at else None
+            ),
             "error_message": self.error_message,
-            "checkpoints_created": self.checkpoints_created
+            "checkpoints_created": self.checkpoints_created,
         }
 
 
@@ -137,51 +140,51 @@ class StrategyMetrics:
 @dataclass
 class StrategyComparison:
     """Wrapper for StrategyMetrics with test-compatible attributes."""
-    
+
     def __init__(self, metrics: StrategyMetrics, sample_chunks: list[ChunkDTO] | None = None):
         """Initialize from StrategyMetrics."""
         self._metrics = metrics
         self._sample_chunks = sample_chunks or []
-    
+
     @property
     def strategy_name(self) -> str:
         """Get strategy name."""
         return self._metrics.strategy_name
-    
+
     @property
     def chunk_count(self) -> int:
         """Get total chunks (alias for total_chunks)."""
         return self._metrics.total_chunks
-    
+
     @property
     def avg_chunk_size(self) -> float:
         """Get average chunk size."""
         return self._metrics.avg_chunk_size
-    
+
     @property
     def coverage_percentage(self) -> float:
         """Get coverage percentage (simulated as 100% for now)."""
         return 100.0  # All strategies cover the full document
-    
+
     @property
     def processing_time_ms(self) -> float:
         """Get processing time."""
         return self._metrics.processing_time_ms
-    
+
     @property
     def quality_metrics(self) -> dict[str, float]:
         """Get quality metrics dictionary."""
         return {
             "semantic_coherence": self._metrics.semantic_coherence,
             "boundary_quality": self._metrics.overlap_effectiveness,
-            "size_consistency": self._calculate_size_consistency()
+            "size_consistency": self._calculate_size_consistency(),
         }
-    
+
     @property
     def sample_chunks(self) -> list[ChunkDTO]:
         """Get sample chunks."""
         return self._sample_chunks
-    
+
     @property
     def parameters(self) -> dict[str, Any]:
         """Get strategy parameters."""
@@ -189,7 +192,7 @@ class StrategyComparison:
         if self.strategy_name == "semantic":
             return {"similarity_threshold": 0.9}
         return {}
-    
+
     def _calculate_size_consistency(self) -> float:
         """Calculate size consistency score."""
         if self._metrics.avg_chunk_size == 0:
@@ -202,14 +205,15 @@ class StrategyComparison:
 @dataclass
 class RecommendationInfo:
     """Recommendation information for strategy comparison."""
-    
+
     recommended_strategy: str
     reasoning: str
-    
+
     def __init__(self, strategy: str, reason: str):
         """Initialize recommendation."""
         self.recommended_strategy = strategy
         self.reasoning = reason
+
 
 @dataclass
 class CompareStrategiesResponse:
@@ -222,22 +226,21 @@ class CompareStrategiesResponse:
     recommended_strategy: str
     recommendation_reason: str
     sample_chunks: dict[str, list[ChunkDTO]]  # First 3 chunks from each strategy
-    
+
     # Additional attributes for backward compatibility with tests
     document_id: str | None = None  # Document being compared
     recommendation: RecommendationInfo | None = None  # Alias for recommended_strategy
     comparisons: list[StrategyComparison] | None = None  # Alias for metrics
     sample_size_bytes: int | None = None  # Sample size in bytes
-    
+
     def __post_init__(self):
         """Post-initialization to populate aliases if not already set."""
         # Populate recommendation alias if not set
         if self.recommendation is None and self.recommended_strategy:
             self.recommendation = RecommendationInfo(
-                strategy=self.recommended_strategy,
-                reason=self.recommendation_reason
+                strategy=self.recommended_strategy, reason=self.recommendation_reason
             )
-        
+
         # Populate comparisons alias if not set
         if self.comparisons is None and self.metrics:
             self.comparisons = []
@@ -246,7 +249,7 @@ class CompareStrategiesResponse:
                 strategy_chunks = self.sample_chunks.get(metrics.strategy_name, [])
                 comparison = StrategyComparison(metrics, strategy_chunks)
                 self.comparisons.append(comparison)
-        
+
         # Set sample_size_bytes if not set
         if self.sample_size_bytes is None:
             self.sample_size_bytes = self.document_sample_size
@@ -267,7 +270,7 @@ class CompareStrategiesResponse:
                     "avg_token_count": m.avg_token_count,
                     "processing_time_ms": m.processing_time_ms,
                     "overlap_effectiveness": m.overlap_effectiveness,
-                    "semantic_coherence": m.semantic_coherence
+                    "semantic_coherence": m.semantic_coherence,
                 }
                 for m in self.metrics
             ],
@@ -275,25 +278,20 @@ class CompareStrategiesResponse:
             "recommendation_reason": self.recommendation_reason,
             "sample_chunks": {
                 strategy: [
-                    {
-                        "chunk_id": c.chunk_id,
-                        "content": c.content,
-                        "position": c.position,
-                        "token_count": c.token_count
-                    }
+                    {"chunk_id": c.chunk_id, "content": c.content, "position": c.position, "token_count": c.token_count}
                     for c in chunks
                 ]
                 for strategy, chunks in self.sample_chunks.items()
-            }
+            },
         }
-        
+
         # Include optional fields if present
         if self.document_id is not None:
             result["document_id"] = self.document_id
         if self.recommendation is not None:
             result["recommendation"] = {
                 "recommended_strategy": self.recommendation.recommended_strategy,
-                "reasoning": self.recommendation.reasoning
+                "reasoning": self.recommendation.reasoning,
             }
         if self.comparisons is not None:
             result["comparisons"] = [
@@ -304,13 +302,13 @@ class CompareStrategiesResponse:
                     "coverage_percentage": c.coverage_percentage,
                     "processing_time_ms": c.processing_time_ms,
                     "quality_metrics": c.quality_metrics,
-                    "parameters": c.parameters
+                    "parameters": c.parameters,
                 }
                 for c in self.comparisons
             ]
         if self.sample_size_bytes is not None:
             result["sample_size_bytes"] = self.sample_size_bytes
-        
+
         return result
 
 
@@ -355,7 +353,7 @@ class GetOperationStatusResponse:
             "updated_at": self.updated_at.isoformat(),
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "error_message": self.error_message,
-            "error_details": self.error_details
+            "error_details": self.error_details,
         }
 
         if self.chunks:
@@ -364,7 +362,7 @@ class GetOperationStatusResponse:
                     "chunk_id": c.chunk_id,
                     "content": c.content[:100] + "..." if len(c.content) > 100 else c.content,
                     "position": c.position,
-                    "token_count": c.token_count
+                    "token_count": c.token_count,
                 }
                 for c in self.chunks
             ]
@@ -376,7 +374,7 @@ class GetOperationStatusResponse:
                 "memory_usage_mb": self.metrics.memory_usage_mb,
                 "checkpoint_recovery_count": self.metrics.checkpoint_recovery_count,
                 "error_count": self.metrics.error_count,
-                "retry_count": self.metrics.retry_count
+                "retry_count": self.metrics.retry_count,
             }
 
         return result
@@ -403,5 +401,5 @@ class CancelOperationResponse:
             "chunks_deleted": self.chunks_deleted,
             "cancellation_time": self.cancellation_time.isoformat(),
             "cancellation_reason": self.cancellation_reason,
-            "cleanup_performed": self.cleanup_performed
+            "cleanup_performed": self.cleanup_performed,
         }

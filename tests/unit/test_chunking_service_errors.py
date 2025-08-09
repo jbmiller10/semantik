@@ -58,21 +58,21 @@ class TestChunkingServiceErrorHandling:
             document_repo=mock_dependencies["document_repo"],
             redis_client=mock_dependencies["redis_client"],
         )
-        
+
         # Create mocks for internal validator and error_handler if needed
         service.validator = MagicMock(spec=ChunkingInputValidator)
         service.error_handler = MagicMock(spec=ChunkingErrorHandler)
-        
+
         # Setup default behavior for validator
         service.validator.validate_content.return_value = None
         service.validator.validate_chunk_size.return_value = None
         service.validator.validate_overlap.return_value = None
         service.error_handler.handle_with_correlation = AsyncMock()
-        
+
         # Store references in mock_dependencies for tests to access
         mock_dependencies["validator"] = service.validator
         mock_dependencies["error_handler"] = service.error_handler
-        
+
         return service
 
     async def test_memory_limit_enforcement_preview(
@@ -157,10 +157,10 @@ class TestChunkingServiceErrorHandling:
         large_text = "x" * 11 * 1024 * 1024  # 11MB
 
         from packages.webui.services.chunking_security import ValidationError
-        
+
         with pytest.raises(ValidationError) as exc_info:
             await chunking_service.preview_chunking(content=large_text)
-        
+
         # Check the error message
         assert "Document too large" in str(exc_info.value)
 
@@ -170,12 +170,10 @@ class TestChunkingServiceErrorHandling:
         mock_dependencies: dict,
     ) -> None:
         """Test validation error for invalid chunk parameters."""
-        mock_dependencies["validator"].validate_chunk_size.side_effect = ValueError(
-            "chunk_size must be positive"
-        )
+        mock_dependencies["validator"].validate_chunk_size.side_effect = ValueError("chunk_size must be positive")
 
         from packages.webui.services.chunking_security import ValidationError
-        
+
         with pytest.raises(ValidationError) as exc_info:
             await chunking_service.preview_chunking(
                 content="Test text",
@@ -184,8 +182,8 @@ class TestChunkingServiceErrorHandling:
                     "params": {"chunk_size": -100},
                 },
             )
-        
-        # Check the error message  
+
+        # Check the error message
         assert "Invalid chunk size" in str(exc_info.value) and "Must be between 1 and 10000" in str(exc_info.value)
 
     async def test_process_collection_with_partial_failure(

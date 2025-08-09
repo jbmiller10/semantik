@@ -14,7 +14,8 @@ from packages.shared.database.models import Collection, CollectionStatus
 from packages.webui.api.v2.schemas import (
     CollectionSearchRequest,
     CollectionSearchResponse,
-    SingleCollectionSearchRequest)
+    SingleCollectionSearchRequest,
+)
 from packages.webui.api.v2.search import multi_collection_search, single_collection_search
 
 
@@ -84,7 +85,8 @@ class TestMultiCollectionSearch:
         self,
         mock_user: dict[str, Any],
         mock_collections: list[MagicMock],
-        mock_search_results: dict[str, list[dict[str, Any]]]) -> None:
+        mock_search_results: dict[str, list[dict[str, Any]]],
+    ) -> None:
         """Test successful multi-collection search."""
         # Create a proper Request object with minimal required attributes
         scope = {
@@ -102,7 +104,8 @@ class TestMultiCollectionSearch:
             k=10,
             use_reranker=True,
             rerank_model=None,
-            metadata_filter=None)
+            metadata_filter=None,
+        )
 
         # Mock the service response
         mock_search_service.multi_collection_search.return_value = {
@@ -181,7 +184,8 @@ class TestMultiCollectionSearch:
             query="test",
             k=10,
             rerank_model=None,
-            metadata_filter=None)
+            metadata_filter=None,
+        )
 
         # Mock the service response with partial failure
         mock_search_service.multi_collection_search.return_value = {
@@ -250,7 +254,8 @@ class TestMultiCollectionSearch:
             k=10,
             use_reranker=False,  # Explicitly disable
             rerank_model=None,
-            metadata_filter=None)
+            metadata_filter=None,
+        )
 
         # Mock the service response
         mock_search_service.multi_collection_search.return_value = {
@@ -331,7 +336,8 @@ class TestSearchReranking:
             k=10,
             use_reranker=False,  # Explicitly disable reranking
             rerank_model=None,
-            metadata_filter=None)
+            metadata_filter=None,
+        )
 
         # Mock the service response without reranking
         mock_search_service.multi_collection_search.return_value = {
@@ -376,7 +382,8 @@ class TestSearchReranking:
             use_reranker=False,
             rerank_model=None,
             hybrid_alpha=0.7,
-            hybrid_search_mode="rerank")
+            hybrid_search_mode="rerank",
+        )
 
         assert response.reranking_used is False
         assert response.reranker_model is None
@@ -405,7 +412,8 @@ class TestSearchReranking:
             k=10,
             use_reranker=True,  # Enable reranking
             rerank_model="Qwen/Qwen3-Reranker-0.6B",
-            metadata_filter=None)
+            metadata_filter=None,
+        )
 
         # Mock the service response with reranking
         mock_search_service.multi_collection_search.return_value = {
@@ -463,7 +471,8 @@ class TestSearchReranking:
             use_reranker=True,
             rerank_model="Qwen/Qwen3-Reranker-0.6B",
             hybrid_alpha=0.7,
-            hybrid_search_mode="rerank")
+            hybrid_search_mode="rerank",
+        )
 
         assert response.reranking_used is True
         assert response.reranker_model == "Qwen/Qwen3-Reranker-0.6B"
@@ -494,7 +503,8 @@ class TestSearchReranking:
             k=5,
             use_reranker=True,
             rerank_model=None,  # Use default model
-            metadata_filter=None)
+            metadata_filter=None,
+        )
 
         # Mock the service response with different original and reranked scores
         mock_search_service.multi_collection_search.return_value = {
@@ -569,7 +579,8 @@ class TestSearchReranking:
             query="test query",
             k=5,
             use_reranker=True,
-            metadata_filter=None)
+            metadata_filter=None,
+        )
 
         # Mock the service response with reranking
         mock_search_service.single_collection_search.return_value = {
@@ -600,7 +611,8 @@ class TestSearchReranking:
             score_threshold=search_request.score_threshold,
             metadata_filter=search_request.metadata_filter,
             use_reranker=True,
-            include_content=search_request.include_content)
+            include_content=search_request.include_content,
+        )
 
         assert response.reranking_used is True
         assert len(response.results) == 1
@@ -624,10 +636,8 @@ class TestSingleCollectionSearch:
         mock_search_service = AsyncMock()
 
         search_request = SingleCollectionSearchRequest(
-            collection_id="123e4567-e89b-12d3-a456-426614174000",
-            query="test",
-            k=5,
-            metadata_filter=None)
+            collection_id="123e4567-e89b-12d3-a456-426614174000", query="test", k=5, metadata_filter=None
+        )
 
         # Mock the service response
         mock_search_service.single_collection_search.return_value = {
@@ -657,7 +667,8 @@ class TestSingleCollectionSearch:
             score_threshold=search_request.score_threshold,
             metadata_filter=search_request.metadata_filter,
             use_reranker=search_request.use_reranker,
-            include_content=search_request.include_content)
+            include_content=search_request.include_content,
+        )
 
         assert isinstance(response, CollectionSearchResponse)
         assert response.query == "test"
@@ -680,9 +691,8 @@ class TestSingleCollectionSearch:
         mock_search_service = AsyncMock()
 
         search_request = SingleCollectionSearchRequest(
-            collection_id="123e4567-e89b-12d3-a456-426614174000",
-            query="test",
-            k=5)
+            collection_id="123e4567-e89b-12d3-a456-426614174000", query="test", k=5
+        )
 
         # Mock service raising EntityNotFoundError
         mock_search_service.single_collection_search.side_effect = EntityNotFoundError(
@@ -691,7 +701,8 @@ class TestSingleCollectionSearch:
 
         with (
             patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service),
-            pytest.raises(HTTPException) as exc_info):
+            pytest.raises(HTTPException) as exc_info,
+        ):
             await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert exc_info.value.status_code == 404
@@ -711,9 +722,8 @@ class TestSingleCollectionSearch:
         mock_search_service = AsyncMock()
 
         search_request = SingleCollectionSearchRequest(
-            collection_id="123e4567-e89b-12d3-a456-426614174000",
-            query="test",
-            k=5)
+            collection_id="123e4567-e89b-12d3-a456-426614174000", query="test", k=5
+        )
 
         # Mock service raising AccessDeniedError
         mock_search_service.single_collection_search.side_effect = AccessDeniedError(
@@ -722,7 +732,8 @@ class TestSingleCollectionSearch:
 
         with (
             patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service),
-            pytest.raises(HTTPException) as exc_info):
+            pytest.raises(HTTPException) as exc_info,
+        ):
             await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert exc_info.value.status_code == 403
@@ -741,16 +752,16 @@ class TestSingleCollectionSearch:
         mock_search_service = AsyncMock()
 
         search_request = SingleCollectionSearchRequest(
-            collection_id="123e4567-e89b-12d3-a456-426614174000",
-            query="test",
-            k=5)
+            collection_id="123e4567-e89b-12d3-a456-426614174000", query="test", k=5
+        )
 
         # Mock service raising generic exception
         mock_search_service.single_collection_search.side_effect = Exception("Database connection failed")
 
         with (
             patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service),
-            pytest.raises(HTTPException) as exc_info):
+            pytest.raises(HTTPException) as exc_info,
+        ):
             await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert exc_info.value.status_code == 500
@@ -776,9 +787,8 @@ class TestMultiCollectionSearchEdgeCases:
 
         # Query with special characters
         search_request = CollectionSearchRequest(
-            collection_uuids=[mock_collections[0].id],
-            query="test @#$%^&*() <script>alert('xss')</script>",
-            k=10)
+            collection_uuids=[mock_collections[0].id], query="test @#$%^&*() <script>alert('xss')</script>", k=10
+        )
 
         mock_search_service.multi_collection_search.return_value = {
             "results": [],
@@ -818,10 +828,8 @@ class TestMultiCollectionSearchEdgeCases:
 
         metadata_filter = {"file_type": "pdf", "language": "en"}
         search_request = CollectionSearchRequest(
-            collection_uuids=[mock_collections[0].id],
-            query="test",
-            k=10,
-            metadata_filter=metadata_filter)
+            collection_uuids=[mock_collections[0].id], query="test", k=10, metadata_filter=metadata_filter
+        )
 
         mock_search_service.multi_collection_search.return_value = {
             "results": [
@@ -877,10 +885,8 @@ class TestMultiCollectionSearchEdgeCases:
 
         # Test with 'question' search type
         search_request = CollectionSearchRequest(
-            collection_uuids=[mock_collections[0].id],
-            query="What is authentication?",
-            k=5,
-            search_type="question")
+            collection_uuids=[mock_collections[0].id], query="What is authentication?", k=5, search_type="question"
+        )
 
         mock_search_service.multi_collection_search.return_value = {
             "results": [
@@ -932,10 +938,8 @@ class TestMultiCollectionSearchEdgeCases:
         mock_search_service = AsyncMock()
 
         search_request = CollectionSearchRequest(
-            collection_uuids=[mock_collections[0].id],
-            query="test",
-            k=10,
-            score_threshold=0.8)
+            collection_uuids=[mock_collections[0].id], query="test", k=10, score_threshold=0.8
+        )
 
         # Service returns only high-scoring results
         mock_search_service.multi_collection_search.return_value = {
@@ -989,10 +993,7 @@ class TestMultiCollectionSearchEdgeCases:
         mock_request = Request(scope)
         mock_search_service = AsyncMock()
 
-        search_request = CollectionSearchRequest(
-            collection_uuids=[mock_collections[0].id],
-            query="test",
-            k=10)
+        search_request = CollectionSearchRequest(collection_uuids=[mock_collections[0].id], query="test", k=10)
 
         # Mock service raising AccessDeniedError
         mock_search_service.multi_collection_search.side_effect = AccessDeniedError(
@@ -1001,7 +1002,8 @@ class TestMultiCollectionSearchEdgeCases:
 
         with (
             patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service),
-            pytest.raises(HTTPException) as exc_info):
+            pytest.raises(HTTPException) as exc_info,
+        ):
             await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert exc_info.value.status_code == 403
@@ -1021,17 +1023,15 @@ class TestMultiCollectionSearchEdgeCases:
         mock_request = Request(scope)
         mock_search_service = AsyncMock()
 
-        search_request = CollectionSearchRequest(
-            collection_uuids=[mock_collections[0].id],
-            query="test",
-            k=10)
+        search_request = CollectionSearchRequest(collection_uuids=[mock_collections[0].id], query="test", k=10)
 
         # Mock service raising generic exception
         mock_search_service.multi_collection_search.side_effect = Exception("Unexpected error")
 
         with (
             patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service),
-            pytest.raises(HTTPException) as exc_info):
+            pytest.raises(HTTPException) as exc_info,
+        ):
             await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert exc_info.value.status_code == 500
@@ -1062,7 +1062,8 @@ class TestHybridSearchParameters:
             search_type="hybrid",
             hybrid_alpha=0.3,  # More weight on keyword search
             hybrid_mode="filter",
-            keyword_mode="all")
+            keyword_mode="all",
+        )
 
         mock_search_service.multi_collection_search.return_value = {
             "results": [
@@ -1116,10 +1117,8 @@ class TestHybridSearchParameters:
         mock_search_service = AsyncMock()
 
         search_request = CollectionSearchRequest(
-            collection_uuids=[mock_collections[0].id],
-            query="def authenticate(user):",
-            k=5,
-            search_type="code")
+            collection_uuids=[mock_collections[0].id], query="def authenticate(user):", k=5, search_type="code"
+        )
 
         mock_search_service.multi_collection_search.return_value = {
             "results": [
@@ -1162,20 +1161,14 @@ class TestSearchValidation:
     def test_invalid_uuid_format_validation(self) -> None:
         """Test that invalid UUID format is rejected."""
         with pytest.raises(ValueError, match="Invalid UUID format"):
-            CollectionSearchRequest(
-                collection_uuids=["not-a-valid-uuid"],
-                query="test",
-                k=10)
+            CollectionSearchRequest(collection_uuids=["not-a-valid-uuid"], query="test", k=10)
 
     def test_empty_collection_list_validation(self) -> None:
         """Test that empty collection list is rejected."""
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="List should have at least 1 item"):
-            CollectionSearchRequest(
-                collection_uuids=[],
-                query="test",
-                k=10)
+            CollectionSearchRequest(collection_uuids=[], query="test", k=10)
 
     def test_too_many_collections_validation(self) -> None:
         """Test that too many collections are rejected."""
@@ -1187,10 +1180,7 @@ class TestSearchValidation:
         uuids = [str(uuid.uuid4()) for _ in range(11)]
 
         with pytest.raises(ValidationError, match="List should have at most 10 items"):
-            CollectionSearchRequest(
-                collection_uuids=uuids,
-                query="test",
-                k=10)
+            CollectionSearchRequest(collection_uuids=uuids, query="test", k=10)
 
     def test_query_length_validation(self) -> None:
         """Test query length limits."""
@@ -1202,17 +1192,11 @@ class TestSearchValidation:
 
         # Test empty query
         with pytest.raises(ValidationError, match="String should have at least 1 character"):
-            CollectionSearchRequest(
-                collection_uuids=[valid_uuid],
-                query="",
-                k=10)
+            CollectionSearchRequest(collection_uuids=[valid_uuid], query="", k=10)
 
         # Test query that's too long
         with pytest.raises(ValidationError, match="String should have at most 1000 characters"):
-            CollectionSearchRequest(
-                collection_uuids=[valid_uuid],
-                query="x" * 1001,  # Exceeds max length of 1000
-                k=10)
+            CollectionSearchRequest(collection_uuids=[valid_uuid], query="x" * 1001, k=10)  # Exceeds max length of 1000
 
     def test_k_parameter_validation(self) -> None:
         """Test k parameter limits."""
@@ -1224,17 +1208,11 @@ class TestSearchValidation:
 
         # Test k = 0
         with pytest.raises(ValidationError, match="Input should be greater than or equal to 1"):
-            CollectionSearchRequest(
-                collection_uuids=[valid_uuid],
-                query="test",
-                k=0)
+            CollectionSearchRequest(collection_uuids=[valid_uuid], query="test", k=0)
 
         # Test k > 100
         with pytest.raises(ValidationError, match="Input should be less than or equal to 100"):
-            CollectionSearchRequest(
-                collection_uuids=[valid_uuid],
-                query="test",
-                k=101)
+            CollectionSearchRequest(collection_uuids=[valid_uuid], query="test", k=101)
 
     def test_score_threshold_validation(self) -> None:
         """Test score threshold limits."""
@@ -1246,19 +1224,11 @@ class TestSearchValidation:
 
         # Test negative score threshold
         with pytest.raises(ValidationError, match="Input should be greater than or equal to 0"):
-            CollectionSearchRequest(
-                collection_uuids=[valid_uuid],
-                query="test",
-                k=10,
-                score_threshold=-0.1)
+            CollectionSearchRequest(collection_uuids=[valid_uuid], query="test", k=10, score_threshold=-0.1)
 
         # Test score threshold > 1.0
         with pytest.raises(ValidationError, match="Input should be less than or equal to 1"):
-            CollectionSearchRequest(
-                collection_uuids=[valid_uuid],
-                query="test",
-                k=10,
-                score_threshold=1.1)
+            CollectionSearchRequest(collection_uuids=[valid_uuid], query="test", k=10, score_threshold=1.1)
 
     def test_hybrid_alpha_validation(self) -> None:
         """Test hybrid alpha parameter limits."""
@@ -1270,19 +1240,11 @@ class TestSearchValidation:
 
         # Test negative alpha
         with pytest.raises(ValidationError, match="Input should be greater than or equal to 0"):
-            CollectionSearchRequest(
-                collection_uuids=[valid_uuid],
-                query="test",
-                k=10,
-                hybrid_alpha=-0.1)
+            CollectionSearchRequest(collection_uuids=[valid_uuid], query="test", k=10, hybrid_alpha=-0.1)
 
         # Test alpha > 1.0
         with pytest.raises(ValidationError, match="Input should be less than or equal to 1"):
-            CollectionSearchRequest(
-                collection_uuids=[valid_uuid],
-                query="test",
-                k=10,
-                hybrid_alpha=1.1)
+            CollectionSearchRequest(collection_uuids=[valid_uuid], query="test", k=10, hybrid_alpha=1.1)
 
 
 class TestSearchResultFormatting:
@@ -1303,9 +1265,8 @@ class TestSearchResultFormatting:
         mock_search_service = AsyncMock()
 
         search_request = CollectionSearchRequest(
-            collection_uuids=[mock_collections[0].id],
-            query="non-existent query xyz123",
-            k=10)
+            collection_uuids=[mock_collections[0].id], query="non-existent query xyz123", k=10
+        )
 
         mock_search_service.multi_collection_search.return_value = {
             "results": [],
@@ -1344,10 +1305,7 @@ class TestSearchResultFormatting:
         mock_request = Request(scope)
         mock_search_service = AsyncMock()
 
-        search_request = CollectionSearchRequest(
-            collection_uuids=[mock_collections[0].id],
-            query="test",
-            k=5)
+        search_request = CollectionSearchRequest(collection_uuids=[mock_collections[0].id], query="test", k=5)
 
         mock_search_service.multi_collection_search.return_value = {
             "results": [
@@ -1427,10 +1385,7 @@ class TestSearchResultFormatting:
         mock_request = Request(scope)
         mock_search_service = AsyncMock()
 
-        search_request = CollectionSearchRequest(
-            collection_uuids=[mock_collections[0].id],
-            query="test",
-            k=5)
+        search_request = CollectionSearchRequest(collection_uuids=[mock_collections[0].id], query="test", k=5)
 
         # Result with minimal fields
         mock_search_service.multi_collection_search.return_value = {
@@ -1532,10 +1487,7 @@ class TestSearchResultFormatting:
         mock_request = Request(scope)
         mock_search_service = AsyncMock()
 
-        search_request = CollectionSearchRequest(
-            collection_uuids=[mock_collections[0].id],
-            query="test",
-            k=5)
+        search_request = CollectionSearchRequest(collection_uuids=[mock_collections[0].id], query="test", k=5)
 
         mock_search_service.multi_collection_search.return_value = {
             "results": [],

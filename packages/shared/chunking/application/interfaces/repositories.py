@@ -147,8 +147,7 @@ class ChunkingOperationRepository(ABC):
         """
 
     @abstractmethod
-    async def update_status(self, operation_id: str, status: str,
-                          error_message: str | None = None) -> None:
+    async def update_status(self, operation_id: str, status: str, error_message: str | None = None) -> None:
         """
         Update operation status.
 
@@ -159,8 +158,7 @@ class ChunkingOperationRepository(ABC):
         """
 
     @abstractmethod
-    async def update_progress(self, operation_id: str, chunks_processed: int,
-                            total_chunks: int | None = None) -> None:
+    async def update_progress(self, operation_id: str, chunks_processed: int, total_chunks: int | None = None) -> None:
         """
         Update operation progress.
 
@@ -192,8 +190,7 @@ class ChunkingOperationRepository(ABC):
         """
 
     @abstractmethod
-    async def mark_completed(self, operation_id: str,
-                           completed_at: datetime) -> None:
+    async def mark_completed(self, operation_id: str, completed_at: datetime) -> None:
         """
         Mark an operation as completed.
 
@@ -221,8 +218,7 @@ class CheckpointRepository(ABC):
     """
 
     @abstractmethod
-    async def save_checkpoint(self, operation_id: str, position: int,
-                             state: dict[str, Any]) -> None:
+    async def save_checkpoint(self, operation_id: str, position: int, state: dict[str, Any]) -> None:
         """
         Save a checkpoint for an operation.
 
@@ -313,8 +309,7 @@ class DocumentRepository(ABC):
         """
 
     @abstractmethod
-    async def update_chunking_status(self, document_id: str,
-                                    status: str) -> None:
+    async def update_chunking_status(self, document_id: str, status: str) -> None:
         """
         Update document chunking status.
 
@@ -324,8 +319,7 @@ class DocumentRepository(ABC):
         """
 
     @abstractmethod
-    async def get_or_create(self, file_path: str,
-                          metadata: dict[str, Any]) -> Any:
+    async def get_or_create(self, file_path: str, metadata: dict[str, Any]) -> Any:
         """
         Get existing document or create new one.
 

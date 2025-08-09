@@ -51,7 +51,8 @@ class TestChunkingStrategyMapping:
             db_session=mock_db,
             collection_repo=mock_collection_repo,
             document_repo=mock_document_repo,
-            redis_client=mock_redis)
+            redis_client=mock_redis,
+        )
 
         # Test each mapping
         assert service._map_strategy_to_factory_name("fixed_size") == "character"
@@ -76,7 +77,8 @@ class TestChunkingStrategyMapping:
             db_session=mock_db,
             collection_repo=mock_collection_repo,
             document_repo=mock_document_repo,
-            redis_client=mock_redis)
+            redis_client=mock_redis,
+        )
 
         # Test that _map_strategy_to_factory_name uses STRATEGY_MAPPING
         assert service._map_strategy_to_factory_name("fixed_size") == "character"
@@ -96,9 +98,7 @@ class TestChunkingStrategyMapping:
 
         # Check that all mapped strategies are known valid strategies
         for strategy in mapped_strategies:
-            assert (
-                strategy in known_strategies
-            ), f"Mapped strategy '{strategy}' is not a known valid strategy"
+            assert strategy in known_strategies, f"Mapped strategy '{strategy}' is not a known valid strategy"
 
     @pytest.mark.parametrize(
         ("api_strategy", "factory_strategy"),
@@ -109,7 +109,8 @@ class TestChunkingStrategyMapping:
             (ChunkingStrategy.RECURSIVE, "recursive"),
             (ChunkingStrategy.DOCUMENT_STRUCTURE, "markdown"),
             (ChunkingStrategy.HYBRID, "hybrid"),
-        ])
+        ],
+    )
     def test_strategy_enum_to_factory_mapping(self, api_strategy, factory_strategy):
         """Test mapping from ChunkingStrategy enum to factory strategy name."""
         # Mock dependencies
@@ -122,7 +123,8 @@ class TestChunkingStrategyMapping:
             db_session=mock_db,
             collection_repo=mock_collection_repo,
             document_repo=mock_document_repo,
-            redis_client=mock_redis)
+            redis_client=mock_redis,
+        )
 
         # Test with enum value
         assert service._map_strategy_to_factory_name(api_strategy.value) == factory_strategy

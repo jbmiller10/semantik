@@ -10,7 +10,8 @@ from packages.shared.chunking.domain.exceptions import (
     InvalidStateError,
     InvalidChunkError,
     ChunkSizeViolationError,
-    OverlapConfigurationError)
+    OverlapConfigurationError,
+)
 
 
 class TestDomainExceptions:
@@ -174,22 +175,14 @@ class TestBusinessRuleEnforcement:
         from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
         # Arrange
-        config = ChunkConfig(
-            strategy_name="character",
-            min_tokens=10,
-            max_tokens=100,
-            overlap_tokens=5)
-        
+        config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
+
         # Create document exceeding size limit
         large_document = "x" * (ChunkingOperation.MAX_DOCUMENT_SIZE + 1)
 
         # Act & Assert
         with pytest.raises(DocumentTooLargeError) as exc_info:
-            ChunkingOperation(
-                operation_id="test",
-                document_id="doc1",
-                document_content=large_document,
-                config=config)
+            ChunkingOperation(operation_id="test", document_id="doc1", document_content=large_document, config=config)
 
         assert str(ChunkingOperation.MAX_DOCUMENT_SIZE) in str(exc_info.value)
 
@@ -202,18 +195,12 @@ class TestBusinessRuleEnforcement:
         from unittest.mock import MagicMock
 
         # Arrange
-        config = ChunkConfig(
-            strategy_name="character",
-            min_tokens=10,
-            max_tokens=100,
-            overlap_tokens=5)
-        
+        config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
+
         operation = ChunkingOperation(
-            operation_id="test",
-            document_id="doc1",
-            document_content="Test document",
-            config=config)
-        
+            operation_id="test", document_id="doc1", document_content="Test document", config=config
+        )
+
         # Create mock strategy that produces too many chunks
         mock_strategy = MagicMock()
         excessive_chunks = [
@@ -226,7 +213,10 @@ class TestBusinessRuleEnforcement:
                     start_offset=i,
                     end_offset=i + 1,
                     token_count=1,
-                    strategy_name="character"), min_tokens=1)
+                    strategy_name="character",
+                ),
+                min_tokens=1,
+            )
             for i in range(ChunkingOperation.MAX_CHUNKS_PER_OPERATION + 1)
         ]
         mock_strategy.chunk.return_value = excessive_chunks
@@ -249,23 +239,15 @@ class TestBusinessRuleEnforcement:
         from unittest.mock import patch
 
         # Arrange
-        config = ChunkConfig(
-            strategy_name="character",
-            min_tokens=10,
-            max_tokens=100,
-            overlap_tokens=5)
-        
+        config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
+
         operation = ChunkingOperation(
-            operation_id="test",
-            document_id="doc1",
-            document_content="Test document",
-            config=config)
+            operation_id="test", document_id="doc1", document_content="Test document", config=config
+        )
 
         # Mock time to simulate timeout
         start_time = datetime.utcnow()
-        timeout_time = start_time + timedelta(
-            seconds=ChunkingOperation.MAX_OPERATION_DURATION_SECONDS + 1
-        )
+        timeout_time = start_time + timedelta(seconds=ChunkingOperation.MAX_OPERATION_DURATION_SECONDS + 1)
 
         # Act
         operation.start()
@@ -301,21 +283,15 @@ class TestBusinessRuleEnforcement:
         from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
         # Arrange
-        config = ChunkConfig(
-            strategy_name="character",
-            min_tokens=10,
-            max_tokens=100,
-            overlap_tokens=5)
-        
+        config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
+
         operation = ChunkingOperation(
-            operation_id="test",
-            document_id="doc1",
-            document_content="Test document",
-            config=config)
+            operation_id="test", document_id="doc1", document_content="Test document", config=config
+        )
 
         # Test invalid transition from PENDING to COMPLETED
         operation._status.COMPLETED = operation._status.COMPLETED  # Set to completed
-        
+
         # Trying to complete without processing should fail
         with pytest.raises(InvalidStateError):
             operation._complete()
@@ -333,30 +309,28 @@ class TestBusinessRuleEnforcement:
         from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 
         # Arrange
-        config = ChunkConfig(
-            strategy_name="character",
-            min_tokens=10,
-            max_tokens=100,
-            overlap_tokens=5)
-        
+        config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
+
         document_content = "This is a test document with sufficient content for testing coverage."
         operation = ChunkingOperation(
-            operation_id="test",
-            document_id="doc1",
-            document_content=document_content,
-            config=config)
+            operation_id="test", document_id="doc1", document_content=document_content, config=config
+        )
 
         # Add chunk covering only small portion (insufficient coverage)
         operation.start()
         small_chunk = Chunk(
-            content="This", metadata=ChunkMetadata(
+            content="This",
+            metadata=ChunkMetadata(
                 chunk_id="chunk-small",
                 document_id="doc1",  # Match the operation's document_id
                 chunk_index=0,
                 start_offset=0,
                 end_offset=4,
                 token_count=1,
-                strategy_name="character"), min_tokens=1)
+                strategy_name="character",
+            ),
+            min_tokens=1,
+        )
         operation.add_chunk(small_chunk)
 
         # Act

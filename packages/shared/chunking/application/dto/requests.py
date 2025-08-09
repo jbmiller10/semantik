@@ -34,9 +34,18 @@ def validate_file_path_security(file_path: str) -> None:
     if path.is_absolute():
         # Define sensitive directories that should not be accessed
         sensitive_prefixes = [
-            "/etc", "/sys", "/proc", "/boot", "/root",
-            "/usr/bin", "/usr/sbin", "/bin", "/sbin",
-            "C:\\Windows", "C:\\Program Files", "C:\\ProgramData"
+            "/etc",
+            "/sys",
+            "/proc",
+            "/boot",
+            "/root",
+            "/usr/bin",
+            "/usr/sbin",
+            "/bin",
+            "/sbin",
+            "C:\\Windows",
+            "C:\\Program Files",
+            "C:\\ProgramData",
         ]
 
         path_str = str(path).replace("\\", "/")
@@ -57,6 +66,7 @@ def validate_file_path_security(file_path: str) -> None:
 
 class ChunkingStrategy(str, Enum):
     """Available chunking strategies."""
+
     CHARACTER = "character"
     RECURSIVE = "recursive"
     SEMANTIC = "semantic"
@@ -190,7 +200,7 @@ class GetOperationStatusRequest:
         """Validate request parameters."""
         if not self.operation_id and not self.document_id:
             raise ValueError("Either operation_id or document_id is required")
-        
+
         # If operation_id is provided as empty string, treat as None
         if self.operation_id == "":
             self.operation_id = None

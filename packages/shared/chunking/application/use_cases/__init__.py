@@ -16,5 +16,5 @@ __all__ = [
     "ProcessDocumentUseCase",
     "CompareStrategiesUseCase",
     "GetOperationStatusUseCase",
-    "CancelOperationUseCase"
+    "CancelOperationUseCase",
 ]

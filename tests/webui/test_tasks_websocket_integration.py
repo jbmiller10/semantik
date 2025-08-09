@@ -20,7 +20,8 @@ from packages.webui.tasks import (
     CeleryTaskWithOperationUpdates,
     _process_append_operation,
     _process_index_operation,
-    _process_reindex_operation)
+    _process_reindex_operation,
+)
 
 
 class TestWebSocketMessageFlow:
@@ -55,7 +56,8 @@ class TestWebSocketMessageFlow:
         with (
             patch("redis.asyncio.from_url", new=mock_from_url),
             patch("packages.webui.tasks.qdrant_manager") as mock_qdrant,
-            patch("shared.embedding.models.get_model_config") as mock_get_model_config):
+            patch("shared.embedding.models.get_model_config") as mock_get_model_config,
+        ):
             # Setup Qdrant mock
             client = Mock()
             client.create_collection = Mock()
@@ -117,7 +119,8 @@ class TestWebSocketMessageFlow:
 
         with (
             patch("redis.asyncio.from_url", new=mock_from_url),
-            patch("webui.services.document_scanning_service.DocumentScanningService") as mock_scanner_class):
+            patch("webui.services.document_scanning_service.DocumentScanningService") as mock_scanner_class,
+        ):
             # Setup document scanner
             scanner = AsyncMock()
             scanner.scan_directory_and_register_documents.return_value = {
@@ -180,7 +183,8 @@ class TestWebSocketMessageFlow:
         with (
             patch("redis.asyncio.from_url", new=mock_from_url),
             patch("shared.managers.qdrant_manager.QdrantManager") as mock_qdrant_class,
-            patch("packages.webui.tasks.qdrant_manager") as mock_qdrant):
+            patch("packages.webui.tasks.qdrant_manager") as mock_qdrant,
+        ):
             # Mock reindex_handler as an async function
             async def mock_reindex_handler(*_args, **_kwargs):
                 return {"collection_name": "staging_123", "vector_dim": 1536}
@@ -192,7 +196,8 @@ class TestWebSocketMessageFlow:
             with (
                 patch("packages.webui.tasks.reindex_handler", new=mock_reindex_handler),
                 patch("packages.webui.tasks._validate_reindex", new=mock_validate_reindex),
-                patch("packages.webui.tasks.httpx.AsyncClient") as mock_httpx):
+                patch("packages.webui.tasks.httpx.AsyncClient") as mock_httpx,
+            ):
                 # cleanup_old_collections is a Celery task, not async
                 mock_cleanup = Mock()
                 mock_cleanup.apply_async = Mock(return_value=Mock(id="task-123"))
@@ -264,7 +269,8 @@ class TestWebSocketMessageFlow:
         with (
             patch("redis.asyncio.from_url", new=mock_from_url),
             patch("packages.webui.tasks.qdrant_manager") as mock_qdrant,
-            patch("shared.embedding.models.get_model_config") as mock_get_model_config):
+            patch("shared.embedding.models.get_model_config") as mock_get_model_config,
+        ):
             # Setup Qdrant to fail
             client = Mock()
             client.create_collection.side_effect = Exception("Qdrant connection failed")
@@ -366,7 +372,8 @@ class TestWebSocketMessageFormats:
                     # Send various progress updates
                     await updater.send_update(
                         "document_processed",
-                        {"processed": 5, "failed": 1, "total": 10, "current_document": "/path/to/doc.pdf"})
+                        {"processed": 5, "failed": 1, "total": 10, "current_document": "/path/to/doc.pdf"},
+                    )
 
                     # Verify message structure
                     msg = captured_messages[0]
@@ -416,7 +423,8 @@ class TestWebSocketMessageFormats:
                                 "vectors_created": 1500,
                                 "duration": 45.2,
                             },
-                        })
+                        },
+                    )
 
                     # Verify completion message
                     msg = captured_messages[0]
@@ -455,7 +463,8 @@ class TestWebSocketMessageFormats:
                         {
                             "error": "Failed to process /home/username/private/data.txt",
                             "details": {"user_email": "user@example.com", "api_key": "secret-key-123"},
-                        })
+                        },
+                    )
 
                     # Message should be sent as-is (sanitization happens at higher level)
                     msg = captured_messages[0]
@@ -614,19 +623,22 @@ class TestWebSocketIntegrationScenarios:
                 # Scanning complete
                 await updater.send_update(
                     "scanning_completed",
-                    {"total_files_found": 50, "new_documents_registered": 45, "duplicate_documents_skipped": 5})
+                    {"total_files_found": 50, "new_documents_registered": 45, "duplicate_documents_skipped": 5},
+                )
 
                 # Processing documents
                 for i in range(5):  # Simulate 5 progress updates
                     await updater.send_update(
                         "document_processed",
-                        {"processed": (i + 1) * 10, "failed": i, "total": 50, "current_document": f"doc_{i}.pdf"})
+                        {"processed": (i + 1) * 10, "failed": i, "total": 50, "current_document": f"doc_{i}.pdf"},
+                    )
                     await asyncio.sleep(0.01)  # Small delay
 
                 # Operation completed
                 await updater.send_update(
                     "operation_completed",
-                    {"status": "completed", "result": {"success": True, "documents_added": 45, "vectors_created": 450}})
+                    {"status": "completed", "result": {"success": True, "documents_added": 45, "vectors_created": 450}},
+                )
 
             # Verify message flow
             assert len(all_messages) == 9  # 1 start + 1 scan + 1 scan complete + 5 progress + 1 complete
@@ -677,7 +689,8 @@ class TestWebSocketIntegrationScenarios:
                         "error": "Failed to connect to vector database",
                         "error_type": "ConnectionError",
                         "recoverable": False,
-                    })
+                    },
+                )
 
             # Verify error flow
             assert len(all_messages) == 3

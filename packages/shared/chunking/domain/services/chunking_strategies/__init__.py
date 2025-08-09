@@ -64,7 +64,6 @@ def get_strategy(name: str) -> ChunkingStrategy:
     strategy_class = STRATEGY_REGISTRY.get(name)
     if not strategy_class:
         raise ValueError(
-            f"Unknown chunking strategy: {name}. "
-            f"Available strategies: {list(STRATEGY_REGISTRY.keys())}"
+            f"Unknown chunking strategy: {name}. " f"Available strategies: {list(STRATEGY_REGISTRY.keys())}"
         )
     return strategy_class()

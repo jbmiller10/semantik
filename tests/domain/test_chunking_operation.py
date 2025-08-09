@@ -8,9 +8,7 @@ import pytest
 
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
-from packages.shared.chunking.domain.exceptions import (
-    DocumentTooLargeError,
-    InvalidStateError)
+from packages.shared.chunking.domain.exceptions import DocumentTooLargeError, InvalidStateError
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 from packages.shared.chunking.domain.value_objects.operation_status import OperationStatus
@@ -22,11 +20,7 @@ class TestChunkingOperation:
     @pytest.fixture
     def valid_config(self):
         """Create a valid chunk configuration."""
-        return ChunkConfig(
-            strategy_name="character",
-            min_tokens=10,
-            max_tokens=100,
-            overlap_tokens=5)
+        return ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
 
     @pytest.fixture
     def sample_document(self):
@@ -37,19 +31,15 @@ class TestChunkingOperation:
     def chunking_operation(self, valid_config, sample_document):
         """Create a chunking operation instance."""
         return ChunkingOperation(
-            operation_id="test-op-123",
-            document_id="doc-456",
-            document_content=sample_document,
-            config=valid_config)
+            operation_id="test-op-123", document_id="doc-456", document_content=sample_document, config=valid_config
+        )
 
     def test_initialization_success(self, valid_config, sample_document):
         """Test successful initialization of ChunkingOperation."""
         # Arrange & Act
         operation = ChunkingOperation(
-            operation_id="test-op-123",
-            document_id="doc-456",
-            document_content=sample_document,
-            config=valid_config)
+            operation_id="test-op-123", document_id="doc-456", document_content=sample_document, config=valid_config
+        )
 
         # Assert
         assert operation.id == "test-op-123"
@@ -68,11 +58,9 @@ class TestChunkingOperation:
         # Act & Assert
         with pytest.raises(DocumentTooLargeError) as exc_info:
             ChunkingOperation(
-                operation_id="test-op",
-                document_id="doc-1",
-                document_content=large_content,
-                config=valid_config)
-        
+                operation_id="test-op", document_id="doc-1", document_content=large_content, config=valid_config
+            )
+
         assert str(exc_info.value).startswith("Document size")
         assert str(ChunkingOperation.MAX_DOCUMENT_SIZE) in str(exc_info.value)
 
@@ -97,7 +85,7 @@ class TestChunkingOperation:
         # Act & Assert
         with pytest.raises(InvalidStateError) as exc_info:
             chunking_operation.start()
-        
+
         assert "Cannot start operation in COMPLETED state" in str(exc_info.value)
 
     def test_execute_with_strategy_success(self, chunking_operation):
@@ -106,7 +94,8 @@ class TestChunkingOperation:
         mock_strategy = MagicMock()
         mock_chunks = [
             Chunk(
-                content="Chunk 1", metadata=ChunkMetadata(
+                content="Chunk 1",
+                metadata=ChunkMetadata(
                     chunk_id="chunk-1",
                     document_id="doc-456",
                     chunk_index=0,
@@ -114,9 +103,13 @@ class TestChunkingOperation:
                     end_offset=7,
                     token_count=2,
                     strategy_name="character",
-                    semantic_score=0.8), min_tokens=1),
+                    semantic_score=0.8,
+                ),
+                min_tokens=1,
+            ),
             Chunk(
-                content="Chunk 2", metadata=ChunkMetadata(
+                content="Chunk 2",
+                metadata=ChunkMetadata(
                     chunk_id="chunk-2",
                     document_id="doc-456",
                     chunk_index=1,
@@ -124,10 +117,13 @@ class TestChunkingOperation:
                     end_offset=15,
                     token_count=2,
                     strategy_name="character",
-                    semantic_score=0.7), min_tokens=1),
+                    semantic_score=0.7,
+                ),
+                min_tokens=1,
+            ),
         ]
         mock_strategy.chunk.return_value = mock_chunks
-        
+
         chunking_operation.start()
 
         # Act
@@ -139,7 +135,7 @@ class TestChunkingOperation:
         assert chunking_operation.chunk_collection.chunk_count == 2
         assert chunking_operation._completed_at is not None
         assert "duration_seconds" in chunking_operation.metrics
-        
+
         # Verify strategy was called
         mock_strategy.chunk.assert_called_once()
 
@@ -151,7 +147,7 @@ class TestChunkingOperation:
         # Act & Assert
         with pytest.raises(InvalidStateError) as exc_info:
             chunking_operation.execute(mock_strategy)
-        
+
         assert "Cannot execute operation in PENDING state" in str(exc_info.value)
 
     def test_execute_with_too_many_chunks_fails(self, chunking_operation):
@@ -169,17 +165,20 @@ class TestChunkingOperation:
                     start_offset=i * 2,
                     end_offset=(i + 1) * 2,
                     token_count=2,
-                    strategy_name="character"), min_tokens=1)
+                    strategy_name="character",
+                ),
+                min_tokens=1,
+            )
             for i in range(ChunkingOperation.MAX_CHUNKS_PER_OPERATION + 1)
         ]
         mock_strategy.chunk.return_value = excessive_chunks
-        
+
         chunking_operation.start()
 
         # Act & Assert
         with pytest.raises(InvalidStateError) as exc_info:
             chunking_operation.execute(mock_strategy)
-        
+
         assert "exceeding limit" in str(exc_info.value)
         assert chunking_operation.status == OperationStatus.FAILED
 
@@ -188,13 +187,13 @@ class TestChunkingOperation:
         # Arrange
         mock_strategy = MagicMock()
         mock_strategy.chunk.side_effect = ValueError("Strategy error")
-        
+
         chunking_operation.start()
 
         # Act & Assert
         with pytest.raises(ValueError) as exc_info:
             chunking_operation.execute(mock_strategy)
-        
+
         assert "Strategy error" in str(exc_info.value)
         assert chunking_operation.status == OperationStatus.FAILED
         assert chunking_operation.error_message == "Strategy error"
@@ -204,14 +203,18 @@ class TestChunkingOperation:
         """Test adding chunks to an operation."""
         # Arrange
         chunk = Chunk(
-            content="Test chunk", metadata=ChunkMetadata(
+            content="Test chunk",
+            metadata=ChunkMetadata(
                 chunk_id="chunk-test",
                 document_id="doc-456",
                 chunk_index=0,
                 start_offset=0,
                 end_offset=5,
                 token_count=3,
-                strategy_name="character"), min_tokens=1)
+                strategy_name="character",
+            ),
+            min_tokens=1,
+        )
         chunking_operation.start()
 
         # Act
@@ -225,19 +228,23 @@ class TestChunkingOperation:
         """Test that adding chunks fails in invalid state."""
         # Arrange
         chunk = Chunk(
-            content="Test chunk", metadata=ChunkMetadata(
+            content="Test chunk",
+            metadata=ChunkMetadata(
                 chunk_id="chunk-test",
                 document_id="doc-456",
                 chunk_index=0,
                 start_offset=0,
                 end_offset=5,
                 token_count=3,
-                strategy_name="character"), min_tokens=1)
+                strategy_name="character",
+            ),
+            min_tokens=1,
+        )
 
         # Act & Assert
         with pytest.raises(InvalidStateError) as exc_info:
             chunking_operation.add_chunk(chunk)
-        
+
         assert "Cannot add chunks to operation in PENDING state" in str(exc_info.value)
 
     def test_cancel_operation_success(self, chunking_operation):
@@ -261,7 +268,7 @@ class TestChunkingOperation:
         # Act & Assert
         with pytest.raises(InvalidStateError) as exc_info:
             chunking_operation.cancel()
-        
+
         assert "Cannot cancel operation in COMPLETED state" in str(exc_info.value)
 
     def test_validate_results_with_valid_chunks(self, chunking_operation):
@@ -271,7 +278,7 @@ class TestChunkingOperation:
         doc_len = len(chunking_operation._document_content)
         chunks = [
             Chunk(
-                content=chunking_operation._document_content[0:30], 
+                content=chunking_operation._document_content[0:30],
                 metadata=ChunkMetadata(
                     chunk_id="chunk-1",
                     document_id="doc-456",
@@ -279,7 +286,10 @@ class TestChunkingOperation:
                     start_offset=0,
                     end_offset=30,  # First 30 characters
                     token_count=6,  # Approximately 6 words
-                    strategy_name="character"), min_tokens=1),
+                    strategy_name="character",
+                ),
+                min_tokens=1,
+            ),
             Chunk(
                 content=chunking_operation._document_content[25:doc_len],  # Overlap from 25-30, then 30-44
                 metadata=ChunkMetadata(
@@ -289,9 +299,12 @@ class TestChunkingOperation:
                     start_offset=25,  # Overlaps with first chunk
                     end_offset=doc_len,  # To the end of document (44)
                     token_count=4,  # Approximately 4 words
-                    strategy_name="character"), min_tokens=1),
+                    strategy_name="character",
+                ),
+                min_tokens=1,
+            ),
         ]
-        
+
         chunking_operation.start()
         for chunk in chunks:
             chunking_operation._chunk_collection.add_chunk(chunk)
@@ -320,15 +333,19 @@ class TestChunkingOperation:
         # Arrange
         # Add a chunk that covers only a small portion
         chunk = Chunk(
-            content="This", metadata=ChunkMetadata(
+            content="This",
+            metadata=ChunkMetadata(
                 chunk_id="chunk-error",
                 document_id="doc-456",
                 chunk_index=0,
                 start_offset=0,
                 end_offset=5,
                 token_count=1,
-                strategy_name="character"), min_tokens=1)
-        
+                strategy_name="character",
+            ),
+            min_tokens=1,
+        )
+
         chunking_operation.start()
         chunking_operation._chunk_collection.add_chunk(chunk)
 
@@ -344,12 +361,10 @@ class TestChunkingOperation:
         """Test validation fails when operation times out."""
         # Arrange
         start_time = datetime.utcnow()
-        timeout_time = start_time + timedelta(
-            seconds=ChunkingOperation.MAX_OPERATION_DURATION_SECONDS + 1
-        )
-        
+        timeout_time = start_time + timedelta(seconds=ChunkingOperation.MAX_OPERATION_DURATION_SECONDS + 1)
+
         mock_datetime.utcnow.side_effect = [start_time, timeout_time]
-        
+
         chunking_operation.start()
         chunking_operation._started_at = start_time
 
@@ -378,14 +393,18 @@ class TestChunkingOperation:
         # Arrange
         chunking_operation.start()
         chunk = Chunk(
-            content="Test chunk", metadata=ChunkMetadata(
+            content="Test chunk",
+            metadata=ChunkMetadata(
                 chunk_id="chunk-test",
                 document_id="doc-456",
                 chunk_index=0,
                 start_offset=0,
                 end_offset=5,
                 token_count=3,
-                strategy_name="character"), min_tokens=1)
+                strategy_name="character",
+            ),
+            min_tokens=1,
+        )
         chunking_operation.add_chunk(chunk)
 
         # Act
@@ -405,17 +424,21 @@ class TestChunkingOperation:
         mock_strategy = MagicMock()
         mock_chunks = [
             Chunk(
-                content="Chunk 1", metadata=ChunkMetadata(
+                content="Chunk 1",
+                metadata=ChunkMetadata(
                     chunk_id="chunk-0",
                     document_id="doc-456",
                     chunk_index=0,
                     start_offset=0,
                     end_offset=2,
                     token_count=2,
-                    strategy_name="character"), min_tokens=1),
+                    strategy_name="character",
+                ),
+                min_tokens=1,
+            ),
         ]
         mock_strategy.chunk.return_value = mock_chunks
-        
+
         chunking_operation.start()
         chunking_operation.execute(mock_strategy)
 
@@ -483,11 +506,11 @@ class TestChunkingOperation:
         # Arrange
         mock_strategy = MagicMock()
         mock_strategy.chunk.return_value = []
-        
+
         chunking_operation.start()
         start_time = chunking_operation._started_at
         chunking_operation.execute(mock_strategy)
-        
+
         # Act
         duration = chunking_operation._calculate_duration()
 
@@ -546,7 +569,7 @@ class TestChunkingOperation:
         """Test that state transitions are properly enforced."""
         # This test verifies the business rule that states can only transition
         # according to the allowed paths defined in OperationStatus
-        
+
         # Test all valid transitions
         valid_transitions = [
             (OperationStatus.PENDING, OperationStatus.PROCESSING),
@@ -555,18 +578,20 @@ class TestChunkingOperation:
             (OperationStatus.PROCESSING, OperationStatus.FAILED),
             (OperationStatus.PROCESSING, OperationStatus.CANCELLED),
         ]
-        
+
         for from_status, to_status in valid_transitions:
-            assert from_status.can_transition_to(to_status), \
-                f"Transition from {from_status} to {to_status} should be valid"
-        
+            assert from_status.can_transition_to(
+                to_status
+            ), f"Transition from {from_status} to {to_status} should be valid"
+
         # Test invalid transitions
         invalid_transitions = [
             (OperationStatus.COMPLETED, OperationStatus.PROCESSING),
             (OperationStatus.FAILED, OperationStatus.COMPLETED),
             (OperationStatus.CANCELLED, OperationStatus.PROCESSING),
         ]
-        
+
         for from_status, to_status in invalid_transitions:
-            assert not from_status.can_transition_to(to_status), \
-                f"Transition from {from_status} to {to_status} should be invalid"
+            assert not from_status.can_transition_to(
+                to_status
+            ), f"Transition from {from_status} to {to_status} should be invalid"

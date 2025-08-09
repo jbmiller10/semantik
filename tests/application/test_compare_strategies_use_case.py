@@ -7,8 +7,7 @@ import pytest
 
 from packages.shared.chunking.application.dto.requests import ChunkingStrategy, CompareStrategiesRequest
 from packages.shared.chunking.application.dto.responses import CompareStrategiesResponse, StrategyMetrics
-from packages.shared.chunking.application.use_cases.compare_strategies import (
-    CompareStrategiesUseCase)
+from packages.shared.chunking.application.use_cases.compare_strategies import CompareStrategiesUseCase
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.exceptions import StrategyNotFoundError
 from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
@@ -25,14 +24,14 @@ class TestCompareStrategiesUseCase:
             return_value="This is a sample document for comparing different chunking strategies. It contains multiple sentences and paragraphs to test various approaches."
         )
         service.get_document_size = AsyncMock(return_value=500)
-        
+
         # Mock the methods actually used by CompareStrategiesUseCase
         mock_document = MagicMock()  # The document object returned by load_partial
         service.load_partial = AsyncMock(return_value=mock_document)
         service.extract_text = AsyncMock(
             return_value="This is a sample document for comparing different chunking strategies. It contains multiple sentences and paragraphs to test various approaches."
         )
-        
+
         return service
 
     @pytest.fixture()
@@ -43,88 +42,133 @@ class TestCompareStrategiesUseCase:
         # Create different mock strategies with different results
         character_strategy = MagicMock()
         character_strategy.chunk.return_value = [
-            Chunk(content="Chunk 1 char", metadata=ChunkMetadata(
-                      chunk_id="char-chunk-1",
-                      document_id="doc-123",
-                      chunk_index=0,
-                      start_offset=0,
-                      end_offset=13,
-                      token_count=3,
-                      strategy_name="character"), min_tokens=1),
-            Chunk(content="Chunk 2 char", metadata=ChunkMetadata(
-                      chunk_id="char-chunk-2",
-                      document_id="doc-123",
-                      chunk_index=1,
-                      start_offset=14,
-                      end_offset=27,
-                      token_count=3,
-                      strategy_name="character"), min_tokens=1),
-            Chunk(content="Chunk 3 char", metadata=ChunkMetadata(
-                      chunk_id="char-chunk-3",
-                      document_id="doc-123",
-                      chunk_index=2,
-                      start_offset=28,
-                      end_offset=41,
-                      token_count=3,
-                      strategy_name="character"), min_tokens=1),
+            Chunk(
+                content="Chunk 1 char",
+                metadata=ChunkMetadata(
+                    chunk_id="char-chunk-1",
+                    document_id="doc-123",
+                    chunk_index=0,
+                    start_offset=0,
+                    end_offset=13,
+                    token_count=3,
+                    strategy_name="character",
+                ),
+                min_tokens=1,
+            ),
+            Chunk(
+                content="Chunk 2 char",
+                metadata=ChunkMetadata(
+                    chunk_id="char-chunk-2",
+                    document_id="doc-123",
+                    chunk_index=1,
+                    start_offset=14,
+                    end_offset=27,
+                    token_count=3,
+                    strategy_name="character",
+                ),
+                min_tokens=1,
+            ),
+            Chunk(
+                content="Chunk 3 char",
+                metadata=ChunkMetadata(
+                    chunk_id="char-chunk-3",
+                    document_id="doc-123",
+                    chunk_index=2,
+                    start_offset=28,
+                    end_offset=41,
+                    token_count=3,
+                    strategy_name="character",
+                ),
+                min_tokens=1,
+            ),
         ]
 
         semantic_strategy = MagicMock()
         semantic_strategy.chunk.return_value = [
-            Chunk(content="Semantic chunk 1", metadata=ChunkMetadata(
-                      chunk_id="sem-chunk-1",
-                      document_id="doc-123",
-                      chunk_index=0,
-                      start_offset=0,
-                      end_offset=16,
-                      token_count=4,
-                      strategy_name="semantic",
-                      semantic_score=0.9), min_tokens=1),
-            Chunk(content="Semantic chunk 2", metadata=ChunkMetadata(
-                      chunk_id="sem-chunk-2",
-                      document_id="doc-123",
-                      chunk_index=1,
-                      start_offset=17,
-                      end_offset=33,
-                      token_count=4,
-                      strategy_name="semantic",
-                      semantic_score=0.85), min_tokens=1),
+            Chunk(
+                content="Semantic chunk 1",
+                metadata=ChunkMetadata(
+                    chunk_id="sem-chunk-1",
+                    document_id="doc-123",
+                    chunk_index=0,
+                    start_offset=0,
+                    end_offset=16,
+                    token_count=4,
+                    strategy_name="semantic",
+                    semantic_score=0.9,
+                ),
+                min_tokens=1,
+            ),
+            Chunk(
+                content="Semantic chunk 2",
+                metadata=ChunkMetadata(
+                    chunk_id="sem-chunk-2",
+                    document_id="doc-123",
+                    chunk_index=1,
+                    start_offset=17,
+                    end_offset=33,
+                    token_count=4,
+                    strategy_name="semantic",
+                    semantic_score=0.85,
+                ),
+                min_tokens=1,
+            ),
         ]
 
         recursive_strategy = MagicMock()
         recursive_strategy.chunk.return_value = [
-            Chunk(content="Recursive chunk 1", metadata=ChunkMetadata(
-                      chunk_id="rec-chunk-1",
-                      document_id="doc-123",
-                      chunk_index=0,
-                      start_offset=0,
-                      end_offset=17,
-                      token_count=4,
-                      strategy_name="recursive"), min_tokens=1),
-            Chunk(content="Recursive chunk 2", metadata=ChunkMetadata(
-                      chunk_id="rec-chunk-2",
-                      document_id="doc-123",
-                      chunk_index=1,
-                      start_offset=18,
-                      end_offset=35,
-                      token_count=4,
-                      strategy_name="recursive"), min_tokens=1),
-            Chunk(content="Recursive chunk 3", metadata=ChunkMetadata(
-                      chunk_id="rec-chunk-3",
-                      document_id="doc-123",
-                      chunk_index=2,
-                      start_offset=36,
-                      end_offset=53,
-                      token_count=4,
-                      strategy_name="recursive"), min_tokens=1),
-            Chunk(content="Recursive chunk 4", metadata=ChunkMetadata(
-                      chunk_id="rec-chunk-4",
-                      document_id="doc-123",
-                      chunk_index=3,
-                      start_offset=54,
-                      end_offset=71,
-                      token_count=4,
-                      strategy_name="recursive"), min_tokens=1),
+            Chunk(
+                content="Recursive chunk 1",
+                metadata=ChunkMetadata(
+                    chunk_id="rec-chunk-1",
+                    document_id="doc-123",
+                    chunk_index=0,
+                    start_offset=0,
+                    end_offset=17,
+                    token_count=4,
+                    strategy_name="recursive",
+                ),
+                min_tokens=1,
+            ),
+            Chunk(
+                content="Recursive chunk 2",
+                metadata=ChunkMetadata(
+                    chunk_id="rec-chunk-2",
+                    document_id="doc-123",
+                    chunk_index=1,
+                    start_offset=18,
+                    end_offset=35,
+                    token_count=4,
+                    strategy_name="recursive",
+                ),
+                min_tokens=1,
+            ),
+            Chunk(
+                content="Recursive chunk 3",
+                metadata=ChunkMetadata(
+                    chunk_id="rec-chunk-3",
+                    document_id="doc-123",
+                    chunk_index=2,
+                    start_offset=36,
+                    end_offset=53,
+                    token_count=4,
+                    strategy_name="recursive",
+                ),
+                min_tokens=1,
+            ),
+            Chunk(
+                content="Recursive chunk 4",
+                metadata=ChunkMetadata(
+                    chunk_id="rec-chunk-4",
+                    document_id="doc-123",
+                    chunk_index=3,
+                    start_offset=54,
+                    end_offset=71,
+                    token_count=4,
+                    strategy_name="recursive",
+                ),
+                min_tokens=1,
+            ),
         ]
 
         def create_strategy_side_effect(strategy_type, config):
@@ -145,10 +189,10 @@ class TestCompareStrategiesUseCase:
         """Create mock metrics service."""
         service = MagicMock()
         service.record_comparison = AsyncMock()
-        
+
         # Add the required methods for CompareStrategiesUseCase
         service.record_strategy_performance = AsyncMock()
-        
+
         return service
 
     @pytest.fixture()
@@ -158,27 +202,23 @@ class TestCompareStrategiesUseCase:
         service.notify_comparison_started = AsyncMock()
         service.notify_comparison_completed = AsyncMock()
         service.notify_error = AsyncMock()
-        
+
         # Add the required methods for CompareStrategiesUseCase
         service.notify_operation_started = AsyncMock()
         service.notify_operation_completed = AsyncMock()
         service.notify_operation_failed = AsyncMock()
-        
+
         return service
 
     @pytest.fixture()
-    def use_case(
-        self,
-        mock_document_service,
-        mock_strategy_factory,
-        mock_notification_service,
-        mock_metrics_service):
+    def use_case(self, mock_document_service, mock_strategy_factory, mock_notification_service, mock_metrics_service):
         """Create use case instance with mocked dependencies."""
         return CompareStrategiesUseCase(
             document_service=mock_document_service,
             strategy_factory=mock_strategy_factory,
             notification_service=mock_notification_service,
-            metrics_service=mock_metrics_service)
+            metrics_service=mock_metrics_service,
+        )
 
     @pytest.fixture()
     def valid_request(self):
@@ -189,7 +229,8 @@ class TestCompareStrategiesUseCase:
             min_tokens=10,
             max_tokens=100,
             overlap=5,
-            sample_size_kb=10)
+            sample_size_kb=10,
+        )
 
     @pytest.mark.asyncio()
     async def test_successful_strategy_comparison(self, use_case, valid_request):
@@ -239,7 +280,8 @@ class TestCompareStrategiesUseCase:
             strategies=[ChunkingStrategy.CHARACTER],
             min_tokens=10,
             max_tokens=100,
-            overlap=5)
+            overlap=5,
+        )
 
         # Act
         response = await use_case.execute(request)
@@ -256,11 +298,8 @@ class TestCompareStrategiesUseCase:
         """Test comparison with empty strategies list."""
         # Arrange
         request = CompareStrategiesRequest(
-            file_path="/data/documents/test.txt",
-            strategies=[],
-            min_tokens=10,
-            max_tokens=100,
-            overlap=5)
+            file_path="/data/documents/test.txt", strategies=[], min_tokens=10, max_tokens=100, overlap=5
+        )
 
         # Act & Assert
         with pytest.raises(ValueError) as exc_info:
@@ -343,7 +382,8 @@ class TestCompareStrategiesUseCase:
             strategies=[ChunkingStrategy.SEMANTIC],
             min_tokens=20,
             max_tokens=200,
-            overlap=10)
+            overlap=10,
+        )
 
         # Act
         response = await use_case.execute(request)
@@ -374,9 +414,7 @@ class TestCompareStrategiesUseCase:
     async def test_document_not_found(self, use_case, valid_request):
         """Test handling of document not found error."""
         # Arrange
-        use_case.document_service.load_partial.side_effect = FileNotFoundError(
-            "Document not found"
-        )
+        use_case.document_service.load_partial.side_effect = FileNotFoundError("Document not found")
 
         # Act & Assert
         with pytest.raises(FileNotFoundError) as exc_info:
@@ -396,8 +434,7 @@ class TestCompareStrategiesUseCase:
 
         # Recommendation should be based on quality metrics
         recommended_strategy = next(
-            c for c in response.comparisons
-            if c.strategy_name == recommendation.recommended_strategy
+            c for c in response.comparisons if c.strategy_name == recommendation.recommended_strategy
         )
 
         # The recommended strategy should have good metrics
@@ -405,8 +442,7 @@ class TestCompareStrategiesUseCase:
 
         # Reasoning should mention key factors
         assert any(
-            keyword in recommendation.reasoning.lower()
-            for keyword in ["quality", "coverage", "performance", "chunks"]
+            keyword in recommendation.reasoning.lower() for keyword in ["quality", "coverage", "performance", "chunks"]
         )
 
     @pytest.mark.asyncio()
@@ -447,7 +483,8 @@ class TestCompareStrategiesUseCase:
             strategies=[ChunkingStrategy.CHARACTER],
             min_tokens=10,
             max_tokens=100,
-            overlap=5)
+            overlap=5,
+        )
 
         # Act
         response = await use_case.execute(request)
@@ -466,10 +503,7 @@ class TestCompareStrategiesUseCase:
 
         # Assert
         # Results should be sorted by overall quality score
-        quality_scores = [
-            sum(c.quality_metrics.values()) / len(c.quality_metrics)
-            for c in response.comparisons
-        ]
+        quality_scores = [sum(c.quality_metrics.values()) / len(c.quality_metrics) for c in response.comparisons]
 
         # Check if sorted in descending order
         assert quality_scores == sorted(quality_scores, reverse=True)

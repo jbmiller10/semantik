@@ -107,9 +107,7 @@ class ChunkingStrategy(ABC):
         # Weight character-based estimate more heavily for consistency
         return int(0.3 * word_based_estimate + 0.7 * char_based_estimate)
 
-    def calculate_overlap_size(
-        self, chunk_size: int, overlap_percentage: float
-    ) -> int:
+    def calculate_overlap_size(self, chunk_size: int, overlap_percentage: float) -> int:
         """
         Calculate overlap size in tokens.
 
@@ -122,9 +120,7 @@ class ChunkingStrategy(ABC):
         """
         return int(chunk_size * (overlap_percentage / 100))
 
-    def find_sentence_boundary(
-        self, text: str, target_position: int, prefer_before: bool = True
-    ) -> int:
+    def find_sentence_boundary(self, text: str, target_position: int, prefer_before: bool = True) -> int:
         """
         Find the nearest sentence boundary to a target position.
 
@@ -143,7 +139,7 @@ class ChunkingStrategy(ABC):
             return len(text)
 
         # Sentence ending markers
-        sentence_endings = {'.', '!', '?'}
+        sentence_endings = {".", "!", "?"}
 
         # Search for nearest sentence boundary
         if prefer_before:
@@ -164,9 +160,7 @@ class ChunkingStrategy(ABC):
         # If no boundary found, return target position
         return target_position
 
-    def find_word_boundary(
-        self, text: str, target_position: int, prefer_before: bool = True
-    ) -> int:
+    def find_word_boundary(self, text: str, target_position: int, prefer_before: bool = True) -> int:
         """
         Find the nearest word boundary to a target position.
 
@@ -212,17 +206,17 @@ class ChunkingStrategy(ABC):
             Cleaned text
         """
         # Remove excessive whitespace
-        lines = text.split('\n')
+        lines = text.split("\n")
         cleaned_lines = []
 
         for line in lines:
             # Preserve paragraph structure but clean up spacing
-            cleaned_line = ' '.join(line.split())
+            cleaned_line = " ".join(line.split())
             if cleaned_line:
                 cleaned_lines.append(cleaned_line)
 
         # Rejoin with single newlines
-        result = '\n'.join(cleaned_lines)
+        result = "\n".join(cleaned_lines)
 
         # Ensure text doesn't start or end with whitespace
         return result.strip()

@@ -131,9 +131,7 @@ class ChunkingOperation:
             InvalidStateError: If operation cannot be started from current state
         """
         if not self._status.can_transition_to(OperationStatus.PROCESSING):
-            raise InvalidStateError(
-                f"Cannot start operation in {self._status.value} state"
-            )
+            raise InvalidStateError(f"Cannot start operation in {self._status.value} state")
 
         self._status = OperationStatus.PROCESSING
         self._started_at = datetime.utcnow()
@@ -150,9 +148,7 @@ class ChunkingOperation:
             InvalidStateError: If operation is not in PROCESSING state
         """
         if self._status != OperationStatus.PROCESSING:
-            raise InvalidStateError(
-                f"Cannot execute operation in {self._status.value} state"
-            )
+            raise InvalidStateError(f"Cannot execute operation in {self._status.value} state")
 
         start_time = datetime.utcnow()
 
@@ -167,8 +163,7 @@ class ChunkingOperation:
             # Validate chunk count
             if len(chunks) > self.MAX_CHUNKS_PER_OPERATION:
                 raise InvalidStateError(
-                    f"Operation produced {len(chunks)} chunks, "
-                    f"exceeding limit of {self.MAX_CHUNKS_PER_OPERATION}"
+                    f"Operation produced {len(chunks)} chunks, " f"exceeding limit of {self.MAX_CHUNKS_PER_OPERATION}"
                 )
 
             # Add chunks to collection
@@ -197,17 +192,14 @@ class ChunkingOperation:
             InvalidStateError: If operation is not in PROCESSING state
         """
         if self._status != OperationStatus.PROCESSING:
-            raise InvalidStateError(
-                f"Cannot add chunks to operation in {self._status.value} state"
-            )
+            raise InvalidStateError(f"Cannot add chunks to operation in {self._status.value} state")
 
         self._chunk_collection.add_chunk(chunk)
 
         # Update progress based on chunks added
         if self._estimated_total_chunks > 0:
             self._progress_percentage = min(
-                100.0,
-                (self._chunk_collection.chunk_count / self._estimated_total_chunks) * 100
+                100.0, (self._chunk_collection.chunk_count / self._estimated_total_chunks) * 100
             )
 
     def cancel(self, reason: str | None = None) -> None:
@@ -221,9 +213,7 @@ class ChunkingOperation:
             InvalidStateError: If operation cannot be cancelled from current state
         """
         if not self._status.can_transition_to(OperationStatus.CANCELLED):
-            raise InvalidStateError(
-                f"Cannot cancel operation in {self._status.value} state"
-            )
+            raise InvalidStateError(f"Cannot cancel operation in {self._status.value} state")
 
         self._status = OperationStatus.CANCELLED
         self._completed_at = datetime.utcnow()
@@ -315,9 +305,7 @@ class ChunkingOperation:
     def _complete(self) -> None:
         """Mark the operation as completed."""
         if not self._status.can_transition_to(OperationStatus.COMPLETED):
-            raise InvalidStateError(
-                f"Cannot complete operation in {self._status.value} state"
-            )
+            raise InvalidStateError(f"Cannot complete operation in {self._status.value} state")
 
         self._status = OperationStatus.COMPLETED
         self._completed_at = datetime.utcnow()
@@ -332,9 +320,7 @@ class ChunkingOperation:
             error_details: Optional error details
         """
         if not self._status.can_transition_to(OperationStatus.FAILED):
-            raise InvalidStateError(
-                f"Cannot fail operation in {self._status.value} state"
-            )
+            raise InvalidStateError(f"Cannot fail operation in {self._status.value} state")
 
         self._status = OperationStatus.FAILED
         self._completed_at = datetime.utcnow()
@@ -350,9 +336,7 @@ class ChunkingOperation:
         """
         self._progress_percentage = max(0.0, min(100.0, percentage))
 
-    def _update_metrics(
-        self, start_time: datetime, end_time: datetime, chunk_count: int
-    ) -> None:
+    def _update_metrics(self, start_time: datetime, end_time: datetime, chunk_count: int) -> None:
         """
         Update performance metrics.
 

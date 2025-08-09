@@ -63,16 +63,18 @@ class GetOperationStatusUseCase:
 
         # 2. Find operation
         operation = None
-        
+
         # If document_id is provided, find operations by document_id
         if request.document_id:
             operations = await self.operation_repository.find_by_document_id(request.document_id)
             if operations:
                 # Get the most recent operation
-                operation = max(operations, key=lambda op: getattr(op, '_created_at', getattr(op, 'created_at', datetime.min)))
+                operation = max(
+                    operations, key=lambda op: getattr(op, "_created_at", getattr(op, "created_at", datetime.min))
+                )
         elif request.operation_id:
             operation = await self.operation_repository.find_by_id(request.operation_id)
-        
+
         if not operation:
             identifier = request.document_id if request.document_id else request.operation_id
             raise ValueError(f"Operation not found: {identifier}")
@@ -84,9 +86,9 @@ class GetOperationStatusUseCase:
         progress_percentage = 0.0
         # Handle potential mock or None values safely
         try:
-            total_chunks = getattr(operation, 'total_chunks', None)
-            chunks_processed = getattr(operation, 'chunks_processed', 0)
-            
+            total_chunks = getattr(operation, "total_chunks", None)
+            chunks_processed = getattr(operation, "chunks_processed", 0)
+
             if total_chunks and isinstance(total_chunks, (int, float)) and total_chunks > 0:
                 if isinstance(chunks_processed, (int, float)):
                     progress_percentage = (chunks_processed / total_chunks) * 100
@@ -114,36 +116,36 @@ class GetOperationStatusUseCase:
                     memory_usage_mb=metrics_data.get("memory_usage_mb", 0),
                     checkpoint_recovery_count=metrics_data.get("checkpoint_recoveries", 0),
                     error_count=metrics_data.get("error_count", 0),
-                    retry_count=metrics_data.get("retry_count", 0)
+                    retry_count=metrics_data.get("retry_count", 0),
                 )
 
         # 7. Build error details if operation failed
         error_details = None
         if status == OperationStatus.FAILED and operation.error_message:
             error_details = {
-                "error_type": operation.error_type if hasattr(operation, 'error_type') else "Unknown",
+                "error_type": operation.error_type if hasattr(operation, "error_type") else "Unknown",
                 "error_message": operation.error_message,
-                "failed_at": operation.failed_at.isoformat() if hasattr(operation, 'failed_at') else None,
-                "last_checkpoint": operation.last_checkpoint if hasattr(operation, 'last_checkpoint') else None,
-                "chunks_before_failure": operation.chunks_processed
+                "failed_at": operation.failed_at.isoformat() if hasattr(operation, "failed_at") else None,
+                "last_checkpoint": operation.last_checkpoint if hasattr(operation, "last_checkpoint") else None,
+                "chunks_before_failure": operation.chunks_processed,
             }
 
         # 8. Create and return response
         # Use the actual operation ID from the found operation
-        operation_id = getattr(operation, 'id', getattr(operation, 'operation_id', request.operation_id))
+        operation_id = getattr(operation, "id", getattr(operation, "operation_id", request.operation_id))
         return GetOperationStatusResponse(
             operation_id=operation_id,
             status=status,
             progress_percentage=progress_percentage,
-            chunks_processed=getattr(operation, 'chunks_processed', 0),
-            total_chunks=getattr(operation, 'total_chunks', None),
-            started_at=getattr(operation, 'created_at', getattr(operation, '_created_at', None)),
-            updated_at=getattr(operation, 'updated_at', getattr(operation, '_updated_at', None)),
-            completed_at=getattr(operation, 'completed_at', getattr(operation, '_completed_at', None)),
-            error_message=getattr(operation, 'error_message', None),
+            chunks_processed=getattr(operation, "chunks_processed", 0),
+            total_chunks=getattr(operation, "total_chunks", None),
+            started_at=getattr(operation, "created_at", getattr(operation, "_created_at", None)),
+            updated_at=getattr(operation, "updated_at", getattr(operation, "_updated_at", None)),
+            completed_at=getattr(operation, "completed_at", getattr(operation, "_completed_at", None)),
+            error_message=getattr(operation, "error_message", None),
             error_details=error_details,
             chunks=chunks,
-            metrics=metrics
+            metrics=metrics,
         )
 
     def _map_status(self, status_string: str | DomainOperationStatus | OperationStatus) -> OperationStatus:
@@ -159,7 +161,7 @@ class GetOperationStatusUseCase:
         # If already a DTO enum, return it
         if isinstance(status_string, OperationStatus):
             return status_string
-        
+
         # Handle domain enum
         if isinstance(status_string, DomainOperationStatus):
             # Map domain status to DTO status
@@ -171,7 +173,7 @@ class GetOperationStatusUseCase:
                 DomainOperationStatus.CANCELLED: OperationStatus.CANCELLED,
             }
             return domain_to_dto.get(status_string, OperationStatus.PENDING)
-        
+
         # Convert string to enum
         status_mapping = {
             "pending": OperationStatus.PENDING,
@@ -180,13 +182,13 @@ class GetOperationStatusUseCase:
             "completed": OperationStatus.COMPLETED,
             "failed": OperationStatus.FAILED,
             "cancelled": OperationStatus.CANCELLED,
-            "partially_completed": OperationStatus.PARTIALLY_COMPLETED
+            "partially_completed": OperationStatus.PARTIALLY_COMPLETED,
         }
-        
+
         # Handle string conversion
         if isinstance(status_string, str):
             return status_mapping.get(status_string.lower(), OperationStatus.PENDING)
-        
+
         # Default for unknown types
         return OperationStatus.PENDING
 
@@ -215,10 +217,10 @@ class GetOperationStatusUseCase:
                 end_offset=chunk.end_offset,
                 token_count=chunk.token_count,
                 metadata={
-                    "created_at": chunk.created_at.isoformat() if hasattr(chunk, 'created_at') else None,
+                    "created_at": chunk.created_at.isoformat() if hasattr(chunk, "created_at") else None,
                     "operation_id": chunk.operation_id,
-                    "document_id": chunk.document_id if hasattr(chunk, 'document_id') else None
-                }
+                    "document_id": chunk.document_id if hasattr(chunk, "document_id") else None,
+                },
             )
             chunk_dtos.append(chunk_dto)
 

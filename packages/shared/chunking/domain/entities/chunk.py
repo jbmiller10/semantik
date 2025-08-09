@@ -107,9 +107,7 @@ class Chunk:
             InvalidChunkError: If score is out of range
         """
         if not 0.0 <= score <= 1.0:
-            raise InvalidChunkError(
-                f"Quality score must be between 0.0 and 1.0, got {score}"
-            )
+            raise InvalidChunkError(f"Quality score must be between 0.0 and 1.0, got {score}")
         self._quality_score = score
 
     def set_processing_time(self, time_ms: float) -> None:
@@ -164,7 +162,7 @@ class Chunk:
             Estimated memory usage
         """
         # Text content (approximate UTF-8 encoding)
-        text_size = len(self._content.encode('utf-8'))
+        text_size = len(self._content.encode("utf-8"))
 
         # Embedding (if present) - 4 bytes per float
         embedding_size = len(self._embedding) * 4 if self._embedding else 0
@@ -192,13 +190,9 @@ class Chunk:
 
         # Check for reasonable content size (prevent memory issues)
         if len(content) > 1_000_000:  # 1MB limit per chunk
-            raise InvalidChunkError(
-                f"Chunk content exceeds 1MB limit: {len(content)} characters"
-            )
+            raise InvalidChunkError(f"Chunk content exceeds 1MB limit: {len(content)} characters")
 
-    def _validate_size_constraints(
-        self, token_count: int, min_tokens: int, max_tokens: int
-    ) -> None:
+    def _validate_size_constraints(self, token_count: int, min_tokens: int, max_tokens: int) -> None:
         """
         Validate chunk size meets constraints.
 
@@ -214,7 +208,7 @@ class Chunk:
         # or part of a small document (relaxed validation for edge cases)
         if token_count > max_tokens:
             raise ChunkSizeViolationError(token_count, min_tokens, max_tokens)
-        
+
         # Only enforce minimum for chunks that are clearly too small
         # (less than 50% of minimum and not a trivially small chunk)
         if token_count < min_tokens * 0.5 and token_count > 0 and min_tokens > 5:

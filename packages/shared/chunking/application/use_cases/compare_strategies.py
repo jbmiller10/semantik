@@ -31,7 +31,7 @@ class CompareStrategiesUseCase:
         document_service: DocumentService,
         strategy_factory: ChunkingStrategyFactory,
         notification_service: NotificationService,
-        metrics_service: MetricsService = None
+        metrics_service: MetricsService = None,
     ):
         """
         Initialize the use case with dependencies.
@@ -75,17 +75,16 @@ class CompareStrategiesUseCase:
                 metadata={
                     "type": "comparison",
                     "file_path": request.file_path,
-                    "strategies": [s.value for s in request.strategies]
-                }
+                    "strategies": [s.value for s in request.strategies],
+                },
             )
 
             # 3. Load document sample
             document = await self.document_service.load_partial(
-                file_path=request.file_path,
-                size_kb=request.sample_size_kb
+                file_path=request.file_path, size_kb=request.sample_size_kb
             )
             text_content = await self.document_service.extract_text(document)
-            sample_size = len(text_content.encode('utf-8'))
+            sample_size = len(text_content.encode("utf-8"))
 
             # 4. Run each strategy and collect metrics
             strategy_results = []
@@ -93,10 +92,7 @@ class CompareStrategiesUseCase:
 
             for strategy_type in request.strategies:
                 result = await self._run_strategy(
-                    strategy_type=strategy_type,
-                    text_content=text_content,
-                    request=request,
-                    operation_id=operation_id
+                    strategy_type=strategy_type, text_content=text_content, request=request, operation_id=operation_id
                 )
                 strategy_results.append(result)
 
@@ -110,7 +106,7 @@ class CompareStrategiesUseCase:
                         start_offset=chunk.metadata.start_offset,
                         end_offset=chunk.metadata.end_offset,
                         token_count=chunk.metadata.token_count,
-                        metadata={"strategy": strategy_type.value}
+                        metadata={"strategy": strategy_type.value},
                     )
                     sample_chunks.append(chunk_dto)
                 sample_chunks_dict[strategy_type.value] = sample_chunks
@@ -123,8 +119,7 @@ class CompareStrategiesUseCase:
 
             # 6. Determine recommended strategy
             recommended_strategy, recommendation_reason = self._determine_recommendation(
-                metrics_list,
-                document_characteristics=self._analyze_document(text_content)
+                metrics_list, document_characteristics=self._analyze_document(text_content)
             )
 
             # 7. Record comparison metrics if service available
@@ -134,13 +129,12 @@ class CompareStrategiesUseCase:
                         strategy_type=metrics.strategy_name,
                         document_size=sample_size,
                         chunks_created=metrics.total_chunks,
-                        duration_ms=metrics.processing_time_ms
+                        duration_ms=metrics.processing_time_ms,
                     )
 
             # 8. Notify completion
             await self.notification_service.notify_operation_completed(
-                operation_id=operation_id,
-                chunks_created=sum(m.total_chunks for m in metrics_list)
+                operation_id=operation_id, chunks_created=sum(m.total_chunks for m in metrics_list)
             )
 
             # 9. Return comparison response - let __post_init__ handle the aliases
@@ -153,16 +147,13 @@ class CompareStrategiesUseCase:
                 recommendation_reason=recommendation_reason,
                 sample_chunks=sample_chunks_dict,
                 # Use static document ID for backward compatibility with tests
-                document_id="doc-compare"
+                document_id="doc-compare",
                 # Don't set the aliases here - let __post_init__ handle them
             )
 
         except Exception as e:
             # Notify failure
-            await self.notification_service.notify_operation_failed(
-                operation_id=operation_id,
-                error=e
-            )
+            await self.notification_service.notify_operation_failed(operation_id=operation_id, error=e)
 
             # Log error
             await self.notification_service.notify_error(
@@ -170,15 +161,14 @@ class CompareStrategiesUseCase:
                 context={
                     "operation_id": operation_id,
                     "use_case": "compare_strategies",
-                    "file_path": request.file_path
-                }
+                    "file_path": request.file_path,
+                },
             )
             raise
 
-    async def _run_strategy(self, strategy_type: ChunkingStrategy,
-                          text_content: str,
-                          request: CompareStrategiesRequest,
-                          operation_id: str) -> dict[str, Any]:
+    async def _run_strategy(
+        self, strategy_type: ChunkingStrategy, text_content: str, request: CompareStrategiesRequest, operation_id: str
+    ) -> dict[str, Any]:
         """
         Run a single strategy and collect results.
 
@@ -197,12 +187,9 @@ class CompareStrategiesUseCase:
         strategy_config = {
             "min_tokens": request.min_tokens,
             "max_tokens": request.max_tokens,
-            "overlap": request.overlap
+            "overlap": request.overlap,
         }
-        strategy = self.strategy_factory.create_strategy(
-            strategy_type=strategy_type.value,
-            config=strategy_config
-        )
+        strategy = self.strategy_factory.create_strategy(strategy_type=strategy_type.value, config=strategy_config)
 
         # Apply strategy
         chunks = strategy.chunk(text_content)
@@ -214,7 +201,7 @@ class CompareStrategiesUseCase:
             "strategy_name": strategy_type.value,
             "chunks": chunks,
             "processing_time_ms": processing_time_ms,
-            "total_chunks": len(chunks)
+            "total_chunks": len(chunks),
         }
 
     async def _calculate_metrics(self, result: dict[str, Any]) -> StrategyMetrics:
@@ -239,7 +226,7 @@ class CompareStrategiesUseCase:
                 avg_token_count=0,
                 processing_time_ms=result["processing_time_ms"],
                 overlap_effectiveness=0,
-                semantic_coherence=0
+                semantic_coherence=0,
             )
 
         # Calculate size metrics
@@ -261,7 +248,7 @@ class CompareStrategiesUseCase:
             avg_token_count=mean(token_counts),
             processing_time_ms=result["processing_time_ms"],
             overlap_effectiveness=overlap_effectiveness,
-            semantic_coherence=semantic_coherence
+            semantic_coherence=semantic_coherence,
         )
 
     def _calculate_overlap_effectiveness(self, chunks: list[Any]) -> float:
@@ -282,8 +269,8 @@ class CompareStrategiesUseCase:
         # Check for consistent overlap patterns
         overlaps = []
         for i in range(len(chunks) - 1):
-            if hasattr(chunks[i], 'metadata') and hasattr(chunks[i+1], 'metadata'):
-                overlap = chunks[i].metadata.end_offset - chunks[i+1].metadata.start_offset
+            if hasattr(chunks[i], "metadata") and hasattr(chunks[i + 1], "metadata"):
+                overlap = chunks[i].metadata.end_offset - chunks[i + 1].metadata.start_offset
                 if overlap > 0:
                     overlaps.append(overlap)
 
@@ -322,7 +309,7 @@ class CompareStrategiesUseCase:
             content = chunk.content
             # Check if chunk starts with capital and ends with punctuation
             starts_well = content and content[0].isupper()
-            ends_well = content and content[-1] in '.!?'
+            ends_well = content and content[-1] in ".!?"
 
             score = 0
             if starts_well:
@@ -343,19 +330,20 @@ class CompareStrategiesUseCase:
         Returns:
             Document characteristics
         """
-        lines = text_content.split('\n')
+        lines = text_content.split("\n")
 
         return {
             "total_length": len(text_content),
             "line_count": len(lines),
             "avg_line_length": mean([len(line) for line in lines]) if lines else 0,
-            "has_markdown": any(line.startswith('#') for line in lines),
-            "has_code_blocks": '```' in text_content,
-            "paragraph_count": text_content.count('\n\n')
+            "has_markdown": any(line.startswith("#") for line in lines),
+            "has_code_blocks": "```" in text_content,
+            "paragraph_count": text_content.count("\n\n"),
         }
 
-    def _determine_recommendation(self, metrics_list: list[StrategyMetrics],
-                                 document_characteristics: dict[str, Any]) -> tuple[str, str]:
+    def _determine_recommendation(
+        self, metrics_list: list[StrategyMetrics], document_characteristics: dict[str, Any]
+    ) -> tuple[str, str]:
         """
         Determine the recommended strategy based on metrics and document characteristics.
 

@@ -86,9 +86,7 @@ class HierarchicalChunkingStrategy(ChunkingStrategy):
 
         return all_chunks
 
-    def _create_level_configs(
-        self, base_config: ChunkConfig, levels: int
-    ) -> list[dict]:
+    def _create_level_configs(self, base_config: ChunkConfig, levels: int) -> list[dict]:
         """
         Create configuration for each hierarchy level.
 
@@ -103,7 +101,7 @@ class HierarchicalChunkingStrategy(ChunkingStrategy):
 
         for level in range(levels):
             # Each level has progressively smaller chunks
-            scale_factor = 2 ** level
+            scale_factor = 2**level
 
             level_max_tokens = max(
                 base_config.min_tokens,
@@ -128,11 +126,13 @@ class HierarchicalChunkingStrategy(ChunkingStrategy):
             if level_overlap >= level_min_tokens:
                 level_overlap = max(0, level_min_tokens - 1)
 
-            configs.append({
-                "max_tokens": level_max_tokens,
-                "min_tokens": level_min_tokens,
-                "overlap_tokens": level_overlap,
-            })
+            configs.append(
+                {
+                    "max_tokens": level_max_tokens,
+                    "min_tokens": level_min_tokens,
+                    "overlap_tokens": level_overlap,
+                }
+            )
 
         return configs
 
@@ -200,19 +200,21 @@ class HierarchicalChunkingStrategy(ChunkingStrategy):
                 "hierarchy_level": level,
                 "chunk_id": chunk_id,  # Store ID for parent references
             }
-            
+
             # Add parent_id for child chunks
             if level > 0 and parent_chunks:
                 # Find parent chunk that contains this position
                 for parent in parent_chunks:
                     if parent.metadata.start_offset <= start <= parent.metadata.end_offset:
-                        custom_attrs["parent_id"] = parent.metadata.custom_attributes.get("chunk_id", parent.metadata.chunk_id)
+                        custom_attrs["parent_id"] = parent.metadata.custom_attributes.get(
+                            "chunk_id", parent.metadata.chunk_id
+                        )
                         break
-            
+
             # Add summary for parent chunks
             if level == 0:
                 custom_attrs["summary"] = self._generate_summary(chunk_text)
-            
+
             metadata = ChunkMetadata(
                 chunk_id=chunk_id,
                 document_id="doc",
@@ -264,12 +266,12 @@ class HierarchicalChunkingStrategy(ChunkingStrategy):
         # Look for double newline (paragraph break)
         # Search backwards first
         for i in range(target_position, max(0, target_position - 500), -1):
-            if i > 0 and text[i - 1:i + 1] == '\n\n':
+            if i > 0 and text[i - 1 : i + 1] == "\n\n":
                 return i + 1
 
         # If not found, search forwards
         for i in range(target_position, min(len(text), target_position + 500)):
-            if i > 0 and text[i - 1:i + 1] == '\n\n':
+            if i > 0 and text[i - 1 : i + 1] == "\n\n":
                 return i + 1
 
         # Fall back to sentence boundary
@@ -290,10 +292,7 @@ class HierarchicalChunkingStrategy(ChunkingStrategy):
             parent_level: Level of parent chunks
         """
         # Get parent chunks
-        parent_chunks = [
-            c for c in all_chunks
-            if c.metadata.hierarchy_level == parent_level
-        ]
+        parent_chunks = [c for c in all_chunks if c.metadata.hierarchy_level == parent_level]
 
         # For each child, find overlapping parent
         for child in child_chunks:
@@ -367,7 +366,7 @@ class HierarchicalChunkingStrategy(ChunkingStrategy):
         levels = min(config.hierarchy_levels, 3)
 
         for level in range(levels):
-            scale_factor = 2 ** level
+            scale_factor = 2**level
             level_max_tokens = max(
                 config.min_tokens,
                 config.max_tokens // scale_factor,
@@ -407,24 +406,24 @@ class HierarchicalChunkingStrategy(ChunkingStrategy):
     def _generate_summary(self, text: str) -> str:
         """
         Generate a summary for a text chunk.
-        
+
         This is a simplified version that extracts key sentences.
         In a production system, this could use more sophisticated
         summarization techniques.
-        
+
         Args:
             text: Text to summarize
-            
+
         Returns:
             Summary of the text
         """
-        sentences = text.split('. ')
+        sentences = text.split(". ")
         if len(sentences) <= 2:
             return text
-        
+
         # Simple heuristic: take first and last sentence
         summary = f"{sentences[0]}. {sentences[-1]}"
-        if not summary.endswith('.'):
-            summary += '.'
-        
+        if not summary.endswith("."):
+            summary += "."
+
         return summary

@@ -20,6 +20,7 @@ from ..interfaces.repositories import (
 
 class DocumentFormat(str, Enum):
     """Supported document formats."""
+
     TEXT = "text"
     PDF = "pdf"
     MARKDOWN = "markdown"
@@ -110,8 +111,7 @@ class NotificationService(ABC):
     """
 
     @abstractmethod
-    async def notify_operation_started(self, operation_id: str,
-                                      metadata: dict[str, Any]) -> None:
+    async def notify_operation_started(self, operation_id: str, metadata: dict[str, Any]) -> None:
         """
         Notify that an operation has started.
 
@@ -121,8 +121,7 @@ class NotificationService(ABC):
         """
 
     @abstractmethod
-    async def notify_operation_completed(self, operation_id: str,
-                                        chunks_created: int) -> None:
+    async def notify_operation_completed(self, operation_id: str, chunks_created: int) -> None:
         """
         Notify that an operation has completed.
 
@@ -132,8 +131,7 @@ class NotificationService(ABC):
         """
 
     @abstractmethod
-    async def notify_operation_failed(self, operation_id: str,
-                                     error: Exception) -> None:
+    async def notify_operation_failed(self, operation_id: str, error: Exception) -> None:
         """
         Notify that an operation has failed.
 
@@ -143,8 +141,7 @@ class NotificationService(ABC):
         """
 
     @abstractmethod
-    async def notify_operation_cancelled(self, operation_id: str,
-                                        reason: str | None) -> None:
+    async def notify_operation_cancelled(self, operation_id: str, reason: str | None) -> None:
         """
         Notify that an operation was cancelled.
 
@@ -154,8 +151,7 @@ class NotificationService(ABC):
         """
 
     @abstractmethod
-    async def notify_progress(self, operation_id: str,
-                            progress_percentage: float) -> None:
+    async def notify_progress(self, operation_id: str, progress_percentage: float) -> None:
         """
         Notify operation progress update.
 
@@ -165,8 +161,7 @@ class NotificationService(ABC):
         """
 
     @abstractmethod
-    async def notify_error(self, error: Exception,
-                         context: dict[str, Any] | None = None) -> None:
+    async def notify_error(self, error: Exception, context: dict[str, Any] | None = None) -> None:
         """
         Notify about a general error.
 
@@ -184,8 +179,7 @@ class ChunkingStrategyFactory(ABC):
     """
 
     @abstractmethod
-    def create_strategy(self, strategy_type: str,
-                       config: dict[str, Any]) -> Any:
+    def create_strategy(self, strategy_type: str, config: dict[str, Any]) -> Any:
         """
         Create a chunking strategy instance.
 
@@ -230,8 +224,7 @@ class MetricsService(ABC):
     """
 
     @abstractmethod
-    async def record_operation_duration(self, operation_id: str,
-                                       duration_ms: float) -> None:
+    async def record_operation_duration(self, operation_id: str, duration_ms: float) -> None:
         """
         Record operation duration.
 
@@ -241,9 +234,7 @@ class MetricsService(ABC):
         """
 
     @abstractmethod
-    async def record_chunk_processing_time(self, operation_id: str,
-                                          chunk_id: str,
-                                          duration_ms: float) -> None:
+    async def record_chunk_processing_time(self, operation_id: str, chunk_id: str, duration_ms: float) -> None:
         """
         Record individual chunk processing time.
 
@@ -254,8 +245,7 @@ class MetricsService(ABC):
         """
 
     @abstractmethod
-    async def record_memory_usage(self, operation_id: str,
-                                 memory_mb: float) -> None:
+    async def record_memory_usage(self, operation_id: str, memory_mb: float) -> None:
         """
         Record memory usage for an operation.
 
@@ -277,10 +267,9 @@ class MetricsService(ABC):
         """
 
     @abstractmethod
-    async def record_strategy_performance(self, strategy_type: str,
-                                         document_size: int,
-                                         chunks_created: int,
-                                         duration_ms: float) -> None:
+    async def record_strategy_performance(
+        self, strategy_type: str, document_size: int, chunks_created: int, duration_ms: float
+    ) -> None:
         """
         Record strategy performance metrics.
 

@@ -24,11 +24,7 @@ class CancelOperationUseCase:
     - Ensures transactional consistency
     """
 
-    def __init__(
-        self,
-        unit_of_work: UnitOfWork,
-        notification_service: NotificationService
-    ):
+    def __init__(self, unit_of_work: UnitOfWork, notification_service: NotificationService):
         """
         Initialize the use case with dependencies.
 
@@ -64,9 +60,7 @@ class CancelOperationUseCase:
                 request.validate()
 
                 # 2. Find operation
-                operation = await self.unit_of_work.operations.find_by_id(
-                    request.operation_id
-                )
+                operation = await self.unit_of_work.operations.find_by_id(request.operation_id)
                 if not operation:
                     raise ValueError(f"Operation not found: {request.operation_id}")
 
@@ -83,37 +77,29 @@ class CancelOperationUseCase:
 
                 # 5. Clean up chunks if requested
                 if request.cleanup_chunks:
-                    chunks_deleted = await self.unit_of_work.chunks.delete_by_operation(
-                        request.operation_id
-                    )
+                    chunks_deleted = await self.unit_of_work.chunks.delete_by_operation(request.operation_id)
 
                 # 6. Clean up checkpoints
-                checkpoint_count = await self.unit_of_work.checkpoints.delete_checkpoints(
-                    request.operation_id
-                )
+                checkpoint_count = await self.unit_of_work.checkpoints.delete_checkpoints(request.operation_id)
 
                 # 7. Update operation status
                 await self.unit_of_work.operations.mark_cancelled(
-                    operation_id=request.operation_id,
-                    reason=request.reason
+                    operation_id=request.operation_id, reason=request.reason
                 )
 
                 # 8. Update document status if needed
-                if hasattr(operation, 'document_id') and operation.document_id:
+                if hasattr(operation, "document_id") and operation.document_id:
                     # Check if there are other operations for this document
-                    other_ops = await self.unit_of_work.operations.find_by_document(
-                        operation.document_id
-                    )
+                    other_ops = await self.unit_of_work.operations.find_by_document(operation.document_id)
                     active_ops = [
-                        op for op in other_ops
-                        if op.id != request.operation_id and op.status == "in_progress"
+                        op for op in other_ops if op.id != request.operation_id and op.status == "in_progress"
                     ]
 
                     # If no other active operations, update document status
                     if not active_ops:
                         await self.unit_of_work.documents.update_chunking_status(
                             document_id=operation.document_id,
-                            status="cancelled" if new_status == OperationStatus.CANCELLED else "partial"
+                            status="cancelled" if new_status == OperationStatus.CANCELLED else "partial",
                         )
 
                 # Commit transaction
@@ -121,8 +107,7 @@ class CancelOperationUseCase:
 
                 # 9. Send cancellation notification (after commit)
                 await self.notification_service.notify_operation_cancelled(
-                    operation_id=request.operation_id,
-                    reason=request.reason
+                    operation_id=request.operation_id, reason=request.reason
                 )
 
                 # 10. Log cancellation details
@@ -136,8 +121,8 @@ class CancelOperationUseCase:
                         "chunks_deleted": chunks_deleted,
                         "checkpoints_deleted": checkpoint_count,
                         "reason": request.reason,
-                        "forced": request.force
-                    }
+                        "forced": request.force,
+                    },
                 )
 
                 # 11. Return response
@@ -148,7 +133,7 @@ class CancelOperationUseCase:
                     chunks_deleted=chunks_deleted,
                     cancellation_time=cancellation_time,
                     cancellation_reason=request.reason,
-                    cleanup_performed=request.cleanup_chunks
+                    cleanup_performed=request.cleanup_chunks,
                 )
 
             except Exception as e:
@@ -161,8 +146,8 @@ class CancelOperationUseCase:
                     context={
                         "operation_id": request.operation_id,
                         "use_case": "cancel_operation",
-                        "action": "cancellation_failed"
-                    }
+                        "action": "cancellation_failed",
+                    },
                 )
 
                 raise
@@ -183,7 +168,7 @@ class CancelOperationUseCase:
             "completed": OperationStatus.COMPLETED,
             "failed": OperationStatus.FAILED,
             "cancelled": OperationStatus.CANCELLED,
-            "partially_completed": OperationStatus.PARTIALLY_COMPLETED
+            "partially_completed": OperationStatus.PARTIALLY_COMPLETED,
         }
         return status_mapping.get(status_string.lower(), OperationStatus.PENDING)
 
@@ -203,14 +188,10 @@ class CancelOperationUseCase:
             return True
 
         # Can cancel pending and in-progress operations
-        cancellable_statuses = [
-            OperationStatus.PENDING,
-            OperationStatus.IN_PROGRESS
-        ]
+        cancellable_statuses = [OperationStatus.PENDING, OperationStatus.IN_PROGRESS]
         return status in cancellable_statuses
 
-    def _determine_new_status(self, previous_status: OperationStatus,
-                            operation: Any) -> OperationStatus:
+    def _determine_new_status(self, previous_status: OperationStatus, operation: Any) -> OperationStatus:
         """
         Determine the new status after cancellation.
 
@@ -227,7 +208,7 @@ class CancelOperationUseCase:
 
         # If in progress, check if any chunks were created
         if previous_status == OperationStatus.IN_PROGRESS:
-            if hasattr(operation, 'chunks_processed') and operation.chunks_processed > 0:
+            if hasattr(operation, "chunks_processed") and operation.chunks_processed > 0:
                 # Some chunks were created before cancellation
                 return OperationStatus.PARTIALLY_COMPLETED
             else:

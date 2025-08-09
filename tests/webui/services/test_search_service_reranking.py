@@ -83,7 +83,8 @@ class TestSearchServiceReranking:
                 k=10,
                 search_type="semantic",
                 use_reranker=True,
-                rerank_model="Qwen/Qwen3-Reranker-0.6B")
+                rerank_model="Qwen/Qwen3-Reranker-0.6B",
+            )
 
             # Verify the request sent to vecpipe
             mock_client.post.assert_called_once()
@@ -158,7 +159,8 @@ class TestSearchServiceReranking:
                 query="test query",
                 k=10,
                 use_reranker=True,
-                rerank_model="Qwen/Qwen3-Reranker-0.6B")
+                rerank_model="Qwen/Qwen3-Reranker-0.6B",
+            )
 
             # Verify both collections were searched with reranking
             assert mock_client.post.call_count == 2
@@ -267,7 +269,8 @@ class TestSearchServiceReranking:
                 search_type="hybrid",
                 use_reranker=True,
                 hybrid_alpha=0.5,
-                hybrid_search_mode="weighted")
+                hybrid_search_mode="weighted",
+            )
 
             # Verify the request includes hybrid search params
             request_data = mock_client.post.call_args[1]["json"]
@@ -358,7 +361,8 @@ class TestSearchServiceReranking:
                 collection_uuids=[c.id for c in mock_collections],
                 query="test query",
                 k=10,
-                use_reranker=True)
+                use_reranker=True,
+            )
 
             # Should still return results from successful collection
             assert len(result["results"]) == 1

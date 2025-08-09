@@ -49,7 +49,7 @@ async def test_preview_success():
         document_service=mock_doc_service,
         strategy_factory=mock_strategy_factory,
         notification_service=mock_notification_service,
-        metrics_service=None
+        metrics_service=None,
     )
 
     # Create request
@@ -58,7 +58,7 @@ async def test_preview_success():
         strategy_type=ChunkingStrategy.CHARACTER,
         min_tokens=100,
         max_tokens=1000,
-        overlap=50
+        overlap=50,
     )
 
     # Act - Execute use case
@@ -73,10 +73,7 @@ async def test_preview_success():
     assert response.processing_time_ms > 0
 
     # Verify mocks were called correctly
-    mock_doc_service.load_partial.assert_called_once_with(
-        file_path="/test/document.txt",
-        size_kb=10
-    )
+    mock_doc_service.load_partial.assert_called_once_with(file_path="/test/document.txt", size_kb=10)
     mock_doc_service.extract_text.assert_called_once_with(mock_document)
     mock_strategy_factory.create_strategy.assert_called_once()
     mock_notification_service.notify_operation_started.assert_called_once()
@@ -95,7 +92,7 @@ async def test_preview_validation_error():
     use_case = PreviewChunkingUseCase(
         document_service=mock_doc_service,
         strategy_factory=mock_strategy_factory,
-        notification_service=mock_notification_service
+        notification_service=mock_notification_service,
     )
 
     # Invalid request - min_tokens > max_tokens
@@ -104,7 +101,7 @@ async def test_preview_validation_error():
         strategy_type=ChunkingStrategy.CHARACTER,
         min_tokens=1000,
         max_tokens=100,
-        overlap=50
+        overlap=50,
     )
 
     # Act & Assert
@@ -130,13 +127,10 @@ async def test_preview_file_not_found():
     use_case = PreviewChunkingUseCase(
         document_service=mock_doc_service,
         strategy_factory=mock_strategy_factory,
-        notification_service=mock_notification_service
+        notification_service=mock_notification_service,
     )
 
-    request = PreviewRequest(
-        file_path="/nonexistent/document.txt",
-        strategy_type=ChunkingStrategy.CHARACTER
-    )
+    request = PreviewRequest(file_path="/nonexistent/document.txt", strategy_type=ChunkingStrategy.CHARACTER)
 
     # Act & Assert
     with pytest.raises(FileNotFoundError) as exc_info:
@@ -181,13 +175,10 @@ async def test_preview_with_metrics_service():
         document_service=mock_doc_service,
         strategy_factory=mock_strategy_factory,
         notification_service=mock_notification_service,
-        metrics_service=mock_metrics_service
+        metrics_service=mock_metrics_service,
     )
 
-    request = PreviewRequest(
-        file_path="/test/document.txt",
-        strategy_type=ChunkingStrategy.SEMANTIC
-    )
+    request = PreviewRequest(file_path="/test/document.txt", strategy_type=ChunkingStrategy.SEMANTIC)
 
     # Act
     response = await use_case.execute(request)

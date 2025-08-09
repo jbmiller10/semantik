@@ -128,7 +128,7 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
             List of section dictionaries
         """
         sections = []
-        lines = content.split('\n')
+        lines = content.split("\n")
         current_pos = 0
 
         i = 0
@@ -138,22 +138,24 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
             line_end = current_pos + len(line) + 1  # +1 for newline
 
             # Check for headers
-            if line.startswith('#'):
-                header_level = len(line) - len(line.lstrip('#'))
+            if line.startswith("#"):
+                header_level = len(line) - len(line.lstrip("#"))
                 if 1 <= header_level <= 6:
-                    sections.append({
-                        "type": f"h{header_level}",
-                        "content": line,
-                        "start": line_start,
-                        "end": line_end,
-                        "level": header_level,
-                    })
+                    sections.append(
+                        {
+                            "type": f"h{header_level}",
+                            "content": line,
+                            "start": line_start,
+                            "end": line_end,
+                            "level": header_level,
+                        }
+                    )
                     current_pos = line_end
                     i += 1
                     continue
 
             # Check for code blocks
-            if line.strip().startswith('```'):
+            if line.strip().startswith("```"):
                 code_lines = [line]
                 i += 1
                 code_start = line_start
@@ -162,30 +164,32 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
                 while i < len(lines):
                     current_pos += len(lines[i]) + 1
                     code_lines.append(lines[i])
-                    if lines[i].strip().startswith('```'):
+                    if lines[i].strip().startswith("```"):
                         break
                     i += 1
 
-                sections.append({
-                    "type": "code",
-                    "content": '\n'.join(code_lines),
-                    "start": code_start,
-                    "end": current_pos,
-                    "level": 0,
-                })
+                sections.append(
+                    {
+                        "type": "code",
+                        "content": "\n".join(code_lines),
+                        "start": code_start,
+                        "end": current_pos,
+                        "level": 0,
+                    }
+                )
                 i += 1
                 continue
 
             # Check for lists
-            if re.match(r'^(\s*[-*+]|\s*\d+\.)\s+', line):
+            if re.match(r"^(\s*[-*+]|\s*\d+\.)\s+", line):
                 list_lines = [line]
                 list_start = line_start
                 i += 1
 
                 # Collect consecutive list items
                 while i < len(lines):
-                    if re.match(r'^(\s*[-*+]|\s*\d+\.)\s+', lines[i]) or (
-                        lines[i].startswith('  ') and lines[i].strip()
+                    if re.match(r"^(\s*[-*+]|\s*\d+\.)\s+", lines[i]) or (
+                        lines[i].startswith("  ") and lines[i].strip()
                     ):
                         current_pos += len(lines[i]) + 1
                         list_lines.append(lines[i])
@@ -193,45 +197,51 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
                     else:
                         break
 
-                sections.append({
-                    "type": "list",
-                    "content": '\n'.join(list_lines),
-                    "start": list_start,
-                    "end": current_pos,
-                    "level": 0,
-                })
+                sections.append(
+                    {
+                        "type": "list",
+                        "content": "\n".join(list_lines),
+                        "start": list_start,
+                        "end": current_pos,
+                        "level": 0,
+                    }
+                )
                 continue
 
             # Check for blockquotes
-            if line.startswith('>'):
+            if line.startswith(">"):
                 quote_lines = [line]
                 quote_start = line_start
                 i += 1
 
                 # Collect consecutive quote lines
-                while i < len(lines) and lines[i].startswith('>'):
+                while i < len(lines) and lines[i].startswith(">"):
                     current_pos += len(lines[i]) + 1
                     quote_lines.append(lines[i])
                     i += 1
 
-                sections.append({
-                    "type": "blockquote",
-                    "content": '\n'.join(quote_lines),
-                    "start": quote_start,
-                    "end": current_pos,
-                    "level": 0,
-                })
+                sections.append(
+                    {
+                        "type": "blockquote",
+                        "content": "\n".join(quote_lines),
+                        "start": quote_start,
+                        "end": current_pos,
+                        "level": 0,
+                    }
+                )
                 continue
 
             # Check for horizontal rules
-            if re.match(r'^(\*{3,}|-{3,}|_{3,})\s*$', line):
-                sections.append({
-                    "type": "hr",
-                    "content": line,
-                    "start": line_start,
-                    "end": line_end,
-                    "level": 0,
-                })
+            if re.match(r"^(\*{3,}|-{3,}|_{3,})\s*$", line):
+                sections.append(
+                    {
+                        "type": "hr",
+                        "content": line,
+                        "start": line_start,
+                        "end": line_end,
+                        "level": 0,
+                    }
+                )
                 current_pos = line_end
                 i += 1
                 continue
@@ -248,13 +258,15 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
                     para_lines.append(lines[i])
                     i += 1
 
-                sections.append({
-                    "type": "paragraph",
-                    "content": '\n'.join(para_lines),
-                    "start": para_start,
-                    "end": current_pos,
-                    "level": 0,
-                })
+                sections.append(
+                    {
+                        "type": "paragraph",
+                        "content": "\n".join(para_lines),
+                        "start": para_start,
+                        "end": current_pos,
+                        "level": 0,
+                    }
+                )
             else:
                 # Empty line
                 current_pos = line_end
@@ -275,30 +287,28 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
         stripped = line.strip()
 
         # Headers
-        if stripped.startswith('#'):
+        if stripped.startswith("#"):
             return True
 
         # Lists
-        if re.match(r'^[-*+]\s+', stripped) or re.match(r'^\d+\.\s+', stripped):
+        if re.match(r"^[-*+]\s+", stripped) or re.match(r"^\d+\.\s+", stripped):
             return True
 
         # Code blocks
-        if stripped.startswith('```'):
+        if stripped.startswith("```"):
             return True
 
         # Blockquotes
-        if stripped.startswith('>'):
+        if stripped.startswith(">"):
             return True
 
         # Horizontal rules
-        if re.match(r'^(\*{3,}|-{3,}|_{3,})\s*$', stripped):
+        if re.match(r"^(\*{3,}|-{3,}|_{3,})\s*$", stripped):
             return True
 
         return False
 
-    def _group_sections(
-        self, sections: list[dict], max_tokens: int
-    ) -> list[list[dict]]:
+    def _group_sections(self, sections: list[dict], max_tokens: int) -> list[list[dict]]:
         """
         Group sections into chunks respecting size limits.
 
@@ -350,9 +360,7 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
 
         return groups
 
-    def _split_large_section(
-        self, section: dict, max_tokens: int
-    ) -> list[dict]:
+    def _split_large_section(self, section: dict, max_tokens: int) -> list[dict]:
         """
         Split a large section into smaller chunks.
 
@@ -390,13 +398,15 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
 
             # Only add non-empty splits
             if split_content:
-                splits.append({
-                    "type": section["type"],
-                    "content": split_content,
-                    "start": section["start"] + position,
-                    "end": section["start"] + end,
-                    "level": section.get("level", 0),
-                })
+                splits.append(
+                    {
+                        "type": section["type"],
+                        "content": split_content,
+                        "start": section["start"] + position,
+                        "end": section["start"] + end,
+                        "level": section.get("level", 0),
+                    }
+                )
 
             position = end
 
@@ -432,7 +442,7 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
 
             parts.append(content)
 
-        return '\n'.join(parts)
+        return "\n".join(parts)
 
     def _get_hierarchy_level(self, sections: list[dict]) -> int:
         """

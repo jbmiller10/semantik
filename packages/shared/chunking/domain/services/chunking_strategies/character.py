@@ -51,7 +51,7 @@ class CharacterChunkingStrategy(ChunkingStrategy):
 
         chunks = []
         total_chars = len(content)
-        
+
         # For very small text that's smaller than the min_tokens requirement,
         # return it as a single chunk
         estimated_tokens = total_chars // 4  # Approximate token count
@@ -68,7 +68,7 @@ class CharacterChunkingStrategy(ChunkingStrategy):
                 confidence_score=0.9,
                 created_at=datetime.utcnow(),
             )
-            
+
             # Create single chunk with relaxed min_tokens
             chunk = Chunk(
                 content=content,
@@ -76,10 +76,10 @@ class CharacterChunkingStrategy(ChunkingStrategy):
                 min_tokens=min(config.min_tokens, estimated_tokens, 1),
                 max_tokens=config.max_tokens,
             )
-            
+
             if progress_callback:
                 progress_callback(100.0)
-            
+
             return [chunk]
 
         # Calculate chunk size in characters based on token limits
@@ -112,7 +112,7 @@ class CharacterChunkingStrategy(ChunkingStrategy):
                 else:
                     # Fall back to word boundary
                     end = self.find_word_boundary(content, end, prefer_before=True)
-            
+
             # Adjust start to word boundary for non-first chunks
             if chunk_index > 0 and start > 0:
                 # Find the next word boundary after start to avoid partial words
@@ -156,7 +156,7 @@ class CharacterChunkingStrategy(ChunkingStrategy):
             # Create chunk entity with adjusted min_tokens for small documents
             # For very small documents or the last chunk, be lenient with min_tokens
             effective_min_tokens = min(config.min_tokens, token_count, 1)
-            
+
             chunk = Chunk(
                 content=chunk_text,
                 metadata=metadata,

@@ -15,11 +15,7 @@ class TestChunkConfig:
     def test_valid_configuration(self):
         """Test creating a valid chunk configuration."""
         # Act
-        config = ChunkConfig(
-            strategy_name="character",
-            min_tokens=10,
-            max_tokens=100,
-            overlap_tokens=5)
+        config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
 
         # Assert
         assert config.strategy_name == "character"
@@ -36,8 +32,9 @@ class TestChunkConfig:
             max_tokens=200,
             overlap_tokens=20,
             similarity_threshold=0.8,
-            encoding="utf-8",      # Use an allowed parameter from the whitelist
-            language="en")         # Another allowed parameter
+            encoding="utf-8",  # Use an allowed parameter from the whitelist
+            language="en",
+        )  # Another allowed parameter
 
         # Assert
         assert config.strategy_name == "semantic"
@@ -50,12 +47,9 @@ class TestChunkConfig:
         # Act & Assert
         with pytest.raises(InvalidConfigurationError) as exc_info:
             ChunkConfig(
-                strategy_name="semantic",
-                min_tokens=50,
-                max_tokens=200,
-                overlap_tokens=20,
-                unknown_param="value")  # This should be rejected
-        
+                strategy_name="semantic", min_tokens=50, max_tokens=200, overlap_tokens=20, unknown_param="value"
+            )  # This should be rejected
+
         assert "Unknown configuration parameter 'unknown_param'" in str(exc_info.value)
         assert "Allowed additional parameters" in str(exc_info.value)
 
@@ -63,106 +57,70 @@ class TestChunkConfig:
         """Test that negative min_tokens raises error."""
         # Act & Assert
         with pytest.raises(InvalidConfigurationError) as exc_info:
-            ChunkConfig(
-                strategy_name="character",
-                min_tokens=-1,
-                max_tokens=100,
-                overlap_tokens=5)
-        
+            ChunkConfig(strategy_name="character", min_tokens=-1, max_tokens=100, overlap_tokens=5)
+
         assert "min_tokens must be positive" in str(exc_info.value)
 
     def test_invalid_min_tokens_zero(self):
         """Test that zero min_tokens raises error."""
         # Act & Assert
         with pytest.raises(InvalidConfigurationError) as exc_info:
-            ChunkConfig(
-                strategy_name="character",
-                min_tokens=0,
-                max_tokens=100,
-                overlap_tokens=5)
-        
+            ChunkConfig(strategy_name="character", min_tokens=0, max_tokens=100, overlap_tokens=5)
+
         assert "min_tokens must be positive" in str(exc_info.value)
 
     def test_invalid_max_tokens_negative(self):
         """Test that negative max_tokens raises error."""
         # Act & Assert
         with pytest.raises(InvalidConfigurationError) as exc_info:
-            ChunkConfig(
-                strategy_name="character",
-                min_tokens=10,
-                max_tokens=-1,
-                overlap_tokens=5)
-        
+            ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=-1, overlap_tokens=5)
+
         assert "max_tokens must be positive" in str(exc_info.value)
 
     def test_invalid_min_greater_than_max(self):
         """Test that min_tokens > max_tokens raises error."""
         # Act & Assert
         with pytest.raises(InvalidConfigurationError) as exc_info:
-            ChunkConfig(
-                strategy_name="character",
-                min_tokens=100,
-                max_tokens=50,
-                overlap_tokens=5)
-        
+            ChunkConfig(strategy_name="character", min_tokens=100, max_tokens=50, overlap_tokens=5)
+
         assert "min_tokens cannot be greater than max_tokens" in str(exc_info.value)
 
     def test_invalid_overlap_negative(self):
         """Test that negative overlap_tokens raises error."""
         # Act & Assert
         with pytest.raises(InvalidConfigurationError) as exc_info:
-            ChunkConfig(
-                strategy_name="character",
-                min_tokens=10,
-                max_tokens=100,
-                overlap_tokens=-1)
-        
+            ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=-1)
+
         assert "overlap_tokens cannot be negative" in str(exc_info.value)
 
     def test_invalid_overlap_greater_than_min(self):
         """Test that overlap_tokens >= min_tokens raises error."""
         # Act & Assert
         with pytest.raises(InvalidConfigurationError) as exc_info:
-            ChunkConfig(
-                strategy_name="character",
-                min_tokens=10,
-                max_tokens=100,
-                overlap_tokens=10)
-        
+            ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=10)
+
         assert "overlap_tokens must be less than min_tokens" in str(exc_info.value)
 
     def test_invalid_overlap_greater_than_min_excessive(self):
         """Test that overlap_tokens > min_tokens raises error."""
         # Act & Assert
         with pytest.raises(InvalidConfigurationError) as exc_info:
-            ChunkConfig(
-                strategy_name="character",
-                min_tokens=10,
-                max_tokens=100,
-                overlap_tokens=15)
-        
+            ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=15)
+
         assert "overlap_tokens must be less than min_tokens" in str(exc_info.value)
 
     def test_empty_strategy_name(self):
         """Test that empty strategy name raises error."""
         # Act & Assert
         with pytest.raises(InvalidConfigurationError) as exc_info:
-            ChunkConfig(
-                strategy_name="",
-                min_tokens=10,
-                max_tokens=100,
-                overlap_tokens=5)
-        
+            ChunkConfig(strategy_name="", min_tokens=10, max_tokens=100, overlap_tokens=5)
+
         assert "strategy_name cannot be empty" in str(exc_info.value)
 
     def test_estimate_chunks_basic(self):
         """Test basic chunk estimation."""
         # Arrange
-        config = ChunkConfig(
-            strategy_name="character",
-            min_tokens=10,
-            max_tokens=100,
-            overlap_tokens=5)
+        config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
 
         # Act
         estimated = config.estimate_chunks(1000)  # 1000 tokens
@@ -176,11 +134,7 @@ class TestChunkConfig:
     def test_estimate_chunks_no_overlap(self):
         """Test chunk estimation without overlap."""
         # Arrange
-        config = ChunkConfig(
-            strategy_name="character",
-            min_tokens=10,
-            max_tokens=100,
-            overlap_tokens=0)
+        config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=0)
 
         # Act
         estimated = config.estimate_chunks(1000)
@@ -192,11 +146,7 @@ class TestChunkConfig:
     def test_estimate_chunks_small_document(self):
         """Test chunk estimation for small document."""
         # Arrange
-        config = ChunkConfig(
-            strategy_name="character",
-            min_tokens=10,
-            max_tokens=100,
-            overlap_tokens=5)
+        config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
 
         # Act
         estimated = config.estimate_chunks(50)  # Small document
@@ -209,11 +159,8 @@ class TestChunkConfig:
         """Test conversion to dictionary."""
         # Arrange
         config = ChunkConfig(
-            strategy_name="semantic",
-            min_tokens=50,
-            max_tokens=200,
-            overlap_tokens=20,
-            similarity_threshold=0.8)
+            strategy_name="semantic", min_tokens=50, max_tokens=200, overlap_tokens=20, similarity_threshold=0.8
+        )
 
         # Act
         config_dict = config.to_dict()
@@ -228,21 +175,11 @@ class TestChunkConfig:
     def test_equality(self):
         """Test value object equality."""
         # Arrange
-        config1 = ChunkConfig(
-            strategy_name="character",
-            min_tokens=10,
-            max_tokens=100,
-            overlap_tokens=5)
-        config2 = ChunkConfig(
-            strategy_name="character",
-            min_tokens=10,
-            max_tokens=100,
-            overlap_tokens=5)
+        config1 = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
+        config2 = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
         config3 = ChunkConfig(
-            strategy_name="character",
-            min_tokens=10,
-            max_tokens=200,  # Different max_tokens
-            overlap_tokens=5)
+            strategy_name="character", min_tokens=10, max_tokens=200, overlap_tokens=5  # Different max_tokens
+        )
 
         # Assert
         assert config1 == config2
@@ -335,7 +272,8 @@ class TestChunkMetadata:
             start_offset=0,
             end_offset=50,
             token_count=50,
-            strategy_name="character")
+            strategy_name="character",
+        )
 
         # Assert
         assert metadata.chunk_id == "chunk-1"
@@ -352,7 +290,7 @@ class TestChunkMetadata:
     def test_full_metadata_creation(self):
         """Test creating metadata with all fields."""
         from datetime import datetime, UTC
-        
+
         # Act
         now = datetime.now(UTC)
         metadata = ChunkMetadata(
@@ -366,7 +304,8 @@ class TestChunkMetadata:
             semantic_score=0.75,
             hierarchy_level=2,
             section_title="Introduction",
-            created_at=now)
+            created_at=now,
+        )
 
         # Assert
         assert metadata.chunk_id == "chunk-full"
@@ -392,8 +331,9 @@ class TestChunkMetadata:
                 start_offset=0,
                 end_offset=10,
                 token_count=-1,
-                strategy_name="test")
-        
+                strategy_name="test",
+            )
+
         assert "Token count must be positive" in str(exc_info.value)
 
     def test_invalid_offsets(self):
@@ -407,8 +347,9 @@ class TestChunkMetadata:
                 start_offset=10,
                 end_offset=5,  # Less than start
                 token_count=10,
-                strategy_name="test")
-        
+                strategy_name="test",
+            )
+
         assert "End offset" in str(exc_info.value) and "must be greater than start offset" in str(exc_info.value)
 
     def test_invalid_semantic_score_range(self):
@@ -423,8 +364,9 @@ class TestChunkMetadata:
                 end_offset=10,
                 token_count=10,
                 strategy_name="test",
-                semantic_score=1.5)
-        
+                semantic_score=1.5,
+            )
+
         assert "Semantic score must be between 0.0 and 1.0" in str(exc_info.value)
 
     def test_negative_start_offset(self):
@@ -438,8 +380,9 @@ class TestChunkMetadata:
                 start_offset=-1,  # Negative
                 end_offset=10,
                 token_count=10,
-                strategy_name="test")
-        
+                strategy_name="test",
+            )
+
         assert "Start offset must be non-negative" in str(exc_info.value)
 
     def test_negative_chunk_index(self):
@@ -453,8 +396,9 @@ class TestChunkMetadata:
                 start_offset=0,
                 end_offset=10,
                 token_count=10,
-                strategy_name="test")
-        
+                strategy_name="test",
+            )
+
         assert "Chunk index must be non-negative" in str(exc_info.value)
 
     def test_character_count_property(self):
@@ -467,8 +411,9 @@ class TestChunkMetadata:
             start_offset=10,
             end_offset=60,
             token_count=10,
-            strategy_name="test")
-        
+            strategy_name="test",
+        )
+
         # Assert
         assert metadata.character_count == 50
 
@@ -482,8 +427,9 @@ class TestChunkMetadata:
             start_offset=0,
             end_offset=100,
             token_count=20,
-            strategy_name="test")
-        
+            strategy_name="test",
+        )
+
         # Assert
         assert metadata.average_token_length == 5.0
 
@@ -497,7 +443,8 @@ class TestChunkMetadata:
             start_offset=0,
             end_offset=50,
             token_count=10,
-            strategy_name="test")
+            strategy_name="test",
+        )
         metadata2 = ChunkMetadata(
             chunk_id="chunk-2",
             document_id="doc-123",
@@ -505,7 +452,8 @@ class TestChunkMetadata:
             start_offset=40,  # Overlaps with metadata1
             end_offset=90,
             token_count=10,
-            strategy_name="test")
+            strategy_name="test",
+        )
         metadata3 = ChunkMetadata(
             chunk_id="chunk-3",
             document_id="doc-123",
@@ -513,7 +461,8 @@ class TestChunkMetadata:
             start_offset=60,  # No overlap with metadata1
             end_offset=100,
             token_count=8,
-            strategy_name="test")
+            strategy_name="test",
+        )
         metadata4 = ChunkMetadata(
             chunk_id="chunk-4",
             document_id="doc-456",  # Different document
@@ -521,8 +470,9 @@ class TestChunkMetadata:
             start_offset=0,
             end_offset=50,
             token_count=10,
-            strategy_name="test")
-        
+            strategy_name="test",
+        )
+
         # Assert
         assert metadata1.overlaps_with(metadata2)
         assert not metadata1.overlaps_with(metadata3)
@@ -538,7 +488,8 @@ class TestChunkMetadata:
             start_offset=0,
             end_offset=50,
             token_count=10,
-            strategy_name="test")
+            strategy_name="test",
+        )
         metadata2 = ChunkMetadata(
             chunk_id="chunk-2",
             document_id="doc-123",
@@ -546,7 +497,8 @@ class TestChunkMetadata:
             start_offset=30,  # 20 character overlap
             end_offset=80,
             token_count=10,
-            strategy_name="test")
+            strategy_name="test",
+        )
         metadata3 = ChunkMetadata(
             chunk_id="chunk-3",
             document_id="doc-123",
@@ -554,8 +506,9 @@ class TestChunkMetadata:
             start_offset=60,  # No overlap
             end_offset=100,
             token_count=8,
-            strategy_name="test")
-        
+            strategy_name="test",
+        )
+
         # Assert
         assert metadata1.overlap_size(metadata2) == 20
         assert metadata1.overlap_size(metadata3) == 0
@@ -570,12 +523,13 @@ class TestChunkMetadata:
             start_offset=0,
             end_offset=50,
             token_count=10,
-            strategy_name="test")
+            strategy_name="test",
+        )
 
         # Act & Assert - attributes should not be settable
         with pytest.raises(AttributeError):
             metadata.token_count = 100
-        
+
         with pytest.raises(AttributeError):
             metadata.chunk_id = "new-id"
 
@@ -590,7 +544,8 @@ class TestChunkMetadata:
             end_offset=50,
             token_count=50,
             strategy_name="character",
-            semantic_score=0.8)
+            semantic_score=0.8,
+        )
         metadata2 = ChunkMetadata(
             chunk_id="chunk-1",
             document_id="doc-123",
@@ -599,7 +554,8 @@ class TestChunkMetadata:
             end_offset=50,
             token_count=50,
             strategy_name="character",
-            semantic_score=0.8)
+            semantic_score=0.8,
+        )
         metadata3 = ChunkMetadata(
             chunk_id="chunk-2",  # Different ID
             document_id="doc-123",
@@ -608,7 +564,8 @@ class TestChunkMetadata:
             end_offset=50,
             token_count=50,
             strategy_name="character",
-            semantic_score=0.8)
+            semantic_score=0.8,
+        )
 
         # Assert
         assert metadata1 == metadata2
@@ -629,5 +586,5 @@ class TestChunkMetadata:
                 strategy_name="test",
                 hierarchy_level=-1,  # Negative hierarchy level
             )
-        
+
         assert "Hierarchy level must be non-negative" in str(exc_info.value)

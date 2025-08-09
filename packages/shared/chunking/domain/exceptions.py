@@ -21,15 +21,12 @@ class InvalidStateError(ChunkingDomainError):
     """Raised when an operation is attempted in an invalid state."""
 
 
-
 class InvalidChunkError(ChunkingDomainError):
     """Raised when a chunk doesn't meet business requirements."""
 
 
-
 class InvalidConfigurationError(ChunkingDomainError):
     """Raised when chunking configuration violates business rules."""
-
 
 
 class DocumentTooLargeError(ChunkingDomainError):

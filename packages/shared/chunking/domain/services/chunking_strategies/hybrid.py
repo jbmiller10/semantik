@@ -100,7 +100,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
                     strategy_results[strategy_name] = strategy_chunks
                 except Exception as e:
                     print(f"Strategy {strategy_name} failed: {e}")
-                    
+
             if strategy_results:
                 chunks = self._build_consensus(strategy_results)
             else:
@@ -124,7 +124,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
                     "strategies_used": ["character"],
                     "fallback": True,
                 }
-                
+
                 hybrid_metadata = ChunkMetadata(
                     chunk_id=f"hybrid_{i:04d}",
                     document_id=chunk.metadata.document_id,
@@ -138,14 +138,14 @@ class HybridChunkingStrategy(ChunkingStrategy):
                     confidence_score=0.8,
                     created_at=datetime.utcnow(),
                 )
-                
+
                 chunks[i] = Chunk(
                     content=chunk.content,
                     metadata=hybrid_metadata,
                     min_tokens=config.min_tokens,
                     max_tokens=config.max_tokens,
                 )
-        
+
         # Post-process chunks for consistency
         chunks = self._post_process_chunks(chunks, config)
 
@@ -163,7 +163,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
         """
         analysis = {
             "total_chars": len(content),
-            "total_lines": content.count('\n') + 1,
+            "total_lines": content.count("\n") + 1,
             "has_markdown": False,
             "has_code": False,
             "has_structure": False,
@@ -174,25 +174,25 @@ class HybridChunkingStrategy(ChunkingStrategy):
         }
 
         # Check for markdown elements
-        markdown_indicators = ['#', '```', '|', '>', '- ', '* ', '1. ']
+        markdown_indicators = ["#", "```", "|", ">", "- ", "* ", "1. "]
         for indicator in markdown_indicators:
             if indicator in content:
                 analysis["has_markdown"] = True
                 break
 
         # Check for code blocks
-        if '```' in content or 'def ' in content or 'function ' in content:
+        if "```" in content or "def " in content or "function " in content:
             analysis["has_code"] = True
 
         # Count sentences
-        sentences = content.count('.') + content.count('!') + content.count('?')
+        sentences = content.count(".") + content.count("!") + content.count("?")
         analysis["sentence_count"] = sentences
 
         if sentences > 0:
             analysis["avg_sentence_length"] = len(content) / sentences
 
         # Check for structural elements
-        if '\n\n' in content or analysis["has_markdown"]:
+        if "\n\n" in content or analysis["has_markdown"]:
             analysis["has_structure"] = True
 
         # Determine if content is mixed
@@ -226,7 +226,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
         current_pos = 0
 
         # Split by major breaks
-        parts = content.split('\n\n')
+        parts = content.split("\n\n")
 
         for part in parts:
             if not part.strip():
@@ -235,12 +235,14 @@ class HybridChunkingStrategy(ChunkingStrategy):
 
             section_type = self._classify_section(part)
 
-            sections.append({
-                "type": section_type,
-                "start": current_pos,
-                "end": current_pos + len(part),
-                "content": part,
-            })
+            sections.append(
+                {
+                    "type": section_type,
+                    "start": current_pos,
+                    "end": current_pos + len(part),
+                    "content": part,
+                }
+            )
 
             current_pos += len(part) + 2  # +2 for \n\n
 
@@ -259,23 +261,23 @@ class HybridChunkingStrategy(ChunkingStrategy):
         stripped = text.strip()
 
         # Code detection
-        if stripped.startswith('```') or 'def ' in stripped or 'function ' in stripped:
+        if stripped.startswith("```") or "def " in stripped or "function " in stripped:
             return "code"
 
         # Markdown header
-        if stripped.startswith('#'):
+        if stripped.startswith("#"):
             return "header"
 
         # List
-        if stripped.startswith(('- ', '* ', '1. ')):
+        if stripped.startswith(("- ", "* ", "1. ")):
             return "list"
 
         # Table (simple detection)
-        if '|' in stripped and stripped.count('|') > 2:
+        if "|" in stripped and stripped.count("|") > 2:
             return "table"
 
         # Quote
-        if stripped.startswith('>'):
+        if stripped.startswith(">"):
             return "quote"
 
         # Default to prose
@@ -364,7 +366,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
                     "strategies_used": [section_type],
                     "section_type": section_type,
                 }
-                
+
                 adjusted_metadata = ChunkMetadata(
                     chunk_id=f"hybrid_{chunk_index:04d}",
                     document_id=chunk.metadata.document_id,
@@ -441,7 +443,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
                 "strategies_used": [primary_strategy],
                 "primary_strategy": primary_strategy,
             }
-            
+
             hybrid_metadata = ChunkMetadata(
                 chunk_id=f"hybrid_{i:04d}",
                 document_id=chunk.metadata.document_id,
@@ -471,9 +473,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
 
         return updated_chunks
 
-    def _post_process_chunks(
-        self, chunks: list[Chunk], config: ChunkConfig
-    ) -> list[Chunk]:
+    def _post_process_chunks(self, chunks: list[Chunk], config: ChunkConfig) -> list[Chunk]:
         """
         Post-process chunks for consistency.
 
@@ -596,45 +596,45 @@ class HybridChunkingStrategy(ChunkingStrategy):
     def _build_consensus(self, strategy_results: dict[str, list[Chunk]]) -> list[Chunk]:
         """
         Build consensus from multiple strategy results.
-        
+
         This method combines chunks from different strategies to create
         an optimal chunking solution.
-        
+
         Args:
             strategy_results: Dictionary mapping strategy names to their chunks
-            
+
         Returns:
             Consensus list of chunks
         """
         if not strategy_results:
             return []
-        
+
         # If only one strategy, return its results
         if len(strategy_results) == 1:
             return list(strategy_results.values())[0]
-        
+
         # Simple consensus: use the strategy that produced the most reasonable chunks
         # (not too many, not too few)
         best_chunks = None
-        best_score = float('inf')
-        
+        best_score = float("inf")
+
         for strategy_name, chunks in strategy_results.items():
             if not chunks:
                 continue
-            
+
             # Score based on chunk count (prefer moderate numbers)
             chunk_count = len(chunks)
             if chunk_count == 0:
-                score = float('inf')
+                score = float("inf")
             elif chunk_count < 3:
                 score = 10 - chunk_count  # Penalize too few chunks
             elif chunk_count > 50:
                 score = chunk_count  # Penalize too many chunks
             else:
                 score = 0  # Ideal range
-            
+
             if score < best_score:
                 best_score = score
                 best_chunks = chunks
-        
+
         return best_chunks if best_chunks else []

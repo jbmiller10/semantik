@@ -85,7 +85,7 @@ class SemanticChunkingStrategy(ChunkingStrategy):
 
             # Calculate semantic density (higher for more semantically cohesive clusters)
             semantic_density = cluster.get("similarity_score", 0.5)
-            
+
             # Create metadata
             metadata = ChunkMetadata(
                 chunk_id=f"{config.strategy_name}_{chunk_index:04d}",
@@ -104,7 +104,7 @@ class SemanticChunkingStrategy(ChunkingStrategy):
             # For semantic chunking, use a lower min_tokens to allow for natural boundaries
             # but ensure chunks aren't too small
             effective_min_tokens = min(config.min_tokens, token_count, 1)
-            
+
             # Create chunk with adjusted min_tokens for semantic boundaries
             chunk = Chunk(
                 content=cluster_text,
@@ -141,26 +141,30 @@ class SemanticChunkingStrategy(ChunkingStrategy):
             current_sentence.append(char)
 
             # Check for sentence ending
-            if char in '.!?' and (i + 1 >= len(text) or text[i + 1].isspace()):
-                sentence_text = ''.join(current_sentence).strip()
+            if char in ".!?" and (i + 1 >= len(text) or text[i + 1].isspace()):
+                sentence_text = "".join(current_sentence).strip()
                 if sentence_text:
-                    sentences.append({
-                        "text": sentence_text,
-                        "start": current_pos,
-                        "end": i + 1,
-                    })
+                    sentences.append(
+                        {
+                            "text": sentence_text,
+                            "start": current_pos,
+                            "end": i + 1,
+                        }
+                    )
                 current_pos = i + 1
                 current_sentence = []
 
         # Add remaining text as final sentence
         if current_sentence:
-            sentence_text = ''.join(current_sentence).strip()
+            sentence_text = "".join(current_sentence).strip()
             if sentence_text:
-                sentences.append({
-                    "text": sentence_text,
-                    "start": current_pos,
-                    "end": len(text),
-                })
+                sentences.append(
+                    {
+                        "text": sentence_text,
+                        "start": current_pos,
+                        "end": len(text),
+                    }
+                )
 
         return sentences
 
@@ -326,14 +330,78 @@ class SemanticChunkingStrategy(ChunkingStrategy):
 
         # Remove common stop words
         stop_words = {
-            'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
-            'of', 'with', 'by', 'from', 'is', 'was', 'are', 'were', 'been', 'be',
-            'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
-            'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these',
-            'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what', 'which',
-            'who', 'when', 'where', 'why', 'how', 'all', 'each', 'every', 'both',
-            'few', 'more', 'most', 'other', 'some', 'such', 'only', 'own', 'same',
-            'so', 'than', 'too', 'very', 'just', 'as',
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "from",
+            "is",
+            "was",
+            "are",
+            "were",
+            "been",
+            "be",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "must",
+            "can",
+            "this",
+            "that",
+            "these",
+            "those",
+            "i",
+            "you",
+            "he",
+            "she",
+            "it",
+            "we",
+            "they",
+            "what",
+            "which",
+            "who",
+            "when",
+            "where",
+            "why",
+            "how",
+            "all",
+            "each",
+            "every",
+            "both",
+            "few",
+            "more",
+            "most",
+            "other",
+            "some",
+            "such",
+            "only",
+            "own",
+            "same",
+            "so",
+            "than",
+            "too",
+            "very",
+            "just",
+            "as",
         }
 
         words1 = words1 - stop_words
@@ -385,20 +453,20 @@ class SemanticChunkingStrategy(ChunkingStrategy):
 
         ngrams = set()
         for i in range(len(text) - n + 1):
-            ngrams.add(text[i:i + n])
+            ngrams.add(text[i : i + n])
 
         return ngrams
 
     def _get_sentence_embedding(self, text: str) -> list[float]:
         """
         Get a simple embedding representation for a sentence.
-        
+
         This is a placeholder for a real embedding model.
         In production, this would use a proper sentence embedding model.
-        
+
         Args:
             text: Text to embed
-            
+
         Returns:
             Simple embedding vector
         """
@@ -406,14 +474,14 @@ class SemanticChunkingStrategy(ChunkingStrategy):
         # In production, this would use a real model
         words = text.lower().split()
         embedding = []
-        
+
         for i in range(10):  # Simple 10-dimensional embedding
             value = 0.0
             for word in words:
                 # Use word hash to generate pseudo-random values
                 value += hash(word + str(i)) % 100 / 100.0
             embedding.append(value / max(len(words), 1))
-        
+
         return embedding
 
     def validate_content(self, content: str) -> tuple[bool, str | None]:
@@ -433,7 +501,7 @@ class SemanticChunkingStrategy(ChunkingStrategy):
             return False, f"Content too large for semantic analysis: {len(content)} characters"
 
         # Check if content has enough sentences for semantic chunking
-        sentence_count = content.count('.') + content.count('!') + content.count('?')
+        sentence_count = content.count(".") + content.count("!") + content.count("?")
         if sentence_count < 2:
             return False, "Content must have at least 2 sentences for semantic chunking"
 

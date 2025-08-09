@@ -67,9 +67,7 @@ class ChunkCollection:
 
         # Check for duplicates
         if chunk.metadata.chunk_id in self._chunk_index:
-            raise InvalidChunkError(
-                f"Chunk {chunk.metadata.chunk_id} already exists in collection"
-            )
+            raise InvalidChunkError(f"Chunk {chunk.metadata.chunk_id} already exists in collection")
 
         # Validate chunk boundaries
         if chunk.metadata.end_offset > len(self._source_text):
@@ -252,9 +250,7 @@ class ChunkCollection:
         gaps = self.find_gaps()
         if gaps:
             total_gap_chars = sum(end - start for start, end in gaps)
-            issues.append(
-                f"Found {len(gaps)} gaps totaling {total_gap_chars} characters"
-            )
+            issues.append(f"Found {len(gaps)} gaps totaling {total_gap_chars} characters")
 
         # Check for missing indices
         expected_indices = set(range(len(self._chunks)))
@@ -285,8 +281,7 @@ class ChunkCollection:
         result = []
 
         for chunk in self._chunks:
-            if (chunk.metadata.start_offset < end_offset and
-                chunk.metadata.end_offset > start_offset):
+            if chunk.metadata.start_offset < end_offset and chunk.metadata.end_offset > start_offset:
                 result.append(chunk)
 
         return result

@@ -39,5 +39,5 @@ __all__ = [
     "CompareStrategiesResponse",
     "OperationMetrics",
     "GetOperationStatusResponse",
-    "CancelOperationResponse"
+    "CancelOperationResponse",
 ]

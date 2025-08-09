@@ -35,7 +35,8 @@ class TestChunkingStrategyService:
             name="test_strategy",
             description="Test chunking strategy",
             is_active=True,
-            meta={"supports_streaming": True})
+            meta={"supports_streaming": True},
+        )
 
     @pytest.mark.asyncio()
     async def test_ensure_default_strategies_creates_all(self, service, mock_session):
@@ -56,8 +57,8 @@ class TestChunkingStrategyService:
         """Test that existing strategies are not recreated."""
         # Mock that first strategy exists, others don't
         existing_strategy = ChunkingStrategy(
-            name=service.DEFAULT_STRATEGIES[0]["name"],
-            description="Existing strategy")
+            name=service.DEFAULT_STRATEGIES[0]["name"], description="Existing strategy"
+        )
 
         call_count = 0
 
@@ -156,10 +157,7 @@ class TestChunkingStrategyService:
     @pytest.mark.asyncio()
     async def test_get_default_strategy_found(self, service, mock_session):
         """Test getting the default strategy."""
-        default_strategy = ChunkingStrategy(
-            name="recursive",
-            is_active=True,
-            meta={"recommended_default": True})
+        default_strategy = ChunkingStrategy(name="recursive", is_active=True, meta={"recommended_default": True})
 
         # Since the actual implementation uses PostgreSQL-specific JSON queries,
         # we need to patch the entire method

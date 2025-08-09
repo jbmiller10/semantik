@@ -72,12 +72,8 @@ class TestCleanupQdrantCollections:
     @patch("packages.webui.utils.qdrant_manager.qdrant_manager")
     @patch("shared.managers.qdrant_manager.QdrantManager")  # Patch at the actual import location
     def test_cleanup_qdrant_collections_skip_system(
-        self,
-        mock_qdrant_manager_class,
-        mock_conn_manager,
-        mock_asyncio_run,
-        mock_audit,
-        mock_timer) -> None:
+        self, mock_qdrant_manager_class, mock_conn_manager, mock_asyncio_run, mock_audit, mock_timer
+    ) -> None:
         """Test that system collections are skipped."""
         # Setup mocks
         mock_qdrant_manager_instance = MagicMock()
@@ -112,12 +108,8 @@ class TestCleanupQdrantCollections:
     @patch("packages.webui.utils.qdrant_manager.qdrant_manager")
     @patch("shared.managers.qdrant_manager.QdrantManager")  # Patch at the actual import location
     def test_cleanup_qdrant_collections_skip_active(
-        self,
-        mock_qdrant_manager_class,
-        mock_conn_manager,
-        mock_asyncio_run,
-        mock_audit,
-        mock_timer) -> None:
+        self, mock_qdrant_manager_class, mock_conn_manager, mock_asyncio_run, mock_audit, mock_timer
+    ) -> None:
         """Test that active collections are skipped."""
         # Setup mocks
         mock_qdrant_manager_instance = MagicMock()
@@ -149,12 +141,8 @@ class TestCleanupQdrantCollections:
     @patch("packages.webui.utils.qdrant_manager.qdrant_manager")
     @patch("shared.managers.qdrant_manager.QdrantManager")  # Patch at the actual import location
     def test_cleanup_qdrant_collections_skip_recent_staging(
-        self,
-        mock_qdrant_manager_class,
-        mock_conn_manager,
-        mock_asyncio_run,
-        mock_audit,
-        mock_timer) -> None:
+        self, mock_qdrant_manager_class, mock_conn_manager, mock_asyncio_run, mock_audit, mock_timer
+    ) -> None:
         """Test that recent staging collections are skipped."""
         # Setup mocks
         mock_qdrant_manager_instance = MagicMock()
@@ -194,12 +182,8 @@ class TestCleanupQdrantCollections:
     @patch("packages.webui.utils.qdrant_manager.qdrant_manager")
     @patch("shared.managers.qdrant_manager.QdrantManager")  # Patch at the actual import location
     def test_cleanup_qdrant_collections_successful_deletion(
-        self,
-        mock_qdrant_manager_class,
-        mock_conn_manager,
-        mock_asyncio_run,
-        mock_audit_batch,
-        mock_timer) -> None:
+        self, mock_qdrant_manager_class, mock_conn_manager, mock_asyncio_run, mock_audit_batch, mock_timer
+    ) -> None:
         """Test successful collection deletion with all safety checks passed."""
         # Setup mocks
         mock_qdrant_manager_instance = MagicMock()
@@ -284,7 +268,8 @@ class TestGetActiveCollections:
         # Patch both AsyncSessionLocal and CollectionRepository at their source
         with (
             patch("shared.database.database.AsyncSessionLocal", mock_session_maker),
-            patch("shared.database.repositories.collection_repository.CollectionRepository", return_value=mock_repo)):
+            patch("shared.database.repositories.collection_repository.CollectionRepository", return_value=mock_repo),
+        ):
             from packages.webui.tasks import _get_active_collections
 
             # Run function
@@ -321,7 +306,8 @@ class TestAuditCollectionDeletion:
         # Patch both AsyncSessionLocal and CollectionAuditLog at their source
         with (
             patch("shared.database.database.AsyncSessionLocal", mock_session_maker),
-            patch("shared.database.models.CollectionAuditLog", mock_audit_log_class)):
+            patch("shared.database.models.CollectionAuditLog", mock_audit_log_class),
+        ):
             from packages.webui.tasks import _audit_collection_deletions_batch
 
             # Run function

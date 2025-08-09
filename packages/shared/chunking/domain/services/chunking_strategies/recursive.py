@@ -28,15 +28,15 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
     # Hierarchy of separators from most to least preferred
     SEPARATORS = [
         "\n\n\n",  # Multiple blank lines (major sections)
-        "\n\n",    # Paragraph breaks
-        "\n",      # Line breaks
-        ". ",      # Sentence endings
-        "! ",      # Exclamation endings
-        "? ",      # Question endings
-        "; ",      # Semicolons
-        ", ",      # Commas
-        " ",       # Spaces
-        "",        # Character-level (last resort)
+        "\n\n",  # Paragraph breaks
+        "\n",  # Line breaks
+        ". ",  # Sentence endings
+        "! ",  # Exclamation endings
+        "? ",  # Question endings
+        "; ",  # Semicolons
+        ", ",  # Commas
+        " ",  # Spaces
+        "",  # Character-level (last resort)
     ]
 
     def __init__(self) -> None:
@@ -98,7 +98,7 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
                 # For very small segments, we'll skip them rather than fail
                 # They were likely already combined in the recursive split phase
                 continue
-            
+
             if token_count > config.max_tokens:
                 # This shouldn't happen if recursive split worked correctly
                 # but we'll handle it gracefully by skipping
@@ -247,9 +247,7 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
 
         return chunks
 
-    def _character_split(
-        self, text: str, max_tokens: int, overlap_tokens: int, min_tokens: int = 10
-    ) -> list[str]:
+    def _character_split(self, text: str, max_tokens: int, overlap_tokens: int, min_tokens: int = 10) -> list[str]:
         """
         Split text at character level when no separators work.
 
@@ -264,12 +262,12 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
         """
         if not text:
             return []
-            
+
         chunks = []
-        
+
         # Check if text has no spaces (continuous text)
         # In this case, token counting formula is different
-        has_spaces = ' ' in text
+        has_spaces = " " in text
         if not has_spaces:
             # For spaceless text, the token formula is approximately:
             # tokens = 0.39 + 0.175 * char_count
@@ -290,12 +288,12 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
             # Calculate the end position for this chunk
             # Ensure we get at least min_chunk_size characters
             end = min(position + chunk_size, len(text))
-            
+
             # Ensure chunk meets minimum size requirement
             if end - position < min_chunk_size:
                 # If we can extend to meet minimum, do so
                 end = min(position + min_chunk_size, len(text))
-                
+
             # For the last chunk, ensure it's not too small
             remaining = len(text) - position
             if remaining < min_chunk_size:
@@ -327,7 +325,7 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
             # Calculate next position with overlap
             # Ensure position always advances to avoid infinite loops
             next_position = max(end - overlap_size, position + 1)
-            
+
             # Check if remaining text after next position is too small for a chunk
             remaining_after_next = len(text) - next_position
             if 0 < remaining_after_next < min_chunk_size:
@@ -339,7 +337,7 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
                     if remainder:
                         chunks[-1] = last_chunk + " " + remainder
                 break
-                
+
             position = next_position
 
         return chunks

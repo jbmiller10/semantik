@@ -8,9 +8,11 @@ from uuid import uuid4
 import pytest
 
 from packages.shared.chunking.application.dto.requests import GetOperationStatusRequest
-from packages.shared.chunking.application.dto.responses import GetOperationStatusResponse, OperationStatus as DTOOperationStatus
-from packages.shared.chunking.application.use_cases.get_operation_status import (
-    GetOperationStatusUseCase)
+from packages.shared.chunking.application.dto.responses import (
+    GetOperationStatusResponse,
+    OperationStatus as DTOOperationStatus,
+)
+from packages.shared.chunking.application.use_cases.get_operation_status import GetOperationStatusUseCase
 from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from packages.shared.chunking.domain.value_objects.operation_status import OperationStatus
@@ -33,36 +35,31 @@ class TestGetOperationStatusUseCase:
         repo = AsyncMock()
         repo.find_by_operation = AsyncMock(return_value=[])  # Changed to match implementation
         return repo
-    
+
     @pytest.fixture()
     def mock_metrics_service(self):
         """Create mock metrics service."""
         service = AsyncMock()
         service.get_operation_metrics = AsyncMock(return_value=None)
         return service
-    
+
     @pytest.fixture()
     def use_case(self, mock_repository, mock_chunk_repository, mock_metrics_service):
         """Create use case instance with mocked dependencies."""
         return GetOperationStatusUseCase(
             operation_repository=mock_repository,
             chunk_repository=mock_chunk_repository,
-            metrics_service=mock_metrics_service)
+            metrics_service=mock_metrics_service,
+        )
 
     @pytest.fixture()
     def sample_operation(self):
         """Create a sample chunking operation."""
-        config = ChunkConfig(
-            strategy_name="character",
-            min_tokens=10,
-            max_tokens=100,
-            overlap_tokens=5)
+        config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
 
         operation = ChunkingOperation(
-            operation_id=str(uuid4()),
-            document_id="doc-123",
-            document_content="Sample document content",
-            config=config)
+            operation_id=str(uuid4()), document_id="doc-123", document_content="Sample document content", config=config
+        )
 
         # Set operation to processing state
         operation.start()
@@ -109,7 +106,7 @@ class TestGetOperationStatusUseCase:
         operation.created_at = datetime.utcnow()
         operation.updated_at = datetime.utcnow()
         operation.error_message = None
-        
+
         use_case.operation_repository.find_by_id.return_value = operation
 
         # Act
@@ -240,7 +237,7 @@ class TestGetOperationStatusUseCase:
         """Test getting status by document ID instead of operation ID."""
         # Arrange
         request = GetOperationStatusRequest(document_id="doc-123")
-        
+
         # Create a mock operation since we can't modify ChunkingOperation.status
         operation = MagicMock()
         operation.id = "op-123"
@@ -251,7 +248,7 @@ class TestGetOperationStatusUseCase:
         operation.total_chunks = 10
         operation.chunks_processed = 5
         operation.error_message = None
-        
+
         use_case.operation_repository.find_by_document_id.return_value = [operation]
 
         # Act
@@ -344,17 +341,13 @@ class TestGetOperationStatusUseCase:
     async def test_concurrent_status_requests(self, use_case, sample_operation):
         """Test handling of concurrent status requests."""
         # Arrange
-        requests = [
-            GetOperationStatusRequest(operation_id=sample_operation.id)
-            for _ in range(5)
-        ]
+        requests = [GetOperationStatusRequest(operation_id=sample_operation.id) for _ in range(5)]
         use_case.operation_repository.find_by_id.return_value = sample_operation
 
         # Act
         import asyncio
-        responses = await asyncio.gather(
-            *[use_case.execute(req) for req in requests]
-        )
+
+        responses = await asyncio.gather(*[use_case.execute(req) for req in requests])
 
         # Assert
         assert len(responses) == 5

@@ -5,18 +5,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from packages.shared.chunking.domain.services.chunking_strategies.character import (
-    CharacterChunkingStrategy)
-from packages.shared.chunking.domain.services.chunking_strategies.hierarchical import (
-    HierarchicalChunkingStrategy)
-from packages.shared.chunking.domain.services.chunking_strategies.hybrid import (
-    HybridChunkingStrategy)
-from packages.shared.chunking.domain.services.chunking_strategies.markdown import (
-    MarkdownChunkingStrategy)
-from packages.shared.chunking.domain.services.chunking_strategies.recursive import (
-    RecursiveChunkingStrategy)
-from packages.shared.chunking.domain.services.chunking_strategies.semantic import (
-    SemanticChunkingStrategy)
+from packages.shared.chunking.domain.services.chunking_strategies.character import CharacterChunkingStrategy
+from packages.shared.chunking.domain.services.chunking_strategies.hierarchical import HierarchicalChunkingStrategy
+from packages.shared.chunking.domain.services.chunking_strategies.hybrid import HybridChunkingStrategy
+from packages.shared.chunking.domain.services.chunking_strategies.markdown import MarkdownChunkingStrategy
+from packages.shared.chunking.domain.services.chunking_strategies.recursive import RecursiveChunkingStrategy
+from packages.shared.chunking.domain.services.chunking_strategies.semantic import SemanticChunkingStrategy
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
 
@@ -31,11 +25,7 @@ class TestCharacterChunkingStrategy:
     @pytest.fixture
     def config(self):
         """Create a basic config for character chunking."""
-        return ChunkConfig(
-            strategy_name="character",
-            min_tokens=10,
-            max_tokens=20,
-            overlap_tokens=5)
+        return ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=20, overlap_tokens=5)
 
     def test_simple_chunking(self, strategy, config):
         """Test basic character-based chunking."""
@@ -84,9 +74,9 @@ class TestCharacterChunkingStrategy:
         if len(chunks) > 1:
             for i in range(len(chunks) - 1):
                 # Check that there's some overlap in content
-                chunk1_end = chunks[i].content.split()[-config.overlap_tokens:]
-                chunk2_start = chunks[i + 1].content.split()[:config.overlap_tokens]
-                
+                chunk1_end = chunks[i].content.split()[-config.overlap_tokens :]
+                chunk2_start = chunks[i + 1].content.split()[: config.overlap_tokens]
+
                 # There should be some common words if overlap is working
                 assert len(set(chunk1_end) & set(chunk2_start)) > 0
 
@@ -122,14 +112,16 @@ class TestCharacterChunkingStrategy:
                 # Non-first chunks should start at word boundaries (space or uppercase)
                 first_char = chunk.content[0]
                 # Allow lowercase if it follows proper word boundaries from overlap
-                assert first_char.isspace() or first_char.isupper() or not first_char.isalpha() or True  # Relaxed for overlap
-            
+                assert (
+                    first_char.isspace() or first_char.isupper() or not first_char.isalpha() or True
+                )  # Relaxed for overlap
+
             # Last chunk can end with anything
             if i < len(chunks) - 1 and chunk.content:
                 # Non-last chunks should end at word/sentence boundaries
-                last_char = chunk.content.rstrip()[-1] if chunk.content.rstrip() else ''
+                last_char = chunk.content.rstrip()[-1] if chunk.content.rstrip() else ""
                 # Should end with punctuation or be at a word boundary
-                assert last_char in '.!?,' or not last_char or True  # Relaxed check
+                assert last_char in ".!?," or not last_char or True  # Relaxed check
 
     def test_metadata_generation(self, strategy, config):
         """Test that metadata is properly generated for chunks."""
@@ -158,11 +150,7 @@ class TestRecursiveChunkingStrategy:
     @pytest.fixture
     def config(self):
         """Create config for recursive chunking."""
-        return ChunkConfig(
-            strategy_name="recursive",
-            min_tokens=15,
-            max_tokens=30,
-            overlap_tokens=5)
+        return ChunkConfig(strategy_name="recursive", min_tokens=15, max_tokens=30, overlap_tokens=5)
 
     def test_hierarchical_splitting(self, strategy, config):
         """Test that recursive strategy splits hierarchically."""
@@ -182,8 +170,9 @@ Third paragraph that is even longer with multiple sentences. It contains various
         for chunk in chunks:
             # Check that we don't have incomplete sentences in the middle
             if chunk != chunks[-1]:
-                assert chunk.content.rstrip().endswith(('.', '!', '?')) or \
-                       len(chunk.content.split()) >= config.min_tokens
+                assert (
+                    chunk.content.rstrip().endswith((".", "!", "?")) or len(chunk.content.split()) >= config.min_tokens
+                )
 
     def test_nested_structure_handling(self, strategy, config):
         """Test handling of nested text structures."""
@@ -263,7 +252,9 @@ class TestSemanticChunkingStrategy:
     @pytest.fixture
     def strategy(self):
         """Create a semantic chunking strategy instance with mocked embeddings."""
-        with patch('packages.shared.chunking.domain.services.chunking_strategies.semantic.SemanticChunkingStrategy._calculate_similarity') as mock_sim:
+        with patch(
+            "packages.shared.chunking.domain.services.chunking_strategies.semantic.SemanticChunkingStrategy._calculate_similarity"
+        ) as mock_sim:
             # Mock similarity to return reasonable values
             mock_sim.return_value = 0.7
             yield SemanticChunkingStrategy()
@@ -272,11 +263,8 @@ class TestSemanticChunkingStrategy:
     def config(self):
         """Create config for semantic chunking."""
         return ChunkConfig(
-            strategy_name="semantic",
-            min_tokens=20,
-            max_tokens=50,
-            overlap_tokens=10,
-            similarity_threshold=0.6)
+            strategy_name="semantic", min_tokens=20, max_tokens=50, overlap_tokens=10, similarity_threshold=0.6
+        )
 
     def test_semantic_boundary_detection(self, strategy, config):
         """Test that semantic boundaries are detected."""
@@ -288,7 +276,7 @@ The stock market showed significant gains yesterday. Investors remain optimistic
 A new restaurant opened downtown. The menu features Italian cuisine."""
 
         # Act
-        with patch.object(strategy, '_calculate_similarity') as mock_sim:
+        with patch.object(strategy, "_calculate_similarity") as mock_sim:
             # Low similarity between different topics
             mock_sim.side_effect = [0.3, 0.8, 0.2, 0.9, 0.3, 0.8] * 10
             chunks = strategy.chunk(text, config)
@@ -307,7 +295,7 @@ A new restaurant opened downtown. The menu features Italian cuisine."""
         Deep learning uses multiple layers of neural networks."""
 
         # Act
-        with patch.object(strategy, '_calculate_similarity') as mock_sim:
+        with patch.object(strategy, "_calculate_similarity") as mock_sim:
             # High similarity for related content
             mock_sim.return_value = 0.85
             chunks = strategy.chunk(text, config)
@@ -322,7 +310,7 @@ A new restaurant opened downtown. The menu features Italian cuisine."""
         text = "Test document for embedding failure scenario."
 
         # Act
-        with patch.object(strategy, '_get_sentence_embedding') as mock_embed:
+        with patch.object(strategy, "_get_sentence_embedding") as mock_embed:
             mock_embed.side_effect = Exception("Embedding service unavailable")
             chunks = strategy.chunk(text, config)
 
@@ -339,7 +327,7 @@ A new restaurant opened downtown. The menu features Italian cuisine."""
         Second topic sentence. Different subject entirely."""
 
         # Act
-        with patch.object(strategy, '_calculate_similarity') as mock_sim:
+        with patch.object(strategy, "_calculate_similarity") as mock_sim:
             mock_sim.side_effect = [0.9, 0.2, 0.8] * 10
             chunks = strategy.chunk(text, config)
 
@@ -361,7 +349,7 @@ A new restaurant opened downtown. The menu features Italian cuisine."""
         text = "Sentence one. Sentence two. Sentence three. Sentence four."
 
         # Act
-        with patch.object(strategy, '_calculate_similarity') as mock_sim:
+        with patch.object(strategy, "_calculate_similarity") as mock_sim:
             mock_sim.return_value = 0.85  # Below threshold
             chunks = strategy.chunk(text, config)
 
@@ -381,11 +369,7 @@ class TestMarkdownChunkingStrategy:
     @pytest.fixture
     def config(self):
         """Create config for markdown chunking."""
-        return ChunkConfig(
-            strategy_name="markdown",
-            min_tokens=20,
-            max_tokens=100,
-            overlap_tokens=10)
+        return ChunkConfig(strategy_name="markdown", min_tokens=20, max_tokens=100, overlap_tokens=10)
 
     def test_heading_preservation(self, strategy, config):
         """Test that markdown headings are preserved."""
@@ -552,11 +536,8 @@ class TestHierarchicalChunkingStrategy:
     def config(self):
         """Create config for hierarchical chunking."""
         return ChunkConfig(
-            strategy_name="hierarchical",
-            min_tokens=30,
-            max_tokens=100,
-            overlap_tokens=15,
-            hierarchy_level=2)
+            strategy_name="hierarchical", min_tokens=30, max_tokens=100, overlap_tokens=15, hierarchy_level=2
+        )
 
     def test_multi_level_chunking(self, strategy, config):
         """Test that multiple levels of chunks are created."""
@@ -603,10 +584,10 @@ Content for subtopic 2."""
         # Assert
         parent_chunks = [c for c in chunks if c.metadata.custom_attributes.get("hierarchy_level") == 0]
         child_chunks = [c for c in chunks if c.metadata.custom_attributes.get("hierarchy_level") == 1]
-        
+
         assert len(parent_chunks) > 0
         assert len(child_chunks) > 0
-        
+
         # Children should reference parents
         for child in child_chunks:
             if "parent_id" in child.metadata.custom_attributes:
@@ -625,7 +606,7 @@ It includes important information that should be summarized.
 And continues with more content that adds context."""
 
         # Act
-        with patch.object(strategy, '_generate_summary') as mock_summary:
+        with patch.object(strategy, "_generate_summary") as mock_summary:
             mock_summary.return_value = "Summary of content"
             chunks = strategy.chunk(text, config)
 
@@ -672,7 +653,8 @@ class TestHybridChunkingStrategy:
             max_tokens=75,
             overlap_tokens=10,
             strategies=["character", "semantic"],
-            weights={"character": 0.4, "semantic": 0.6})
+            weights={"character": 0.4, "semantic": 0.6},
+        )
 
     def test_multiple_strategy_combination(self, strategy, config):
         """Test that multiple strategies are combined."""
@@ -684,7 +666,9 @@ Second topic about cooking recipes and ingredients.
 Third topic returning to technical AI discussions."""
 
         # Act
-        with patch('packages.shared.chunking.domain.services.chunking_strategies.semantic.SemanticChunkingStrategy._calculate_similarity') as mock_sim:
+        with patch(
+            "packages.shared.chunking.domain.services.chunking_strategies.semantic.SemanticChunkingStrategy._calculate_similarity"
+        ) as mock_sim:
             mock_sim.side_effect = [0.2, 0.9, 0.3] * 20
             chunks = strategy.chunk(text, config)
 
@@ -720,11 +704,13 @@ Third topic returning to technical AI discussions."""
         # Arrange
         # Use text that's long enough to avoid min_tokens issues
         text = "Test document for fallback scenario. This needs to be long enough to meet minimum token requirements. Adding more content here to ensure proper chunking."
-        
+
         # Make semantic strategy fail
-        with patch('packages.shared.chunking.domain.services.chunking_strategies.semantic.SemanticChunkingStrategy.chunk') as mock_semantic:
+        with patch(
+            "packages.shared.chunking.domain.services.chunking_strategies.semantic.SemanticChunkingStrategy.chunk"
+        ) as mock_semantic:
             mock_semantic.side_effect = Exception("Semantic strategy failed")
-            
+
             # Act
             chunks = strategy.chunk(text, config)
 
@@ -743,7 +729,8 @@ Third topic returning to technical AI discussions."""
             max_tokens=50,
             overlap_tokens=5,
             strategies=["recursive", "markdown"],  # Different combination
-            weights={"recursive": 0.7, "markdown": 0.3})
+            weights={"recursive": 0.7, "markdown": 0.3},
+        )
         text = """# Heading
 
 Regular paragraph content.
@@ -772,7 +759,7 @@ Regular paragraph content.
         # The chunk method will call _build_consensus internally
         # We just need to verify the chunking works
         chunks = strategy.chunk(text, config)
-        
+
         # Assert
         assert len(chunks) > 0
         # Verify chunks have the expected hybrid strategy metadata
@@ -792,15 +779,15 @@ Regular paragraph content.
             weights={"character": 0.5, "semantic": 0.5},
             adaptive_weights=True,  # Enable adaptive adjustment
         )
-        
+
         # Technical content should favor semantic
         technical_text = """Neural networks use backpropagation for training. 
         Gradient descent optimizes the loss function.
         Convolutional layers extract features from images."""
-        
+
         # Act
         chunks = strategy.chunk(technical_text, config)
-        
+
         # Assert
         assert len(chunks) > 0
         # Check if weights were adjusted

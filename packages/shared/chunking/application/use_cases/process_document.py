@@ -39,7 +39,7 @@ class ProcessDocumentUseCase:
         document_service: DocumentService,
         strategy_factory: ChunkingStrategyFactory,
         notification_service: NotificationService,
-        metrics_service: MetricsService | None = None
+        metrics_service: MetricsService | None = None,
     ):
         """
         Initialize the use case with dependencies.
@@ -88,14 +88,11 @@ class ProcessDocumentUseCase:
 
                 # 2. Create or get document record
                 document_entity = await self.unit_of_work.documents.get_or_create(
-                    file_path=request.file_path,
-                    metadata=request.metadata or {}
+                    file_path=request.file_path, metadata=request.metadata or {}
                 )
 
                 # 3. Check for existing operations on this document
-                existing_ops = await self.unit_of_work.operations.find_by_document(
-                    request.document_id
-                )
+                existing_ops = await self.unit_of_work.operations.find_by_document(request.document_id)
                 active_ops = [op for op in existing_ops if op.status == "in_progress"]
                 if active_ops:
                     raise ValueError(f"Document already being processed: {request.document_id}")
@@ -105,16 +102,14 @@ class ProcessDocumentUseCase:
                     operation_id=operation_id,
                     document_id=request.document_id,
                     collection_id=request.collection_id,
-                    strategy_type=request.strategy_type.value
+                    strategy_type=request.strategy_type.value,
                 )
                 await self.unit_of_work.operations.create(operation)
 
                 # 5. Check for checkpoint (resuming previous operation)
                 checkpoint = None
                 if request.enable_checkpointing:
-                    checkpoint = await self.unit_of_work.checkpoints.get_latest_checkpoint(
-                        operation_id
-                    )
+                    checkpoint = await self.unit_of_work.checkpoints.get_latest_checkpoint(operation_id)
 
                 # 6. Notify operation started
                 await self.notification_service.notify_operation_started(
@@ -123,8 +118,8 @@ class ProcessDocumentUseCase:
                         "document_id": request.document_id,
                         "collection_id": request.collection_id,
                         "strategy": request.strategy_type.value,
-                        "resuming": checkpoint is not None
-                    }
+                        "resuming": checkpoint is not None,
+                    },
                 )
 
                 # 7. Load full document
@@ -135,11 +130,10 @@ class ProcessDocumentUseCase:
                 strategy_config = {
                     "min_tokens": request.min_tokens,
                     "max_tokens": request.max_tokens,
-                    "overlap": request.overlap
+                    "overlap": request.overlap,
                 }
                 strategy = self.strategy_factory.create_strategy(
-                    strategy_type=request.strategy_type.value,
-                    config=strategy_config
+                    strategy_type=request.strategy_type.value, config=strategy_config
                 )
 
                 # 9. Apply chunking strategy
@@ -148,9 +142,7 @@ class ProcessDocumentUseCase:
 
                 # 10. Update operation with total chunks
                 await self.unit_of_work.operations.update_progress(
-                    operation_id=operation_id,
-                    chunks_processed=0,
-                    total_chunks=total_chunks
+                    operation_id=operation_id, chunks_processed=0, total_chunks=total_chunks
                 )
 
                 # 11. Process and save chunks with checkpointing
@@ -172,7 +164,7 @@ class ProcessDocumentUseCase:
                             operation_id=operation_id,
                             document_id=request.document_id,
                             collection_id=request.collection_id,
-                            position=i + j
+                            position=i + j,
                         )
                         chunk_entities.append(chunk_entity)
 
@@ -182,15 +174,12 @@ class ProcessDocumentUseCase:
                     # Update progress
                     progress_percentage = (chunks_saved / total_chunks) * 100
                     await self.unit_of_work.operations.update_progress(
-                        operation_id=operation_id,
-                        chunks_processed=chunks_saved,
-                        total_chunks=total_chunks
+                        operation_id=operation_id, chunks_processed=chunks_saved, total_chunks=total_chunks
                     )
 
                     # Notify progress
                     await self.notification_service.notify_progress(
-                        operation_id=operation_id,
-                        progress_percentage=progress_percentage
+                        operation_id=operation_id, progress_percentage=progress_percentage
                     )
 
                     # Create checkpoint if enabled
@@ -200,8 +189,8 @@ class ProcessDocumentUseCase:
                             position=batch_end,
                             state={
                                 "chunks_saved": chunks_saved,
-                                "last_chunk_id": chunk_entities[-1]["id"] if chunk_entities else None
-                            }
+                                "last_chunk_id": chunk_entities[-1]["id"] if chunk_entities else None,
+                            },
                         )
                         checkpoints_created += 1
 
@@ -212,20 +201,18 @@ class ProcessDocumentUseCase:
                             await self.metrics_service.record_chunk_processing_time(
                                 operation_id=operation_id,
                                 chunk_id=chunk_entity["id"],
-                                duration_ms=10  # Placeholder - would be actual time
+                                duration_ms=10,  # Placeholder - would be actual time
                             )
 
                 # 12. Mark operation as completed
                 processing_completed_at = datetime.now(timezone.utc)
                 await self.unit_of_work.operations.mark_completed(
-                    operation_id=operation_id,
-                    completed_at=processing_completed_at
+                    operation_id=operation_id, completed_at=processing_completed_at
                 )
 
                 # 13. Update document chunking status
                 await self.unit_of_work.documents.update_chunking_status(
-                    document_id=request.document_id,
-                    status="completed"
+                    document_id=request.document_id, status="completed"
                 )
 
                 # 14. Clean up checkpoints after successful completion
@@ -237,22 +224,20 @@ class ProcessDocumentUseCase:
 
                 # 15. Send completion notification (after commit)
                 await self.notification_service.notify_operation_completed(
-                    operation_id=operation_id,
-                    chunks_created=chunks_saved
+                    operation_id=operation_id, chunks_created=chunks_saved
                 )
 
                 # 16. Record final metrics
                 if self.metrics_service:
                     total_time_ms = (processing_completed_at - processing_started_at).total_seconds() * 1000
                     await self.metrics_service.record_operation_duration(
-                        operation_id=operation_id,
-                        duration_ms=total_time_ms
+                        operation_id=operation_id, duration_ms=total_time_ms
                     )
                     await self.metrics_service.record_strategy_performance(
                         strategy_type=request.strategy_type.value,
-                        document_size=len(text_content.encode('utf-8')),
+                        document_size=len(text_content.encode("utf-8")),
                         chunks_created=chunks_saved,
-                        duration_ms=total_time_ms
+                        duration_ms=total_time_ms,
                     )
 
                 # 17. Return response
@@ -267,7 +252,7 @@ class ProcessDocumentUseCase:
                     processing_started_at=processing_started_at,
                     processing_completed_at=processing_completed_at,
                     error_message=None,
-                    checkpoints_created=checkpoints_created
+                    checkpoints_created=checkpoints_created,
                 )
 
             except Exception as e:
@@ -279,9 +264,7 @@ class ProcessDocumentUseCase:
                 try:
                     async with self.unit_of_work:
                         await self.unit_of_work.operations.update_status(
-                            operation_id=operation_id,
-                            status="failed",
-                            error_message=str(e)
+                            operation_id=operation_id, status="failed", error_message=str(e)
                         )
                         await self.unit_of_work.commit()
                 except Exception as update_error:
@@ -292,15 +275,12 @@ class ProcessDocumentUseCase:
                         context={
                             "operation_id": operation_id,
                             "original_error": str(e),
-                            "context": "Failed to update operation status after error"
-                        }
+                            "context": "Failed to update operation status after error",
+                        },
                     )
 
                 # Notify failure
-                await self.notification_service.notify_operation_failed(
-                    operation_id=operation_id,
-                    error=e
-                )
+                await self.notification_service.notify_operation_failed(operation_id=operation_id, error=e)
 
                 # Log error
                 await self.notification_service.notify_error(
@@ -308,8 +288,8 @@ class ProcessDocumentUseCase:
                     context={
                         "operation_id": operation_id,
                         "document_id": request.document_id,
-                        "use_case": "process_document"
-                    }
+                        "use_case": "process_document",
+                    },
                 )
 
                 # Return failure response
@@ -324,11 +304,12 @@ class ProcessDocumentUseCase:
                     processing_started_at=processing_started_at,
                     processing_completed_at=None,
                     error_message=str(e),
-                    checkpoints_created=checkpoints_created
+                    checkpoints_created=checkpoints_created,
                 )
 
-    def _create_operation_entity(self, operation_id: str, document_id: str,
-                                collection_id: str, strategy_type: str) -> Any:
+    def _create_operation_entity(
+        self, operation_id: str, document_id: str, collection_id: str, strategy_type: str
+    ) -> Any:
         """
         Create a chunking operation entity.
 
@@ -342,12 +323,12 @@ class ProcessDocumentUseCase:
             "collection_id": collection_id,
             "strategy_type": strategy_type,
             "status": "pending",
-            "created_at": datetime.now(timezone.utc)
+            "created_at": datetime.now(timezone.utc),
         }
 
-    def _create_chunk_entity(self, chunk: Any, operation_id: str,
-                           document_id: str, collection_id: str,
-                           position: int) -> Any:
+    def _create_chunk_entity(
+        self, chunk: Any, operation_id: str, document_id: str, collection_id: str, position: int
+    ) -> Any:
         """
         Create a chunk entity for persistence.
 
@@ -364,5 +345,5 @@ class ProcessDocumentUseCase:
             "start_offset": chunk.metadata.start_offset,
             "end_offset": chunk.metadata.end_offset,
             "token_count": chunk.metadata.token_count,
-            "created_at": datetime.now(timezone.utc)
+            "created_at": datetime.now(timezone.utc),
         }

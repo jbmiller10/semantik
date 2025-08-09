@@ -279,7 +279,7 @@ Content under header 2.
         # Mock collection
         mock_collection = MagicMock(id="test-collection", uuid="test-collection")
         chunking_service.collection_repo.get_by_id = AsyncMock(return_value=mock_collection)
-        
+
         # Mock operations data
         mock_operations = []
         for i in range(3):
@@ -294,9 +294,7 @@ Content under header 2.
         mock_result.scalars.return_value.all.return_value = mock_operations
         chunking_service.db_session.execute = AsyncMock(return_value=mock_result)
 
-        result = await chunking_service.get_chunking_statistics(
-            collection_id="test-collection"
-        )
+        result = await chunking_service.get_chunking_statistics(collection_id="test-collection")
 
         assert isinstance(result, dict)
         assert result["collection_id"] == "test-collection"
@@ -314,7 +312,7 @@ Content under header 2.
         # Mock collection
         mock_collection = MagicMock(id="test-collection", uuid="test-collection")
         chunking_service.collection_repo.get_by_id = AsyncMock(return_value=mock_collection)
-        
+
         # Mock validator to return valid
         chunking_service.validator.validate_config = MagicMock(return_value=(True, []))
 
@@ -342,11 +340,9 @@ Content under header 2.
         # Mock collection
         mock_collection = MagicMock(id="test-collection", uuid="test-collection")
         chunking_service.collection_repo.get_by_id = AsyncMock(return_value=mock_collection)
-        
+
         # Mock validator to return invalid with errors
-        chunking_service.validator.validate_config = MagicMock(
-            return_value=(False, ["chunk_size is too large"])
-        )
+        chunking_service.validator.validate_config = MagicMock(return_value=(False, ["chunk_size is too large"]))
 
         config = {
             "strategy": "recursive",
@@ -358,7 +354,7 @@ Content under header 2.
             strategy="recursive",
             config=config,
         )
-        
+
         assert result["valid"] is False
         assert len(result["errors"]) > 0
         assert "suggested_config" in result

@@ -91,5 +91,5 @@ __all__ = [
     "NotificationService",
     "ChunkingStrategyFactory",
     "MetricsService",
-    "UnitOfWork"
+    "UnitOfWork",
 ]

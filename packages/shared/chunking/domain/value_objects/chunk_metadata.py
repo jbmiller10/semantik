@@ -48,9 +48,7 @@ class ChunkMetadata:
             raise ValueError(f"Start offset must be non-negative, got {self.start_offset}")
 
         if self.end_offset <= self.start_offset:
-            raise ValueError(
-                f"End offset ({self.end_offset}) must be greater than start offset ({self.start_offset})"
-            )
+            raise ValueError(f"End offset ({self.end_offset}) must be greater than start offset ({self.start_offset})")
 
         # Validate chunk index
         if self.chunk_index < 0:
@@ -63,34 +61,24 @@ class ChunkMetadata:
         # Validate semantic score if provided
         if self.semantic_score is not None:
             if not 0.0 <= self.semantic_score <= 1.0:
-                raise ValueError(
-                    f"Semantic score must be between 0.0 and 1.0, got {self.semantic_score}"
-                )
+                raise ValueError(f"Semantic score must be between 0.0 and 1.0, got {self.semantic_score}")
 
         # Validate semantic density
         if not 0.0 <= self.semantic_density <= 1.0:
-            raise ValueError(
-                f"Semantic density must be between 0.0 and 1.0, got {self.semantic_density}"
-            )
+            raise ValueError(f"Semantic density must be between 0.0 and 1.0, got {self.semantic_density}")
 
         # Validate confidence score
         if not 0.0 <= self.confidence_score <= 1.0:
-            raise ValueError(
-                f"Confidence score must be between 0.0 and 1.0, got {self.confidence_score}"
-            )
+            raise ValueError(f"Confidence score must be between 0.0 and 1.0, got {self.confidence_score}")
 
         # Validate overlap percentage
         if not 0.0 <= self.overlap_percentage <= 1.0:
-            raise ValueError(
-                f"Overlap percentage must be between 0.0 and 1.0, got {self.overlap_percentage}"
-            )
+            raise ValueError(f"Overlap percentage must be between 0.0 and 1.0, got {self.overlap_percentage}")
 
         # Validate hierarchy level if provided
         if self.hierarchy_level is not None:
             if self.hierarchy_level < 0:
-                raise ValueError(
-                    f"Hierarchy level must be non-negative, got {self.hierarchy_level}"
-                )
+                raise ValueError(f"Hierarchy level must be non-negative, got {self.hierarchy_level}")
 
     @property
     def character_count(self) -> int:
@@ -117,10 +105,7 @@ class ChunkMetadata:
         if self.document_id != other.document_id:
             return False
 
-        return not (
-            self.end_offset <= other.start_offset or
-            other.end_offset <= self.start_offset
-        )
+        return not (self.end_offset <= other.start_offset or other.end_offset <= self.start_offset)
 
     def overlap_size(self, other: "ChunkMetadata") -> int:
         """

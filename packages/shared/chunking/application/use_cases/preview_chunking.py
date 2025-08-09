@@ -29,7 +29,7 @@ class PreviewChunkingUseCase:
         document_service: DocumentService,
         strategy_factory: ChunkingStrategyFactory,
         notification_service: NotificationService,
-        metrics_service: MetricsService | None = None
+        metrics_service: MetricsService | None = None,
     ):
         """
         Initialize the use case with dependencies.
@@ -72,22 +72,17 @@ class PreviewChunkingUseCase:
             # 2. Notify operation started
             await self.notification_service.notify_operation_started(
                 operation_id=operation_id,
-                metadata={
-                    "type": "preview",
-                    "file_path": request.file_path,
-                    "strategy": request.strategy_type.value
-                }
+                metadata={"type": "preview", "file_path": request.file_path, "strategy": request.strategy_type.value},
             )
 
             # 3. Load partial document (infrastructure)
             document = await self.document_service.load_partial(
-                file_path=request.file_path,
-                size_kb=request.preview_size_kb
+                file_path=request.file_path, size_kb=request.preview_size_kb
             )
 
             # 4. Extract text content
             text_content = await self.document_service.extract_text(document)
-            sample_size = len(text_content.encode('utf-8'))
+            sample_size = len(text_content.encode("utf-8"))
 
             # 5. Get full document metadata for estimation
             full_metadata = await self.document_service.get_metadata(request.file_path)
@@ -97,11 +92,10 @@ class PreviewChunkingUseCase:
             strategy_config = {
                 "min_tokens": request.min_tokens,
                 "max_tokens": request.max_tokens,
-                "overlap": request.overlap
+                "overlap": request.overlap,
             }
             strategy = self.strategy_factory.create_strategy(
-                strategy_type=request.strategy_type.value,
-                config=strategy_config
+                strategy_type=request.strategy_type.value, config=strategy_config
             )
 
             # 7. Apply chunking strategy (domain logic)
@@ -115,7 +109,7 @@ class PreviewChunkingUseCase:
             total_chunks_estimate = int(chunks_in_sample * size_ratio)
 
             # 9. Take preview sample (first N chunks)
-            preview_chunks = chunks[:request.max_preview_chunks]
+            preview_chunks = chunks[: request.max_preview_chunks]
 
             # 10. Map chunks to DTOs
             chunk_dtos = []
@@ -127,10 +121,7 @@ class PreviewChunkingUseCase:
                     start_offset=chunk.metadata.start_offset,
                     end_offset=chunk.metadata.end_offset,
                     token_count=chunk.metadata.token_count,
-                    metadata={
-                        "preview": True,
-                        "strategy": request.strategy_type.value
-                    }
+                    metadata={"preview": True, "strategy": request.strategy_type.value},
                 )
                 chunk_dtos.append(chunk_dto)
 
@@ -140,29 +131,24 @@ class PreviewChunkingUseCase:
             # 12. Record metrics if service available
             if self.metrics_service:
                 await self.metrics_service.record_operation_duration(
-                    operation_id=operation_id,
-                    duration_ms=processing_time_ms
+                    operation_id=operation_id, duration_ms=processing_time_ms
                 )
                 await self.metrics_service.record_strategy_performance(
                     strategy_type=request.strategy_type.value,
                     document_size=sample_size,
                     chunks_created=len(preview_chunks),
-                    duration_ms=processing_time_ms
+                    duration_ms=processing_time_ms,
                 )
 
             # 13. Notify completion
             await self.notification_service.notify_operation_completed(
-                operation_id=operation_id,
-                chunks_created=len(preview_chunks)
+                operation_id=operation_id, chunks_created=len(preview_chunks)
             )
-            
+
             # Also notify preview generated if the method exists (for backward compatibility)
-            if hasattr(self.notification_service, 'notify_preview_generated'):
+            if hasattr(self.notification_service, "notify_preview_generated"):
                 document_id = full_metadata.get("document_id", "doc-123")
-                await self.notification_service.notify_preview_generated(
-                    document_id,
-                    len(preview_chunks)
-                )
+                await self.notification_service.notify_preview_generated(document_id, len(preview_chunks))
 
             # 14. Return response DTO
             document_id = full_metadata.get("document_id", "doc-456")
@@ -173,33 +159,23 @@ class PreviewChunkingUseCase:
                 strategy_used=request.strategy_type.value,
                 document_sample_size=sample_size,
                 processing_time_ms=processing_time_ms,
-                document_id=document_id
+                document_id=document_id,
             )
 
         except ValueError as e:
             # Domain validation errors
-            await self.notification_service.notify_operation_failed(
-                operation_id=operation_id,
-                error=e
-            )
+            await self.notification_service.notify_operation_failed(operation_id=operation_id, error=e)
             raise ValueError(f"Preview failed - validation error: {e}")
 
         except FileNotFoundError as e:
             # Document not found
-            await self.notification_service.notify_operation_failed(
-                operation_id=operation_id,
-                error=e
-            )
+            await self.notification_service.notify_operation_failed(operation_id=operation_id, error=e)
             raise FileNotFoundError(f"Document not found: {request.file_path}")
 
         except Exception as e:
             # Infrastructure or unexpected errors
             await self.notification_service.notify_error(
                 error=e,
-                context={
-                    "operation_id": operation_id,
-                    "use_case": "preview_chunking",
-                    "file_path": request.file_path
-                }
+                context={"operation_id": operation_id, "use_case": "preview_chunking", "file_path": request.file_path},
             )
             raise Exception(f"Preview operation failed: {e}") from e

@@ -26,7 +26,7 @@ class ChunkConfig:
     # Whitelist of allowed additional parameters for security
     ALLOWED_ADDITIONAL_PARAMS = {
         "chunk_size",  # Legacy parameter alias
-        "chunk_overlap",  # Legacy parameter alias  
+        "chunk_overlap",  # Legacy parameter alias
         "encoding",  # Text encoding parameter
         "language",  # Language hint for processing
         "preserve_whitespace",  # Whether to preserve whitespace
@@ -55,10 +55,10 @@ class ChunkConfig:
         hierarchy_level: int | None = None,
         strategies: list[str] | None = None,
         weights: dict[str, float] | None = None,
-        **kwargs: Any
+        **kwargs: Any,
     ):
         """Initialize configuration with validation.
-        
+
         Args:
             strategy_name: Name of the strategy to use
             min_tokens: Minimum tokens per chunk
@@ -81,30 +81,30 @@ class ChunkConfig:
         self.overlap_tokens = overlap_tokens
         self.separator = separator
         self.preserve_structure = preserve_structure
-        
+
         # Handle aliases and store extra params
         self.additional_params: dict[str, Any] = {}
-        
+
         # Handle similarity_threshold alias
         if similarity_threshold is not None:
             self.semantic_threshold = similarity_threshold
             self.additional_params["similarity_threshold"] = similarity_threshold
         else:
             self.semantic_threshold = semantic_threshold
-            
+
         # Handle hierarchy_level alias
         if hierarchy_level is not None:
             self.hierarchy_levels = hierarchy_level
             self.additional_params["hierarchy_level"] = hierarchy_level
         else:
             self.hierarchy_levels = hierarchy_levels
-            
+
         # Set optional parameters
         self.similarity_threshold = similarity_threshold
         self.hierarchy_level = hierarchy_level
         self.strategies = strategies
         self.weights = weights
-        
+
         # Validate and store additional kwargs in additional_params
         # Security: Only allow whitelisted parameters to prevent injection
         for key, value in kwargs.items():
@@ -114,20 +114,20 @@ class ChunkConfig:
                     {"parameter": key, "value": value},
                 )
             self.additional_params[key] = value
-            
+
         # Run validation
         self._validate()
-    
+
     def _validate(self) -> None:
         """Validate configuration after initialization."""
-        
+
         # Validate strategy name
         if not self.strategy_name:
             raise InvalidConfigurationError(
                 "strategy_name cannot be empty",
                 {"strategy_name": self.strategy_name},
             )
-        
+
         # Validate token constraints
         if self.min_tokens <= 0:
             raise InvalidConfigurationError(
@@ -173,14 +173,14 @@ class ChunkConfig:
                 f"Hierarchy levels must be between 1 and 10, got {self.hierarchy_levels}",
                 {"hierarchy_levels": self.hierarchy_levels},
             )
-        
+
         # Validate hybrid chunking parameters if provided
         if self.strategies is not None and len(self.strategies) < 1:
             raise InvalidConfigurationError(
                 "At least one strategy must be specified for hybrid chunking",
                 {"strategies": self.strategies},
             )
-        
+
         if self.weights is not None:
             total_weight = sum(self.weights.values())
             if abs(total_weight - 1.0) > 0.01:  # Allow small floating point errors
@@ -227,10 +227,10 @@ class ChunkConfig:
         if self.max_tokens == 0:
             return 0.0
         return (self.overlap_tokens / self.max_tokens) * 100
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert configuration to dictionary.
-        
+
         Returns:
             Dictionary representation of configuration
         """
@@ -244,7 +244,7 @@ class ChunkConfig:
             "semantic_threshold": self.semantic_threshold,
             "hierarchy_levels": self.hierarchy_levels,
         }
-        
+
         # Include optional fields if set
         if self.similarity_threshold is not None:
             result["similarity_threshold"] = self.similarity_threshold
@@ -254,24 +254,24 @@ class ChunkConfig:
             result["strategies"] = self.strategies
         if self.weights is not None:
             result["weights"] = self.weights
-            
+
         # Include any additional parameters
         result.update(self.additional_params)
-        
+
         return result
-    
+
     def __eq__(self, other: object) -> bool:
         """Check equality with another ChunkConfig.
-        
+
         Args:
             other: Object to compare with
-            
+
         Returns:
             True if configurations are equal
         """
         if not isinstance(other, ChunkConfig):
             return False
-            
+
         return (
             self.strategy_name == other.strategy_name
             and self.min_tokens == other.min_tokens
@@ -287,25 +287,27 @@ class ChunkConfig:
             and self.weights == other.weights
             and self.additional_params == other.additional_params
         )
-    
+
     def __hash__(self) -> int:
         """Generate hash for the configuration.
-        
+
         Returns:
             Hash value
         """
-        return hash((
-            self.strategy_name,
-            self.min_tokens,
-            self.max_tokens,
-            self.overlap_tokens,
-            self.separator,
-            self.preserve_structure,
-            self.semantic_threshold,
-            self.hierarchy_levels,
-            self.similarity_threshold,
-            self.hierarchy_level,
-            tuple(self.strategies) if self.strategies else None,
-            tuple(sorted(self.weights.items())) if self.weights else None,
-            tuple(sorted(self.additional_params.items()))
-        ))
+        return hash(
+            (
+                self.strategy_name,
+                self.min_tokens,
+                self.max_tokens,
+                self.overlap_tokens,
+                self.separator,
+                self.preserve_structure,
+                self.semantic_threshold,
+                self.hierarchy_levels,
+                self.similarity_threshold,
+                self.hierarchy_level,
+                tuple(self.strategies) if self.strategies else None,
+                tuple(sorted(self.weights.items())) if self.weights else None,
+                tuple(sorted(self.additional_params.items())),
+            )
+        )

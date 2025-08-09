@@ -157,7 +157,8 @@ class TestRedisStreamWebSocketManager:
 
         with (
             patch("packages.webui.websocket_manager.redis.from_url", side_effect=mock_from_url),
-            patch("asyncio.sleep", new_callable=AsyncMock)):
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
             await manager.startup()
 
             assert call_count == 3
@@ -168,7 +169,8 @@ class TestRedisStreamWebSocketManager:
         """Test graceful degradation when Redis is completely unavailable."""
         with (
             patch("packages.webui.websocket_manager.redis.from_url", side_effect=Exception("Connection failed")),
-            patch("asyncio.sleep", new_callable=AsyncMock)):
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
             await manager.startup()
 
             assert manager.redis is None  # Should degrade gracefully
@@ -399,14 +401,16 @@ class TestRedisStreamWebSocketManager:
                     "message": json.dumps(
                         {"timestamp": "2024-01-01T00:00:00", "type": "start", "data": {"status": "started"}}
                     )
-                }),
+                },
+            ),
             (
                 "msg-2",
                 {
                     "message": json.dumps(
                         {"timestamp": "2024-01-01T00:01:00", "type": "progress", "data": {"progress": 25}}
                     )
-                }),
+                },
+            ),
         ]
 
         mock_redis.xrange.return_value = historical_messages
@@ -550,7 +554,8 @@ class TestRedisStreamWebSocketManager:
         # Since these are imported inside the function, we need to patch the correct path
         with (
             patch("packages.shared.database.database.AsyncSessionLocal") as mock_session_local,
-            patch("packages.shared.database.repositories.operation_repository.OperationRepository") as mock_repo_class):
+            patch("packages.shared.database.repositories.operation_repository.OperationRepository") as mock_repo_class,
+        ):
             # Set up the mocks
             mock_session = AsyncMock()
             # Mock the async context manager behavior

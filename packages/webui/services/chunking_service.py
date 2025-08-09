@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 class ChunkingStatistics:
     """Statistics for chunking operations."""
-    
+
     def __init__(
         self,
         total_documents: int = 0,
@@ -134,24 +134,23 @@ class ChunkingService:
             Strategy recommendation with reasoning
         """
         from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
-        
+
         # Extract file types from paths if provided
         if file_paths and not file_types:
             import os
+
             file_types = [os.path.splitext(path)[1] for path in file_paths]
-        
+
         # Analyze file type breakdown
         file_type_breakdown = {}
         if file_types:
             for ft in file_types:
                 category = self._categorize_file_type(ft)
                 file_type_breakdown[category] = file_type_breakdown.get(category, 0) + 1
-        
+
         # Determine if content has structure
         if has_structure is None and file_types:
-            has_structure = any(
-                ft in [".md", ".markdown", ".mdx", ".rst"] for ft in file_types
-            )
+            has_structure = any(ft in [".md", ".markdown", ".mdx", ".rst"] for ft in file_types)
 
         # Determine strategy based on file type breakdown
         if file_type_breakdown.get("markdown", 0) > len(file_types) / 2 if file_types else False:
@@ -159,7 +158,7 @@ class ChunkingService:
             reasoning = "Majority of files are markdown with structure to preserve"
             chunk_size = 600
         elif file_type_breakdown.get("code", 0) > 0:
-            recommended_strategy = ChunkingStrategy.RECURSIVE  
+            recommended_strategy = ChunkingStrategy.RECURSIVE
             reasoning = "Code files detected, using optimized settings for code"
             chunk_size = 500
         elif has_structure:
@@ -212,38 +211,39 @@ class ChunkingService:
         from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
         from packages.webui.services.chunking_security import ValidationError
         from packages.webui.services.chunking_constants import MAX_PREVIEW_CONTENT_SIZE
-        
+
         # Check size limit
         if len(content) > MAX_PREVIEW_CONTENT_SIZE:
             raise ValidationError("Document too large")
-        
+
         # Validate chunk size if provided in config (do this before try block)
         if config and "params" in config and "chunk_size" in config["params"]:
             chunk_size = config["params"]["chunk_size"]
             if chunk_size <= 0 or chunk_size > 10000:
                 raise ValidationError(f"Invalid chunk size: {chunk_size}. Must be between 1 and 10000.")
-        
+
         try:
             # Check if cached result exists
             if cache_result and self.redis_client:
                 # Get strategy string for cache key before conversion
-                cache_strategy = strategy.value if hasattr(strategy, 'value') else (strategy or "recursive")
+                cache_strategy = strategy.value if hasattr(strategy, "value") else (strategy or "recursive")
                 cache_key = self._generate_cache_key(content, cache_strategy, config)
                 cached = await self.redis_client.get(cache_key)
                 if cached:
                     import json
+
                     return json.loads(cached)
-            
+
             # Default strategy if not provided
             if not strategy:
                 strategy = ChunkingStrategy.RECURSIVE
-            
+
             # Convert enum to string if necessary
-            if hasattr(strategy, 'value'):
+            if hasattr(strategy, "value"):
                 strategy_str = strategy.value
             else:
                 strategy_str = str(strategy)
-            
+
             # Map API strategy names to internal factory names
             if strategy_str in self.STRATEGY_MAPPING:
                 internal_strategy = self.STRATEGY_MAPPING[strategy_str]
@@ -262,27 +262,28 @@ class ChunkingService:
 
             # Use the actual strategy pattern for chunking
             strategy_instance = get_strategy(internal_strategy)
-            
+
             import time
+
             start_time = time.time()
-            
+
             # Create ChunkConfig from the provided config dictionary
             from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-            
+
             # Use sensible defaults if no config provided
             chunk_size = config.get("chunk_size", 1000) if config else 1000
             chunk_overlap = config.get("chunk_overlap", 200) if config else 200
-            
+
             # Ensure overlap is not too large
             if chunk_overlap >= chunk_size:
                 chunk_overlap = min(200, chunk_size // 4)
-            
+
             # Build ChunkConfig with proper parameters
             # Ensure min_tokens is less than max_tokens and overlap_tokens is valid
             min_tokens = min(100, chunk_size // 2)  # Set reasonable min
             max_tokens = max(chunk_size, min_tokens + 1)  # Ensure max > min
             overlap_tokens = min(chunk_overlap, min_tokens - 1)  # Ensure overlap < min
-            
+
             chunk_config = ChunkConfig(
                 strategy_name=strategy,
                 min_tokens=min_tokens,
@@ -292,18 +293,18 @@ class ChunkingService:
                 semantic_threshold=config.get("semantic_threshold", 0.7) if config else 0.7,
                 hierarchy_levels=config.get("hierarchy_levels", 3) if config else 3,
             )
-            
+
             # Use the strategy to generate chunks properly
             try:
                 chunk_entities = strategy_instance.chunk(
                     content=content,
                     config=chunk_config,
-                    progress_callback=None  # Could add progress tracking if needed
+                    progress_callback=None,  # Could add progress tracking if needed
                 )
-                
+
                 # Extract text content from chunk entities
                 chunks = [chunk.content for chunk in chunk_entities]
-                
+
             except Exception as strategy_error:
                 logger.warning(f"Strategy {strategy} failed, falling back to simple chunking: {strategy_error}")
                 # Fallback to simple chunking only if strategy fails
@@ -311,13 +312,13 @@ class ChunkingService:
                 if chunk_overlap >= chunk_size:
                     # If overlap is too large, reset to reasonable default
                     chunk_overlap = min(chunk_overlap, chunk_size // 4)
-                
+
                 step_size = max(1, chunk_size - chunk_overlap)  # Ensure positive step
                 for i in range(0, len(content), step_size):
-                    chunk_content = content[i:i + chunk_size]
+                    chunk_content = content[i : i + chunk_size]
                     if chunk_content.strip():  # Only add non-empty chunks
                         chunks.append(chunk_content)
-            
+
             processing_time_ms = (time.time() - start_time) * 1000
             avg_chunk_size = sum(len(c) for c in chunks) / len(chunks) if chunks else 0
 
@@ -326,20 +327,20 @@ class ChunkingService:
             if file_type:
                 code_extensions = [".py", ".js", ".ts", ".cpp", ".c", ".java", ".go", ".rs"]
                 is_code_file = file_type in code_extensions
-            
+
             # Limit chunks if max_chunks specified
             preview_chunks = chunks
             if max_chunks:
                 preview_chunks = chunks[:max_chunks]
-            
+
             # Get recommendations
             recommendations = self._get_recommendations(chunks, file_type)
-            
+
             # Convert to response format
             result = {
                 "preview_id": str(uuid.uuid4()),
-                "strategy": strategy_str if hasattr(strategy, 'value') else strategy,
-                "strategy_used": strategy_str if hasattr(strategy, 'value') else strategy,  # For compatibility
+                "strategy": strategy_str if hasattr(strategy, "value") else strategy,
+                "strategy_used": strategy_str if hasattr(strategy, "value") else strategy,  # For compatibility
                 "config": config or self._get_default_config(internal_strategy),
                 "chunks": [
                     {
@@ -430,41 +431,44 @@ class ChunkingService:
             # TODO: Implement proper use case integration
             # For now, provide a simple comparison
             comparisons = []
-            
+
             for strategy_name in strategies:
                 # Simple implementation for now
                 import time
+
                 start_time = time.time()
-                
+
                 # Simple chunking simulation
                 config = base_config or self._get_default_config(strategy_name)
                 chunk_size = config.get("chunk_size", 1000)
                 chunk_overlap = config.get("chunk_overlap", 200)
-                
+
                 chunks = []
                 for i in range(0, len(content), chunk_size - chunk_overlap):
-                    chunk_content = content[i:i + chunk_size]
+                    chunk_content = content[i : i + chunk_size]
                     if chunk_content:
                         chunks.append(chunk_content)
-                
+
                 processing_time_ms = (time.time() - start_time) * 1000
                 chunk_sizes = [len(c) for c in chunks]
-                
-                comparisons.append({
-                    "strategy": strategy_name,
-                    "total_chunks": len(chunks),
-                    "avg_chunk_size": sum(chunk_sizes) / len(chunk_sizes) if chunk_sizes else 0,
-                    "min_chunk_size": min(chunk_sizes) if chunk_sizes else 0,
-                    "max_chunk_size": max(chunk_sizes) if chunk_sizes else 0,
-                    "processing_time_ms": processing_time_ms,
-                    "pros": self._get_strategy_pros(strategy_name),
-                    "cons": self._get_strategy_cons(strategy_name),
-                })
-            
+
+                comparisons.append(
+                    {
+                        "strategy": strategy_name,
+                        "total_chunks": len(chunks),
+                        "avg_chunk_size": sum(chunk_sizes) / len(chunk_sizes) if chunk_sizes else 0,
+                        "min_chunk_size": min(chunk_sizes) if chunk_sizes else 0,
+                        "max_chunk_size": max(chunk_sizes) if chunk_sizes else 0,
+                        "processing_time_ms": processing_time_ms,
+                        "pros": self._get_strategy_pros(strategy_name),
+                        "cons": self._get_strategy_cons(strategy_name),
+                    }
+                )
+
             # Simple recommendation logic
             recommendation = strategies[0] if strategies else None
             reasoning = "Based on content analysis"
-            
+
             return {
                 "comparisons": comparisons,
                 "recommendation": recommendation,
@@ -541,9 +545,7 @@ class ChunkingService:
             await self.db_session.rollback()
             raise
 
-    async def get_chunking_progress(
-        self, operation_id: str
-    ) -> dict[str, Any]:
+    async def get_chunking_progress(self, operation_id: str) -> dict[str, Any]:
         """Get progress of a chunking operation.
 
         Args:
@@ -554,9 +556,7 @@ class ChunkingService:
         """
         try:
             # Get operation from database
-            result = await self.db_session.execute(
-                select(Operation).where(Operation.id == operation_id)
-            )
+            result = await self.db_session.execute(select(Operation).where(Operation.id == operation_id))
             operation = result.scalar_one_or_none()
 
             if not operation:
@@ -576,15 +576,9 @@ class ChunkingService:
                 "operation_id": operation_id,
                 "status": operation.status,
                 "progress_percentage": progress_pct,
-                "chunks_processed": operation.metadata.get("chunks_processed", 0)
-                if operation.metadata
-                else 0,
-                "total_chunks": operation.metadata.get("total_chunks", 0)
-                if operation.metadata
-                else 0,
-                "started_at": operation.started_at.isoformat()
-                if operation.started_at
-                else None,
+                "chunks_processed": operation.metadata.get("chunks_processed", 0) if operation.metadata else 0,
+                "total_chunks": operation.metadata.get("total_chunks", 0) if operation.metadata else 0,
+                "started_at": operation.started_at.isoformat() if operation.started_at else None,
                 "error": operation.error_message,
             }
 
@@ -592,9 +586,7 @@ class ChunkingService:
             logger.error(f"Failed to get chunking progress: {e}")
             raise
 
-    async def get_chunking_statistics(
-        self, collection_id: str
-    ) -> dict[str, Any]:
+    async def get_chunking_statistics(self, collection_id: str) -> dict[str, Any]:
         """Get chunking statistics for a collection.
 
         Args:
@@ -637,9 +629,7 @@ class ChunkingService:
                 "failed_operations": failed,
                 "in_progress_operations": in_progress,
                 "latest_strategy": latest_strategy,
-                "last_operation_at": latest_operation.created_at.isoformat()
-                if latest_operation
-                else None,
+                "last_operation_at": latest_operation.created_at.isoformat() if latest_operation else None,
             }
 
         except Exception as e:
@@ -686,9 +676,7 @@ class ChunkingService:
 
     # Cache management methods
 
-    async def _cache_preview(
-        self, cache_key: str, preview_data: dict[str, Any], ttl: int = 1800
-    ) -> None:
+    async def _cache_preview(self, cache_key: str, preview_data: dict[str, Any], ttl: int = 1800) -> None:
         """Cache preview data in Redis.
 
         Args:
@@ -708,9 +696,7 @@ class ChunkingService:
         except Exception as e:
             logger.warning(f"Failed to cache preview: {e}")
 
-    async def _get_cached_preview_by_key(
-        self, cache_key: str
-    ) -> dict[str, Any] | None:
+    async def _get_cached_preview_by_key(self, cache_key: str) -> dict[str, Any] | None:
         """Get cached preview by key.
 
         Args:
@@ -757,9 +743,9 @@ class ChunkingService:
         return 0
 
     async def track_preview_usage(
-        self, 
+        self,
         user_id: int | None = None,
-        preview_id: str | None = None, 
+        preview_id: str | None = None,
         action: str | None = None,
         strategy: str | None = None,
         file_type: str | None = None,
@@ -780,15 +766,15 @@ class ChunkingService:
             # Track by user and strategy
             if user_id and strategy:
                 await self.redis_client.incr(f"chunking:preview:user:{user_id}:{strategy}")
-            
+
             # Track overall strategy usage
             if strategy:
                 await self.redis_client.incr(f"chunking:preview:usage:{strategy}")
-            
+
             # Track file type usage
             if file_type:
                 await self.redis_client.incr(f"chunking:preview:file_type:{file_type}")
-            
+
             # Track specific preview if ID provided
             if preview_id and action:
                 key = f"preview_usage:{preview_id}"
@@ -803,7 +789,7 @@ class ChunkingService:
         user_id: int,
     ) -> None:
         """Verify user has access to collection.
-        
+
         Args:
             collection_id: Collection UUID
             user_id: User ID
@@ -812,7 +798,7 @@ class ChunkingService:
             collection_uuid=collection_id,
             user_id=user_id,
         )
-    
+
     def _calculate_metrics(
         self,
         chunks: list[Any],
@@ -820,12 +806,12 @@ class ChunkingService:
         processing_time: float,
     ) -> dict[str, Any]:
         """Calculate metrics for chunking results.
-        
+
         Args:
             chunks: List of chunks
             text_length: Original text length
             processing_time: Processing time in seconds
-            
+
         Returns:
             Metrics dictionary
         """
@@ -838,10 +824,10 @@ class ChunkingService:
                 "chunks_per_second": 0,
                 "compression_ratio": 0,
             }
-        
-        chunk_sizes = [len(c.text if hasattr(c, 'text') else c) for c in chunks]
+
+        chunk_sizes = [len(c.text if hasattr(c, "text") else c) for c in chunks]
         total_chunk_chars = sum(chunk_sizes)
-        
+
         return {
             "total_chunks": len(chunks),
             "average_chunk_size": sum(chunk_sizes) / len(chunk_sizes) if chunk_sizes else 0,
@@ -850,70 +836,60 @@ class ChunkingService:
             "chunks_per_second": len(chunks) / processing_time if processing_time > 0 else 0,
             "compression_ratio": total_chunk_chars / text_length if text_length > 0 else 1,
         }
-    
+
     def _get_recommendations(
         self,
-        chunks: list[Any], 
+        chunks: list[Any],
         file_type: str | None = None,
     ) -> list[str]:
         """Get recommendations based on chunking results.
-        
+
         Args:
             chunks: List of chunks
             file_type: File type being processed
-            
+
         Returns:
             List of recommendation strings
         """
         recommendations = []
-        
+
         if not chunks:
             return ["No chunks generated - check your content and settings"]
-        
+
         # Calculate chunk size statistics
-        chunk_sizes = [len(c.text if hasattr(c, 'text') else c) for c in chunks]
+        chunk_sizes = [len(c.text if hasattr(c, "text") else c) for c in chunks]
         avg_size = sum(chunk_sizes) / len(chunk_sizes) if chunk_sizes else 0
         min_size = min(chunk_sizes) if chunk_sizes else 0
         max_size = max(chunk_sizes) if chunk_sizes else 0
-        
+
         # Check for high variance
         if max_size > 0 and min_size > 0:
             variance_ratio = max_size / min_size
             if variance_ratio > 5:
-                recommendations.append(
-                    "High chunk size variance detected - consider adjusting parameters"
-                )
-        
+                recommendations.append("High chunk size variance detected - consider adjusting parameters")
+
         # Check for many small chunks
         small_chunks = [s for s in chunk_sizes if s < 100]
         if len(small_chunks) > len(chunks) * 0.3:
-            recommendations.append(
-                "Many small chunks detected - consider increasing chunk size"
-            )
-        
+            recommendations.append("Many small chunks detected - consider increasing chunk size")
+
         # File type specific recommendations
         if file_type == ".py":
             if avg_size > 1000:
-                recommendations.append(
-                    "Large chunks for Python code - consider smaller chunks for better granularity"
-                )
-        
+                recommendations.append("Large chunks for Python code - consider smaller chunks for better granularity")
+
         # General recommendations
         if len(chunks) > 100:
-            recommendations.append(
-                "Large number of chunks - may impact search performance"
-            )
-        
+            recommendations.append("Large number of chunks - may impact search performance")
+
         if not recommendations:
             recommendations.append("Chunking parameters appear well-balanced")
-        
+
         return recommendations
 
     # Helper methods
 
-    def _generate_cache_key(
-        self, content: str, strategy: str, config: dict[str, Any] | None
-    ) -> str:
+    def _generate_cache_key(self, content: str, strategy: str, config: dict[str, Any] | None) -> str:
         """Generate a cache key for preview data.
 
         Args:
@@ -973,9 +949,7 @@ class ChunkingService:
         }
         return defaults.get(strategy, {})
 
-    def _get_alternative_strategies(
-        self, primary_strategy: str
-    ) -> list[dict[str, str]]:
+    def _get_alternative_strategies(self, primary_strategy: str) -> list[dict[str, str]]:
         """Get alternative strategies to the primary one.
 
         Args:
@@ -1017,22 +991,22 @@ class ChunkingService:
             ],
         }
         return alternatives.get(primary_strategy, [])
-    
+
     def _categorize_file_type(self, file_type: str) -> str:
         """Categorize a file type."""
         import os
-        
+
         # Get extension from path if needed
         if "/" in file_type or "\\" in file_type:
             file_type = os.path.splitext(file_type)[1]
-        
+
         # Ensure file_type starts with a dot
         if file_type and not file_type.startswith("."):
             file_type = "." + file_type
-        
+
         code_extensions = [".py", ".js", ".ts", ".cpp", ".c", ".java", ".go", ".rs", ".sh"]
         markdown_extensions = [".md", ".markdown", ".mdx", ".rst"]
-        
+
         if file_type in code_extensions:
             return "code"
         elif file_type in markdown_extensions:
@@ -1123,23 +1097,23 @@ class ChunkingService:
             ],
         }
         return cons.get(strategy, [])
-    
+
     def _map_strategy_to_factory_name(self, strategy: str) -> str:
         """Map a strategy name to its factory name.
-        
+
         This method provides mapping between user-friendly strategy names
         and the internal factory names used by the chunking system.
-        
+
         Args:
             strategy: User-provided strategy name
-            
+
         Returns:
             Factory name for the strategy
         """
         # First check the primary STRATEGY_MAPPING
         if strategy in self.STRATEGY_MAPPING:
             return self.STRATEGY_MAPPING[strategy]
-        
+
         # Map common variations to standard names
         strategy_mapping = {
             # Standard mappings
@@ -1149,7 +1123,6 @@ class ChunkingService:
             "semantic": "semantic",
             "hierarchical": "hierarchical",
             "hybrid": "hybrid",
-            
             # Alternative names and variations
             "char": "character",
             "simple": "character",
@@ -1162,7 +1135,6 @@ class ChunkingService:
             "multi_level": "hierarchical",
             "mixed": "hybrid",
             "adaptive": "hybrid",
-            
             # Handle case variations
             "CHARACTER": "character",
             "RECURSIVE": "recursive",
@@ -1171,7 +1143,7 @@ class ChunkingService:
             "HIERARCHICAL": "hierarchical",
             "HYBRID": "hybrid",
         }
-        
+
         # Return mapped name or original if no mapping exists
         return strategy_mapping.get(strategy, strategy)
 
@@ -1194,9 +1166,7 @@ class ChunkingService:
         else:
             raise ValueError(f"Unsupported operation type: {operation_type}")
 
-    async def process_chunking_operation(
-        self, operation_id: str
-    ) -> None:
+    async def process_chunking_operation(self, operation_id: str) -> None:
         """Process a chunking operation.
 
         This would typically be called by a Celery task.
@@ -1208,9 +1178,7 @@ class ChunkingService:
         logger.info(f"Processing chunking operation {operation_id}")
         pass
 
-    async def update_collection(
-        self, collection_id: str, updates: dict[str, Any]
-    ) -> None:
+    async def update_collection(self, collection_id: str, updates: dict[str, Any]) -> None:
         """Update collection after chunking.
 
         Args:

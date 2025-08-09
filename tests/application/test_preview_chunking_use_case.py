@@ -7,12 +7,9 @@ import pytest
 
 from packages.shared.chunking.application.dto.requests import ChunkingStrategy, PreviewRequest
 from packages.shared.chunking.application.dto.responses import ChunkDTO, PreviewResponse
-from packages.shared.chunking.application.use_cases.preview_chunking import (
-    PreviewChunkingUseCase)
+from packages.shared.chunking.application.use_cases.preview_chunking import PreviewChunkingUseCase
 from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.exceptions import (
-    InvalidConfigurationError,
-    StrategyNotFoundError)
+from packages.shared.chunking.domain.exceptions import InvalidConfigurationError, StrategyNotFoundError
 from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 
 
@@ -23,22 +20,14 @@ class TestPreviewChunkingUseCase:
     def mock_document_service(self):
         """Create mock document service."""
         service = MagicMock()
-        service.get_document_content = AsyncMock(
-            return_value="This is a sample document content for testing."
-        )
+        service.get_document_content = AsyncMock(return_value="This is a sample document content for testing.")
         service.get_document_size = AsyncMock(return_value=1000)
-        
+
         # Add the required methods for PreviewChunkingUseCase
-        service.load_partial = AsyncMock(
-            return_value={"content": "This is a sample document content for testing."}
-        )
-        service.extract_text = AsyncMock(
-            return_value="This is a sample document content for testing."
-        )
-        service.get_metadata = AsyncMock(
-            return_value={"size_bytes": 10000}
-        )
-        
+        service.load_partial = AsyncMock(return_value={"content": "This is a sample document content for testing."})
+        service.extract_text = AsyncMock(return_value="This is a sample document content for testing.")
+        service.get_metadata = AsyncMock(return_value={"size_bytes": 10000})
+
         return service
 
     @pytest.fixture()
@@ -48,25 +37,31 @@ class TestPreviewChunkingUseCase:
         mock_strategy = MagicMock()
         mock_strategy.chunk.return_value = [
             Chunk(
-                content="Chunk 1", metadata=ChunkMetadata(
+                content="Chunk 1",
+                metadata=ChunkMetadata(
                     chunk_id="chunk-1",
                     document_id="doc-123",
                     chunk_index=0,
                     start_offset=0,
                     end_offset=7,
                     token_count=2,
-                    strategy_name="character"),
-                min_tokens=1),
+                    strategy_name="character",
+                ),
+                min_tokens=1,
+            ),
             Chunk(
-                content="Chunk 2", metadata=ChunkMetadata(
+                content="Chunk 2",
+                metadata=ChunkMetadata(
                     chunk_id="chunk-2",
                     document_id="doc-123",
                     chunk_index=1,
                     start_offset=8,
                     end_offset=15,
                     token_count=2,
-                    strategy_name="character"),
-                min_tokens=1),
+                    strategy_name="character",
+                ),
+                min_tokens=1,
+            ),
         ]
         factory.create_strategy.return_value = mock_strategy
         return factory
@@ -77,12 +72,12 @@ class TestPreviewChunkingUseCase:
         service = MagicMock()
         service.notify_preview_generated = AsyncMock()
         service.notify_error = AsyncMock()
-        
+
         # Add the required methods for PreviewChunkingUseCase
         service.notify_operation_started = AsyncMock()
         service.notify_operation_completed = AsyncMock()
         service.notify_operation_failed = AsyncMock()
-        
+
         return service
 
     @pytest.fixture()
@@ -91,26 +86,22 @@ class TestPreviewChunkingUseCase:
         service = MagicMock()
         service.record_preview_request = AsyncMock()
         service.record_preview_duration = AsyncMock()
-        
+
         # Add the required methods for PreviewChunkingUseCase
         service.record_operation_duration = AsyncMock()
         service.record_strategy_performance = AsyncMock()
-        
+
         return service
 
     @pytest.fixture()
-    def use_case(
-        self,
-        mock_document_service,
-        mock_strategy_factory,
-        mock_notification_service,
-        mock_metrics_service):
+    def use_case(self, mock_document_service, mock_strategy_factory, mock_notification_service, mock_metrics_service):
         """Create use case instance with mocked dependencies."""
         return PreviewChunkingUseCase(
             document_service=mock_document_service,
             strategy_factory=mock_strategy_factory,
             notification_service=mock_notification_service,
-            metrics_service=mock_metrics_service)
+            metrics_service=mock_metrics_service,
+        )
 
     @pytest.fixture()
     def valid_request(self):
@@ -122,7 +113,8 @@ class TestPreviewChunkingUseCase:
             max_tokens=50,
             overlap=5,
             preview_size_kb=10,
-            max_preview_chunks=5)
+            max_preview_chunks=5,
+        )
 
     @pytest.mark.asyncio()
     async def test_successful_preview_generation(self, use_case, valid_request):
@@ -140,14 +132,10 @@ class TestPreviewChunkingUseCase:
         assert response.processing_time_ms > 0
 
         # Verify mock calls
-        use_case.document_service.load_partial.assert_called_once_with(
-            file_path="/data/documents/test.txt",
-            size_kb=10
-        )
+        use_case.document_service.load_partial.assert_called_once_with(file_path="/data/documents/test.txt", size_kb=10)
         use_case.document_service.extract_text.assert_called_once()
         use_case.strategy_factory.create_strategy.assert_called_once_with(
-            strategy_type="character",
-            config={"min_tokens": 10, "max_tokens": 50, "overlap": 5}
+            strategy_type="character", config={"min_tokens": 10, "max_tokens": 50, "overlap": 5}
         )
         use_case.notification_service.notify_operation_started.assert_called_once()
         use_case.notification_service.notify_operation_completed.assert_called_once()
@@ -166,15 +154,16 @@ class TestPreviewChunkingUseCase:
                     chunk_id=f"chunk-{i}",
                     document_id="doc-123",
                     chunk_index=i,
-                    start_offset=i*10,
-                    end_offset=(i+1)*10,
+                    start_offset=i * 10,
+                    end_offset=(i + 1) * 10,
                     token_count=3,
-                    strategy_name="character"), min_tokens=1)
+                    strategy_name="character",
+                ),
+                min_tokens=1,
+            )
             for i in range(10)
         ]
-        use_case.strategy_factory.create_strategy.return_value.chunk.return_value = (
-            many_chunks
-        )
+        use_case.strategy_factory.create_strategy.return_value.chunk.return_value = many_chunks
 
         # Act
         response = await use_case.execute(valid_request)
@@ -195,7 +184,8 @@ class TestPreviewChunkingUseCase:
             max_tokens=100,
             overlap=10,
             preview_size_kb=5,
-            max_preview_chunks=3)
+            max_preview_chunks=3,
+        )
 
         # Act
         response = await use_case.execute(request)
@@ -206,17 +196,14 @@ class TestPreviewChunkingUseCase:
 
         # Verify strategy was created with additional params
         use_case.strategy_factory.create_strategy.assert_called_with(
-            strategy_type="semantic",
-            config={"min_tokens": 20, "max_tokens": 100, "overlap": 10}
+            strategy_type="semantic", config={"min_tokens": 20, "max_tokens": 100, "overlap": 10}
         )
 
     @pytest.mark.asyncio()
     async def test_document_not_found(self, use_case, valid_request):
         """Test handling of document not found error."""
         # Arrange
-        use_case.document_service.load_partial.side_effect = FileNotFoundError(
-            "Document not found"
-        )
+        use_case.document_service.load_partial.side_effect = FileNotFoundError("Document not found")
 
         # Act & Assert
         with pytest.raises(FileNotFoundError) as exc_info:
@@ -230,9 +217,7 @@ class TestPreviewChunkingUseCase:
     async def test_strategy_not_found(self, use_case, valid_request):
         """Test handling of unknown strategy."""
         # Arrange
-        use_case.strategy_factory.create_strategy.side_effect = StrategyNotFoundError(
-            "unknown_strategy"
-        )
+        use_case.strategy_factory.create_strategy.side_effect = StrategyNotFoundError("unknown_strategy")
 
         # Act & Assert
         with pytest.raises(ValueError) as exc_info:
@@ -251,11 +236,12 @@ class TestPreviewChunkingUseCase:
             strategy_type=ChunkingStrategy.CHARACTER,
             min_tokens=100,  # Greater than max
             max_tokens=50,
-            overlap=5)
+            overlap=5,
+        )
 
         # Mock the strategy factory to raise InvalidConfigurationError
-        use_case.strategy_factory.create_strategy.side_effect = (
-            InvalidConfigurationError("min_tokens cannot be greater than max_tokens")
+        use_case.strategy_factory.create_strategy.side_effect = InvalidConfigurationError(
+            "min_tokens cannot be greater than max_tokens"
         )
 
         # Act & Assert
@@ -305,22 +291,30 @@ class TestPreviewChunkingUseCase:
 
         # Return 2 chunks for sample
         use_case.strategy_factory.create_strategy.return_value.chunk.return_value = [
-            Chunk(content="Chunk 1", metadata=ChunkMetadata(
-                      chunk_id="chunk-sample-1",
-                      document_id="doc-preview",
-                      chunk_index=0,
-                      start_offset=0,
-                      end_offset=50,
-                      token_count=10,
-                      strategy_name="character")),
-            Chunk(content="Chunk 2", metadata=ChunkMetadata(
-                      chunk_id="chunk-sample-2",
-                      document_id="doc-preview",
-                      chunk_index=1,
-                      start_offset=51,
-                      end_offset=100,
-                      token_count=10,
-                      strategy_name="character")),
+            Chunk(
+                content="Chunk 1",
+                metadata=ChunkMetadata(
+                    chunk_id="chunk-sample-1",
+                    document_id="doc-preview",
+                    chunk_index=0,
+                    start_offset=0,
+                    end_offset=50,
+                    token_count=10,
+                    strategy_name="character",
+                ),
+            ),
+            Chunk(
+                content="Chunk 2",
+                metadata=ChunkMetadata(
+                    chunk_id="chunk-sample-2",
+                    document_id="doc-preview",
+                    chunk_index=1,
+                    start_offset=51,
+                    end_offset=100,
+                    token_count=10,
+                    strategy_name="character",
+                ),
+            ),
         ]
 
         # Act
@@ -352,11 +346,8 @@ class TestPreviewChunkingUseCase:
 
     @pytest.mark.asyncio()
     async def test_no_metrics_service(
-        self,
-        mock_document_service,
-        mock_strategy_factory,
-        mock_notification_service,
-        valid_request):
+        self, mock_document_service, mock_strategy_factory, mock_notification_service, valid_request
+    ):
         """Test that use case works without metrics service."""
         # Arrange
         use_case = PreviewChunkingUseCase(
@@ -379,18 +370,20 @@ class TestPreviewChunkingUseCase:
         # Arrange
         test_chunks = [
             Chunk(
-                content="Test chunk", metadata=ChunkMetadata(
+                content="Test chunk",
+                metadata=ChunkMetadata(
                     chunk_id="chunk-test",
                     document_id="doc-123",
                     chunk_index=0,
                     start_offset=0,
                     end_offset=10,
                     token_count=3,
-                    strategy_name="character"), min_tokens=1)
+                    strategy_name="character",
+                ),
+                min_tokens=1,
+            )
         ]
-        use_case.strategy_factory.create_strategy.return_value.chunk.return_value = (
-            test_chunks
-        )
+        use_case.strategy_factory.create_strategy.return_value.chunk.return_value = test_chunks
 
         # Act
         response = await use_case.execute(valid_request)
@@ -421,20 +414,22 @@ class TestPreviewChunkingUseCase:
                 progress_callback(75.0)
                 progress_callback(100.0)
             return [
-                Chunk(content="Chunk", metadata=ChunkMetadata(
-                    chunk_id="chunk-test",
-                    document_id="doc-123",
-                    chunk_index=0,
-                    start_offset=0,
-                    end_offset=5,
-                    token_count=1,
-                    strategy_name="character"),
-                min_tokens=1)
+                Chunk(
+                    content="Chunk",
+                    metadata=ChunkMetadata(
+                        chunk_id="chunk-test",
+                        document_id="doc-123",
+                        chunk_index=0,
+                        start_offset=0,
+                        end_offset=5,
+                        token_count=1,
+                        strategy_name="character",
+                    ),
+                    min_tokens=1,
+                )
             ]
 
-        use_case.strategy_factory.create_strategy.return_value.chunk.side_effect = (
-            mock_chunk_with_progress
-        )
+        use_case.strategy_factory.create_strategy.return_value.chunk.side_effect = mock_chunk_with_progress
 
         # Act
         response = await use_case.execute(valid_request)
@@ -455,15 +450,15 @@ class TestPreviewChunkingUseCase:
                 strategy_type=ChunkingStrategy.CHARACTER,
                 min_tokens=10,
                 max_tokens=50,
-                overlap=5)
+                overlap=5,
+            )
             for i in range(3)
         ]
 
         # Act
         import asyncio
-        responses = await asyncio.gather(
-            *[use_case.execute(req) for req in requests]
-        )
+
+        responses = await asyncio.gather(*[use_case.execute(req) for req in requests])
 
         # Assert
         assert len(responses) == 3
@@ -507,9 +502,7 @@ class TestPreviewChunkingUseCase:
     async def test_notification_on_error(self, use_case, valid_request):
         """Test that error notification is sent on failure."""
         # Arrange
-        use_case.document_service.load_partial.side_effect = Exception(
-            "Unexpected error"
-        )
+        use_case.document_service.load_partial.side_effect = Exception("Unexpected error")
 
         # Act & Assert
         with pytest.raises(Exception):

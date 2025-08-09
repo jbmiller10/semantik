@@ -32,7 +32,8 @@ from packages.webui.tasks import (
     calculate_cleanup_delay,
     cleanup_old_collections,
     cleanup_qdrant_collections,
-    process_collection_operation)
+    process_collection_operation,
+)
 
 
 @pytest.fixture()
@@ -219,7 +220,8 @@ class TestProcessCollectionOperation:
         mock_session_local,
         mock_pg_manager,
         mock_repositories,
-        mock_celery_task):
+        mock_celery_task,
+    ):
         """Test successful INDEX operation processing."""
         # Setup psutil mock
         mock_cpu_times = Mock()
@@ -284,7 +286,8 @@ class TestProcessCollectionOperation:
         mock_session_local,
         mock_pg_manager,
         mock_repositories,
-        mock_celery_task):
+        mock_celery_task,
+    ):
         """Test failure handling in process_collection_operation."""
         # Setup psutil mock
         mock_cpu_times = Mock()
@@ -566,7 +569,8 @@ class TestAppendOperation:
         with (
             patch("packages.webui.tasks.extract_and_serialize_thread_safe", side_effect=mock_extract_func),
             patch("packages.webui.tasks.TokenChunker", return_value=mock_chunker),
-            patch("asyncio.get_event_loop", return_value=mock_loop)):
+            patch("asyncio.get_event_loop", return_value=mock_loop),
+        ):
             # Mock httpx client for vecpipe API
             mock_client = AsyncMock()
             mock_response = Mock()
@@ -690,7 +694,8 @@ class TestReindexOperation:
         mock_qdrant_global,
         mock_qdrant_manager_class,
         mock_qdrant_manager_instance,
-        mock_updater):
+        mock_updater,
+    ):
         """Test successful REINDEX operation."""
         # Setup mocks
         mock_qdrant_manager_class.return_value = mock_qdrant_manager_instance
@@ -917,7 +922,8 @@ class TestRemoveSourceOperation:
         # Mock the document and collection repos created in transaction
         with (
             patch("shared.database.repositories.document_repository.DocumentRepository") as mock_doc_repo_class,
-            patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_col_repo_class):
+            patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_col_repo_class,
+        ):
             mock_doc_repo_tx = AsyncMock()
             mock_doc_repo_tx.bulk_update_status = AsyncMock()
             mock_doc_repo_tx.get_stats_by_collection.return_value = {
@@ -1030,7 +1036,8 @@ class TestRemoveSourceOperation:
         # Mock the document and collection repos created in transaction
         with (
             patch("shared.database.repositories.document_repository.DocumentRepository") as mock_doc_repo_class,
-            patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_col_repo_class):
+            patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_col_repo_class,
+        ):
             mock_doc_repo_tx = AsyncMock()
             mock_doc_repo_tx.bulk_update_status = AsyncMock()
             mock_doc_repo_tx.get_stats_by_collection.return_value = {
@@ -1158,7 +1165,8 @@ class TestRemoveSourceOperation:
         # Mock the document and collection repos created in transaction
         with (
             patch("shared.database.repositories.document_repository.DocumentRepository") as mock_doc_repo_class,
-            patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_col_repo_class):
+            patch("shared.database.repositories.collection_repository.CollectionRepository") as mock_col_repo_class,
+        ):
             mock_doc_repo_tx = AsyncMock()
             mock_doc_repo_tx.bulk_update_status = AsyncMock()
             mock_doc_repo_tx.get_stats_by_collection.return_value = {
