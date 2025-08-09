@@ -39,7 +39,7 @@ def get_user_or_ip(request: Request) -> str:
     # Check if rate limiting is disabled for testing
     if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
         return "test_bypass"
-    
+
     # Check for admin bypass token
     auth_header = request.headers.get("authorization", "")
     if auth_header.startswith("Bearer ") and RateLimitConfig.BYPASS_TOKEN:
@@ -204,14 +204,16 @@ def create_rate_limit_decorator(limit: str) -> Callable:
 # Define special rate limits for specific keys
 SPECIAL_LIMITS = {
     "admin_bypass": "100000/second",  # Effectively unlimited for admin bypass
-    "test_bypass": "100000/second",   # Effectively unlimited for test bypass
+    "test_bypass": "100000/second",  # Effectively unlimited for test bypass
 }
+
 
 def get_limit_for_key(key: str) -> list[str]:
     """Get rate limits for a specific key."""
     if key in SPECIAL_LIMITS:
         return [SPECIAL_LIMITS[key]]
     return [RateLimitConfig.DEFAULT_LIMIT]
+
 
 # Initialize the limiter with Redis backend
 if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":

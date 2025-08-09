@@ -74,7 +74,7 @@ class RateLimitConfig:
         auth_header = request_headers.get("authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header.split(" ", 1)[1]
-            return token == cls.BYPASS_TOKEN
+            return bool(token == cls.BYPASS_TOKEN)
 
         return False
 

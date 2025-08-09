@@ -158,7 +158,7 @@ class RedisCleanupTask:
             metrics["error"] = str(e)
             self._log_metrics(metrics)
 
-    async def _cleanup_pattern(self, pattern: str, ttl_func: Any, metrics: dict[str, int]) -> None:
+    async def _cleanup_pattern(self, pattern: str, ttl_func: Any, metrics: dict[str, Any]) -> None:
         """Clean up keys matching a pattern.
 
         Args:
@@ -166,6 +166,9 @@ class RedisCleanupTask:
             ttl_func: Function to determine TTL for a key
             metrics: Metrics dictionary to update
         """
+        if not self.redis:
+            return
+
         try:
             cursor = 0
             while True:
@@ -195,12 +198,15 @@ class RedisCleanupTask:
         except Exception as e:
             logger.error(f"Error cleaning pattern {pattern}: {e}")
 
-    async def _trim_streams(self, metrics: dict[str, int]) -> None:
+    async def _trim_streams(self, metrics: dict[str, Any]) -> None:
         """Trim Redis streams to prevent unbounded growth.
 
         Args:
             metrics: Metrics dictionary to update
         """
+        if not self.redis:
+            return
+
         try:
             # Find all stream keys
             stream_patterns = [
@@ -218,7 +224,9 @@ class RedisCleanupTask:
                             # Trim stream to maximum length
                             # XTRIM returns the number of entries deleted
                             deleted = await self.redis.xtrim(
-                                key, maxlen=STREAM_MAX_LENGTH, approximate=True  # More efficient
+                                key,
+                                maxlen=STREAM_MAX_LENGTH,
+                                approximate=True,  # More efficient
                             )
                             if deleted > 0:
                                 metrics["streams_trimmed"] += 1
