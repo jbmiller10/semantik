@@ -36,12 +36,28 @@ class TestChunkConfig:
             max_tokens=200,
             overlap_tokens=20,
             similarity_threshold=0.8,
-            custom_param="value")
+            encoding="utf-8",      # Use an allowed parameter from the whitelist
+            language="en")         # Another allowed parameter
 
         # Assert
         assert config.strategy_name == "semantic"
         assert config.additional_params["similarity_threshold"] == 0.8
-        assert config.additional_params["custom_param"] == "value"
+        assert config.additional_params["encoding"] == "utf-8"
+        assert config.additional_params["language"] == "en"
+
+    def test_unknown_parameter_rejected(self):
+        """Test that unknown parameters are rejected for security."""
+        # Act & Assert
+        with pytest.raises(InvalidConfigurationError) as exc_info:
+            ChunkConfig(
+                strategy_name="semantic",
+                min_tokens=50,
+                max_tokens=200,
+                overlap_tokens=20,
+                unknown_param="value")  # This should be rejected
+        
+        assert "Unknown configuration parameter 'unknown_param'" in str(exc_info.value)
+        assert "Allowed additional parameters" in str(exc_info.value)
 
     def test_invalid_min_tokens_negative(self):
         """Test that negative min_tokens raises error."""
