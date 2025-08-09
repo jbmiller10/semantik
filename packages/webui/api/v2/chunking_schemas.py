@@ -218,7 +218,7 @@ class ChunkingOperationRequest(BaseModel):
     document_ids: list[str] | None = Field(default=None, description="Specific documents to chunk (if not all)")
     priority: int | str = Field(default=5, description="Operation priority (1-10 or 'low'/'normal'/'high')")
     notify_on_completion: bool = Field(default=True, description="Send notification when complete")
-    
+
     @field_validator("priority", mode="before")
     @classmethod
     def validate_priority(cls, v: int | str) -> int:
