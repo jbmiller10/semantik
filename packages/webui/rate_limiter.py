@@ -44,13 +44,15 @@ def get_user_or_ip(request: Request) -> str:
     if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
         return "test_bypass"
 
-    # Check for admin bypass token
-    auth_header = request.headers.get("authorization", "")
-    if auth_header.startswith("Bearer ") and RateLimitConfig.BYPASS_TOKEN:
-        token = auth_header.split(" ", 1)[1]
-        if token == RateLimitConfig.BYPASS_TOKEN:
-            # Return a special key that has unlimited rate limit
-            return "admin_bypass"
+    # Check for admin bypass token - check env var directly for testing
+    bypass_token = os.getenv("RATE_LIMIT_BYPASS_TOKEN") or RateLimitConfig.BYPASS_TOKEN
+    if bypass_token:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header.split(" ", 1)[1]
+            if token == bypass_token:
+                # Return a special key that has unlimited rate limit
+                return "admin_bypass"
 
     # Try to get user from request state (set by auth middleware)
     if hasattr(request.state, "user") and request.state.user:
@@ -184,16 +186,21 @@ def create_rate_limit_decorator(limit: str) -> Callable:
     """
 
     def decorator(func: Callable) -> Callable:
-        # Apply the rate limit
-        limited_func = limiter.limit(limit)(func)
-
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             # Check circuit breaker first
             request = kwargs.get("request")
             if request:
                 check_circuit_breaker(request)
-
-            # Then apply rate limit
+                
+                # Check if user has special limits
+                key = get_user_or_ip(request)
+                if key in SPECIAL_LIMITS:
+                    # Apply special limit for admin bypass or test bypass
+                    special_limited_func = limiter.limit(SPECIAL_LIMITS[key])(func)
+                    return await special_limited_func(*args, **kwargs)
+            
+            # Apply normal rate limit
+            limited_func = limiter.limit(limit)(func)
             return await limited_func(*args, **kwargs)
 
         # Preserve function metadata
@@ -221,13 +228,13 @@ def get_limit_for_key(key: str) -> list[str]:
 
 # Initialize the limiter with Redis backend
 if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
-    # Use very high limits for testing
+    # Use very high limits for testing - effectively disabling rate limiting
     limiter = Limiter(
         key_func=get_user_or_ip,
-        default_limits=["10000/second"],
+        default_limits=["100000/second"],  # Even higher limit to ensure no rate limiting in tests
         headers_enabled=False,  # Disable automatic header injection (incompatible with dict responses)
     )
-    logger.info("Rate limiter configured for testing with high limits")
+    logger.info("Rate limiter configured for testing with high limits (effectively disabled)")
 else:
     try:
         limiter = Limiter(
