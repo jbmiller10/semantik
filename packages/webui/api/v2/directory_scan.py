@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSo
 from packages.shared.database.exceptions import ValidationError
 from packages.webui.api.schemas import DirectoryScanProgress, DirectoryScanRequest, DirectoryScanResponse, ErrorResponse
 from packages.webui.auth import get_current_user, get_current_user_websocket
-from packages.webui.rate_limiter import create_rate_limit_decorator, limiter
+from packages.webui.rate_limiter import limiter
 from packages.webui.services.directory_scan_service import DirectoryScanService
 from packages.webui.services.factory import get_directory_scan_service
 from packages.webui.websocket_manager import ws_manager
@@ -36,7 +36,7 @@ router = APIRouter(prefix="/api/v2/directory-scan", tags=["directory-scan-v2"])
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
 )
-@create_rate_limit_decorator("30/minute")
+@limiter.limit("30/minute")
 async def scan_directory_preview(
     request: Request,  # noqa: ARG001
     scan_request: DirectoryScanRequest,
