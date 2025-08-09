@@ -157,10 +157,8 @@ class TestCancelOperationUseCase:
         mock_unit_of_work.operations.find_by_id = AsyncMock(return_value=None)
 
         # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Operation not found"):
             await use_case.execute(valid_request)
-
-        assert "Operation not found" in str(exc_info.value)
         use_case.unit_of_work.rollback.assert_called_once()
 
     @pytest.mark.asyncio()
@@ -176,10 +174,8 @@ class TestCancelOperationUseCase:
         mock_unit_of_work.operations.find_by_id = AsyncMock(return_value=completed_operation)
 
         # Act & Assert - should raise ValueError since completed operations can't be cancelled
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Operation cannot be cancelled"):
             await use_case.execute(request)
-
-        assert "Operation cannot be cancelled" in str(exc_info.value)
         use_case.unit_of_work.rollback.assert_called_once()
 
     @pytest.mark.asyncio()
@@ -195,10 +191,8 @@ class TestCancelOperationUseCase:
         mock_unit_of_work.operations.find_by_id = AsyncMock(return_value=failed_operation)
 
         # Act & Assert - should raise ValueError since failed operations can't be cancelled
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Operation cannot be cancelled"):
             await use_case.execute(request)
-
-        assert "Operation cannot be cancelled" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_cancel_already_cancelled_operation(self, use_case, mock_unit_of_work):
@@ -213,10 +207,8 @@ class TestCancelOperationUseCase:
         mock_unit_of_work.operations.find_by_id = AsyncMock(return_value=cancelled_operation)
 
         # Act & Assert - should raise ValueError since already cancelled
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Operation cannot be cancelled"):
             await use_case.execute(request)
-
-        assert "Operation cannot be cancelled" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_task_manager_cancellation_failure(
@@ -258,10 +250,8 @@ class TestCancelOperationUseCase:
 
         # Act - notification happens after commit, so the exception will be raised
         # but the cancellation itself should have succeeded
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(Exception, match="Notification failed"):
             await use_case.execute(valid_request)
-
-        assert "Notification failed" in str(exc_info.value)
 
         # Assert - The commit should have been called before the notification failure
         # Cancellation should succeed despite notification failure
@@ -322,10 +312,8 @@ class TestCancelOperationUseCase:
         use_case.unit_of_work.commit.side_effect = Exception("Database error")
 
         # Act & Assert
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(Exception, match="Database error"):
             await use_case.execute(valid_request)
-
-        assert "Database error" in str(exc_info.value)
         use_case.unit_of_work.rollback.assert_called()
 
     @pytest.mark.asyncio()
@@ -466,7 +454,5 @@ class TestCancelOperationUseCase:
         mock_unit_of_work.operations.find_by_id = AsyncMock(return_value=None)
 
         # Act & Assert - Operation not found will raise ValueError
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Operation not found"):
             await use_case.execute(request)
-
-        assert "Operation not found" in str(exc_info.value)

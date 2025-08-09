@@ -128,10 +128,8 @@ class TestGetOperationStatusUseCase:
         use_case.operation_repository.find_by_id.return_value = None
 
         # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Operation not found"):
             await use_case.execute(valid_request)
-
-        assert "Operation not found" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_get_status_completed_operation(self, use_case, valid_request):
@@ -419,7 +417,5 @@ class TestGetOperationStatusUseCase:
         use_case.operation_repository.find_by_id.return_value = None
 
         # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Operation not found"):
             await use_case.execute(request)
-
-        assert "Operation not found" in str(exc_info.value)

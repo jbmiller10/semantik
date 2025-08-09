@@ -367,5 +367,5 @@ class TestBusinessRuleEnforcement:
         for params in invalid_metadata_params:
             # Merge base params with test params
             test_params = {**base_params, **params}
-            with pytest.raises(ValueError):
+            with pytest.raises(ValueError, match=r".+"):  # Match any error message
                 ChunkMetadata(**test_params)

@@ -302,10 +302,8 @@ class TestCompareStrategiesUseCase:
         )
 
         # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="At least one strategy must be specified"):
             await use_case.execute(request)
-
-        assert "At least one strategy must be specified" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_comparison_metrics_calculation(self, use_case, valid_request):

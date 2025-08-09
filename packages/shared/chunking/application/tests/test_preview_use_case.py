@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from ..dto.requests import ChunkingStrategy, PreviewRequest
-from ..dto.responses import PreviewResponse
-from ..use_cases.preview_chunking import PreviewChunkingUseCase
+from packages.shared.chunking.application.dto.requests import ChunkingStrategy, PreviewRequest
+from packages.shared.chunking.application.dto.responses import PreviewResponse
+from packages.shared.chunking.application.use_cases.preview_chunking import PreviewChunkingUseCase
 
 
 @pytest.mark.asyncio()
@@ -105,10 +105,8 @@ async def test_preview_validation_error():
     )
 
     # Act & Assert
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(ValueError, match="min_tokens cannot be greater than max_tokens"):
         await use_case.execute(request)
-
-    assert "min_tokens cannot be greater than max_tokens" in str(exc_info.value)
     mock_notification_service.notify_operation_failed.assert_called_once()
 
 

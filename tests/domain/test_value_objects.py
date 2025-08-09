@@ -323,7 +323,7 @@ class TestChunkMetadata:
     def test_invalid_token_count_negative(self):
         """Test that negative token count raises error."""
         # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Token count must be positive"):
             ChunkMetadata(
                 chunk_id="test",
                 document_id="doc",
@@ -334,12 +334,10 @@ class TestChunkMetadata:
                 strategy_name="test",
             )
 
-        assert "Token count must be positive" in str(exc_info.value)
-
     def test_invalid_offsets(self):
         """Test that invalid offsets raise error."""
         # Act & Assert - end offset <= start offset
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="End offset.*must be greater than start offset"):
             ChunkMetadata(
                 chunk_id="test",
                 document_id="doc",
@@ -350,12 +348,10 @@ class TestChunkMetadata:
                 strategy_name="test",
             )
 
-        assert "End offset" in str(exc_info.value) and "must be greater than start offset" in str(exc_info.value)
-
     def test_invalid_semantic_score_range(self):
         """Test that semantic score outside 0-1 range raises error."""
         # Act & Assert - semantic score above 1
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Semantic score must be between 0.0 and 1.0"):
             ChunkMetadata(
                 chunk_id="test",
                 document_id="doc",
@@ -367,12 +363,10 @@ class TestChunkMetadata:
                 semantic_score=1.5,
             )
 
-        assert "Semantic score must be between 0.0 and 1.0" in str(exc_info.value)
-
     def test_negative_start_offset(self):
         """Test that negative start offset raises error."""
         # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Start offset must be non-negative"):
             ChunkMetadata(
                 chunk_id="test",
                 document_id="doc",
@@ -383,12 +377,10 @@ class TestChunkMetadata:
                 strategy_name="test",
             )
 
-        assert "Start offset must be non-negative" in str(exc_info.value)
-
     def test_negative_chunk_index(self):
         """Test that negative chunk index raises error."""
         # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Chunk index must be non-negative"):
             ChunkMetadata(
                 chunk_id="test",
                 document_id="doc",
@@ -398,8 +390,6 @@ class TestChunkMetadata:
                 token_count=10,
                 strategy_name="test",
             )
-
-        assert "Chunk index must be non-negative" in str(exc_info.value)
 
     def test_character_count_property(self):
         """Test the character_count property."""
@@ -575,7 +565,7 @@ class TestChunkMetadata:
     def test_hierarchy_level_validation(self):
         """Test that negative hierarchy level raises error."""
         # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Hierarchy level must be non-negative"):
             ChunkMetadata(
                 chunk_id="test",
                 document_id="doc",
@@ -586,5 +576,3 @@ class TestChunkMetadata:
                 strategy_name="test",
                 hierarchy_level=-1,  # Negative hierarchy level
             )
-
-        assert "Hierarchy level must be non-negative" in str(exc_info.value)

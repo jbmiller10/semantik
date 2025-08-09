@@ -220,10 +220,8 @@ class TestPreviewChunkingUseCase:
         use_case.strategy_factory.create_strategy.side_effect = StrategyNotFoundError("unknown_strategy")
 
         # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="validation error"):
             await use_case.execute(valid_request)
-
-        assert "validation error" in str(exc_info.value)
         # The actual implementation catches the error and re-raises as ValueError
         use_case.notification_service.notify_operation_failed.assert_called_once()
 
@@ -245,10 +243,8 @@ class TestPreviewChunkingUseCase:
         )
 
         # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="validation error"):
             await use_case.execute(invalid_request)
-
-        assert "validation error" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_document_too_large_for_preview(self, use_case, valid_request):
@@ -481,10 +477,8 @@ class TestPreviewChunkingUseCase:
         )
 
         # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="preview_size_kb must be positive"):
             await use_case.execute(request)
-
-        assert "preview_size_kb must be positive" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_notification_on_success(self, use_case, valid_request):
@@ -505,7 +499,7 @@ class TestPreviewChunkingUseCase:
         use_case.document_service.load_partial.side_effect = Exception("Unexpected error")
 
         # Act & Assert
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="Unexpected error"):
             await use_case.execute(valid_request)
 
         use_case.notification_service.notify_error.assert_called_once()

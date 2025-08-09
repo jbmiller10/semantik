@@ -178,7 +178,8 @@ class TestChunkingServiceErrorHandling:
             )
 
         # Check the error message
-        assert "Invalid chunk size" in str(exc_info.value) and "Must be between 1 and 10000" in str(exc_info.value)
+        assert "Invalid chunk size" in str(exc_info.value)
+        assert "Must be between 1 and 10000" in str(exc_info.value)
 
     async def test_process_collection_with_partial_failure(
         self,

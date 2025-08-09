@@ -7,9 +7,9 @@ Handles cancellation of in-progress chunking operations with proper cleanup.
 from datetime import datetime
 from typing import Any
 
-from ..dto.requests import CancelOperationRequest
-from ..dto.responses import CancelOperationResponse, OperationStatus
-from ..interfaces.services import NotificationService, UnitOfWork
+from packages.shared.chunking.application.dto.requests import CancelOperationRequest
+from packages.shared.chunking.application.dto.responses import CancelOperationResponse, OperationStatus
+from packages.shared.chunking.application.interfaces.services import NotificationService, UnitOfWork
 
 
 class CancelOperationUseCase:

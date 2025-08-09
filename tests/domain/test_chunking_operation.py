@@ -191,10 +191,8 @@ class TestChunkingOperation:
         chunking_operation.start()
 
         # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Strategy error"):
             chunking_operation.execute(mock_strategy)
-
-        assert "Strategy error" in str(exc_info.value)
         assert chunking_operation.status == OperationStatus.FAILED
         assert chunking_operation.error_message == "Strategy error"
         assert chunking_operation._error_details["exception_type"] == "ValueError"
