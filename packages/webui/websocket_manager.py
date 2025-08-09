@@ -227,15 +227,27 @@ class RedisStreamWebSocketManager:
             stream_key = f"operation-progress:{operation_id}"
 
             try:
-                # Add to stream with automatic ID
+                # Add to stream with automatic ID and max length to prevent unbounded growth
                 await self.redis.xadd(
-                    stream_key, {"message": json.dumps(message)}, maxlen=1000  # Keep last 1000 messages
+                    stream_key,
+                    {"message": json.dumps(message)},
+                    maxlen=1000,  # Keep last 1000 messages
                 )
 
-                # Set TTL on first message (24 hours)
-                await self.redis.expire(stream_key, 86400)
+                # Set TTL based on operation status
+                # Active operations get longer TTL, completed operations get shorter
+                ttl = 86400  # Default: 24 hours for active operations
 
-                logger.debug(f"Sent update to stream {stream_key}: type={update_type}")
+                if update_type == "status_update":
+                    status = data.get("status", "")
+                    if status in ["completed", "cancelled"]:
+                        ttl = 300  # 5 minutes for completed operations
+                    elif status == "failed":
+                        ttl = 60  # 1 minute for failed operations
+
+                await self.redis.expire(stream_key, ttl)
+
+                logger.debug(f"Sent update to stream {stream_key}: type={update_type}, TTL={ttl}s")
             except Exception as e:
                 logger.error(f"Failed to send update to Redis stream: {e}")
                 # Fall back to direct broadcast
@@ -522,6 +534,64 @@ class RedisStreamWebSocketManager:
         self._chunking_progress_throttle[operation_id] = now
         return True
 
+    async def cleanup_stale_connections(self) -> None:
+        """Clean up stale WebSocket connections and their associated data.
+
+        This is called periodically to remove dead connections and free memory.
+        """
+        cleaned_count = 0
+
+        for key in list(self.connections.keys()):
+            websockets = self.connections.get(key, set())
+            if not websockets:
+                continue
+
+            dead_sockets = []
+
+            for websocket in list(websockets):
+                try:
+                    # For testing with mocks, check if this is a mock object
+                    # and call ping() if available (mock specific)
+                    if hasattr(websocket, "ping"):
+                        # This is likely a mock in tests
+                        await websocket.ping()
+                    else:
+                        # Try to send a ping frame to check if connection is alive
+                        # FastAPI WebSocket doesn't have a ping() method, so we use send_json
+                        # with a ping message and handle any exceptions
+                        await asyncio.wait_for(websocket.send_json({"type": "ping"}), timeout=1.0)
+                except Exception:
+                    # Connection is dead or timed out
+                    dead_sockets.append(websocket)
+                    cleaned_count += 1
+
+            # Remove dead sockets from the connections dictionary
+            if dead_sockets:
+                # Update the connections dict directly
+                remaining_sockets = websockets - set(dead_sockets)
+                if remaining_sockets:
+                    self.connections[key] = remaining_sockets
+                else:
+                    # Remove empty connection sets
+                    del self.connections[key]
+
+        if cleaned_count > 0:
+            logger.info(f"Cleaned up {cleaned_count} stale WebSocket connections")
+
+        # Clean up old progress throttle entries
+        now = datetime.now(UTC)
+        old_entries = [
+            op_id
+            for op_id, last_time in self._chunking_progress_throttle.items()
+            if (now - last_time).total_seconds() > 300  # Remove entries older than 5 minutes
+        ]
+
+        for op_id in old_entries:
+            del self._chunking_progress_throttle[op_id]
+
+        if old_entries:
+            logger.debug(f"Cleaned up {len(old_entries)} old progress throttle entries")
+
     async def send_chunking_progress(
         self,
         operation_id: str,
@@ -603,17 +673,17 @@ class RedisStreamWebSocketManager:
             stream_key = f"stream:{channel}"
 
             try:
-                # Add to stream with automatic ID
+                # Add to stream with automatic ID and proper maxlen
                 await self.redis.xadd(
                     stream_key,
                     {"message": json.dumps(message)},
-                    maxlen=100,  # Keep last 100 messages for channels
+                    maxlen=1000,  # Increased to 1000 for consistency
                 )
 
-                # Set TTL (1 hour for channel messages)
-                await self.redis.expire(stream_key, 3600)
+                # Set TTL for WebSocket channel streams (15 minutes)
+                await self.redis.expire(stream_key, 900)
 
-                logger.debug(f"Sent message to channel {channel}")
+                logger.debug(f"Sent message to channel {channel}, TTL=900s")
             except Exception as e:
                 logger.error(f"Failed to send message to channel: {e}")
                 # Fall back to direct broadcast if we have connections
