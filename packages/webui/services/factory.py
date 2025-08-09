@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from packages.shared.config import settings
 from packages.shared.database import get_db
 
-from .chunking_service_adapter import ChunkingServiceAdapter as ChunkingService
+from .chunking_service import ChunkingService
 from .collection_service import CollectionService
 from .directory_scan_service import DirectoryScanService
 from .document_scanning_service import DocumentScanningService
