@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # TTL Configuration for different data types (in seconds)
 TTL_CONFIG = {
     # Operation-related TTLs
-    "operation_active": 3600,  # Active operations: 1 hour
+    "operation_active": 86400,  # Active operations: 24 hours
     "operation_completed": 300,  # Completed operations: 5 minutes
     "operation_failed": 60,  # Failed operations: 1 minute
     # WebSocket state TTLs

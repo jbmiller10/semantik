@@ -236,7 +236,7 @@ class RedisStreamWebSocketManager:
 
                 # Set TTL based on operation status
                 # Active operations get longer TTL, completed operations get shorter
-                ttl = 3600  # Default: 1 hour for active operations (matching test expectations)
+                ttl = 86400  # Default: 24 hours for active operations
 
                 if update_type == "status_update":
                     status = data.get("status", "")

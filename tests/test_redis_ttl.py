@@ -50,8 +50,8 @@ async def test_operation_stream_ttl():
     assert call_args[0][0] == stream_key
     assert call_args[1]["maxlen"] == 1000
     
-    # Check that expire was called with 1 hour TTL for active
-    mock_redis.expire.assert_called_with(stream_key, 3600)
+    # Check that expire was called with 24 hours TTL for active
+    mock_redis.expire.assert_called_with(stream_key, 86400)
     
     # Send a completion update
     await ws_manager.send_update(

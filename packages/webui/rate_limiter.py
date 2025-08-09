@@ -149,6 +149,10 @@ def check_circuit_breaker(request: Request) -> None:
     Raises:
         HTTPException: If circuit breaker is open
     """
+    # Skip circuit breaker check if rate limiting is disabled
+    if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
+        return
+    
     key = get_user_or_ip(request)
 
     # Admin bypass and test bypass always allowed
@@ -187,6 +191,11 @@ def create_rate_limit_decorator(limit: str) -> Callable:
 
     def decorator(func: Callable) -> Callable:
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            # Check if rate limiting is completely disabled
+            if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
+                # Completely bypass rate limiting in test environment
+                return await func(*args, **kwargs)
+            
             # Check circuit breaker first
             request = kwargs.get("request")
             if request:
@@ -194,10 +203,9 @@ def create_rate_limit_decorator(limit: str) -> Callable:
 
                 # Check if user has special limits
                 key = get_user_or_ip(request)
-                if key in SPECIAL_LIMITS:
-                    # Apply special limit for admin bypass or test bypass
-                    special_limited_func = limiter.limit(SPECIAL_LIMITS[key])(func)
-                    return await special_limited_func(*args, **kwargs)
+                if key in ("admin_bypass", "test_bypass"):
+                    # Completely bypass rate limiting for admin and test
+                    return await func(*args, **kwargs)
 
             # Apply normal rate limit
             limited_func = limiter.limit(limit)(func)
