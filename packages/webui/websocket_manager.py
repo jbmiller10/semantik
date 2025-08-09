@@ -545,14 +545,14 @@ class RedisStreamWebSocketManager:
             websockets = self.connections.get(key, set())
             if not websockets:
                 continue
-                
+
             dead_sockets = []
 
             for websocket in list(websockets):
                 try:
                     # For testing with mocks, check if this is a mock object
                     # and call ping() if available (mock specific)
-                    if hasattr(websocket, 'ping'):
+                    if hasattr(websocket, "ping"):
                         # This is likely a mock in tests
                         await websocket.ping()
                     else:

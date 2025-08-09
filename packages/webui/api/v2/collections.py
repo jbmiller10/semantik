@@ -73,11 +73,11 @@ async def create_collection(
             cfg["chunk_size"] = create_request.chunk_size
         if create_request.chunk_overlap is not None:
             cfg["chunk_overlap"] = create_request.chunk_overlap
-        
+
         # Always include chunking_strategy and chunking_config for consistency with tests
         cfg["chunking_strategy"] = create_request.chunking_strategy
         cfg["chunking_config"] = create_request.chunking_config
-        
+
         if create_request.metadata is not None:
             cfg["metadata"] = create_request.metadata
 

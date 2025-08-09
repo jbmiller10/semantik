@@ -75,15 +75,7 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Res
     Returns:
         JSONResponse with 429 status and proper headers
     """
-    # Check if we should bypass rate limiting entirely for tests
-    if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
-        # In test mode, don't return 429 errors
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content={"status": "ok", "test_mode": True},
-        )
-    
-    # Check for bypass token - handle it here too for redundancy
+    # Check for bypass token ONLY - not global disable
     key = get_user_or_ip(request)
     if key in ("admin_bypass", "test_bypass"):
         # Don't return 429 for bypass tokens
@@ -91,7 +83,7 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Res
             status_code=status.HTTP_200_OK,
             content={"status": "ok", "bypass": True},
         )
-    
+
     # Extract retry_after from the exception message
     retry_after = 60  # Default to 60 seconds
     try:
@@ -103,7 +95,7 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Res
 
     # Track circuit breaker failures BEFORE returning 429
     track_circuit_breaker_failure(key)
-    
+
     # Check if circuit breaker should be triggered
     if key in circuit_breaker.blocked_until:
         current_time = time.time()
@@ -122,7 +114,7 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Res
                 },
             )
 
-    response = JSONResponse(
+    return JSONResponse(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         content={
             "detail": "Rate limit exceeded",
@@ -137,8 +129,6 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Res
             "X-RateLimit-Reset": str(int(time.time()) + retry_after),
         },
     )
-
-    return response
 
 
 def track_circuit_breaker_failure(key: str) -> None:
@@ -185,7 +175,7 @@ def check_circuit_breaker(request: Request) -> None:
     # Skip circuit breaker check if rate limiting is disabled
     if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
         return
-    
+
     key = get_user_or_ip(request)
 
     # Admin bypass and test bypass always allowed
@@ -228,7 +218,7 @@ def create_rate_limit_decorator(limit: str) -> Callable:
             if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
                 # Completely bypass rate limiting in test environment
                 return await func(*args, **kwargs)
-            
+
             # Check circuit breaker first
             request = kwargs.get("request")
             if request:
