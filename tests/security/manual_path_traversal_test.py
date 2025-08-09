@@ -21,7 +21,7 @@ def main():
     print("=" * 80)
     print("PATH TRAVERSAL SECURITY VALIDATION TESTING")
     print("=" * 80)
-    
+
     # Test cases that should be BLOCKED
     blocked_tests = [
         ("../../../etc/passwd", "Basic traversal"),
@@ -40,7 +40,7 @@ def main():
         ("..", "Parent directory"),
         ("/", "Root directory"),
     ]
-    
+
     # Test cases that should be ALLOWED
     allowed_tests = [
         ("documents/file.txt", "Normal relative path"),
@@ -52,10 +52,10 @@ def main():
         ("file (with spaces).txt", "Spaces in filename"),
         ("file[with]brackets.txt", "Brackets in filename"),
     ]
-    
+
     print("\n🔴 Testing paths that should be BLOCKED:")
     print("-" * 80)
-    
+
     blocked_count = 0
     for path_to_test, description in blocked_tests:
         allowed, message = test_path(path_to_test)
@@ -64,12 +64,12 @@ def main():
             blocked_count += 1
         else:
             print(f"❌ ERROR - ALLOWED: {description:<30} | Path: {repr(path_to_test)[:40]}")
-    
+
     print(f"\nBlocked {blocked_count}/{len(blocked_tests)} malicious paths")
-    
+
     print("\n🟢 Testing paths that should be ALLOWED:")
     print("-" * 80)
-    
+
     allowed_count = 0
     for path_to_test, description in allowed_tests:
         allowed, message = test_path(path_to_test)
@@ -78,17 +78,17 @@ def main():
             allowed_count += 1
         else:
             print(f"❌ ERROR - BLOCKED: {description:<30} | Path: {repr(path_to_test)[:40]}")
-    
+
     print(f"\nAllowed {allowed_count}/{len(allowed_tests)} legitimate paths")
-    
+
     # Summary
     print("\n" + "=" * 80)
     print("SUMMARY")
     print("=" * 80)
-    
+
     total_blocked = blocked_count == len(blocked_tests)
     total_allowed = allowed_count == len(allowed_tests)
-    
+
     if total_blocked and total_allowed:
         print("✅ ALL TESTS PASSED - Path traversal vulnerability is FIXED")
         print("✅ All OWASP path traversal patterns are blocked")
@@ -99,9 +99,10 @@ def main():
             print(f"   - {len(blocked_tests) - blocked_count} malicious paths were incorrectly allowed")
         if not total_allowed:
             print(f"   - {len(allowed_tests) - allowed_count} legitimate paths were incorrectly blocked")
-    
+
     print("\n📊 Performance Check:")
     import time
+
     start = time.perf_counter()
     for _ in range(1000):
         test_path("documents/file.txt")

@@ -38,6 +38,7 @@ class TestRateLimiterConfiguration:
 
         # Test key function - with test environment enabled, should return test_bypass
         import os
+
         if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
             assert limiter._key_func(mock_request) == "test_bypass"
         else:
@@ -54,9 +55,11 @@ class TestRateLimiterConfiguration:
         mock_request.state.user = None  # No user authenticated
 
         import os
+
         if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
             # In test mode, always returns test_bypass
             from packages.webui.rate_limiter import get_user_or_ip
+
             assert get_user_or_ip(mock_request) == "test_bypass"
         else:
             # Note: slowapi's get_remote_address only uses X-Forwarded-For if trust_proxy_headers is enabled
@@ -293,10 +296,10 @@ class TestRateLimiterEdgeCases:
         # Slowapi logs an error but doesn't raise when decorating with invalid format
         # The error occurs during parsing, not decoration
         app = FastAPI()
-        
+
         # Create a test limiter
         test_limiter = Limiter(key_func=get_remote_address)
-        
+
         @app.exception_handler(RateLimitExceeded)
         def rate_limit_handler(_request: Request, exc: RateLimitExceeded) -> JSONResponse:
             response = {"detail": f"Rate limit exceeded: {exc.detail}", "limit": str(exc.limit)}
@@ -371,7 +374,7 @@ class TestRateLimiterPatterns:
         app = FastAPI()
         # Create a test limiter
         test_limiter = Limiter(key_func=get_remote_address)
-        
+
         @app.exception_handler(RateLimitExceeded)
         def rate_limit_handler(_request: Request, exc: RateLimitExceeded) -> JSONResponse:
             response = {"detail": f"Rate limit exceeded: {exc.detail}", "limit": str(exc.limit)}
@@ -401,7 +404,7 @@ class TestRateLimiterPatterns:
         app = FastAPI()
         # Create a test limiter
         test_limiter = Limiter(key_func=get_remote_address)
-        
+
         @app.exception_handler(RateLimitExceeded)
         def rate_limit_handler(_request: Request, exc: RateLimitExceeded) -> JSONResponse:
             response = {"detail": f"Rate limit exceeded: {exc.detail}", "limit": str(exc.limit)}
@@ -433,7 +436,7 @@ class TestRateLimiterPatterns:
         app = FastAPI()
         # Create a test limiter
         test_limiter = Limiter(key_func=get_remote_address)
-        
+
         @app.exception_handler(RateLimitExceeded)
         def rate_limit_handler(_request: Request, exc: RateLimitExceeded) -> JSONResponse:
             response = {"detail": f"Rate limit exceeded: {exc.detail}", "limit": str(exc.limit)}
