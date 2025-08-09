@@ -14,8 +14,7 @@ from packages.webui.services.directory_scan_service import (
     HASH_CHUNK_SIZE,
     MAX_FILE_SIZE,
     PROGRESS_UPDATE_INTERVAL,
-    DirectoryScanService,
-)
+    DirectoryScanService)
 
 
 @pytest.fixture()
@@ -71,8 +70,7 @@ class TestDirectoryScanService:
         self,
         directory_scan_service: DirectoryScanService,
         temp_scan_directory: Path,
-        mock_ws_manager: AsyncMock,
-    ) -> None:
+        mock_ws_manager: AsyncMock) -> None:
         """Test successful directory scan with recursive option."""
         scan_id = "test-scan-123"
         user_id = 1
@@ -81,8 +79,7 @@ class TestDirectoryScanService:
             path=str(temp_scan_directory),
             scan_id=scan_id,
             user_id=user_id,
-            recursive=True,
-        )
+            recursive=True)
 
         # Verify response
         assert isinstance(result, DirectoryScanResponse)
@@ -128,8 +125,7 @@ class TestDirectoryScanService:
         self,
         directory_scan_service: DirectoryScanService,
         temp_scan_directory: Path,
-        mock_ws_manager: AsyncMock,
-    ) -> None:
+        mock_ws_manager: AsyncMock) -> None:
         """Test non-recursive directory scan."""
         scan_id = "test-scan-456"
         user_id = 1
@@ -138,8 +134,7 @@ class TestDirectoryScanService:
             path=str(temp_scan_directory),
             scan_id=scan_id,
             user_id=user_id,
-            recursive=False,
-        )
+            recursive=False)
 
         # Should only find files in root directory
         assert result.total_files == 2  # pdf and txt (not jpg or large file)
@@ -154,16 +149,14 @@ class TestDirectoryScanService:
         self,
         directory_scan_service: DirectoryScanService,
         temp_scan_directory: Path,
-        mock_ws_manager: AsyncMock,
-    ) -> None:
+        mock_ws_manager: AsyncMock) -> None:
         """Test directory scan with include patterns."""
         result = await directory_scan_service.scan_directory_preview(
             path=str(temp_scan_directory),
             scan_id="test-scan-789",
             user_id=1,
             recursive=True,
-            include_patterns=["*.pdf", "*.md"],
-        )
+            include_patterns=["*.pdf", "*.md"])
 
         # Should only find PDF and MD files
         # Files: document.pdf, very_nested.md, secret.pdf (large_file.pdf is excluded due to size)
@@ -175,16 +168,14 @@ class TestDirectoryScanService:
         self,
         directory_scan_service: DirectoryScanService,
         temp_scan_directory: Path,
-        mock_ws_manager: AsyncMock,
-    ) -> None:
+        mock_ws_manager: AsyncMock) -> None:
         """Test directory scan with exclude patterns."""
         result = await directory_scan_service.scan_directory_preview(
             path=str(temp_scan_directory),
             scan_id="test-scan-101",
             user_id=1,
             recursive=True,
-            exclude_patterns=["*/subdir/*", "*.txt"],
-        )
+            exclude_patterns=["*/subdir/*", "*.txt"])
 
         # Should exclude all files in subdir and txt files
         # Note: The pattern "*/subdir/*" only matches files directly in subdir, not in deeper subdirs
@@ -199,22 +190,19 @@ class TestDirectoryScanService:
     async def test_scan_directory_preview_path_not_exists(
         self,
         directory_scan_service: DirectoryScanService,
-        mock_ws_manager: AsyncMock,
-    ) -> None:
+        mock_ws_manager: AsyncMock) -> None:
         """Test scanning non-existent path."""
         with pytest.raises(FileNotFoundError, match="Path does not exist"):
             await directory_scan_service.scan_directory_preview(
                 path="/non/existent/path",
                 scan_id="test-scan-404",
-                user_id=1,
-            )
+                user_id=1)
 
     async def test_scan_directory_preview_path_not_directory(
         self,
         directory_scan_service: DirectoryScanService,
         temp_scan_directory: Path,
-        mock_ws_manager: AsyncMock,
-    ) -> None:
+        mock_ws_manager: AsyncMock) -> None:
         """Test scanning a file instead of directory."""
         file_path = temp_scan_directory / "document.pdf"
 
@@ -222,32 +210,27 @@ class TestDirectoryScanService:
             await directory_scan_service.scan_directory_preview(
                 path=str(file_path),
                 scan_id="test-scan-file",
-                user_id=1,
-            )
+                user_id=1)
 
     async def test_scan_directory_preview_permission_denied(
         self,
         directory_scan_service: DirectoryScanService,
         temp_scan_directory: Path,
-        mock_ws_manager: AsyncMock,
-    ) -> None:
+        mock_ws_manager: AsyncMock) -> None:
         """Test scanning directory with permission denied."""
         with (
             patch("os.listdir", side_effect=PermissionError("Access denied")),
-            pytest.raises(PermissionError, match="Access denied to directory"),
-        ):
+            pytest.raises(PermissionError, match="Access denied to directory")):
             await directory_scan_service.scan_directory_preview(
                 path=str(temp_scan_directory),
                 scan_id="test-scan-perm",
-                user_id=1,
-            )
+                user_id=1)
 
     async def test_scan_file_permission_denied(
         self,
         directory_scan_service: DirectoryScanService,
         temp_scan_directory: Path,
-        mock_ws_manager: AsyncMock,
-    ) -> None:
+        mock_ws_manager: AsyncMock) -> None:
         """Test scanning files with permission issues."""
         # Mock stat to raise PermissionError for specific file
         original_stat = Path.stat
@@ -262,8 +245,7 @@ class TestDirectoryScanService:
                 path=str(temp_scan_directory),
                 scan_id="test-scan-file-perm",
                 user_id=1,
-                recursive=True,
-            )
+                recursive=True)
 
             # Should have warning about permission denied file
             assert any("Permission denied" in w for w in result.warnings)
@@ -272,8 +254,7 @@ class TestDirectoryScanService:
         self,
         directory_scan_service: DirectoryScanService,
         temp_scan_directory: Path,
-        mock_ws_manager: AsyncMock,
-    ) -> None:
+        mock_ws_manager: AsyncMock) -> None:
         """Test scanning directory with symbolic links."""
         # Create a symlink
         symlink_path = temp_scan_directory / "symlink.pdf"
@@ -283,8 +264,7 @@ class TestDirectoryScanService:
             path=str(temp_scan_directory),
             scan_id="test-scan-symlink",
             user_id=1,
-            recursive=False,
-        )
+            recursive=False)
 
         # Should include both original and symlink
         # document.pdf, text.txt, symlink.pdf (large_file.pdf excluded due to size, image.jpg unsupported)
@@ -293,16 +273,14 @@ class TestDirectoryScanService:
     async def test_count_files(
         self,
         directory_scan_service: DirectoryScanService,
-        temp_scan_directory: Path,
-    ) -> None:
+        temp_scan_directory: Path) -> None:
         """Test file counting functionality."""
         # Test recursive count
         count = await directory_scan_service._count_files(
             path=temp_scan_directory,
             recursive=True,
             include_patterns=None,
-            exclude_patterns=None,
-        )
+            exclude_patterns=None)
         # Count includes all files with supported extensions, regardless of size
         # Files: document.pdf, text.txt, large_file.pdf, nested.docx, hidden.txt, very_nested.md, secret.pdf
         # Not counted: image.jpg (unsupported extension)
@@ -313,8 +291,7 @@ class TestDirectoryScanService:
             path=temp_scan_directory,
             recursive=False,
             include_patterns=None,
-            exclude_patterns=None,
-        )
+            exclude_patterns=None)
         # Root files: document.pdf, text.txt, large_file.pdf (image.jpg is unsupported)
         assert count == 3  # Only root directory files
 
@@ -323,39 +300,34 @@ class TestDirectoryScanService:
             path=temp_scan_directory,
             recursive=True,
             include_patterns=["*.pdf"],
-            exclude_patterns=None,
-        )
+            exclude_patterns=None)
         # _count_files doesn't check file size, only extension and patterns
         assert count == 3  # document.pdf, large_file.pdf, secret.pdf
 
     async def test_count_files_with_error(
         self,
         directory_scan_service: DirectoryScanService,
-        temp_scan_directory: Path,
-    ) -> None:
+        temp_scan_directory: Path) -> None:
         """Test file counting with errors."""
         with patch("os.walk", side_effect=OSError("Walk error")):
             count = await directory_scan_service._count_files(
                 path=temp_scan_directory,
                 recursive=True,
                 include_patterns=None,
-                exclude_patterns=None,
-            )
+                exclude_patterns=None)
             assert count == 0  # Should return 0 on error
 
     async def test_scan_file_success(
         self,
         directory_scan_service: DirectoryScanService,
-        temp_scan_directory: Path,
-    ) -> None:
+        temp_scan_directory: Path) -> None:
         """Test scanning individual file."""
         file_path = temp_scan_directory / "document.pdf"
 
         file_info, warning = await directory_scan_service._scan_file(
             file_path=file_path,
             include_patterns=None,
-            exclude_patterns=None,
-        )
+            exclude_patterns=None)
 
         assert file_info is not None
         assert warning is None
@@ -368,16 +340,14 @@ class TestDirectoryScanService:
     async def test_scan_file_too_large(
         self,
         directory_scan_service: DirectoryScanService,
-        temp_scan_directory: Path,
-    ) -> None:
+        temp_scan_directory: Path) -> None:
         """Test scanning file that exceeds size limit."""
         file_path = temp_scan_directory / "large_file.pdf"
 
         file_info, warning = await directory_scan_service._scan_file(
             file_path=file_path,
             include_patterns=None,
-            exclude_patterns=None,
-        )
+            exclude_patterns=None)
 
         assert file_info is None
         assert warning is not None
@@ -387,16 +357,14 @@ class TestDirectoryScanService:
     async def test_scan_file_unsupported_type(
         self,
         directory_scan_service: DirectoryScanService,
-        temp_scan_directory: Path,
-    ) -> None:
+        temp_scan_directory: Path) -> None:
         """Test scanning unsupported file type."""
         file_path = temp_scan_directory / "image.jpg"
 
         file_info, warning = await directory_scan_service._scan_file(
             file_path=file_path,
             include_patterns=None,
-            exclude_patterns=None,
-        )
+            exclude_patterns=None)
 
         assert file_info is None
         assert warning is None  # Silently skipped
@@ -404,8 +372,7 @@ class TestDirectoryScanService:
     async def test_scan_file_with_error(
         self,
         directory_scan_service: DirectoryScanService,
-        temp_scan_directory: Path,
-    ) -> None:
+        temp_scan_directory: Path) -> None:
         """Test scanning file with general error."""
         file_path = temp_scan_directory / "document.pdf"
 
@@ -413,8 +380,7 @@ class TestDirectoryScanService:
             file_info, warning = await directory_scan_service._scan_file(
                 file_path=file_path,
                 include_patterns=None,
-                exclude_patterns=None,
-            )
+                exclude_patterns=None)
 
             assert file_info is None
             assert warning is not None
@@ -422,8 +388,7 @@ class TestDirectoryScanService:
 
     def test_should_include_file(
         self,
-        directory_scan_service: DirectoryScanService,
-    ) -> None:
+        directory_scan_service: DirectoryScanService) -> None:
         """Test file inclusion logic."""
         # Test supported extension
         assert directory_scan_service._should_include_file(Path("test.pdf"), None, None) is True
@@ -447,8 +412,7 @@ class TestDirectoryScanService:
     async def test_calculate_file_hash(
         self,
         directory_scan_service: DirectoryScanService,
-        temp_scan_directory: Path,
-    ) -> None:
+        temp_scan_directory: Path) -> None:
         """Test file hash calculation."""
         file_path = temp_scan_directory / "document.pdf"
         content = b"PDF content"
@@ -465,8 +429,7 @@ class TestDirectoryScanService:
     async def test_calculate_file_hash_large_file(
         self,
         directory_scan_service: DirectoryScanService,
-        tmp_path: Path,
-    ) -> None:
+        tmp_path: Path) -> None:
         """Test file hash calculation for large file with chunked reading."""
         file_path = tmp_path / "large.pdf"
 
@@ -485,8 +448,7 @@ class TestDirectoryScanService:
     async def test_calculate_file_hash_error(
         self,
         directory_scan_service: DirectoryScanService,
-        temp_scan_directory: Path,
-    ) -> None:
+        temp_scan_directory: Path) -> None:
         """Test file hash calculation with error."""
         file_path = temp_scan_directory / "nonexistent.pdf"
 
@@ -495,8 +457,7 @@ class TestDirectoryScanService:
 
     def test_get_mime_type(
         self,
-        directory_scan_service: DirectoryScanService,
-    ) -> None:
+        directory_scan_service: DirectoryScanService) -> None:
         """Test MIME type detection."""
         # Test standard types
         assert directory_scan_service._get_mime_type(Path("test.pdf")) == "application/pdf"
@@ -525,8 +486,7 @@ class TestDirectoryScanService:
 
     def test_format_size(
         self,
-        directory_scan_service: DirectoryScanService,
-    ) -> None:
+        directory_scan_service: DirectoryScanService) -> None:
         """Test file size formatting."""
         assert directory_scan_service._format_size(0) == "0.0 B"
         assert directory_scan_service._format_size(512) == "512.0 B"
@@ -540,8 +500,7 @@ class TestDirectoryScanService:
     async def test_send_progress_success(
         self,
         directory_scan_service: DirectoryScanService,
-        mock_ws_manager: AsyncMock,
-    ) -> None:
+        mock_ws_manager: AsyncMock) -> None:
         """Test sending progress update via WebSocket."""
         channel_id = "test-channel"
         scan_id = "test-scan"
@@ -551,8 +510,7 @@ class TestDirectoryScanService:
             channel_id=channel_id,
             scan_id=scan_id,
             msg_type="progress",
-            data=data,
-        )
+            data=data)
 
         mock_ws_manager._broadcast.assert_called_once()
         call_args = mock_ws_manager._broadcast.call_args[0]
@@ -566,8 +524,7 @@ class TestDirectoryScanService:
     async def test_send_progress_error(
         self,
         directory_scan_service: DirectoryScanService,
-        mock_ws_manager: AsyncMock,
-    ) -> None:
+        mock_ws_manager: AsyncMock) -> None:
         """Test sending progress update with WebSocket error."""
         mock_ws_manager._broadcast.side_effect = Exception("WebSocket error")
 
@@ -576,8 +533,7 @@ class TestDirectoryScanService:
             channel_id="test-channel",
             scan_id="test-scan",
             msg_type="error",
-            data={"message": "Error"},
-        )
+            data={"message": "Error"})
 
         # Verify broadcast was attempted
         assert mock_ws_manager._broadcast.called
@@ -585,8 +541,7 @@ class TestDirectoryScanService:
     async def test_scan_recursive_error_handling(
         self,
         directory_scan_service: DirectoryScanService,
-        temp_scan_directory: Path,
-    ) -> None:
+        temp_scan_directory: Path) -> None:
         """Test error handling in recursive scan."""
         with patch("os.walk", side_effect=Exception("Walk error")):
             files = []
@@ -595,8 +550,7 @@ class TestDirectoryScanService:
             async for file_info, warning in directory_scan_service._scan_recursive(
                 path=temp_scan_directory,
                 include_patterns=None,
-                exclude_patterns=None,
-            ):
+                exclude_patterns=None):
                 if file_info:
                     files.append(file_info)
                 if warning:
@@ -610,8 +564,7 @@ class TestDirectoryScanService:
         self,
         directory_scan_service: DirectoryScanService,
         tmp_path: Path,
-        mock_ws_manager: AsyncMock,
-    ) -> None:
+        mock_ws_manager: AsyncMock) -> None:
         """Test that progress updates are sent at correct intervals."""
         # Create many files to trigger progress updates
         scan_dir = tmp_path / "many_files"
@@ -627,8 +580,7 @@ class TestDirectoryScanService:
             path=str(scan_dir),
             scan_id=scan_id,
             user_id=1,
-            recursive=False,
-        )
+            recursive=False)
 
         # Check that progress updates were sent
         channel_id = f"directory-scan:{scan_id}"
@@ -657,8 +609,7 @@ class TestDirectoryScanService:
         self,
         directory_scan_service: DirectoryScanService,
         tmp_path: Path,
-        mock_ws_manager: AsyncMock,
-    ) -> None:
+        mock_ws_manager: AsyncMock) -> None:
         """Test scanning with multiple edge cases combined."""
         # Create complex directory structure
         scan_dir = tmp_path / "complex"
@@ -690,8 +641,7 @@ class TestDirectoryScanService:
             path=str(scan_dir),
             scan_id="test-edge-cases",
             user_id=1,
-            recursive=False,
-        )
+            recursive=False)
 
         # Should handle all valid files
         assert result.total_files == 6  # All except noextension

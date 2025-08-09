@@ -11,8 +11,7 @@ from packages.shared.database.exceptions import (
     AccessDeniedError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
-    InvalidStateError,
-)
+    InvalidStateError)
 from packages.shared.database.models import CollectionStatus, OperationType
 from packages.webui.services.collection_service import CollectionService
 
@@ -24,15 +23,13 @@ def collection_service(
     mock_db_session: AsyncMock,
     mock_collection_repo: AsyncMock,
     mock_operation_repo: AsyncMock,
-    mock_document_repo: AsyncMock,
-) -> CollectionService:
+    mock_document_repo: AsyncMock) -> CollectionService:
     """Create a CollectionService instance with mocked dependencies."""
     return CollectionService(
         db_session=mock_db_session,
         collection_repo=mock_collection_repo,
         operation_repo=mock_operation_repo,
-        document_repo=mock_document_repo,
-    )
+        document_repo=mock_document_repo)
 
 
 # Collection and operation fixtures are now imported from conftest.py
@@ -46,15 +43,13 @@ class TestCollectionServiceInit:
         mock_db_session: AsyncMock,
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
-        mock_document_repo: AsyncMock,
-    ) -> None:
+        mock_document_repo: AsyncMock) -> None:
         """Test service initialization."""
         service = CollectionService(
             db_session=mock_db_session,
             collection_repo=mock_collection_repo,
             operation_repo=mock_operation_repo,
-            document_repo=mock_document_repo,
-        )
+            document_repo=mock_document_repo)
 
         assert service.db_session == mock_db_session
         assert service.collection_repo == mock_collection_repo
@@ -73,8 +68,7 @@ class TestCreateCollection:
         mock_operation_repo: AsyncMock,
         mock_db_session: AsyncMock,
         mock_collection: MagicMock,
-        mock_operation: MagicMock,
-    ) -> None:
+        mock_operation: MagicMock) -> None:
         """Test successful collection creation."""
         mock_collection_repo.create.return_value = mock_collection
         mock_operation_repo.create.return_value = mock_operation
@@ -91,8 +85,7 @@ class TestCreateCollection:
                     "chunk_overlap": 100,
                     "is_public": True,
                     "metadata": {"custom": "data"},
-                },
-            )
+                })
 
         # Verify repository calls
         mock_collection_repo.create.assert_called_once_with(
@@ -106,8 +99,7 @@ class TestCreateCollection:
             chunking_strategy=None,
             chunking_config=None,
             is_public=True,
-            meta={"custom": "data"},
-        )
+            meta={"custom": "data"})
 
         mock_operation_repo.create.assert_called_once_with(
             collection_id=mock_collection.id,
@@ -123,8 +115,7 @@ class TestCreateCollection:
                     "is_public": True,
                     "metadata": {"custom": "data"},
                 },
-            },
-        )
+            })
 
         # Verify commit before task dispatch
         mock_db_session.commit.assert_called_once()
@@ -133,8 +124,7 @@ class TestCreateCollection:
         mock_send_task.assert_called_once_with(
             "webui.tasks.process_collection_operation",
             args=[mock_operation.uuid],
-            task_id=ANY,
-        )
+            task_id=ANY)
 
         # Verify return values
         assert collection_dict["id"] == mock_collection.id
@@ -157,8 +147,7 @@ class TestCreateCollection:
         mock_operation_repo: AsyncMock,
         mock_db_session: AsyncMock,
         mock_collection: MagicMock,
-        mock_operation: MagicMock,
-    ) -> None:
+        mock_operation: MagicMock) -> None:
         """Test collection creation with default values."""
         mock_collection_repo.create.return_value = mock_collection
         mock_operation_repo.create.return_value = mock_operation
@@ -166,8 +155,7 @@ class TestCreateCollection:
         with patch("packages.webui.celery_app.celery_app.send_task"):
             await collection_service.create_collection(
                 user_id=1,
-                name="Test Collection",
-            )
+                name="Test Collection")
 
         # Verify default values were used
         mock_collection_repo.create.assert_called_once_with(
@@ -181,62 +169,53 @@ class TestCreateCollection:
             chunking_strategy=None,
             chunking_config=None,
             is_public=False,
-            meta=None,
-        )
+            meta=None)
 
     @pytest.mark.asyncio()
     async def test_create_collection_empty_name(
         self,
-        collection_service: CollectionService,
-    ) -> None:
+        collection_service: CollectionService) -> None:
         """Test collection creation with empty name."""
         with pytest.raises(ValueError, match="Collection name is required"):
             await collection_service.create_collection(
                 user_id=1,
-                name="",
-            )
+                name="")
 
     @pytest.mark.asyncio()
     async def test_create_collection_whitespace_name(
         self,
-        collection_service: CollectionService,
-    ) -> None:
+        collection_service: CollectionService) -> None:
         """Test collection creation with whitespace-only name."""
         with pytest.raises(ValueError, match="Collection name is required"):
             await collection_service.create_collection(
                 user_id=1,
-                name="   ",
-            )
+                name="   ")
 
     @pytest.mark.asyncio()
     async def test_create_collection_already_exists(
         self,
         collection_service: CollectionService,
-        mock_collection_repo: AsyncMock,
-    ) -> None:
+        mock_collection_repo: AsyncMock) -> None:
         """Test collection creation when name already exists."""
         mock_collection_repo.create.side_effect = EntityAlreadyExistsError("Collection", "Existing Collection")
 
         with pytest.raises(EntityAlreadyExistsError):
             await collection_service.create_collection(
                 user_id=1,
-                name="Existing Collection",
-            )
+                name="Existing Collection")
 
     @pytest.mark.asyncio()
     async def test_create_collection_database_error(
         self,
         collection_service: CollectionService,
-        mock_collection_repo: AsyncMock,
-    ) -> None:
+        mock_collection_repo: AsyncMock) -> None:
         """Test collection creation with database error."""
         mock_collection_repo.create.side_effect = Exception("Database error")
 
         with pytest.raises(Exception, match="Database error") as exc_info:
             await collection_service.create_collection(
                 user_id=1,
-                name="Test Collection",
-            )
+                name="Test Collection")
 
         assert "Database error" in str(exc_info.value)
 
@@ -248,8 +227,7 @@ class TestCreateCollection:
         mock_operation_repo: AsyncMock,
         mock_db_session: AsyncMock,
         mock_collection: MagicMock,
-        mock_operation: MagicMock,
-    ) -> None:
+        mock_operation: MagicMock) -> None:
         """Explicit None for chunk fields should use default numeric values."""
         mock_collection_repo.create.return_value = mock_collection
         mock_operation_repo.create.return_value = mock_operation
@@ -265,8 +243,7 @@ class TestCreateCollection:
                     "chunk_overlap": None,
                     "is_public": False,
                     "metadata": None,
-                },
-            )
+                })
 
         # Verify defaults applied in repo call
         mock_collection_repo.create.assert_called_once_with(
@@ -280,8 +257,7 @@ class TestCreateCollection:
             chunking_strategy=None,
             chunking_config=None,
             is_public=False,
-            meta=None,
-        )
+            meta=None)
 
 
 class TestAddSource:
@@ -295,8 +271,7 @@ class TestAddSource:
         mock_operation_repo: AsyncMock,
         mock_db_session: AsyncMock,
         mock_collection: MagicMock,
-        mock_operation: MagicMock,
-    ) -> None:
+        mock_operation: MagicMock) -> None:
         """Test successful source addition."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations.return_value = []
@@ -307,14 +282,12 @@ class TestAddSource:
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
                 source_path="/path/to/source",
-                source_config={"recursive": True},
-            )
+                source_config={"recursive": True})
 
         # Verify permission check
         mock_collection_repo.get_by_uuid_with_permission_check.assert_called_once_with(
             collection_uuid=str(mock_collection.uuid),
-            user_id=1,
-        )
+            user_id=1)
 
         # Verify active operations check
         mock_operation_repo.get_active_operations.assert_called_once_with(mock_collection.id)
@@ -327,8 +300,7 @@ class TestAddSource:
             config={
                 "source_path": "/path/to/source",
                 "source_config": {"recursive": True},
-            },
-        )
+            })
 
         # Verify status update
         mock_collection_repo.update_status.assert_called_once_with(mock_collection.id, CollectionStatus.PROCESSING)
@@ -346,8 +318,7 @@ class TestAddSource:
         self,
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test adding source to collection in invalid status."""
         mock_collection.status = CollectionStatus.ERROR
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
@@ -356,8 +327,7 @@ class TestAddSource:
             await collection_service.add_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
-                source_path="/path/to/source",
-            )
+                source_path="/path/to/source")
 
         assert "Cannot add source to collection in" in str(exc_info.value)
         assert "ERROR" in str(exc_info.value)
@@ -368,8 +338,7 @@ class TestAddSource:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test adding source when active operation exists."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations.return_value = [MagicMock()]  # Active operation exists
@@ -378,8 +347,7 @@ class TestAddSource:
             await collection_service.add_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
-                source_path="/path/to/source",
-            )
+                source_path="/path/to/source")
 
         assert "Cannot add source while another operation is in progress" in str(exc_info.value)
 
@@ -387,8 +355,7 @@ class TestAddSource:
     async def test_add_source_collection_not_found(
         self,
         collection_service: CollectionService,
-        mock_collection_repo: AsyncMock,
-    ) -> None:
+        mock_collection_repo: AsyncMock) -> None:
         """Test adding source to non-existent collection."""
         mock_collection_repo.get_by_uuid_with_permission_check.side_effect = EntityNotFoundError(
             "Collection", "nonexistent-uuid"
@@ -398,15 +365,13 @@ class TestAddSource:
             await collection_service.add_source(
                 collection_id="nonexistent-uuid",
                 user_id=1,
-                source_path="/path/to/source",
-            )
+                source_path="/path/to/source")
 
     @pytest.mark.asyncio()
     async def test_add_source_access_denied(
         self,
         collection_service: CollectionService,
-        mock_collection_repo: AsyncMock,
-    ) -> None:
+        mock_collection_repo: AsyncMock) -> None:
         """Test adding source without permission."""
         mock_collection_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError(
             "2", "Collection", "some-uuid"
@@ -416,8 +381,7 @@ class TestAddSource:
             await collection_service.add_source(
                 collection_id="some-uuid",
                 user_id=2,
-                source_path="/path/to/source",
-            )
+                source_path="/path/to/source")
 
     @pytest.mark.asyncio()
     async def test_add_source_with_pending_status(
@@ -426,8 +390,7 @@ class TestAddSource:
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
         mock_collection: MagicMock,
-        mock_operation: MagicMock,
-    ) -> None:
+        mock_operation: MagicMock) -> None:
         """Test adding source to pending collection."""
         mock_collection.status = CollectionStatus.PENDING
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
@@ -438,8 +401,7 @@ class TestAddSource:
             result = await collection_service.add_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
-                source_path="/path/to/source",
-            )
+                source_path="/path/to/source")
 
         assert result["uuid"] == mock_operation.uuid
 
@@ -450,8 +412,7 @@ class TestAddSource:
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
         mock_collection: MagicMock,
-        mock_operation: MagicMock,
-    ) -> None:
+        mock_operation: MagicMock) -> None:
         """Test adding source to degraded collection."""
         mock_collection.status = CollectionStatus.DEGRADED
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
@@ -462,8 +423,7 @@ class TestAddSource:
             result = await collection_service.add_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
-                source_path="/path/to/source",
-            )
+                source_path="/path/to/source")
 
         assert result["uuid"] == mock_operation.uuid
 
@@ -479,8 +439,7 @@ class TestReindexCollection:
         mock_operation_repo: AsyncMock,
         mock_db_session: AsyncMock,
         mock_collection: MagicMock,
-        mock_operation: MagicMock,
-    ) -> None:
+        mock_operation: MagicMock) -> None:
         """Test successful collection reindexing."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 0
@@ -493,8 +452,7 @@ class TestReindexCollection:
                 config_updates={
                     "embedding_model": "new-model",
                     "chunk_size": 1500,
-                },
-            )
+                })
 
         # Verify operation creation with config merging
         expected_config = {
@@ -521,8 +479,7 @@ class TestReindexCollection:
             collection_id=mock_collection.id,
             user_id=1,
             operation_type=OperationType.REINDEX,
-            config=expected_config,
-        )
+            config=expected_config)
 
         # Verify status update
         mock_collection_repo.update_status.assert_called_once_with(mock_collection.id, CollectionStatus.PROCESSING)
@@ -541,8 +498,7 @@ class TestReindexCollection:
         mock_operation_repo: AsyncMock,
         mock_db_session: AsyncMock,
         mock_collection: MagicMock,
-        mock_operation: MagicMock,
-    ) -> None:
+        mock_operation: MagicMock) -> None:
         """Test reindexing without configuration updates."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 0
@@ -551,8 +507,7 @@ class TestReindexCollection:
         with patch("packages.webui.celery_app.celery_app.send_task"):
             await collection_service.reindex_collection(
                 collection_id=str(mock_collection.uuid),
-                user_id=1,
-            )
+                user_id=1)
 
         # Verify new_config is same as previous_config
         call_args = mock_operation_repo.create.call_args[1]
@@ -563,8 +518,7 @@ class TestReindexCollection:
         self,
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test reindexing collection in processing status."""
         mock_collection.status = CollectionStatus.PROCESSING
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
@@ -572,8 +526,7 @@ class TestReindexCollection:
         with pytest.raises(InvalidStateError) as exc_info:
             await collection_service.reindex_collection(
                 collection_id=str(mock_collection.uuid),
-                user_id=1,
-            )
+                user_id=1)
 
         assert "Cannot reindex collection that is currently processing" in str(exc_info.value)
 
@@ -582,8 +535,7 @@ class TestReindexCollection:
         self,
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test reindexing collection in error status."""
         mock_collection.status = CollectionStatus.ERROR
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
@@ -591,8 +543,7 @@ class TestReindexCollection:
         with pytest.raises(InvalidStateError) as exc_info:
             await collection_service.reindex_collection(
                 collection_id=str(mock_collection.uuid),
-                user_id=1,
-            )
+                user_id=1)
 
         assert "Cannot reindex failed collection" in str(exc_info.value)
 
@@ -602,8 +553,7 @@ class TestReindexCollection:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test reindexing when active operation exists."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 1
@@ -611,8 +561,7 @@ class TestReindexCollection:
         with pytest.raises(InvalidStateError) as exc_info:
             await collection_service.reindex_collection(
                 collection_id=str(mock_collection.uuid),
-                user_id=1,
-            )
+                user_id=1)
 
         assert "Cannot reindex while another operation is in progress" in str(exc_info.value)
 
@@ -626,8 +575,7 @@ class TestDeleteCollection:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test successful collection deletion."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 0
@@ -646,8 +594,7 @@ class TestDeleteCollection:
 
             await collection_service.delete_collection(
                 collection_id=str(mock_collection.uuid),
-                user_id=mock_collection.owner_id,
-            )
+                user_id=mock_collection.owner_id)
 
         # Verify Qdrant deletion
         mock_qdrant_client.delete_collection.assert_called_once_with(mock_collection.vector_store_name)
@@ -660,8 +607,7 @@ class TestDeleteCollection:
         self,
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test deleting collection by non-owner."""
         mock_collection.owner_id = 1
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
@@ -680,8 +626,7 @@ class TestDeleteCollection:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test deleting collection with active operations."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 1
@@ -689,8 +634,7 @@ class TestDeleteCollection:
         with pytest.raises(InvalidStateError) as exc_info:
             await collection_service.delete_collection(
                 collection_id=str(mock_collection.uuid),
-                user_id=mock_collection.owner_id,
-            )
+                user_id=mock_collection.owner_id)
 
         assert "Cannot delete collection while operations are in progress" in str(exc_info.value)
 
@@ -700,8 +644,7 @@ class TestDeleteCollection:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test deleting collection when not found in Qdrant."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 0
@@ -715,8 +658,7 @@ class TestDeleteCollection:
 
             await collection_service.delete_collection(
                 collection_id=str(mock_collection.uuid),
-                user_id=mock_collection.owner_id,
-            )
+                user_id=mock_collection.owner_id)
 
         # Verify Qdrant deletion was not called
         mock_qdrant_client.delete_collection.assert_not_called()
@@ -730,8 +672,7 @@ class TestDeleteCollection:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test deleting collection with Qdrant error (continues with DB deletion)."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 0
@@ -743,8 +684,7 @@ class TestDeleteCollection:
 
             await collection_service.delete_collection(
                 collection_id=str(mock_collection.uuid),
-                user_id=mock_collection.owner_id,
-            )
+                user_id=mock_collection.owner_id)
 
         # Verify database deletion was still called despite Qdrant error
         mock_collection_repo.delete.assert_called_once()
@@ -755,8 +695,7 @@ class TestDeleteCollection:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test deleting collection without vector store name."""
         mock_collection.vector_store_name = None
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
@@ -765,8 +704,7 @@ class TestDeleteCollection:
         with patch("packages.webui.services.collection_service.qdrant_manager.get_client") as mock_get_client:
             await collection_service.delete_collection(
                 collection_id=str(mock_collection.uuid),
-                user_id=mock_collection.owner_id,
-            )
+                user_id=mock_collection.owner_id)
 
         # Verify Qdrant client was not even created
         mock_get_client.assert_not_called()
@@ -786,8 +724,7 @@ class TestRemoveSource:
         mock_operation_repo: AsyncMock,
         mock_db_session: AsyncMock,
         mock_collection: MagicMock,
-        mock_operation: MagicMock,
-    ) -> None:
+        mock_operation: MagicMock) -> None:
         """Test successful source removal."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 0
@@ -797,8 +734,7 @@ class TestRemoveSource:
             result = await collection_service.remove_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
-                source_path="/path/to/remove",
-            )
+                source_path="/path/to/remove")
 
         # Verify operation creation
         mock_operation_repo.create.assert_called_once_with(
@@ -807,8 +743,7 @@ class TestRemoveSource:
             operation_type=OperationType.REMOVE_SOURCE,
             config={
                 "source_path": "/path/to/remove",
-            },
-        )
+            })
 
         # Verify status update
         mock_collection_repo.update_status.assert_called_once_with(mock_collection.id, CollectionStatus.PROCESSING)
@@ -824,8 +759,7 @@ class TestRemoveSource:
         self,
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test removing source from collection in invalid status."""
         mock_collection.status = CollectionStatus.PENDING
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
@@ -834,8 +768,7 @@ class TestRemoveSource:
             await collection_service.remove_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
-                source_path="/path/to/remove",
-            )
+                source_path="/path/to/remove")
 
         assert "Cannot remove source from collection in" in str(exc_info.value)
         assert "PENDING" in str(exc_info.value)
@@ -847,8 +780,7 @@ class TestRemoveSource:
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
         mock_collection: MagicMock,
-        mock_operation: MagicMock,
-    ) -> None:
+        mock_operation: MagicMock) -> None:
         """Test removing source from degraded collection."""
         mock_collection.status = CollectionStatus.DEGRADED
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
@@ -859,8 +791,7 @@ class TestRemoveSource:
             result = await collection_service.remove_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
-                source_path="/path/to/remove",
-            )
+                source_path="/path/to/remove")
 
         assert result["uuid"] == mock_operation.uuid
 
@@ -870,8 +801,7 @@ class TestRemoveSource:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test removing source with active operations."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 1
@@ -880,8 +810,7 @@ class TestRemoveSource:
             await collection_service.remove_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
-                source_path="/path/to/remove",
-            )
+                source_path="/path/to/remove")
 
         assert "Cannot remove source while another operation is in progress" in str(exc_info.value)
 
@@ -893,8 +822,7 @@ class TestListForUser:
     async def test_list_for_user_success(
         self,
         collection_service: CollectionService,
-        mock_collection_repo: AsyncMock,
-    ) -> None:
+        mock_collection_repo: AsyncMock) -> None:
         """Test listing collections for user."""
         mock_collections = [MagicMock(), MagicMock()]
         mock_collection_repo.list_for_user.return_value = (mock_collections, 2)
@@ -903,15 +831,13 @@ class TestListForUser:
             user_id=1,
             offset=0,
             limit=50,
-            include_public=True,
-        )
+            include_public=True)
 
         mock_collection_repo.list_for_user.assert_called_once_with(
             user_id=1,
             offset=0,
             limit=50,
-            include_public=True,
-        )
+            include_public=True)
 
         assert collections == mock_collections
         assert total == 2
@@ -920,8 +846,7 @@ class TestListForUser:
     async def test_list_for_user_with_pagination(
         self,
         collection_service: CollectionService,
-        mock_collection_repo: AsyncMock,
-    ) -> None:
+        mock_collection_repo: AsyncMock) -> None:
         """Test listing collections with pagination."""
         mock_collections = [MagicMock()]
         mock_collection_repo.list_for_user.return_value = (mock_collections, 100)
@@ -930,15 +855,13 @@ class TestListForUser:
             user_id=1,
             offset=50,
             limit=10,
-            include_public=False,
-        )
+            include_public=False)
 
         mock_collection_repo.list_for_user.assert_called_once_with(
             user_id=1,
             offset=50,
             limit=10,
-            include_public=False,
-        )
+            include_public=False)
 
         assert len(collections) == 1
         assert total == 100
@@ -953,8 +876,7 @@ class TestUpdate:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_db_session: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test successful collection update."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         updated_collection = MagicMock()
@@ -967,14 +889,12 @@ class TestUpdate:
                 "name": "Updated Name",
                 "description": "Updated description",
                 "is_public": True,
-            },
-        )
+            })
 
         # Verify permission check
         mock_collection_repo.get_by_uuid_with_permission_check.assert_called_once_with(
             collection_uuid=str(mock_collection.uuid),
-            user_id=mock_collection.owner_id,
-        )
+            user_id=mock_collection.owner_id)
 
         # Verify update call
         mock_collection_repo.update.assert_called_once_with(
@@ -983,8 +903,7 @@ class TestUpdate:
                 "name": "Updated Name",
                 "description": "Updated description",
                 "is_public": True,
-            },
-        )
+            })
 
         # Verify commit
         mock_db_session.commit.assert_called_once()
@@ -996,8 +915,7 @@ class TestUpdate:
         self,
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test updating collection by non-owner."""
         mock_collection.owner_id = 1
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
@@ -1006,8 +924,7 @@ class TestUpdate:
             await collection_service.update(
                 collection_id=str(mock_collection.uuid),
                 user_id=2,  # Different user
-                updates={"name": "New Name"},
-            )
+                updates={"name": "New Name"})
 
         assert "does not have access to Collection" in str(exc_info.value)
 
@@ -1015,8 +932,7 @@ class TestUpdate:
     async def test_update_collection_not_found(
         self,
         collection_service: CollectionService,
-        mock_collection_repo: AsyncMock,
-    ) -> None:
+        mock_collection_repo: AsyncMock) -> None:
         """Test updating non-existent collection."""
         mock_collection_repo.get_by_uuid_with_permission_check.side_effect = EntityNotFoundError(
             "Collection", "nonexistent-uuid"
@@ -1026,16 +942,14 @@ class TestUpdate:
             await collection_service.update(
                 collection_id="nonexistent-uuid",
                 user_id=1,
-                updates={"name": "New Name"},
-            )
+                updates={"name": "New Name"})
 
     @pytest.mark.asyncio()
     async def test_update_already_exists(
         self,
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test updating collection with name that already exists."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_collection_repo.update.side_effect = EntityAlreadyExistsError("Collection", "Existing Name")
@@ -1044,8 +958,7 @@ class TestUpdate:
             await collection_service.update(
                 collection_id=str(mock_collection.uuid),
                 user_id=mock_collection.owner_id,
-                updates={"name": "Existing Name"},
-            )
+                updates={"name": "Existing Name"})
 
 
 class TestListDocuments:
@@ -1057,8 +970,7 @@ class TestListDocuments:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_document_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test listing documents in collection."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_documents = [MagicMock(), MagicMock()]
@@ -1068,21 +980,18 @@ class TestListDocuments:
             collection_id=str(mock_collection.uuid),
             user_id=1,
             offset=0,
-            limit=50,
-        )
+            limit=50)
 
         # Verify permission check
         mock_collection_repo.get_by_uuid_with_permission_check.assert_called_once_with(
             collection_uuid=str(mock_collection.uuid),
-            user_id=1,
-        )
+            user_id=1)
 
         # Verify document listing
         mock_document_repo.list_by_collection.assert_called_once_with(
             collection_id=mock_collection.id,
             offset=0,
-            limit=50,
-        )
+            limit=50)
 
         assert documents == mock_documents
         assert total == 2
@@ -1093,8 +1002,7 @@ class TestListDocuments:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_document_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test listing documents with pagination."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_documents = [MagicMock()]
@@ -1104,14 +1012,12 @@ class TestListDocuments:
             collection_id=str(mock_collection.uuid),
             user_id=1,
             offset=20,
-            limit=10,
-        )
+            limit=10)
 
         mock_document_repo.list_by_collection.assert_called_once_with(
             collection_id=mock_collection.id,
             offset=20,
-            limit=10,
-        )
+            limit=10)
 
         assert len(documents) == 1
         assert total == 100
@@ -1120,8 +1026,7 @@ class TestListDocuments:
     async def test_list_documents_access_denied(
         self,
         collection_service: CollectionService,
-        mock_collection_repo: AsyncMock,
-    ) -> None:
+        mock_collection_repo: AsyncMock) -> None:
         """Test listing documents without permission."""
         mock_collection_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError(
             "2", "Collection", "some-uuid"
@@ -1130,8 +1035,7 @@ class TestListDocuments:
         with pytest.raises(AccessDeniedError):
             await collection_service.list_documents(
                 collection_id="some-uuid",
-                user_id=2,
-            )
+                user_id=2)
 
 
 class TestListOperations:
@@ -1143,8 +1047,7 @@ class TestListOperations:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test listing operations for collection."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operations = [MagicMock(), MagicMock()]
@@ -1154,22 +1057,19 @@ class TestListOperations:
             collection_id=str(mock_collection.uuid),
             user_id=1,
             offset=0,
-            limit=50,
-        )
+            limit=50)
 
         # Verify permission check
         mock_collection_repo.get_by_uuid_with_permission_check.assert_called_once_with(
             collection_uuid=str(mock_collection.uuid),
-            user_id=1,
-        )
+            user_id=1)
 
         # Verify operation listing
         mock_operation_repo.list_for_collection.assert_called_once_with(
             collection_id=mock_collection.id,
             user_id=1,
             offset=0,
-            limit=50,
-        )
+            limit=50)
 
         assert operations == mock_operations
         assert total == 2
@@ -1180,8 +1080,7 @@ class TestListOperations:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
-        mock_collection: MagicMock,
-    ) -> None:
+        mock_collection: MagicMock) -> None:
         """Test listing operations with pagination."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operations = [MagicMock()]
@@ -1191,15 +1090,13 @@ class TestListOperations:
             collection_id=str(mock_collection.uuid),
             user_id=1,
             offset=10,
-            limit=5,
-        )
+            limit=5)
 
         mock_operation_repo.list_for_collection.assert_called_once_with(
             collection_id=mock_collection.id,
             user_id=1,
             offset=10,
-            limit=5,
-        )
+            limit=5)
 
         assert len(operations) == 1
         assert total == 100
@@ -1208,8 +1105,7 @@ class TestListOperations:
     async def test_list_operations_collection_not_found(
         self,
         collection_service: CollectionService,
-        mock_collection_repo: AsyncMock,
-    ) -> None:
+        mock_collection_repo: AsyncMock) -> None:
         """Test listing operations for non-existent collection."""
         mock_collection_repo.get_by_uuid_with_permission_check.side_effect = EntityNotFoundError(
             "Collection", "nonexistent-uuid"
@@ -1218,8 +1114,7 @@ class TestListOperations:
         with pytest.raises(EntityNotFoundError):
             await collection_service.list_operations(
                 collection_id="nonexistent-uuid",
-                user_id=1,
-            )
+                user_id=1)
 
 
 class TestCollectionServiceEdgeCases:
@@ -1233,8 +1128,7 @@ class TestCollectionServiceEdgeCases:
         mock_operation_repo: AsyncMock,
         mock_db_session: AsyncMock,
         mock_collection: MagicMock,
-        mock_operation: MagicMock,
-    ) -> None:
+        mock_operation: MagicMock) -> None:
         """Test creating collection with None config."""
         mock_collection_repo.create.return_value = mock_collection
         mock_operation_repo.create.return_value = mock_operation
@@ -1243,8 +1137,7 @@ class TestCollectionServiceEdgeCases:
             await collection_service.create_collection(
                 user_id=1,
                 name="Test Collection",
-                config=None,
-            )
+                config=None)
 
         # Verify defaults were used
         call_args = mock_collection_repo.create.call_args[1]
@@ -1263,8 +1156,7 @@ class TestCollectionServiceEdgeCases:
         mock_operation_repo: AsyncMock,
         mock_db_session: AsyncMock,
         mock_collection: MagicMock,
-        mock_operation: MagicMock,
-    ) -> None:
+        mock_operation: MagicMock) -> None:
         """Test adding source with None config."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations.return_value = []
@@ -1275,8 +1167,7 @@ class TestCollectionServiceEdgeCases:
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
                 source_path="/path/to/source",
-                source_config=None,
-            )
+                source_config=None)
 
         # Verify empty dict was used for source_config
         call_args = mock_operation_repo.create.call_args[1]
@@ -1290,8 +1181,7 @@ class TestCollectionServiceEdgeCases:
         mock_operation_repo: AsyncMock,
         mock_db_session: AsyncMock,
         mock_collection: MagicMock,
-        mock_operation: MagicMock,
-    ) -> None:
+        mock_operation: MagicMock) -> None:
         """Test that operations properly check for active operations."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
 
@@ -1304,8 +1194,7 @@ class TestCollectionServiceEdgeCases:
             await collection_service.add_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
-                source_path="/path1",
-            )
+                source_path="/path1")
 
         # Second operation should fail if active operation exists
         mock_operation_repo.get_active_operations.return_value = [mock_operation]
@@ -1315,21 +1204,18 @@ class TestCollectionServiceEdgeCases:
             await collection_service.add_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
-                source_path="/path2",
-            )
+                source_path="/path2")
 
         with pytest.raises(InvalidStateError):
             await collection_service.reindex_collection(
                 collection_id=str(mock_collection.uuid),
-                user_id=1,
-            )
+                user_id=1)
 
         with pytest.raises(InvalidStateError):
             await collection_service.remove_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
-                source_path="/path1",
-            )
+                source_path="/path1")
 
     @pytest.mark.asyncio()
     async def test_uuid_generation_for_celery_tasks(
@@ -1339,8 +1225,7 @@ class TestCollectionServiceEdgeCases:
         mock_operation_repo: AsyncMock,
         mock_db_session: AsyncMock,
         mock_collection: MagicMock,
-        mock_operation: MagicMock,
-    ) -> None:
+        mock_operation: MagicMock) -> None:
         """Test that unique UUIDs are generated for Celery tasks."""
         mock_collection_repo.create.return_value = mock_collection
         mock_operation_repo.create.return_value = mock_operation
@@ -1353,19 +1238,15 @@ class TestCollectionServiceEdgeCases:
                 side_effect=[
                     uuid.UUID("11111111-1111-1111-1111-111111111111"),
                     uuid.UUID("22222222-2222-2222-2222-222222222222"),
-                ],
-            ),
-        ):
+                ])):
             await collection_service.create_collection(
                 user_id=1,
-                name="Collection 1",
-            )
+                name="Collection 1")
             task_ids.append(mock_send_task.call_args[1]["task_id"])
 
             await collection_service.create_collection(
                 user_id=1,
-                name="Collection 2",
-            )
+                name="Collection 2")
             task_ids.append(mock_send_task.call_args[1]["task_id"])
 
         # Verify unique task IDs

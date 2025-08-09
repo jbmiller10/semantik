@@ -110,8 +110,7 @@ class TestWebSocketConnection:
         self,
         ws_manager: RedisStreamWebSocketManager,
         mock_websocket: AsyncMock,
-        mock_operation,
-    ) -> None:
+        mock_operation) -> None:
         """Test successful WebSocket connection establishment."""
         user_id = "user-123"
         operation_id = mock_operation.uuid
@@ -138,8 +137,7 @@ class TestWebSocketConnection:
     async def test_connection_limit_per_user(
         self,
         ws_manager: RedisStreamWebSocketManager,
-        mock_websocket: AsyncMock,
-    ) -> None:
+        mock_websocket: AsyncMock) -> None:
         """Test that connection limits per user are enforced."""
         user_id = "user-123"
         ws_manager.max_connections_per_user = 3
@@ -165,8 +163,7 @@ class TestWebSocketConnection:
     async def test_global_connection_limit(
         self,
         ws_manager: RedisStreamWebSocketManager,
-        mock_websocket: AsyncMock,
-    ) -> None:
+        mock_websocket: AsyncMock) -> None:
         """Test that global connection limits are enforced."""
         ws_manager.max_total_connections = 2
 
@@ -183,8 +180,7 @@ class TestWebSocketConnection:
     async def test_disconnect_cleanup(
         self,
         ws_manager: RedisStreamWebSocketManager,
-        mock_websocket: AsyncMock,
-    ) -> None:
+        mock_websocket: AsyncMock) -> None:
         """Test proper cleanup on disconnect."""
         user_id = "user-123"
         operation_id = "op-123"
@@ -203,8 +199,7 @@ class TestWebSocketConnection:
     async def test_redis_reconnection_attempt(
         self,
         ws_manager: RedisStreamWebSocketManager,
-        mock_websocket: AsyncMock,
-    ) -> None:
+        mock_websocket: AsyncMock) -> None:
         """Test that manager attempts to reconnect to Redis if disconnected."""
         ws_manager.redis = None  # Simulate disconnected state
 
@@ -221,8 +216,7 @@ class TestProgressUpdates:
         self,
         ws_manager: RedisStreamWebSocketManager,
         mock_websocket: AsyncMock,
-        mock_redis_client: AsyncMock,
-    ) -> None:
+        mock_redis_client: AsyncMock) -> None:
         """Test sending chunking progress updates."""
         channel = "chunking:collection-123:operation-456"
         progress_data = {
@@ -251,8 +245,7 @@ class TestProgressUpdates:
     async def test_progress_throttling(
         self,
         ws_manager: RedisStreamWebSocketManager,
-        mock_websocket: AsyncMock,
-    ) -> None:
+        mock_websocket: AsyncMock) -> None:
         """Test that progress updates are throttled to prevent spam."""
         operation_id = "op-123"
 
@@ -293,8 +286,7 @@ class TestProgressUpdates:
         self,
         ws_manager: RedisStreamWebSocketManager,
         mock_websocket: AsyncMock,
-        mock_redis_client: AsyncMock,
-    ) -> None:
+        mock_redis_client: AsyncMock) -> None:
         """Test sending operation completion notification."""
         channel = "chunking:collection-123:operation-456"
         completion_data = {
@@ -321,8 +313,7 @@ class TestProgressUpdates:
         self,
         ws_manager: RedisStreamWebSocketManager,
         mock_websocket: AsyncMock,
-        mock_redis_client: AsyncMock,
-    ) -> None:
+        mock_redis_client: AsyncMock) -> None:
         """Test sending operation failure notification."""
         channel = "chunking:collection-123:operation-456"
         failure_data = {
@@ -352,8 +343,7 @@ class TestChannelManagement:
     @pytest.mark.asyncio()
     async def test_create_unique_channels(
         self,
-        ws_manager: RedisStreamWebSocketManager,
-    ) -> None:
+        ws_manager: RedisStreamWebSocketManager) -> None:
         """Test that unique channels are created for each operation."""
         collection_id = "coll-123"
         operation_ids = [str(uuid.uuid4()) for _ in range(3)]
@@ -376,8 +366,7 @@ class TestChannelManagement:
     async def test_broadcast_to_multiple_clients(
         self,
         ws_manager: RedisStreamWebSocketManager,
-        mock_redis_client: AsyncMock,
-    ) -> None:
+        mock_redis_client: AsyncMock) -> None:
         """Test broadcasting updates to multiple connected clients."""
         operation_id = "op-123"
         channel = f"chunking:coll-456:{operation_id}"
@@ -407,8 +396,7 @@ class TestChannelManagement:
     async def test_channel_cleanup_on_completion(
         self,
         ws_manager: RedisStreamWebSocketManager,
-        mock_redis_client: AsyncMock,
-    ) -> None:
+        mock_redis_client: AsyncMock) -> None:
         """Test that channels are cleaned up after operation completion."""
         operation_id = "op-123"
         channel = f"chunking:coll-456:{operation_id}"
@@ -445,8 +433,7 @@ class TestErrorHandling:
     async def test_handle_websocket_disconnect_error(
         self,
         ws_manager: RedisStreamWebSocketManager,
-        mock_websocket: AsyncMock,
-    ) -> None:
+        mock_websocket: AsyncMock) -> None:
         """Test handling of WebSocket disconnect errors."""
         user_id = "user-123"
         operation_id = "op-123"
@@ -467,8 +454,7 @@ class TestErrorHandling:
     async def test_handle_redis_connection_error(
         self,
         ws_manager: RedisStreamWebSocketManager,
-        mock_websocket: AsyncMock,
-    ) -> None:
+        mock_websocket: AsyncMock) -> None:
         """Test handling of Redis connection errors."""
         ws_manager.redis = None  # Simulate Redis disconnection
 
@@ -483,8 +469,7 @@ class TestErrorHandling:
         self,
         ws_manager: RedisStreamWebSocketManager,
         mock_websocket: AsyncMock,
-        mock_redis_client: AsyncMock,
-    ) -> None:
+        mock_redis_client: AsyncMock) -> None:
         """Test handling of malformed messages."""
         # Create a message that can't be JSON serialized
         malformed_message = {
@@ -501,8 +486,7 @@ class TestErrorHandling:
     async def test_recovery_from_redis_stream_error(
         self,
         ws_manager: RedisStreamWebSocketManager,
-        mock_redis_client: AsyncMock,
-    ) -> None:
+        mock_redis_client: AsyncMock) -> None:
         """Test recovery from Redis stream errors."""
         # Simulate Redis stream error
         mock_redis_client.xadd.side_effect = Exception("Redis stream error")
@@ -529,8 +513,7 @@ class TestConcurrentOperations:
     async def test_multiple_operations_same_user(
         self,
         ws_manager: RedisStreamWebSocketManager,
-        mock_redis_client: AsyncMock,
-    ) -> None:
+        mock_redis_client: AsyncMock) -> None:
         """Test handling multiple operations for the same user."""
         user_id = "user-123"
         operation_ids = [f"op-{i}" for i in range(3)]
@@ -563,8 +546,7 @@ class TestConcurrentOperations:
     async def test_operation_isolation(
         self,
         ws_manager: RedisStreamWebSocketManager,
-        mock_redis_client: AsyncMock,
-    ) -> None:
+        mock_redis_client: AsyncMock) -> None:
         """Test that operations are properly isolated from each other."""
         # Create connections for different operations
         op1_ws = AsyncMock(spec=WebSocket)
@@ -588,8 +570,7 @@ class TestConcurrentOperations:
     @pytest.mark.asyncio()
     async def test_concurrent_connection_attempts(
         self,
-        ws_manager: RedisStreamWebSocketManager,
-    ) -> None:
+        ws_manager: RedisStreamWebSocketManager) -> None:
         """Test handling of concurrent connection attempts."""
         user_id = "user-123"
         operation_id = "op-456"
@@ -624,8 +605,7 @@ class TestPerformanceAndScaling:
     async def test_large_message_handling(
         self,
         ws_manager: RedisStreamWebSocketManager,
-        mock_redis_client: AsyncMock,
-    ) -> None:
+        mock_redis_client: AsyncMock) -> None:
         """Test handling of large progress messages."""
         # Create a large message with many chunks
         large_message = {
@@ -649,8 +629,7 @@ class TestPerformanceAndScaling:
     async def test_message_ordering(
         self,
         ws_manager: RedisStreamWebSocketManager,
-        mock_redis_client: AsyncMock,
-    ) -> None:
+        mock_redis_client: AsyncMock) -> None:
         """Test that messages maintain order."""
         messages = []
 
@@ -672,8 +651,7 @@ class TestPerformanceAndScaling:
     @pytest.mark.asyncio()
     async def test_cleanup_performance(
         self,
-        ws_manager: RedisStreamWebSocketManager,
-    ) -> None:
+        ws_manager: RedisStreamWebSocketManager) -> None:
         """Test performance of cleanup operations."""
         # Add many connections
         for i in range(100):
@@ -711,8 +689,7 @@ class TestIntegrationScenarios:
         self,
         ws_manager: RedisStreamWebSocketManager,
         mock_websocket: AsyncMock,
-        mock_redis_client: AsyncMock,
-    ) -> None:
+        mock_redis_client: AsyncMock) -> None:
         """Test a complete chunking workflow from start to finish."""
         user_id = "user-123"
         operation_id = str(uuid.uuid4())
@@ -737,8 +714,7 @@ class TestIntegrationScenarios:
                 "type": "chunking_started",
                 "operation_id": operation_id,
                 "total_documents": 5,
-            },
-        )
+            })
 
         # 3. Send progress updates
         for i in range(1, 6):
@@ -751,8 +727,7 @@ class TestIntegrationScenarios:
                     "total_documents": 5,
                     "progress_percentage": i * 20,
                     "current_document": f"doc_{i}.pdf",
-                },
-            )
+                })
             await asyncio.sleep(0.1)  # Simulate processing time
 
         # 4. Send completion
@@ -763,8 +738,7 @@ class TestIntegrationScenarios:
                 "operation_id": operation_id,
                 "total_chunks_created": 250,
                 "processing_time_seconds": 30,
-            },
-        )
+            })
 
         # Verify all messages were sent
         assert mock_redis_client.xadd.call_count >= 7  # start + 5 progress + completion
@@ -774,8 +748,7 @@ class TestIntegrationScenarios:
         self,
         ws_manager: RedisStreamWebSocketManager,
         mock_websocket: AsyncMock,
-        mock_redis_client: AsyncMock,
-    ) -> None:
+        mock_redis_client: AsyncMock) -> None:
         """Test chunking workflow that fails midway."""
         user_id = "user-123"
         operation_id = str(uuid.uuid4())
@@ -791,8 +764,7 @@ class TestIntegrationScenarios:
             {
                 "type": "chunking_started",
                 "operation_id": operation_id,
-            },
-        )
+            })
 
         # Some progress
         await ws_manager.send_message(
@@ -801,8 +773,7 @@ class TestIntegrationScenarios:
                 "type": "chunking_progress",
                 "operation_id": operation_id,
                 "progress_percentage": 30,
-            },
-        )
+            })
 
         # Failure occurs
         await ws_manager.send_message(
@@ -814,8 +785,7 @@ class TestIntegrationScenarios:
                 "error_code": "MEMORY_ERROR",
                 "documents_processed": 2,
                 "documents_failed": 1,
-            },
-        )
+            })
 
         # Verify error was sent
         calls = mock_redis_client.xadd.call_args_list

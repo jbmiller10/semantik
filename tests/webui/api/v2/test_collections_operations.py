@@ -47,8 +47,7 @@ class TestListCollectionOperations:
     async def test_list_operations_success(
         self,
         mock_user: dict[str, Any],
-        mock_collection_service: AsyncMock,
-    ) -> None:
+        mock_collection_service: AsyncMock) -> None:
         """Test successful operation listing."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
 
@@ -77,8 +76,7 @@ class TestListCollectionOperations:
             page=1,
             per_page=50,
             current_user=mock_user,
-            service=mock_collection_service,
-        )
+            service=mock_collection_service)
 
         # Verify
         assert len(result) == 3
@@ -91,8 +89,7 @@ class TestListCollectionOperations:
     async def test_list_operations_with_filters(
         self,
         mock_user: dict[str, Any],
-        mock_collection_service: AsyncMock,
-    ) -> None:
+        mock_collection_service: AsyncMock) -> None:
         """Test listing operations with status and type filters."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
 
@@ -129,8 +126,7 @@ class TestListCollectionOperations:
             page=1,
             per_page=50,
             current_user=mock_user,
-            service=mock_collection_service,
-        )
+            service=mock_collection_service)
 
         assert len(result) == 1
         assert result[0].status == "completed"
@@ -143,8 +139,7 @@ class TestListCollectionOperations:
             page=1,
             per_page=50,
             current_user=mock_user,
-            service=mock_collection_service,
-        )
+            service=mock_collection_service)
 
         assert len(result) == 1
         assert result[0].type == "reindex"
@@ -153,8 +148,7 @@ class TestListCollectionOperations:
     async def test_list_operations_invalid_status(
         self,
         mock_user: dict[str, Any],
-        mock_collection_service: AsyncMock,
-    ) -> None:
+        mock_collection_service: AsyncMock) -> None:
         """Test listing operations with invalid status."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
 
@@ -167,8 +161,7 @@ class TestListCollectionOperations:
                 page=1,
                 per_page=50,
                 current_user=mock_user,
-                service=mock_collection_service,
-            )
+                service=mock_collection_service)
 
         assert exc_info.value.status_code == 400
         assert "Invalid status: invalid_status" in str(exc_info.value.detail)
@@ -177,8 +170,7 @@ class TestListCollectionOperations:
     async def test_list_operations_invalid_type(
         self,
         mock_user: dict[str, Any],
-        mock_collection_service: AsyncMock,
-    ) -> None:
+        mock_collection_service: AsyncMock) -> None:
         """Test listing operations with invalid type."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
 
@@ -191,8 +183,7 @@ class TestListCollectionOperations:
                 page=1,
                 per_page=50,
                 current_user=mock_user,
-                service=mock_collection_service,
-            )
+                service=mock_collection_service)
 
         assert exc_info.value.status_code == 400
         assert "Invalid operation type: invalid_type" in str(exc_info.value.detail)
@@ -201,8 +192,7 @@ class TestListCollectionOperations:
     async def test_list_operations_collection_not_found(
         self,
         mock_user: dict[str, Any],
-        mock_collection_service: AsyncMock,
-    ) -> None:
+        mock_collection_service: AsyncMock) -> None:
         """Test 404 error when collection not found."""
         collection_uuid = "non-existent-uuid"
 
@@ -216,8 +206,7 @@ class TestListCollectionOperations:
                 page=1,
                 per_page=50,
                 current_user=mock_user,
-                service=mock_collection_service,
-            )
+                service=mock_collection_service)
 
         assert exc_info.value.status_code == 404
         assert f"Collection '{collection_uuid}' not found" in str(exc_info.value.detail)
@@ -226,8 +215,7 @@ class TestListCollectionOperations:
     async def test_list_operations_access_denied(
         self,
         mock_user: dict[str, Any],
-        mock_collection_service: AsyncMock,
-    ) -> None:
+        mock_collection_service: AsyncMock) -> None:
         """Test 403 error when user lacks access."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
 
@@ -243,8 +231,7 @@ class TestListCollectionOperations:
                 page=1,
                 per_page=50,
                 current_user=mock_user,
-                service=mock_collection_service,
-            )
+                service=mock_collection_service)
 
         assert exc_info.value.status_code == 403
         assert "You don't have access to this collection" in str(exc_info.value.detail)
@@ -257,8 +244,7 @@ class TestListCollectionDocuments:
     async def test_list_documents_success(
         self,
         mock_user: dict[str, Any],
-        mock_collection_service: AsyncMock,
-    ) -> None:
+        mock_collection_service: AsyncMock) -> None:
         """Test successful document listing."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
 
@@ -290,8 +276,7 @@ class TestListCollectionDocuments:
             per_page=50,
             status=None,
             current_user=mock_user,
-            service=mock_collection_service,
-        )
+            service=mock_collection_service)
 
         # Verify
         assert isinstance(result, DocumentListResponse)
@@ -304,8 +289,7 @@ class TestListCollectionDocuments:
     async def test_list_documents_with_status_filter(
         self,
         mock_user: dict[str, Any],
-        mock_collection_service: AsyncMock,
-    ) -> None:
+        mock_collection_service: AsyncMock) -> None:
         """Test listing documents with status filter."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
 
@@ -349,8 +333,7 @@ class TestListCollectionDocuments:
             per_page=50,
             status="completed",
             current_user=mock_user,
-            service=mock_collection_service,
-        )
+            service=mock_collection_service)
 
         assert len(result.documents) == 1
         assert result.documents[0].status == "completed"
@@ -360,8 +343,7 @@ class TestListCollectionDocuments:
     async def test_list_documents_invalid_status(
         self,
         mock_user: dict[str, Any],
-        mock_collection_service: AsyncMock,
-    ) -> None:
+        mock_collection_service: AsyncMock) -> None:
         """Test listing documents with invalid status."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
 
@@ -373,8 +355,7 @@ class TestListCollectionDocuments:
                 per_page=50,
                 status="invalid_status",
                 current_user=mock_user,
-                service=mock_collection_service,
-            )
+                service=mock_collection_service)
 
         assert exc_info.value.status_code == 400
         assert "Invalid status: invalid_status" in str(exc_info.value.detail)
@@ -383,8 +364,7 @@ class TestListCollectionDocuments:
     async def test_list_documents_collection_not_found(
         self,
         mock_user: dict[str, Any],
-        mock_collection_service: AsyncMock,
-    ) -> None:
+        mock_collection_service: AsyncMock) -> None:
         """Test 404 error when collection not found."""
         collection_uuid = "non-existent-uuid"
 
@@ -397,8 +377,7 @@ class TestListCollectionDocuments:
                 per_page=50,
                 status=None,
                 current_user=mock_user,
-                service=mock_collection_service,
-            )
+                service=mock_collection_service)
 
         assert exc_info.value.status_code == 404
         assert f"Collection '{collection_uuid}' not found" in str(exc_info.value.detail)
@@ -407,8 +386,7 @@ class TestListCollectionDocuments:
     async def test_list_documents_access_denied(
         self,
         mock_user: dict[str, Any],
-        mock_collection_service: AsyncMock,
-    ) -> None:
+        mock_collection_service: AsyncMock) -> None:
         """Test 403 error when user lacks access."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
 
@@ -423,8 +401,7 @@ class TestListCollectionDocuments:
                 per_page=50,
                 status=None,
                 current_user=mock_user,
-                service=mock_collection_service,
-            )
+                service=mock_collection_service)
 
         assert exc_info.value.status_code == 403
         assert "You don't have access to this collection" in str(exc_info.value.detail)
@@ -433,8 +410,7 @@ class TestListCollectionDocuments:
     async def test_list_documents_pagination(
         self,
         mock_user: dict[str, Any],
-        mock_collection_service: AsyncMock,
-    ) -> None:
+        mock_collection_service: AsyncMock) -> None:
         """Test document listing with pagination."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
 
@@ -448,8 +424,7 @@ class TestListCollectionDocuments:
             per_page=20,
             status=None,
             current_user=mock_user,
-            service=mock_collection_service,
-        )
+            service=mock_collection_service)
 
         # Verify
         assert len(result.documents) == 0
@@ -462,5 +437,4 @@ class TestListCollectionDocuments:
             collection_id=collection_uuid,
             user_id=1,
             offset=20,  # (page-1) * per_page = (2-1) * 20
-            limit=20,
-        )
+            limit=20)

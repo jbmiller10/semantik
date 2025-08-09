@@ -43,8 +43,7 @@ async def test_directory_scan_preview_success(async_client: AsyncClient, test_us
         response = await async_client.post(
             "/api/v2/directory-scan/preview",
             json=request_data,
-            headers=test_user_headers,
-        )
+            headers=test_user_headers)
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -102,8 +101,7 @@ async def test_directory_scan_preview_recursive(async_client: AsyncClient, test_
         response = await async_client.post(
             "/api/v2/directory-scan/preview",
             json=request_data,
-            headers=test_user_headers,
-        )
+            headers=test_user_headers)
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -148,8 +146,7 @@ async def test_directory_scan_preview_with_patterns(
         response = await async_client.post(
             "/api/v2/directory-scan/preview",
             json=request_data,
-            headers=test_user_headers,
-        )
+            headers=test_user_headers)
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -180,8 +177,7 @@ async def test_directory_scan_preview_nonexistent_path(
     response = await async_client.post(
         "/api/v2/directory-scan/preview",
         json=request_data,
-        headers=test_user_headers,
-    )
+        headers=test_user_headers)
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert "not found" in response.json()["detail"].lower()
@@ -206,8 +202,7 @@ async def test_directory_scan_preview_file_instead_of_directory(
         response = await async_client.post(
             "/api/v2/directory-scan/preview",
             json=request_data,
-            headers=test_user_headers,
-        )
+            headers=test_user_headers)
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "not a directory" in response.json()["detail"].lower()
@@ -229,8 +224,7 @@ async def test_directory_scan_preview_invalid_scan_id(
         response = await async_client.post(
             "/api/v2/directory-scan/preview",
             json=request_data,
-            headers=test_user_headers,
-        )
+            headers=test_user_headers)
 
         # Should fail validation
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
@@ -250,8 +244,7 @@ async def test_directory_scan_preview_relative_path(
     response = await async_client.post(
         "/api/v2/directory-scan/preview",
         json=request_data,
-        headers=test_user_headers,
-    )
+        headers=test_user_headers)
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert "must be absolute" in response.json()["detail"]
@@ -275,8 +268,7 @@ async def test_directory_scan_preview_no_auth(monkeypatch) -> None:
 
         response = await client.post(
             "/api/v2/directory-scan/preview",
-            json=request_data,
-        )
+            json=request_data)
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
@@ -306,8 +298,7 @@ async def test_directory_scan_websocket_connection(
         response = await async_client.post(
             "/api/v2/directory-scan/preview",
             json=request_data,
-            headers=test_user_headers,
-        )
+            headers=test_user_headers)
 
         assert response.status_code == status.HTTP_200_OK
 

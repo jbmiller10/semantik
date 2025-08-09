@@ -10,8 +10,7 @@ from tests.webui.test_websocket_helpers import (
     BASE_DELAY,
     WebSocketTestHarness,
     assert_message_order,
-    count_message_types,
-)
+    count_message_types)
 
 
 class TestWebSocketExamples:

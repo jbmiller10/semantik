@@ -4,7 +4,6 @@
 
 While we will do our best to avoid any breaking changes, we do not gurantee backwards compatibility between releases at this time. This is in the interest of providing the strongest long-term foundation for Semantik by the time of release.
 
-**📚 Documentation Update (2025-08-01):** We've completed a comprehensive documentation overhaul! Check out the new [Documentation Index](docs/DOCUMENTATION_INDEX.md) for organized access to 29+ detailed guides covering architecture, APIs, deployment, and migration from older versions.
 
 🚨🚨🚨
 
@@ -228,12 +227,9 @@ That's it!  Semantik is now running with:
 
 ## 📖 Documentation
 
-Semantik includes comprehensive documentation for all aspects of the system:
-
 - **[Documentation Index](docs/DOCUMENTATION_INDEX.md)** - Start here! Complete guide to all documentation
 - **[API Reference](docs/API_REFERENCE.md)** - Full REST and WebSocket API documentation
 - **[Architecture Guide](docs/ARCH.md)** - System design and component relationships
-- **[Migration Guide](docs/MIGRATION_GUIDE.md)** - Upgrading from older versions
 - **[Configuration Guide](docs/CONFIGURATION.md)** - All environment variables and settings
 
 ### Quick Links by Role
