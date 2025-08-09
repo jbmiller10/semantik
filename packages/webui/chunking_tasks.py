@@ -1102,8 +1102,8 @@ async def _send_progress_update(
         # Redis client is sync, not async - need to use sync methods
         redis_client.xadd(stream_key, update)
 
-        # Expire stream after 24 hours for active operations
-        redis_client.expire(stream_key, 86400)
+        # Expire stream after 1 hour for progress updates
+        redis_client.expire(stream_key, 3600)
 
     except Exception as e:
         logger.error(f"Failed to send progress update: {e}")
