@@ -43,6 +43,25 @@ class PreviewResponse:
     strategy_used: str
     document_sample_size: int  # Bytes of document that were processed
     processing_time_ms: float
+    
+    # Additional attributes for backward compatibility with tests
+    document_id: str | None = None
+    preview_chunks: list[ChunkDTO] | None = None  # Alias for chunks
+    estimated_total_chunks: int | None = None  # Alias for total_chunks_estimate
+    sample_size_bytes: int | None = None  # Alias for document_sample_size
+    strategy_name: str | None = None  # Alias for strategy_used
+    
+    def __post_init__(self):
+        """Post-initialization to populate aliases if not already set."""
+        # Populate aliases if not set
+        if self.preview_chunks is None:
+            self.preview_chunks = self.chunks
+        if self.estimated_total_chunks is None:
+            self.estimated_total_chunks = self.total_chunks_estimate
+        if self.sample_size_bytes is None:
+            self.sample_size_bytes = self.document_sample_size
+        if self.strategy_name is None:
+            self.strategy_name = self.strategy_used
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""

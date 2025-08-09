@@ -83,6 +83,9 @@ class SemanticChunkingStrategy(ChunkingStrategy):
             end_offset = cluster["end_offset"]
             token_count = self.count_tokens(cluster_text)
 
+            # Calculate semantic density (higher for more semantically cohesive clusters)
+            semantic_density = cluster.get("similarity_score", 0.5)
+            
             # Create metadata
             metadata = ChunkMetadata(
                 chunk_id=f"{config.strategy_name}_{chunk_index:04d}",
@@ -93,6 +96,8 @@ class SemanticChunkingStrategy(ChunkingStrategy):
                 token_count=token_count,
                 strategy_name=self.name,
                 semantic_score=cluster.get("similarity_score"),
+                semantic_density=semantic_density,
+                confidence_score=0.8,  # Good confidence for semantic strategy
                 created_at=datetime.utcnow(),
             )
 
@@ -136,7 +141,7 @@ class SemanticChunkingStrategy(ChunkingStrategy):
             current_sentence.append(char)
 
             # Check for sentence ending
-            if char in '.!?' and i + 1 < len(text) and text[i + 1].isspace():
+            if char in '.!?' and (i + 1 >= len(text) or text[i + 1].isspace()):
                 sentence_text = ''.join(current_sentence).strip()
                 if sentence_text:
                     sentences.append({
@@ -383,6 +388,33 @@ class SemanticChunkingStrategy(ChunkingStrategy):
             ngrams.add(text[i:i + n])
 
         return ngrams
+
+    def _get_sentence_embedding(self, text: str) -> list[float]:
+        """
+        Get a simple embedding representation for a sentence.
+        
+        This is a placeholder for a real embedding model.
+        In production, this would use a proper sentence embedding model.
+        
+        Args:
+            text: Text to embed
+            
+        Returns:
+            Simple embedding vector
+        """
+        # Simple hash-based embedding for testing
+        # In production, this would use a real model
+        words = text.lower().split()
+        embedding = []
+        
+        for i in range(10):  # Simple 10-dimensional embedding
+            value = 0.0
+            for word in words:
+                # Use word hash to generate pseudo-random values
+                value += hash(word + str(i)) % 100 / 100.0
+            embedding.append(value / max(len(words), 1))
+        
+        return embedding
 
     def validate_content(self, content: str) -> tuple[bool, str | None]:
         """

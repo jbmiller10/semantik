@@ -108,7 +108,7 @@ class TestChunkingOperation:
             Chunk(
                 content="Chunk 1", metadata=ChunkMetadata(
                     chunk_id="chunk-1",
-                    document_id="doc-123",
+                    document_id="doc-456",
                     chunk_index=0,
                     start_offset=0,
                     end_offset=7,
@@ -118,7 +118,7 @@ class TestChunkingOperation:
             Chunk(
                 content="Chunk 2", metadata=ChunkMetadata(
                     chunk_id="chunk-2",
-                    document_id="doc-123",
+                    document_id="doc-456",
                     chunk_index=1,
                     start_offset=8,
                     end_offset=15,
@@ -164,7 +164,7 @@ class TestChunkingOperation:
                 content=f"Chunk {i}",
                 metadata=ChunkMetadata(
                     chunk_id=f"chunk-{i}",
-                    document_id="doc-123",
+                    document_id="doc-456",
                     chunk_index=i,
                     start_offset=i * 2,
                     end_offset=(i + 1) * 2,
@@ -206,7 +206,7 @@ class TestChunkingOperation:
         chunk = Chunk(
             content="Test chunk", metadata=ChunkMetadata(
                 chunk_id="chunk-test",
-                document_id="doc-123",
+                document_id="doc-456",
                 chunk_index=0,
                 start_offset=0,
                 end_offset=5,
@@ -227,7 +227,7 @@ class TestChunkingOperation:
         chunk = Chunk(
             content="Test chunk", metadata=ChunkMetadata(
                 chunk_id="chunk-test",
-                document_id="doc-123",
+                document_id="doc-456",
                 chunk_index=0,
                 start_offset=0,
                 end_offset=5,
@@ -267,26 +267,29 @@ class TestChunkingOperation:
     def test_validate_results_with_valid_chunks(self, chunking_operation):
         """Test validation with valid chunking results."""
         # Arrange
+        # Document is "Test document content for testing operations" (44 chars)
+        doc_len = len(chunking_operation._document_content)
         chunks = [
             Chunk(
-                content=chunking_operation._document_content[0:30], metadata=ChunkMetadata(
+                content=chunking_operation._document_content[0:30], 
+                metadata=ChunkMetadata(
                     chunk_id="chunk-1",
-                    document_id="doc-123",
+                    document_id="doc-456",
                     chunk_index=0,
                     start_offset=0,
-                    end_offset=8,
-                    token_count=8,
+                    end_offset=30,  # First 30 characters
+                    token_count=6,  # Approximately 6 words
                     strategy_name="character"), min_tokens=1),
             Chunk(
-                content=chunking_operation._document_content[25:],
+                content=chunking_operation._document_content[25:doc_len],  # Overlap from 25-30, then 30-44
                 metadata=ChunkMetadata(
                     chunk_id="chunk-2",
-                    document_id="doc-123",
+                    document_id="doc-456",
                     chunk_index=1,
-                    start_offset=9,
-                    end_offset=19,
-                    token_count=10,
-                    strategy_name="character")),
+                    start_offset=25,  # Overlaps with first chunk
+                    end_offset=doc_len,  # To the end of document (44)
+                    token_count=4,  # Approximately 4 words
+                    strategy_name="character"), min_tokens=1),
         ]
         
         chunking_operation.start()
@@ -319,7 +322,7 @@ class TestChunkingOperation:
         chunk = Chunk(
             content="This", metadata=ChunkMetadata(
                 chunk_id="chunk-error",
-                document_id="doc-123",
+                document_id="doc-456",
                 chunk_index=0,
                 start_offset=0,
                 end_offset=5,
@@ -377,7 +380,7 @@ class TestChunkingOperation:
         chunk = Chunk(
             content="Test chunk", metadata=ChunkMetadata(
                 chunk_id="chunk-test",
-                document_id="doc-123",
+                document_id="doc-456",
                 chunk_index=0,
                 start_offset=0,
                 end_offset=5,
@@ -403,11 +406,11 @@ class TestChunkingOperation:
         mock_chunks = [
             Chunk(
                 content="Chunk 1", metadata=ChunkMetadata(
-                    chunk_id=f"chunk-{i}",
-                    document_id="doc-123",
-                    chunk_index=i,
-                    start_offset=i * 2,
-                    end_offset=(i + 1) * 2,
+                    chunk_id="chunk-0",
+                    document_id="doc-456",
+                    chunk_index=0,
+                    start_offset=0,
+                    end_offset=2,
                     token_count=2,
                     strategy_name="character"), min_tokens=1),
         ]

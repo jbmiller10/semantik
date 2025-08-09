@@ -211,7 +211,7 @@ class TestPreviewChunkingUseCase:
     async def test_document_not_found(self, use_case, valid_request):
         """Test handling of document not found error."""
         # Arrange
-        use_case.document_service.get_document_content.side_effect = FileNotFoundError(
+        use_case.document_service.load_partial.side_effect = FileNotFoundError(
             "Document not found"
         )
 
@@ -499,7 +499,7 @@ class TestPreviewChunkingUseCase:
     async def test_notification_on_error(self, use_case, valid_request):
         """Test that error notification is sent on failure."""
         # Arrange
-        use_case.document_service.get_document_content.side_effect = Exception(
+        use_case.document_service.load_partial.side_effect = Exception(
             "Unexpected error"
         )
 

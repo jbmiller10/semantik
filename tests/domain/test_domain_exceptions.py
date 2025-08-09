@@ -221,7 +221,7 @@ class TestBusinessRuleEnforcement:
                 content=f"Chunk {i}",
                 metadata=ChunkMetadata(
                     chunk_id=f"chunk-{i}",
-                    document_id="doc-123",
+                    document_id="doc1",  # Match the operation's document_id
                     chunk_index=i,
                     start_offset=i,
                     end_offset=i + 1,
@@ -351,7 +351,7 @@ class TestBusinessRuleEnforcement:
         small_chunk = Chunk(
             content="This", metadata=ChunkMetadata(
                 chunk_id="chunk-small",
-                document_id="doc-123",
+                document_id="doc1",  # Match the operation's document_id
                 chunk_index=0,
                 start_offset=0,
                 end_offset=4,
@@ -370,17 +370,29 @@ class TestBusinessRuleEnforcement:
         """Test that metadata validation rules are enforced."""
         from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 
+        # Base valid parameters for ChunkMetadata
+        base_params = {
+            "chunk_id": "test-chunk",
+            "document_id": "test-doc",
+            "chunk_index": 0,
+            "start_offset": 0,
+            "end_offset": 100,
+            "strategy_name": "test",
+        }
+
         # Test invalid metadata values
         invalid_metadata_params = [
-            {"token_count": -1},
-            {"token_count": 10, "semantic_density": -0.1},
-            {"token_count": 10, "semantic_density": 1.5},
-            {"token_count": 10, "overlap_percentage": -0.1},
-            {"token_count": 10, "overlap_percentage": 1.5},
-            {"token_count": 10, "confidence_score": -0.1},
-            {"token_count": 10, "confidence_score": 1.5},
+            {"token_count": -1},  # Negative token count
+            {"token_count": 10, "semantic_density": -0.1},  # Negative semantic density
+            {"token_count": 10, "semantic_density": 1.5},  # Semantic density > 1.0
+            {"token_count": 10, "overlap_percentage": -0.1},  # Negative overlap percentage
+            {"token_count": 10, "overlap_percentage": 1.5},  # Overlap percentage > 1.0
+            {"token_count": 10, "confidence_score": -0.1},  # Negative confidence score
+            {"token_count": 10, "confidence_score": 1.5},  # Confidence score > 1.0
         ]
 
         for params in invalid_metadata_params:
+            # Merge base params with test params
+            test_params = {**base_params, **params}
             with pytest.raises(ValueError):
-                ChunkMetadata(**params)
+                ChunkMetadata(**test_params)

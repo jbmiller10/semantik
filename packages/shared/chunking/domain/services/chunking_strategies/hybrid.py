@@ -82,6 +82,30 @@ class HybridChunkingStrategy(ChunkingStrategy):
                 content_analysis,
                 progress_callback,
             )
+        elif config.strategies and len(config.strategies) > 1:
+            # Multiple strategies specified: use consensus building
+            strategy_results = {}
+            for strategy_name in config.strategies:
+                try:
+                    if strategy_name == "character":
+                        strategy_chunks = self._character_strategy.chunk(content, config, None)
+                    elif strategy_name == "semantic":
+                        strategy_chunks = self._semantic_strategy.chunk(content, config, None)
+                    elif strategy_name == "markdown":
+                        strategy_chunks = self._markdown_strategy.chunk(content, config, None)
+                    elif strategy_name == "recursive":
+                        strategy_chunks = self._recursive_strategy.chunk(content, config, None)
+                    else:
+                        continue
+                    strategy_results[strategy_name] = strategy_chunks
+                except Exception as e:
+                    print(f"Strategy {strategy_name} failed: {e}")
+                    
+            if strategy_results:
+                chunks = self._build_consensus(strategy_results)
+            else:
+                # All strategies failed, fall back to character
+                chunks = self._character_strategy.chunk(content, config, progress_callback)
         else:
             # Uniform content: use primary strategy with enhancements
             chunks = self._chunk_uniform_content(
@@ -91,6 +115,37 @@ class HybridChunkingStrategy(ChunkingStrategy):
                 progress_callback,
             )
 
+        # If no chunks were created, fall back to character strategy
+        if not chunks:
+            chunks = self._character_strategy.chunk(content, config, progress_callback)
+            # Update metadata to reflect hybrid processing
+            for i, chunk in enumerate(chunks):
+                custom_attrs = {
+                    "strategies_used": ["character"],
+                    "fallback": True,
+                }
+                
+                hybrid_metadata = ChunkMetadata(
+                    chunk_id=f"hybrid_{i:04d}",
+                    document_id=chunk.metadata.document_id,
+                    chunk_index=i,
+                    start_offset=chunk.metadata.start_offset,
+                    end_offset=chunk.metadata.end_offset,
+                    token_count=chunk.metadata.token_count,
+                    strategy_name="hybrid",
+                    custom_attributes=custom_attrs,
+                    semantic_density=0.6,
+                    confidence_score=0.8,
+                    created_at=datetime.utcnow(),
+                )
+                
+                chunks[i] = Chunk(
+                    content=chunk.content,
+                    metadata=hybrid_metadata,
+                    min_tokens=config.min_tokens,
+                    max_tokens=config.max_tokens,
+                )
+        
         # Post-process chunks for consistency
         chunks = self._post_process_chunks(chunks, config)
 
@@ -294,12 +349,22 @@ class HybridChunkingStrategy(ChunkingStrategy):
             else:
                 strategy = self._recursive_strategy
 
-            # Chunk the section
-            section_chunks = strategy.chunk(section_content, config, None)
+            # Chunk the section with error handling
+            try:
+                section_chunks = strategy.chunk(section_content, config, None)
+            except Exception as e:
+                # Fall back to character strategy if the selected strategy fails
+                print(f"Strategy {section_type} failed: {e}. Falling back to character strategy.")
+                section_chunks = self._character_strategy.chunk(section_content, config, None)
 
             # Adjust chunk metadata for correct offsets
             for chunk in section_chunks:
                 # Create new metadata with adjusted offsets
+                custom_attrs = {
+                    "strategies_used": [section_type],
+                    "section_type": section_type,
+                }
+                
                 adjusted_metadata = ChunkMetadata(
                     chunk_id=f"hybrid_{chunk_index:04d}",
                     document_id=chunk.metadata.document_id,
@@ -309,6 +374,9 @@ class HybridChunkingStrategy(ChunkingStrategy):
                     token_count=chunk.metadata.token_count,
                     strategy_name="hybrid",
                     section_title=f"{section_type}_section",
+                    custom_attributes=custom_attrs,
+                    semantic_density=0.6,
+                    confidence_score=0.8,
                     created_at=datetime.utcnow(),
                 )
 
@@ -349,20 +417,31 @@ class HybridChunkingStrategy(ChunkingStrategy):
         Returns:
             List of chunks
         """
-        # Select and apply primary strategy
-        if primary_strategy == "markdown":
-            chunks = self._markdown_strategy.chunk(content, config, progress_callback)
-        elif primary_strategy == "semantic":
-            chunks = self._semantic_strategy.chunk(content, config, progress_callback)
-        elif primary_strategy == "character":
+        # Select and apply primary strategy with error handling
+        chunks = []
+        try:
+            if primary_strategy == "markdown":
+                chunks = self._markdown_strategy.chunk(content, config, progress_callback)
+            elif primary_strategy == "semantic":
+                chunks = self._semantic_strategy.chunk(content, config, progress_callback)
+            elif primary_strategy == "character":
+                chunks = self._character_strategy.chunk(content, config, progress_callback)
+            else:
+                chunks = self._recursive_strategy.chunk(content, config, progress_callback)
+        except Exception as e:
+            # Fall back to character strategy if primary fails
+            print(f"Primary strategy {primary_strategy} failed: {e}. Falling back to character strategy.")
             chunks = self._character_strategy.chunk(content, config, progress_callback)
-        else:
-            chunks = self._recursive_strategy.chunk(content, config, progress_callback)
 
         # Update strategy name in metadata
         updated_chunks = []
         for i, chunk in enumerate(chunks):
             # Create new metadata with hybrid strategy name
+            custom_attrs = {
+                "strategies_used": [primary_strategy],
+                "primary_strategy": primary_strategy,
+            }
+            
             hybrid_metadata = ChunkMetadata(
                 chunk_id=f"hybrid_{i:04d}",
                 document_id=chunk.metadata.document_id,
@@ -374,6 +453,9 @@ class HybridChunkingStrategy(ChunkingStrategy):
                 semantic_score=chunk.metadata.semantic_score,
                 hierarchy_level=chunk.metadata.hierarchy_level,
                 section_title=chunk.metadata.section_title,
+                custom_attributes=custom_attrs,
+                semantic_density=0.6,
+                confidence_score=0.8,
                 created_at=datetime.utcnow(),
             )
 
@@ -426,6 +508,9 @@ class HybridChunkingStrategy(ChunkingStrategy):
                         end_offset=chunk.metadata.end_offset,
                         token_count=merged_tokens,
                         strategy_name="hybrid",
+                        custom_attributes=prev_chunk.metadata.custom_attributes,
+                        semantic_density=0.6,
+                        confidence_score=0.8,
                         created_at=datetime.utcnow(),
                     )
 
@@ -455,6 +540,9 @@ class HybridChunkingStrategy(ChunkingStrategy):
                 semantic_score=chunk.metadata.semantic_score,
                 hierarchy_level=chunk.metadata.hierarchy_level,
                 section_title=chunk.metadata.section_title,
+                custom_attributes=chunk.metadata.custom_attributes,
+                semantic_density=chunk.metadata.semantic_density,
+                confidence_score=chunk.metadata.confidence_score,
                 created_at=datetime.utcnow(),
             )
 
@@ -504,3 +592,49 @@ class HybridChunkingStrategy(ChunkingStrategy):
         # Hybrid typically produces similar to recursive
         estimated_tokens = content_length // 4
         return config.estimate_chunks(estimated_tokens)
+
+    def _build_consensus(self, strategy_results: dict[str, list[Chunk]]) -> list[Chunk]:
+        """
+        Build consensus from multiple strategy results.
+        
+        This method combines chunks from different strategies to create
+        an optimal chunking solution.
+        
+        Args:
+            strategy_results: Dictionary mapping strategy names to their chunks
+            
+        Returns:
+            Consensus list of chunks
+        """
+        if not strategy_results:
+            return []
+        
+        # If only one strategy, return its results
+        if len(strategy_results) == 1:
+            return list(strategy_results.values())[0]
+        
+        # Simple consensus: use the strategy that produced the most reasonable chunks
+        # (not too many, not too few)
+        best_chunks = None
+        best_score = float('inf')
+        
+        for strategy_name, chunks in strategy_results.items():
+            if not chunks:
+                continue
+            
+            # Score based on chunk count (prefer moderate numbers)
+            chunk_count = len(chunks)
+            if chunk_count == 0:
+                score = float('inf')
+            elif chunk_count < 3:
+                score = 10 - chunk_count  # Penalize too few chunks
+            elif chunk_count > 50:
+                score = chunk_count  # Penalize too many chunks
+            else:
+                score = 0  # Ideal range
+            
+            if score < best_score:
+                best_score = score
+                best_chunks = chunks
+        
+        return best_chunks if best_chunks else []

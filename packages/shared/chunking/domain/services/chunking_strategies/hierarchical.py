@@ -59,6 +59,7 @@ class HierarchicalChunkingStrategy(ChunkingStrategy):
 
         # Process each level
         total_operations = levels
+        parent_chunks = []
 
         for level in range(levels):
             level_config = level_configs[level]
@@ -69,15 +70,12 @@ class HierarchicalChunkingStrategy(ChunkingStrategy):
                 level,
                 level_config,
                 config.strategy_name,
+                parent_chunks if level > 0 else None,
             )
 
-            # Add parent-child relationships if not top level
-            if level > 0 and all_chunks:
-                self._establish_relationships(
-                    level_chunks,
-                    all_chunks,
-                    level - 1,
-                )
+            # Store chunks from level 0 as parent chunks for next level
+            if level == 0:
+                parent_chunks = level_chunks
 
             all_chunks.extend(level_chunks)
 
@@ -144,6 +142,7 @@ class HierarchicalChunkingStrategy(ChunkingStrategy):
         level: int,
         level_config: dict,
         base_strategy: str,
+        parent_chunks: list[Chunk] | None = None,
     ) -> list[Chunk]:
         """
         Create chunks for a specific hierarchy level.
@@ -195,9 +194,27 @@ class HierarchicalChunkingStrategy(ChunkingStrategy):
             # Calculate token count
             token_count = self.count_tokens(chunk_text)
 
-            # Create metadata
+            # Create metadata with hierarchy info in custom_attributes
+            chunk_id = f"{base_strategy}_L{level}_{chunk_index:04d}"
+            custom_attrs = {
+                "hierarchy_level": level,
+                "chunk_id": chunk_id,  # Store ID for parent references
+            }
+            
+            # Add parent_id for child chunks
+            if level > 0 and parent_chunks:
+                # Find parent chunk that contains this position
+                for parent in parent_chunks:
+                    if parent.metadata.start_offset <= start <= parent.metadata.end_offset:
+                        custom_attrs["parent_id"] = parent.metadata.custom_attributes.get("chunk_id", parent.metadata.chunk_id)
+                        break
+            
+            # Add summary for parent chunks
+            if level == 0:
+                custom_attrs["summary"] = self._generate_summary(chunk_text)
+            
             metadata = ChunkMetadata(
-                chunk_id=f"{base_strategy}_L{level}_{chunk_index:04d}",
+                chunk_id=chunk_id,
                 document_id="doc",
                 chunk_index=chunk_index,
                 start_offset=start,
@@ -205,6 +222,9 @@ class HierarchicalChunkingStrategy(ChunkingStrategy):
                 token_count=token_count,
                 strategy_name=self.name,
                 hierarchy_level=level,
+                custom_attributes=custom_attrs,
+                semantic_density=0.7,  # Higher for hierarchical organization
+                confidence_score=0.85,
                 created_at=datetime.utcnow(),
             )
 
@@ -383,3 +403,28 @@ class HierarchicalChunkingStrategy(ChunkingStrategy):
             total_estimate += level_estimate
 
         return total_estimate
+
+    def _generate_summary(self, text: str) -> str:
+        """
+        Generate a summary for a text chunk.
+        
+        This is a simplified version that extracts key sentences.
+        In a production system, this could use more sophisticated
+        summarization techniques.
+        
+        Args:
+            text: Text to summarize
+            
+        Returns:
+            Summary of the text
+        """
+        sentences = text.split('. ')
+        if len(sentences) <= 2:
+            return text
+        
+        # Simple heuristic: take first and last sentence
+        summary = f"{sentences[0]}. {sentences[-1]}"
+        if not summary.endswith('.'):
+            summary += '.'
+        
+        return summary

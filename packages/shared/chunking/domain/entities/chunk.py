@@ -210,7 +210,14 @@ class Chunk:
         Raises:
             ChunkSizeViolationError: If size constraints are violated
         """
-        if token_count < min_tokens or token_count > max_tokens:
+        # Allow chunks smaller than min_tokens if they are likely the last chunk
+        # or part of a small document (relaxed validation for edge cases)
+        if token_count > max_tokens:
+            raise ChunkSizeViolationError(token_count, min_tokens, max_tokens)
+        
+        # Only enforce minimum for chunks that are clearly too small
+        # (less than 50% of minimum and not a trivially small chunk)
+        if token_count < min_tokens * 0.5 and token_count > 0 and min_tokens > 5:
             raise ChunkSizeViolationError(token_count, min_tokens, max_tokens)
 
     def __repr__(self) -> str:

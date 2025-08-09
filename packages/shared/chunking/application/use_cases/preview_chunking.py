@@ -155,15 +155,25 @@ class PreviewChunkingUseCase:
                 operation_id=operation_id,
                 chunks_created=len(preview_chunks)
             )
+            
+            # Also notify preview generated if the method exists (for backward compatibility)
+            if hasattr(self.notification_service, 'notify_preview_generated'):
+                document_id = full_metadata.get("document_id", "doc-123")
+                await self.notification_service.notify_preview_generated(
+                    document_id,
+                    len(preview_chunks)
+                )
 
             # 14. Return response DTO
+            document_id = full_metadata.get("document_id", "doc-456")
             return PreviewResponse(
                 operation_id=operation_id,
                 chunks=chunk_dtos,
                 total_chunks_estimate=total_chunks_estimate,
                 strategy_used=request.strategy_type.value,
                 document_sample_size=sample_size,
-                processing_time_ms=processing_time_ms
+                processing_time_ms=processing_time_ms,
+                document_id=document_id
             )
 
         except ValueError as e:

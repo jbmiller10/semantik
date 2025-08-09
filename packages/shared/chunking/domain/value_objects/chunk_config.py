@@ -38,6 +38,7 @@ class ChunkConfig:
         "hierarchy_level",  # Number of hierarchy levels (alias for hierarchy_levels)
         "strategies",  # List of strategies for hybrid chunking
         "weights",  # Weights for hybrid chunking strategies
+        "adaptive_weights",  # Enable adaptive weight adjustment for hybrid chunking
     }
 
     def __init__(

@@ -12,11 +12,15 @@ from enum import Enum
 class OperationStatus(Enum):
     """Status of a chunking operation with state machine rules."""
 
-    PENDING = "pending"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+
+    def __str__(self) -> str:
+        """Return string representation in format OperationStatus.NAME."""
+        return f"OperationStatus.{self.name}"
 
     def can_transition_to(self, new_status: "OperationStatus") -> bool:
         """
@@ -32,7 +36,6 @@ class OperationStatus(Enum):
             OperationStatus.PENDING: [
                 OperationStatus.PROCESSING,
                 OperationStatus.CANCELLED,
-                OperationStatus.FAILED,
             ],
             OperationStatus.PROCESSING: [
                 OperationStatus.COMPLETED,

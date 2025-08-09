@@ -6,7 +6,7 @@ This module defines the immutable metadata associated with each chunk,
 including position, size, and semantic information.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 
@@ -29,8 +29,14 @@ class ChunkMetadata:
 
     # Optional semantic information
     semantic_score: float | None = None  # Similarity to adjacent chunks
+    semantic_density: float = 0.5  # Density of semantic information (0.0-1.0)
+    confidence_score: float = 1.0  # Confidence in chunk quality (0.0-1.0)
+    overlap_percentage: float = 0.0  # Percentage of overlap with adjacent chunks (0.0-1.0)
     hierarchy_level: int | None = None  # For hierarchical chunking
     section_title: str | None = None  # For document structure chunking
+
+    # Strategy-specific metadata
+    custom_attributes: dict[str, any] = field(default_factory=dict)  # For strategy-specific data
 
     # Temporal information
     created_at: datetime | None = None
@@ -60,6 +66,24 @@ class ChunkMetadata:
                 raise ValueError(
                     f"Semantic score must be between 0.0 and 1.0, got {self.semantic_score}"
                 )
+
+        # Validate semantic density
+        if not 0.0 <= self.semantic_density <= 1.0:
+            raise ValueError(
+                f"Semantic density must be between 0.0 and 1.0, got {self.semantic_density}"
+            )
+
+        # Validate confidence score
+        if not 0.0 <= self.confidence_score <= 1.0:
+            raise ValueError(
+                f"Confidence score must be between 0.0 and 1.0, got {self.confidence_score}"
+            )
+
+        # Validate overlap percentage
+        if not 0.0 <= self.overlap_percentage <= 1.0:
+            raise ValueError(
+                f"Overlap percentage must be between 0.0 and 1.0, got {self.overlap_percentage}"
+            )
 
         # Validate hierarchy level if provided
         if self.hierarchy_level is not None:
