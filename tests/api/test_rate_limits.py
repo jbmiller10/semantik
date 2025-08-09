@@ -272,6 +272,12 @@ async def test_process_hourly_rate_limit(async_client: AsyncClient, auth_headers
                 process_data = {
                     "strategy": "fixed_size",
                     "priority": "normal",
+                    "config": {
+                        "strategy": "fixed_size",
+                        "chunk_size": 512,
+                        "chunk_overlap": 50,
+                        "preserve_sentences": True
+                    }
                 }
 
                 # Process endpoint has 20 requests per hour limit

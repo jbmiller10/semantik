@@ -55,6 +55,7 @@ from packages.webui.config.rate_limits import RateLimitConfig
 from packages.webui.dependencies import get_collection_for_user
 from packages.webui.rate_limiter import (
     check_circuit_breaker,
+    create_rate_limit_decorator,
     limiter,
 )
 from packages.webui.services.chunking_service import ChunkingService
@@ -202,7 +203,7 @@ async def recommend_strategy(
         503: {"description": "Circuit breaker open"},
     },
 )
-@limiter.limit(RateLimitConfig.PREVIEW_RATE)
+@create_rate_limit_decorator(RateLimitConfig.PREVIEW_RATE)
 async def generate_preview(
     request: Request,  # Required for rate limiting
     preview_request: PreviewRequest,
@@ -314,7 +315,7 @@ async def generate_preview(
         429: {"description": "Rate limit exceeded"},
     },
 )
-@limiter.limit(RateLimitConfig.COMPARE_RATE)
+@create_rate_limit_decorator(RateLimitConfig.COMPARE_RATE)
 async def compare_strategies(
     request: Request,  # Required for rate limiting
     compare_request: CompareRequest,
@@ -406,7 +407,7 @@ async def compare_strategies(
     response_model=PreviewResponse,
     summary="Get cached preview results",
 )
-@limiter.limit(RateLimitConfig.READ_RATE)
+@create_rate_limit_decorator(RateLimitConfig.READ_RATE)
 async def get_cached_preview(
     request: Request,  # Required for rate limiting
     preview_id: str,
@@ -486,7 +487,7 @@ async def clear_preview_cache(
         429: {"description": "Rate limit exceeded"},
     },
 )
-@limiter.limit(RateLimitConfig.PROCESS_RATE)
+@create_rate_limit_decorator(RateLimitConfig.PROCESS_RATE)
 async def start_chunking_operation(
     request: Request,  # Required for rate limiting
     collection_id: str,
@@ -672,7 +673,7 @@ async def update_chunking_strategy(
     response_model=ChunkListResponse,
     summary="Get chunks with pagination",
 )
-@limiter.limit(RateLimitConfig.READ_RATE)
+@create_rate_limit_decorator(RateLimitConfig.READ_RATE)
 async def get_collection_chunks(
     request: Request,  # Required for rate limiting
     collection_id: str,  # noqa: ARG001
@@ -762,7 +763,7 @@ async def get_chunking_stats(
     response_model=GlobalMetrics,
     summary="Get global chunking metrics",
 )
-@limiter.limit(RateLimitConfig.ANALYTICS_RATE)
+@create_rate_limit_decorator(RateLimitConfig.ANALYTICS_RATE)
 async def get_global_metrics(
     request: Request,  # Required for rate limiting
     period_days: int = Query(30, ge=1, le=365, description="Period in days"),  # noqa: ARG001

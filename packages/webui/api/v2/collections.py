@@ -8,7 +8,7 @@ the new collection-centric architecture.
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from packages.shared.database.exceptions import (
     AccessDeniedError,
@@ -30,7 +30,7 @@ from packages.webui.api.schemas import (
 )
 from packages.webui.auth import get_current_user
 from packages.webui.dependencies import get_collection_for_user
-from packages.webui.rate_limiter import limiter
+from packages.webui.rate_limiter import create_rate_limit_decorator, limiter
 from packages.webui.services.collection_service import CollectionService
 from packages.webui.services.factory import get_collection_service
 
@@ -62,23 +62,17 @@ async def create_collection(
     be automatically triggered.
     """
     try:
-        # Build config, omitting fields that are None so the service can apply
-        # sensible defaults instead of passing explicit nulls downstream.
+        # Build config with all fields included
         cfg: dict[str, Any] = {
             "embedding_model": create_request.embedding_model,
             "quantization": create_request.quantization,
             "is_public": create_request.is_public,
+            "chunk_size": create_request.chunk_size,
+            "chunk_overlap": create_request.chunk_overlap,
+            "chunking_strategy": create_request.chunking_strategy,
+            "chunking_config": create_request.chunking_config,
+            "metadata": create_request.metadata,
         }
-        if create_request.chunk_size is not None:
-            cfg["chunk_size"] = create_request.chunk_size
-        if create_request.chunk_overlap is not None:
-            cfg["chunk_overlap"] = create_request.chunk_overlap
-        if create_request.chunking_strategy is not None:
-            cfg["chunking_strategy"] = create_request.chunking_strategy
-        if create_request.chunking_config is not None:
-            cfg["chunking_config"] = create_request.chunking_config
-        if create_request.metadata is not None:
-            cfg["metadata"] = create_request.metadata
 
         collection, operation = await service.create_collection(
             user_id=int(current_user["id"]),
@@ -260,7 +254,6 @@ async def update_collection(
 
 @router.delete(
     "/{collection_uuid}",
-    status_code=204,
     responses={
         404: {"model": ErrorResponse, "description": "Collection not found"},
         403: {"model": ErrorResponse, "description": "Access denied"},
@@ -268,13 +261,13 @@ async def update_collection(
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
 )
-@limiter.limit("5/hour")
+@create_rate_limit_decorator("5/hour")
 async def delete_collection(
     request: Request,  # noqa: ARG001
     collection_uuid: str,
     current_user: dict[str, Any] = Depends(get_current_user),
     service: CollectionService = Depends(get_collection_service),
-) -> None:
+) -> Response:
     """Delete a collection and all associated data.
 
     Permanently deletes a collection including all documents, vectors, and
@@ -327,7 +320,7 @@ async def delete_collection(
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
 )
-@limiter.limit("10/hour")
+@create_rate_limit_decorator("10/hour")
 async def add_source(
     request: Request,  # noqa: ARG001
     collection_uuid: str,
@@ -395,7 +388,7 @@ async def add_source(
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
 )
-@limiter.limit("10/hour")
+@create_rate_limit_decorator("10/hour")
 async def remove_source(
     request: Request,  # noqa: ARG001
     collection_uuid: str,
@@ -462,7 +455,7 @@ async def remove_source(
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
 )
-@limiter.limit("1/5minutes")
+@create_rate_limit_decorator("1/5minutes")
 async def reindex_collection(
     request: Request,  # noqa: ARG001
     collection_uuid: str,
