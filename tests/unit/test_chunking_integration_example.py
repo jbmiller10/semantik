@@ -207,15 +207,8 @@ class TestChunkingIntegrationExample:
     def test_example_imports(self) -> None:
         """Test that all required imports are available."""
         # This test verifies the imports work correctly
-        from packages.webui.api.chunking_exceptions import (
-            ChunkingMemoryError,
-            ChunkingValidationError,
-        )
-        from packages.webui.api.chunking_integration_example import (
-            ChunkingService,
-            process_document,
-            router,
-        )
+        from packages.webui.api.chunking_exceptions import ChunkingMemoryError, ChunkingValidationError
+        from packages.webui.api.chunking_integration_example import ChunkingService, process_document, router
 
         assert ChunkingMemoryError is not None
         assert ChunkingValidationError is not None

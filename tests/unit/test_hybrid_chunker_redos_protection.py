@@ -14,11 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
-from packages.shared.text_processing.strategies.hybrid_chunker import (
-    REGEX_TIMEOUT,
-    HybridChunker,
-    safe_regex_findall,
-)
+from packages.shared.text_processing.strategies.hybrid_chunker import REGEX_TIMEOUT, HybridChunker, safe_regex_findall
 
 
 class TestHybridChunkerReDoSProtection:

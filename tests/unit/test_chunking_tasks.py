@@ -13,11 +13,7 @@ import pytest
 from redis import Redis
 
 from packages.shared.database.models import OperationStatus, OperationType
-from packages.webui.api.chunking_exceptions import (
-    ChunkingMemoryError,
-    ChunkingResourceLimitError,
-    ResourceType,
-)
+from packages.webui.api.chunking_exceptions import ChunkingMemoryError, ChunkingResourceLimitError, ResourceType
 from packages.webui.chunking_tasks import (
     CHUNKING_MEMORY_LIMIT_GB,
     ChunkingTask,

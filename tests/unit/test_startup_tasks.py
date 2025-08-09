@@ -12,10 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.webui.startup_tasks import (
-    ensure_default_chunking_strategies,
-    ensure_default_data,
-)
+from packages.webui.startup_tasks import ensure_default_chunking_strategies, ensure_default_data
 
 
 class TestStartupTasks:
