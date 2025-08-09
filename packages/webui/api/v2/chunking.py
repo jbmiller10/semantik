@@ -51,7 +51,12 @@ from packages.webui.api.v2.chunking_schemas import (
     StrategyRecommendation,
 )
 from packages.webui.auth import get_current_user
+from packages.webui.config.rate_limits import RateLimitConfig
 from packages.webui.dependencies import get_collection_for_user
+from packages.webui.rate_limiter import (
+    check_circuit_breaker,
+    limiter,
+)
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.chunking_strategies import ChunkingStrategyRegistry
 from packages.webui.services.chunking_validation import ChunkingInputValidator
@@ -59,10 +64,6 @@ from packages.webui.services.collection_service import CollectionService
 from packages.webui.services.factory import get_chunking_service, get_collection_service
 
 logger = logging.getLogger(__name__)
-
-# Import for rate limiting - used by tests via monkey patching
-# This is intentionally kept despite not being directly used in code
-limiter = None  # noqa: F841
 
 router = APIRouter(prefix="/api/v2/chunking", tags=["chunking-v2"])
 
@@ -200,8 +201,9 @@ async def recommend_strategy(
         413: {"description": "Content too large"},
     },
 )
+@limiter.limit(RateLimitConfig.PREVIEW_RATE)
 async def generate_preview(
-    request: Request,  # Required for rate limiting  # noqa: ARG001
+    request: Request,  # Required for rate limiting
     preview_request: PreviewRequest,
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
@@ -212,6 +214,9 @@ async def generate_preview(
 
     Rate limited to 10 requests per minute per user.
     """
+    # Check circuit breaker first
+    check_circuit_breaker(request)
+
     correlation_id = str(uuid.uuid4())
 
     # Verify user is authenticated (defense in depth)
@@ -308,8 +313,9 @@ async def generate_preview(
         429: {"description": "Rate limit exceeded"},
     },
 )
+@limiter.limit(RateLimitConfig.COMPARE_RATE)
 async def compare_strategies(
-    request: Request,  # noqa: ARG001
+    request: Request,  # Required for rate limiting
     compare_request: CompareRequest,
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
@@ -320,6 +326,9 @@ async def compare_strategies(
 
     Rate limited to 5 requests per minute per user.
     """
+    # Check circuit breaker first
+    check_circuit_breaker(request)
+
     correlation_id = str(uuid.uuid4())
 
     try:
@@ -396,7 +405,9 @@ async def compare_strategies(
     response_model=PreviewResponse,
     summary="Get cached preview results",
 )
+@limiter.limit(RateLimitConfig.READ_RATE)
 async def get_cached_preview(
+    request: Request,  # Required for rate limiting
     preview_id: str,
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001  # noqa: ARG001
     service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
@@ -405,6 +416,9 @@ async def get_cached_preview(
     Retrieve cached preview results by preview ID.
     Preview results are cached for 15 minutes after generation.
     """
+    # Check circuit breaker first
+    check_circuit_breaker(request)
+
     try:
         # Get cached preview using the key-based method
         cache_key = f"preview:{preview_id}:{current_user['id']}"
@@ -468,9 +482,12 @@ async def clear_preview_cache(
     responses={
         400: {"description": "Invalid configuration"},
         422: {"description": "Validation error"},
+        429: {"description": "Rate limit exceeded"},
     },
 )
+@limiter.limit(RateLimitConfig.PROCESS_RATE)
 async def start_chunking_operation(
+    request: Request,  # Required for rate limiting
     collection_id: str,
     chunking_request: ChunkingOperationRequest,
     background_tasks: BackgroundTasks,
@@ -484,7 +501,11 @@ async def start_chunking_operation(
     Returns immediately with an operation ID for tracking progress.
 
     Progress updates are sent via WebSocket on the returned channel.
+    Rate limited to 20 requests per hour per user.
     """
+    # Check circuit breaker first
+    check_circuit_breaker(request)
+
     try:
         # First validate the configuration
         validation_result = await service.validate_config_for_collection(
@@ -650,7 +671,9 @@ async def update_chunking_strategy(
     response_model=ChunkListResponse,
     summary="Get chunks with pagination",
 )
+@limiter.limit(RateLimitConfig.READ_RATE)
 async def get_collection_chunks(
+    request: Request,  # Required for rate limiting
     collection_id: str,  # noqa: ARG001
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
@@ -662,7 +685,11 @@ async def get_collection_chunks(
     """
     Get paginated list of chunks for a collection.
     Optionally filter by document ID.
+    Rate limited to 60 requests per minute per user.
     """
+    # Check circuit breaker first
+    check_circuit_breaker(request)
+
     try:
         # This would typically query the chunk storage
         # For now, returning mock data structure
@@ -734,14 +761,20 @@ async def get_chunking_stats(
     response_model=GlobalMetrics,
     summary="Get global chunking metrics",
 )
+@limiter.limit(RateLimitConfig.ANALYTICS_RATE)
 async def get_global_metrics(
+    request: Request,  # Required for rate limiting
     period_days: int = Query(30, ge=1, le=365, description="Period in days"),  # noqa: ARG001
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> GlobalMetrics:
     """
     Get global chunking metrics across all collections for the specified period.
+    Rate limited to 30 requests per minute per user.
     """
+    # Check circuit breaker first
+    check_circuit_breaker(request)
+
     try:
         # This would aggregate metrics from database
         # For now, returning mock structure
