@@ -14,14 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from packages.shared.database.exceptions import (
-    EntityNotFoundError,
-)
-from packages.webui.api.chunking_exceptions import (
-    ChunkingMemoryError,
-    ChunkingStrategyError,
-    ChunkingTimeoutError,
-)
+from packages.shared.database.exceptions import EntityNotFoundError
+from packages.webui.api.chunking_exceptions import ChunkingMemoryError, ChunkingStrategyError, ChunkingTimeoutError
 from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
 from packages.webui.services.chunking_service import ChunkingService
 
