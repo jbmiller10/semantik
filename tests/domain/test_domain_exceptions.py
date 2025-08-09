@@ -8,9 +8,6 @@ from packages.shared.chunking.domain.exceptions import (
     DocumentTooLargeError,
     InvalidConfigurationError,
     InvalidStateError,
-    InvalidChunkError,
-    ChunkSizeViolationError,
-    OverlapConfigurationError,
 )
 
 
@@ -188,11 +185,12 @@ class TestBusinessRuleEnforcement:
 
     def test_chunk_count_limit_enforcement(self):
         """Test that chunk count limits are enforced."""
-        from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
+        from unittest.mock import MagicMock
+
         from packages.shared.chunking.domain.entities.chunk import Chunk
+        from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
         from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
         from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
-        from unittest.mock import MagicMock
 
         # Arrange
         config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
@@ -233,10 +231,11 @@ class TestBusinessRuleEnforcement:
 
     def test_operation_timeout_enforcement(self):
         """Test that operation timeout is enforced."""
-        from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
-        from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
         from datetime import datetime, timedelta
         from unittest.mock import patch
+
+        from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
+        from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
         # Arrange
         config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
@@ -303,8 +302,8 @@ class TestBusinessRuleEnforcement:
 
     def test_coverage_requirement_enforcement(self):
         """Test that coverage requirements are enforced."""
-        from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
         from packages.shared.chunking.domain.entities.chunk import Chunk
+        from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
         from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
         from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 

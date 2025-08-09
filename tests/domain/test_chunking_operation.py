@@ -17,17 +17,17 @@ from packages.shared.chunking.domain.value_objects.operation_status import Opera
 class TestChunkingOperation:
     """Test suite for ChunkingOperation entity."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def valid_config(self):
         """Create a valid chunk configuration."""
         return ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
 
-    @pytest.fixture
+    @pytest.fixture()
     def sample_document(self):
         """Create sample document content."""
         return "This is a sample document content for testing chunking operations."
 
-    @pytest.fixture
+    @pytest.fixture()
     def chunking_operation(self, valid_config, sample_document):
         """Create a chunking operation instance."""
         return ChunkingOperation(

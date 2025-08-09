@@ -12,9 +12,8 @@ import pytest
 from redis import Redis
 
 from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
-from packages.webui.services.chunking_constants import DEFAULT_CHUNK_SIZE
 from packages.webui.services.chunking_security import ValidationError
-from packages.webui.services.chunking_service import ChunkingService, ChunkingStatistics
+from packages.webui.services.chunking_service import ChunkingService
 
 
 class TestChunkingService:

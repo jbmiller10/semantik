@@ -7,9 +7,9 @@ Queries the status and progress of chunking operations.
 from datetime import datetime
 from typing import Any
 
+from ...domain.value_objects.operation_status import OperationStatus as DomainOperationStatus
 from ..dto.requests import GetOperationStatusRequest
 from ..dto.responses import ChunkDTO, GetOperationStatusResponse, OperationMetrics, OperationStatus
-from ...domain.value_objects.operation_status import OperationStatus as DomainOperationStatus
 from ..interfaces.repositories import ChunkingOperationRepository, ChunkRepository
 from ..interfaces.services import MetricsService
 

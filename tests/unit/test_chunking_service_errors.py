@@ -16,15 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.text_processing.base_chunker import ChunkResult
-from packages.webui.api.chunking_exceptions import (
-    ChunkingMemoryError,
-    ChunkingStrategyError,
-    ChunkingTimeoutError,
-    ChunkingValidationError,
-)
 from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
-from packages.webui.services.chunking_validation import ChunkingInputValidator
 from packages.webui.services.chunking_service import ChunkingService
+from packages.webui.services.chunking_validation import ChunkingInputValidator
 
 
 class TestChunkingServiceErrorHandling:

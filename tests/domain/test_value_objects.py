@@ -289,7 +289,7 @@ class TestChunkMetadata:
 
     def test_full_metadata_creation(self):
         """Test creating metadata with all fields."""
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
 
         # Act
         now = datetime.now(UTC)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for all chunking strategies."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -17,12 +17,12 @@ from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConf
 class TestCharacterChunkingStrategy:
     """Test suite for CharacterChunkingStrategy."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def strategy(self):
         """Create a character chunking strategy instance."""
         return CharacterChunkingStrategy()
 
-    @pytest.fixture
+    @pytest.fixture()
     def config(self):
         """Create a basic config for character chunking."""
         return ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=20, overlap_tokens=5)
@@ -142,12 +142,12 @@ class TestCharacterChunkingStrategy:
 class TestRecursiveChunkingStrategy:
     """Test suite for RecursiveChunkingStrategy."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def strategy(self):
         """Create a recursive chunking strategy instance."""
         return RecursiveChunkingStrategy()
 
-    @pytest.fixture
+    @pytest.fixture()
     def config(self):
         """Create config for recursive chunking."""
         return ChunkConfig(strategy_name="recursive", min_tokens=15, max_tokens=30, overlap_tokens=5)
@@ -249,7 +249,7 @@ More text after the code."""
 class TestSemanticChunkingStrategy:
     """Test suite for SemanticChunkingStrategy."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def strategy(self):
         """Create a semantic chunking strategy instance with mocked embeddings."""
         with patch(
@@ -259,7 +259,7 @@ class TestSemanticChunkingStrategy:
             mock_sim.return_value = 0.7
             yield SemanticChunkingStrategy()
 
-    @pytest.fixture
+    @pytest.fixture()
     def config(self):
         """Create config for semantic chunking."""
         return ChunkConfig(
@@ -323,7 +323,7 @@ A new restaurant opened downtown. The menu features Italian cuisine."""
         """Test that semantic density is calculated in metadata."""
         # Arrange
         text = """First topic sentence. Related to first topic.
-        
+
         Second topic sentence. Different subject entirely."""
 
         # Act
@@ -361,12 +361,12 @@ A new restaurant opened downtown. The menu features Italian cuisine."""
 class TestMarkdownChunkingStrategy:
     """Test suite for MarkdownChunkingStrategy."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def strategy(self):
         """Create a markdown chunking strategy instance."""
         return MarkdownChunkingStrategy()
 
-    @pytest.fixture
+    @pytest.fixture()
     def config(self):
         """Create config for markdown chunking."""
         return ChunkConfig(strategy_name="markdown", min_tokens=20, max_tokens=100, overlap_tokens=10)
@@ -527,12 +527,12 @@ Regular text here.
 class TestHierarchicalChunkingStrategy:
     """Test suite for HierarchicalChunkingStrategy."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def strategy(self):
         """Create a hierarchical chunking strategy instance."""
         return HierarchicalChunkingStrategy()
 
-    @pytest.fixture
+    @pytest.fixture()
     def config(self):
         """Create config for hierarchical chunking."""
         return ChunkConfig(
@@ -639,12 +639,12 @@ And continues with more content that adds context."""
 class TestHybridChunkingStrategy:
     """Test suite for HybridChunkingStrategy."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def strategy(self):
         """Create a hybrid chunking strategy instance."""
         return HybridChunkingStrategy()
 
-    @pytest.fixture
+    @pytest.fixture()
     def config(self):
         """Create config for hybrid chunking."""
         return ChunkConfig(
@@ -750,9 +750,9 @@ Regular paragraph content.
         """Test that consensus is built between strategies."""
         # Arrange
         text = """Technical paragraph about programming concepts and algorithms.
-        
+
         Another technical paragraph with related content.
-        
+
         Completely different topic about nature and wildlife."""
 
         # Act

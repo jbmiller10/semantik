@@ -6,7 +6,7 @@ This is the main use case for production document processing.
 """
 
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -76,7 +76,7 @@ class ProcessDocumentUseCase:
             Exception: For processing failures
         """
         operation_id = str(uuid4())
-        processing_started_at = datetime.now(timezone.utc)
+        processing_started_at = datetime.now(UTC)
         chunks_saved = 0
         checkpoints_created = 0
 
@@ -205,7 +205,7 @@ class ProcessDocumentUseCase:
                             )
 
                 # 12. Mark operation as completed
-                processing_completed_at = datetime.now(timezone.utc)
+                processing_completed_at = datetime.now(UTC)
                 await self.unit_of_work.operations.mark_completed(
                     operation_id=operation_id, completed_at=processing_completed_at
                 )
@@ -323,7 +323,7 @@ class ProcessDocumentUseCase:
             "collection_id": collection_id,
             "strategy_type": strategy_type,
             "status": "pending",
-            "created_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
         }
 
     def _create_chunk_entity(
@@ -345,5 +345,5 @@ class ProcessDocumentUseCase:
             "start_offset": chunk.metadata.start_offset,
             "end_offset": chunk.metadata.end_offset,
             "token_count": chunk.metadata.token_count,
-            "created_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
         }

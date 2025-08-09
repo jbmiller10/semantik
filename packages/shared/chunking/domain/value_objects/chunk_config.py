@@ -6,12 +6,10 @@ This module defines the configuration for chunking operations with built-in
 validation and business rule enforcement.
 """
 
-from dataclasses import dataclass, field
 from typing import Any
 
 from packages.shared.chunking.domain.exceptions import (
     InvalidConfigurationError,
-    OverlapConfigurationError,
 )
 
 

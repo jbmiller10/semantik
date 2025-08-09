@@ -6,16 +6,13 @@ preview functionality, strategy recommendations, configuration management,
 caching behavior, and error handling.
 """
 
-import asyncio
 import json
 import uuid
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from packages.shared.database.exceptions import EntityNotFoundError
-from packages.webui.api.chunking_exceptions import ChunkingMemoryError, ChunkingStrategyError, ChunkingTimeoutError
 from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
 from packages.webui.services.chunking_service import ChunkingService
 
@@ -532,8 +529,8 @@ class TestErrorHandling:
     async def test_handle_memory_error(self, chunking_service: ChunkingService) -> None:
         """Test handling of memory errors during chunking."""
         # Simulate large content that would exceed memory limits
-        from packages.webui.services.chunking_security import ValidationError
         from packages.webui.services.chunking_constants import MAX_PREVIEW_CONTENT_SIZE
+        from packages.webui.services.chunking_security import ValidationError
 
         # Use actual limit from constants
         large_content = "x" * (MAX_PREVIEW_CONTENT_SIZE + 1)
@@ -712,7 +709,6 @@ class TestConcurrency:
     @pytest.mark.asyncio()
     async def test_concurrent_preview_requests(self, chunking_service: ChunkingService) -> None:
         """Test handling multiple concurrent preview requests."""
-        import asyncio
 
         # Create multiple preview tasks
         tasks = []
@@ -733,7 +729,6 @@ class TestConcurrency:
     @pytest.mark.asyncio()
     async def test_concurrent_cache_access(self, chunking_service: ChunkingService, mock_redis: AsyncMock) -> None:
         """Test concurrent cache access doesn't cause issues."""
-        import asyncio
 
         # Same content for all to trigger cache hits
         content = "Shared content for caching"

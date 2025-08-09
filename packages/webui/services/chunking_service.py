@@ -23,10 +23,10 @@ from packages.shared.chunking.domain.exceptions import (
     InvalidConfigurationError,
 )
 from packages.shared.chunking.domain.services.chunking_strategies import (
-    get_strategy,
     STRATEGY_REGISTRY,
+    get_strategy,
 )
-from packages.shared.database.models import ChunkingStrategy, Collection, Operation
+from packages.shared.database.models import ChunkingStrategy, Operation
 from packages.shared.database.repositories.collection_repository import (
     CollectionRepository,
 )
@@ -133,7 +133,6 @@ class ChunkingService:
         Returns:
             Strategy recommendation with reasoning
         """
-        from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
 
         # Extract file types from paths if provided
         if file_paths and not file_types:
@@ -208,9 +207,8 @@ class ChunkingService:
         Returns:
             Preview response with chunks and metadata
         """
-        from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
-        from packages.webui.services.chunking_security import ValidationError
         from packages.webui.services.chunking_constants import MAX_PREVIEW_CONTENT_SIZE
+        from packages.webui.services.chunking_security import ValidationError
 
         # Check size limit
         if len(content) > MAX_PREVIEW_CONTENT_SIZE:
@@ -1176,7 +1174,6 @@ class ChunkingService:
         """
         # This is a placeholder - actual implementation would be in a Celery task
         logger.info(f"Processing chunking operation {operation_id}")
-        pass
 
     async def update_collection(self, collection_id: str, updates: dict[str, Any]) -> None:
         """Update collection after chunking.
@@ -1187,4 +1184,3 @@ class ChunkingService:
         """
         # This would update collection metadata after chunking
         logger.info(f"Updating collection {collection_id} with {updates}")
-        pass

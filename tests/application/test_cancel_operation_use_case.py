@@ -9,7 +9,6 @@ import pytest
 from packages.shared.chunking.application.dto.requests import CancelOperationRequest
 from packages.shared.chunking.application.dto.responses import CancelOperationResponse, OperationStatus
 from packages.shared.chunking.application.use_cases.cancel_operation import CancelOperationUseCase
-from packages.shared.chunking.domain.exceptions import InvalidStateError
 
 
 class TestCancelOperationUseCase:
@@ -295,7 +294,7 @@ class TestCancelOperationUseCase:
                 # Don't raise, just log would have failed
                 pass
             # First call is in the exception handler, should work
-            return None
+            return
 
         use_case.notification_service.notify_error = AsyncMock(side_effect=notify_error_side_effect)
 

@@ -163,7 +163,7 @@ class ChunkingOperation:
             # Validate chunk count
             if len(chunks) > self.MAX_CHUNKS_PER_OPERATION:
                 raise InvalidStateError(
-                    f"Operation produced {len(chunks)} chunks, " f"exceeding limit of {self.MAX_CHUNKS_PER_OPERATION}"
+                    f"Operation produced {len(chunks)} chunks, exceeding limit of {self.MAX_CHUNKS_PER_OPERATION}"
                 )
 
             # Add chunks to collection

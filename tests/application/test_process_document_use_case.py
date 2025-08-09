@@ -7,11 +7,9 @@ from uuid import uuid4
 import pytest
 
 from packages.shared.chunking.application.dto.requests import ChunkingStrategy, ProcessDocumentRequest
-from packages.shared.chunking.application.dto.responses import ProcessDocumentResponse, OperationStatus
+from packages.shared.chunking.application.dto.responses import OperationStatus, ProcessDocumentResponse
 from packages.shared.chunking.application.use_cases.process_document import ProcessDocumentUseCase
 from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
-from packages.shared.chunking.domain.exceptions import DocumentTooLargeError, InvalidConfigurationError
 from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 
 

@@ -10,6 +10,8 @@ import pytest
 from packages.shared.chunking.application.dto.requests import GetOperationStatusRequest
 from packages.shared.chunking.application.dto.responses import (
     GetOperationStatusResponse,
+)
+from packages.shared.chunking.application.dto.responses import (
     OperationStatus as DTOOperationStatus,
 )
 from packages.shared.chunking.application.use_cases.get_operation_status import GetOperationStatusUseCase
