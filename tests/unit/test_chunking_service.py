@@ -24,9 +24,11 @@ class TestChunkingService:
     def mock_redis(self) -> MagicMock:
         """Mock Redis client."""
         redis = MagicMock(spec=Redis)
-        redis.get = MagicMock(return_value=None)
-        redis.setex = MagicMock()
-        redis.incr = MagicMock()
+        redis.get = AsyncMock(return_value=None)
+        redis.setex = AsyncMock()
+        redis.incr = AsyncMock()
+        redis.hincrby = AsyncMock()
+        redis.expire = AsyncMock()
         return redis
 
     @pytest.fixture()
