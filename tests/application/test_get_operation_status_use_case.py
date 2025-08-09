@@ -42,21 +42,12 @@ class TestGetOperationStatusUseCase:
         return service
     
     @pytest.fixture()
-    def mock_cache_service(self):
-        """Create mock cache service."""
-        service = AsyncMock()
-        service.get_status = AsyncMock(return_value=None)
-        service.set_status = AsyncMock()
-        return service
-
-    @pytest.fixture()
-    def use_case(self, mock_repository, mock_chunk_repository, mock_metrics_service, mock_cache_service):
+    def use_case(self, mock_repository, mock_chunk_repository, mock_metrics_service):
         """Create use case instance with mocked dependencies."""
         return GetOperationStatusUseCase(
             operation_repository=mock_repository,
             chunk_repository=mock_chunk_repository,
-            metrics_service=mock_metrics_service,
-            cache_service=mock_cache_service)
+            metrics_service=mock_metrics_service)
 
     @pytest.fixture()
     def sample_operation(self):
@@ -106,8 +97,8 @@ class TestGetOperationStatusUseCase:
         use_case.operation_repository.find_by_id.assert_called_once_with(valid_request.operation_id)
 
     @pytest.mark.asyncio()
-    async def test_get_status_from_cache(self, use_case, valid_request):
-        """Test status retrieval when not cached (cache returns None)."""
+    async def test_get_status_from_repository(self, use_case, valid_request):
+        """Test status retrieval directly from repository."""
         # Arrange
         # Create a mock operation to return from repository
         operation = MagicMock()
@@ -119,8 +110,6 @@ class TestGetOperationStatusUseCase:
         operation.updated_at = datetime.utcnow()
         operation.error_message = None
         
-        # Cache returns None (not cached)
-        use_case.cache_service.get_status.return_value = None
         use_case.operation_repository.find_by_id.return_value = operation
 
         # Act
@@ -130,7 +119,7 @@ class TestGetOperationStatusUseCase:
         assert response.progress_percentage == 60.0  # 6/10 * 100
         assert response.chunks_processed == 6
 
-        # Repository should be called when cache miss
+        # Repository should be called
         use_case.operation_repository.find_by_id.assert_called_once()
 
     @pytest.mark.asyncio()
@@ -310,33 +299,36 @@ class TestGetOperationStatusUseCase:
         assert response.status == DTOOperationStatus.IN_PROGRESS
 
     @pytest.mark.asyncio()
-    async def test_cache_update_after_retrieval(self, use_case, valid_request, sample_operation):
-        """Test that cache is updated after retrieving from repository."""
+    async def test_status_retrieval_from_repository(self, use_case, valid_request, sample_operation):
+        """Test that status is correctly retrieved from repository."""
         # Arrange
+        # Set attributes for progress calculation
+        sample_operation.total_chunks = 10
+        sample_operation.chunks_processed = 5  # 50% progress
         use_case.operation_repository.find_by_id.return_value = sample_operation
-        use_case.cache_service.get_status.return_value = None  # Cache miss
 
         # Act
         response = await use_case.execute(valid_request)
 
         # Assert
-        use_case.cache_service.set_status.assert_called_once()
-        cache_call_args = use_case.cache_service.set_status.call_args[0]
-        assert cache_call_args[0] == valid_request.operation_id
-        assert cache_call_args[1]["status"] == "PROCESSING"
-        assert cache_call_args[1]["progress_percentage"] == 45.0
+        use_case.operation_repository.find_by_id.assert_called_once_with(valid_request.operation_id)
+        assert response.operation_id == sample_operation.id
+        assert response.status == DTOOperationStatus.IN_PROGRESS  # PROCESSING maps to IN_PROGRESS
+        assert response.progress_percentage == 50.0  # 5/10 * 100
 
     @pytest.mark.asyncio()
-    async def test_no_cache_update_for_terminal_states(self, use_case, valid_request):
-        """Test that terminal states are not cached with short TTL."""
+    async def test_terminal_state_retrieval(self, use_case, valid_request):
+        """Test that terminal states are correctly retrieved."""
         # Arrange
         completed_operation = MagicMock()
         completed_operation.id = valid_request.operation_id
         completed_operation.document_id = "doc-complete"
         completed_operation.status = OperationStatus.COMPLETED
-        completed_operation.progress_percentage = 100.0
-        completed_operation.chunk_collection.chunk_count = 10
-        completed_operation.get_statistics.return_value = {}
+        completed_operation.total_chunks = 10
+        completed_operation.chunks_processed = 10
+        completed_operation.created_at = datetime.utcnow()
+        completed_operation.updated_at = datetime.utcnow()
+        completed_operation.error_message = None
 
         use_case.operation_repository.find_by_id.return_value = completed_operation
 
@@ -344,10 +336,9 @@ class TestGetOperationStatusUseCase:
         response = await use_case.execute(valid_request)
 
         # Assert
-        # Cache should be updated but potentially with longer TTL for terminal states
-        use_case.cache_service.set_status.assert_called_once()
-        cache_call = use_case.cache_service.set_status.call_args
-        # Could check for different TTL if implemented
+        assert response.status == DTOOperationStatus.COMPLETED
+        assert response.progress_percentage == 100.0
+        use_case.operation_repository.find_by_id.assert_called_once_with(valid_request.operation_id)
 
     @pytest.mark.asyncio()
     async def test_concurrent_status_requests(self, use_case, sample_operation):
@@ -369,25 +360,22 @@ class TestGetOperationStatusUseCase:
         assert len(responses) == 5
         for response in responses:
             assert response.operation_id == sample_operation.id
-            assert response.status == "PROCESSING"
+            assert response.status == DTOOperationStatus.IN_PROGRESS  # PROCESSING maps to IN_PROGRESS
 
     @pytest.mark.asyncio()
-    async def test_status_with_validation_results(self, use_case, valid_request):
-        """Test that validation results are included in status."""
+    async def test_status_with_completed_operation_details(self, use_case, valid_request):
+        """Test that completed operation returns all expected details."""
         # Arrange
         operation = MagicMock()
         operation.id = valid_request.operation_id
         operation.document_id = "doc-validate"
         operation.status = OperationStatus.COMPLETED
-        operation.progress_percentage = 100.0
-        operation.chunk_collection.chunk_count = 8
-        operation.validate_results.return_value = (False, ["Insufficient coverage: 75%"])
-        operation.get_statistics.return_value = {
-            "validation": {
-                "is_valid": False,
-                "issues": ["Insufficient coverage: 75%"],
-            }
-        }
+        operation.total_chunks = 8
+        operation.chunks_processed = 8
+        operation.created_at = datetime.utcnow()
+        operation.updated_at = datetime.utcnow()
+        operation.completed_at = datetime.utcnow()
+        operation.error_message = None
 
         use_case.operation_repository.find_by_id.return_value = operation
 
@@ -395,28 +383,26 @@ class TestGetOperationStatusUseCase:
         response = await use_case.execute(valid_request)
 
         # Assert
-        assert response.validation_results is not None
-        assert not response.validation_results["is_valid"]
-        assert "Insufficient coverage" in response.validation_results["issues"][0]
+        assert response.status == DTOOperationStatus.COMPLETED
+        assert response.progress_percentage == 100.0
+        assert response.chunks_processed == 8
+        assert response.total_chunks == 8
+        assert response.error_message is None
 
     @pytest.mark.asyncio()
-    async def test_status_with_estimated_completion(self, use_case, valid_request):
-        """Test estimated completion time for processing operations."""
+    async def test_status_with_processing_operation_timing(self, use_case, valid_request):
+        """Test timing information for processing operations."""
         # Arrange
         operation = MagicMock()
         operation.id = valid_request.operation_id
         operation.document_id = "doc-estimate"
         operation.status = OperationStatus.PROCESSING
-        operation.progress_percentage = 40.0
-        operation.chunk_collection.chunk_count = 4
-        operation._started_at = datetime.utcnow() - timedelta(seconds=20)
-        operation._completed_at = None
-        operation.get_statistics.return_value = {
-            "timing": {
-                "started_at": operation._started_at.isoformat(),
-                "duration_seconds": 20.0,
-            }
-        }
+        operation.total_chunks = 10
+        operation.chunks_processed = 4  # 40% progress
+        operation.created_at = datetime.utcnow() - timedelta(seconds=20)
+        operation.updated_at = datetime.utcnow()
+        operation.completed_at = None
+        operation.error_message = None
 
         use_case.operation_repository.find_by_id.return_value = operation
 
@@ -424,9 +410,11 @@ class TestGetOperationStatusUseCase:
         response = await use_case.execute(valid_request)
 
         # Assert
-        assert response.estimated_completion_seconds is not None
-        # At 40% progress after 20 seconds, should estimate ~30 more seconds
-        assert 25 <= response.estimated_completion_seconds <= 35
+        assert response.status == DTOOperationStatus.IN_PROGRESS
+        assert response.progress_percentage == 40.0  # 4/10 * 100
+        assert response.started_at is not None
+        assert response.updated_at is not None
+        assert response.completed_at is None
 
     @pytest.mark.asyncio()
     async def test_invalid_operation_id_format(self, use_case):

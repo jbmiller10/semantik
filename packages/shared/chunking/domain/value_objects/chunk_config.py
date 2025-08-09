@@ -34,6 +34,10 @@ class ChunkConfig:
         "timeout",  # Operation timeout
         "batch_size",  # Batch processing size
         "metadata",  # Additional metadata
+        "similarity_threshold",  # Threshold for semantic similarity (alias for semantic_threshold)
+        "hierarchy_level",  # Number of hierarchy levels (alias for hierarchy_levels)
+        "strategies",  # List of strategies for hybrid chunking
+        "weights",  # Weights for hybrid chunking strategies
     }
 
     def __init__(

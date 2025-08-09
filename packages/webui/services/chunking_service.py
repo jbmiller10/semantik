@@ -254,15 +254,25 @@ class ChunkingService:
             # Create ChunkConfig from the provided config dictionary
             from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
             
+            # Use sensible defaults if no config provided
             chunk_size = config.get("chunk_size", 1000) if config else 1000
             chunk_overlap = config.get("chunk_overlap", 200) if config else 200
             
+            # Ensure overlap is not too large
+            if chunk_overlap >= chunk_size:
+                chunk_overlap = min(200, chunk_size // 4)
+            
             # Build ChunkConfig with proper parameters
+            # Ensure min_tokens is less than max_tokens and overlap_tokens is valid
+            min_tokens = min(100, chunk_size // 2)  # Set reasonable min
+            max_tokens = max(chunk_size, min_tokens + 1)  # Ensure max > min
+            overlap_tokens = min(chunk_overlap, min_tokens - 1)  # Ensure overlap < min
+            
             chunk_config = ChunkConfig(
                 strategy_name=strategy,
-                min_tokens=chunk_size // 2,  # Set min to half of max for flexibility
-                max_tokens=chunk_size,
-                overlap_tokens=chunk_overlap,
+                min_tokens=min_tokens,
+                max_tokens=max_tokens,
+                overlap_tokens=max(0, overlap_tokens),  # Ensure non-negative
                 preserve_structure=config.get("preserve_structure", True) if config else True,
                 semantic_threshold=config.get("semantic_threshold", 0.7) if config else 0.7,
                 hierarchy_levels=config.get("hierarchy_levels", 3) if config else 3,
