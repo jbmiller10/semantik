@@ -68,14 +68,15 @@ async def create_collection(
             "embedding_model": create_request.embedding_model,
             "quantization": create_request.quantization,
             "is_public": create_request.is_public,
-            # Always include chunking fields so downstream can see explicit intent
-            "chunking_strategy": create_request.chunking_strategy,
-            "chunking_config": create_request.chunking_config,
         }
         if create_request.chunk_size is not None:
             cfg["chunk_size"] = create_request.chunk_size
         if create_request.chunk_overlap is not None:
             cfg["chunk_overlap"] = create_request.chunk_overlap
+        if create_request.chunking_strategy is not None:
+            cfg["chunking_strategy"] = create_request.chunking_strategy
+        if create_request.chunking_config is not None:
+            cfg["chunking_config"] = create_request.chunking_config
         if create_request.metadata is not None:
             cfg["metadata"] = create_request.metadata
 
