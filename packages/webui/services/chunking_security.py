@@ -7,7 +7,12 @@ and ensure safe chunking parameters.
 """
 
 import logging
+import os
+import re
+import unicodedata
+from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 logger = logging.getLogger(__name__)
 
@@ -126,15 +131,57 @@ class ChunkingSecurityValidator:
         if len(strategy) > 50:
             raise ValidationError(f"Strategy name too long: {len(strategy)} characters (maximum 50 allowed)")
 
+    # Path traversal patterns - comprehensive list of dangerous patterns
+    TRAVERSAL_PATTERNS = [
+        # Unix/Linux patterns
+        re.compile(r"\.\.\/"),  # ../
+        re.compile(r"\.\.\\"),  # ..\
+        re.compile(r"^\/"),  # Absolute path /
+        re.compile(r"^~"),  # Home directory ~
+        # Windows patterns
+        re.compile(r"^[a-zA-Z]:"),  # Drive letters C:
+        re.compile(r"^\\\\"),  # UNC paths \\server
+        re.compile(r"^\\"),  # Windows absolute \
+        # Encoded variants (case-insensitive)
+        re.compile(r"%2e%2e[%2f%5c]", re.I),  # URL encoded ../ or ..\
+        re.compile(r"%252e%252e", re.I),  # Double encoded
+        re.compile(r"%25252e%25252e", re.I),  # Triple encoded
+        re.compile(r"%00", re.I),  # URL encoded null byte
+        re.compile(r"%25%30%30", re.I),  # Double encoded null byte
+        # Unicode/special character attacks
+        re.compile(r"[\u0000]"),  # Null bytes
+        re.compile(r"[\u202e]"),  # Right-to-left override
+        re.compile(r"[\ufeff]"),  # Zero-width no-break space
+        re.compile(r"[\uff0e\uff0f]"),  # Full-width dot and slash
+    ]
+
+    # Additional dangerous character patterns
+    DANGEROUS_CHARS = [
+        "\x00",  # Null byte
+        "\r",  # Carriage return
+        "\n",  # Newline
+        "\u202e",  # Right-to-left override
+        "\ufeff",  # Zero-width no-break space
+    ]
+
     @staticmethod
-    def validate_file_paths(file_paths: list[str]) -> None:
-        """Validate file paths to prevent directory traversal.
+    def validate_file_paths(file_paths: list[str], base_dir: str | None = None) -> None:
+        """Validate file paths to prevent directory traversal attacks.
+
+        This method implements comprehensive OWASP-compliant path validation including:
+        - Multiple URL encoding layer detection
+        - Unicode normalization
+        - Null byte detection
+        - Windows and Unix path traversal patterns
+        - Symlink resolution
+        - Base directory containment verification
 
         Args:
             file_paths: List of file paths to validate
+            base_dir: Optional base directory for containment verification
 
         Raises:
-            ValidationError: If any path is invalid
+            ValidationError: If any path is invalid or potentially malicious
         """
         if not isinstance(file_paths, list):
             raise ValidationError("file_paths must be a list")
@@ -142,19 +189,89 @@ class ChunkingSecurityValidator:
         if len(file_paths) > 1000:
             raise ValidationError(f"Too many file paths: {len(file_paths)} (maximum 1000 allowed)")
 
-        for path in file_paths:
-            if not isinstance(path, str):
-                raise ValidationError(f"File path must be string, got {type(path).__name__}")
+        for original_path in file_paths:
+            if not isinstance(original_path, str):
+                raise ValidationError(f"File path must be string, got {type(original_path).__name__}")
 
-            # Check for directory traversal attempts
-            if ".." in path or path.startswith("/"):
-                raise ValidationError(
-                    f"Invalid file path: {path}. Absolute paths and parent directory references not allowed."
-                )
+            # Check for empty string
+            if not original_path:
+                raise ValidationError("Invalid file path")
 
-            # Check length
-            if len(path) > 1000:
-                raise ValidationError(f"File path too long: {len(path)} characters (maximum 1000 allowed)")
+            # Length check on original path
+            if len(original_path) > 1000:
+                raise ValidationError(f"File path too long: {len(original_path)} characters (maximum 1000 allowed)")
+
+            # Step 1: Decode multiple URL encoding layers (up to 3 rounds)
+            decoded_path = original_path
+            for _ in range(3):
+                try:
+                    new_decoded = unquote(decoded_path, errors="strict")
+                    if new_decoded == decoded_path:
+                        break  # No more encoding layers
+                    decoded_path = new_decoded
+                except Exception as e:
+                    # Invalid encoding - reject
+                    raise ValidationError("Invalid file path") from e
+
+            # Step 2: Normalize Unicode to prevent homograph attacks
+            try:
+                normalized_path = unicodedata.normalize("NFC", decoded_path)
+                # Also convert full-width characters to ASCII equivalents
+                # Full-width dot (．) to regular dot (.)
+                normalized_path = normalized_path.replace("\uff0e", ".")
+                # Full-width slash (／) to regular slash (/)
+                normalized_path = normalized_path.replace("\uff0f", "/")
+                # Full-width backslash (＼) to regular backslash (\)
+                normalized_path = normalized_path.replace("\uff3c", "\\")
+            except Exception as e:
+                raise ValidationError("Invalid file path") from e
+
+            # Step 3: Check for null bytes and dangerous characters
+            for char in ChunkingSecurityValidator.DANGEROUS_CHARS:
+                if char in normalized_path:
+                    raise ValidationError("Invalid file path")
+
+            # Step 4: Check against all traversal patterns
+            for pattern in ChunkingSecurityValidator.TRAVERSAL_PATTERNS:
+                if pattern.search(normalized_path):
+                    raise ValidationError("Invalid file path")
+
+            # Step 5: Additional checks for sneaky patterns
+            # Check for just dots - but allow dots in filenames
+            if normalized_path in [".", "..", "...", "...."]:
+                raise ValidationError("Invalid file path")
+
+            # Check for path starting/ending with dots (suspicious)
+            if re.search(r"^\.{2,}[/\\]", normalized_path) or re.search(r"[/\\]\.{2,}$", normalized_path):
+                raise ValidationError("Invalid file path")
+
+            # Check for backslash in Unix environments (suspicious)
+            if os.name != "nt" and "\\" in normalized_path:
+                raise ValidationError("Invalid file path")
+
+            # Step 6: If base_dir provided, verify path stays within it
+            if base_dir:
+                try:
+                    base_path = Path(base_dir).resolve()
+                    # Construct the full path and resolve it
+                    full_path = (base_path / normalized_path).resolve()
+
+                    # Verify the resolved path is within the base directory
+                    # Use os.path.commonpath for reliable containment check
+                    try:
+                        common = os.path.commonpath([str(base_path), str(full_path)])
+                        if common != str(base_path):
+                            raise ValidationError("Invalid file path")
+                    except ValueError as e:
+                        # Paths are on different drives (Windows) or invalid
+                        raise ValidationError("Invalid file path") from e
+
+                except Exception as e:
+                    # Any path resolution error is a security risk
+                    raise ValidationError("Invalid file path") from e
+
+            # Log successful validation (without revealing the path)
+            logger.debug("File path validated successfully")
 
     @staticmethod
     def sanitize_text_for_preview(text: str, max_length: int = 200) -> str:
