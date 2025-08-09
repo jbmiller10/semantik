@@ -6,8 +6,8 @@ from uuid import uuid4
 
 import pytest
 
-from packages.shared.chunking.application.dto.requests import CancelRequest
-from packages.shared.chunking.application.dto.responses import CancelResponse
+from packages.shared.chunking.application.dto.requests import CancelOperationRequest
+from packages.shared.chunking.application.dto.responses import CancelOperationResponse
 from packages.shared.chunking.application.use_cases.cancel_operation import (
     CancelOperationUseCase,
 )
@@ -20,7 +20,7 @@ from packages.shared.chunking.domain.value_objects.operation_status import Opera
 class TestCancelOperationUseCase:
     """Test suite for CancelOperationUseCase."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_repository(self):
         """Create mock chunking operation repository."""
         repo = AsyncMock()
@@ -28,7 +28,7 @@ class TestCancelOperationUseCase:
         repo.update = AsyncMock()
         return repo
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_unit_of_work(self, mock_repository):
         """Create mock unit of work."""
         uow = AsyncMock()
@@ -39,21 +39,21 @@ class TestCancelOperationUseCase:
         uow.rollback = AsyncMock()
         return uow
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_notification_service(self):
         """Create mock notification service."""
         service = AsyncMock()
         service.notify_operation_cancelled = AsyncMock()
         return service
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_event_publisher(self):
         """Create mock event publisher."""
         publisher = AsyncMock()
         publisher.publish_operation_cancelled = AsyncMock()
         return publisher
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_task_manager(self):
         """Create mock task manager."""
         manager = AsyncMock()
@@ -61,7 +61,7 @@ class TestCancelOperationUseCase:
         manager.get_task_status = AsyncMock(return_value="RUNNING")
         return manager
 
-    @pytest.fixture
+    @pytest.fixture()
     def use_case(
         self,
         mock_unit_of_work,
@@ -73,11 +73,9 @@ class TestCancelOperationUseCase:
         return CancelOperationUseCase(
             unit_of_work=mock_unit_of_work,
             notification_service=mock_notification_service,
-            event_publisher=mock_event_publisher,
-            task_manager=mock_task_manager,
         )
 
-    @pytest.fixture
+    @pytest.fixture()
     def processing_operation(self):
         """Create an operation in PROCESSING state."""
         config = ChunkConfig(
@@ -86,21 +84,21 @@ class TestCancelOperationUseCase:
             max_tokens=100,
             overlap_tokens=5,
         )
-        
+
         operation = ChunkingOperation(
             operation_id=str(uuid4()),
             document_id="doc-123",
             document_content="Sample document content for cancellation",
             config=config,
         )
-        
+
         # Set to processing state
         operation.start()
         operation._progress_percentage = 35.0
-        
+
         return operation
 
-    @pytest.fixture
+    @pytest.fixture()
     def pending_operation(self):
         """Create an operation in PENDING state."""
         config = ChunkConfig(
@@ -109,17 +107,17 @@ class TestCancelOperationUseCase:
             max_tokens=200,
             overlap_tokens=10,
         )
-        
+
         operation = ChunkingOperation(
             operation_id=str(uuid4()),
             document_id="doc-pending",
             document_content="Document waiting to be processed",
             config=config,
         )
-        
+
         return operation
 
-    @pytest.fixture
+    @pytest.fixture()
     def valid_request(self, processing_operation):
         """Create a valid cancel request."""
         return CancelRequest(
@@ -127,7 +125,7 @@ class TestCancelOperationUseCase:
             reason="User requested cancellation",
         )
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_successful_cancellation_processing_operation(
         self, use_case, valid_request, processing_operation
     ):
@@ -141,7 +139,7 @@ class TestCancelOperationUseCase:
         response = await use_case.execute(valid_request)
 
         # Assert
-        assert isinstance(response, CancelResponse)
+        assert isinstance(response, CancelOperationResponse)
         assert response.operation_id == processing_operation.id
         assert response.success is True
         assert response.status == "CANCELLED"
@@ -159,13 +157,13 @@ class TestCancelOperationUseCase:
         use_case.notification_service.notify_operation_cancelled.assert_called_once()
         use_case.event_publisher.publish_operation_cancelled.assert_called_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_successful_cancellation_pending_operation(
         self, use_case, pending_operation
     ):
         """Test successful cancellation of a pending operation."""
         # Arrange
-        request = CancelRequest(
+        request = CancelOperationRequest(
             operation_id=pending_operation.id,
             reason="Cancelled before processing started",
         )
@@ -182,13 +180,13 @@ class TestCancelOperationUseCase:
         assert pending_operation.status == OperationStatus.CANCELLED
         assert pending_operation.error_message == "Cancelled before processing started"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_cancellation_without_reason(
         self, use_case, processing_operation
     ):
         """Test cancellation without providing a reason."""
         # Arrange
-        request = CancelRequest(operation_id=processing_operation.id)
+        request = CancelOperationRequest(operation_id=processing_operation.id)
         use_case.unit_of_work.chunking_operations.get_by_id.return_value = (
             processing_operation
         )
@@ -202,7 +200,7 @@ class TestCancelOperationUseCase:
         # Default reason should be applied
         assert processing_operation.error_message == "Operation cancelled by user"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_cancel_operation_not_found(self, use_case, valid_request):
         """Test cancellation of non-existent operation."""
         # Arrange
@@ -215,7 +213,7 @@ class TestCancelOperationUseCase:
         assert "Operation not found" in str(exc_info.value)
         use_case.unit_of_work.rollback.assert_called_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_cancel_completed_operation_fails(self, use_case):
         """Test that cancelling a completed operation fails."""
         # Arrange
@@ -226,7 +224,7 @@ class TestCancelOperationUseCase:
             "Cannot cancel operation in COMPLETED state"
         )
 
-        request = CancelRequest(
+        request = CancelOperationRequest(
             operation_id=completed_operation.id,
             reason="Trying to cancel completed",
         )
@@ -243,7 +241,7 @@ class TestCancelOperationUseCase:
         assert "cannot be cancelled" in response.message.lower()
         use_case.unit_of_work.rollback.assert_called_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_cancel_failed_operation_fails(self, use_case):
         """Test that cancelling a failed operation fails."""
         # Arrange
@@ -254,7 +252,7 @@ class TestCancelOperationUseCase:
             "Cannot cancel operation in FAILED state"
         )
 
-        request = CancelRequest(
+        request = CancelOperationRequest(
             operation_id=failed_operation.id,
             reason="Trying to cancel failed",
         )
@@ -270,7 +268,7 @@ class TestCancelOperationUseCase:
         assert response.status == "FAILED"
         assert "cannot be cancelled" in response.message.lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_cancel_already_cancelled_operation(self, use_case):
         """Test cancelling an already cancelled operation."""
         # Arrange
@@ -281,7 +279,7 @@ class TestCancelOperationUseCase:
             "Cannot cancel operation in CANCELLED state"
         )
 
-        request = CancelRequest(
+        request = CancelOperationRequest(
             operation_id=cancelled_operation.id,
             reason="Trying to cancel again",
         )
@@ -297,7 +295,7 @@ class TestCancelOperationUseCase:
         assert response.status == "CANCELLED"
         assert "already cancelled" in response.message.lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_task_manager_cancellation_failure(
         self, use_case, valid_request, processing_operation
     ):
@@ -317,7 +315,7 @@ class TestCancelOperationUseCase:
         # Warning should be included about task cancellation failure
         assert "warning" in response.message.lower() or response.warnings
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_notification_failure_does_not_affect_cancellation(
         self, use_case, valid_request, processing_operation
     ):
@@ -339,7 +337,7 @@ class TestCancelOperationUseCase:
         # Cancellation should succeed despite notification failure
         use_case.unit_of_work.commit.assert_called_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_event_publishing_failure_does_not_affect_cancellation(
         self, use_case, valid_request, processing_operation
     ):
@@ -360,7 +358,7 @@ class TestCancelOperationUseCase:
         assert response.status == "CANCELLED"
         use_case.unit_of_work.commit.assert_called_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_transaction_rollback_on_error(
         self, use_case, valid_request, processing_operation
     ):
@@ -378,7 +376,7 @@ class TestCancelOperationUseCase:
         assert "Database error" in str(exc_info.value)
         use_case.unit_of_work.rollback.assert_called()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_force_cancellation(self, use_case):
         """Test force cancellation bypasses state checks."""
         # Arrange
@@ -386,7 +384,7 @@ class TestCancelOperationUseCase:
         completed_operation.id = str(uuid4())
         completed_operation.status = OperationStatus.COMPLETED
 
-        request = CancelRequest(
+        request = CancelOperationRequest(
             operation_id=completed_operation.id,
             reason="Force cancel",
             force=True,  # Force cancellation
@@ -403,14 +401,14 @@ class TestCancelOperationUseCase:
         assert response.status == "CANCELLED"
         assert "forced" in response.message.lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_concurrent_cancellation_requests(
         self, use_case, processing_operation
     ):
         """Test handling of concurrent cancellation requests."""
         # Arrange
         requests = [
-            CancelRequest(
+            CancelOperationRequest(
                 operation_id=processing_operation.id,
                 reason=f"Concurrent cancel {i}",
             )
@@ -442,10 +440,10 @@ class TestCancelOperationUseCase:
         )
 
         # Assert
-        successful_responses = [r for r in responses if isinstance(r, CancelResponse) and r.success]
+        successful_responses = [r for r in responses if isinstance(r, CancelOperationResponse) and r.success]
         assert len(successful_responses) >= 1  # At least one should succeed
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_cancel_with_cleanup_operations(
         self, use_case, valid_request, processing_operation
     ):
@@ -454,7 +452,7 @@ class TestCancelOperationUseCase:
         use_case.unit_of_work.chunking_operations.get_by_id.return_value = (
             processing_operation
         )
-        
+
         # Add cleanup service
         cleanup_service = AsyncMock()
         cleanup_service.cleanup_operation = AsyncMock()
@@ -471,7 +469,7 @@ class TestCancelOperationUseCase:
                 valid_request.operation_id
             )
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_cancel_returns_partial_results(
         self, use_case, valid_request, processing_operation
     ):
@@ -479,7 +477,7 @@ class TestCancelOperationUseCase:
         # Arrange
         from packages.shared.chunking.domain.entities.chunk import Chunk
         from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
-        
+
         # Add some chunks to the operation
         for i in range(3):
             chunk = Chunk(
@@ -489,7 +487,7 @@ class TestCancelOperationUseCase:
                 metadata=ChunkMetadata(token_count=3),
             )
             processing_operation._chunk_collection.add_chunk(chunk)
-        
+
         use_case.unit_of_work.chunking_operations.get_by_id.return_value = (
             processing_operation
         )
@@ -503,11 +501,11 @@ class TestCancelOperationUseCase:
         assert response.partial_results["chunks_produced"] == 3
         assert response.partial_results["progress_percentage"] == 35.0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_invalid_operation_id_format(self, use_case):
         """Test handling of invalid operation ID format."""
         # Arrange
-        request = CancelRequest(
+        request = CancelOperationRequest(
             operation_id="invalid-uuid-format",
             reason="Test",
         )

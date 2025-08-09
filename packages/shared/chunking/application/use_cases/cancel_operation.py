@@ -5,6 +5,7 @@ Handles cancellation of in-progress chunking operations with proper cleanup.
 """
 
 from datetime import datetime
+from typing import Any
 
 from ..dto.requests import CancelOperationRequest
 from ..dto.responses import CancelOperationResponse, OperationStatus

@@ -4,6 +4,7 @@ Get Operation Status Use Case.
 Queries the status and progress of chunking operations.
 """
 
+from typing import Any
 
 from ..dto.requests import GetOperationStatusRequest
 from ..dto.responses import ChunkDTO, GetOperationStatusResponse, OperationMetrics, OperationStatus

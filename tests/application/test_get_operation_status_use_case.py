@@ -7,8 +7,8 @@ from uuid import uuid4
 
 import pytest
 
-from packages.shared.chunking.application.dto.requests import StatusRequest
-from packages.shared.chunking.application.dto.responses import StatusResponse
+from packages.shared.chunking.application.dto.requests import GetOperationStatusRequest
+from packages.shared.chunking.application.dto.responses import GetOperationStatusResponse
 from packages.shared.chunking.application.use_cases.get_operation_status import (
     GetOperationStatusUseCase,
 )
@@ -20,7 +20,7 @@ from packages.shared.chunking.domain.value_objects.operation_status import Opera
 class TestGetOperationStatusUseCase:
     """Test suite for GetOperationStatusUseCase."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_repository(self):
         """Create mock chunking operation repository."""
         repo = AsyncMock()
@@ -28,7 +28,7 @@ class TestGetOperationStatusUseCase:
         repo.find_by_document_id = AsyncMock()
         return repo
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_cache_service(self):
         """Create mock cache service."""
         service = AsyncMock()
@@ -36,7 +36,7 @@ class TestGetOperationStatusUseCase:
         service.set_status = AsyncMock()
         return service
 
-    @pytest.fixture
+    @pytest.fixture()
     def use_case(self, mock_repository, mock_cache_service):
         """Create use case instance with mocked dependencies."""
         return GetOperationStatusUseCase(
@@ -44,7 +44,7 @@ class TestGetOperationStatusUseCase:
             cache_service=mock_cache_service,
         )
 
-    @pytest.fixture
+    @pytest.fixture()
     def sample_operation(self):
         """Create a sample chunking operation."""
         config = ChunkConfig(
@@ -53,26 +53,26 @@ class TestGetOperationStatusUseCase:
             max_tokens=100,
             overlap_tokens=5,
         )
-        
+
         operation = ChunkingOperation(
             operation_id=str(uuid4()),
             document_id="doc-123",
             document_content="Sample document content",
             config=config,
         )
-        
+
         # Set operation to processing state
         operation.start()
         operation._progress_percentage = 45.0
-        
+
         return operation
 
-    @pytest.fixture
+    @pytest.fixture()
     def valid_request(self):
         """Create a valid status request."""
-        return StatusRequest(operation_id=str(uuid4()))
+        return GetOperationStatusRequest(operation_id=str(uuid4()))
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_status_success(self, use_case, valid_request, sample_operation):
         """Test successful status retrieval."""
         # Arrange
@@ -82,17 +82,17 @@ class TestGetOperationStatusUseCase:
         response = await use_case.execute(valid_request)
 
         # Assert
-        assert isinstance(response, StatusResponse)
+        assert isinstance(response, GetOperationStatusResponse)
         assert response.operation_id == sample_operation.id
         assert response.document_id == "doc-123"
         assert response.status == "PROCESSING"
         assert response.progress_percentage == 45.0
         assert response.chunks_produced == 0
-        
+
         # Verify repository was called
         use_case.repository.get_by_id.assert_called_once_with(valid_request.operation_id)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_status_from_cache(self, use_case, valid_request):
         """Test status retrieval from cache."""
         # Arrange
@@ -110,11 +110,11 @@ class TestGetOperationStatusUseCase:
         # Assert
         assert response.progress_percentage == 60.0
         assert response.chunks_produced == 5
-        
+
         # Repository should not be called when cache hit
         use_case.repository.get_by_id.assert_not_called()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_status_operation_not_found(self, use_case, valid_request):
         """Test handling of operation not found."""
         # Arrange
@@ -123,10 +123,10 @@ class TestGetOperationStatusUseCase:
         # Act & Assert
         with pytest.raises(ValueError) as exc_info:
             await use_case.execute(valid_request)
-        
+
         assert "Operation not found" in str(exc_info.value)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_status_completed_operation(self, use_case, valid_request):
         """Test status for completed operation."""
         # Arrange
@@ -141,7 +141,7 @@ class TestGetOperationStatusUseCase:
             "coverage": 0.95,
             "metrics": {"duration_seconds": 2.5},
         }
-        
+
         use_case.repository.get_by_id.return_value = completed_operation
 
         # Act
@@ -154,7 +154,7 @@ class TestGetOperationStatusUseCase:
         assert response.statistics is not None
         assert response.statistics["chunks"]["total"] == 10
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_status_failed_operation(self, use_case, valid_request):
         """Test status for failed operation."""
         # Arrange
@@ -171,7 +171,7 @@ class TestGetOperationStatusUseCase:
                 "details": {"exception_type": "RuntimeError"},
             }
         }
-        
+
         use_case.repository.get_by_id.return_value = failed_operation
 
         # Act
@@ -182,7 +182,7 @@ class TestGetOperationStatusUseCase:
         assert response.error_message == "Strategy execution failed"
         assert response.statistics["error"]["details"]["exception_type"] == "RuntimeError"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_status_cancelled_operation(self, use_case, valid_request):
         """Test status for cancelled operation."""
         # Arrange
@@ -194,7 +194,7 @@ class TestGetOperationStatusUseCase:
         cancelled_operation.chunk_collection.chunk_count = 7
         cancelled_operation.error_message = "Cancelled by user"
         cancelled_operation.get_statistics.return_value = {}
-        
+
         use_case.repository.get_by_id.return_value = cancelled_operation
 
         # Act
@@ -205,7 +205,7 @@ class TestGetOperationStatusUseCase:
         assert response.error_message == "Cancelled by user"
         assert response.progress_percentage == 67.0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_status_with_timing_info(self, use_case, valid_request):
         """Test that timing information is included in status."""
         # Arrange
@@ -223,7 +223,7 @@ class TestGetOperationStatusUseCase:
                 "duration_seconds": 10.0,
             }
         }
-        
+
         use_case.repository.get_by_id.return_value = operation
 
         # Act
@@ -234,11 +234,11 @@ class TestGetOperationStatusUseCase:
         assert response.duration_seconds == 10.0
         assert response.completed_at is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_status_by_document_id(self, use_case, sample_operation):
         """Test getting status by document ID instead of operation ID."""
         # Arrange
-        request = StatusRequest(document_id="doc-123")
+        request = GetOperationStatusRequest(document_id="doc-123")
         use_case.repository.find_by_document_id.return_value = [sample_operation]
 
         # Act
@@ -249,12 +249,12 @@ class TestGetOperationStatusUseCase:
         assert response.document_id == "doc-123"
         use_case.repository.find_by_document_id.assert_called_once_with("doc-123")
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_latest_operation_for_document(self, use_case):
         """Test getting latest operation when multiple exist for a document."""
         # Arrange
-        request = StatusRequest(document_id="doc-multi")
-        
+        request = GetOperationStatusRequest(document_id="doc-multi")
+
         # Create multiple operations
         old_operation = MagicMock()
         old_operation.id = "old-op"
@@ -263,7 +263,7 @@ class TestGetOperationStatusUseCase:
         old_operation.progress_percentage = 100.0
         old_operation.chunk_collection.chunk_count = 5
         old_operation.get_statistics.return_value = {}
-        
+
         new_operation = MagicMock()
         new_operation.id = "new-op"
         new_operation.document_id = "doc-multi"
@@ -272,7 +272,7 @@ class TestGetOperationStatusUseCase:
         new_operation.progress_percentage = 30.0
         new_operation.chunk_collection.chunk_count = 3
         new_operation.get_statistics.return_value = {}
-        
+
         use_case.repository.find_by_document_id.return_value = [old_operation, new_operation]
 
         # Act
@@ -282,7 +282,7 @@ class TestGetOperationStatusUseCase:
         assert response.operation_id == "new-op"  # Should return latest
         assert response.status == "PROCESSING"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_cache_update_after_retrieval(self, use_case, valid_request, sample_operation):
         """Test that cache is updated after retrieving from repository."""
         # Arrange
@@ -299,7 +299,7 @@ class TestGetOperationStatusUseCase:
         assert cache_call_args[1]["status"] == "PROCESSING"
         assert cache_call_args[1]["progress_percentage"] == 45.0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_no_cache_update_for_terminal_states(self, use_case, valid_request):
         """Test that terminal states are not cached with short TTL."""
         # Arrange
@@ -310,7 +310,7 @@ class TestGetOperationStatusUseCase:
         completed_operation.progress_percentage = 100.0
         completed_operation.chunk_collection.chunk_count = 10
         completed_operation.get_statistics.return_value = {}
-        
+
         use_case.repository.get_by_id.return_value = completed_operation
 
         # Act
@@ -322,12 +322,12 @@ class TestGetOperationStatusUseCase:
         cache_call = use_case.cache_service.set_status.call_args
         # Could check for different TTL if implemented
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_concurrent_status_requests(self, use_case, sample_operation):
         """Test handling of concurrent status requests."""
         # Arrange
         requests = [
-            StatusRequest(operation_id=sample_operation.id)
+            GetOperationStatusRequest(operation_id=sample_operation.id)
             for _ in range(5)
         ]
         use_case.repository.get_by_id.return_value = sample_operation
@@ -344,7 +344,7 @@ class TestGetOperationStatusUseCase:
             assert response.operation_id == sample_operation.id
             assert response.status == "PROCESSING"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_status_with_validation_results(self, use_case, valid_request):
         """Test that validation results are included in status."""
         # Arrange
@@ -361,7 +361,7 @@ class TestGetOperationStatusUseCase:
                 "issues": ["Insufficient coverage: 75%"],
             }
         }
-        
+
         use_case.repository.get_by_id.return_value = operation
 
         # Act
@@ -372,7 +372,7 @@ class TestGetOperationStatusUseCase:
         assert not response.validation_results["is_valid"]
         assert "Insufficient coverage" in response.validation_results["issues"][0]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_status_with_estimated_completion(self, use_case, valid_request):
         """Test estimated completion time for processing operations."""
         # Arrange
@@ -390,7 +390,7 @@ class TestGetOperationStatusUseCase:
                 "duration_seconds": 20.0,
             }
         }
-        
+
         use_case.repository.get_by_id.return_value = operation
 
         # Act
@@ -401,14 +401,14 @@ class TestGetOperationStatusUseCase:
         # At 40% progress after 20 seconds, should estimate ~30 more seconds
         assert 25 <= response.estimated_completion_seconds <= 35
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_invalid_operation_id_format(self, use_case):
         """Test handling of invalid operation ID format."""
         # Arrange
-        request = StatusRequest(operation_id="invalid-id-format")
+        request = GetOperationStatusRequest(operation_id="invalid-id-format")
 
         # Act & Assert
         with pytest.raises(ValueError) as exc_info:
             await use_case.execute(request)
-        
+
         assert "Invalid operation ID format" in str(exc_info.value)

@@ -70,3 +70,15 @@ class OverlapConfigurationError(ChunkingDomainError):
         )
         self.overlap = overlap
         self.chunk_size = chunk_size
+
+
+class StrategyNotFoundError(ChunkingDomainError, ValueError):
+    """Raised when a requested chunking strategy is not found."""
+
+    def __init__(self, strategy_name: str) -> None:
+        """Initialize with strategy name."""
+        super().__init__(
+            f"Strategy '{strategy_name}' not found",
+            {"strategy_name": strategy_name},
+        )
+        self.strategy_name = strategy_name

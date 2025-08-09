@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """Tests for ProcessDocumentUseCase."""
 
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
-from packages.shared.chunking.application.dto.requests import ProcessRequest
-from packages.shared.chunking.application.dto.responses import OperationResponse
+from packages.shared.chunking.application.dto.requests import ProcessDocumentRequest
+from packages.shared.chunking.application.dto.responses import ProcessDocumentResponse
 from packages.shared.chunking.application.use_cases.process_document import (
     ProcessDocumentUseCase,
 )
@@ -17,9 +16,7 @@ from packages.shared.chunking.domain.entities.chunking_operation import Chunking
 from packages.shared.chunking.domain.exceptions import (
     DocumentTooLargeError,
     InvalidConfigurationError,
-    InvalidStateError,
 )
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 from packages.shared.chunking.domain.value_objects.operation_status import OperationStatus
 
@@ -27,7 +24,7 @@ from packages.shared.chunking.domain.value_objects.operation_status import Opera
 class TestProcessDocumentUseCase:
     """Test suite for ProcessDocumentUseCase."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_repository(self):
         """Create mock chunking operation repository."""
         repo = AsyncMock()
@@ -36,7 +33,7 @@ class TestProcessDocumentUseCase:
         repo.update = AsyncMock()
         return repo
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_document_service(self):
         """Create mock document service."""
         service = AsyncMock()
@@ -49,7 +46,7 @@ class TestProcessDocumentUseCase:
         )
         return service
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_strategy_factory(self):
         """Create mock strategy factory."""
         factory = MagicMock()
@@ -71,7 +68,7 @@ class TestProcessDocumentUseCase:
         factory.create_strategy.return_value = mock_strategy
         return factory
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_unit_of_work(self, mock_repository):
         """Create mock unit of work."""
         uow = AsyncMock()
@@ -82,7 +79,7 @@ class TestProcessDocumentUseCase:
         uow.rollback = AsyncMock()
         return uow
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_notification_service(self):
         """Create mock notification service."""
         service = AsyncMock()
@@ -91,7 +88,7 @@ class TestProcessDocumentUseCase:
         service.notify_operation_failed = AsyncMock()
         return service
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_event_publisher(self):
         """Create mock event publisher."""
         publisher = AsyncMock()
@@ -100,7 +97,7 @@ class TestProcessDocumentUseCase:
         publisher.publish_operation_failed = AsyncMock()
         return publisher
 
-    @pytest.fixture
+    @pytest.fixture()
     def use_case(
         self,
         mock_unit_of_work,
@@ -118,10 +115,10 @@ class TestProcessDocumentUseCase:
             event_publisher=mock_event_publisher,
         )
 
-    @pytest.fixture
+    @pytest.fixture()
     def valid_request(self):
         """Create a valid process request."""
-        return ProcessRequest(
+        return ProcessDocumentRequest(
             document_id="doc-789",
             document_path="/data/documents/test.txt",
             strategy_name="character",
@@ -131,7 +128,7 @@ class TestProcessDocumentUseCase:
             async_processing=False,
         )
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_successful_synchronous_processing(self, use_case, valid_request):
         """Test successful synchronous document processing."""
         # Arrange
@@ -143,7 +140,7 @@ class TestProcessDocumentUseCase:
             response = await use_case.execute(valid_request)
 
         # Assert
-        assert isinstance(response, OperationResponse)
+        assert isinstance(response, ProcessDocumentResponse)
         assert response.operation_id == operation_id
         assert response.document_id == "doc-789"
         assert response.status == "COMPLETED"
@@ -159,11 +156,11 @@ class TestProcessDocumentUseCase:
         use_case.notification_service.notify_operation_completed.assert_called_once()
         use_case.event_publisher.publish_operation_completed.assert_called_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_successful_asynchronous_processing(self, use_case):
         """Test successful asynchronous document processing."""
         # Arrange
-        request = ProcessRequest(
+        request = ProcessDocumentRequest(
             document_id="doc-async",
             document_path="/data/documents/async.txt",
             strategy_name="semantic",
@@ -187,7 +184,7 @@ class TestProcessDocumentUseCase:
         # Should not call completed notifications in async mode
         use_case.notification_service.notify_operation_completed.assert_not_called()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_document_validation_failure(self, use_case, valid_request):
         """Test handling of document validation failure."""
         # Arrange
@@ -201,7 +198,7 @@ class TestProcessDocumentUseCase:
         use_case.unit_of_work.rollback.assert_called()
         use_case.notification_service.notify_operation_failed.assert_called_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_document_too_large_error(self, use_case, valid_request):
         """Test handling of document too large error."""
         # Arrange
@@ -215,11 +212,11 @@ class TestProcessDocumentUseCase:
         use_case.unit_of_work.rollback.assert_called()
         use_case.notification_service.notify_operation_failed.assert_called()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_invalid_configuration_error(self, use_case):
         """Test handling of invalid configuration."""
         # Arrange
-        invalid_request = ProcessRequest(
+        invalid_request = ProcessDocumentRequest(
             document_id="doc-123",
             document_path="/data/test.txt",
             strategy_name="character",
@@ -234,7 +231,7 @@ class TestProcessDocumentUseCase:
 
         use_case.unit_of_work.rollback.assert_called()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_strategy_execution_failure(self, use_case, valid_request):
         """Test handling of strategy execution failure."""
         # Arrange
@@ -251,7 +248,7 @@ class TestProcessDocumentUseCase:
         use_case.notification_service.notify_operation_failed.assert_called()
         use_case.event_publisher.publish_operation_failed.assert_called()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_transaction_rollback_on_error(self, use_case, valid_request):
         """Test that transaction is rolled back on error."""
         # Arrange
@@ -264,7 +261,7 @@ class TestProcessDocumentUseCase:
         assert "Database error" in str(exc_info.value)
         use_case.unit_of_work.rollback.assert_called()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_operation_persistence(self, use_case, valid_request):
         """Test that operation is properly persisted."""
         # Act
@@ -274,18 +271,18 @@ class TestProcessDocumentUseCase:
         # Verify save was called with ChunkingOperation
         save_calls = use_case.unit_of_work.chunking_operations.save.call_args_list
         assert len(save_calls) > 0
-        
+
         saved_operation = save_calls[0][0][0]
         assert isinstance(saved_operation, ChunkingOperation)
         assert saved_operation.document_id == "doc-789"
         assert saved_operation.status == OperationStatus.COMPLETED
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_progress_tracking(self, use_case, valid_request):
         """Test that progress is tracked during processing."""
         # Arrange
         progress_values = []
-        
+
         def mock_chunk_with_progress(content, config, progress_callback=None):
             if progress_callback:
                 progress_values.extend([25.0, 50.0, 75.0, 100.0])
@@ -295,7 +292,7 @@ class TestProcessDocumentUseCase:
                 Chunk(content="Result", start_position=0, end_position=6,
                       metadata=ChunkMetadata(token_count=1))
             ]
-        
+
         use_case.strategy_factory.create_strategy.return_value.chunk = mock_chunk_with_progress
 
         # Act
@@ -305,7 +302,7 @@ class TestProcessDocumentUseCase:
         assert response.progress_percentage == 100.0
         assert len(progress_values) > 0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_chunk_validation(self, use_case, valid_request):
         """Test that chunks are validated after processing."""
         # Arrange
@@ -327,12 +324,12 @@ class TestProcessDocumentUseCase:
         assert response.status == "COMPLETED"
         # Verify validation was performed (through the operation)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_concurrent_processing_requests(self, use_case):
         """Test handling of concurrent processing requests."""
         # Arrange
         requests = [
-            ProcessRequest(
+            ProcessDocumentRequest(
                 document_id=f"doc-{i}",
                 document_path=f"/data/doc-{i}.txt",
                 strategy_name="character",
@@ -355,11 +352,11 @@ class TestProcessDocumentUseCase:
             assert response.document_id == f"doc-{i}"
             assert response.status == "COMPLETED"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_path_traversal_prevention(self, use_case):
         """Test that path traversal attempts are blocked."""
         # Arrange
-        malicious_request = ProcessRequest(
+        malicious_request = ProcessDocumentRequest(
             document_id="doc-123",
             document_path="../../etc/passwd",  # Path traversal attempt
             strategy_name="character",
@@ -374,7 +371,7 @@ class TestProcessDocumentUseCase:
 
         assert "Invalid path" in str(exc_info.value) or "Path traversal" in str(exc_info.value)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_metadata_inclusion(self, use_case, valid_request):
         """Test that document metadata is included in processing."""
         # Arrange
@@ -392,7 +389,7 @@ class TestProcessDocumentUseCase:
         assert response.metadata["document_type"] == "text/markdown"
         assert "processing_time_ms" in response.metadata
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_empty_document_handling(self, use_case, valid_request):
         """Test handling of empty documents."""
         # Arrange
@@ -407,7 +404,7 @@ class TestProcessDocumentUseCase:
         assert response.chunks_produced == 0
         assert response.progress_percentage == 100.0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_operation_statistics_generation(self, use_case, valid_request):
         """Test that operation statistics are generated."""
         # Act
@@ -419,7 +416,7 @@ class TestProcessDocumentUseCase:
         assert "coverage" in response.statistics
         assert response.statistics["total_chunks"] == 2
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_error_recovery_mechanism(self, use_case, valid_request):
         """Test error recovery and retry mechanism."""
         # Arrange
@@ -441,11 +438,11 @@ class TestProcessDocumentUseCase:
 
         # Assert - verify retry behavior if implemented
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_custom_strategy_parameters(self, use_case):
         """Test processing with custom strategy parameters."""
         # Arrange
-        request = ProcessRequest(
+        request = ProcessDocumentRequest(
             document_id="doc-custom",
             document_path="/data/custom.txt",
             strategy_name="semantic",
