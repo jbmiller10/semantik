@@ -6,6 +6,7 @@ circuit breaker pattern, and admin bypass functionality.
 """
 
 import logging
+import os
 import time
 from collections.abc import Callable
 from typing import Any
@@ -35,7 +36,11 @@ def get_user_or_ip(request: Request) -> str:
     Returns:
         Rate limit key (user_id or IP address)
     """
-    # Check for admin bypass token first
+    # Check if rate limiting is disabled for testing
+    if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
+        return "test_bypass"
+    
+    # Check for admin bypass token
     auth_header = request.headers.get("authorization", "")
     if auth_header.startswith("Bearer ") and RateLimitConfig.BYPASS_TOKEN:
         token = auth_header.split(" ", 1)[1]
@@ -91,7 +96,7 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Res
 
     # Track circuit breaker failures
     key = get_user_or_ip(request)
-    if key != "admin_bypass":
+    if key not in ("admin_bypass", "test_bypass"):
         track_circuit_breaker_failure(key)
 
     return response
@@ -140,8 +145,8 @@ def check_circuit_breaker(request: Request) -> None:
     """
     key = get_user_or_ip(request)
 
-    # Admin bypass always allowed
-    if key == "admin_bypass":
+    # Admin bypass and test bypass always allowed
+    if key in ("admin_bypass", "test_bypass"):
         return
 
     current_time = time.time()
@@ -196,22 +201,43 @@ def create_rate_limit_decorator(limit: str) -> Callable:
     return decorator
 
 
+# Define special rate limits for specific keys
+SPECIAL_LIMITS = {
+    "admin_bypass": "100000/second",  # Effectively unlimited for admin bypass
+    "test_bypass": "100000/second",   # Effectively unlimited for test bypass
+}
+
+def get_limit_for_key(key: str) -> list[str]:
+    """Get rate limits for a specific key."""
+    if key in SPECIAL_LIMITS:
+        return [SPECIAL_LIMITS[key]]
+    return [RateLimitConfig.DEFAULT_LIMIT]
+
 # Initialize the limiter with Redis backend
-try:
+if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
+    # Use very high limits for testing
     limiter = Limiter(
         key_func=get_user_or_ip,
-        storage_uri=RateLimitConfig.REDIS_URL,
-        default_limits=[RateLimitConfig.DEFAULT_LIMIT],
-        headers_enabled=True,  # Add rate limit headers to responses
-        swallow_errors=False,  # Don't silently fail on Redis errors
-    )
-    logger.info(f"Rate limiter initialized with Redis backend: {RateLimitConfig.REDIS_URL}")
-except Exception as e:
-    logger.error(f"Failed to initialize rate limiter with Redis: {e}")
-    # Fallback to in-memory limiter if Redis is not available
-    limiter = Limiter(
-        key_func=get_user_or_ip,
-        default_limits=[RateLimitConfig.DEFAULT_LIMIT],
+        default_limits=["10000/second"],
         headers_enabled=True,
     )
-    logger.warning("Rate limiter falling back to in-memory storage")
+    logger.info("Rate limiter configured for testing with high limits")
+else:
+    try:
+        limiter = Limiter(
+            key_func=get_user_or_ip,
+            storage_uri=RateLimitConfig.REDIS_URL,
+            default_limits=[RateLimitConfig.DEFAULT_LIMIT],
+            headers_enabled=True,  # Add rate limit headers to responses
+            swallow_errors=False,  # Don't silently fail on Redis errors
+        )
+        logger.info(f"Rate limiter initialized with Redis backend: {RateLimitConfig.REDIS_URL}")
+    except Exception as e:
+        logger.error(f"Failed to initialize rate limiter with Redis: {e}")
+        # Fallback to in-memory limiter if Redis is not available
+        limiter = Limiter(
+            key_func=get_user_or_ip,
+            default_limits=[RateLimitConfig.DEFAULT_LIMIT],
+            headers_enabled=True,
+        )
+        logger.warning("Rate limiter falling back to in-memory storage")

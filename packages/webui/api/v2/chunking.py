@@ -199,6 +199,7 @@ async def recommend_strategy(
     responses={
         429: {"description": "Rate limit exceeded"},
         413: {"description": "Content too large"},
+        503: {"description": "Circuit breaker open"},
     },
 )
 @limiter.limit(RateLimitConfig.PREVIEW_RATE)

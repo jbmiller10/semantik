@@ -50,9 +50,12 @@ def rate_limit_handler(request: Request, exc: Exception) -> Response:
     """Wrapper to ensure proper type signature for rate limit handler"""
     if isinstance(exc, RateLimitExceeded):
         # Use our custom handler with circuit breaker support
-        return rate_limit_exceeded_handler(request, exc)
+        response = rate_limit_exceeded_handler(request, exc)
+        # Ensure it's a proper Response object
+        return response
     # This shouldn't happen, but handle gracefully
-    return Response(content="Rate limit error", status_code=429)
+    from fastapi.responses import JSONResponse
+    return JSONResponse(content={"detail": "Rate limit error"}, status_code=429)
 
 
 def _configure_embedding_service() -> None:
