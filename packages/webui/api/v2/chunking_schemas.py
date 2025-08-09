@@ -216,8 +216,19 @@ class ChunkingOperationRequest(BaseModel):
     strategy: ChunkingStrategy = Field(..., description="Strategy to use")
     config: ChunkingConfigBase | None = Field(default=None, description="Custom configuration")
     document_ids: list[str] | None = Field(default=None, description="Specific documents to chunk (if not all)")
-    priority: int = Field(default=5, ge=1, le=10, description="Operation priority")
+    priority: int | str = Field(default=5, description="Operation priority (1-10 or 'low'/'normal'/'high')")
     notify_on_completion: bool = Field(default=True, description="Send notification when complete")
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def validate_priority(cls, v: int | str) -> int:
+        """Convert string priority to integer."""
+        if isinstance(v, str):
+            priority_map = {"low": 3, "normal": 5, "high": 8}
+            return priority_map.get(v.lower(), 5)
+        if isinstance(v, int):
+            return max(1, min(10, v))  # Clamp to 1-10 range
+        return 5  # Default
 
 
 class ChunkingOperationResponse(BaseModel):

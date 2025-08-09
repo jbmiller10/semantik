@@ -23,17 +23,27 @@ class TestRateLimiterConfiguration:
     def test_limiter_instance(self):
         """Test that limiter is properly instantiated"""
         assert isinstance(limiter, Limiter)
-        assert limiter._key_func == get_remote_address
+        # The key function should be get_user_or_ip
+        assert limiter._key_func.__name__ == "get_user_or_ip"
 
     def test_limiter_key_function(self):
-        """Test the key function extracts remote address"""
+        """Test the key function extracts user ID or remote address"""
         # Create a mock request
         mock_request = Mock(spec=Request)
         mock_request.client = Mock()
         mock_request.client.host = "192.168.1.100"
+        mock_request.headers = {}
+        mock_request.state = Mock()
+        mock_request.state.user = None  # No user authenticated
 
-        # Test key function
-        assert limiter._key_func(mock_request) == "192.168.1.100"
+        # Test key function - with test environment enabled, should return test_bypass
+        import os
+
+        if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
+            assert limiter._key_func(mock_request) == "test_bypass"
+        else:
+            # When not in test mode, should extract IP address
+            assert limiter._key_func(mock_request) == "192.168.1.100"
 
     def test_limiter_key_function_with_forwarded_header(self):
         """Test key function with X-Forwarded-For header"""
@@ -41,10 +51,20 @@ class TestRateLimiterConfiguration:
         mock_request.client = Mock()
         mock_request.client.host = "192.168.1.100"
         mock_request.headers = {"x-forwarded-for": "10.0.0.1, 172.16.0.1"}
+        mock_request.state = Mock()
+        mock_request.state.user = None  # No user authenticated
 
-        # Note: slowapi's get_remote_address only uses X-Forwarded-For if trust_proxy_headers is enabled
-        # By default, it returns client.host
-        assert get_remote_address(mock_request) == "192.168.1.100"
+        import os
+
+        if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
+            # In test mode, always returns test_bypass
+            from packages.webui.rate_limiter import get_user_or_ip
+
+            assert get_user_or_ip(mock_request) == "test_bypass"
+        else:
+            # Note: slowapi's get_remote_address only uses X-Forwarded-For if trust_proxy_headers is enabled
+            # By default, it returns client.host
+            assert get_remote_address(mock_request) == "192.168.1.100"
 
 
 class TestRateLimiterIntegration:
@@ -64,10 +84,15 @@ class TestRateLimiterIntegration:
         app = FastAPI()
 
         # Use a fresh limiter instance if requested to avoid state issues
-        test_limiter = Limiter(key_func=get_remote_address) if use_fresh_limiter else limiter
+        # Create a test limiter that doesn't use the test bypass
+        if use_fresh_limiter:
+            test_limiter = Limiter(key_func=get_remote_address)
+        else:
+            # Create limiter with normal key function for testing
+            test_limiter = Limiter(key_func=get_remote_address)
 
         @app.exception_handler(RateLimitExceeded)
-        def rate_limit_handler(_request: Request, exc: RateLimitExceeded):
+        def rate_limit_handler(_request: Request, exc: RateLimitExceeded) -> JSONResponse:
             response = {"detail": f"Rate limit exceeded: {exc.detail}", "limit": str(exc.limit)}
             return JSONResponse(content=response, status_code=429)
 
@@ -211,12 +236,18 @@ class TestRateLimiterScenarios:
     def test_rate_limit_time_window(self):
         """Test rate limit time window behavior"""
         app = FastAPI()
-        # Limiter doesn't need to be attached to app.state
+        # Create a test limiter that doesn't use test bypass
+        test_limiter = Limiter(key_func=get_remote_address)
+
+        @app.exception_handler(RateLimitExceeded)
+        def rate_limit_handler(_request: Request, exc: RateLimitExceeded) -> JSONResponse:
+            response = {"detail": f"Rate limit exceeded: {exc.detail}", "limit": str(exc.limit)}
+            return JSONResponse(content=response, status_code=429)
 
         request_times = []
 
         @app.get("/test")
-        @limiter.limit("2/second")
+        @test_limiter.limit("2/second")
         def test_endpoint(request: Request):
             request_times.append(time.time())
             return {"message": "success"}
@@ -234,16 +265,20 @@ class TestRateLimiterScenarios:
     def test_rate_limit_with_authentication(self):
         """Test rate limiting with authenticated users"""
         app = FastAPI()
-        # Limiter doesn't need to be attached to app.state
 
         # Custom key function that uses user ID if authenticated
-        def get_user_or_ip(request: Request):
+        def get_user_or_ip_custom(request: Request):
             # Check if user is authenticated (mock implementation)
             if hasattr(request.state, "user") and request.state.user:
                 return f"user:{request.state.user['id']}"
             return get_remote_address(request)
 
-        custom_limiter = Limiter(key_func=get_user_or_ip)
+        custom_limiter = Limiter(key_func=get_user_or_ip_custom)
+
+        @app.exception_handler(RateLimitExceeded)
+        def rate_limit_handler(_request: Request, exc: RateLimitExceeded) -> JSONResponse:
+            response = {"detail": f"Rate limit exceeded: {exc.detail}", "limit": str(exc.limit)}
+            return JSONResponse(content=response, status_code=429)
 
         @app.get("/test")
         @custom_limiter.limit("5/minute")
@@ -262,9 +297,17 @@ class TestRateLimiterEdgeCases:
         # The error occurs during parsing, not decoration
         app = FastAPI()
 
+        # Create a test limiter
+        test_limiter = Limiter(key_func=get_remote_address)
+
+        @app.exception_handler(RateLimitExceeded)
+        def rate_limit_handler(_request: Request, exc: RateLimitExceeded) -> JSONResponse:
+            response = {"detail": f"Rate limit exceeded: {exc.detail}", "limit": str(exc.limit)}
+            return JSONResponse(content=response, status_code=429)
+
         # This should log an error but not raise during decoration
         @app.get("/bad")
-        @limiter.limit("invalid-format")
+        @test_limiter.limit("invalid-format")
         def bad_endpoint(request: Request):
             return {"message": "success"}
 
@@ -329,15 +372,21 @@ class TestRateLimiterPatterns:
     def test_search_endpoint_limits(self):
         """Test rate limits similar to search endpoints"""
         app = FastAPI()
-        # Limiter doesn't need to be attached to app.state
+        # Create a test limiter
+        test_limiter = Limiter(key_func=get_remote_address)
+
+        @app.exception_handler(RateLimitExceeded)
+        def rate_limit_handler(_request: Request, exc: RateLimitExceeded) -> JSONResponse:
+            response = {"detail": f"Rate limit exceeded: {exc.detail}", "limit": str(exc.limit)}
+            return JSONResponse(content=response, status_code=429)
 
         @app.get("/search")
-        @limiter.limit("30/minute")
+        @test_limiter.limit("30/minute")
         def search(request: Request):
             return {"results": []}
 
         @app.get("/search/rerank")
-        @limiter.limit("60/minute")
+        @test_limiter.limit("60/minute")
         def search_rerank(request: Request):
             return {"results": []}
 
@@ -353,20 +402,26 @@ class TestRateLimiterPatterns:
     def test_collection_operation_limits(self):
         """Test rate limits for collection operations"""
         app = FastAPI()
-        # Limiter doesn't need to be attached to app.state
+        # Create a test limiter
+        test_limiter = Limiter(key_func=get_remote_address)
+
+        @app.exception_handler(RateLimitExceeded)
+        def rate_limit_handler(_request: Request, exc: RateLimitExceeded) -> JSONResponse:
+            response = {"detail": f"Rate limit exceeded: {exc.detail}", "limit": str(exc.limit)}
+            return JSONResponse(content=response, status_code=429)
 
         @app.post("/collections/{id}/scan")
-        @limiter.limit("5/hour")
+        @test_limiter.limit("5/hour")
         def scan_collection(request: Request, id: int):
             return {"status": "scanning"}
 
         @app.post("/collections/{id}/reindex")
-        @limiter.limit("10/hour")
+        @test_limiter.limit("10/hour")
         def reindex_collection(request: Request, id: int):
             return {"status": "reindexing"}
 
         @app.delete("/collections/{id}")
-        @limiter.limit("10/hour")
+        @test_limiter.limit("10/hour")
         def delete_collection(request: Request, id: int):
             return {"status": "deleted"}
 
@@ -379,10 +434,16 @@ class TestRateLimiterPatterns:
     def test_burst_protection(self):
         """Test protection against burst requests"""
         app = FastAPI()
-        # Limiter doesn't need to be attached to app.state
+        # Create a test limiter
+        test_limiter = Limiter(key_func=get_remote_address)
+
+        @app.exception_handler(RateLimitExceeded)
+        def rate_limit_handler(_request: Request, exc: RateLimitExceeded) -> JSONResponse:
+            response = {"detail": f"Rate limit exceeded: {exc.detail}", "limit": str(exc.limit)}
+            return JSONResponse(content=response, status_code=429)
 
         @app.get("/api/data")
-        @limiter.limit("1/5minutes")
+        @test_limiter.limit("1/5minutes")
         def get_data(request: Request):
             return {"data": "sensitive"}
 
@@ -409,11 +470,12 @@ class TestRateLimiterMonitoring:
             return JSONResponse(content={"detail": "Rate limit exceeded"}, status_code=429)
 
         app = FastAPI()
-        # Limiter doesn't need to be attached to app.state
+        # Create a test limiter
+        test_limiter = Limiter(key_func=get_remote_address)
         app.add_exception_handler(RateLimitExceeded, count_exceeded)
 
         @app.get("/test")
-        @limiter.limit("1/minute")
+        @test_limiter.limit("1/minute")
         def test_endpoint(request: Request):
             return {"message": "success"}
 

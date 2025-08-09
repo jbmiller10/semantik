@@ -14,7 +14,6 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.requests import Request
 from starlette.responses import Response
@@ -40,17 +39,22 @@ from .api.v2 import search as v2_search  # noqa: E402
 from .api.v2 import system as v2_system  # noqa: E402
 from .api.v2.directory_scan import directory_scan_websocket  # noqa: E402
 from .api.v2.operations import operation_websocket  # noqa: E402
+from .background_tasks import start_background_tasks, stop_background_tasks  # noqa: E402
 from .middleware.correlation import CorrelationMiddleware, configure_logging_with_correlation  # noqa: E402
-from .rate_limiter import limiter  # noqa: E402
+from .middleware.rate_limit import RateLimitMiddleware  # noqa: E402
+from .rate_limiter import limiter, rate_limit_exceeded_handler  # noqa: E402
 from .websocket_manager import ws_manager  # noqa: E402
 
 
 def rate_limit_handler(request: Request, exc: Exception) -> Response:
     """Wrapper to ensure proper type signature for rate limit handler"""
     if isinstance(exc, RateLimitExceeded):
-        return _rate_limit_exceeded_handler(request, exc)
+        # Use our custom handler with circuit breaker support
+        return rate_limit_exceeded_handler(request, exc)
     # This shouldn't happen, but handle gracefully
-    return Response(content="Rate limit error", status_code=429)
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(content={"detail": "Rate limit error"}, status_code=429)
 
 
 def _configure_embedding_service() -> None:
@@ -157,10 +161,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     # Configure internal API key
     _configure_internal_api_key()
 
+    # Start background tasks for Redis cleanup
+    logger.info("Starting background tasks...")
+    try:
+        await start_background_tasks()
+        logger.info("Background tasks started successfully")
+    except Exception as e:
+        logger.error(f"Failed to start background tasks: {e}")
+        # Don't fail startup if background tasks can't start
+
     yield
 
     # Shutdown
     logger.info("Shutting down WebUI application...")
+
+    # Stop background tasks
+    logger.info("Stopping background tasks...")
+    try:
+        await stop_background_tasks()
+        logger.info("Background tasks stopped successfully")
+    except Exception as e:
+        logger.error(f"Error stopping background tasks: {e}")
+        # Continue shutdown even if background tasks fail to stop
 
     # Clean up WebSocket manager
     logger.info("Shutting down WebSocket manager...")
@@ -197,6 +219,9 @@ def create_app() -> FastAPI:
 
     # Add correlation middleware BEFORE other middleware for proper context propagation
     app.add_middleware(CorrelationMiddleware)
+
+    # Add rate limit middleware to set user in request.state
+    app.add_middleware(RateLimitMiddleware)
 
     # Configure CORS with more restrictive settings
     app.add_middleware(

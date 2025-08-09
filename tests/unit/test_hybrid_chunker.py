@@ -14,10 +14,7 @@ from unittest.mock import patch
 import pytest
 
 from packages.shared.text_processing.base_chunker import ChunkResult
-from packages.shared.text_processing.strategies.hybrid_chunker import (
-    ChunkingStrategy,
-    HybridChunker,
-)
+from packages.shared.text_processing.strategies.hybrid_chunker import ChunkingStrategy, HybridChunker
 
 
 class MockChunker:
