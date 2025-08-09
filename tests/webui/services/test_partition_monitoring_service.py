@@ -12,8 +12,7 @@ from packages.webui.services.partition_monitoring_service import (
     PartitionHealthStatus,
     PartitionMonitoringService,
     SkewMetric,
-    SkewStatus,
-)
+    SkewStatus)
 
 
 class TestPartitionMonitoringService:
@@ -181,8 +180,7 @@ class TestPartitionMonitoringService:
                         metric="chunk_distribution",
                         value=0.01,
                         status=SkewStatus.NORMAL,
-                        details="All partitions balanced",
-                    )
+                        details="All partitions balanced")
                 ]
 
                 result = await service.check_partition_health()
@@ -212,8 +210,7 @@ class TestPartitionMonitoringService:
                         health_status=PartitionHealthStatus[data["health_status"]],
                         chunk_skew=data["chunk_skew"],
                         size_skew=data["size_skew"],
-                        recommendation=data["recommendation"],
-                    )
+                        recommendation=data["recommendation"])
                 )
             mock_health_summary.return_value = health_objects
 
@@ -261,8 +258,7 @@ class TestPartitionMonitoringService:
             chunk_count=1000,
             total_size_mb=500.5,
             avg_chunk_size_kb=0.5,
-            created_at=datetime.now(UTC),
-        )
+            created_at=datetime.now(UTC))
 
         mock_result = Mock()
         mock_result.fetchone.return_value = mock_row
@@ -295,8 +291,7 @@ class TestPartitionMonitoringService:
             total_chunks=50000,
             total_size_mb=25000.0,
             avg_chunks_per_partition=5000.0,
-            chunk_count_stddev=250.5,
-        )
+            chunk_count_stddev=250.5)
 
         mock_result = Mock()
         mock_result.fetchone.return_value = mock_row
@@ -318,8 +313,7 @@ class TestPartitionMonitoringService:
             total_chunks=None,
             total_size_mb=None,
             avg_chunks_per_partition=None,
-            chunk_count_stddev=None,
-        )
+            chunk_count_stddev=None)
 
         mock_result = Mock()
         mock_result.fetchone.return_value = mock_row

@@ -86,8 +86,7 @@ def chunking_service(
     mock_redis: AsyncMock,
     mock_db_session: AsyncMock,
     mock_document_service: AsyncMock,
-    mock_collection_service: AsyncMock,
-) -> ChunkingService:
+    mock_collection_service: AsyncMock) -> ChunkingService:
     """Create a ChunkingService instance with mocked dependencies."""
     # Create mock repositories
     mock_collection_repo = MagicMock()
@@ -164,10 +163,7 @@ def chunking_service(
         db_session=mock_db_session,
         collection_repo=mock_collection_repo,
         document_repo=mock_document_repo,
-        redis_client=mock_redis,
-        operation_repo=mock_operation_repo,
-        qdrant_client=mock_qdrant,
-    )
+        redis_client=mock_redis)
 
     # Also set the services as attributes for tests that might use them
     service.document_service = mock_document_service
@@ -183,8 +179,7 @@ class TestPreviewFunctionality:
     async def test_preview_with_content(
         self,
         chunking_service: ChunkingService,
-        mock_redis: AsyncMock,
-    ) -> None:
+        mock_redis: AsyncMock) -> None:
         """Test generating preview with provided content."""
         content = "This is a test document. It has multiple sentences. Each sentence should be preserved when chunking."
 
@@ -195,8 +190,7 @@ class TestPreviewFunctionality:
             config={"chunk_size": 50, "chunk_overlap": 10},
             max_chunks=5,
             include_metrics=True,
-            user_id=1,
-        )
+            user_id=1)
 
         assert "preview_id" in result
         assert result["strategy"] == ChunkingStrategy.FIXED_SIZE
@@ -213,8 +207,7 @@ class TestPreviewFunctionality:
         self,
         mock_chunking_factory: MagicMock,
         chunking_service: ChunkingService,
-        mock_document_service: AsyncMock,
-    ) -> None:
+        mock_document_service: AsyncMock) -> None:
         """Test generating preview with document ID."""
         # Mock the chunker to avoid needing OpenAI API
         mock_chunker = MagicMock()
@@ -235,8 +228,7 @@ class TestPreviewFunctionality:
             config=None,
             max_chunks=10,
             include_metrics=False,
-            user_id=1,
-        )
+            user_id=1)
 
         assert result["strategy"] == ChunkingStrategy.SEMANTIC
         assert "chunks" in result
@@ -249,8 +241,7 @@ class TestPreviewFunctionality:
     async def test_preview_caching(
         self,
         chunking_service: ChunkingService,
-        mock_redis: AsyncMock,
-    ) -> None:
+        mock_redis: AsyncMock) -> None:
         """Test that preview results are cached and retrieved correctly."""
         # First call - not cached
         mock_redis.get.return_value = None
@@ -259,8 +250,7 @@ class TestPreviewFunctionality:
         result1 = await chunking_service.preview_chunking(
             content=content,
             strategy=ChunkingStrategy.FIXED_SIZE,
-            user_id=1,
-        )
+            user_id=1)
 
         # First call should not be from cache
         assert "preview_id" in result1
@@ -273,8 +263,7 @@ class TestPreviewFunctionality:
         result2 = await chunking_service.preview_chunking(
             content=content,
             strategy=ChunkingStrategy.FIXED_SIZE,
-            user_id=1,
-        )
+            user_id=1)
 
         # Second call should have same content if cached
         assert result2["preview_id"] == result1["preview_id"]
@@ -282,8 +271,7 @@ class TestPreviewFunctionality:
     @pytest.mark.asyncio()
     async def test_preview_cache_key_generation(
         self,
-        chunking_service: ChunkingService,
-    ) -> None:
+        chunking_service: ChunkingService) -> None:
         """Test that cache keys are generated consistently."""
         content = "Test content"
         strategy = ChunkingStrategy.RECURSIVE
@@ -306,8 +294,7 @@ class TestPreviewFunctionality:
     async def test_clear_preview_cache(
         self,
         chunking_service: ChunkingService,
-        mock_redis: AsyncMock,
-    ) -> None:
+        mock_redis: AsyncMock) -> None:
         """Test clearing preview cache."""
         preview_id = str(uuid.uuid4())
 
@@ -322,13 +309,11 @@ class TestStrategyRecommendation:
     @pytest.mark.asyncio()
     async def test_recommend_strategy_for_pdf(
         self,
-        chunking_service: ChunkingService,
-    ) -> None:
+        chunking_service: ChunkingService) -> None:
         """Test strategy recommendation for PDF files."""
         result = await chunking_service.recommend_strategy(
             file_types=["pdf"],
-            user_id=1,
-        )
+            user_id=1)
 
         assert result["strategy"] in [
             ChunkingStrategy.SEMANTIC,
@@ -341,13 +326,11 @@ class TestStrategyRecommendation:
     @pytest.mark.asyncio()
     async def test_recommend_strategy_for_code(
         self,
-        chunking_service: ChunkingService,
-    ) -> None:
+        chunking_service: ChunkingService) -> None:
         """Test strategy recommendation for code files."""
         result = await chunking_service.recommend_strategy(
             file_types=["py", "js", "java"],
-            user_id=1,
-        )
+            user_id=1)
 
         assert result["strategy"] in [
             ChunkingStrategy.RECURSIVE,
@@ -358,13 +341,11 @@ class TestStrategyRecommendation:
     @pytest.mark.asyncio()
     async def test_recommend_strategy_for_mixed_types(
         self,
-        chunking_service: ChunkingService,
-    ) -> None:
+        chunking_service: ChunkingService) -> None:
         """Test strategy recommendation for mixed file types."""
         result = await chunking_service.recommend_strategy(
             file_types=["pdf", "txt", "md", "json"],
-            user_id=1,
-        )
+            user_id=1)
 
         assert result["strategy"] in [
             ChunkingStrategy.HYBRID,
@@ -375,13 +356,11 @@ class TestStrategyRecommendation:
     @pytest.mark.asyncio()
     async def test_recommend_strategy_with_no_file_types(
         self,
-        chunking_service: ChunkingService,
-    ) -> None:
+        chunking_service: ChunkingService) -> None:
         """Test strategy recommendation with no file types provided."""
         result = await chunking_service.recommend_strategy(
             file_types=[],
-            user_id=1,
-        )
+            user_id=1)
 
         # Should provide a default recommendation
         assert result["strategy"] == ChunkingStrategy.FIXED_SIZE
@@ -395,15 +374,13 @@ class TestConfigurationValidation:
     async def test_validate_valid_config(
         self,
         chunking_service: ChunkingService,
-        mock_collection_service: AsyncMock,
-    ) -> None:
+        mock_collection_service: AsyncMock) -> None:
         """Test validation of valid configuration."""
         result = await chunking_service.validate_config_for_collection(
             collection_id="coll-123",
             strategy=ChunkingStrategy.FIXED_SIZE,
             config={"chunk_size": 512, "chunk_overlap": 50},
-            user_id=1,
-        )
+            user_id=1)
 
         assert result["is_valid"] is True
         assert "estimated_time" in result
@@ -412,8 +389,7 @@ class TestConfigurationValidation:
     async def test_validate_invalid_chunk_size(
         self,
         chunking_service: ChunkingService,
-        mock_collection_service: AsyncMock,
-    ) -> None:
+        mock_collection_service: AsyncMock) -> None:
         """Test validation with invalid chunk size."""
         # Set collection with large documents
         mock_collection_service.get_collection_documents.return_value = [
@@ -424,8 +400,7 @@ class TestConfigurationValidation:
             collection_id="coll-123",
             strategy=ChunkingStrategy.FIXED_SIZE,
             config={"chunk_size": 10},  # Too small for large documents
-            user_id=1,
-        )
+            user_id=1)
 
         assert result["is_valid"] is False
         assert "reason" in result
@@ -433,15 +408,13 @@ class TestConfigurationValidation:
     @pytest.mark.asyncio()
     async def test_validate_semantic_requirements(
         self,
-        chunking_service: ChunkingService,
-    ) -> None:
+        chunking_service: ChunkingService) -> None:
         """Test validation of semantic chunking requirements."""
         result = await chunking_service.validate_config_for_collection(
             collection_id="coll-123",
             strategy=ChunkingStrategy.SEMANTIC,
             config={"embedding_model": "non-existent-model"},
-            user_id=1,
-        )
+            user_id=1)
 
         # Should check if embedding model is available
         assert "valid" in result
@@ -452,8 +425,7 @@ class TestConfigurationValidation:
     async def test_estimate_processing_time(
         self,
         chunking_service: ChunkingService,
-        mock_collection_service: AsyncMock,
-    ) -> None:
+        mock_collection_service: AsyncMock) -> None:
         """Test processing time estimation."""
         # Set up collection with known document count and sizes
         mock_collection_service.get_collection.return_value = {
@@ -466,8 +438,7 @@ class TestConfigurationValidation:
             collection_id="coll-123",
             strategy=ChunkingStrategy.SEMANTIC,
             config={},
-            user_id=1,
-        )
+            user_id=1)
 
         assert "estimated_time" in result
         assert result["estimated_time"] > 0  # Should take some time for 50MB
@@ -480,8 +451,7 @@ class TestChunkingOperations:
     async def test_process_chunking_operation_success(
         self,
         chunking_service: ChunkingService,
-        mock_collection_service: AsyncMock,
-    ) -> None:
+        mock_collection_service: AsyncMock) -> None:
         """Test successful chunking operation processing."""
         operation_id = str(uuid.uuid4())
 
@@ -496,8 +466,7 @@ class TestChunkingOperations:
                 config={"chunk_size": 512},
                 document_ids=None,  # Process all documents
                 user_id=1,
-                websocket_channel=f"chunking:coll-123:{operation_id}",
-            )
+                websocket_channel=f"chunking:coll-123:{operation_id}")
 
             # Verify progress updates were sent
             assert mock_ws.send_message.called
@@ -511,8 +480,7 @@ class TestChunkingOperations:
     async def test_process_chunking_with_specific_documents(
         self,
         chunking_service: ChunkingService,
-        mock_collection_service: AsyncMock,
-    ) -> None:
+        mock_collection_service: AsyncMock) -> None:
         """Test chunking operation with specific document IDs."""
         operation_id = str(uuid.uuid4())
         document_ids = ["doc-1", "doc-2", "doc-3"]
@@ -527,8 +495,7 @@ class TestChunkingOperations:
                 config={},
                 document_ids=document_ids,
                 user_id=1,
-                websocket_channel=f"chunking:coll-123:{operation_id}",
-            )
+                websocket_channel=f"chunking:coll-123:{operation_id}")
 
             # Should only process specified documents
             # Verify by checking progress messages
@@ -543,8 +510,7 @@ class TestChunkingOperations:
     async def test_process_chunking_operation_failure(
         self,
         chunking_service: ChunkingService,
-        mock_document_service: AsyncMock,
-    ) -> None:
+        mock_document_service: AsyncMock) -> None:
         """Test chunking operation failure handling."""
         operation_id = str(uuid.uuid4())
 
@@ -562,8 +528,7 @@ class TestChunkingOperations:
                     config={},
                     document_ids=["doc-1"],
                     user_id=1,
-                    websocket_channel=f"chunking:coll-123:{operation_id}",
-                )
+                    websocket_channel=f"chunking:coll-123:{operation_id}")
 
             # Should send failure notification
             failure_calls = [call for call in mock_ws.send_message.call_args_list if "failed" in str(call)]
@@ -577,8 +542,7 @@ class TestStatisticsAndMetrics:
     async def test_get_chunking_statistics(
         self,
         chunking_service: ChunkingService,
-        mock_db_session: AsyncMock,
-    ) -> None:
+        mock_db_session: AsyncMock) -> None:
         """Test getting chunking statistics for a collection."""
         # Mock Document objects with chunk_count attribute
         mock_docs = [MagicMock(chunk_count=25) for _ in range(20)]
@@ -590,8 +554,7 @@ class TestStatisticsAndMetrics:
 
         stats = await chunking_service.get_chunking_statistics(
             collection_id="coll-123",
-            user_id=1,
-        )
+            user_id=1)
 
         assert stats.total_chunks == 500
         assert stats.total_documents == 20
@@ -602,8 +565,7 @@ class TestStatisticsAndMetrics:
     @pytest.mark.asyncio()
     async def test_calculate_quality_metrics(
         self,
-        chunking_service: ChunkingService,
-    ) -> None:
+        chunking_service: ChunkingService) -> None:
         """Test quality metrics calculation."""
         chunks = [
             {"content": "Short chunk", "size": 11},
@@ -623,8 +585,7 @@ class TestStatisticsAndMetrics:
     async def test_track_preview_usage(
         self,
         chunking_service: ChunkingService,
-        mock_redis: AsyncMock,
-    ) -> None:
+        mock_redis: AsyncMock) -> None:
         """Test tracking preview usage for rate limiting."""
         user_id = 1
         strategy = ChunkingStrategy.SEMANTIC
@@ -642,8 +603,7 @@ class TestErrorHandling:
     @pytest.mark.asyncio()
     async def test_handle_memory_error(
         self,
-        chunking_service: ChunkingService,
-    ) -> None:
+        chunking_service: ChunkingService) -> None:
         """Test handling of memory errors during chunking."""
         # Simulate large content that would exceed memory limits
         large_content = "x" * (100 * 1024 * 1024)  # 100MB
@@ -652,42 +612,36 @@ class TestErrorHandling:
             await chunking_service.preview_chunking(
                 content=large_content,
                 strategy=ChunkingStrategy.SEMANTIC,
-                user_id=1,
-            )
+                user_id=1)
 
     @pytest.mark.asyncio()
     async def test_handle_timeout_error(
         self,
-        chunking_service: ChunkingService,
-    ) -> None:
+        chunking_service: ChunkingService) -> None:
         """Test handling of timeout errors."""
         # Mock slow processing
         with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError), pytest.raises(ChunkingTimeoutError):
             await chunking_service.preview_chunking(
                 content="Test content",
                 strategy=ChunkingStrategy.SEMANTIC,
-                user_id=1,
-            )
+                user_id=1)
 
     @pytest.mark.asyncio()
     async def test_handle_invalid_strategy(
         self,
-        chunking_service: ChunkingService,
-    ) -> None:
+        chunking_service: ChunkingService) -> None:
         """Test handling of invalid strategy."""
         with pytest.raises(ChunkingStrategyError):
             await chunking_service.preview_chunking(
                 content="Test",
                 strategy="invalid_strategy",  # Invalid
-                user_id=1,
-            )
+                user_id=1)
 
     @pytest.mark.asyncio()
     async def test_handle_document_not_found(
         self,
         chunking_service: ChunkingService,
-        mock_document_service: AsyncMock,
-    ) -> None:
+        mock_document_service: AsyncMock) -> None:
         """Test handling when document is not found."""
         mock_document_service.get_document.side_effect = EntityNotFoundError("Document", "non-existent")
 
@@ -695,15 +649,13 @@ class TestErrorHandling:
             await chunking_service.preview_chunking(
                 document_id="non-existent",
                 strategy=ChunkingStrategy.FIXED_SIZE,
-                user_id=1,
-            )
+                user_id=1)
 
     @pytest.mark.asyncio()
     async def test_handle_redis_connection_error(
         self,
         chunking_service: ChunkingService,
-        mock_redis: AsyncMock,
-    ) -> None:
+        mock_redis: AsyncMock) -> None:
         """Test graceful handling of Redis connection errors."""
         # Simulate Redis connection error
         mock_redis.get.side_effect = ConnectionError("Redis unavailable")
@@ -713,8 +665,7 @@ class TestErrorHandling:
         result = await chunking_service.preview_chunking(
             content="Test content",
             strategy=ChunkingStrategy.FIXED_SIZE,
-            user_id=1,
-        )
+            user_id=1)
 
         assert "preview_id" in result
         assert "chunks" in result
@@ -726,16 +677,14 @@ class TestChunkingAlgorithms:
     @pytest.mark.asyncio()
     async def test_fixed_size_chunking(
         self,
-        chunking_service: ChunkingService,
-    ) -> None:
+        chunking_service: ChunkingService) -> None:
         """Test fixed size chunking algorithm."""
         content = "A" * 1000  # 1000 characters
 
         chunks = await chunking_service._chunk_content(
             content=content,
             strategy=ChunkingStrategy.FIXED_SIZE,
-            config={"chunk_size": 100, "chunk_overlap": 10},
-        )
+            config={"chunk_size": 100, "chunk_overlap": 10})
 
         # Should create approximately 11 chunks with overlap
         assert len(chunks) >= 10
@@ -747,8 +696,7 @@ class TestChunkingAlgorithms:
     @pytest.mark.asyncio()
     async def test_recursive_chunking(
         self,
-        chunking_service: ChunkingService,
-    ) -> None:
+        chunking_service: ChunkingService) -> None:
         """Test recursive chunking algorithm."""
         content = """
 # Header 1
@@ -765,8 +713,7 @@ Sub-content.
         chunks = await chunking_service._chunk_content(
             content=content,
             strategy=ChunkingStrategy.RECURSIVE,
-            config={"separators": ["\n#", "\n\n", "\n", " "]},
-        )
+            config={"separators": ["\n#", "\n\n", "\n", " "]})
 
         # Should split on headers first
         assert len(chunks) >= 3
@@ -779,16 +726,14 @@ Sub-content.
     @pytest.mark.asyncio()
     async def test_sliding_window_chunking(
         self,
-        chunking_service: ChunkingService,
-    ) -> None:
+        chunking_service: ChunkingService) -> None:
         """Test sliding window chunking algorithm."""
         content = "The quick brown fox jumps over the lazy dog. " * 20
 
         chunks = await chunking_service._chunk_content(
             content=content,
             strategy=ChunkingStrategy.SLIDING_WINDOW,
-            config={"window_size": 50, "step_size": 25},
-        )
+            config={"window_size": 50, "step_size": 25})
 
         # Check overlap between consecutive chunks
         for i in range(len(chunks) - 1):
@@ -802,8 +747,7 @@ Sub-content.
     @pytest.mark.asyncio()
     async def test_preserve_sentences(
         self,
-        chunking_service: ChunkingService,
-    ) -> None:
+        chunking_service: ChunkingService) -> None:
         """Test that sentence preservation works correctly."""
         content = "This is sentence one. This is sentence two. This is sentence three. This is sentence four."
 
@@ -814,8 +758,7 @@ Sub-content.
                 "chunk_size": 30,
                 "chunk_overlap": 5,
                 "preserve_sentences": True,
-            },
-        )
+            })
 
         # Check that chunks end at sentence boundaries
         for chunk in chunks:
@@ -831,8 +774,7 @@ class TestConcurrency:
     @pytest.mark.asyncio()
     async def test_concurrent_preview_requests(
         self,
-        chunking_service: ChunkingService,
-    ) -> None:
+        chunking_service: ChunkingService) -> None:
         """Test handling multiple concurrent preview requests."""
         import asyncio
 
@@ -842,8 +784,7 @@ class TestConcurrency:
             task = chunking_service.preview_chunking(
                 content=f"Content {i}",
                 strategy=ChunkingStrategy.FIXED_SIZE,
-                user_id=i,
-            )
+                user_id=i)
             tasks.append(task)
 
         # Run concurrently
@@ -860,8 +801,7 @@ class TestConcurrency:
     async def test_concurrent_cache_access(
         self,
         chunking_service: ChunkingService,
-        mock_redis: AsyncMock,
-    ) -> None:
+        mock_redis: AsyncMock) -> None:
         """Test concurrent cache access doesn't cause issues."""
         import asyncio
 
@@ -872,8 +812,7 @@ class TestConcurrency:
         await chunking_service.preview_chunking(
             content=content,
             strategy=ChunkingStrategy.FIXED_SIZE,
-            user_id=1,
-        )
+            user_id=1)
 
         # Simulate cache hit
         mock_redis.get.return_value = json.dumps(
@@ -890,8 +829,7 @@ class TestConcurrency:
             task = chunking_service.preview_chunking(
                 content=content,
                 strategy=ChunkingStrategy.FIXED_SIZE,
-                user_id=1,
-            )
+                user_id=1)
             tasks.append(task)
 
         results = await asyncio.gather(*tasks)
@@ -908,8 +846,7 @@ class TestProgressTracking:
     async def test_get_chunking_progress(
         self,
         chunking_service: ChunkingService,
-        mock_redis: AsyncMock,
-    ) -> None:
+        mock_redis: AsyncMock) -> None:
         """Test getting chunking operation progress."""
         operation_id = str(uuid.uuid4())
 
@@ -929,16 +866,14 @@ class TestProgressTracking:
             progress_percentage=45.5,
             uuid=operation_id,
             started_at=datetime.now(UTC),
-            error_message=None,
-        )
+            error_message=None)
 
         # Mock the operation repository to return our mock operation
         chunking_service.operation_repo.get_by_uuid_with_permission_check = AsyncMock(return_value=mock_operation)
 
         result = await chunking_service.get_chunking_progress(
             operation_id=operation_id,
-            user_id=1,
-        )
+            user_id=1)
 
         assert result["status"] == "in_progress"
         assert result["progress_percentage"] == 45.5
@@ -948,8 +883,7 @@ class TestProgressTracking:
     async def test_update_progress(
         self,
         chunking_service: ChunkingService,
-        mock_redis: AsyncMock,
-    ) -> None:
+        mock_redis: AsyncMock) -> None:
         """Test updating operation progress."""
         operation_id = str(uuid.uuid4())
 
@@ -960,8 +894,7 @@ class TestProgressTracking:
             message="Processing doc_7.pdf",
             documents_processed=6,
             total_documents=10,
-            current_document="doc_7.pdf",
-        )
+            current_document="doc_7.pdf")
 
         # Verify Redis was updated
         mock_redis.hset.assert_called()

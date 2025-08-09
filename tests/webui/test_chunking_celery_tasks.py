@@ -76,8 +76,7 @@ class TestChunkingCeleryTasks:
                 "warning_count": 0,
                 "healthy_count": 3,
             },
-            error=None,
-        )
+            error=None)
         mock_service.check_partition_health = AsyncMock(return_value=mock_monitoring_result)
         mock_service_class.return_value = mock_service
 
@@ -131,8 +130,7 @@ class TestChunkingCeleryTasks:
                 "warning_count": 2,
                 "healthy_count": 3,
             },
-            error=None,
-        )
+            error=None)
         mock_service.check_partition_health = AsyncMock(return_value=mock_monitoring_result)
         mock_service_class.return_value = mock_service
 
@@ -191,8 +189,7 @@ class TestChunkingCeleryTasks:
                 "warning_count": 0,
                 "healthy_count": 2,
             },
-            error=None,
-        )
+            error=None)
         mock_service.check_partition_health = AsyncMock(return_value=mock_monitoring_result)
         mock_service_class.return_value = mock_service
 
@@ -235,8 +232,7 @@ class TestChunkingCeleryTasks:
             timestamp=datetime.now(UTC).isoformat(),
             alerts=[],
             metrics={},
-            error="Failed to connect to database",
-        )
+            error="Failed to connect to database")
         mock_service.check_partition_health = AsyncMock(return_value=mock_monitoring_result)
         mock_service_class.return_value = mock_service
 

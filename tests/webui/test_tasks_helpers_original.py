@@ -26,8 +26,7 @@ from packages.webui.tasks import (
     _update_collection_metrics,
     calculate_cleanup_delay,
     cleanup_old_results,
-    extract_and_serialize_thread_safe,
-)
+    extract_and_serialize_thread_safe)
 
 
 class TestTaskHelperFunctions:
@@ -135,8 +134,7 @@ class TestAuditLogging:
             operation_id=456,
             user_id=1,
             action="test_action",
-            details={"field": "value", "password": "secret", "api_key": "hidden"},
-        )
+            details={"field": "value", "password": "secret", "api_key": "hidden"})
 
         # Verify audit log was created with correct parameters
         mock_audit_log_class.assert_called_once()

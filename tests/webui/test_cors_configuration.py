@@ -44,8 +44,7 @@ class TestCORSOriginValidation:
         # Patch both the module-level import and the function's access
         with (
             patch.object(packages.webui.main.shared_settings, "ENVIRONMENT", "development"),
-            patch("packages.webui.main.logger") as mock_logger,
-        ):
+            patch("packages.webui.main.logger") as mock_logger):
             result = _validate_cors_origins(origins)
 
             # In development, wildcard should be allowed but warned
@@ -104,7 +103,7 @@ class TestCORSConfiguration:
     def test_empty_cors_origins_warning(self, mock_logger, mock_embed_service, mock_settings) -> None:
         """Test warning when no valid CORS origins are configured."""
         # Mock settings with invalid origins
-        mock_settings.CORS_ORIGINS = "not-a-url,,"
+        mock_settings.CORS_ORIGINS = "not-a-url,"
         mock_settings.USE_MOCK_EMBEDDINGS = True
         mock_settings.INTERNAL_API_KEY = "test-key"
         mock_settings.ENVIRONMENT = "development"
@@ -162,8 +161,7 @@ class TestCORSConfiguration:
                 "Origin": "http://testclient",
                 "Access-Control-Request-Method": "POST",
                 "Access-Control-Request-Headers": "content-type",
-            },
-        )
+            })
 
         assert response.status_code == 200
         assert response.headers["access-control-allow-origin"] == "http://testclient"

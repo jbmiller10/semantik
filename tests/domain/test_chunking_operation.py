@@ -10,8 +10,7 @@ from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
 from packages.shared.chunking.domain.exceptions import (
     DocumentTooLargeError,
-    InvalidStateError,
-)
+    InvalidStateError)
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 from packages.shared.chunking.domain.value_objects.operation_status import OperationStatus
@@ -27,8 +26,7 @@ class TestChunkingOperation:
             strategy_name="character",
             min_tokens=10,
             max_tokens=100,
-            overlap_tokens=5,
-        )
+            overlap_tokens=5)
 
     @pytest.fixture
     def sample_document(self):
@@ -42,8 +40,7 @@ class TestChunkingOperation:
             operation_id="test-op-123",
             document_id="doc-456",
             document_content=sample_document,
-            config=valid_config,
-        )
+            config=valid_config)
 
     def test_initialization_success(self, valid_config, sample_document):
         """Test successful initialization of ChunkingOperation."""
@@ -52,8 +49,7 @@ class TestChunkingOperation:
             operation_id="test-op-123",
             document_id="doc-456",
             document_content=sample_document,
-            config=valid_config,
-        )
+            config=valid_config)
 
         # Assert
         assert operation.id == "test-op-123"
@@ -75,8 +71,7 @@ class TestChunkingOperation:
                 operation_id="test-op",
                 document_id="doc-1",
                 document_content=large_content,
-                config=valid_config,
-            )
+                config=valid_config)
         
         assert str(exc_info.value).startswith("Document size")
         assert str(ChunkingOperation.MAX_DOCUMENT_SIZE) in str(exc_info.value)
@@ -111,17 +106,25 @@ class TestChunkingOperation:
         mock_strategy = MagicMock()
         mock_chunks = [
             Chunk(
-                content="Chunk 1",
-                start_position=0,
-                end_position=7,
-                metadata=ChunkMetadata(token_count=2, semantic_density=0.8),
-            ),
+                content="Chunk 1"metadata=ChunkMetadata(
+                    chunk_id="chunk-1",
+                    document_id="doc-123",
+                    chunk_index=0,
+                    start_offset=0,
+                    end_offset=7,
+                    token_count=2,
+                    strategy_name="character",
+                    semantic_score=0.8)),
             Chunk(
-                content="Chunk 2",
-                start_position=8,
-                end_position=15,
-                metadata=ChunkMetadata(token_count=2, semantic_density=0.7),
-            ),
+                content="Chunk 2"metadata=ChunkMetadata(
+                    chunk_id="chunk-2",
+                    document_id="doc-123",
+                    chunk_index=1,
+                    start_offset=8,
+                    end_offset=15,
+                    token_count=2,
+                    strategy_name="character",
+                    semantic_score=0.7)),
         ]
         mock_strategy.chunk.return_value = mock_chunks
         
@@ -159,10 +162,14 @@ class TestChunkingOperation:
         excessive_chunks = [
             Chunk(
                 content=f"Chunk {i}",
-                start_position=i * 10,
-                end_position=(i + 1) * 10,
-                metadata=ChunkMetadata(token_count=2),
-            )
+                metadata=ChunkMetadata(
+                    chunk_id=f"chunk-{i}",
+                    document_id="doc-123",
+                    chunk_index=i,
+                    start_offset=i * 2,
+                    end_offset=(i + 1) * 2,
+                    token_count=2,
+                    strategy_name="character"))
             for i in range(ChunkingOperation.MAX_CHUNKS_PER_OPERATION + 1)
         ]
         mock_strategy.chunk.return_value = excessive_chunks
@@ -197,11 +204,14 @@ class TestChunkingOperation:
         """Test adding chunks to an operation."""
         # Arrange
         chunk = Chunk(
-            content="Test chunk",
-            start_position=0,
-            end_position=10,
-            metadata=ChunkMetadata(token_count=3),
-        )
+            content="Test chunk"metadata=ChunkMetadata(
+                chunk_id="chunk-test",
+                document_id="doc-123",
+                chunk_index=0,
+                start_offset=0,
+                end_offset=5,
+                token_count=3,
+                strategy_name="character"))
         chunking_operation.start()
 
         # Act
@@ -215,11 +225,14 @@ class TestChunkingOperation:
         """Test that adding chunks fails in invalid state."""
         # Arrange
         chunk = Chunk(
-            content="Test chunk",
-            start_position=0,
-            end_position=10,
-            metadata=ChunkMetadata(token_count=3),
-        )
+            content="Test chunk"metadata=ChunkMetadata(
+                chunk_id="chunk-test",
+                document_id="doc-123",
+                chunk_index=0,
+                start_offset=0,
+                end_offset=5,
+                token_count=3,
+                strategy_name="character"))
 
         # Act & Assert
         with pytest.raises(InvalidStateError) as exc_info:
@@ -256,17 +269,24 @@ class TestChunkingOperation:
         # Arrange
         chunks = [
             Chunk(
-                content=chunking_operation._document_content[0:30],
-                start_position=0,
-                end_position=30,
-                metadata=ChunkMetadata(token_count=8),
-            ),
+                content=chunking_operation._document_content[0:30]metadata=ChunkMetadata(
+                    chunk_id="chunk-1",
+                    document_id="doc-123",
+                    chunk_index=0,
+                    start_offset=0,
+                    end_offset=8,
+                    token_count=8,
+                    strategy_name="character")),
             Chunk(
                 content=chunking_operation._document_content[25:],
-                start_position=25,
-                end_position=len(chunking_operation._document_content),
-                metadata=ChunkMetadata(token_count=10),
-            ),
+                metadata=ChunkMetadata(
+                    chunk_id="chunk-2",
+                    document_id="doc-123",
+                    chunk_index=1,
+                    start_offset=9,
+                    end_offset=19,
+                    token_count=10,
+                    strategy_name="character")),
         ]
         
         chunking_operation.start()
@@ -297,11 +317,14 @@ class TestChunkingOperation:
         # Arrange
         # Add a chunk that covers only a small portion
         chunk = Chunk(
-            content="This",
-            start_position=0,
-            end_position=4,
-            metadata=ChunkMetadata(token_count=1),
-        )
+            content="This"metadata=ChunkMetadata(
+                chunk_id="chunk-error",
+                document_id="doc-123",
+                chunk_index=0,
+                start_offset=0,
+                end_offset=5,
+                token_count=1,
+                strategy_name="character"))
         
         chunking_operation.start()
         chunking_operation._chunk_collection.add_chunk(chunk)
@@ -352,11 +375,14 @@ class TestChunkingOperation:
         # Arrange
         chunking_operation.start()
         chunk = Chunk(
-            content="Test chunk",
-            start_position=0,
-            end_position=10,
-            metadata=ChunkMetadata(token_count=3),
-        )
+            content="Test chunk"metadata=ChunkMetadata(
+                chunk_id="chunk-test",
+                document_id="doc-123",
+                chunk_index=0,
+                start_offset=0,
+                end_offset=5,
+                token_count=3,
+                strategy_name="character"))
         chunking_operation.add_chunk(chunk)
 
         # Act
@@ -376,11 +402,14 @@ class TestChunkingOperation:
         mock_strategy = MagicMock()
         mock_chunks = [
             Chunk(
-                content="Chunk 1",
-                start_position=0,
-                end_position=7,
-                metadata=ChunkMetadata(token_count=2),
-            ),
+                content="Chunk 1"metadata=ChunkMetadata(
+                    chunk_id=f"chunk-{i}",
+                    document_id="doc-123",
+                    chunk_index=i,
+                    start_offset=i * 2,
+                    end_offset=(i + 1) * 2,
+                    token_count=2,
+                    strategy_name="character")),
         ]
         mock_strategy.chunk.return_value = mock_chunks
         

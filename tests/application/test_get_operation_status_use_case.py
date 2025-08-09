@@ -10,8 +10,7 @@ import pytest
 from packages.shared.chunking.application.dto.requests import GetOperationStatusRequest
 from packages.shared.chunking.application.dto.responses import GetOperationStatusResponse
 from packages.shared.chunking.application.use_cases.get_operation_status import (
-    GetOperationStatusUseCase,
-)
+    GetOperationStatusUseCase)
 from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from packages.shared.chunking.domain.value_objects.operation_status import OperationStatus
@@ -29,20 +28,26 @@ class TestGetOperationStatusUseCase:
         return repo
 
     @pytest.fixture()
-    def mock_cache_service(self):
-        """Create mock cache service."""
+    def mock_chunk_repository(self):
+        """Create mock chunk repository."""
+        repo = AsyncMock()
+        repo.get_by_operation_id = AsyncMock(return_value=[])
+        return repo
+    
+    @pytest.fixture()
+    def mock_metrics_service(self):
+        """Create mock metrics service."""
         service = AsyncMock()
-        service.get_status = AsyncMock(return_value=None)
-        service.set_status = AsyncMock()
+        service.record_status_query = AsyncMock()
         return service
 
     @pytest.fixture()
-    def use_case(self, mock_repository, mock_cache_service):
+    def use_case(self, mock_repository, mock_chunk_repository, mock_metrics_service):
         """Create use case instance with mocked dependencies."""
         return GetOperationStatusUseCase(
-            repository=mock_repository,
-            cache_service=mock_cache_service,
-        )
+            operation_repository=mock_repository,
+            chunk_repository=mock_chunk_repository,
+            metrics_service=mock_metrics_service)
 
     @pytest.fixture()
     def sample_operation(self):
@@ -51,15 +56,13 @@ class TestGetOperationStatusUseCase:
             strategy_name="character",
             min_tokens=10,
             max_tokens=100,
-            overlap_tokens=5,
-        )
+            overlap_tokens=5)
 
         operation = ChunkingOperation(
             operation_id=str(uuid4()),
             document_id="doc-123",
             document_content="Sample document content",
-            config=config,
-        )
+            config=config)
 
         # Set operation to processing state
         operation.start()
@@ -76,7 +79,7 @@ class TestGetOperationStatusUseCase:
     async def test_get_status_success(self, use_case, valid_request, sample_operation):
         """Test successful status retrieval."""
         # Arrange
-        use_case.repository.get_by_id.return_value = sample_operation
+        use_case.operation_repository.get_by_id.return_value = sample_operation
 
         # Act
         response = await use_case.execute(valid_request)
@@ -90,7 +93,7 @@ class TestGetOperationStatusUseCase:
         assert response.chunks_produced == 0
 
         # Verify repository was called
-        use_case.repository.get_by_id.assert_called_once_with(valid_request.operation_id)
+        use_case.operation_repository.get_by_id.assert_called_once_with(valid_request.operation_id)
 
     @pytest.mark.asyncio()
     async def test_get_status_from_cache(self, use_case, valid_request):
@@ -112,13 +115,13 @@ class TestGetOperationStatusUseCase:
         assert response.chunks_produced == 5
 
         # Repository should not be called when cache hit
-        use_case.repository.get_by_id.assert_not_called()
+        use_case.operation_repository.get_by_id.assert_not_called()
 
     @pytest.mark.asyncio()
     async def test_get_status_operation_not_found(self, use_case, valid_request):
         """Test handling of operation not found."""
         # Arrange
-        use_case.repository.get_by_id.return_value = None
+        use_case.operation_repository.get_by_id.return_value = None
 
         # Act & Assert
         with pytest.raises(ValueError) as exc_info:
@@ -142,7 +145,7 @@ class TestGetOperationStatusUseCase:
             "metrics": {"duration_seconds": 2.5},
         }
 
-        use_case.repository.get_by_id.return_value = completed_operation
+        use_case.operation_repository.get_by_id.return_value = completed_operation
 
         # Act
         response = await use_case.execute(valid_request)
@@ -172,7 +175,7 @@ class TestGetOperationStatusUseCase:
             }
         }
 
-        use_case.repository.get_by_id.return_value = failed_operation
+        use_case.operation_repository.get_by_id.return_value = failed_operation
 
         # Act
         response = await use_case.execute(valid_request)
@@ -195,7 +198,7 @@ class TestGetOperationStatusUseCase:
         cancelled_operation.error_message = "Cancelled by user"
         cancelled_operation.get_statistics.return_value = {}
 
-        use_case.repository.get_by_id.return_value = cancelled_operation
+        use_case.operation_repository.get_by_id.return_value = cancelled_operation
 
         # Act
         response = await use_case.execute(valid_request)
@@ -224,7 +227,7 @@ class TestGetOperationStatusUseCase:
             }
         }
 
-        use_case.repository.get_by_id.return_value = operation
+        use_case.operation_repository.get_by_id.return_value = operation
 
         # Act
         response = await use_case.execute(valid_request)
@@ -239,7 +242,7 @@ class TestGetOperationStatusUseCase:
         """Test getting status by document ID instead of operation ID."""
         # Arrange
         request = GetOperationStatusRequest(document_id="doc-123")
-        use_case.repository.find_by_document_id.return_value = [sample_operation]
+        use_case.operation_repository.find_by_document_id.return_value = [sample_operation]
 
         # Act
         response = await use_case.execute(request)
@@ -247,7 +250,7 @@ class TestGetOperationStatusUseCase:
         # Assert
         assert response.operation_id == sample_operation.id
         assert response.document_id == "doc-123"
-        use_case.repository.find_by_document_id.assert_called_once_with("doc-123")
+        use_case.operation_repository.find_by_document_id.assert_called_once_with("doc-123")
 
     @pytest.mark.asyncio()
     async def test_get_latest_operation_for_document(self, use_case):
@@ -273,7 +276,7 @@ class TestGetOperationStatusUseCase:
         new_operation.chunk_collection.chunk_count = 3
         new_operation.get_statistics.return_value = {}
 
-        use_case.repository.find_by_document_id.return_value = [old_operation, new_operation]
+        use_case.operation_repository.find_by_document_id.return_value = [old_operation, new_operation]
 
         # Act
         response = await use_case.execute(request)
@@ -286,7 +289,7 @@ class TestGetOperationStatusUseCase:
     async def test_cache_update_after_retrieval(self, use_case, valid_request, sample_operation):
         """Test that cache is updated after retrieving from repository."""
         # Arrange
-        use_case.repository.get_by_id.return_value = sample_operation
+        use_case.operation_repository.get_by_id.return_value = sample_operation
         use_case.cache_service.get_status.return_value = None  # Cache miss
 
         # Act
@@ -311,7 +314,7 @@ class TestGetOperationStatusUseCase:
         completed_operation.chunk_collection.chunk_count = 10
         completed_operation.get_statistics.return_value = {}
 
-        use_case.repository.get_by_id.return_value = completed_operation
+        use_case.operation_repository.get_by_id.return_value = completed_operation
 
         # Act
         response = await use_case.execute(valid_request)
@@ -330,7 +333,7 @@ class TestGetOperationStatusUseCase:
             GetOperationStatusRequest(operation_id=sample_operation.id)
             for _ in range(5)
         ]
-        use_case.repository.get_by_id.return_value = sample_operation
+        use_case.operation_repository.get_by_id.return_value = sample_operation
 
         # Act
         import asyncio
@@ -362,7 +365,7 @@ class TestGetOperationStatusUseCase:
             }
         }
 
-        use_case.repository.get_by_id.return_value = operation
+        use_case.operation_repository.get_by_id.return_value = operation
 
         # Act
         response = await use_case.execute(valid_request)
@@ -391,7 +394,7 @@ class TestGetOperationStatusUseCase:
             }
         }
 
-        use_case.repository.get_by_id.return_value = operation
+        use_case.operation_repository.get_by_id.return_value = operation
 
         # Act
         response = await use_case.execute(valid_request)

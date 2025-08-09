@@ -91,8 +91,7 @@ class TestSearchServiceInit:
             db_session=mock_db_session,
             collection_repo=mock_collection_repo,
             default_timeout=custom_timeout,
-            retry_timeout_multiplier=2.0,
-        )
+            retry_timeout_multiplier=2.0)
 
         assert service.default_timeout == custom_timeout
         assert service.retry_timeout_multiplier == 2.0
@@ -195,8 +194,7 @@ class TestSearchSingleCollection:
                 collection=mock_collection,
                 query="test query",
                 k=10,
-                search_params={"search_type": "semantic"},
-            )
+                search_params={"search_type": "semantic"})
 
             assert result[0] == mock_collection
             assert result[1] == mock_response["results"]
@@ -224,8 +222,7 @@ class TestSearchSingleCollection:
             collection=mock_collection,
             query="test query",
             k=10,
-            search_params={},
-        )
+            search_params={})
 
         assert result[0] == mock_collection
         assert result[1] is None
@@ -255,8 +252,7 @@ class TestSearchSingleCollection:
                 collection=mock_collection,
                 query="test query",
                 k=10,
-                search_params={},
-            )
+                search_params={})
 
             assert result[0] == mock_collection
             assert result[1] == mock_response["results"]
@@ -291,8 +287,7 @@ class TestSearchSingleCollection:
                 collection=mock_collection,
                 query="test query",
                 k=10,
-                search_params={},
-            )
+                search_params={})
 
             assert result[0] == mock_collection
             assert result[1] is None
@@ -327,8 +322,7 @@ class TestSearchSingleCollection:
                     collection=mock_collection,
                     query="test query",
                     k=10,
-                    search_params={},
-                )
+                    search_params={})
 
                 assert result[0] == mock_collection
                 assert result[1] is None
@@ -348,8 +342,7 @@ class TestSearchSingleCollection:
                 collection=mock_collection,
                 query="test query",
                 k=10,
-                search_params={},
-            )
+                search_params={})
 
             assert result[0] == mock_collection
             assert result[1] is None
@@ -369,8 +362,7 @@ class TestSearchSingleCollection:
                 collection=mock_collection,
                 query="test query",
                 k=10,
-                search_params={},
-            )
+                search_params={})
 
             assert result[0] == mock_collection
             assert result[1] is None
@@ -390,8 +382,7 @@ class TestSearchSingleCollection:
                 collection=mock_collection,
                 query="test query",
                 k=10,
-                search_params={},
-            )
+                search_params={})
 
             assert result[0] == mock_collection
             assert result[1] is None
@@ -417,8 +408,7 @@ class TestSearchSingleCollection:
                 query="test query",
                 k=10,
                 search_params={},
-                timeout=custom_timeout,
-            )
+                timeout=custom_timeout)
 
             # Verify custom timeout was used
             call_args = mock_client_class.call_args
@@ -502,8 +492,7 @@ class TestMultiCollectionSearch:
                 k=10,
                 search_type="semantic",
                 score_threshold=0.5,
-                use_reranker=False,
-            )
+                use_reranker=False)
 
             # Verify results are sorted by score
             assert len(result["results"]) == 3
@@ -550,8 +539,7 @@ class TestMultiCollectionSearch:
                 k=10,
                 search_type="hybrid",
                 hybrid_alpha=0.7,
-                hybrid_search_mode="weighted",
-            )
+                hybrid_search_mode="weighted")
 
             # Verify hybrid parameters were included
             call_args = mock_client.post.call_args
@@ -593,8 +581,7 @@ class TestMultiCollectionSearch:
                 user_id=1,
                 collection_uuids=[c.id for c in ready_collections],
                 query="test query",
-                k=10,
-            )
+                k=10)
 
             # Should have results from successful collection
             assert len(result["results"]) == 1
@@ -672,8 +659,7 @@ class TestMultiCollectionSearch:
                 user_id=1,
                 collection_uuids=[mock_collection.id],
                 query="test query",
-                k=10,
-            )
+                k=10)
 
             assert len(result["results"]) == 0
             assert result["metadata"]["total_results"] == 0
@@ -692,8 +678,7 @@ class TestMultiCollectionSearch:
             await search_service.multi_collection_search(
                 user_id=1,
                 collection_uuids=["some-uuid"],
-                query="test query",
-            )
+                query="test query")
 
 
 class TestSingleCollectionSearch:
@@ -729,8 +714,7 @@ class TestSingleCollectionSearch:
                 metadata_filter={"key": "value"},
                 use_reranker=True,
                 rerank_model="test-reranker",
-                include_content=True,
-            )
+                include_content=True)
 
             assert result == mock_response
 
@@ -775,8 +759,7 @@ class TestSingleCollectionSearch:
                 query="test query",
                 search_type="hybrid",
                 hybrid_alpha=0.8,
-                hybrid_search_mode="reciprocal",
-            )
+                hybrid_search_mode="reciprocal")
 
             # Verify hybrid parameters
             request_data = mock_client.post.call_args[1]["json"]
@@ -805,8 +788,7 @@ class TestSingleCollectionSearch:
                 await search_service.single_collection_search(
                     user_id=1,
                     collection_uuid=mock_collection.id,
-                    query="test query",
-                )
+                    query="test query")
 
             assert f"collection with ID '{mock_collection.id}' not found" in str(exc_info.value)
 
@@ -824,8 +806,7 @@ class TestSingleCollectionSearch:
                 await search_service.single_collection_search(
                     user_id=1,
                     collection_uuid=mock_collection.id,
-                    query="test query",
-                )
+                    query="test query")
 
             assert f"User '1' does not have access to collection '{mock_collection.id}'" in str(exc_info.value)
 
@@ -843,8 +824,7 @@ class TestSingleCollectionSearch:
                 await search_service.single_collection_search(
                     user_id=1,
                     collection_uuid=mock_collection.id,
-                    query="test query",
-                )
+                    query="test query")
 
     @pytest.mark.asyncio()
     async def test_single_collection_search_general_error(
@@ -862,8 +842,7 @@ class TestSingleCollectionSearch:
                 await search_service.single_collection_search(
                     user_id=1,
                     collection_uuid=mock_collection.id,
-                    query="test query",
-                )
+                    query="test query")
 
     @pytest.mark.asyncio()
     async def test_single_collection_search_access_validation(
@@ -878,8 +857,7 @@ class TestSingleCollectionSearch:
             await search_service.single_collection_search(
                 user_id=1,
                 collection_uuid="some-uuid",
-                query="test query",
-            )
+                query="test query")
 
 
 class TestSearchServiceEdgeCases:
@@ -908,8 +886,7 @@ class TestSearchServiceEdgeCases:
                 query="test query",
                 k=10,
                 search_params={},
-                timeout=partial_timeout,
-            )
+                timeout=partial_timeout)
 
             # Verify retry used default values when original was None
             retry_call = mock_client_class.call_args_list[1]
@@ -946,8 +923,7 @@ class TestSearchServiceEdgeCases:
             result = await search_service.multi_collection_search(
                 user_id=1,
                 collection_uuids=[c.id for c in all_collections],
-                query="test query",
-            )
+                query="test query")
 
             # Should only search 2 ready collections
             assert mock_client.post.call_count == 2
@@ -989,8 +965,7 @@ class TestSearchServiceEdgeCases:
                 collection=mock_collection,
                 query="test query",
                 k=10,
-                search_params={},
-            )
+                search_params={})
 
             assert result[0] == mock_collection
             assert result[1] is None
@@ -1031,8 +1006,7 @@ class TestSearchServiceEdgeCases:
             await search_service.multi_collection_search(
                 user_id=1,
                 collection_uuids=[c.id for c in ready_collections],
-                query="test query",
-            )
+                query="test query")
 
             elapsed_time = time.time() - start_time
 

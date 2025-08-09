@@ -9,14 +9,12 @@ import pytest
 from packages.shared.chunking.application.dto.requests import ProcessDocumentRequest
 from packages.shared.chunking.application.dto.responses import ProcessDocumentResponse
 from packages.shared.chunking.application.use_cases.process_document import (
-    ProcessDocumentUseCase,
-)
+    ProcessDocumentUseCase)
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
 from packages.shared.chunking.domain.exceptions import (
     DocumentTooLargeError,
-    InvalidConfigurationError,
-)
+    InvalidConfigurationError)
 from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 from packages.shared.chunking.domain.value_objects.operation_status import OperationStatus
 
@@ -53,17 +51,23 @@ class TestProcessDocumentUseCase:
         mock_strategy = MagicMock()
         mock_strategy.chunk.return_value = [
             Chunk(
-                content="Chunk 1",
-                start_position=0,
-                end_position=7,
-                metadata=ChunkMetadata(token_count=2),
-            ),
+                content="Chunk 1"metadata=ChunkMetadata(
+                    chunk_id="chunk-1",
+                    document_id="doc-123",
+                    chunk_index=0,
+                    start_offset=0,
+                    end_offset=7,
+                    token_count=2,
+                    strategy_name="character")),
             Chunk(
-                content="Chunk 2",
-                start_position=8,
-                end_position=15,
-                metadata=ChunkMetadata(token_count=2),
-            ),
+                content="Chunk 2"metadata=ChunkMetadata(
+                    chunk_id="chunk-2",
+                    document_id="doc-123",
+                    chunk_index=1,
+                    start_offset=8,
+                    end_offset=15,
+                    token_count=2,
+                    strategy_name="character")),
         ]
         factory.create_strategy.return_value = mock_strategy
         return factory
@@ -104,16 +108,14 @@ class TestProcessDocumentUseCase:
         mock_document_service,
         mock_strategy_factory,
         mock_notification_service,
-        mock_event_publisher,
-    ):
+        mock_event_publisher):
         """Create use case instance with mocked dependencies."""
         return ProcessDocumentUseCase(
             unit_of_work=mock_unit_of_work,
             document_service=mock_document_service,
             strategy_factory=mock_strategy_factory,
             notification_service=mock_notification_service,
-            event_publisher=mock_event_publisher,
-        )
+            event_publisher=mock_event_publisher)
 
     @pytest.fixture()
     def valid_request(self):
@@ -125,8 +127,7 @@ class TestProcessDocumentUseCase:
             min_tokens=10,
             max_tokens=100,
             overlap_tokens=5,
-            async_processing=False,
-        )
+            async_processing=False)
 
     @pytest.mark.asyncio()
     async def test_successful_synchronous_processing(self, use_case, valid_request):
@@ -222,8 +223,7 @@ class TestProcessDocumentUseCase:
             strategy_name="character",
             min_tokens=100,  # Greater than max
             max_tokens=50,
-            overlap_tokens=5,
-        )
+            overlap_tokens=5)
 
         # Act & Assert
         with pytest.raises(InvalidConfigurationError):
@@ -289,8 +289,14 @@ class TestProcessDocumentUseCase:
                 for value in [25.0, 50.0, 75.0, 100.0]:
                     progress_callback(value)
             return [
-                Chunk(content="Result", start_position=0, end_position=6,
-                      metadata=ChunkMetadata(token_count=1))
+                Chunk(content="Result"metadata=ChunkMetadata(
+                          chunk_id="chunk-result",
+                          document_id="doc-123",
+                          chunk_index=0,
+                          start_offset=0,
+                          end_offset=6,
+                          token_count=1,
+                          strategy_name="character"))
             ]
 
         use_case.strategy_factory.create_strategy.return_value.chunk = mock_chunk_with_progress
@@ -309,11 +315,14 @@ class TestProcessDocumentUseCase:
         # Create chunks with insufficient coverage
         use_case.strategy_factory.create_strategy.return_value.chunk.return_value = [
             Chunk(
-                content="Small",
-                start_position=0,
-                end_position=5,
-                metadata=ChunkMetadata(token_count=1),
-            )
+                content="Small"metadata=ChunkMetadata(
+                    chunk_id="chunk-small",
+                    document_id="doc-123",
+                    chunk_index=0,
+                    start_offset=0,
+                    end_offset=5,
+                    token_count=1,
+                    strategy_name="character"))
         ]
 
         # Act
@@ -335,8 +344,7 @@ class TestProcessDocumentUseCase:
                 strategy_name="character",
                 min_tokens=10,
                 max_tokens=100,
-                overlap_tokens=5,
-            )
+                overlap_tokens=5)
             for i in range(3)
         ]
 
@@ -362,8 +370,7 @@ class TestProcessDocumentUseCase:
             strategy_name="character",
             min_tokens=10,
             max_tokens=100,
-            overlap_tokens=5,
-        )
+            overlap_tokens=5)
 
         # Act & Assert
         with pytest.raises(ValueError) as exc_info:
@@ -423,8 +430,14 @@ class TestProcessDocumentUseCase:
         # First call fails, second succeeds
         use_case.strategy_factory.create_strategy.return_value.chunk.side_effect = [
             RuntimeError("Temporary failure"),
-            [Chunk(content="Success", start_position=0, end_position=7,
-                   metadata=ChunkMetadata(token_count=1))]
+            [Chunk(content="Success"metadata=ChunkMetadata(
+                       chunk_id="chunk-success",
+                       document_id="doc-123",
+                       chunk_index=0,
+                       start_offset=0,
+                       end_offset=7,
+                       token_count=1,
+                       strategy_name="character"))]
         ]
 
         # Configure retry logic
@@ -452,8 +465,7 @@ class TestProcessDocumentUseCase:
             additional_params={
                 "similarity_threshold": 0.85,
                 "embedding_model": "custom-model",
-            },
-        )
+            })
 
         # Act
         response = await use_case.execute(request)

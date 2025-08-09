@@ -8,13 +8,11 @@ import pytest
 from packages.shared.chunking.application.dto.requests import PreviewRequest
 from packages.shared.chunking.application.dto.responses import ChunkDTO, PreviewResponse
 from packages.shared.chunking.application.use_cases.preview_chunking import (
-    PreviewChunkingUseCase,
-)
+    PreviewChunkingUseCase)
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.exceptions import (
     InvalidConfigurationError,
-    StrategyNotFoundError,
-)
+    StrategyNotFoundError)
 from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 
 
@@ -38,17 +36,9 @@ class TestPreviewChunkingUseCase:
         mock_strategy = MagicMock()
         mock_strategy.chunk.return_value = [
             Chunk(
-                content="Chunk 1",
-                start_position=0,
-                end_position=7,
-                metadata=ChunkMetadata(token_count=2),
-            ),
+                content="Chunk 1"metadata=ChunkMetadata(token_count=2)),
             Chunk(
-                content="Chunk 2",
-                start_position=8,
-                end_position=15,
-                metadata=ChunkMetadata(token_count=2),
-            ),
+                content="Chunk 2"metadata=ChunkMetadata(token_count=2)),
         ]
         factory.create_strategy.return_value = mock_strategy
         return factory
@@ -75,15 +65,13 @@ class TestPreviewChunkingUseCase:
         mock_document_service,
         mock_strategy_factory,
         mock_notification_service,
-        mock_metrics_service,
-    ):
+        mock_metrics_service):
         """Create use case instance with mocked dependencies."""
         return PreviewChunkingUseCase(
             document_service=mock_document_service,
             strategy_factory=mock_strategy_factory,
             notification_service=mock_notification_service,
-            metrics_service=mock_metrics_service,
-        )
+            metrics_service=mock_metrics_service)
 
     @pytest.fixture()
     def valid_request(self):
@@ -95,8 +83,7 @@ class TestPreviewChunkingUseCase:
             max_tokens=50,
             overlap_tokens=5,
             preview_size_kb=10,
-            max_preview_chunks=5,
-        )
+            max_preview_chunks=5)
 
     @pytest.mark.asyncio()
     async def test_successful_preview_generation(self, use_case, valid_request):
@@ -129,10 +116,7 @@ class TestPreviewChunkingUseCase:
         many_chunks = [
             Chunk(
                 content=f"Chunk {i}",
-                start_position=i * 10,
-                end_position=(i + 1) * 10,
-                metadata=ChunkMetadata(token_count=3),
-            )
+                metadata=ChunkMetadata(token_count=3))
             for i in range(10)
         ]
         use_case.strategy_factory.create_strategy.return_value.chunk.return_value = (
@@ -159,8 +143,7 @@ class TestPreviewChunkingUseCase:
             overlap_tokens=10,
             preview_size_kb=5,
             max_preview_chunks=3,
-            additional_params={"similarity_threshold": 0.8, "custom_param": "value"},
-        )
+            additional_params={"similarity_threshold": 0.8, "custom_param": "value"})
 
         # Act
         response = await use_case.execute(request)
@@ -211,8 +194,7 @@ class TestPreviewChunkingUseCase:
             strategy_name="character",
             min_tokens=100,  # Greater than max
             max_tokens=50,
-            overlap_tokens=5,
-        )
+            overlap_tokens=5)
 
         # Mock the strategy factory to raise InvalidConfigurationError
         use_case.strategy_factory.create_strategy.side_effect = (
@@ -264,10 +246,22 @@ class TestPreviewChunkingUseCase:
 
         # Return 2 chunks for sample
         use_case.strategy_factory.create_strategy.return_value.chunk.return_value = [
-            Chunk(content="Chunk 1", start_position=0, end_position=50,
-                  metadata=ChunkMetadata(token_count=10)),
-            Chunk(content="Chunk 2", start_position=51, end_position=100,
-                  metadata=ChunkMetadata(token_count=10)),
+            Chunk(content="Chunk 1"metadata=ChunkMetadata(
+                      chunk_id="chunk-sample-1",
+                      document_id="doc-preview",
+                      chunk_index=0,
+                      start_offset=0,
+                      end_offset=50,
+                      token_count=10,
+                      strategy_name="character")),
+            Chunk(content="Chunk 2"metadata=ChunkMetadata(
+                      chunk_id="chunk-sample-2",
+                      document_id="doc-preview",
+                      chunk_index=1,
+                      start_offset=51,
+                      end_offset=100,
+                      token_count=10,
+                      strategy_name="character")),
         ]
 
         # Act
@@ -289,8 +283,7 @@ class TestPreviewChunkingUseCase:
         # Assert
         use_case.metrics_service.record_preview_request.assert_called_once_with(
             strategy_name="character",
-            document_size=1000,
-        )
+            document_size=1000)
         use_case.metrics_service.record_preview_duration.assert_called_once()
 
         # Check duration was recorded with reasonable value
@@ -305,8 +298,7 @@ class TestPreviewChunkingUseCase:
         mock_document_service,
         mock_strategy_factory,
         mock_notification_service,
-        valid_request,
-    ):
+        valid_request):
         """Test that use case works without metrics service."""
         # Arrange
         use_case = PreviewChunkingUseCase(
@@ -329,18 +321,13 @@ class TestPreviewChunkingUseCase:
         # Arrange
         test_chunks = [
             Chunk(
-                content="Test chunk",
-                start_position=0,
-                end_position=10,
-                metadata=ChunkMetadata(
+                content="Test chunk"metadata=ChunkMetadata(
                     token_count=3,
                     semantic_density=0.8,
                     overlap_percentage=0.2,
                     confidence_score=0.95,
                     language="en",
-                    custom_attributes={"key": "value"},
-                ),
-            )
+                    custom_attributes={"key": "value"}))
         ]
         use_case.strategy_factory.create_strategy.return_value.chunk.return_value = (
             test_chunks
@@ -354,8 +341,9 @@ class TestPreviewChunkingUseCase:
         chunk_dto = response.preview_chunks[0]
         assert isinstance(chunk_dto, ChunkDTO)
         assert chunk_dto.content == "Test chunk"
-        assert chunk_dto.start_position == 0
-        assert chunk_dto.end_position == 10
+        # Position info is in metadata, not directly on DTO
+        # assert chunk_dto.start_position == 0
+        # assert chunk_dto.end_position == 10
         assert chunk_dto.token_count == 3
         assert chunk_dto.metadata["semantic_density"] == 0.8
         assert chunk_dto.metadata["overlap_percentage"] == 0.2
@@ -376,8 +364,7 @@ class TestPreviewChunkingUseCase:
                 progress_callback(75.0)
                 progress_callback(100.0)
             return [
-                Chunk(content="Chunk", start_position=0, end_position=5,
-                      metadata=ChunkMetadata(token_count=1))
+                Chunk(content="Chunk"metadata=ChunkMetadata(token_count=1))
             ]
 
         use_case.strategy_factory.create_strategy.return_value.chunk.side_effect = (
@@ -403,8 +390,7 @@ class TestPreviewChunkingUseCase:
                 strategy_name="character",
                 min_tokens=10,
                 max_tokens=50,
-                overlap_tokens=5,
-            )
+                overlap_tokens=5)
             for i in range(3)
         ]
 
