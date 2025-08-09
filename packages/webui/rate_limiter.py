@@ -191,14 +191,14 @@ def create_rate_limit_decorator(limit: str) -> Callable:
             request = kwargs.get("request")
             if request:
                 check_circuit_breaker(request)
-                
+
                 # Check if user has special limits
                 key = get_user_or_ip(request)
                 if key in SPECIAL_LIMITS:
                     # Apply special limit for admin bypass or test bypass
                     special_limited_func = limiter.limit(SPECIAL_LIMITS[key])(func)
                     return await special_limited_func(*args, **kwargs)
-            
+
             # Apply normal rate limit
             limited_func = limiter.limit(limit)(func)
             return await limited_func(*args, **kwargs)
@@ -259,16 +259,16 @@ else:
 def add_rate_limit_headers(response: Response, limit: str, remaining: int, reset: int) -> Response:
     """
     Manually add rate limit headers to a Response object.
-    
+
     This function should only be used when returning actual Response objects,
     not when returning dictionaries that FastAPI will convert.
-    
+
     Args:
         response: The Response object to add headers to
         limit: The rate limit (e.g., "10")
         remaining: Number of requests remaining
         reset: Unix timestamp when the rate limit resets
-    
+
     Returns:
         The response with added headers
     """
