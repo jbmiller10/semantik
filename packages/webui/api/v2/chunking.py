@@ -153,7 +153,6 @@ async def recommend_strategy(
     try:
         recommendation = await service.recommend_strategy(
             file_types=file_types,
-            user_id=current_user["id"],
         )
 
         return StrategyRecommendation(
@@ -245,13 +244,10 @@ async def generate_preview(
 
         # Generate preview
         result = await service.preview_chunking(
-            document_id=preview_request.document_id,
             content=preview_request.content,
             strategy=preview_request.strategy,
             config=preview_request.config.model_dump() if preview_request.config else None,
             max_chunks=preview_request.max_chunks,
-            include_metrics=preview_request.include_metrics,
-            user_id=current_user["id"],
         )
 
         # Ensure config has strategy field
@@ -329,13 +325,10 @@ async def compare_strategies(
 
             try:
                 result = await service.preview_chunking(
-                    document_id=compare_request.document_id,
                     content=compare_request.content,
                     strategy=strategy,
                     config=config,
                     max_chunks=compare_request.max_chunks_per_strategy,
-                    include_metrics=True,
-                    user_id=current_user["id"],
                 )
 
                 strategy_def = ChunkingStrategyRegistry.get_strategy_definition(strategy)
@@ -453,7 +446,7 @@ async def clear_preview_cache(
     Clear cached preview results for a specific preview ID.
     """
     try:
-        await service.clear_preview_cache(preview_id, user_id=current_user["id"])
+        await service.clear_preview_cache(preview_id)
     except Exception as e:
         logger.warning(f"Failed to clear preview cache: {e}")
         # Don't raise error for cache clear failures
@@ -498,7 +491,6 @@ async def start_chunking_operation(
             collection_id=collection_id,
             strategy=chunking_request.strategy.value,
             config=chunking_request.config.model_dump() if chunking_request.config else None,
-            user_id=current_user["id"],
         )
 
         # Check if configuration is valid
@@ -527,9 +519,6 @@ async def start_chunking_operation(
             collection_id=collection_id,
             strategy=chunking_request.strategy.value,
             config=chunking_request.config.model_dump() if chunking_request.config else None,
-            document_ids=chunking_request.document_ids,
-            user_id=current_user["id"],
-            operation_data=operation,
         )
 
         # Queue the chunking task
@@ -717,7 +706,6 @@ async def get_chunking_stats(
     try:
         stats = await service.get_chunking_statistics(
             collection_id=collection_id,
-            user_id=current_user["id"],
         )
 
         return ChunkingStats(
@@ -884,7 +872,6 @@ async def analyze_document(
         # Would perform actual document analysis
         recommendation = await service.recommend_strategy(
             file_types=[analysis_request.file_type] if analysis_request.file_type else [],
-            user_id=current_user["id"],
         )
 
         return DocumentAnalysisResponse(
@@ -1015,7 +1002,6 @@ async def get_operation_progress(
     try:
         progress = await service.get_chunking_progress(
             operation_id=operation_id,
-            user_id=current_user["id"],
         )
 
         if not progress:
@@ -1063,10 +1049,4 @@ async def process_chunking_operation(
     """
     await service.process_chunking_operation(
         operation_id=operation_id,
-        collection_id=collection_id,
-        strategy=strategy.value,
-        config=config.model_dump() if config else None,
-        document_ids=document_ids,
-        user_id=user_id,
-        websocket_channel=websocket_channel,
     )

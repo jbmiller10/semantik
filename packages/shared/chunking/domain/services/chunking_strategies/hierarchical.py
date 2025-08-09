@@ -59,7 +59,7 @@ class HierarchicalChunkingStrategy(ChunkingStrategy):
 
         # Process each level
         total_operations = levels
-        parent_chunks = []
+        parent_chunks: list[Chunk] = []
 
         for level in range(levels):
             level_config = level_configs[level]

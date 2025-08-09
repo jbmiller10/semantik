@@ -277,13 +277,13 @@ class ChunkingOperation:
 
         # Add timing information
         if self._started_at:
-            stats["timing"] = {
+            timing_info: dict[str, Any] = {
                 "started_at": self._started_at.isoformat(),
                 "duration_seconds": self._calculate_duration(),
             }
-
-        if self._completed_at:
-            stats["timing"]["completed_at"] = self._completed_at.isoformat()
+            if self._completed_at:
+                timing_info["completed_at"] = self._completed_at.isoformat()
+            stats["timing"] = timing_info
 
         # Add chunk statistics
         stats["chunk_stats"] = self._chunk_collection.calculate_size_statistics()

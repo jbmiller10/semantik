@@ -487,7 +487,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
         if not chunks:
             return chunks
 
-        processed = []
+        processed: list[Chunk] = []
 
         for chunk in chunks:
             # Skip chunks that are too small (unless they're the only chunk)

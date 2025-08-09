@@ -81,7 +81,7 @@ async def test_preview_success() -> None:
 
 
 @pytest.mark.asyncio()
-async def test_preview_validation_error():
+async def test_preview_validation_error() -> None:
     """Test preview with invalid request parameters."""
     # Arrange
     mock_doc_service = Mock()
@@ -111,7 +111,7 @@ async def test_preview_validation_error():
 
 
 @pytest.mark.asyncio()
-async def test_preview_file_not_found():
+async def test_preview_file_not_found() -> None:
     """Test preview when document file doesn't exist."""
     # Arrange
     mock_doc_service = Mock()
@@ -139,7 +139,7 @@ async def test_preview_file_not_found():
 
 
 @pytest.mark.asyncio()
-async def test_preview_with_metrics_service():
+async def test_preview_with_metrics_service() -> None:
     """Test preview with metrics collection."""
     # Arrange
     mock_doc_service = Mock()

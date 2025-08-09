@@ -343,7 +343,7 @@ class GetOperationStatusResponse:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
-        result = {
+        result: dict[str, Any] = {
             "operation_id": self.operation_id,
             "status": self.status.value,
             "progress_percentage": self.progress_percentage,

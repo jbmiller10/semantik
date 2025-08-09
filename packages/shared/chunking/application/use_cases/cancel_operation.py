@@ -4,7 +4,7 @@ Cancel Operation Use Case.
 Handles cancellation of in-progress chunking operations with proper cleanup.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from packages.shared.chunking.application.dto.requests import CancelOperationRequest
@@ -50,7 +50,7 @@ class CancelOperationUseCase:
         Raises:
             ValueError: If operation not found or cannot be cancelled
         """
-        cancellation_time = datetime.utcnow()
+        cancellation_time = datetime.now(tz=UTC)
         chunks_deleted = 0
 
         # Transaction boundary
@@ -211,9 +211,8 @@ class CancelOperationUseCase:
             if hasattr(operation, "chunks_processed") and operation.chunks_processed > 0:
                 # Some chunks were created before cancellation
                 return OperationStatus.PARTIALLY_COMPLETED
-            else:
-                # No chunks created yet
-                return OperationStatus.CANCELLED
+            # No chunks created yet
+            return OperationStatus.CANCELLED
 
         # For completed or failed, status doesn't change (forced cancellation)
         if previous_status in [OperationStatus.COMPLETED, OperationStatus.FAILED]:

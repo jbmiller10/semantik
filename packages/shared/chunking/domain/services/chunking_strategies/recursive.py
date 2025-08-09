@@ -72,7 +72,7 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
         )
 
         # Convert segments to chunks
-        chunks = []
+        chunks: list[str] = []
         chunk_index = 0
         current_position = 0
         total_segments = len(text_segments)
@@ -183,8 +183,8 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
             return self._character_split(text, max_tokens, overlap_tokens, min_tokens)
 
         # Reassemble parts into chunks
-        chunks = []
-        current_chunk = []
+        chunks: list[str] = []
+        current_chunk: list[str] = []
         current_tokens = 0
 
         for part in parts:
@@ -195,7 +195,7 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
                 # Save current chunk if any
                 if current_chunk:
                     chunks.append(separator.join(current_chunk))
-                    current_chunk = []
+                    current_chunk: list[str] = []
                     current_tokens = 0
 
                 # Recursively split the large part
@@ -216,7 +216,7 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
                     # Add overlap if configured
                     if overlap_tokens > 0 and current_chunk:
                         # Take last few parts for overlap
-                        overlap_parts = []
+                        overlap_parts: list[str] = []
                         overlap_size = 0
 
                         for i in range(len(current_chunk) - 1, -1, -1):
@@ -263,7 +263,7 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
         if not text:
             return []
 
-        chunks = []
+        chunks: list[str] = []
 
         # Check if text has no spaces (continuous text)
         # In this case, token counting formula is different

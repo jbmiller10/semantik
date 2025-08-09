@@ -172,7 +172,7 @@ class CompareStrategiesUseCase:
             raise
 
     async def _run_strategy(
-        self, strategy_type: ChunkingStrategy, text_content: str, request: CompareStrategiesRequest, operation_id: str
+        self, strategy_type: ChunkingStrategy, text_content: str, request: CompareStrategiesRequest, _operation_id: str
     ) -> dict[str, Any]:
         """
         Run a single strategy and collect results.

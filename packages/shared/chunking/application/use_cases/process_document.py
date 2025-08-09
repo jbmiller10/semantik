@@ -5,7 +5,6 @@ Handles full document processing with chunking, persistence, and checkpointing.
 This is the main use case for production document processing.
 """
 
-import time
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4

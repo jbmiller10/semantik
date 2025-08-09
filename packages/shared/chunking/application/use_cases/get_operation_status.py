@@ -4,7 +4,7 @@ Get Operation Status Use Case.
 Queries the status and progress of chunking operations.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from packages.shared.chunking.application.dto.requests import GetOperationStatusRequest
@@ -71,7 +71,7 @@ class GetOperationStatusUseCase:
 
         # If document_id is provided, find operations by document_id
         if request.document_id:
-            operations = await self.operation_repository.find_by_document_id(request.document_id)
+            operations = await self.operation_repository.find_by_document(request.document_id)
             if operations:
                 # Get the most recent operation
                 operation = max(
@@ -94,10 +94,10 @@ class GetOperationStatusUseCase:
             total_chunks = getattr(operation, "total_chunks", None)
             chunks_processed = getattr(operation, "chunks_processed", 0)
 
-            if total_chunks and isinstance(total_chunks, (int, float)) and total_chunks > 0:
-                if isinstance(chunks_processed, (int, float)):
+            if total_chunks and isinstance(total_chunks, int | float) and total_chunks > 0:
+                if isinstance(chunks_processed, int | float):
                     progress_percentage = (chunks_processed / total_chunks) * 100
-            elif chunks_processed and isinstance(chunks_processed, (int, float)) and chunks_processed > 0:
+            elif chunks_processed and isinstance(chunks_processed, int | float) and chunks_processed > 0:
                 # Estimate if total not known
                 progress_percentage = min(99.0, chunks_processed)  # Cap at 99% if total unknown
         except (TypeError, AttributeError):
@@ -106,13 +106,13 @@ class GetOperationStatusUseCase:
 
         # 5. Load chunks if requested
         chunks = None
-        if request.include_chunks:
+        if request.include_chunks and request.operation_id:
             chunk_entities = await self.chunk_repository.find_by_operation(request.operation_id)
             chunks = self._map_chunks_to_dtos(chunk_entities)
 
         # 6. Get metrics if requested and available
         metrics = None
-        if request.include_metrics and self.metrics_service:
+        if request.include_metrics and self.metrics_service and request.operation_id:
             metrics_data = await self.metrics_service.get_operation_metrics(request.operation_id)
             if metrics_data:
                 metrics = OperationMetrics(
@@ -138,14 +138,24 @@ class GetOperationStatusUseCase:
         # 8. Create and return response
         # Use the actual operation ID from the found operation
         operation_id = getattr(operation, "id", getattr(operation, "operation_id", request.operation_id))
+
+        # Ensure we have datetime values for required fields
+        started_at = getattr(operation, "created_at", getattr(operation, "_created_at", None))
+        if not isinstance(started_at, datetime):
+            started_at = datetime.now(tz=UTC)
+
+        updated_at = getattr(operation, "updated_at", getattr(operation, "_updated_at", None))
+        if not isinstance(updated_at, datetime):
+            updated_at = datetime.now(tz=UTC)
+
         return GetOperationStatusResponse(
-            operation_id=operation_id,
+            operation_id=operation_id or "",
             status=status,
             progress_percentage=progress_percentage,
             chunks_processed=getattr(operation, "chunks_processed", 0),
             total_chunks=getattr(operation, "total_chunks", None),
-            started_at=getattr(operation, "created_at", getattr(operation, "_created_at", None)),
-            updated_at=getattr(operation, "updated_at", getattr(operation, "_updated_at", None)),
+            started_at=started_at,
+            updated_at=updated_at,
             completed_at=getattr(operation, "completed_at", getattr(operation, "_completed_at", None)),
             error_message=getattr(operation, "error_message", None),
             error_details=error_details,

@@ -91,7 +91,7 @@ class Chunk:
         if not embedding:
             raise InvalidChunkError("Embedding cannot be empty")
 
-        if not all(isinstance(x, (int, float)) for x in embedding):
+        if not all(isinstance(x, int | float) for x in embedding):
             raise InvalidChunkError("Embedding must contain only numeric values")
 
         self._embedding = embedding

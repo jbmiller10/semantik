@@ -170,12 +170,12 @@ class PreviewChunkingUseCase:
         except ValueError as e:
             # Domain validation errors
             await self.notification_service.notify_operation_failed(operation_id=operation_id, error=e)
-            raise ValueError(f"Preview failed - validation error: {e}")
+            raise ValueError(f"Preview failed - validation error: {e}") from e
 
         except FileNotFoundError as e:
             # Document not found
             await self.notification_service.notify_operation_failed(operation_id=operation_id, error=e)
-            raise FileNotFoundError(f"Document not found: {request.file_path}")
+            raise FileNotFoundError(f"Document not found: {request.file_path}") from e
 
         except Exception as e:
             # Infrastructure or unexpected errors

@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.chunking.application.dto.requests import (
-    PreviewRequest,
+    ChunkingStrategy as ChunkingStrategyEnum,
 )
 from packages.shared.chunking.domain.exceptions import (
     InvalidConfigurationError,
@@ -26,7 +26,7 @@ from packages.shared.chunking.domain.services.chunking_strategies import (
     STRATEGY_REGISTRY,
     get_strategy,
 )
-from packages.shared.database.models import ChunkingStrategy, Operation
+from packages.shared.database.models import Operation
 from packages.shared.database.repositories.collection_repository import (
     CollectionRepository,
 )
@@ -141,7 +141,7 @@ class ChunkingService:
             file_types = [os.path.splitext(path)[1] for path in file_paths]
 
         # Analyze file type breakdown
-        file_type_breakdown = {}
+        file_type_breakdown: dict[str, int] = {}
         if file_types:
             for ft in file_types:
                 category = self._categorize_file_type(ft)
@@ -153,27 +153,27 @@ class ChunkingService:
 
         # Determine strategy based on file type breakdown
         if file_type_breakdown.get("markdown", 0) > len(file_types) / 2 if file_types else False:
-            recommended_strategy = ChunkingStrategy.RECURSIVE
+            recommended_strategy = ChunkingStrategyEnum.RECURSIVE
             reasoning = "Majority of files are markdown with structure to preserve"
             chunk_size = 600
         elif file_type_breakdown.get("code", 0) > 0:
-            recommended_strategy = ChunkingStrategy.RECURSIVE
+            recommended_strategy = ChunkingStrategyEnum.RECURSIVE
             reasoning = "Code files detected, using optimized settings for code"
             chunk_size = 500
         elif has_structure:
-            recommended_strategy = ChunkingStrategy.RECURSIVE
+            recommended_strategy = ChunkingStrategyEnum.RECURSIVE
             reasoning = "Content has markdown structure that should be preserved"
             chunk_size = 600
         elif content_size and content_size < 10000:  # Small documents
-            recommended_strategy = ChunkingStrategy.RECURSIVE
+            recommended_strategy = ChunkingStrategyEnum.RECURSIVE
             reasoning = "Small document size works well with simple splitting"
             chunk_size = 600
         elif content_size and content_size > 1000000:  # Large documents
-            recommended_strategy = ChunkingStrategy.RECURSIVE
+            recommended_strategy = ChunkingStrategyEnum.RECURSIVE
             reasoning = "Large documents benefit from intelligent sentence-aware splitting"
             chunk_size = 600
         else:
-            recommended_strategy = ChunkingStrategy.RECURSIVE
+            recommended_strategy = ChunkingStrategyEnum.RECURSIVE
             reasoning = "Default recommendation for general mixed content"
             chunk_size = 600
 
@@ -234,7 +234,7 @@ class ChunkingService:
 
             # Default strategy if not provided
             if not strategy:
-                strategy = ChunkingStrategy.RECURSIVE
+                strategy = ChunkingStrategyEnum.RECURSIVE
 
             # Convert enum to string if necessary
             if hasattr(strategy, "value"):
@@ -494,7 +494,7 @@ class ChunkingService:
         """
         try:
             # Validate collection exists and user has access
-            collection = await self.collection_repo.get_by_id(collection_id)
+            collection = await self.collection_repo.get_by_uuid(collection_id)
             if not collection:
                 raise ValueError(f"Collection {collection_id} not found")
 
@@ -586,7 +586,7 @@ class ChunkingService:
         """
         try:
             # Get collection
-            collection = await self.collection_repo.get_by_id(collection_id)
+            collection = await self.collection_repo.get_by_uuid(collection_id)
             if not collection:
                 raise ValueError(f"Collection {collection_id} not found")
 
@@ -640,7 +640,7 @@ class ChunkingService:
         """
         try:
             # Get collection
-            collection = await self.collection_repo.get_by_id(collection_id)
+            collection = await self.collection_repo.get_by_uuid(collection_id)
             if not collection:
                 raise ValueError(f"Collection {collection_id} not found")
 

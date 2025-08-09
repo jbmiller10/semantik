@@ -323,7 +323,7 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
             return []
 
         groups = []
-        current_group = []
+        current_group: list[dict[str, Any]] = []
         current_tokens = 0
 
         for section in sections:
@@ -334,7 +334,7 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
                 # Save current group if any
                 if current_group:
                     groups.append(current_group)
-                    current_group = []
+                    current_group: list[dict[str, Any]] = []
                     current_tokens = 0
 
                 # Split large section
