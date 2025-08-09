@@ -42,6 +42,9 @@ class PostgresConfig(BaseSettings):
     DB_RETRY_LIMIT: int = Field(default=3, description="Number of connection retries")
     DB_RETRY_INTERVAL: float = Field(default=0.5, description="Retry interval in seconds")
 
+    # Chunking settings
+    CHUNK_PARTITION_COUNT: int = Field(default=16, description="Number of partitions for chunks table")
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @field_validator("DATABASE_URL", mode="before")

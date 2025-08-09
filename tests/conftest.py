@@ -395,6 +395,7 @@ async def db_session():
     """Create a new database session for testing."""
     # Check if we have a test database available
     import asyncpg
+    from sqlalchemy import text
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
     from packages.shared.config.postgres import postgres_config
@@ -422,9 +423,27 @@ async def db_session():
 
     engine = create_async_engine(database_url, echo=False)
 
-    # Drop all tables and recreate for each test to ensure isolation
-    async with engine.begin() as conn:
+    # Helper function to drop views before tables
+    async def drop_views_and_tables(conn):
+        # Drop views first (in dependency order)
+        views_to_drop = [
+            "DROP VIEW IF EXISTS partition_hot_spots CASCADE",
+            "DROP VIEW IF EXISTS partition_health_summary CASCADE",
+            "DROP VIEW IF EXISTS partition_size_distribution CASCADE",
+            "DROP VIEW IF EXISTS partition_chunk_distribution CASCADE",
+            "DROP VIEW IF EXISTS active_chunking_configs CASCADE",
+            "DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE",
+        ]
+
+        for view_sql in views_to_drop:
+            await conn.execute(text(view_sql))
+
+        # Now drop all tables
         await conn.run_sync(Base.metadata.drop_all)
+
+    # Drop all views and tables, then recreate for each test to ensure isolation
+    async with engine.begin() as conn:
+        await drop_views_and_tables(conn)
         await conn.run_sync(Base.metadata.create_all)
 
     async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

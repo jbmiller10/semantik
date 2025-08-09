@@ -8,12 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database.models import (
-    Collection,
-    Document,
-    Operation,
-    OperationType,
-)
+from packages.shared.database.models import Collection, Document, Operation, OperationType
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.webui.services.factory import create_collection_service
 

@@ -13,17 +13,17 @@ class TestDocumentRepository:
     """Test cases for DocumentRepository."""
 
     @pytest.fixture()
-    def mock_session(self) -> None:
+    def mock_session(self) -> AsyncMock:
         """Create a mock async session."""
         return AsyncMock()
 
     @pytest.fixture()
-    def repository(self, mock_session) -> None:
+    def repository(self, mock_session) -> DocumentRepository:
         """Create a DocumentRepository instance with mocked session."""
         return DocumentRepository(mock_session)
 
     @pytest.fixture()
-    def sample_collection(self) -> None:
+    def sample_collection(self) -> Collection:
         """Create a sample collection for testing."""
         return Collection(id=str(uuid4()), name="test-collection", owner_id=1, is_public=False)
 

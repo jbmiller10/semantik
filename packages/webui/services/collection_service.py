@@ -6,7 +6,12 @@ from typing import Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database.exceptions import AccessDeniedError, EntityAlreadyExistsError, InvalidStateError
+from packages.shared.database.exceptions import (
+    AccessDeniedError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+    InvalidStateError,
+)
 from packages.shared.database.models import Collection, CollectionStatus, OperationType
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
@@ -65,20 +70,32 @@ class CollectionService:
 
         # Create collection in database
         try:
+            # Apply expected defaults for legacy chunking fields
+            # Pull values from config while treating explicit None as "unspecified"
+            embedding_model = (config.get("embedding_model") if config else None) or "Qwen/Qwen3-Embedding-0.6B"
+            quantization = (config.get("quantization") if config else None) or "float16"
+            # If client sends null for legacy fields, fall back to safe defaults
+            chunk_size = (config.get("chunk_size") if config else None) or 1000
+            chunk_overlap = (config.get("chunk_overlap") if config else None) or 200
+            chunking_strategy = config.get("chunking_strategy") if config else None
+            chunking_config = config.get("chunking_config") if config else None
+            is_public = (config.get("is_public") if config else None) or False
+
+            meta = config.get("metadata") if config else None
+
+            # Create with new chunking fields
             collection = await self.collection_repo.create(
                 owner_id=user_id,
                 name=name,
                 description=description,
-                embedding_model=(
-                    config.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
-                    if config
-                    else "Qwen/Qwen3-Embedding-0.6B"
-                ),
-                quantization=config.get("quantization", "float16") if config else "float16",
-                chunk_size=config.get("chunk_size", 1000) if config else 1000,
-                chunk_overlap=config.get("chunk_overlap", 200) if config else 200,
-                is_public=config.get("is_public", False) if config else False,
-                meta=config.get("metadata") if config else None,
+                embedding_model=embedding_model,
+                quantization=quantization,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                chunking_strategy=chunking_strategy,
+                chunking_config=chunking_config,
+                is_public=is_public,
+                meta=meta,
             )
         except EntityAlreadyExistsError:
             # Re-raise EntityAlreadyExistsError to be handled by the API endpoint
@@ -119,6 +136,8 @@ class CollectionService:
             "quantization": collection.quantization,
             "chunk_size": collection.chunk_size,
             "chunk_overlap": collection.chunk_overlap,
+            "chunking_strategy": collection.chunking_strategy,
+            "chunking_config": collection.chunking_config,
             "is_public": collection.is_public,
             "metadata": collection.meta,
             "created_at": collection.created_at,
@@ -131,6 +150,8 @@ class CollectionService:
                 "quantization": collection.quantization,
                 "chunk_size": collection.chunk_size,
                 "chunk_overlap": collection.chunk_overlap,
+                "chunking_strategy": collection.chunking_strategy,
+                "chunking_config": collection.chunking_config,
                 "is_public": collection.is_public,
                 "metadata": collection.meta,
             },
@@ -578,3 +599,90 @@ class CollectionService:
         )
 
         return operations, total
+
+    async def create_operation(
+        self,
+        collection_id: str,
+        operation_type: str,
+        config: dict[str, Any],
+        user_id: int,
+    ) -> dict[str, Any]:
+        """Create a new operation for a collection.
+
+        Args:
+            collection_id: Collection UUID
+            operation_type: Type of operation
+            config: Operation configuration
+            user_id: User ID
+
+        Returns:
+            Created operation data
+        """
+        from packages.shared.database.models import OperationType
+
+        # Get collection
+        collection = await self.collection_repo.get_by_uuid_with_permission_check(
+            collection_uuid=collection_id,
+            user_id=user_id,
+        )
+
+        if not collection:
+            raise EntityNotFoundError("Collection", collection_id)
+
+        # Map operation type string to enum
+        operation_type_enum = {
+            "chunking": OperationType.INDEX,  # Initial chunking uses INDEX type
+            "rechunking": OperationType.REINDEX,  # Re-chunking uses REINDEX type
+            "index": OperationType.INDEX,
+            "reindex": OperationType.REINDEX,
+        }.get(operation_type, OperationType.INDEX)
+
+        # Create operation
+        operation = await self.operation_repo.create(
+            collection_id=collection.id,
+            user_id=user_id,
+            operation_type=operation_type_enum,
+            config=config,
+            meta={"operation_type": operation_type},  # Store original operation type in meta
+        )
+
+        await self.db_session.commit()
+
+        return {
+            "uuid": operation.uuid,
+            "collection_id": collection_id,
+            "type": operation.type.value,
+            "status": operation.status.value,
+            "meta": operation.meta,
+            "created_at": operation.created_at.isoformat() if operation.created_at else None,
+        }
+
+    async def update_collection(
+        self,
+        collection_id: str,
+        updates: dict[str, Any],
+        user_id: int,
+    ) -> None:
+        """Update collection settings.
+
+        Args:
+            collection_id: Collection UUID
+            updates: Fields to update
+            user_id: User ID
+        """
+        # Get collection with permission check
+        collection = await self.collection_repo.get_by_uuid_with_permission_check(
+            collection_uuid=collection_id,
+            user_id=user_id,
+        )
+
+        if not collection:
+            raise EntityNotFoundError("Collection", collection_id)
+
+        # Update allowed fields
+        allowed_fields = ["name", "description", "chunking_strategy", "chunking_config", "meta"]
+        for field, value in updates.items():
+            if field in allowed_fields:
+                setattr(collection, field, value)
+
+        await self.db_session.commit()

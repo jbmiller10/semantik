@@ -268,8 +268,12 @@ describe('CreateCollectionModal', () => {
           description: 'Test description',
           embedding_model: 'Qwen/Qwen3-Embedding-0.6B',
           quantization: 'float16',
-          chunk_size: 512,
-          chunk_overlap: 50,
+          chunking_strategy: 'recursive',
+          chunking_config: {
+            chunk_size: 600,
+            chunk_overlap: 100,
+            preserve_sentences: true,
+          },
           is_public: false,
         });
       });
@@ -368,8 +372,12 @@ describe('CreateCollectionModal', () => {
           collectionId: 'test-collection-id',
           sourcePath: '/data/documents',
           config: {
-            chunk_size: 512,
-            chunk_overlap: 50,
+            chunking_strategy: 'recursive',
+            chunking_config: {
+              chunk_size: 600,
+              chunk_overlap: 100,
+              preserve_sentences: true,
+            },
           },
         });
       });
@@ -439,23 +447,23 @@ describe('CreateCollectionModal', () => {
       const user = userEvent.setup();
       renderCreateCollectionModal(defaultProps);
 
-      // Initially hidden
-      expect(screen.queryByLabelText(/chunk size/i)).not.toBeInTheDocument();
-      expect(screen.queryByLabelText(/chunk overlap/i)).not.toBeInTheDocument();
+      // Chunking strategy is always visible (not in advanced settings anymore)
+      expect(screen.getByText(/chunking strategy/i)).toBeInTheDocument();
+      
+      // Initially hidden - only public checkbox is in advanced settings
       expect(screen.queryByLabelText(/make this collection public/i)).not.toBeInTheDocument();
 
       // Click to expand
       const advancedButton = screen.getByText(/advanced settings/i);
       await user.click(advancedButton);
 
-      // Should show advanced fields
-      expect(screen.getByLabelText(/chunk size/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/chunk overlap/i)).toBeInTheDocument();
+      // Should show advanced fields (public checkbox)
       expect(screen.getByLabelText(/make this collection public/i)).toBeInTheDocument();
-
-      // Check default values
-      expect(screen.getByLabelText(/chunk size/i)).toHaveValue(512);
-      expect(screen.getByLabelText(/chunk overlap/i)).toHaveValue(50);
+      
+      // Chunking strategy should still be visible (it's always visible)
+      expect(screen.getByText(/chunking strategy/i)).toBeInTheDocument();
+      
+      // Verify public toggle default value
       expect(screen.getByLabelText(/make this collection public/i)).not.toBeChecked();
 
       // Click to collapse

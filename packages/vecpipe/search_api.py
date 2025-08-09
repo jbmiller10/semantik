@@ -34,7 +34,9 @@ from shared.contracts.search import (
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from prometheus_client import Counter, Histogram  # noqa: E402
 from shared.config import settings  # noqa: E402
+from shared.database.exceptions import DimensionMismatchError  # noqa: E402
 from shared.embedding.service import get_embedding_service  # noqa: E402
+from shared.embedding.validation import validate_dimension_compatibility  # noqa: E402
 from shared.metrics.prometheus import metrics_collector, registry, start_metrics_server  # noqa: E402
 
 from .hybrid_search import HybridSearchEngine  # noqa: E402
@@ -598,6 +600,30 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
 
         embed_time = (time.time() - embed_start) * 1000
 
+        # Validate query embedding dimension matches collection dimension
+        if not settings.USE_MOCK_EMBEDDINGS:
+            query_dim = len(query_vector)
+            try:
+                validate_dimension_compatibility(
+                    expected_dimension=vector_dim,
+                    actual_dimension=query_dim,
+                    collection_name=collection_name,
+                    model_name=model_name,
+                )
+            except DimensionMismatchError as e:
+                logger.error(f"Query embedding dimension mismatch: {e}")
+                search_errors.labels(endpoint="/search", error_type="dimension_mismatch").inc()
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "dimension_mismatch",
+                        "message": str(e),
+                        "expected_dimension": e.expected_dimension,
+                        "actual_dimension": e.actual_dimension,
+                        "suggestion": f"Use the same model that was used to create the collection, or ensure the model outputs {e.expected_dimension}-dimensional vectors",
+                    },
+                ) from e
+
         # Search in Qdrant
         search_start = time.time()
 
@@ -932,22 +958,45 @@ async def hybrid_search(
             f"Processing hybrid search query: '{q}' (k={k}, collection={collection_name}, mode={mode}, model={model_name}, quantization={quantization})"
         )
 
+        # Get vector dimension from collection
+        vector_dim = 1024  # default
+        try:
+            if qdrant_client is None:
+                raise RuntimeError("Qdrant client not initialized")
+            response = await qdrant_client.get(f"/collections/{collection_name}")
+            response.raise_for_status()
+            collection_info = response.json()["result"]
+            if "config" in collection_info and "params" in collection_info["config"]:
+                vector_dim = collection_info["config"]["params"]["vectors"]["size"]
+        except Exception as e:
+            logger.warning(f"Could not get collection info for {collection_name}, using default dimension: {e}")
+
         if not settings.USE_MOCK_EMBEDDINGS:
             query_vector = await generate_embedding_async(q, model_name, quantization)
-        else:
-            # Get vector dimension from collection
-            vector_dim = 1024  # default
-            try:
-                if qdrant_client is None:
-                    raise RuntimeError("Qdrant client not initialized")
-                response = await qdrant_client.get(f"/collections/{collection_name}")
-                response.raise_for_status()
-                collection_info = response.json()["result"]
-                if "config" in collection_info and "params" in collection_info["config"]:
-                    vector_dim = collection_info["config"]["params"]["vectors"]["size"]
-            except Exception as e:
-                logger.warning(f"Could not get collection info for {collection_name}, using default dimension: {e}")
 
+            # Validate query embedding dimension
+            query_dim = len(query_vector)
+            try:
+                validate_dimension_compatibility(
+                    expected_dimension=vector_dim,
+                    actual_dimension=query_dim,
+                    collection_name=collection_name,
+                    model_name=model_name,
+                )
+            except DimensionMismatchError as e:
+                logger.error(f"Hybrid search query embedding dimension mismatch: {e}")
+                search_errors.labels(endpoint="/hybrid_search", error_type="dimension_mismatch").inc()
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "dimension_mismatch",
+                        "message": str(e),
+                        "expected_dimension": e.expected_dimension,
+                        "actual_dimension": e.actual_dimension,
+                        "suggestion": f"Use the same model that was used to create the collection, or ensure the model outputs {e.expected_dimension}-dimensional vectors",
+                    },
+                ) from e
+        else:
             query_vector = generate_mock_embedding(q, vector_dim)
 
         # Perform hybrid search
@@ -1407,6 +1456,46 @@ async def upsert_points(request: UpsertRequest = Body(...)) -> UpsertResponse:
         logger.info(
             f"Processing upsert request: {len(request.points)} points to collection '{request.collection_name}'"
         )
+
+        # Get collection dimension for validation
+        try:
+            response = await qdrant_client.get(f"/collections/{request.collection_name}")
+            response.raise_for_status()
+            collection_info = response.json()["result"]
+            collection_dim = None
+            if "config" in collection_info and "params" in collection_info["config"]:
+                collection_dim = collection_info["config"]["params"]["vectors"]["size"]
+
+            # Validate dimensions of all points before upserting
+            if collection_dim and request.points:
+                for point in request.points:
+                    vector_dim = len(point.vector)
+                    if vector_dim != collection_dim:
+                        raise DimensionMismatchError(
+                            expected_dimension=collection_dim,
+                            actual_dimension=vector_dim,
+                            collection_name=request.collection_name,
+                        )
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Collection '{request.collection_name}' not found",
+                ) from e
+            raise
+        except DimensionMismatchError as e:
+            logger.error(f"Upsert dimension mismatch: {e}")
+            search_errors.labels(endpoint="/upsert", error_type="dimension_mismatch").inc()
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "dimension_mismatch",
+                    "message": str(e),
+                    "expected_dimension": e.expected_dimension,
+                    "actual_dimension": e.actual_dimension,
+                    "suggestion": f"All vectors must have dimension {e.expected_dimension} to match the collection configuration",
+                },
+            ) from e
 
         # Convert request points to PointStruct format
         from qdrant_client.models import PointStruct

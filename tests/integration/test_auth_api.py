@@ -1,5 +1,6 @@
 """Integration tests for authentication API endpoints."""
 
+from collections.abc import Generator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,14 +13,14 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 @pytest.fixture()
-def mock_repositories() -> None:
+def mock_repositories() -> tuple[MagicMock, MagicMock, dict[str, dict]]:
     """Create mock repositories for testing."""
     # Mock user repository
     mock_user_repo = MagicMock()
     mock_auth_repo = MagicMock()
 
     # Store users in memory for testing
-    users_db = {}
+    users_db: dict[str, dict] = {}
 
     async def create_user(user_data):
         # Handle both dictionary input and keyword arguments
@@ -102,7 +103,7 @@ def mock_repositories() -> None:
 
 
 @pytest.fixture()
-def client(mock_repositories) -> None:
+def client(mock_repositories) -> Generator[TestClient, None, None]:
     """Create a test client with mocked repositories."""
     # Mock the database connection manager to prevent real DB connections
     with patch("packages.webui.main.pg_connection_manager") as mock_pg_manager:

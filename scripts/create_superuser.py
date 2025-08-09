@@ -43,7 +43,7 @@ async def create_superuser(username: str, email: str, password: str) -> bool:
                 return False
             response = input("Would you like to make this existing user a superuser? (y/n): ")
             if response.lower() == "y":
-                existing_user.is_superuser = True
+                existing_user.is_superuser = True  # type: ignore[assignment]
                 existing_user.updated_at = datetime.now(UTC)  # type: ignore[assignment]
                 await session.commit()
                 print(f"User '{existing_user.username}' is now a superuser!")
