@@ -36,9 +36,7 @@ from prometheus_client import Counter, Histogram  # noqa: E402
 from shared.config import settings  # noqa: E402
 from shared.database.exceptions import DimensionMismatchError  # noqa: E402
 from shared.embedding.service import get_embedding_service  # noqa: E402
-from shared.embedding.validation import (  # noqa: E402
-    validate_dimension_compatibility,
-)
+from shared.embedding.validation import validate_dimension_compatibility  # noqa: E402
 from shared.metrics.prometheus import metrics_collector, registry, start_metrics_server  # noqa: E402
 
 from .hybrid_search import HybridSearchEngine  # noqa: E402
