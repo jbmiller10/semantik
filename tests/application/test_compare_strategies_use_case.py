@@ -25,6 +25,14 @@ class TestCompareStrategiesUseCase:
             return_value="This is a sample document for comparing different chunking strategies. It contains multiple sentences and paragraphs to test various approaches."
         )
         service.get_document_size = AsyncMock(return_value=500)
+        
+        # Mock the methods actually used by CompareStrategiesUseCase
+        mock_document = MagicMock()  # The document object returned by load_partial
+        service.load_partial = AsyncMock(return_value=mock_document)
+        service.extract_text = AsyncMock(
+            return_value="This is a sample document for comparing different chunking strategies. It contains multiple sentences and paragraphs to test various approaches."
+        )
+        
         return service
 
     @pytest.fixture()
@@ -119,15 +127,15 @@ class TestCompareStrategiesUseCase:
                       strategy_name="recursive"), min_tokens=1),
         ]
 
-        def create_strategy_side_effect(name):
-            if name == ChunkingStrategy.CHARACTER:
+        def create_strategy_side_effect(strategy_type, config):
+            if strategy_type == ChunkingStrategy.CHARACTER.value:
                 return character_strategy
-            elif name == ChunkingStrategy.SEMANTIC:
+            elif strategy_type == ChunkingStrategy.SEMANTIC.value:
                 return semantic_strategy
-            elif name == ChunkingStrategy.RECURSIVE:
+            elif strategy_type == ChunkingStrategy.RECURSIVE.value:
                 return recursive_strategy
             else:
-                raise StrategyNotFoundError(name)
+                raise StrategyNotFoundError(strategy_type)
 
         factory.create_strategy.side_effect = create_strategy_side_effect
         return factory

@@ -107,9 +107,9 @@ class CompareStrategiesUseCase:
                         chunk_id=f"{operation_id}-{strategy_type.value}-{i}",
                         content=chunk.content,
                         position=i,
-                        start_offset=chunk.start_offset,
-                        end_offset=chunk.end_offset,
-                        token_count=chunk.token_count,
+                        start_offset=chunk.metadata.start_offset,
+                        end_offset=chunk.metadata.end_offset,
+                        token_count=chunk.metadata.token_count,
                         metadata={"strategy": strategy_type.value}
                     )
                     sample_chunks.append(chunk_dto)
@@ -241,7 +241,7 @@ class CompareStrategiesUseCase:
 
         # Calculate size metrics
         chunk_sizes = [len(chunk.content) for chunk in chunks]
-        token_counts = [chunk.token_count for chunk in chunks]
+        token_counts = [chunk.metadata.token_count for chunk in chunks]
 
         # Calculate overlap effectiveness (simplified)
         overlap_effectiveness = self._calculate_overlap_effectiveness(chunks)
@@ -279,8 +279,8 @@ class CompareStrategiesUseCase:
         # Check for consistent overlap patterns
         overlaps = []
         for i in range(len(chunks) - 1):
-            if hasattr(chunks[i], 'end_offset') and hasattr(chunks[i+1], 'start_offset'):
-                overlap = chunks[i].end_offset - chunks[i+1].start_offset
+            if hasattr(chunks[i], 'metadata') and hasattr(chunks[i+1], 'metadata'):
+                overlap = chunks[i].metadata.end_offset - chunks[i+1].metadata.start_offset
                 if overlap > 0:
                     overlaps.append(overlap)
 
