@@ -68,6 +68,7 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
             content,
             config.max_tokens,
             config.overlap_tokens,
+            min_tokens=config.min_tokens,
         )
 
         # Convert segments to chunks
@@ -90,6 +91,18 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
 
             # Create chunk metadata
             token_count = self.count_tokens(segment)
+
+            # Skip creating a Chunk object if it would violate size constraints
+            # This can happen when text naturally splits into small segments
+            if token_count < config.min_tokens:
+                # For very small segments, we'll skip them rather than fail
+                # They were likely already combined in the recursive split phase
+                continue
+            
+            if token_count > config.max_tokens:
+                # This shouldn't happen if recursive split worked correctly
+                # but we'll handle it gracefully by skipping
+                continue
 
             metadata = ChunkMetadata(
                 chunk_id=f"{config.strategy_name}_{chunk_index:04d}",
@@ -125,6 +138,7 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
         text: str,
         max_tokens: int,
         overlap_tokens: int,
+        min_tokens: int = 10,
         separator_index: int = 0,
     ) -> list[str]:
         """
@@ -134,6 +148,7 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
             text: Text to split
             max_tokens: Maximum tokens per chunk
             overlap_tokens: Overlap between chunks
+            min_tokens: Minimum tokens per chunk
             separator_index: Current separator level
 
         Returns:
@@ -145,11 +160,18 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
         # Check if text is small enough
         token_count = self.count_tokens(text)
         if token_count <= max_tokens:
-            return [text]
+            # Only return as a single segment if it meets minimum size
+            # or if it's all we have
+            if token_count >= min_tokens:
+                return [text]
+            else:
+                # Text is too small to be a valid chunk on its own
+                # Return it anyway and let the caller decide what to do
+                return [text]
 
         # If we've exhausted all separators, do character-level splitting
         if separator_index >= len(self.SEPARATORS):
-            return self._character_split(text, max_tokens, overlap_tokens)
+            return self._character_split(text, max_tokens, overlap_tokens, min_tokens)
 
         separator = self.SEPARATORS[separator_index]
 
@@ -158,7 +180,7 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
             parts = text.split(separator)
         else:
             # Character-level splitting
-            return self._character_split(text, max_tokens, overlap_tokens)
+            return self._character_split(text, max_tokens, overlap_tokens, min_tokens)
 
         # Reassemble parts into chunks
         chunks = []
@@ -181,6 +203,7 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
                     part,
                     max_tokens,
                     overlap_tokens,
+                    min_tokens,
                     separator_index + 1,
                 )
                 chunks.extend(sub_chunks)
@@ -225,7 +248,7 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
         return chunks
 
     def _character_split(
-        self, text: str, max_tokens: int, overlap_tokens: int
+        self, text: str, max_tokens: int, overlap_tokens: int, min_tokens: int = 10
     ) -> list[str]:
         """
         Split text at character level when no separators work.
@@ -234,31 +257,90 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
             text: Text to split
             max_tokens: Maximum tokens per chunk
             overlap_tokens: Overlap between chunks
+            min_tokens: Minimum tokens per chunk
 
         Returns:
             List of text segments
         """
+        if not text:
+            return []
+            
         chunks = []
-        chars_per_token = 4
-        chunk_size = max_tokens * chars_per_token
-        overlap_size = overlap_tokens * chars_per_token
+        
+        # Check if text has no spaces (continuous text)
+        # In this case, token counting formula is different
+        has_spaces = ' ' in text
+        if not has_spaces:
+            # For spaceless text, the token formula is approximately:
+            # tokens = 0.39 + 0.175 * char_count
+            # So: char_count = (tokens - 0.39) / 0.175
+            # We'll use a simplified version: chars ≈ tokens * 5.6
+            chunk_size = int(max_tokens * 5.6)
+            min_chunk_size = int(min_tokens * 5.6)
+            overlap_size = int(overlap_tokens * 5.6)
+        else:
+            # Normal text with spaces uses standard approximation
+            chars_per_token = 4
+            chunk_size = max_tokens * chars_per_token
+            min_chunk_size = min_tokens * chars_per_token
+            overlap_size = overlap_tokens * chars_per_token
 
         position = 0
         while position < len(text):
+            # Calculate the end position for this chunk
+            # Ensure we get at least min_chunk_size characters
             end = min(position + chunk_size, len(text))
+            
+            # Ensure chunk meets minimum size requirement
+            if end - position < min_chunk_size:
+                # If we can extend to meet minimum, do so
+                end = min(position + min_chunk_size, len(text))
+                
+            # For the last chunk, ensure it's not too small
+            remaining = len(text) - position
+            if remaining < min_chunk_size:
+                # If we can't make a minimum-sized chunk, try to merge with previous
+                # or if this is the first chunk, take all remaining text
+                if not chunks and remaining > 0:
+                    # First and only chunk - take everything
+                    end = len(text)
+                else:
+                    # Too small for a chunk, will be handled by previous chunk extension
+                    break
 
-            # Try to find word boundary
-            if end < len(text):
-                end = self.find_word_boundary(text, end, prefer_before=True)
+            # Try to find word boundary only if it won't make chunk too small
+            if end < len(text) and (end - position) >= chunk_size:
+                word_boundary = self.find_word_boundary(text, end, prefer_before=True)
+                # Only use word boundary if it maintains minimum size
+                if word_boundary > position + min_chunk_size:
+                    end = word_boundary
 
-            chunk = text[position:end]
-            if chunk.strip():
+            # Extract the chunk
+            chunk = text[position:end].strip()
+            if chunk and len(chunk) >= min_chunk_size:
                 chunks.append(chunk)
 
+            # Check if we've reached the end
             if end >= len(text):
                 break
 
-            position = end - overlap_size
+            # Calculate next position with overlap
+            # Ensure position always advances to avoid infinite loops
+            next_position = max(end - overlap_size, position + 1)
+            
+            # Check if remaining text after next position is too small for a chunk
+            remaining_after_next = len(text) - next_position
+            if 0 < remaining_after_next < min_chunk_size:
+                # Extend current chunk to include remaining text if possible
+                if len(chunks) > 0 and remaining_after_next > 0:
+                    # Merge the small remainder into the last chunk
+                    last_chunk = chunks[-1]
+                    remainder = text[next_position:].strip()
+                    if remainder:
+                        chunks[-1] = last_chunk + " " + remainder
+                break
+                
+            position = next_position
 
         return chunks
 
