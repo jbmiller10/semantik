@@ -10,13 +10,10 @@ packages/shared/text_processing/exceptions.py to ensure:
 
 import pytest
 
-from packages.shared.text_processing.exceptions import (
-    # Factory errors
+from packages.shared.text_processing.exceptions import (  # Factory errors; Specific chunking errors; Specific validation errors; Base exceptions; Specific embedding errors
     ChunkerCreationError,
     ChunkingError,
-    # Specific chunking errors
     ChunkSizeError,
-    # Specific validation errors
     ConfigValidationError,
     DimensionMismatchError,
     EmbeddingError,
@@ -25,9 +22,7 @@ from packages.shared.text_processing.exceptions import (
     PermanentEmbeddingError,
     RegexTimeoutError,
     TextLengthError,
-    # Base exceptions
     TextProcessingError,
-    # Specific embedding errors
     TransientEmbeddingError,
     UnknownStrategyError,
     ValidationError,

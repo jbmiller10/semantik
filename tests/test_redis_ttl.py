@@ -5,22 +5,15 @@ memory usage remains stable over time.
 """
 
 import asyncio
-import json
-from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-import redis.asyncio as redis
 
-from packages.webui.background_tasks import (
-    TTL_CONFIG,
-    RedisCleanupTask,
-    STREAM_MAX_LENGTH,
-)
+from packages.webui.background_tasks import STREAM_MAX_LENGTH, TTL_CONFIG, RedisCleanupTask
 from packages.webui.websocket_manager import RedisStreamWebSocketManager
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_operation_stream_ttl():
     """Test that operation streams have proper TTL set."""
     # Mock Redis client
@@ -62,7 +55,7 @@ async def test_operation_stream_ttl():
     mock_redis.expire.assert_called_with(stream_key, 60)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_stream_max_length():
     """Test that streams are limited to maximum length."""
     mock_redis = AsyncMock()
@@ -84,7 +77,7 @@ async def test_stream_max_length():
     assert call_args[1]["maxlen"] == STREAM_MAX_LENGTH
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_cleanup_task_sets_ttl():
     """Test that cleanup task sets TTL on keys without TTL."""
     # Mock Redis with specific behavior for our test
@@ -124,13 +117,11 @@ async def test_cleanup_task_sets_ttl():
 
         if "operation:" in key:
             assert ttl == TTL_CONFIG["operation_active"]
-        elif "preview:" in key:
-            assert ttl == TTL_CONFIG["preview_cache"]
-        elif "chunking:preview:" in key:
+        elif "preview:" in key or "chunking:preview:" in key:
             assert ttl == TTL_CONFIG["preview_cache"]
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_cleanup_task_trims_streams():
     """Test that cleanup task trims streams to max length."""
     # Mock Redis
@@ -160,10 +151,10 @@ async def test_cleanup_task_trims_streams():
     # Verify xtrim was called with correct parameters
     for call in mock_redis.xtrim.call_args_list:
         assert call[1]["maxlen"] == STREAM_MAX_LENGTH
-        assert call[1]["approximate"] == True
+        assert call[1]["approximate"] is True
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_cleanup_task_metrics_logging():
     """Test that cleanup task logs appropriate metrics."""
     # Mock Redis
@@ -195,7 +186,7 @@ async def test_cleanup_task_metrics_logging():
                 break
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_websocket_channel_ttl():
     """Test that WebSocket channel messages have proper TTL."""
     # Mock Redis
@@ -221,7 +212,7 @@ async def test_websocket_channel_ttl():
     mock_redis.expire.assert_called_with(stream_key, 900)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_cleanup_task_lifecycle():
     """Test starting and stopping the cleanup task."""
     # Mock Redis with proper async mock behavior
@@ -253,7 +244,7 @@ async def test_cleanup_task_lifecycle():
     assert task.done()  # Task should be done (either cancelled or completed)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_memory_stability():
     """Test that memory usage remains stable with TTL cleanup.
 
@@ -297,7 +288,7 @@ async def test_memory_stability():
     # In production, we'd verify actual memory reduction
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_cleanup_handles_redis_errors():
     """Test that cleanup task handles Redis errors gracefully."""
     # Mock Redis with errors
@@ -316,7 +307,7 @@ async def test_cleanup_handles_redis_errors():
     assert mock_redis.scan.called
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_websocket_cleanup_stale_connections():
     """Test that WebSocket manager can clean up stale connections."""
     ws_manager = RedisStreamWebSocketManager()

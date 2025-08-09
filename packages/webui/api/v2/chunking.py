@@ -10,21 +10,9 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import (
-    APIRouter,
-    BackgroundTasks,
-    Depends,
-    HTTPException,
-    Query,
-    Request,
-    status,
-)
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 
-from packages.webui.api.chunking_exceptions import (
-    ChunkingMemoryError,
-    ChunkingTimeoutError,
-    ChunkingValidationError,
-)
+from packages.webui.api.chunking_exceptions import ChunkingMemoryError, ChunkingTimeoutError, ChunkingValidationError
 from packages.webui.api.v2.chunking_schemas import (
     ChunkingConfigBase,
     ChunkingOperationRequest,
@@ -53,10 +41,7 @@ from packages.webui.api.v2.chunking_schemas import (
 from packages.webui.auth import get_current_user
 from packages.webui.config.rate_limits import RateLimitConfig
 from packages.webui.dependencies import get_collection_for_user
-from packages.webui.rate_limiter import (
-    check_circuit_breaker,
-    limiter,
-)
+from packages.webui.rate_limiter import check_circuit_breaker, limiter
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.chunking_strategies import ChunkingStrategyRegistry
 from packages.webui.services.chunking_validation import ChunkingInputValidator

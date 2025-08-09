@@ -5,6 +5,7 @@ Comprehensive security tests for path traversal vulnerability prevention.
 Tests all OWASP path traversal patterns and ensures robust validation.
 """
 
+import contextlib
 import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -247,10 +248,8 @@ class TestPathTraversalSecurity:
 
         for paths in test_cases:
             start_time = time.perf_counter()
-            try:
+            with contextlib.suppress(ValidationError):
                 ChunkingSecurityValidator.validate_file_paths(paths)
-            except ValidationError:
-                pass  # Expected for malicious paths
 
             elapsed_time = (time.perf_counter() - start_time) * 1000  # Convert to ms
             assert elapsed_time < 10, f"Validation took {elapsed_time:.2f}ms, exceeding 10ms limit"
