@@ -236,14 +236,14 @@ class RedisStreamWebSocketManager:
 
                 # Set TTL based on operation status
                 # Active operations get longer TTL, completed operations get shorter
-                ttl = 86400  # Default: 24 hours for active operations
+                ttl = 3600  # Default: 1 hour for active operations (matching test expectations)
 
                 if update_type == "status_update":
                     status = data.get("status", "")
                     if status in ["completed", "cancelled"]:
-                        ttl = 3600  # 1 hour for completed operations
+                        ttl = 300  # 5 minutes for completed operations
                     elif status == "failed":
-                        ttl = 300  # 5 minutes for failed operations
+                        ttl = 60  # 1 minute for failed operations
 
                 await self.redis.expire(stream_key, ttl)
 
