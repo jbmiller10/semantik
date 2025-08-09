@@ -226,7 +226,7 @@ class TestBusinessRuleEnforcement:
                     start_offset=i,
                     end_offset=i + 1,
                     token_count=1,
-                    strategy_name="character"))
+                    strategy_name="character"), min_tokens=1)
             for i in range(ChunkingOperation.MAX_CHUNKS_PER_OPERATION + 1)
         ]
         mock_strategy.chunk.return_value = excessive_chunks
@@ -349,14 +349,14 @@ class TestBusinessRuleEnforcement:
         # Add chunk covering only small portion (insufficient coverage)
         operation.start()
         small_chunk = Chunk(
-            content="This"metadata=ChunkMetadata(
+            content="This", metadata=ChunkMetadata(
                 chunk_id="chunk-small",
                 document_id="doc-123",
                 chunk_index=0,
                 start_offset=0,
                 end_offset=4,
                 token_count=1,
-                strategy_name="character"))
+                strategy_name="character"), min_tokens=1)
         operation.add_chunk(small_chunk)
 
         # Act

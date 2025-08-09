@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from packages.shared.chunking.application.dto.requests import ProcessDocumentRequest
+from packages.shared.chunking.application.dto.requests import ChunkingStrategy, ProcessDocumentRequest
 from packages.shared.chunking.application.dto.responses import ProcessDocumentResponse
 from packages.shared.chunking.application.use_cases.process_document import (
     ProcessDocumentUseCase)
@@ -51,23 +51,23 @@ class TestProcessDocumentUseCase:
         mock_strategy = MagicMock()
         mock_strategy.chunk.return_value = [
             Chunk(
-                content="Chunk 1"metadata=ChunkMetadata(
+                content="Chunk 1", metadata=ChunkMetadata(
                     chunk_id="chunk-1",
                     document_id="doc-123",
                     chunk_index=0,
                     start_offset=0,
                     end_offset=7,
                     token_count=2,
-                    strategy_name="character")),
+                    strategy_name="character"), min_tokens=1),
             Chunk(
-                content="Chunk 2"metadata=ChunkMetadata(
+                content="Chunk 2", metadata=ChunkMetadata(
                     chunk_id="chunk-2",
                     document_id="doc-123",
                     chunk_index=1,
                     start_offset=8,
                     end_offset=15,
                     token_count=2,
-                    strategy_name="character")),
+                    strategy_name="character"), min_tokens=1),
         ]
         factory.create_strategy.return_value = mock_strategy
         return factory
@@ -107,27 +107,25 @@ class TestProcessDocumentUseCase:
         mock_unit_of_work,
         mock_document_service,
         mock_strategy_factory,
-        mock_notification_service,
-        mock_event_publisher):
+        mock_notification_service):
         """Create use case instance with mocked dependencies."""
         return ProcessDocumentUseCase(
             unit_of_work=mock_unit_of_work,
             document_service=mock_document_service,
             strategy_factory=mock_strategy_factory,
-            notification_service=mock_notification_service,
-            event_publisher=mock_event_publisher)
+            notification_service=mock_notification_service)
 
     @pytest.fixture()
     def valid_request(self):
         """Create a valid process request."""
         return ProcessDocumentRequest(
             document_id="doc-789",
-            document_path="/data/documents/test.txt",
-            strategy_name="character",
+            file_path="/data/documents/test.txt",
+            collection_id="collection-123",
+            strategy_type=ChunkingStrategy.CHARACTER,
             min_tokens=10,
             max_tokens=100,
-            overlap_tokens=5,
-            async_processing=False)
+            overlap=5)
 
     @pytest.mark.asyncio()
     async def test_successful_synchronous_processing(self, use_case, valid_request):
@@ -151,11 +149,11 @@ class TestProcessDocumentUseCase:
         # Verify workflow
         use_case.document_service.validate_document.assert_called_once_with("doc-789")
         use_case.document_service.get_document_content.assert_called_once_with("doc-789")
-        use_case.strategy_factory.create_strategy.assert_called_once_with("character")
+        use_case.strategy_factory.create_strategy.assert_called_once_with(ChunkingStrategy.CHARACTER)
         use_case.unit_of_work.chunking_operations.save.assert_called()
         use_case.unit_of_work.commit.assert_called()
         use_case.notification_service.notify_operation_completed.assert_called_once()
-        use_case.event_publisher.publish_operation_completed.assert_called_once()
+        # Event publisher removed from use case
 
     @pytest.mark.asyncio()
     async def test_successful_asynchronous_processing(self, use_case):
@@ -163,12 +161,12 @@ class TestProcessDocumentUseCase:
         # Arrange
         request = ProcessDocumentRequest(
             document_id="doc-async",
-            document_path="/data/documents/async.txt",
-            strategy_name="semantic",
+            file_path="/data/documents/async.txt",
+            collection_id="collection-async",
+            strategy_type=ChunkingStrategy.SEMANTIC,
             min_tokens=20,
             max_tokens=200,
-            overlap_tokens=10,
-            async_processing=True,  # Async mode
+            overlap=10
         )
 
         # Act
@@ -181,7 +179,7 @@ class TestProcessDocumentUseCase:
 
         # Verify async workflow
         use_case.notification_service.notify_operation_started.assert_called_once()
-        use_case.event_publisher.publish_operation_started.assert_called_once()
+        # Event publisher removed from use case
         # Should not call completed notifications in async mode
         use_case.notification_service.notify_operation_completed.assert_not_called()
 
@@ -219,11 +217,12 @@ class TestProcessDocumentUseCase:
         # Arrange
         invalid_request = ProcessDocumentRequest(
             document_id="doc-123",
-            document_path="/data/test.txt",
-            strategy_name="character",
+            file_path="/data/test.txt",
+            collection_id="collection-123",
+            strategy_type=ChunkingStrategy.CHARACTER,
             min_tokens=100,  # Greater than max
             max_tokens=50,
-            overlap_tokens=5)
+            overlap=5)
 
         # Act & Assert
         with pytest.raises(InvalidConfigurationError):
@@ -246,7 +245,7 @@ class TestProcessDocumentUseCase:
         assert "Strategy execution failed" in str(exc_info.value)
         use_case.unit_of_work.rollback.assert_called()
         use_case.notification_service.notify_operation_failed.assert_called()
-        use_case.event_publisher.publish_operation_failed.assert_called()
+        # Event publisher removed from use case
 
     @pytest.mark.asyncio()
     async def test_transaction_rollback_on_error(self, use_case, valid_request):
@@ -289,14 +288,14 @@ class TestProcessDocumentUseCase:
                 for value in [25.0, 50.0, 75.0, 100.0]:
                     progress_callback(value)
             return [
-                Chunk(content="Result"metadata=ChunkMetadata(
+                Chunk(content="Result", metadata=ChunkMetadata(
                           chunk_id="chunk-result",
                           document_id="doc-123",
                           chunk_index=0,
                           start_offset=0,
                           end_offset=6,
                           token_count=1,
-                          strategy_name="character"))
+                          strategy_name="character"), min_tokens=1)
             ]
 
         use_case.strategy_factory.create_strategy.return_value.chunk = mock_chunk_with_progress
@@ -315,14 +314,14 @@ class TestProcessDocumentUseCase:
         # Create chunks with insufficient coverage
         use_case.strategy_factory.create_strategy.return_value.chunk.return_value = [
             Chunk(
-                content="Small"metadata=ChunkMetadata(
+                content="Small", metadata=ChunkMetadata(
                     chunk_id="chunk-small",
                     document_id="doc-123",
                     chunk_index=0,
                     start_offset=0,
                     end_offset=5,
                     token_count=1,
-                    strategy_name="character"))
+                    strategy_name="character"), min_tokens=1)
         ]
 
         # Act
@@ -340,11 +339,12 @@ class TestProcessDocumentUseCase:
         requests = [
             ProcessDocumentRequest(
                 document_id=f"doc-{i}",
-                document_path=f"/data/doc-{i}.txt",
-                strategy_name="character",
+                file_path=f"/data/doc-{i}.txt",
+                collection_id=f"collection-{i}",
+                strategy_type=ChunkingStrategy.CHARACTER,
                 min_tokens=10,
                 max_tokens=100,
-                overlap_tokens=5)
+                overlap=5)
             for i in range(3)
         ]
 
@@ -366,11 +366,12 @@ class TestProcessDocumentUseCase:
         # Arrange
         malicious_request = ProcessDocumentRequest(
             document_id="doc-123",
-            document_path="../../etc/passwd",  # Path traversal attempt
-            strategy_name="character",
+            file_path="../../etc/passwd",  # Path traversal attempt
+            collection_id="collection-123",
+            strategy_type=ChunkingStrategy.CHARACTER,
             min_tokens=10,
             max_tokens=100,
-            overlap_tokens=5)
+            overlap=5)
 
         # Act & Assert
         with pytest.raises(ValueError) as exc_info:
@@ -430,14 +431,14 @@ class TestProcessDocumentUseCase:
         # First call fails, second succeeds
         use_case.strategy_factory.create_strategy.return_value.chunk.side_effect = [
             RuntimeError("Temporary failure"),
-            [Chunk(content="Success"metadata=ChunkMetadata(
+            [Chunk(content="Success", metadata=ChunkMetadata(
                        chunk_id="chunk-success",
                        document_id="doc-123",
                        chunk_index=0,
                        start_offset=0,
                        end_offset=7,
                        token_count=1,
-                       strategy_name="character"))]
+                       strategy_name="character"), min_tokens=1)]
         ]
 
         # Configure retry logic
@@ -457,12 +458,13 @@ class TestProcessDocumentUseCase:
         # Arrange
         request = ProcessDocumentRequest(
             document_id="doc-custom",
-            document_path="/data/custom.txt",
-            strategy_name="semantic",
+            file_path="/data/custom.txt",
+            collection_id="collection-custom",
+            strategy_type=ChunkingStrategy.SEMANTIC,
             min_tokens=30,
             max_tokens=150,
-            overlap_tokens=15,
-            additional_params={
+            overlap=15,
+            metadata={
                 "similarity_threshold": 0.85,
                 "embedding_model": "custom-model",
             })
@@ -473,4 +475,4 @@ class TestProcessDocumentUseCase:
         # Assert
         assert response.status == "COMPLETED"
         # Verify strategy was created with custom params
-        use_case.strategy_factory.create_strategy.assert_called_with("semantic")
+        use_case.strategy_factory.create_strategy.assert_called_with(ChunkingStrategy.SEMANTIC)

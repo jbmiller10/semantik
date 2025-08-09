@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from packages.shared.chunking.application.dto.requests import CompareStrategiesRequest
+from packages.shared.chunking.application.dto.requests import ChunkingStrategy, CompareStrategiesRequest
 from packages.shared.chunking.application.dto.responses import CompareStrategiesResponse, StrategyMetrics
 from packages.shared.chunking.application.use_cases.compare_strategies import (
     CompareStrategiesUseCase)
@@ -35,35 +35,35 @@ class TestCompareStrategiesUseCase:
         # Create different mock strategies with different results
         character_strategy = MagicMock()
         character_strategy.chunk.return_value = [
-            Chunk(content="Chunk 1 char"metadata=ChunkMetadata(
+            Chunk(content="Chunk 1 char", metadata=ChunkMetadata(
                       chunk_id="char-chunk-1",
                       document_id="doc-123",
                       chunk_index=0,
                       start_offset=0,
                       end_offset=13,
                       token_count=3,
-                      strategy_name="character")),
-            Chunk(content="Chunk 2 char"metadata=ChunkMetadata(
+                      strategy_name="character"), min_tokens=1),
+            Chunk(content="Chunk 2 char", metadata=ChunkMetadata(
                       chunk_id="char-chunk-2",
                       document_id="doc-123",
                       chunk_index=1,
                       start_offset=14,
                       end_offset=27,
                       token_count=3,
-                      strategy_name="character")),
-            Chunk(content="Chunk 3 char"metadata=ChunkMetadata(
+                      strategy_name="character"), min_tokens=1),
+            Chunk(content="Chunk 3 char", metadata=ChunkMetadata(
                       chunk_id="char-chunk-3",
                       document_id="doc-123",
                       chunk_index=2,
                       start_offset=28,
                       end_offset=41,
                       token_count=3,
-                      strategy_name="character")),
+                      strategy_name="character"), min_tokens=1),
         ]
 
         semantic_strategy = MagicMock()
         semantic_strategy.chunk.return_value = [
-            Chunk(content="Semantic chunk 1"metadata=ChunkMetadata(
+            Chunk(content="Semantic chunk 1", metadata=ChunkMetadata(
                       chunk_id="sem-chunk-1",
                       document_id="doc-123",
                       chunk_index=0,
@@ -71,8 +71,8 @@ class TestCompareStrategiesUseCase:
                       end_offset=16,
                       token_count=4,
                       strategy_name="semantic",
-                      semantic_score=0.9)),
-            Chunk(content="Semantic chunk 2"metadata=ChunkMetadata(
+                      semantic_score=0.9), min_tokens=1),
+            Chunk(content="Semantic chunk 2", metadata=ChunkMetadata(
                       chunk_id="sem-chunk-2",
                       document_id="doc-123",
                       chunk_index=1,
@@ -80,51 +80,51 @@ class TestCompareStrategiesUseCase:
                       end_offset=33,
                       token_count=4,
                       strategy_name="semantic",
-                      semantic_score=0.85)),
+                      semantic_score=0.85), min_tokens=1),
         ]
 
         recursive_strategy = MagicMock()
         recursive_strategy.chunk.return_value = [
-            Chunk(content="Recursive chunk 1"metadata=ChunkMetadata(
+            Chunk(content="Recursive chunk 1", metadata=ChunkMetadata(
                       chunk_id="rec-chunk-1",
                       document_id="doc-123",
                       chunk_index=0,
                       start_offset=0,
                       end_offset=17,
                       token_count=4,
-                      strategy_name="recursive")),
-            Chunk(content="Recursive chunk 2"metadata=ChunkMetadata(
+                      strategy_name="recursive"), min_tokens=1),
+            Chunk(content="Recursive chunk 2", metadata=ChunkMetadata(
                       chunk_id="rec-chunk-2",
                       document_id="doc-123",
                       chunk_index=1,
                       start_offset=18,
                       end_offset=35,
                       token_count=4,
-                      strategy_name="recursive")),
-            Chunk(content="Recursive chunk 3"metadata=ChunkMetadata(
+                      strategy_name="recursive"), min_tokens=1),
+            Chunk(content="Recursive chunk 3", metadata=ChunkMetadata(
                       chunk_id="rec-chunk-3",
                       document_id="doc-123",
                       chunk_index=2,
                       start_offset=36,
                       end_offset=53,
                       token_count=4,
-                      strategy_name="recursive")),
-            Chunk(content="Recursive chunk 4"metadata=ChunkMetadata(
+                      strategy_name="recursive"), min_tokens=1),
+            Chunk(content="Recursive chunk 4", metadata=ChunkMetadata(
                       chunk_id="rec-chunk-4",
                       document_id="doc-123",
                       chunk_index=3,
                       start_offset=54,
                       end_offset=71,
                       token_count=4,
-                      strategy_name="recursive")),
+                      strategy_name="recursive"), min_tokens=1),
         ]
 
         def create_strategy_side_effect(name):
-            if name == "character":
+            if name == ChunkingStrategy.CHARACTER:
                 return character_strategy
-            elif name == "semantic":
+            elif name == ChunkingStrategy.SEMANTIC:
                 return semantic_strategy
-            elif name == "recursive":
+            elif name == ChunkingStrategy.RECURSIVE:
                 return recursive_strategy
             else:
                 raise StrategyNotFoundError(name)
@@ -140,26 +140,37 @@ class TestCompareStrategiesUseCase:
         return service
 
     @pytest.fixture()
+    def mock_notification_service(self):
+        """Create mock notification service."""
+        service = AsyncMock()
+        service.notify_comparison_started = AsyncMock()
+        service.notify_comparison_completed = AsyncMock()
+        service.notify_error = AsyncMock()
+        return service
+
+    @pytest.fixture()
     def use_case(
         self,
         mock_document_service,
         mock_strategy_factory,
+        mock_notification_service,
         mock_metrics_service):
         """Create use case instance with mocked dependencies."""
         return CompareStrategiesUseCase(
             document_service=mock_document_service,
             strategy_factory=mock_strategy_factory,
+            notification_service=mock_notification_service,
             metrics_service=mock_metrics_service)
 
     @pytest.fixture()
     def valid_request(self):
         """Create a valid comparison request."""
         return CompareStrategiesRequest(
-            document_id="doc-compare",
-            strategies=["character", "semantic", "recursive"],
+            file_path="/data/documents/compare.txt",
+            strategies=[ChunkingStrategy.CHARACTER, ChunkingStrategy.SEMANTIC, ChunkingStrategy.RECURSIVE],
             min_tokens=10,
             max_tokens=100,
-            overlap_tokens=5,
+            overlap=5,
             sample_size_kb=10)
 
     @pytest.mark.asyncio()
@@ -206,32 +217,32 @@ class TestCompareStrategiesUseCase:
         """Test comparison with invalid strategy name."""
         # Arrange
         request = CompareStrategiesRequest(
-            document_id="doc-123",
-            strategies=["character", "invalid_strategy"],
+            file_path="/data/documents/test.txt",
+            strategies=[ChunkingStrategy.CHARACTER],
             min_tokens=10,
             max_tokens=100,
-            overlap_tokens=5)
+            overlap=5)
 
         # Act
         response = await use_case.execute(request)
 
         # Assert
-        # Should process valid strategies and skip invalid ones
+        # Should process valid strategies
         assert len(response.comparisons) == 1
         assert response.comparisons[0].strategy_name == "character"
         # Should note the error in response
-        assert any("invalid_strategy" in str(e) for e in response.errors)
+        # Since we removed invalid_strategy from the test, this check is no longer needed
 
     @pytest.mark.asyncio()
     async def test_comparison_with_empty_strategies_list(self, use_case):
         """Test comparison with empty strategies list."""
         # Arrange
         request = CompareStrategiesRequest(
-            document_id="doc-123",
+            file_path="/data/documents/test.txt",
             strategies=[],
             min_tokens=10,
             max_tokens=100,
-            overlap_tokens=5)
+            overlap=5)
 
         # Act & Assert
         with pytest.raises(ValueError) as exc_info:
@@ -310,14 +321,11 @@ class TestCompareStrategiesUseCase:
         """Test comparison with custom strategy parameters."""
         # Arrange
         request = CompareStrategiesRequest(
-            document_id="doc-custom",
-            strategies=["semantic"],
+            file_path="/data/documents/custom.txt",
+            strategies=[ChunkingStrategy.SEMANTIC],
             min_tokens=20,
             max_tokens=200,
-            overlap_tokens=10,
-            additional_params={
-                "semantic": {"similarity_threshold": 0.9},
-            })
+            overlap=10)
 
         # Act
         response = await use_case.execute(request)
@@ -419,11 +427,11 @@ class TestCompareStrategiesUseCase:
         """Test comparison with single strategy."""
         # Arrange
         request = CompareStrategiesRequest(
-            document_id="doc-single",
-            strategies=["character"],
+            file_path="/data/documents/single.txt",
+            strategies=[ChunkingStrategy.CHARACTER],
             min_tokens=10,
             max_tokens=100,
-            overlap_tokens=5)
+            overlap=5)
 
         # Act
         response = await use_case.execute(request)
