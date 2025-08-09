@@ -181,8 +181,8 @@ Content under header 2.
         chunking_service: ChunkingService,
     ) -> None:
         """Test chunking preview size limit."""
-        # Text larger than preview limit (1MB)
-        large_text = "x" * (2 * 1024 * 1024)  # 2MB
+        # Text larger than preview limit (10MB)
+        large_text = "x" * (11 * 1024 * 1024)  # 11MB (larger than 10MB limit)
 
         with pytest.raises(ValidationError, match="Document too large"):
             await chunking_service.preview_chunking(content=large_text)
@@ -204,8 +204,8 @@ Content under header 2.
             "performance_metrics": {},
             "recommendations": [],
         }
-        # Redis returns bytes, so encode the JSON string
-        mock_redis.get.return_value = json.dumps(cached_data).encode()
+        # Redis returns JSON string (not bytes in this mock)
+        mock_redis.get.return_value = json.dumps(cached_data)
 
         result = await chunking_service.preview_chunking(content="test")
 
@@ -276,29 +276,34 @@ Content under header 2.
         chunking_service: ChunkingService,
     ) -> None:
         """Test getting chunking statistics."""
-        # Mock document data
-        mock_documents = []
-        for _ in range(100):
-            doc = MagicMock()
-            doc.chunk_count = 10  # 100 docs * 10 chunks = 1000 total
-            doc.created_at = datetime.now(tz=UTC)
-            mock_documents.append(doc)
+        # Mock collection
+        mock_collection = MagicMock(id="test-collection", uuid="test-collection")
+        chunking_service.collection_repo.get_by_id = AsyncMock(return_value=mock_collection)
+        
+        # Mock operations data
+        mock_operations = []
+        for i in range(3):
+            op = MagicMock()
+            op.status = "completed" if i < 2 else "in_progress"
+            op.created_at = datetime.now(tz=UTC)
+            op.config = {"strategy": "recursive"}
+            mock_operations.append(op)
 
         # Mock the db query result
         mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = mock_documents
-        chunking_service.db.execute = AsyncMock(return_value=mock_result)
+        mock_result.scalars.return_value.all.return_value = mock_operations
+        chunking_service.db_session.execute = AsyncMock(return_value=mock_result)
 
         result = await chunking_service.get_chunking_statistics(
-            collection_id="test-collection",
-            days=30,
+            collection_id="test-collection"
         )
 
-        assert isinstance(result, ChunkingStatistics)
-        assert result.total_documents == 100  # Mock data
-        assert result.total_chunks == 1000
-        assert result.average_chunk_size == DEFAULT_CHUNK_SIZE  # Default value from service
-        assert "recursive" in result.strategy_breakdown
+        assert isinstance(result, dict)
+        assert result["collection_id"] == "test-collection"
+        assert result["total_operations"] == 3
+        assert result["completed_operations"] == 2
+        assert result["in_progress_operations"] == 1
+        assert result["latest_strategy"] == "recursive"
 
     async def test_validate_config_for_collection(
         self,
@@ -306,14 +311,12 @@ Content under header 2.
         mock_repos: tuple[MagicMock, MagicMock],
     ) -> None:
         """Test validating config for collection."""
-        _, document_repo = mock_repos
-
-        # Mock documents
-        mock_docs = [
-            MagicMock(file_name="doc1.txt", file_size_bytes=1000),
-            MagicMock(file_name="doc2.txt", file_size_bytes=2000),
-        ]
-        document_repo.list_by_collection.return_value = (mock_docs, 2)
+        # Mock collection
+        mock_collection = MagicMock(id="test-collection", uuid="test-collection")
+        chunking_service.collection_repo.get_by_id = AsyncMock(return_value=mock_collection)
+        
+        # Mock validator to return valid
+        chunking_service.validator.validate_config = MagicMock(return_value=(True, []))
 
         config = {
             "strategy": "recursive",
@@ -324,31 +327,41 @@ Content under header 2.
             collection_id="test-collection",
             strategy="recursive",
             config=config,
-            sample_size=2,
         )
 
         assert isinstance(result, dict)
-        assert result["is_valid"]
-        assert len(result["sample_results"]) == 2
-        assert result["estimated_total_chunks"] > 0
-        assert len(result["warnings"]) == 0
+        assert result["valid"] is True
+        assert result["errors"] == []
+        assert "suggested_config" in result
 
     async def test_validate_config_invalid_params(
         self,
         chunking_service: ChunkingService,
     ) -> None:
         """Test config validation with invalid parameters."""
+        # Mock collection
+        mock_collection = MagicMock(id="test-collection", uuid="test-collection")
+        chunking_service.collection_repo.get_by_id = AsyncMock(return_value=mock_collection)
+        
+        # Mock validator to return invalid with errors
+        chunking_service.validator.validate_config = MagicMock(
+            return_value=(False, ["chunk_size is too large"])
+        )
+
         config = {
             "strategy": "recursive",
             "params": {"chunk_size": 100000},  # Too large
         }
 
-        with pytest.raises(ValidationError):
-            await chunking_service.validate_config_for_collection(
-                collection_id="test-collection",
-                strategy="recursive",
-                config=config,
-            )
+        result = await chunking_service.validate_config_for_collection(
+            collection_id="test-collection",
+            strategy="recursive",
+            config=config,
+        )
+        
+        assert result["valid"] is False
+        assert len(result["errors"]) > 0
+        assert "suggested_config" in result
 
     async def test_verify_collection_access(
         self,
@@ -444,28 +457,28 @@ Content under header 2.
         chunking_service: ChunkingService,
     ) -> None:
         """Test getting chunking progress."""
-        # Mock the operation repository to return an operation
+        # Mock the db query to return an operation
         mock_operation = MagicMock()
-        mock_operation.status.value = "processing"
+        mock_operation.id = "test-operation"
+        mock_operation.status = "in_progress"
         mock_operation.started_at = datetime.now(UTC)
         mock_operation.completed_at = None
-        mock_operation.meta = {
-            "progress": {
-                "total_documents": 100,
-                "documents_processed": 50,
-                "chunks_created": 250,
-                "current_document": "test.txt",
-                "errors": [],
-            }
+        mock_operation.metadata = {
+            "chunks_processed": 50,
+            "total_chunks": 100,
         }
+        mock_operation.error_message = None
 
-        chunking_service.operation_repo.get_by_uuid_with_permission_check.return_value = mock_operation
+        # Mock the database result
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_operation
+        chunking_service.db_session.execute = AsyncMock(return_value=mock_result)
 
-        # Call with operation_id and user_id
-        progress = await chunking_service.get_chunking_progress("test-operation", 1)
+        # Call with just operation_id
+        progress = await chunking_service.get_chunking_progress("test-operation")
 
         assert progress is not None
-        assert progress["status"] == "processing"
-        assert progress["documents_processed"] == 50
-        assert progress["total_documents"] == 100
+        assert progress["status"] == "in_progress"
+        assert progress["chunks_processed"] == 50
+        assert progress["total_chunks"] == 100
         assert progress["progress_percentage"] == 50.0

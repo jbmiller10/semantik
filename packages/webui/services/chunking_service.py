@@ -226,7 +226,9 @@ class ChunkingService:
         try:
             # Check if cached result exists
             if cache_result and self.redis_client:
-                cache_key = self._generate_cache_key(content, strategy or "recursive", config)
+                # Get strategy string for cache key before conversion
+                cache_strategy = strategy.value if hasattr(strategy, 'value') else (strategy or "recursive")
+                cache_key = self._generate_cache_key(content, cache_strategy, config)
                 cached = await self.redis_client.get(cache_key)
                 if cached:
                     import json
@@ -235,6 +237,19 @@ class ChunkingService:
             # Default strategy if not provided
             if not strategy:
                 strategy = ChunkingStrategy.RECURSIVE
+            
+            # Convert enum to string if necessary
+            if hasattr(strategy, 'value'):
+                strategy_str = strategy.value
+            else:
+                strategy_str = str(strategy)
+            
+            # Map API strategy names to internal factory names
+            if strategy_str in self.STRATEGY_MAPPING:
+                internal_strategy = self.STRATEGY_MAPPING[strategy_str]
+            else:
+                # If it's already an internal name or unknown, use as-is
+                internal_strategy = strategy_str
 
             # Create use case request
             request = PreviewRequest(
@@ -246,7 +261,7 @@ class ChunkingService:
             )
 
             # Use the actual strategy pattern for chunking
-            strategy_instance = get_strategy(strategy)
+            strategy_instance = get_strategy(internal_strategy)
             
             import time
             start_time = time.time()
@@ -323,9 +338,9 @@ class ChunkingService:
             # Convert to response format
             result = {
                 "preview_id": str(uuid.uuid4()),
-                "strategy": strategy,
-                "strategy_used": strategy,  # For compatibility
-                "config": config or self._get_default_config(strategy),
+                "strategy": strategy_str if hasattr(strategy, 'value') else strategy,
+                "strategy_used": strategy_str if hasattr(strategy, 'value') else strategy,  # For compatibility
+                "config": config or self._get_default_config(internal_strategy),
                 "chunks": [
                     {
                         "chunk_id": f"chunk_{idx:04d}",
@@ -348,7 +363,7 @@ class ChunkingService:
 
             # Cache if requested and Redis is available
             if cache_result and self.redis_client:
-                cache_key = self._generate_cache_key(content, strategy, config)
+                cache_key = self._generate_cache_key(content, cache_strategy, config)
                 await self._cache_preview(cache_key, result)
 
             return result
@@ -372,6 +387,16 @@ class ChunkingService:
                 "chunks": [],
                 "total_chunks": 0,
                 "recommendations": ["Please verify your input parameters"],
+            }
+        except ConnectionError as e:
+            # Handle Redis connection errors specifically
+            logger.error(f"Redis connection error during preview chunking: {e}")
+            return {
+                "error": str(e),  # Include the connection error message
+                "strategy": strategy or "recursive",
+                "chunks": [],
+                "total_chunks": 0,
+                "recommendations": ["Service temporarily unavailable. Please try again later"],
             }
         except Exception as e:
             # Log the actual error internally but don't expose details to client
@@ -1000,6 +1025,10 @@ class ChunkingService:
         # Get extension from path if needed
         if "/" in file_type or "\\" in file_type:
             file_type = os.path.splitext(file_type)[1]
+        
+        # Ensure file_type starts with a dot
+        if file_type and not file_type.startswith("."):
+            file_type = "." + file_type
         
         code_extensions = [".py", ".js", ".ts", ".cpp", ".c", ".java", ".go", ".rs", ".sh"]
         markdown_extensions = [".md", ".markdown", ".mdx", ".rst"]

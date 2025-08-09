@@ -20,7 +20,7 @@ class TestCompareStrategiesUseCase:
     @pytest.fixture()
     def mock_document_service(self):
         """Create mock document service."""
-        service = AsyncMock()
+        service = MagicMock()
         service.get_document_content = AsyncMock(
             return_value="This is a sample document for comparing different chunking strategies. It contains multiple sentences and paragraphs to test various approaches."
         )
@@ -143,17 +143,27 @@ class TestCompareStrategiesUseCase:
     @pytest.fixture()
     def mock_metrics_service(self):
         """Create mock metrics service."""
-        service = AsyncMock()
+        service = MagicMock()
         service.record_comparison = AsyncMock()
+        
+        # Add the required methods for CompareStrategiesUseCase
+        service.record_strategy_performance = AsyncMock()
+        
         return service
 
     @pytest.fixture()
     def mock_notification_service(self):
         """Create mock notification service."""
-        service = AsyncMock()
+        service = MagicMock()
         service.notify_comparison_started = AsyncMock()
         service.notify_comparison_completed = AsyncMock()
         service.notify_error = AsyncMock()
+        
+        # Add the required methods for CompareStrategiesUseCase
+        service.notify_operation_started = AsyncMock()
+        service.notify_operation_completed = AsyncMock()
+        service.notify_operation_failed = AsyncMock()
+        
         return service
 
     @pytest.fixture()

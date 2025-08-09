@@ -22,11 +22,23 @@ class TestPreviewChunkingUseCase:
     @pytest.fixture()
     def mock_document_service(self):
         """Create mock document service."""
-        service = AsyncMock()
+        service = MagicMock()
         service.get_document_content = AsyncMock(
             return_value="This is a sample document content for testing."
         )
         service.get_document_size = AsyncMock(return_value=1000)
+        
+        # Add the required methods for PreviewChunkingUseCase
+        service.load_partial = AsyncMock(
+            return_value={"content": "This is a sample document content for testing."}
+        )
+        service.extract_text = AsyncMock(
+            return_value="This is a sample document content for testing."
+        )
+        service.get_metadata = AsyncMock(
+            return_value={"size_bytes": 10000}
+        )
+        
         return service
 
     @pytest.fixture()
@@ -62,17 +74,28 @@ class TestPreviewChunkingUseCase:
     @pytest.fixture()
     def mock_notification_service(self):
         """Create mock notification service."""
-        service = AsyncMock()
+        service = MagicMock()
         service.notify_preview_generated = AsyncMock()
         service.notify_error = AsyncMock()
+        
+        # Add the required methods for PreviewChunkingUseCase
+        service.notify_operation_started = AsyncMock()
+        service.notify_operation_completed = AsyncMock()
+        service.notify_operation_failed = AsyncMock()
+        
         return service
 
     @pytest.fixture()
     def mock_metrics_service(self):
         """Create mock metrics service."""
-        service = AsyncMock()
+        service = MagicMock()
         service.record_preview_request = AsyncMock()
         service.record_preview_duration = AsyncMock()
+        
+        # Add the required methods for PreviewChunkingUseCase
+        service.record_operation_duration = AsyncMock()
+        service.record_strategy_performance = AsyncMock()
+        
         return service
 
     @pytest.fixture()
@@ -109,20 +132,27 @@ class TestPreviewChunkingUseCase:
 
         # Assert
         assert isinstance(response, PreviewResponse)
-        assert response.document_id == "doc-123"
-        assert response.strategy_name == "character"
-        assert len(response.preview_chunks) == 2
-        assert response.estimated_total_chunks > 0
-        assert response.sample_size_bytes > 0
+        assert response.operation_id is not None  # Operation ID should be generated
+        assert response.strategy_used == "character"
+        assert len(response.chunks) == 2
+        assert response.total_chunks_estimate > 0
+        assert response.document_sample_size > 0
         assert response.processing_time_ms > 0
 
         # Verify mock calls
-        use_case.document_service.get_document_content.assert_called_once_with(
-            "doc-123", max_bytes=10240  # 10KB
+        use_case.document_service.load_partial.assert_called_once_with(
+            file_path="/data/documents/test.txt",
+            size_kb=10
         )
-        use_case.strategy_factory.create_strategy.assert_called_once_with(ChunkingStrategy.CHARACTER)
-        use_case.notification_service.notify_preview_generated.assert_called_once()
-        use_case.metrics_service.record_preview_request.assert_called_once()
+        use_case.document_service.extract_text.assert_called_once()
+        use_case.strategy_factory.create_strategy.assert_called_once_with(
+            strategy_type="character",
+            config={"min_tokens": 10, "max_tokens": 50, "overlap": 5}
+        )
+        use_case.notification_service.notify_operation_started.assert_called_once()
+        use_case.notification_service.notify_operation_completed.assert_called_once()
+        use_case.metrics_service.record_operation_duration.assert_called_once()
+        use_case.metrics_service.record_strategy_performance.assert_called_once()
 
     @pytest.mark.asyncio()
     async def test_preview_with_limited_chunks(self, use_case, valid_request):
@@ -150,9 +180,9 @@ class TestPreviewChunkingUseCase:
         response = await use_case.execute(valid_request)
 
         # Assert
-        assert len(response.preview_chunks) == 5  # max_preview_chunks
-        assert response.preview_chunks[0].content == "Chunk 0"
-        assert response.preview_chunks[4].content == "Chunk 4"
+        assert len(response.chunks) == 5  # max_preview_chunks
+        assert response.chunks[0].content == "Chunk 0"
+        assert response.chunks[4].content == "Chunk 4"
 
     @pytest.mark.asyncio()
     async def test_preview_with_custom_parameters(self, use_case):

@@ -124,9 +124,9 @@ class PreviewChunkingUseCase:
                     chunk_id=f"{operation_id}-preview-{i}",
                     content=chunk.content,
                     position=i,
-                    start_offset=chunk.start_offset,
-                    end_offset=chunk.end_offset,
-                    token_count=chunk.token_count,
+                    start_offset=chunk.metadata.start_offset,
+                    end_offset=chunk.metadata.end_offset,
+                    token_count=chunk.metadata.token_count,
                     metadata={
                         "preview": True,
                         "strategy": request.strategy_type.value

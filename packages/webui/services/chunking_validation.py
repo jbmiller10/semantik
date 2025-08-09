@@ -55,6 +55,44 @@ class ChunkingInputValidator:
     ]
 
     @classmethod
+    def validate_config(cls, strategy: str, config: dict[str, Any] | None) -> tuple[bool, list[str]]:
+        """Validate chunking configuration.
+        
+        Args:
+            strategy: The chunking strategy
+            config: Configuration dictionary
+            
+        Returns:
+            Tuple of (is_valid, list of errors)
+        """
+        errors = []
+        
+        if not strategy:
+            errors.append("Strategy is required")
+            return False, errors
+            
+        # Basic validation for common config parameters
+        if config:
+            if "chunk_size" in config:
+                chunk_size = config["chunk_size"]
+                if not isinstance(chunk_size, int) or chunk_size <= 0:
+                    errors.append("chunk_size must be a positive integer")
+                elif chunk_size > 100000:
+                    errors.append("chunk_size too large (max 100000)")
+                    
+            if "chunk_overlap" in config:
+                overlap = config["chunk_overlap"]
+                if not isinstance(overlap, int) or overlap < 0:
+                    errors.append("chunk_overlap must be a non-negative integer")
+                    
+                # Check overlap is less than chunk_size if both exist
+                if "chunk_size" in config and isinstance(config["chunk_size"], int):
+                    if overlap >= config["chunk_size"]:
+                        errors.append("chunk_overlap must be less than chunk_size")
+        
+        return len(errors) == 0, errors
+
+    @classmethod
     def validate_content(cls, content: str, correlation_id: str) -> None:
         """
         Validate content for security issues.
