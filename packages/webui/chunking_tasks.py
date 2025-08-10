@@ -625,8 +625,7 @@ async def _process_chunking_operation_async(
                 db_session=db,
                 collection_repo=collection_repo,
                 document_repo=DocumentRepository(db),
-                redis_client=redis_client,
-                error_handler=error_handler,
+                redis_client=None,  # Redis client type mismatch - TODO: use async redis
             )
 
             # Check resource limits before processing
