@@ -44,6 +44,15 @@ class SimpleChunkingStrategy(ChunkingStrategy):
                 chunks.append(chunk)
         
         return chunks
+    
+    def estimate_chunks(self, content_length: int, config: ChunkConfig) -> int:
+        """Estimate the number of chunks that will be produced."""
+        # Simple estimate: assume average paragraph length
+        return max(1, content_length // 500)
+    
+    def validate_content(self, content: str) -> bool:
+        """Validate that content can be chunked."""
+        return content is not None and len(content) > 0
 
 
 class TestStreamingIntegration:
