@@ -60,9 +60,8 @@ class ChunkMetadata:
             raise ValueError(f"Token count must be positive, got {self.token_count}")
 
         # Validate semantic score if provided
-        if self.semantic_score is not None:
-            if not 0.0 <= self.semantic_score <= 1.0:
-                raise ValueError(f"Semantic score must be between 0.0 and 1.0, got {self.semantic_score}")
+        if self.semantic_score is not None and not 0.0 <= self.semantic_score <= 1.0:
+            raise ValueError(f"Semantic score must be between 0.0 and 1.0, got {self.semantic_score}")
 
         # Validate semantic density
         if not 0.0 <= self.semantic_density <= 1.0:
@@ -77,9 +76,8 @@ class ChunkMetadata:
             raise ValueError(f"Overlap percentage must be between 0.0 and 1.0, got {self.overlap_percentage}")
 
         # Validate hierarchy level if provided
-        if self.hierarchy_level is not None:
-            if self.hierarchy_level < 0:
-                raise ValueError(f"Hierarchy level must be non-negative, got {self.hierarchy_level}")
+        if self.hierarchy_level is not None and self.hierarchy_level < 0:
+            raise ValueError(f"Hierarchy level must be non-negative, got {self.hierarchy_level}")
 
     @property
     def character_count(self) -> int:

@@ -145,17 +145,13 @@ class ChunkingStrategy(ABC):
         if prefer_before:
             # Search backwards
             for i in range(target_position, -1, -1):
-                if i < len(text) and text[i] in sentence_endings:
-                    # Check if it's really a sentence end (not abbreviation)
-                    if i + 1 < len(text) and text[i + 1].isspace():
-                        return i + 1
+                if i < len(text) and text[i] in sentence_endings and i + 1 < len(text) and text[i + 1].isspace():
+                    return i + 1
         else:
             # Search forwards
             for i in range(target_position, len(text)):
-                if text[i] in sentence_endings:
-                    # Check if it's really a sentence end
-                    if i + 1 < len(text) and text[i + 1].isspace():
-                        return i + 1
+                if text[i] in sentence_endings and i + 1 < len(text) and text[i + 1].isspace():
+                    return i + 1
 
         # If no boundary found, return target position
         return target_position
@@ -188,12 +184,11 @@ class ChunkingStrategy(ABC):
                 if i < len(text) and text[i].isspace():
                     return i + 1
             return 0
-        else:
-            # Search forwards for space
-            for i in range(target_position, len(text)):
-                if text[i].isspace():
-                    return i
-            return len(text)
+        # Search forwards for space
+        for i in range(target_position, len(text)):
+            if text[i].isspace():
+                return i
+        return len(text)
 
     def clean_chunk_text(self, text: str) -> str:
         """

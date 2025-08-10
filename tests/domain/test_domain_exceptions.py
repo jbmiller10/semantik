@@ -152,11 +152,15 @@ class TestDomainExceptions:
         original_message = "Original error occurred"
 
         # Act & Assert
-        with pytest.raises(InvalidStateError) as exc_info:
+        # Create a function that raises the exception (PT012: single statement in raises block)
+        def raise_chained_exception():
             try:
                 raise ValueError(original_message)
             except ValueError as ve:
                 raise InvalidStateError(f"State error: {ve}") from ve
+
+        with pytest.raises(InvalidStateError) as exc_info:
+            raise_chained_exception()
 
         # Check that the context is preserved
         assert "State error" in str(exc_info.value)
@@ -231,7 +235,7 @@ class TestBusinessRuleEnforcement:
 
     def test_operation_timeout_enforcement(self):
         """Test that operation timeout is enforced."""
-        from datetime import datetime, timedelta
+        from datetime import UTC, datetime, timedelta
         from unittest.mock import patch
 
         from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
@@ -245,7 +249,7 @@ class TestBusinessRuleEnforcement:
         )
 
         # Mock time to simulate timeout
-        start_time = datetime.utcnow()
+        start_time = datetime.now(tz=UTC)
         timeout_time = start_time + timedelta(seconds=ChunkingOperation.MAX_OPERATION_DURATION_SECONDS + 1)
 
         # Act

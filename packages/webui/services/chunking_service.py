@@ -10,6 +10,7 @@ import json
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import redis.asyncio as redis
@@ -58,7 +59,7 @@ class ChunkingStatistics:
 class SimpleChunkingStrategyFactory:
     """Simple implementation of ChunkingStrategyFactory interface."""
 
-    def create_strategy(self, strategy_type: str, config: dict[str, Any]) -> Any:
+    def create_strategy(self, strategy_type: str, _config: dict[str, Any]) -> Any:
         """Create a chunking strategy instance."""
         return get_strategy(strategy_type)
 
@@ -76,7 +77,8 @@ class SimpleChunkingStrategyFactory:
             "hierarchical": {"chunk_sizes": [2048, 512], "chunk_overlap": 50},
             "hybrid": {"primary_strategy": "recursive", "fallback_strategy": "character"},
         }
-        return defaults.get(strategy_type, {})
+        result = defaults.get(strategy_type, {})
+        return result
 
 
 class ChunkingService:
@@ -136,9 +138,7 @@ class ChunkingService:
 
         # Extract file types from paths if provided
         if file_paths and not file_types:
-            import os
-
-            file_types = [os.path.splitext(path)[1] for path in file_paths]
+            file_types = [Path(path).suffix for path in file_paths]
 
         # Analyze file type breakdown
         file_type_breakdown: dict[str, int] = {}
@@ -224,30 +224,27 @@ class ChunkingService:
             # Check if cached result exists
             if cache_result and self.redis_client:
                 # Get strategy string for cache key before conversion
-                cache_strategy = strategy.value if hasattr(strategy, "value") else (strategy or "recursive")
+                if strategy and hasattr(strategy, "value"):
+                    cache_strategy = strategy.value
+                else:
+                    cache_strategy = strategy or "recursive"
                 cache_key = self._generate_cache_key(content, cache_strategy, config)
                 cached = await self.redis_client.get(cache_key)
                 if cached:
                     import json
 
-                    return json.loads(cached)
+                    result = json.loads(cached)
+                    return dict(result)
 
             # Default strategy if not provided
             if not strategy:
                 strategy = ChunkingStrategyEnum.RECURSIVE
 
             # Convert enum to string if necessary
-            if hasattr(strategy, "value"):
-                strategy_str = strategy.value
-            else:
-                strategy_str = str(strategy)
+            strategy_str = strategy.value if hasattr(strategy, "value") else str(strategy)
 
             # Map API strategy names to internal factory names
-            if strategy_str in self.STRATEGY_MAPPING:
-                internal_strategy = self.STRATEGY_MAPPING[strategy_str]
-            else:
-                # If it's already an internal name or unknown, use as-is
-                internal_strategy = strategy_str
+            internal_strategy = self.STRATEGY_MAPPING.get(strategy_str, strategy_str)
 
             # Use the actual strategy pattern for chunking
             strategy_instance = get_strategy(internal_strategy)
@@ -555,9 +552,9 @@ class ChunkingService:
             progress_pct = 0.0
             if operation.status == "completed":
                 progress_pct = 100.0
-            elif operation.status == "in_progress" and operation.metadata:
-                chunks_processed = operation.metadata.get("chunks_processed", 0)
-                total_chunks = operation.metadata.get("total_chunks", 0)
+            elif operation.status == "in_progress" and operation.meta:
+                chunks_processed = operation.meta.get("chunks_processed", 0)
+                total_chunks = operation.meta.get("total_chunks", 0)
                 if total_chunks > 0:
                     progress_pct = (chunks_processed / total_chunks) * 100
 
@@ -565,8 +562,8 @@ class ChunkingService:
                 "operation_id": operation_id,
                 "status": operation.status,
                 "progress_percentage": progress_pct,
-                "chunks_processed": operation.metadata.get("chunks_processed", 0) if operation.metadata else 0,
-                "total_chunks": operation.metadata.get("total_chunks", 0) if operation.metadata else 0,
+                "chunks_processed": operation.meta.get("chunks_processed", 0) if operation.meta else 0,
+                "total_chunks": operation.meta.get("total_chunks", 0) if operation.meta else 0,
                 "started_at": operation.started_at.isoformat() if operation.started_at else None,
                 "error": operation.error_message,
             }
@@ -700,7 +697,8 @@ class ChunkingService:
         try:
             data = await self.redis_client.get(cache_key)
             if data:
-                return json.loads(data)
+                result = json.loads(data)
+                return dict(result)
         except Exception as e:
             logger.warning(f"Failed to get cached preview: {e}")
 
@@ -863,9 +861,8 @@ class ChunkingService:
             recommendations.append("Many small chunks detected - consider increasing chunk size")
 
         # File type specific recommendations
-        if file_type == ".py":
-            if avg_size > 1000:
-                recommendations.append("Large chunks for Python code - consider smaller chunks for better granularity")
+        if file_type == ".py" and avg_size > 1000:
+            recommendations.append("Large chunks for Python code - consider smaller chunks for better granularity")
 
         # General recommendations
         if len(chunks) > 100:
@@ -983,11 +980,9 @@ class ChunkingService:
 
     def _categorize_file_type(self, file_type: str) -> str:
         """Categorize a file type."""
-        import os
-
         # Get extension from path if needed
         if "/" in file_type or "\\" in file_type:
-            file_type = os.path.splitext(file_type)[1]
+            file_type = Path(file_type).suffix
 
         # Ensure file_type starts with a dot
         if file_type and not file_type.startswith("."):
@@ -998,10 +993,9 @@ class ChunkingService:
 
         if file_type in code_extensions:
             return "code"
-        elif file_type in markdown_extensions:
+        if file_type in markdown_extensions:
             return "markdown"
-        else:
-            return "text"
+        return "text"
 
     def _get_strategy_pros(self, strategy: str) -> list[str]:
         """Get pros of a strategy.
@@ -1152,8 +1146,7 @@ class ChunkingService:
                 config=config.get("chunk_config", {}),
                 user_id=user_id,
             )
-        else:
-            raise ValueError(f"Unsupported operation type: {operation_type}")
+        raise ValueError(f"Unsupported operation type: {operation_type}")
 
     async def process_chunking_operation(self, operation_id: str) -> None:
         """Process a chunking operation.

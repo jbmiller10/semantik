@@ -402,7 +402,7 @@ class TestPreviewChunkingUseCase:
         # Arrange
         _ = []
 
-        def mock_chunk_with_progress(content, progress_callback=None):
+        def mock_chunk_with_progress(_content, progress_callback=None):
             # Note: The actual implementation only passes content, not config
             if progress_callback:
                 progress_callback(25.0)
@@ -458,7 +458,7 @@ class TestPreviewChunkingUseCase:
 
         # Assert
         assert len(responses) == 3
-        for i, response in enumerate(responses):
+        for _i, response in enumerate(responses):
             # The actual implementation returns "doc-456" from metadata - not dynamically generated
             assert response.document_id == "doc-456"
             assert isinstance(response, PreviewResponse)

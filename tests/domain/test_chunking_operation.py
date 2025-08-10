@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for ChunkingOperation entity."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -358,7 +358,7 @@ class TestChunkingOperation:
     def test_validate_results_with_timeout(self, mock_datetime, chunking_operation):
         """Test validation fails when operation times out."""
         # Arrange
-        start_time = datetime.utcnow()
+        start_time = datetime.now(tz=UTC)
         timeout_time = start_time + timedelta(seconds=ChunkingOperation.MAX_OPERATION_DURATION_SECONDS + 1)
 
         mock_datetime.utcnow.side_effect = [start_time, timeout_time]
@@ -549,7 +549,7 @@ class TestChunkingOperation:
     def test_metrics_calculation(self, chunking_operation):
         """Test performance metrics calculation."""
         # Arrange
-        start_time = datetime.utcnow()
+        start_time = datetime.now(tz=UTC)
         end_time = start_time + timedelta(seconds=2)
         chunk_count = 10
 

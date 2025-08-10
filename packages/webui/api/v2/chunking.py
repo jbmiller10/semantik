@@ -244,7 +244,7 @@ async def generate_preview(
 
         # Generate preview
         result = await service.preview_chunking(
-            content=preview_request.content,
+            content=preview_request.content or "",
             strategy=preview_request.strategy,
             config=preview_request.config.model_dump() if preview_request.config else None,
             max_chunks=preview_request.max_chunks,
@@ -325,7 +325,7 @@ async def compare_strategies(
 
             try:
                 result = await service.preview_chunking(
-                    content=compare_request.content,
+                    content=compare_request.content or "",
                     strategy=strategy,
                     config=config,
                     max_chunks=compare_request.max_chunks_per_strategy,
@@ -490,7 +490,7 @@ async def start_chunking_operation(
         validation_result = await service.validate_config_for_collection(
             collection_id=collection_id,
             strategy=chunking_request.strategy.value,
-            config=chunking_request.config.model_dump() if chunking_request.config else None,
+            config=chunking_request.config.model_dump() if chunking_request.config else {},
         )
 
         # Check if configuration is valid
@@ -518,20 +518,21 @@ async def start_chunking_operation(
         websocket_channel, _ = await service.start_chunking_operation(
             collection_id=collection_id,
             strategy=chunking_request.strategy.value,
-            config=chunking_request.config.model_dump() if chunking_request.config else None,
+            config=chunking_request.config.model_dump() if chunking_request.config else {},
+            user_id=current_user["id"],
         )
 
         # Queue the chunking task
         background_tasks.add_task(
             process_chunking_operation,
-            operation_id=operation["uuid"],
-            collection_id=collection_id,
-            strategy=chunking_request.strategy,
-            config=chunking_request.config,
-            document_ids=chunking_request.document_ids,
-            user_id=current_user["id"],
-            websocket_channel=websocket_channel,
-            service=service,
+            operation["uuid"],
+            collection_id,
+            chunking_request.strategy,
+            chunking_request.config,
+            chunking_request.document_ids,
+            current_user["id"],
+            websocket_channel,
+            service,
         )
 
         return ChunkingOperationResponse(
@@ -709,16 +710,16 @@ async def get_chunking_stats(
         )
 
         return ChunkingStats(
-            total_chunks=stats.total_chunks,
-            total_documents=stats.total_documents,
-            avg_chunk_size=stats.average_chunk_size,
-            min_chunk_size=getattr(stats, "min_chunk_size", 0),
-            max_chunk_size=getattr(stats, "max_chunk_size", 0),
-            size_variance=getattr(stats, "size_variance", 0.0),
-            strategy_used=ChunkingStrategy(getattr(stats, "strategy", "fixed_size")),
-            last_updated=getattr(stats, "last_updated", datetime.now(UTC)),
-            processing_time_seconds=getattr(stats, "processing_time", 0.0),
-            quality_metrics=stats.performance_metrics if hasattr(stats, "performance_metrics") else {},
+            total_chunks=stats.get("total_chunks", 0),
+            total_documents=stats.get("total_documents", 0),
+            avg_chunk_size=stats.get("average_chunk_size", 0),
+            min_chunk_size=stats.get("min_chunk_size", 0),
+            max_chunk_size=stats.get("max_chunk_size", 0),
+            size_variance=stats.get("size_variance", 0.0),
+            strategy_used=ChunkingStrategy(stats.get("strategy", "fixed_size")),
+            last_updated=stats.get("last_updated", datetime.now(UTC)),
+            processing_time_seconds=stats.get("processing_time", 0.0),
+            quality_metrics=stats.get("performance_metrics", {}),
         )
 
     except Exception as e:
@@ -1035,12 +1036,12 @@ async def get_operation_progress(
 # Background task helper
 async def process_chunking_operation(
     operation_id: str,
-    collection_id: str,
-    strategy: ChunkingStrategy,
-    config: ChunkingConfigBase | None,
-    document_ids: list[str] | None,
-    user_id: int,
-    websocket_channel: str,
+    _collection_id: str,
+    _strategy: ChunkingStrategy,
+    _config: ChunkingConfigBase | None,
+    _document_ids: list[str] | None,
+    _user_id: int,
+    _websocket_channel: str,
     service: ChunkingService,
 ) -> None:
     """

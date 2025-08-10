@@ -7,7 +7,7 @@ with optional overlap between consecutive chunks.
 """
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.services.chunking_strategies.base import (
@@ -66,7 +66,7 @@ class CharacterChunkingStrategy(ChunkingStrategy):
                 strategy_name=self.name,
                 semantic_density=0.5,
                 confidence_score=0.9,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(tz=UTC),
             )
 
             # Create single chunk with relaxed min_tokens
@@ -130,11 +130,8 @@ class CharacterChunkingStrategy(ChunkingStrategy):
             if not chunk_text:
                 # Ensure position advances to prevent infinite loop
                 # If we got an empty chunk, force advancement
-                if end <= position:
-                    # We're stuck, force advancement by at least 1 character
-                    position = position + max(1, chunk_size_chars // 4)
-                else:
-                    position = end
+                # We're stuck, force advancement by at least 1 character
+                position = position + max(1, chunk_size_chars // 4) if end <= position else end
                 continue
 
             # Create chunk metadata
@@ -150,7 +147,7 @@ class CharacterChunkingStrategy(ChunkingStrategy):
                 strategy_name=self.name,
                 semantic_density=0.5,  # Default for character-based chunking
                 confidence_score=0.9,  # High confidence for simple strategy
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(tz=UTC),
             )
 
             # Create chunk entity with adjusted min_tokens for small documents
@@ -173,11 +170,8 @@ class CharacterChunkingStrategy(ChunkingStrategy):
 
             # Ensure position advances to prevent infinite loop
             new_position = end - overlap_chars
-            if new_position <= position:
-                # Force advancement if we're stuck
-                position = position + max(1, chunk_size_chars // 2)
-            else:
-                position = new_position
+            # Force advancement if we're stuck
+            position = position + max(1, chunk_size_chars // 2) if new_position <= position else new_position
 
             # Report progress
             if progress_callback:

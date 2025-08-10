@@ -8,7 +8,8 @@ sections, and other structural elements.
 
 import re
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
+from typing import Any
 
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.services.chunking_strategies.base import (
@@ -96,7 +97,7 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
                 strategy_name=self.name,
                 section_title=section_title,
                 hierarchy_level=hierarchy_level,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(tz=UTC),
             )
 
             # Create chunk
@@ -334,7 +335,7 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
                 # Save current group if any
                 if current_group:
                     groups.append(current_group)
-                    current_group: list[dict[str, Any]] = []
+                    current_group = []
                     current_tokens = 0
 
                 # Split large section

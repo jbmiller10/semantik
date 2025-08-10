@@ -119,9 +119,8 @@ class TestCharacterChunkingStrategy:
             # Last chunk can end with anything
             if i < len(chunks) - 1 and chunk.content:
                 # Non-last chunks should end at word/sentence boundaries
-                last_char = chunk.content.rstrip()[-1] if chunk.content.rstrip() else ""
                 # Should end with punctuation or be at a word boundary
-                assert last_char in ".!?," or not last_char or True  # Relaxed check
+                assert True  # Relaxed check
 
     def test_metadata_generation(self, strategy, config):
         """Test that metadata is properly generated for chunks."""
@@ -632,7 +631,7 @@ And continues with more content that adds context."""
 
         # Assert
         # Should only have level 0 chunks with hierarchy_level=1
-        levels = set(c.metadata.custom_attributes.get("hierarchy_level", 0) for c in chunks)
+        levels = {c.metadata.custom_attributes.get("hierarchy_level", 0) for c in chunks}
         assert max(levels) < 1
 
 
@@ -679,7 +678,7 @@ Third topic returning to technical AI discussions."""
             # The hybrid strategy should add some metadata
             assert chunk.metadata is not None
             # Relax the assertion - strategies_used might not always be present
-            assert chunk.metadata.custom_attributes is not None or True
+            assert True
 
     def test_weighted_scoring(self, strategy, config):
         """Test that weights are applied correctly."""

@@ -7,7 +7,7 @@ useful for maintaining context at different granularities.
 """
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.services.chunking_strategies.base import (
@@ -227,7 +227,7 @@ class HierarchicalChunkingStrategy(ChunkingStrategy):
                 custom_attributes=custom_attrs,
                 semantic_density=0.7,  # Higher for hierarchical organization
                 confidence_score=0.85,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(tz=UTC),
             )
 
             # Create chunk

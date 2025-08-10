@@ -7,7 +7,7 @@ ensuring that related content stays together.
 """
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.services.chunking_strategies.base import (
@@ -98,7 +98,7 @@ class SemanticChunkingStrategy(ChunkingStrategy):
                 semantic_score=cluster.get("similarity_score"),
                 semantic_density=semantic_density,
                 confidence_score=0.8,  # Good confidence for semantic strategy
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(tz=UTC),
             )
 
             # For semantic chunking, use a lower min_tokens to allow for natural boundaries
@@ -197,7 +197,7 @@ class SemanticChunkingStrategy(ChunkingStrategy):
             "similarity_score": 1.0,
         }
 
-        for i, sentence in enumerate(sentences):
+        for _i, sentence in enumerate(sentences):
             sentence_tokens = self.count_tokens(sentence["text"])
 
             # Check if adding sentence would exceed token limit

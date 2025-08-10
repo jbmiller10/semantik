@@ -86,9 +86,8 @@ class ChunkingInputValidator:
                     errors.append("chunk_overlap must be a non-negative integer")
 
                 # Check overlap is less than chunk_size if both exist
-                if "chunk_size" in config and isinstance(config["chunk_size"], int):
-                    if overlap >= config["chunk_size"]:
-                        errors.append("chunk_overlap must be less than chunk_size")
+                if "chunk_size" in config and isinstance(config["chunk_size"], int) and overlap >= config["chunk_size"]:
+                    errors.append("chunk_overlap must be less than chunk_size")
 
         return len(errors) == 0, errors
 

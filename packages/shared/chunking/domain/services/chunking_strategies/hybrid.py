@@ -7,7 +7,7 @@ content characteristics to achieve optimal results.
 """
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.services.chunking_strategies.base import (
@@ -136,7 +136,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
                     custom_attributes=custom_attrs,
                     semantic_density=0.6,
                     confidence_score=0.8,
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(tz=UTC),
                 )
 
                 chunks[i] = Chunk(
@@ -147,9 +147,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
                 )
 
         # Post-process chunks for consistency
-        chunks = self._post_process_chunks(chunks, config)
-
-        return chunks
+        return self._post_process_chunks(chunks, config)
 
     def _analyze_content(self, content: str) -> dict:
         """
@@ -205,7 +203,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
             sections = self._identify_sections(content)
             if len(sections) > 1:
                 # Check if sections have different characteristics
-                section_types = set(s["type"] for s in sections)
+                section_types = {s["type"] for s in sections}
                 if len(section_types) > 2:
                     analysis["is_mixed"] = True
             analysis["sections"] = sections
@@ -342,6 +340,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
             section_type = section["type"]
 
             # Select strategy for this section
+            strategy: ChunkingStrategy
             if section_type == "code":
                 strategy = self._character_strategy
             elif section_type in ["header", "list", "table"]:
@@ -379,7 +378,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
                     custom_attributes=custom_attrs,
                     semantic_density=0.6,
                     confidence_score=0.8,
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(tz=UTC),
                 )
 
                 # Create new chunk with adjusted metadata
@@ -458,7 +457,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
                 custom_attributes=custom_attrs,
                 semantic_density=0.6,
                 confidence_score=0.8,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(tz=UTC),
             )
 
             # Create new chunk with updated metadata
@@ -491,37 +490,40 @@ class HybridChunkingStrategy(ChunkingStrategy):
 
         for chunk in chunks:
             # Skip chunks that are too small (unless they're the only chunk)
-            if chunk.metadata.token_count < config.min_tokens and len(chunks) > 1:
-                # Try to merge with adjacent chunk
-                if processed and processed[-1].metadata.token_count + chunk.metadata.token_count <= config.max_tokens:
-                    # Merge with previous chunk
-                    prev_chunk = processed[-1]
-                    merged_content = prev_chunk.content + "\n" + chunk.content
-                    merged_tokens = prev_chunk.metadata.token_count + chunk.metadata.token_count
+            if (
+                chunk.metadata.token_count < config.min_tokens
+                and len(chunks) > 1
+                and processed
+                and processed[-1].metadata.token_count + chunk.metadata.token_count <= config.max_tokens
+            ):
+                # Merge with previous chunk
+                prev_chunk = processed[-1]
+                merged_content = prev_chunk.content + "\n" + chunk.content
+                merged_tokens = prev_chunk.metadata.token_count + chunk.metadata.token_count
 
-                    # Create merged metadata
-                    merged_metadata = ChunkMetadata(
-                        chunk_id=prev_chunk.metadata.chunk_id,
-                        document_id=prev_chunk.metadata.document_id,
-                        chunk_index=prev_chunk.metadata.chunk_index,
-                        start_offset=prev_chunk.metadata.start_offset,
-                        end_offset=chunk.metadata.end_offset,
-                        token_count=merged_tokens,
-                        strategy_name="hybrid",
-                        custom_attributes=prev_chunk.metadata.custom_attributes,
-                        semantic_density=0.6,
-                        confidence_score=0.8,
-                        created_at=datetime.utcnow(),
-                    )
+                # Create merged metadata
+                merged_metadata = ChunkMetadata(
+                    chunk_id=prev_chunk.metadata.chunk_id,
+                    document_id=prev_chunk.metadata.document_id,
+                    chunk_index=prev_chunk.metadata.chunk_index,
+                    start_offset=prev_chunk.metadata.start_offset,
+                    end_offset=chunk.metadata.end_offset,
+                    token_count=merged_tokens,
+                    strategy_name="hybrid",
+                    custom_attributes=prev_chunk.metadata.custom_attributes,
+                    semantic_density=0.6,
+                    confidence_score=0.8,
+                    created_at=datetime.now(tz=UTC),
+                )
 
-                    # Replace previous chunk with merged version
-                    processed[-1] = Chunk(
-                        content=merged_content,
-                        metadata=merged_metadata,
-                        min_tokens=config.min_tokens,
-                        max_tokens=config.max_tokens,
-                    )
-                    continue
+                # Replace previous chunk with merged version
+                processed[-1] = Chunk(
+                    content=merged_content,
+                    metadata=merged_metadata,
+                    min_tokens=config.min_tokens,
+                    max_tokens=config.max_tokens,
+                )
+                continue
 
             processed.append(chunk)
 
@@ -543,7 +545,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
                 custom_attributes=chunk.metadata.custom_attributes,
                 semantic_density=chunk.metadata.semantic_density,
                 confidence_score=chunk.metadata.confidence_score,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(tz=UTC),
             )
 
             final_chunk = Chunk(
@@ -618,7 +620,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
         best_chunks = None
         best_score = float("inf")
 
-        for strategy_name, chunks in strategy_results.items():
+        for _strategy_name, chunks in strategy_results.items():
             if not chunks:
                 continue
 

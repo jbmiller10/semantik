@@ -6,7 +6,7 @@ This module defines the main chunking operation entity that orchestrates
 the chunking process and maintains operation-level invariants.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from packages.shared.chunking.domain.entities.chunk import Chunk
@@ -68,7 +68,7 @@ class ChunkingOperation:
         self._chunk_collection = ChunkCollection(document_id, document_content)
 
         # Timing information
-        self._created_at = datetime.utcnow()
+        self._created_at = datetime.now(tz=UTC)
         self._started_at: datetime | None = None
         self._completed_at: datetime | None = None
 
@@ -134,7 +134,7 @@ class ChunkingOperation:
             raise InvalidStateError(f"Cannot start operation in {self._status.value} state")
 
         self._status = OperationStatus.PROCESSING
-        self._started_at = datetime.utcnow()
+        self._started_at = datetime.now(tz=UTC)
         self._progress_percentage = 0.0
 
     def execute(self, strategy: "ChunkingStrategy") -> None:
@@ -150,7 +150,7 @@ class ChunkingOperation:
         if self._status != OperationStatus.PROCESSING:
             raise InvalidStateError(f"Cannot execute operation in {self._status.value} state")
 
-        start_time = datetime.utcnow()
+        start_time = datetime.now(tz=UTC)
 
         try:
             # Perform the chunking
@@ -171,7 +171,7 @@ class ChunkingOperation:
                 self._chunk_collection.add_chunk(chunk)
 
             # Update metrics
-            end_time = datetime.utcnow()
+            end_time = datetime.now(tz=UTC)
             self._update_metrics(start_time, end_time, len(chunks))
 
             # Mark as completed
@@ -216,7 +216,7 @@ class ChunkingOperation:
             raise InvalidStateError(f"Cannot cancel operation in {self._status.value} state")
 
         self._status = OperationStatus.CANCELLED
-        self._completed_at = datetime.utcnow()
+        self._completed_at = datetime.now(tz=UTC)
         self._error_message = reason or "Operation cancelled by user"
 
     def validate_results(self) -> tuple[bool, list[str]]:
@@ -244,7 +244,7 @@ class ChunkingOperation:
 
         # Check for timeout
         if self._started_at:
-            duration = (datetime.utcnow() - self._started_at).total_seconds()
+            duration = (datetime.now(tz=UTC) - self._started_at).total_seconds()
             if duration > self.MAX_OPERATION_DURATION_SECONDS:
                 issues.append(f"Operation exceeded timeout: {duration:.1f}s")
 
@@ -257,7 +257,7 @@ class ChunkingOperation:
         Returns:
             Dictionary with operation statistics
         """
-        stats = {
+        stats: dict[str, Any] = {
             "operation_id": self._id,
             "document_id": self._document_id,
             "status": self._status.value,
@@ -308,7 +308,7 @@ class ChunkingOperation:
             raise InvalidStateError(f"Cannot complete operation in {self._status.value} state")
 
         self._status = OperationStatus.COMPLETED
-        self._completed_at = datetime.utcnow()
+        self._completed_at = datetime.now(tz=UTC)
         self._progress_percentage = 100.0
 
     def _fail(self, error_message: str, error_details: dict[str, Any] | None = None) -> None:
@@ -323,7 +323,7 @@ class ChunkingOperation:
             raise InvalidStateError(f"Cannot fail operation in {self._status.value} state")
 
         self._status = OperationStatus.FAILED
-        self._completed_at = datetime.utcnow()
+        self._completed_at = datetime.now(tz=UTC)
         self._error_message = error_message
         self._error_details = error_details or {}
 
@@ -376,7 +376,7 @@ class ChunkingOperation:
         if not self._started_at:
             return 0.0
 
-        end_time = self._completed_at or datetime.utcnow()
+        end_time = self._completed_at or datetime.now(tz=UTC)
         return (end_time - self._started_at).total_seconds()
 
     def _validate_document_size(self, content: str) -> None:

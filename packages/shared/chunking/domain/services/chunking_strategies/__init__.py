@@ -5,6 +5,8 @@ Chunking strategies for different text processing approaches.
 Each strategy implements a specific algorithm for breaking text into chunks.
 """
 
+from typing import Type
+
 from packages.shared.chunking.domain.services.chunking_strategies.base import (
     ChunkingStrategy,
 )
@@ -38,7 +40,7 @@ __all__ = [
 ]
 
 # Strategy registry for easy lookup
-STRATEGY_REGISTRY = {
+STRATEGY_REGISTRY: dict[str, type[ChunkingStrategy]] = {
     "character": CharacterChunkingStrategy,
     "recursive": RecursiveChunkingStrategy,
     "semantic": SemanticChunkingStrategy,
@@ -63,7 +65,6 @@ def get_strategy(name: str) -> ChunkingStrategy:
     """
     strategy_class = STRATEGY_REGISTRY.get(name)
     if not strategy_class:
-        raise ValueError(
-            f"Unknown chunking strategy: {name}. Available strategies: {list(STRATEGY_REGISTRY.keys())}"
-        )
-    return strategy_class()
+        raise ValueError(f"Unknown chunking strategy: {name}. Available strategies: {list(STRATEGY_REGISTRY.keys())}")
+    strategy_instance = strategy_class()
+    return strategy_instance

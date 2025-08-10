@@ -36,7 +36,7 @@ class CompareStrategiesUseCase:
         document_service: DocumentService,
         strategy_factory: ChunkingStrategyFactory,
         notification_service: NotificationService,
-        metrics_service: MetricsService = None,
+        metrics_service: MetricsService | None = None,
     ):
         """
         Initialize the use case with dependencies.
@@ -97,7 +97,7 @@ class CompareStrategiesUseCase:
 
             for strategy_type in request.strategies:
                 result = await self._run_strategy(
-                    strategy_type=strategy_type, text_content=text_content, request=request, operation_id=operation_id
+                    strategy_type=strategy_type, text_content=text_content, request=request, _operation_id=operation_id
                 )
                 strategy_results.append(result)
 
@@ -316,7 +316,7 @@ class CompareStrategiesUseCase:
             starts_well = content and content[0].isupper()
             ends_well = content and content[-1] in ".!?"
 
-            score = 0
+            score = 0.0
             if starts_well:
                 score += 0.5
             if ends_well:
@@ -365,7 +365,7 @@ class CompareStrategiesUseCase:
         # Score each strategy
         scores = {}
         for metrics in metrics_list:
-            score = 0
+            score = 0.0
             reasons = []
 
             # Speed score (lower is better)

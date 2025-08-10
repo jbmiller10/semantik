@@ -278,7 +278,7 @@ class TestCancelOperationUseCase:
         # but notify_error fail to test partial failure
         call_count = [0]
 
-        def notify_error_side_effect(*args, **kwargs):
+        def notify_error_side_effect(*_args, **_kwargs):
             call_count[0] += 1
             if call_count[0] == 2:  # Fail on the second call (after successful commit)
                 # Don't raise, just log would have failed
@@ -364,7 +364,7 @@ class TestCancelOperationUseCase:
         # Simulate first request succeeds, others see already cancelled
         call_count = 0
 
-        async def find_by_id_side_effect(op_id):
+        async def find_by_id_side_effect(_op_id):
             nonlocal call_count
             if call_count == 0:
                 processing_operation.status = "in_progress"

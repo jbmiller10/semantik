@@ -324,7 +324,7 @@ class TestProcessDocumentUseCase:
         # Arrange
         progress_values = []
 
-        def mock_chunk_with_progress(content, config=None, progress_callback=None):
+        def mock_chunk_with_progress(_content, _config=None, progress_callback=None):
             if progress_callback:
                 progress_values.extend([25.0, 50.0, 75.0, 100.0])
                 for value in [25.0, 50.0, 75.0, 100.0]:

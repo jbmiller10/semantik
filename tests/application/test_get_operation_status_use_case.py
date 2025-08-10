@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for GetOperationStatusUseCase."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -105,8 +105,8 @@ class TestGetOperationStatusUseCase:
         operation.status = "in_progress"
         operation.total_chunks = 10
         operation.chunks_processed = 6
-        operation.created_at = datetime.utcnow()
-        operation.updated_at = datetime.utcnow()
+        operation.created_at = datetime.now(tz=UTC)
+        operation.updated_at = datetime.now(tz=UTC)
         operation.error_message = None
 
         use_case.operation_repository.find_by_id.return_value = operation
@@ -140,9 +140,9 @@ class TestGetOperationStatusUseCase:
         completed_operation.status = "completed"  # Use lowercase
         completed_operation.total_chunks = 10
         completed_operation.chunks_processed = 10
-        completed_operation.created_at = datetime.utcnow()
-        completed_operation.updated_at = datetime.utcnow()
-        completed_operation.completed_at = datetime.utcnow()
+        completed_operation.created_at = datetime.now(tz=UTC)
+        completed_operation.updated_at = datetime.now(tz=UTC)
+        completed_operation.completed_at = datetime.now(tz=UTC)
         completed_operation.error_message = None
 
         use_case.operation_repository.find_by_id.return_value = completed_operation
@@ -168,10 +168,10 @@ class TestGetOperationStatusUseCase:
         failed_operation.chunks_processed = 2
         failed_operation.error_message = "Strategy execution failed"
         failed_operation.error_type = "RuntimeError"
-        failed_operation.failed_at = datetime.utcnow()
+        failed_operation.failed_at = datetime.now(tz=UTC)
         failed_operation.last_checkpoint = None
-        failed_operation.created_at = datetime.utcnow()
-        failed_operation.updated_at = datetime.utcnow()
+        failed_operation.created_at = datetime.now(tz=UTC)
+        failed_operation.updated_at = datetime.now(tz=UTC)
 
         use_case.operation_repository.find_by_id.return_value = failed_operation
 
@@ -195,8 +195,8 @@ class TestGetOperationStatusUseCase:
         cancelled_operation.total_chunks = 10
         cancelled_operation.chunks_processed = 7
         cancelled_operation.error_message = "Cancelled by user"
-        cancelled_operation.created_at = datetime.utcnow()
-        cancelled_operation.updated_at = datetime.utcnow()
+        cancelled_operation.created_at = datetime.now(tz=UTC)
+        cancelled_operation.updated_at = datetime.now(tz=UTC)
 
         use_case.operation_repository.find_by_id.return_value = cancelled_operation
 
@@ -218,8 +218,8 @@ class TestGetOperationStatusUseCase:
         operation.status = "in_progress"  # Use lowercase
         operation.total_chunks = 10
         operation.chunks_processed = 5
-        operation.created_at = datetime.utcnow() - timedelta(seconds=10)
-        operation.updated_at = datetime.utcnow()
+        operation.created_at = datetime.now(tz=UTC) - timedelta(seconds=10)
+        operation.updated_at = datetime.now(tz=UTC)
         operation.completed_at = None
         operation.error_message = None
 
@@ -242,9 +242,9 @@ class TestGetOperationStatusUseCase:
         operation = MagicMock()
         operation.id = "op-123"
         operation.status = OperationStatus.PROCESSING  # Use domain enum
-        operation._created_at = datetime.utcnow()
+        operation._created_at = datetime.now(tz=UTC)
         operation.created_at = operation._created_at
-        operation.updated_at = datetime.utcnow()
+        operation.updated_at = datetime.now(tz=UTC)
         operation.total_chunks = 10
         operation.chunks_processed = 5
         operation.error_message = None
@@ -268,22 +268,22 @@ class TestGetOperationStatusUseCase:
         # Create multiple operations
         old_operation = MagicMock()
         old_operation.id = "old-op"
-        old_operation._created_at = datetime.utcnow() - timedelta(hours=2)
+        old_operation._created_at = datetime.now(tz=UTC) - timedelta(hours=2)
         old_operation.status = "completed"
         old_operation.total_chunks = 5
         old_operation.chunks_processed = 5
         old_operation.created_at = old_operation._created_at
-        old_operation.updated_at = datetime.utcnow() - timedelta(hours=2)
+        old_operation.updated_at = datetime.now(tz=UTC) - timedelta(hours=2)
         old_operation.error_message = None
 
         new_operation = MagicMock()
         new_operation.id = "new-op"
-        new_operation._created_at = datetime.utcnow() - timedelta(minutes=5)
+        new_operation._created_at = datetime.now(tz=UTC) - timedelta(minutes=5)
         new_operation.status = "in_progress"
         new_operation.total_chunks = 10
         new_operation.chunks_processed = 3
         new_operation.created_at = new_operation._created_at
-        new_operation.updated_at = datetime.utcnow()
+        new_operation.updated_at = datetime.now(tz=UTC)
         new_operation.error_message = None
 
         use_case.operation_repository.find_by_document_id.return_value = [old_operation, new_operation]
@@ -323,8 +323,8 @@ class TestGetOperationStatusUseCase:
         completed_operation.status = OperationStatus.COMPLETED
         completed_operation.total_chunks = 10
         completed_operation.chunks_processed = 10
-        completed_operation.created_at = datetime.utcnow()
-        completed_operation.updated_at = datetime.utcnow()
+        completed_operation.created_at = datetime.now(tz=UTC)
+        completed_operation.updated_at = datetime.now(tz=UTC)
         completed_operation.error_message = None
 
         use_case.operation_repository.find_by_id.return_value = completed_operation
@@ -365,9 +365,9 @@ class TestGetOperationStatusUseCase:
         operation.status = OperationStatus.COMPLETED
         operation.total_chunks = 8
         operation.chunks_processed = 8
-        operation.created_at = datetime.utcnow()
-        operation.updated_at = datetime.utcnow()
-        operation.completed_at = datetime.utcnow()
+        operation.created_at = datetime.now(tz=UTC)
+        operation.updated_at = datetime.now(tz=UTC)
+        operation.completed_at = datetime.now(tz=UTC)
         operation.error_message = None
 
         use_case.operation_repository.find_by_id.return_value = operation
@@ -392,8 +392,8 @@ class TestGetOperationStatusUseCase:
         operation.status = OperationStatus.PROCESSING
         operation.total_chunks = 10
         operation.chunks_processed = 4  # 40% progress
-        operation.created_at = datetime.utcnow() - timedelta(seconds=20)
-        operation.updated_at = datetime.utcnow()
+        operation.created_at = datetime.now(tz=UTC) - timedelta(seconds=20)
+        operation.updated_at = datetime.now(tz=UTC)
         operation.completed_at = None
         operation.error_message = None
 

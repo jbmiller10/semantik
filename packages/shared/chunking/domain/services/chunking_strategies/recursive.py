@@ -7,7 +7,7 @@ attempting to maintain semantic coherence within chunks.
 """
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.services.chunking_strategies.base import (
@@ -72,7 +72,7 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
         )
 
         # Convert segments to chunks
-        chunks: list[str] = []
+        chunks: list[Chunk] = []
         chunk_index = 0
         current_position = 0
         total_segments = len(text_segments)
@@ -112,7 +112,7 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
                 end_offset=end_offset,
                 token_count=token_count,
                 strategy_name=self.name,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(tz=UTC),
             )
 
             # Create chunk
@@ -164,10 +164,9 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
             # or if it's all we have
             if token_count >= min_tokens:
                 return [text]
-            else:
-                # Text is too small to be a valid chunk on its own
-                # Return it anyway and let the caller decide what to do
-                return [text]
+            # Text is too small to be a valid chunk on its own
+            # Return it anyway and let the caller decide what to do
+            return [text]
 
         # If we've exhausted all separators, do character-level splitting
         if separator_index >= len(self.SEPARATORS):
@@ -195,7 +194,7 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
                 # Save current chunk if any
                 if current_chunk:
                     chunks.append(separator.join(current_chunk))
-                    current_chunk: list[str] = []
+                    current_chunk = []
                     current_tokens = 0
 
                 # Recursively split the large part

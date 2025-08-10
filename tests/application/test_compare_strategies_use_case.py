@@ -171,15 +171,14 @@ class TestCompareStrategiesUseCase:
             ),
         ]
 
-        def create_strategy_side_effect(strategy_type, config):
+        def create_strategy_side_effect(strategy_type, _config):
             if strategy_type == ChunkingStrategy.CHARACTER.value:
                 return character_strategy
-            elif strategy_type == ChunkingStrategy.SEMANTIC.value:
+            if strategy_type == ChunkingStrategy.SEMANTIC.value:
                 return semantic_strategy
-            elif strategy_type == ChunkingStrategy.RECURSIVE.value:
+            if strategy_type == ChunkingStrategy.RECURSIVE.value:
                 return recursive_strategy
-            else:
-                raise StrategyNotFoundError(strategy_type)
+            raise StrategyNotFoundError(strategy_type)
 
         factory.create_strategy.side_effect = create_strategy_side_effect
         return factory
@@ -337,7 +336,7 @@ class TestCompareStrategiesUseCase:
             assert "size_consistency" in comparison.quality_metrics
 
             # Quality scores should be between 0 and 1
-            for metric, value in comparison.quality_metrics.items():
+            for _metric, value in comparison.quality_metrics.items():
                 assert 0 <= value <= 1
 
     @pytest.mark.asyncio()

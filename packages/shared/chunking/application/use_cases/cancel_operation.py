@@ -112,7 +112,7 @@ class CancelOperationUseCase:
 
                 # 10. Log cancellation details
                 await self.notification_service.notify_error(
-                    error=None,
+                    error=RuntimeError("Operation cancelled"),
                     context={
                         "event": "operation_cancelled",
                         "operation_id": request.operation_id,
