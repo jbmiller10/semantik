@@ -8,6 +8,7 @@ Tests cover:
 - Monitoring and health check functions
 """
 
+import contextlib
 import uuid
 from datetime import datetime
 
@@ -106,9 +107,9 @@ class TestPartitionDistribution:
                 max_deviation = max(max_deviation, deviation)
 
         # Assert max deviation is within 40% threshold (accounting for hash algorithm differences)
-        assert max_deviation < 0.40, (
-            f"Maximum deviation {max_deviation:.2%} exceeds 40% threshold. Distribution may be uneven."
-        )
+        assert (
+            max_deviation < 0.40
+        ), f"Maximum deviation {max_deviation:.2%} exceeds 40% threshold. Distribution may be uneven."
 
         # Verify all partitions get some data (statistical test)
         empty_partitions = sum(1 for i in range(PartitionManager.PARTITION_COUNT) if i not in partition_counts)
@@ -233,8 +234,8 @@ class TestPartitionPruning:
         # Get query plan
         explain_query = text(
             """
-            EXPLAIN (FORMAT JSON, BUFFERS FALSE, ANALYZE FALSE) 
-            SELECT * FROM chunks 
+            EXPLAIN (FORMAT JSON, BUFFERS FALSE, ANALYZE FALSE)
+            SELECT * FROM chunks
             WHERE collection_id = :collection_id
         """
         )
@@ -345,7 +346,7 @@ class TestPartitionPerformance:
         result = await db_session.execute(
             text(
                 """
-                SELECT * FROM chunks 
+                SELECT * FROM chunks
                 WHERE collection_id = :collection_id
                 ORDER BY chunk_index
             """
@@ -473,10 +474,8 @@ async def cleanup_chunks_dependencies(session: AsyncSession):
             pass  # Ignore if view doesn't exist
 
     # Drop materialized views
-    try:
+    with contextlib.suppress(Exception):
         await session.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
-    except Exception:
-        pass
 
     # Clear any test data from chunks table
     try:

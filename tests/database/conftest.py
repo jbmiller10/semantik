@@ -26,7 +26,9 @@ elif not DATABASE_URL:
 
     # Construct the database URL
     if POSTGRES_PASSWORD:
-        DATABASE_URL = f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+        DATABASE_URL = (
+            f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+        )
     else:
         DATABASE_URL = f"postgresql+asyncpg://{POSTGRES_USER}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
@@ -45,7 +47,10 @@ async def db_session() -> AsyncIterator[AsyncSession]:
     import sys
 
     # Print database connection info for debugging
-    print(f"\nConnecting to database: {DATABASE_URL.replace(':' + DATABASE_URL.split(':')[2].split('@')[0] + '@', ':****@')}", file=sys.stderr)
+    print(
+        f"\nConnecting to database: {DATABASE_URL.replace(':' + DATABASE_URL.split(':')[2].split('@')[0] + '@', ':****@')}",
+        file=sys.stderr,
+    )
 
     # Create engine
     try:
@@ -61,34 +66,36 @@ async def db_session() -> AsyncIterator[AsyncSession]:
         async with engine.begin() as conn:
             # Ensure the partition views exist by running the migration SQL
             # This is a simplified version that creates the views if they don't exist
-            await conn.execute(text("""
+            await conn.execute(
+                text(
+                    """
             -- Create partition_health view if it doesn't exist
             CREATE OR REPLACE VIEW partition_health AS
             WITH partition_stats AS (
-                SELECT 
+                SELECT
                     c.relname AS partition_name,
                     pg_relation_size(c.oid) AS size_bytes,
                     (SELECT COUNT(*) FROM pg_class WHERE oid = c.oid) AS estimated_rows
                 FROM pg_class c
                 JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE c.relispartition 
+                WHERE c.relispartition
                 AND c.relkind = 'r'
                 AND n.nspname = 'public'
                 AND c.relname LIKE 'chunks_part_%'
             )
-            SELECT 
+            SELECT
                 CAST(SUBSTRING(partition_name FROM 'chunks_part_([0-9]+)') AS INTEGER) AS partition_id,
                 partition_name,
                 COALESCE(size_bytes, 0) AS size_bytes,
                 COALESCE(estimated_rows, 0) AS row_count,
-                CASE 
+                CASE
                     WHEN size_bytes > 1073741824 THEN 'HOT'
                     WHEN size_bytes < 1048576 THEN 'COLD'
                     ELSE 'NORMAL'
                 END AS partition_status
             FROM partition_stats
             UNION ALL
-            SELECT 
+            SELECT
                 s.partition_id,
                 'chunks_part_' || LPAD(s.partition_id::TEXT, 2, '0') AS partition_name,
                 0 AS size_bytes,
@@ -98,25 +105,29 @@ async def db_session() -> AsyncIterator[AsyncSession]:
             WHERE NOT EXISTS (
                 SELECT 1 FROM pg_class c
                 JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE c.relispartition 
+                WHERE c.relispartition
                 AND c.relkind = 'r'
                 AND n.nspname = 'public'
                 AND c.relname = 'chunks_part_' || LPAD(s.partition_id::TEXT, 2, '0')
             )
             ORDER BY partition_id;
-        """))
+        """
+                )
+            )
 
-        await conn.execute(text("""
+        await conn.execute(
+            text(
+                """
             -- Create partition_distribution view if it doesn't exist
             CREATE OR REPLACE VIEW partition_distribution AS
             WITH partition_counts AS (
-                SELECT 
+                SELECT
                     CAST(SUBSTRING(c.relname FROM 'chunks_part_([0-9]+)') AS INTEGER) AS partition_id,
                     c.relname AS partition_name,
                     (SELECT COUNT(*) FROM pg_class WHERE oid = c.oid) AS row_count
                 FROM pg_class c
                 JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE c.relispartition 
+                WHERE c.relispartition
                 AND c.relkind = 'r'
                 AND n.nspname = 'public'
                 AND c.relname LIKE 'chunks_part_%'
@@ -131,7 +142,7 @@ async def db_session() -> AsyncIterator[AsyncSession]:
                     COALESCE(MIN(row_count), 0) AS min_rows
                 FROM partition_counts
             )
-            SELECT 
+            SELECT
                 partitions_used,
                 empty_partitions,
                 avg_rows_per_partition,
@@ -149,10 +160,14 @@ async def db_session() -> AsyncIterator[AsyncSession]:
                     ELSE 'HEALTHY'
                 END AS distribution_status
             FROM stats;
-        """))
+        """
+            )
+        )
 
         # Create compute_partition_key function for trigger
-        await conn.execute(text("""
+        await conn.execute(
+            text(
+                """
             CREATE OR REPLACE FUNCTION compute_partition_key()
             RETURNS TRIGGER AS $$
             BEGIN
@@ -160,20 +175,28 @@ async def db_session() -> AsyncIterator[AsyncSession]:
                 RETURN NEW;
             END;
             $$ LANGUAGE plpgsql;
-        """))
+        """
+            )
+        )
 
         # Create get_partition_key helper function
-        await conn.execute(text("""
+        await conn.execute(
+            text(
+                """
             CREATE OR REPLACE FUNCTION get_partition_key(collection_id VARCHAR)
             RETURNS INTEGER AS $$
             BEGIN
                 RETURN abs(hashtext(collection_id::text)) % 100;
             END;
             $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
-        """))
+        """
+            )
+        )
 
         # Create the chunks table if it doesn't exist (LIST partitioned by partition_key)
-        await conn.execute(text("""
+        await conn.execute(
+            text(
+                """
             CREATE TABLE IF NOT EXISTS chunks (
                 id BIGSERIAL,
                 collection_id VARCHAR NOT NULL,
@@ -191,28 +214,40 @@ async def db_session() -> AsyncIterator[AsyncSession]:
                 updated_at TIMESTAMPTZ DEFAULT NOW(),
                 PRIMARY KEY (id, collection_id, partition_key)
             ) PARTITION BY LIST (partition_key);
-        """))
+        """
+            )
+        )
 
         # Create trigger to auto-compute partition_key
-        await conn.execute(text("""
+        await conn.execute(
+            text(
+                """
             DROP TRIGGER IF EXISTS set_partition_key ON chunks;
             CREATE TRIGGER set_partition_key
             BEFORE INSERT ON chunks
             FOR EACH ROW
             EXECUTE FUNCTION compute_partition_key();
-        """))
+        """
+            )
+        )
 
         # Create partitions if they don't exist
         for i in range(100):
             partition_name = f"chunks_part_{i:02d}"
-            await conn.execute(text(f"""
-                CREATE TABLE IF NOT EXISTS {partition_name} 
-                PARTITION OF chunks 
+            await conn.execute(
+                text(
+                    f"""
+                CREATE TABLE IF NOT EXISTS {partition_name}
+                PARTITION OF chunks
                 FOR VALUES IN ({i});
-            """))
+            """
+                )
+            )
     except Exception as e:
         await engine.dispose()
-        pytest.skip(f"Database setup failed: {e}\nMake sure migrations are applied with: poetry run alembic upgrade head")
+        pytest.skip(
+            f"Database setup failed: {e}\nMake sure migrations are applied with: poetry run alembic upgrade head"
+        )
 
     # Create a new session for the test
     try:
