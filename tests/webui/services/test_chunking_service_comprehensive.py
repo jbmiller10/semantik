@@ -10,11 +10,14 @@ import asyncio
 import json
 import uuid
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
+from packages.webui.services.chunking_constants import MAX_PREVIEW_CONTENT_SIZE
+from packages.webui.services.chunking_security import ValidationError
 from packages.webui.services.chunking_service import ChunkingService
 
 
@@ -132,7 +135,7 @@ def chunking_service(
     mock_document.mime_type = "application/pdf"
 
     # Mock get_by_id to return appropriate documents
-    async def mock_get_by_id(doc_id):
+    async def mock_get_by_id(doc_id) -> None:
         # Return specific documents for specific IDs
         for doc in mock_documents:
             if doc.id == doc_id:
@@ -458,7 +461,6 @@ class TestStatisticsAndMetrics:
     async def test_get_chunking_statistics(self, chunking_service: ChunkingService, mock_db_session: AsyncMock) -> None:
         """Test getting chunking statistics for a collection."""
         # Mock Operation objects for statistics
-        from types import SimpleNamespace
 
         mock_operations = [
             SimpleNamespace(status="completed", created_at=datetime.now(UTC), config={"strategy": "fixed_size"})
@@ -530,8 +532,6 @@ class TestErrorHandling:
     async def test_handle_memory_error(self, chunking_service: ChunkingService) -> None:
         """Test handling of memory errors during chunking."""
         # Simulate large content that would exceed memory limits
-        from packages.webui.services.chunking_constants import MAX_PREVIEW_CONTENT_SIZE
-        from packages.webui.services.chunking_security import ValidationError
 
         # Use actual limit from constants
         large_content = "x" * (MAX_PREVIEW_CONTENT_SIZE + 1)
@@ -768,7 +768,6 @@ class TestProgressTracking:
         operation_id = str(uuid.uuid4())
 
         # Mock operation with progress data
-        from types import SimpleNamespace
 
         mock_operation = SimpleNamespace(
             id=operation_id,
@@ -800,7 +799,6 @@ class TestProgressTracking:
         # Since _update_progress doesn't exist, test that progress tracking
         # works through the existing get_chunking_progress method
         # which reads from the database
-        from types import SimpleNamespace
 
         mock_operation = SimpleNamespace(
             id=operation_id,

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Comprehensive test suite for webui/auth.py
 Tests JWT authentication, password hashing, and user authentication flows
@@ -28,7 +29,7 @@ from webui.auth import (
 class TestUserModels:
     """Test Pydantic model validation"""
 
-    def test_user_create_valid(self):
+    def test_user_create_valid(self) -> None:
         """Test creating a valid user"""
         user = UserCreate(
             username="test_user",
@@ -40,7 +41,7 @@ class TestUserModels:
         assert user.email == "test@example.com"
         assert user.full_name == "Test User"
 
-    def test_user_create_short_username(self):
+    def test_user_create_short_username(self) -> None:
         """Test username validation - too short"""
         with pytest.raises(ValueError, match="Username must be at least 3 characters"):
             UserCreate(
@@ -49,7 +50,7 @@ class TestUserModels:
                 password="password123",
             )
 
-    def test_user_create_invalid_username(self):
+    def test_user_create_invalid_username(self) -> None:
         """Test username validation - invalid characters"""
         with pytest.raises(ValueError, match="Username must contain only alphanumeric"):
             UserCreate(
@@ -58,7 +59,7 @@ class TestUserModels:
                 password="password123",
             )
 
-    def test_user_create_short_password(self):
+    def test_user_create_short_password(self) -> None:
         """Test password validation - too short"""
         with pytest.raises(ValueError, match="Password must be at least 8 characters"):
             UserCreate(
@@ -67,7 +68,7 @@ class TestUserModels:
                 password="pass",
             )
 
-    def test_user_create_invalid_email(self):
+    def test_user_create_invalid_email(self) -> None:
         """Test email validation"""
         with pytest.raises(ValueError, match="validation error"):
             UserCreate(
@@ -80,7 +81,7 @@ class TestUserModels:
 class TestPasswordHashing:
     """Test password hashing functions"""
 
-    def test_get_password_hash(self):
+    def test_get_password_hash(self) -> None:
         """Test password hashing"""
         password = "test_password123"
         hashed = get_password_hash(password)
@@ -90,21 +91,21 @@ class TestPasswordHashing:
         # Should be a valid bcrypt hash
         assert hashed.startswith("$2b$")
 
-    def test_verify_password_correct(self):
+    def test_verify_password_correct(self) -> None:
         """Test verifying correct password"""
         password = "test_password123"
         hashed = get_password_hash(password)
 
         assert verify_password(password, hashed) is True
 
-    def test_verify_password_incorrect(self):
+    def test_verify_password_incorrect(self) -> None:
         """Test verifying incorrect password"""
         password = "test_password123"
         hashed = get_password_hash(password)
 
         assert verify_password("wrong_password", hashed) is False
 
-    def test_password_hash_uniqueness(self):
+    def test_password_hash_uniqueness(self) -> None:
         """Test that same password produces different hashes"""
         password = "test_password123"
         hash1 = get_password_hash(password)
@@ -121,7 +122,7 @@ class TestTokenFunctions:
     """Test JWT token creation and verification"""
 
     @patch("webui.auth.settings")
-    def test_create_access_token(self, mock_settings):
+    def test_create_access_token(self, mock_settings) -> None:
         """Test creating access token"""
         mock_settings.JWT_SECRET_KEY = "test_secret"
         mock_settings.ALGORITHM = "HS256"
@@ -137,7 +138,7 @@ class TestTokenFunctions:
         assert "exp" in payload
 
     @patch("webui.auth.settings")
-    def test_create_access_token_custom_expiry(self, mock_settings):
+    def test_create_access_token_custom_expiry(self, mock_settings) -> None:
         """Test creating access token with custom expiry"""
         mock_settings.JWT_SECRET_KEY = "test_secret"
         mock_settings.ALGORITHM = "HS256"
@@ -151,7 +152,7 @@ class TestTokenFunctions:
         assert payload["type"] == "access"
 
     @patch("webui.auth.settings")
-    def test_create_refresh_token(self, mock_settings):
+    def test_create_refresh_token(self, mock_settings) -> None:
         """Test creating refresh token"""
         mock_settings.JWT_SECRET_KEY = "test_secret"
         mock_settings.ALGORITHM = "HS256"
@@ -166,7 +167,7 @@ class TestTokenFunctions:
         assert "exp" in payload
 
     @patch("webui.auth.settings")
-    def test_verify_token_valid_access(self, mock_settings):
+    def test_verify_token_valid_access(self, mock_settings) -> None:
         """Test verifying valid access token"""
         mock_settings.JWT_SECRET_KEY = "test_secret"
         mock_settings.ALGORITHM = "HS256"
@@ -181,7 +182,7 @@ class TestTokenFunctions:
         assert username == "test_user"
 
     @patch("webui.auth.settings")
-    def test_verify_token_valid_refresh(self, mock_settings):
+    def test_verify_token_valid_refresh(self, mock_settings) -> None:
         """Test verifying valid refresh token"""
         mock_settings.JWT_SECRET_KEY = "test_secret"
         mock_settings.ALGORITHM = "HS256"
@@ -195,7 +196,7 @@ class TestTokenFunctions:
         assert username == "test_user"
 
     @patch("webui.auth.settings")
-    def test_verify_token_wrong_type(self, mock_settings):
+    def test_verify_token_wrong_type(self, mock_settings) -> None:
         """Test verifying token with wrong type"""
         mock_settings.JWT_SECRET_KEY = "test_secret"
         mock_settings.ALGORITHM = "HS256"
@@ -209,7 +210,7 @@ class TestTokenFunctions:
         assert username is None
 
     @patch("webui.auth.settings")
-    def test_verify_token_expired(self, mock_settings):
+    def test_verify_token_expired(self, mock_settings) -> None:
         """Test verifying expired token"""
         mock_settings.JWT_SECRET_KEY = "test_secret"
         mock_settings.ALGORITHM = "HS256"
@@ -222,7 +223,7 @@ class TestTokenFunctions:
         assert username is None
 
     @patch("webui.auth.settings")
-    def test_verify_token_invalid_signature(self, mock_settings):
+    def test_verify_token_invalid_signature(self, mock_settings) -> None:
         """Test verifying token with invalid signature"""
         mock_settings.JWT_SECRET_KEY = "test_secret"
         mock_settings.ALGORITHM = "HS256"
@@ -235,7 +236,7 @@ class TestTokenFunctions:
         assert username is None
 
     @patch("webui.auth.settings")
-    def test_verify_token_missing_sub(self, mock_settings):
+    def test_verify_token_missing_sub(self, mock_settings) -> None:
         """Test verifying token without sub claim"""
         mock_settings.JWT_SECRET_KEY = "test_secret"
         mock_settings.ALGORITHM = "HS256"
@@ -255,7 +256,7 @@ class TestAuthentication:
     @patch("webui.auth.get_db_session")
     @patch("webui.auth.create_user_repository")
     @patch("webui.auth.create_auth_repository")
-    async def test_authenticate_user_success(self, mock_create_auth_repo, mock_create_user_repo, mock_get_db):
+    async def test_authenticate_user_success(self, mock_create_auth_repo, mock_create_user_repo, mock_get_db) -> None:
         """Test successful user authentication"""
         # Setup mocks
         mock_session = AsyncMock()
@@ -285,7 +286,7 @@ class TestAuthentication:
     @pytest.mark.asyncio()
     @patch("webui.auth.get_db_session")
     @patch("webui.auth.create_user_repository")
-    async def test_authenticate_user_not_found(self, mock_create_user_repo, mock_get_db):
+    async def test_authenticate_user_not_found(self, mock_create_user_repo, mock_get_db) -> None:
         """Test authentication with non-existent user"""
         # Setup mocks
         mock_session = AsyncMock()
@@ -302,7 +303,7 @@ class TestAuthentication:
     @pytest.mark.asyncio()
     @patch("webui.auth.get_db_session")
     @patch("webui.auth.create_user_repository")
-    async def test_authenticate_user_wrong_password(self, mock_create_user_repo, mock_get_db):
+    async def test_authenticate_user_wrong_password(self, mock_create_user_repo, mock_get_db) -> None:
         """Test authentication with wrong password"""
         # Setup mocks
         mock_session = AsyncMock()
@@ -330,7 +331,7 @@ class TestGetCurrentUser:
 
     @pytest.mark.asyncio()
     @patch("webui.auth.settings")
-    async def test_get_current_user_auth_disabled(self, mock_settings):
+    async def test_get_current_user_auth_disabled(self, mock_settings) -> None:
         """Test get_current_user when auth is disabled"""
         mock_settings.DISABLE_AUTH = True
 
@@ -342,7 +343,7 @@ class TestGetCurrentUser:
 
     @pytest.mark.asyncio()
     @patch("webui.auth.settings")
-    async def test_get_current_user_no_credentials(self, mock_settings):
+    async def test_get_current_user_no_credentials(self, mock_settings) -> None:
         """Test get_current_user with no credentials"""
         mock_settings.DISABLE_AUTH = False
 
@@ -355,7 +356,7 @@ class TestGetCurrentUser:
     @pytest.mark.asyncio()
     @patch("webui.auth.settings")
     @patch("webui.auth.verify_token")
-    async def test_get_current_user_invalid_token(self, mock_verify_token, mock_settings):
+    async def test_get_current_user_invalid_token(self, mock_verify_token, mock_settings) -> None:
         """Test get_current_user with invalid token"""
         mock_settings.DISABLE_AUTH = False
         mock_verify_token.return_value = None
@@ -375,7 +376,7 @@ class TestGetCurrentUser:
     @patch("webui.auth.create_user_repository")
     async def test_get_current_user_user_not_found(
         self, mock_create_user_repo, mock_get_db, mock_verify_token, mock_settings
-    ):
+    ) -> None:
         """Test get_current_user when user not found in database"""
         mock_settings.DISABLE_AUTH = False
         mock_verify_token.return_value = "test_user"
@@ -403,7 +404,7 @@ class TestGetCurrentUser:
     @patch("webui.auth.create_user_repository")
     async def test_get_current_user_inactive(
         self, mock_create_user_repo, mock_get_db, mock_verify_token, mock_settings
-    ):
+    ) -> None:
         """Test get_current_user with inactive user"""
         mock_settings.DISABLE_AUTH = False
         mock_verify_token.return_value = "test_user"
@@ -433,7 +434,9 @@ class TestGetCurrentUser:
     @patch("webui.auth.verify_token")
     @patch("webui.auth.get_db_session")
     @patch("webui.auth.create_user_repository")
-    async def test_get_current_user_success(self, mock_create_user_repo, mock_get_db, mock_verify_token, mock_settings):
+    async def test_get_current_user_success(
+        self, mock_create_user_repo, mock_get_db, mock_verify_token, mock_settings
+    ) -> None:
         """Test successful get_current_user"""
         mock_settings.DISABLE_AUTH = False
         mock_verify_token.return_value = "test_user"
@@ -465,7 +468,7 @@ class TestGetCurrentUserWebSocket:
 
     @pytest.mark.asyncio()
     @patch("webui.auth.settings")
-    async def test_get_current_user_websocket_auth_disabled(self, mock_settings):
+    async def test_get_current_user_websocket_auth_disabled(self, mock_settings) -> None:
         """Test WebSocket auth when auth is disabled"""
         mock_settings.DISABLE_AUTH = True
 
@@ -476,7 +479,7 @@ class TestGetCurrentUserWebSocket:
 
     @pytest.mark.asyncio()
     @patch("webui.auth.settings")
-    async def test_get_current_user_websocket_no_token(self, mock_settings):
+    async def test_get_current_user_websocket_no_token(self, mock_settings) -> None:
         """Test WebSocket auth with no token"""
         mock_settings.DISABLE_AUTH = False
 
@@ -486,7 +489,7 @@ class TestGetCurrentUserWebSocket:
     @pytest.mark.asyncio()
     @patch("webui.auth.settings")
     @patch("webui.auth.verify_token")
-    async def test_get_current_user_websocket_invalid_token(self, mock_verify_token, mock_settings):
+    async def test_get_current_user_websocket_invalid_token(self, mock_verify_token, mock_settings) -> None:
         """Test WebSocket auth with invalid token"""
         mock_settings.DISABLE_AUTH = False
         mock_verify_token.return_value = None
@@ -501,7 +504,7 @@ class TestGetCurrentUserWebSocket:
     @patch("webui.auth.create_user_repository")
     async def test_get_current_user_websocket_user_not_found(
         self, mock_create_user_repo, mock_get_db, mock_verify_token, mock_settings
-    ):
+    ) -> None:
         """Test WebSocket auth when user not found"""
         mock_settings.DISABLE_AUTH = False
         mock_verify_token.return_value = "test_user"
@@ -524,7 +527,7 @@ class TestGetCurrentUserWebSocket:
     @patch("webui.auth.create_user_repository")
     async def test_get_current_user_websocket_inactive_user(
         self, mock_create_user_repo, mock_get_db, mock_verify_token, mock_settings
-    ):
+    ) -> None:
         """Test WebSocket auth with inactive user"""
         mock_settings.DISABLE_AUTH = False
         mock_verify_token.return_value = "test_user"
@@ -551,7 +554,7 @@ class TestGetCurrentUserWebSocket:
     @patch("webui.auth.create_user_repository")
     async def test_get_current_user_websocket_success(
         self, mock_create_user_repo, mock_get_db, mock_verify_token, mock_settings
-    ):
+    ) -> None:
         """Test successful WebSocket auth"""
         mock_settings.DISABLE_AUTH = False
         mock_verify_token.return_value = "test_user"
@@ -583,7 +586,7 @@ class TestEdgeCases:
     @patch("webui.auth.settings")
     @patch("webui.auth.verify_token")
     @patch("webui.auth.get_db_session")
-    async def test_get_current_user_db_connection_failure(self, mock_get_db, mock_verify_token, mock_settings):
+    async def test_get_current_user_db_connection_failure(self, mock_get_db, mock_verify_token, mock_settings) -> None:
         """Test handling database connection failure"""
         mock_settings.DISABLE_AUTH = False
         mock_verify_token.return_value = "test_user"
@@ -598,12 +601,12 @@ class TestEdgeCases:
 
         assert exc_info.value.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
 
-    def test_token_expiry_constants(self):
+    def test_token_expiry_constants(self) -> None:
         """Test token expiry constants"""
         assert REFRESH_TOKEN_EXPIRE_DAYS == 30
 
     @patch("webui.auth.settings")
-    def test_create_token_with_additional_claims(self, mock_settings):
+    def test_create_token_with_additional_claims(self, mock_settings) -> None:
         """Test creating tokens with additional claims"""
         mock_settings.JWT_SECRET_KEY = "test_secret"
         mock_settings.ALGORITHM = "HS256"

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """Tests for ChunkingOperation entity."""
 
 from datetime import UTC, datetime, timedelta
@@ -18,23 +19,23 @@ class TestChunkingOperation:
     """Test suite for ChunkingOperation entity."""
 
     @pytest.fixture()
-    def valid_config(self):
+    def valid_config(self) -> None:
         """Create a valid chunk configuration."""
         return ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
 
     @pytest.fixture()
-    def sample_document(self):
+    def sample_document(self) -> None:
         """Create sample document content."""
         return "This is a sample document content for testing chunking operations."
 
     @pytest.fixture()
-    def chunking_operation(self, valid_config, sample_document):
+    def chunking_operation(self, valid_config, sample_document) -> None:
         """Create a chunking operation instance."""
         return ChunkingOperation(
             operation_id="test-op-123", document_id="doc-456", document_content=sample_document, config=valid_config
         )
 
-    def test_initialization_success(self, valid_config, sample_document):
+    def test_initialization_success(self, valid_config, sample_document) -> None:
         """Test successful initialization of ChunkingOperation."""
         # Arrange & Act
         operation = ChunkingOperation(
@@ -50,7 +51,7 @@ class TestChunkingOperation:
         assert operation.error_message is None
         assert operation.chunk_collection.chunk_count == 0
 
-    def test_initialization_with_large_document_fails(self, valid_config):
+    def test_initialization_with_large_document_fails(self, valid_config) -> None:
         """Test that initialization fails with document exceeding size limit."""
         # Arrange
         large_content = "x" * (ChunkingOperation.MAX_DOCUMENT_SIZE + 1)
@@ -64,7 +65,7 @@ class TestChunkingOperation:
         assert str(exc_info.value).startswith("Document size")
         assert str(ChunkingOperation.MAX_DOCUMENT_SIZE) in str(exc_info.value)
 
-    def test_start_operation_success(self, chunking_operation):
+    def test_start_operation_success(self, chunking_operation) -> None:
         """Test starting a chunking operation."""
         # Arrange
         assert chunking_operation.status == OperationStatus.PENDING
@@ -77,7 +78,7 @@ class TestChunkingOperation:
         assert chunking_operation._started_at is not None
         assert chunking_operation.progress_percentage == 0.0
 
-    def test_start_operation_from_invalid_state_fails(self, chunking_operation):
+    def test_start_operation_from_invalid_state_fails(self, chunking_operation) -> None:
         """Test that starting from invalid state raises error."""
         # Arrange
         chunking_operation._status = OperationStatus.COMPLETED
@@ -88,7 +89,7 @@ class TestChunkingOperation:
 
         assert "Cannot start operation in COMPLETED state" in str(exc_info.value)
 
-    def test_execute_with_strategy_success(self, chunking_operation):
+    def test_execute_with_strategy_success(self, chunking_operation) -> None:
         """Test executing chunking with a strategy."""
         # Arrange
         mock_strategy = MagicMock()
@@ -139,7 +140,7 @@ class TestChunkingOperation:
         # Verify strategy was called
         mock_strategy.chunk.assert_called_once()
 
-    def test_execute_without_processing_state_fails(self, chunking_operation):
+    def test_execute_without_processing_state_fails(self, chunking_operation) -> None:
         """Test that execute fails if not in PROCESSING state."""
         # Arrange
         mock_strategy = MagicMock()
@@ -150,7 +151,7 @@ class TestChunkingOperation:
 
         assert "Cannot execute operation in PENDING state" in str(exc_info.value)
 
-    def test_execute_with_too_many_chunks_fails(self, chunking_operation):
+    def test_execute_with_too_many_chunks_fails(self, chunking_operation) -> None:
         """Test that execute fails when producing too many chunks."""
         # Arrange
         mock_strategy = MagicMock()
@@ -182,7 +183,7 @@ class TestChunkingOperation:
         assert "exceeding limit" in str(exc_info.value)
         assert chunking_operation.status == OperationStatus.FAILED
 
-    def test_execute_with_strategy_exception_propagates(self, chunking_operation):
+    def test_execute_with_strategy_exception_propagates(self, chunking_operation) -> None:
         """Test that strategy exceptions are properly handled."""
         # Arrange
         mock_strategy = MagicMock()
@@ -197,7 +198,7 @@ class TestChunkingOperation:
         assert chunking_operation.error_message == "Strategy error"
         assert chunking_operation._error_details["exception_type"] == "ValueError"
 
-    def test_add_chunk_success(self, chunking_operation):
+    def test_add_chunk_success(self, chunking_operation) -> None:
         """Test adding chunks to an operation."""
         # Arrange
         chunk = Chunk(
@@ -222,7 +223,7 @@ class TestChunkingOperation:
         assert chunking_operation.chunk_collection.chunk_count == 1
         assert chunking_operation.progress_percentage > 0
 
-    def test_add_chunk_invalid_state_fails(self, chunking_operation):
+    def test_add_chunk_invalid_state_fails(self, chunking_operation) -> None:
         """Test that adding chunks fails in invalid state."""
         # Arrange
         chunk = Chunk(
@@ -245,7 +246,7 @@ class TestChunkingOperation:
 
         assert "Cannot add chunks to operation in PENDING state" in str(exc_info.value)
 
-    def test_cancel_operation_success(self, chunking_operation):
+    def test_cancel_operation_success(self, chunking_operation) -> None:
         """Test cancelling an operation."""
         # Arrange
         chunking_operation.start()
@@ -258,7 +259,7 @@ class TestChunkingOperation:
         assert chunking_operation._completed_at is not None
         assert chunking_operation.error_message == "User requested cancellation"
 
-    def test_cancel_from_invalid_state_fails(self, chunking_operation):
+    def test_cancel_from_invalid_state_fails(self, chunking_operation) -> None:
         """Test that cancelling from invalid state raises error."""
         # Arrange
         chunking_operation._status = OperationStatus.COMPLETED
@@ -269,7 +270,7 @@ class TestChunkingOperation:
 
         assert "Cannot cancel operation in COMPLETED state" in str(exc_info.value)
 
-    def test_validate_results_with_valid_chunks(self, chunking_operation):
+    def test_validate_results_with_valid_chunks(self, chunking_operation) -> None:
         """Test validation with valid chunking results."""
         # Arrange
         # Document is "Test document content for testing operations" (44 chars)
@@ -314,7 +315,7 @@ class TestChunkingOperation:
         assert is_valid is True
         assert len(issues) == 0
 
-    def test_validate_results_with_no_chunks(self, chunking_operation):
+    def test_validate_results_with_no_chunks(self, chunking_operation) -> None:
         """Test validation fails when no chunks produced."""
         # Arrange
         chunking_operation.start()
@@ -326,7 +327,7 @@ class TestChunkingOperation:
         assert is_valid is False
         assert "No chunks were produced" in issues
 
-    def test_validate_results_with_insufficient_coverage(self, chunking_operation):
+    def test_validate_results_with_insufficient_coverage(self, chunking_operation) -> None:
         """Test validation fails with insufficient coverage."""
         # Arrange
         # Add a chunk that covers only a small portion
@@ -355,7 +356,7 @@ class TestChunkingOperation:
         assert any("Insufficient coverage" in issue for issue in issues)
 
     @patch("packages.shared.chunking.domain.entities.chunking_operation.datetime")
-    def test_validate_results_with_timeout(self, mock_datetime, chunking_operation):
+    def test_validate_results_with_timeout(self, mock_datetime, chunking_operation) -> None:
         """Test validation fails when operation times out."""
         # Arrange
         start_time = datetime.now(tz=UTC)
@@ -373,7 +374,7 @@ class TestChunkingOperation:
         assert is_valid is False
         assert any("Operation exceeded timeout" in issue for issue in issues)
 
-    def test_get_statistics_pending(self, chunking_operation):
+    def test_get_statistics_pending(self, chunking_operation) -> None:
         """Test getting statistics for pending operation."""
         # Act
         stats = chunking_operation.get_statistics()
@@ -386,7 +387,7 @@ class TestChunkingOperation:
         assert stats["progress"] == 0.0
         assert "timing" not in stats
 
-    def test_get_statistics_processing(self, chunking_operation):
+    def test_get_statistics_processing(self, chunking_operation) -> None:
         """Test getting statistics for processing operation."""
         # Arrange
         chunking_operation.start()
@@ -416,7 +417,7 @@ class TestChunkingOperation:
         assert "started_at" in stats["timing"]
         assert "duration_seconds" in stats["timing"]
 
-    def test_get_statistics_completed(self, chunking_operation):
+    def test_get_statistics_completed(self, chunking_operation) -> None:
         """Test getting statistics for completed operation."""
         # Arrange
         mock_strategy = MagicMock()
@@ -453,7 +454,7 @@ class TestChunkingOperation:
         assert "chunk_stats" in stats
         assert "overlap_stats" in stats
 
-    def test_get_statistics_failed(self, chunking_operation):
+    def test_get_statistics_failed(self, chunking_operation) -> None:
         """Test getting statistics for failed operation."""
         # Arrange
         chunking_operation.start()
@@ -468,7 +469,7 @@ class TestChunkingOperation:
         assert stats["error"]["message"] == "Test error"
         assert stats["error"]["details"]["detail"] == "Error detail"
 
-    def test_estimate_chunks(self, chunking_operation):
+    def test_estimate_chunks(self, chunking_operation) -> None:
         """Test chunk estimation."""
         # Act
         estimated = chunking_operation._estimate_chunks()
@@ -480,7 +481,7 @@ class TestChunkingOperation:
         assert estimated > 0
         assert estimated == chunking_operation._estimated_total_chunks
 
-    def test_calculate_duration_not_started(self, chunking_operation):
+    def test_calculate_duration_not_started(self, chunking_operation) -> None:
         """Test duration calculation when not started."""
         # Act
         duration = chunking_operation._calculate_duration()
@@ -488,7 +489,7 @@ class TestChunkingOperation:
         # Assert
         assert duration == 0.0
 
-    def test_calculate_duration_in_progress(self, chunking_operation):
+    def test_calculate_duration_in_progress(self, chunking_operation) -> None:
         """Test duration calculation when in progress."""
         # Arrange
         chunking_operation.start()
@@ -499,7 +500,7 @@ class TestChunkingOperation:
         # Assert
         assert duration >= 0.0
 
-    def test_calculate_duration_completed(self, chunking_operation):
+    def test_calculate_duration_completed(self, chunking_operation) -> None:
         """Test duration calculation when completed."""
         # Arrange
         mock_strategy = MagicMock()
@@ -517,7 +518,7 @@ class TestChunkingOperation:
         expected_duration = (chunking_operation._completed_at - start_time).total_seconds()
         assert abs(duration - expected_duration) < 0.01
 
-    def test_progress_update_clamping(self, chunking_operation):
+    def test_progress_update_clamping(self, chunking_operation) -> None:
         """Test that progress is clamped between 0 and 100."""
         # Arrange
         chunking_operation.start()
@@ -534,7 +535,7 @@ class TestChunkingOperation:
         chunking_operation._update_progress(50.0)
         assert chunking_operation.progress_percentage == 50.0
 
-    def test_repr(self, chunking_operation):
+    def test_repr(self, chunking_operation) -> None:
         """Test string representation of operation."""
         # Act
         repr_str = repr(chunking_operation)
@@ -546,7 +547,7 @@ class TestChunkingOperation:
         assert "chunks=0" in repr_str
         assert "progress=0.0%" in repr_str
 
-    def test_metrics_calculation(self, chunking_operation):
+    def test_metrics_calculation(self, chunking_operation) -> None:
         """Test performance metrics calculation."""
         # Arrange
         start_time = datetime.now(tz=UTC)
@@ -563,7 +564,7 @@ class TestChunkingOperation:
         assert metrics["characters_per_second"] > 0
         assert metrics["average_chunk_size"] > 0
 
-    def test_state_transitions_enforcement(self):
+    def test_state_transitions_enforcement(self) -> None:
         """Test that state transitions are properly enforced."""
         # This test verifies the business rule that states can only transition
         # according to the allowed paths defined in OperationStatus

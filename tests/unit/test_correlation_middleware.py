@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Tests for correlation ID middleware.
 """
@@ -222,7 +223,7 @@ class TestHelperFunctions:
 
         # Create a simple object with headers attribute
         class MockRequest:
-            def __init__(self, headers):
+            def __init__(self, headers) -> None:
                 self.headers = headers
 
         request = MockRequest({"X-Correlation-ID": test_id})
@@ -245,7 +246,7 @@ class TestHelperFunctions:
 
         # Create a simple object with headers attribute
         class MockRequest:
-            def __init__(self, headers):
+            def __init__(self, headers) -> None:
                 self.headers = headers
 
         request = MockRequest({"X-Correlation-ID": "invalid-uuid"})

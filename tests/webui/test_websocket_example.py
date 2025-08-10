@@ -2,10 +2,12 @@
 
 import asyncio
 from datetime import UTC, datetime
+from enum import Enum
+from unittest.mock import MagicMock
 
 import pytest
 
-from packages.webui.websocket_manager import RedisStreamWebSocketManager
+from packages.webui.websocket_manager import RedisStreamWebSocketManager, ws_manager
 from tests.webui.test_websocket_helpers import (
     BASE_DELAY,
     WebSocketTestHarness,
@@ -18,10 +20,9 @@ class TestWebSocketExamples:
     """Example tests showing how to test WebSocket functionality."""
 
     @pytest.fixture(autouse=True)
-    def _setup_and_teardown(self):
+    def _setup_and_teardown(self) -> None:
         """Ensure clean state before and after each test."""
         # Setup - Reset any global state
-        from packages.webui.websocket_manager import ws_manager
 
         # Clear any existing connections and tasks
         ws_manager.connections.clear()
@@ -40,7 +41,7 @@ class TestWebSocketExamples:
         # Note: The harness cleanup should handle most of this
 
     @pytest.mark.asyncio()
-    async def test_operation_lifecycle_updates(self, mock_redis_client):
+    async def test_operation_lifecycle_updates(self, mock_redis_client) -> None:
         """Example: Test complete operation lifecycle with updates."""
         # Setup - Create a fresh manager instance to avoid state pollution
         manager = RedisStreamWebSocketManager()
@@ -53,9 +54,6 @@ class TestWebSocketExamples:
         manager.consumer_tasks.clear()
 
         harness = WebSocketTestHarness(manager)
-
-        from enum import Enum
-        from unittest.mock import MagicMock
 
         # Create mock enums
         class MockStatus(Enum):
@@ -74,7 +72,7 @@ class TestWebSocketExamples:
         mock_operation.error_message = None
 
         # Set up the operation getter function
-        async def mock_get_operation(operation_id):
+        async def mock_get_operation(operation_id) -> None:
             if operation_id == "operation789":
                 return mock_operation
             return None

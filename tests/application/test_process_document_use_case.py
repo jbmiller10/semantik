@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+
 """Tests for ProcessDocumentUseCase."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -17,7 +19,7 @@ class TestProcessDocumentUseCase:
     """Test suite for ProcessDocumentUseCase."""
 
     @pytest.fixture()
-    def mock_operations_repository(self):
+    def mock_operations_repository(self) -> None:
         """Create mock operations repository."""
         repo = AsyncMock()
         repo.create = AsyncMock()
@@ -28,7 +30,7 @@ class TestProcessDocumentUseCase:
         return repo
 
     @pytest.fixture()
-    def mock_documents_repository(self):
+    def mock_documents_repository(self) -> None:
         """Create mock documents repository."""
         repo = AsyncMock()
         repo.get_or_create = AsyncMock(return_value={"id": "doc-123", "file_path": "/data/test.txt"})
@@ -36,14 +38,14 @@ class TestProcessDocumentUseCase:
         return repo
 
     @pytest.fixture()
-    def mock_chunks_repository(self):
+    def mock_chunks_repository(self) -> None:
         """Create mock chunks repository."""
         repo = AsyncMock()
         repo.save_batch = AsyncMock()
         return repo
 
     @pytest.fixture()
-    def mock_checkpoints_repository(self):
+    def mock_checkpoints_repository(self) -> None:
         """Create mock checkpoints repository."""
         repo = AsyncMock()
         repo.get_latest_checkpoint = AsyncMock(return_value=None)
@@ -52,7 +54,7 @@ class TestProcessDocumentUseCase:
         return repo
 
     @pytest.fixture()
-    def mock_document_service(self):
+    def mock_document_service(self) -> None:
         """Create mock document service."""
         service = AsyncMock()
         service.load = AsyncMock(return_value={"content": "This is a full document content for processing."})
@@ -60,7 +62,7 @@ class TestProcessDocumentUseCase:
         return service
 
     @pytest.fixture()
-    def mock_strategy_factory(self):
+    def mock_strategy_factory(self) -> None:
         """Create mock strategy factory."""
         factory = MagicMock()
         mock_strategy = MagicMock()
@@ -98,7 +100,7 @@ class TestProcessDocumentUseCase:
     @pytest.fixture()
     def mock_unit_of_work(
         self, mock_operations_repository, mock_documents_repository, mock_chunks_repository, mock_checkpoints_repository
-    ):
+    ) -> None:
         """Create mock unit of work."""
         uow = AsyncMock()
         uow.__aenter__ = AsyncMock(return_value=uow)
@@ -112,7 +114,7 @@ class TestProcessDocumentUseCase:
         return uow
 
     @pytest.fixture()
-    def mock_notification_service(self):
+    def mock_notification_service(self) -> None:
         """Create mock notification service."""
         service = AsyncMock()
         service.notify_operation_started = AsyncMock()
@@ -123,7 +125,7 @@ class TestProcessDocumentUseCase:
         return service
 
     @pytest.fixture()
-    def mock_metrics_service(self):
+    def mock_metrics_service(self) -> None:
         """Create mock metrics service."""
         service = AsyncMock()
         service.record_chunk_processing_time = AsyncMock()
@@ -139,7 +141,7 @@ class TestProcessDocumentUseCase:
         mock_strategy_factory,
         mock_notification_service,
         mock_metrics_service,
-    ):
+    ) -> None:
         """Create use case instance with mocked dependencies."""
         return ProcessDocumentUseCase(
             unit_of_work=mock_unit_of_work,
@@ -150,7 +152,7 @@ class TestProcessDocumentUseCase:
         )
 
     @pytest.fixture()
-    def valid_request(self):
+    def valid_request(self) -> None:
         """Create a valid process request."""
         return ProcessDocumentRequest(
             document_id="doc-789",
@@ -163,7 +165,7 @@ class TestProcessDocumentUseCase:
         )
 
     @pytest.mark.asyncio()
-    async def test_successful_synchronous_processing(self, use_case, valid_request):
+    async def test_successful_synchronous_processing(self, use_case, valid_request) -> None:
         """Test successful synchronous document processing."""
         # Arrange
         operation_id = str(uuid4())
@@ -190,7 +192,7 @@ class TestProcessDocumentUseCase:
         use_case.notification_service.notify_operation_completed.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_successful_asynchronous_processing(self, use_case):
+    async def test_successful_asynchronous_processing(self, use_case) -> None:
         """Test successful asynchronous document processing."""
         # Arrange
         request = ProcessDocumentRequest(
@@ -216,7 +218,7 @@ class TestProcessDocumentUseCase:
         use_case.notification_service.notify_operation_completed.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_document_validation_failure(self, use_case, valid_request):
+    async def test_document_validation_failure(self, use_case, valid_request) -> None:
         """Test handling of document validation failure."""
         # Arrange
         # Document validation happens in request.validate()
@@ -233,7 +235,7 @@ class TestProcessDocumentUseCase:
         use_case.notification_service.notify_operation_failed.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_document_too_large_error(self, use_case, valid_request):
+    async def test_document_too_large_error(self, use_case, valid_request) -> None:
         """Test handling of document too large error."""
         # Arrange
         # Note: MAX_DOCUMENT_SIZE check not implemented in current use case
@@ -251,7 +253,7 @@ class TestProcessDocumentUseCase:
         # use_case.notification_service.notify_operation_failed.assert_called()
 
     @pytest.mark.asyncio()
-    async def test_invalid_configuration_error(self, use_case):
+    async def test_invalid_configuration_error(self, use_case) -> None:
         """Test handling of invalid configuration."""
         # Arrange
         invalid_request = ProcessDocumentRequest(
@@ -273,7 +275,7 @@ class TestProcessDocumentUseCase:
         use_case.unit_of_work.rollback.assert_called()
 
     @pytest.mark.asyncio()
-    async def test_strategy_execution_failure(self, use_case, valid_request):
+    async def test_strategy_execution_failure(self, use_case, valid_request) -> None:
         """Test handling of strategy execution failure."""
         # Arrange
         use_case.strategy_factory.create_strategy.return_value.chunk.side_effect = RuntimeError(
@@ -290,7 +292,7 @@ class TestProcessDocumentUseCase:
         use_case.notification_service.notify_operation_failed.assert_called()
 
     @pytest.mark.asyncio()
-    async def test_transaction_rollback_on_error(self, use_case, valid_request):
+    async def test_transaction_rollback_on_error(self, use_case, valid_request) -> None:
         """Test that transaction is rolled back on error."""
         # Arrange
         use_case.unit_of_work.commit.side_effect = Exception("Database error")
@@ -304,7 +306,7 @@ class TestProcessDocumentUseCase:
         use_case.unit_of_work.rollback.assert_called()
 
     @pytest.mark.asyncio()
-    async def test_operation_persistence(self, use_case, valid_request):
+    async def test_operation_persistence(self, use_case, valid_request) -> None:
         """Test that operation is properly persisted."""
         # Act
         _ = await use_case.execute(valid_request)
@@ -319,12 +321,12 @@ class TestProcessDocumentUseCase:
         assert len(save_batch_calls) > 0
 
     @pytest.mark.asyncio()
-    async def test_progress_tracking(self, use_case, valid_request):
+    async def test_progress_tracking(self, use_case, valid_request) -> None:
         """Test that progress is tracked during processing."""
         # Arrange
         progress_values = []
 
-        def mock_chunk_with_progress(_content, _config=None, progress_callback=None):
+        def mock_chunk_with_progress(_content, _config=None, progress_callback=None) -> None:
             if progress_callback:
                 progress_values.extend([25.0, 50.0, 75.0, 100.0])
                 for value in [25.0, 50.0, 75.0, 100.0]:
@@ -355,7 +357,7 @@ class TestProcessDocumentUseCase:
         # Progress tracking happens internally but not exposed in response
 
     @pytest.mark.asyncio()
-    async def test_chunk_validation(self, use_case, valid_request):
+    async def test_chunk_validation(self, use_case, valid_request) -> None:
         """Test that chunks are validated after processing."""
         # Arrange
         # Create chunks with insufficient coverage
@@ -383,7 +385,7 @@ class TestProcessDocumentUseCase:
         # Verify validation was performed (through the operation)
 
     @pytest.mark.asyncio()
-    async def test_concurrent_processing_requests(self, use_case):
+    async def test_concurrent_processing_requests(self, use_case) -> None:
         """Test handling of concurrent processing requests."""
         # Arrange
         requests = [
@@ -400,7 +402,6 @@ class TestProcessDocumentUseCase:
         ]
 
         # Act
-        import asyncio
 
         responses = await asyncio.gather(*[use_case.execute(req) for req in requests])
 
@@ -411,7 +412,7 @@ class TestProcessDocumentUseCase:
             assert response.status == OperationStatus.COMPLETED
 
     @pytest.mark.asyncio()
-    async def test_path_traversal_prevention(self, use_case):
+    async def test_path_traversal_prevention(self, use_case) -> None:
         """Test that path traversal attempts are blocked."""
         # Arrange
         malicious_request = ProcessDocumentRequest(
@@ -433,7 +434,7 @@ class TestProcessDocumentUseCase:
         assert "Path traversal" in response.error_message
 
     @pytest.mark.asyncio()
-    async def test_metadata_inclusion(self, use_case, valid_request):
+    async def test_metadata_inclusion(self, use_case, valid_request) -> None:
         """Test that document metadata is included in processing."""
         # Arrange
         # Metadata is passed through request and stored with document
@@ -453,7 +454,7 @@ class TestProcessDocumentUseCase:
         assert response.processing_completed_at is not None
 
     @pytest.mark.asyncio()
-    async def test_empty_document_handling(self, use_case, valid_request):
+    async def test_empty_document_handling(self, use_case, valid_request) -> None:
         """Test handling of empty documents."""
         # Arrange
         use_case.document_service.extract_text.return_value = ""
@@ -468,7 +469,7 @@ class TestProcessDocumentUseCase:
         assert response.total_chunks == 0
 
     @pytest.mark.asyncio()
-    async def test_operation_statistics_generation(self, use_case, valid_request):
+    async def test_operation_statistics_generation(self, use_case, valid_request) -> None:
         """Test that operation statistics are generated."""
         # Act
         response = await use_case.execute(valid_request)
@@ -481,7 +482,7 @@ class TestProcessDocumentUseCase:
         assert response.chunks_saved == 2
 
     @pytest.mark.asyncio()
-    async def test_error_recovery_mechanism(self, use_case, valid_request):
+    async def test_error_recovery_mechanism(self, use_case, valid_request) -> None:
         """Test error recovery and retry mechanism."""
         # Arrange
         # First call fails, second succeeds
@@ -516,7 +517,7 @@ class TestProcessDocumentUseCase:
         # Assert - verify retry behavior if implemented
 
     @pytest.mark.asyncio()
-    async def test_custom_strategy_parameters(self, use_case):
+    async def test_custom_strategy_parameters(self, use_case) -> None:
         """Test processing with custom strategy parameters."""
         # Arrange
         request = ProcessDocumentRequest(

@@ -19,45 +19,45 @@ from packages.shared.database.partition_utils import (
 class TestPartitionValidation:
     """Test cases for PartitionValidation class."""
 
-    def test_validate_uuid_valid(self):
+    def test_validate_uuid_valid(self) -> None:
         """Test validating a valid UUID."""
         valid_uuid = str(uuid4())
         result = PartitionValidation.validate_uuid(valid_uuid)
         assert result == valid_uuid.lower()
 
-    def test_validate_uuid_uppercase(self):
+    def test_validate_uuid_uppercase(self) -> None:
         """Test validating uppercase UUID normalizes to lowercase."""
         uuid_upper = "550E8400-E29B-41D4-A716-446655440000"
         result = PartitionValidation.validate_uuid(uuid_upper)
         assert result == uuid_upper.lower()
 
-    def test_validate_uuid_invalid_format(self):
+    def test_validate_uuid_invalid_format(self) -> None:
         """Test validating invalid UUID format raises ValueError."""
         with pytest.raises(ValueError, match="must be a valid UUID v4"):
             PartitionValidation.validate_uuid("not-a-uuid")
 
-    def test_validate_uuid_empty(self):
+    def test_validate_uuid_empty(self) -> None:
         """Test validating empty UUID raises ValueError."""
         with pytest.raises(ValueError, match="cannot be empty"):
             PartitionValidation.validate_uuid("")
 
-    def test_validate_uuid_wrong_type(self):
+    def test_validate_uuid_wrong_type(self) -> None:
         """Test validating non-string UUID raises TypeError."""
         with pytest.raises(TypeError, match="must be a string"):
             PartitionValidation.validate_uuid(123)
 
-    def test_validate_uuid_custom_field_name(self):
+    def test_validate_uuid_custom_field_name(self) -> None:
         """Test error messages use custom field name."""
         with pytest.raises(ValueError, match="document_id must be a valid UUID v4"):
             PartitionValidation.validate_uuid("invalid", "document_id")
 
-    def test_validate_partition_key(self):
+    def test_validate_partition_key(self) -> None:
         """Test partition key validation delegates to UUID validation."""
         valid_uuid = str(uuid4())
         result = PartitionValidation.validate_partition_key(valid_uuid)
         assert result == valid_uuid.lower()
 
-    def test_validate_chunk_data_valid(self):
+    def test_validate_chunk_data_valid(self) -> None:
         """Test validating valid chunk data."""
         chunk_data = {
             "collection_id": str(uuid4()),
@@ -72,18 +72,18 @@ class TestPartitionValidation:
         assert result["document_id"] == chunk_data["document_id"].lower()
         assert result["id"] == chunk_data["id"].lower()
 
-    def test_validate_chunk_data_missing_collection_id(self):
+    def test_validate_chunk_data_missing_collection_id(self) -> None:
         """Test validating chunk data without collection_id raises ValueError."""
         chunk_data = {"content": "Test"}
         with pytest.raises(ValueError, match="collection_id is required"):
             PartitionValidation.validate_chunk_data(chunk_data)
 
-    def test_validate_chunk_data_wrong_type(self):
+    def test_validate_chunk_data_wrong_type(self) -> None:
         """Test validating non-dict chunk data raises TypeError."""
         with pytest.raises(TypeError, match="chunk_data must be a dictionary"):
             PartitionValidation.validate_chunk_data("not a dict")
 
-    def test_validate_chunk_data_invalid_chunk_index(self):
+    def test_validate_chunk_data_invalid_chunk_index(self) -> None:
         """Test validating invalid chunk_index."""
         chunk_data = {
             "collection_id": str(uuid4()),
@@ -92,7 +92,7 @@ class TestPartitionValidation:
         with pytest.raises(ValueError, match="chunk_index must be non-negative"):
             PartitionValidation.validate_chunk_data(chunk_data)
 
-    def test_validate_chunk_data_wrong_chunk_index_type(self):
+    def test_validate_chunk_data_wrong_chunk_index_type(self) -> None:
         """Test validating chunk_index with wrong type."""
         chunk_data = {
             "collection_id": str(uuid4()),
@@ -101,7 +101,7 @@ class TestPartitionValidation:
         with pytest.raises(TypeError, match="chunk_index must be an integer"):
             PartitionValidation.validate_chunk_data(chunk_data)
 
-    def test_validate_chunk_data_content_too_long(self):
+    def test_validate_chunk_data_content_too_long(self) -> None:
         """Test validating content that exceeds max length."""
         chunk_data = {
             "collection_id": str(uuid4()),
@@ -110,7 +110,7 @@ class TestPartitionValidation:
         with pytest.raises(ValueError, match="content exceeds maximum length"):
             PartitionValidation.validate_chunk_data(chunk_data)
 
-    def test_validate_chunk_data_content_wrong_type(self):
+    def test_validate_chunk_data_content_wrong_type(self) -> None:
         """Test validating content with wrong type."""
         chunk_data = {
             "collection_id": str(uuid4()),
@@ -119,7 +119,7 @@ class TestPartitionValidation:
         with pytest.raises(TypeError, match="content must be a string"):
             PartitionValidation.validate_chunk_data(chunk_data)
 
-    def test_validate_chunk_data_metadata_wrong_type(self):
+    def test_validate_chunk_data_metadata_wrong_type(self) -> None:
         """Test validating metadata with wrong type."""
         chunk_data = {
             "collection_id": str(uuid4()),
@@ -128,19 +128,19 @@ class TestPartitionValidation:
         with pytest.raises(TypeError, match="metadata must be a dictionary"):
             PartitionValidation.validate_chunk_data(chunk_data)
 
-    def test_validate_batch_size_valid(self):
+    def test_validate_batch_size_valid(self) -> None:
         """Test validating valid batch size."""
         items = list(range(100))
         # Should not raise
         PartitionValidation.validate_batch_size(items)
 
-    def test_validate_batch_size_exceeds_limit(self):
+    def test_validate_batch_size_exceeds_limit(self) -> None:
         """Test validating batch size that exceeds limit."""
         items = list(range(PartitionValidation.MAX_BATCH_SIZE + 1))
         with pytest.raises(ValueError, match="batch size .* exceeds maximum allowed"):
             PartitionValidation.validate_batch_size(items)
 
-    def test_sanitize_string(self):
+    def test_sanitize_string(self) -> None:
         """Test string sanitization."""
         # Test normal string
         assert PartitionValidation.sanitize_string("normal text") == "normal text"
@@ -160,7 +160,7 @@ class TestPartitionValidation:
 class TestPartitionAwareMixin:
     """Test cases for PartitionAwareMixin."""
 
-    def test_ensure_partition_key_in_filter_with_value(self):
+    def test_ensure_partition_key_in_filter_with_value(self) -> None:
         """Test adding partition key filter to query."""
         mixin = PartitionAwareMixin()
         query = select(Chunk)
@@ -172,7 +172,7 @@ class TestPartitionAwareMixin:
         assert result is not query  # New query object
         # The actual SQL would contain the WHERE clause
 
-    def test_ensure_partition_key_in_filter_without_value(self):
+    def test_ensure_partition_key_in_filter_without_value(self) -> None:
         """Test query without partition key logs warning."""
         mixin = PartitionAwareMixin()
         query = select(Chunk)
@@ -182,7 +182,7 @@ class TestPartitionAwareMixin:
             mock_logger.warning.assert_called_once()
             assert result is query  # Same query object
 
-    def test_group_by_partition_key(self):
+    def test_group_by_partition_key(self) -> None:
         """Test grouping items by partition key."""
         mixin = PartitionAwareMixin()
 
@@ -204,7 +204,7 @@ class TestPartitionAwareMixin:
         assert result["col1"] == [items[0], items[2]]
 
     @pytest.mark.asyncio()
-    async def test_bulk_insert_partitioned(self):
+    async def test_bulk_insert_partitioned(self) -> None:
         """Test bulk insert with partition grouping."""
         mixin = PartitionAwareMixin()
         session = AsyncMock()
@@ -212,7 +212,7 @@ class TestPartitionAwareMixin:
         # Mock run_sync to capture the bulk insert calls
         bulk_insert_calls = []
 
-        def capture_bulk_insert(func):
+        def capture_bulk_insert(func) -> None:
             # Create a mock sync session
             sync_session = Mock()
             sync_session.bulk_insert_mappings = Mock(
@@ -247,7 +247,7 @@ class TestPartitionAwareMixin:
         assert inserted_collections == {col1_id, col2_id}
 
     @pytest.mark.asyncio()
-    async def test_bulk_insert_partitioned_missing_partition_key(self):
+    async def test_bulk_insert_partitioned_missing_partition_key(self) -> None:
         """Test bulk insert fails when partition key is missing."""
         mixin = PartitionAwareMixin()
         session = AsyncMock()
@@ -258,7 +258,7 @@ class TestPartitionAwareMixin:
             await mixin.bulk_insert_partitioned(session, Chunk, items)
 
     @pytest.mark.asyncio()
-    async def test_bulk_insert_partitioned_empty_list(self):
+    async def test_bulk_insert_partitioned_empty_list(self) -> None:
         """Test bulk insert with empty list does nothing."""
         mixin = PartitionAwareMixin()
         session = AsyncMock()
@@ -267,7 +267,7 @@ class TestPartitionAwareMixin:
         session.run_sync.assert_not_called()
 
     @pytest.mark.asyncio()
-    async def test_delete_by_partition_filter(self):
+    async def test_delete_by_partition_filter(self) -> None:
         """Test delete with partition filter."""
         mixin = PartitionAwareMixin()
         session = AsyncMock()
@@ -294,7 +294,7 @@ class TestPartitionAwareMixin:
 class TestChunkPartitionHelper:
     """Test cases for ChunkPartitionHelper."""
 
-    def test_create_chunk_query_with_partition(self):
+    def test_create_chunk_query_with_partition(self) -> None:
         """Test creating chunk query with partition key."""
         collection_id = str(uuid4())
         query = ChunkPartitionHelper.create_chunk_query_with_partition(collection_id)
@@ -303,7 +303,7 @@ class TestChunkPartitionHelper:
         assert isinstance(query, Select)
         # Would need to compile the query to verify WHERE clause
 
-    def test_create_chunk_query_with_additional_filters(self):
+    def test_create_chunk_query_with_additional_filters(self) -> None:
         """Test creating chunk query with additional filters."""
         collection_id = str(uuid4())
         doc_id = str(uuid4())
@@ -313,7 +313,7 @@ class TestChunkPartitionHelper:
 
         assert isinstance(query, Select)
 
-    def test_validate_chunk_partition_key(self):
+    def test_validate_chunk_partition_key(self) -> None:
         """Test chunk partition key validation."""
         # Valid data
         chunk_data = {"collection_id": str(uuid4())}
@@ -325,7 +325,7 @@ class TestChunkPartitionHelper:
             ChunkPartitionHelper.validate_chunk_partition_key({})
 
     @pytest.mark.asyncio()
-    async def test_get_partition_statistics_success(self):
+    async def test_get_partition_statistics_success(self) -> None:
         """Test getting partition statistics successfully."""
         session = AsyncMock()
         collection_id = str(uuid4())
@@ -355,7 +355,7 @@ class TestChunkPartitionHelper:
         assert stats["newest_chunk"] == mock_stats.newest_chunk
 
     @pytest.mark.asyncio()
-    async def test_get_partition_statistics_none_values(self):
+    async def test_get_partition_statistics_none_values(self) -> None:
         """Test handling None values in statistics."""
         session = AsyncMock()
         collection_id = str(uuid4())
@@ -382,7 +382,7 @@ class TestChunkPartitionHelper:
         assert stats["total_content_length"] == 0
 
     @pytest.mark.asyncio()
-    async def test_get_partition_statistics_error(self):
+    async def test_get_partition_statistics_error(self) -> None:
         """Test error handling in partition statistics."""
         session = AsyncMock()
         session.scalar.side_effect = Exception("Database error")
@@ -403,7 +403,7 @@ class TestBulkOperationsExample:
     """Test the example bulk operations function."""
 
     @pytest.mark.asyncio()
-    async def test_example_bulk_chunk_insert(self):
+    async def test_example_bulk_chunk_insert(self) -> None:
         """Test the example bulk insert function."""
         session = AsyncMock()
         session.run_sync = AsyncMock()

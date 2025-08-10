@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Unit tests for ChunkingService error handling.
 
@@ -17,6 +18,7 @@ from packages.shared.database.repositories.collection_repository import Collecti
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.text_processing.base_chunker import ChunkResult
 from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
+from packages.webui.services.chunking_security import ValidationError
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.chunking_validation import ChunkingInputValidator
 
@@ -150,8 +152,6 @@ class TestChunkingServiceErrorHandling:
 
         large_text = "x" * 11 * 1024 * 1024  # 11MB
 
-        from packages.webui.services.chunking_security import ValidationError
-
         with pytest.raises(ValidationError) as exc_info:
             await chunking_service.preview_chunking(content=large_text)
 
@@ -165,8 +165,6 @@ class TestChunkingServiceErrorHandling:
     ) -> None:
         """Test validation error for invalid chunk parameters."""
         mock_dependencies["validator"].validate_chunk_size.side_effect = ValueError("chunk_size must be positive")
-
-        from packages.webui.services.chunking_security import ValidationError
 
         with pytest.raises(ValidationError) as exc_info:
             await chunking_service.preview_chunking(
@@ -208,7 +206,7 @@ class TestChunkingServiceErrorHandling:
 
         call_count = 0
 
-        async def mock_chunk_text(text, doc_id, metadata):  # noqa: ARG001
+        async def mock_chunk_text(text, doc_id, metadata) -> None:  # noqa: ARG001
             nonlocal call_count
             call_count += 1
             if doc_id in ["doc2", "doc3"]:

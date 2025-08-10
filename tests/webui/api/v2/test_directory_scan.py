@@ -8,6 +8,8 @@ import pytest
 from fastapi import status
 from httpx import AsyncClient
 
+from packages.webui.main import app
+
 
 @pytest.mark.asyncio()
 async def test_directory_scan_preview_success(async_client: AsyncClient, test_user_headers: dict[str, str]) -> None:
@@ -244,8 +246,6 @@ async def test_directory_scan_preview_no_auth(monkeypatch) -> None:
     """Test that authentication is required."""
     # Temporarily enable authentication
     monkeypatch.setattr("packages.webui.auth.settings.DISABLE_AUTH", False)
-
-    from packages.webui.main import app
 
     # Create a client without auth overrides
     async with AsyncClient(app=app, base_url="http://test") as client:

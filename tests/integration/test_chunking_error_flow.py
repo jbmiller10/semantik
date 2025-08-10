@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Integration tests for chunking error flow.
 
@@ -7,6 +8,8 @@ correlation ID tracking, exception handler responses, and recovery mechanisms.
 """
 
 import asyncio
+from collections.abc import Generator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -69,7 +72,7 @@ class TestChunkingErrorFlowIntegration:
 
         # Add endpoint that uses chunking service
         @test_app.post("/test/chunking")
-        async def test_endpoint(request: Request):  # noqa: ARG001
+        async def test_endpoint(request: Request) -> None:  # noqa: ARG001
             # Get correlation ID from request
             req_correlation_id = get_correlation_id()
             assert req_correlation_id == correlation_id
@@ -100,7 +103,7 @@ class TestChunkingErrorFlowIntegration:
         """Test ChunkingMemoryError propagation and response format."""
 
         @test_app.post("/test/memory-error")
-        async def test_endpoint():
+        async def test_endpoint() -> None:
             correlation_id = get_correlation_id()
             raise ChunkingMemoryError(
                 detail="Document too large",
@@ -130,7 +133,7 @@ class TestChunkingErrorFlowIntegration:
         """Test ChunkingTimeoutError propagation."""
 
         @test_app.post("/test/timeout-error")
-        async def test_endpoint():
+        async def test_endpoint() -> None:
             correlation_id = get_correlation_id()
             raise ChunkingTimeoutError(
                 detail="Processing timeout",
@@ -156,7 +159,7 @@ class TestChunkingErrorFlowIntegration:
         """Test ChunkingValidationError propagation with field errors."""
 
         @test_app.post("/test/validation-error")
-        async def test_endpoint():
+        async def test_endpoint() -> None:
             correlation_id = get_correlation_id()
             raise ChunkingValidationError(
                 detail="Invalid parameters",
@@ -182,7 +185,7 @@ class TestChunkingErrorFlowIntegration:
         """Test ChunkingStrategyError with fallback suggestion."""
 
         @test_app.post("/test/strategy-error")
-        async def test_endpoint():
+        async def test_endpoint() -> None:
             correlation_id = get_correlation_id()
             raise ChunkingStrategyError(
                 detail="Semantic strategy not implemented",
@@ -206,7 +209,7 @@ class TestChunkingErrorFlowIntegration:
         """Test ChunkingPartialFailureError handling."""
 
         @test_app.post("/test/partial-failure")
-        async def test_endpoint():
+        async def test_endpoint() -> None:
             correlation_id = get_correlation_id()
             raise ChunkingPartialFailureError(
                 detail="5 of 20 documents failed",
@@ -356,7 +359,7 @@ class TestChunkingErrorFlowIntegration:
         """Test system degrades gracefully under resource pressure."""
 
         @test_app.post("/test/degradation")
-        async def test_endpoint():
+        async def test_endpoint() -> None:
             # Simulate resource exhaustion
             correlation_id = get_correlation_id()
 
@@ -410,7 +413,7 @@ class TestChunkingErrorFlowIntegration:
         mock_deps["redis_client"].setex = AsyncMock()
         error_handler = ChunkingErrorHandler(redis_client=mock_deps["redis_client"])
 
-        async def simulate_error(i: int):
+        async def simulate_error(i: int) -> None:
             try:
                 if i % 3 == 0:
                     raise ChunkingMemoryError(
@@ -460,7 +463,7 @@ class TestChunkingErrorFlowIntegration:
         mock_deps["redis_client"].lrem = AsyncMock()
 
         # Create an async generator function for scan_iter
-        async def mock_scan_iter(pattern):  # noqa: ARG001
+        async def mock_scan_iter(pattern) -> Generator[Any, None, None]:  # noqa: ARG001
             # Return an empty async generator
             for item in []:
                 yield item
