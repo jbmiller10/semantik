@@ -142,9 +142,9 @@ def upgrade() -> None:
         WITH partition_stats AS (
             SELECT 
                 schemaname,
-                tablename as partition_name,
-                SUBSTRING(tablename FROM 'chunks_part_([0-9]+)')::INT as partition_id,
-                pg_total_relation_size(schemaname||'.'||tablename) as size_bytes,
+                relname as partition_name,
+                SUBSTRING(relname FROM 'chunks_part_([0-9]+)')::INT as partition_id,
+                pg_total_relation_size(schemaname||'.'||relname) as size_bytes,
                 n_live_tup as row_count,
                 n_dead_tup as dead_rows,
                 last_vacuum,
@@ -153,7 +153,7 @@ def upgrade() -> None:
                 n_tup_upd as updates_since_vacuum,
                 n_tup_del as deletes_since_vacuum
             FROM pg_stat_user_tables
-            WHERE tablename LIKE 'chunks_part_%'
+            WHERE relname LIKE 'chunks_part_%'
         ),
         stats_summary AS (
             SELECT 
@@ -257,7 +257,7 @@ def upgrade() -> None:
                 MIN(n_live_tup)
             INTO v_avg_rows, v_max_rows, v_min_rows
             FROM pg_stat_user_tables
-            WHERE tablename LIKE 'chunks_part_%';
+            WHERE relname LIKE 'chunks_part_%';
             
             -- Calculate skew ratio
             v_max_skew := CASE 
@@ -269,7 +269,7 @@ def upgrade() -> None:
             SELECT COUNT(*)
             INTO v_over_threshold
             FROM pg_stat_user_tables
-            WHERE tablename LIKE 'chunks_part_%'
+            WHERE relname LIKE 'chunks_part_%'
               AND n_live_tup > v_avg_rows * 1.2;
             
             RETURN QUERY
