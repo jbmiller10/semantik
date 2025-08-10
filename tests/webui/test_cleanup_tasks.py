@@ -72,12 +72,7 @@ class TestCleanupQdrantCollections:
     @patch("packages.webui.utils.qdrant_manager.qdrant_manager")
     @patch("shared.managers.qdrant_manager.QdrantManager")  # Patch at the actual import location
     def test_cleanup_qdrant_collections_skip_system(
-        self,
-        mock_qdrant_manager_class,
-        mock_conn_manager,
-        mock_asyncio_run,
-        mock_audit,
-        mock_timer,
+        self, mock_qdrant_manager_class, mock_conn_manager, mock_asyncio_run, mock_audit, mock_timer
     ) -> None:
         """Test that system collections are skipped."""
         # Setup mocks
@@ -113,12 +108,7 @@ class TestCleanupQdrantCollections:
     @patch("packages.webui.utils.qdrant_manager.qdrant_manager")
     @patch("shared.managers.qdrant_manager.QdrantManager")  # Patch at the actual import location
     def test_cleanup_qdrant_collections_skip_active(
-        self,
-        mock_qdrant_manager_class,
-        mock_conn_manager,
-        mock_asyncio_run,
-        mock_audit,
-        mock_timer,
+        self, mock_qdrant_manager_class, mock_conn_manager, mock_asyncio_run, mock_audit, mock_timer
     ) -> None:
         """Test that active collections are skipped."""
         # Setup mocks
@@ -151,12 +141,7 @@ class TestCleanupQdrantCollections:
     @patch("packages.webui.utils.qdrant_manager.qdrant_manager")
     @patch("shared.managers.qdrant_manager.QdrantManager")  # Patch at the actual import location
     def test_cleanup_qdrant_collections_skip_recent_staging(
-        self,
-        mock_qdrant_manager_class,
-        mock_conn_manager,
-        mock_asyncio_run,
-        mock_audit,
-        mock_timer,
+        self, mock_qdrant_manager_class, mock_conn_manager, mock_asyncio_run, mock_audit, mock_timer
     ) -> None:
         """Test that recent staging collections are skipped."""
         # Setup mocks
@@ -197,12 +182,7 @@ class TestCleanupQdrantCollections:
     @patch("packages.webui.utils.qdrant_manager.qdrant_manager")
     @patch("shared.managers.qdrant_manager.QdrantManager")  # Patch at the actual import location
     def test_cleanup_qdrant_collections_successful_deletion(
-        self,
-        mock_qdrant_manager_class,
-        mock_conn_manager,
-        mock_asyncio_run,
-        mock_audit_batch,
-        mock_timer,
+        self, mock_qdrant_manager_class, mock_conn_manager, mock_asyncio_run, mock_audit_batch, mock_timer
     ) -> None:
         """Test successful collection deletion with all safety checks passed."""
         # Setup mocks

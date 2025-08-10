@@ -104,7 +104,7 @@ class TestCORSConfiguration:
     def test_empty_cors_origins_warning(self, mock_logger, mock_embed_service, mock_settings) -> None:
         """Test warning when no valid CORS origins are configured."""
         # Mock settings with invalid origins
-        mock_settings.CORS_ORIGINS = "not-a-url,,"
+        mock_settings.CORS_ORIGINS = "not-a-url,"
         mock_settings.USE_MOCK_EMBEDDINGS = True
         mock_settings.INTERNAL_API_KEY = "test-key"
         mock_settings.ENVIRONMENT = "development"

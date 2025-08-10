@@ -192,10 +192,7 @@ class TestSearchSingleCollection:
             mock_client.post.return_value = mock_response_obj
 
             result = await search_service.search_single_collection(
-                collection=mock_collection,
-                query="test query",
-                k=10,
-                search_params={"search_type": "semantic"},
+                collection=mock_collection, query="test query", k=10, search_params={"search_type": "semantic"}
             )
 
             assert result[0] == mock_collection
@@ -221,10 +218,7 @@ class TestSearchSingleCollection:
         mock_collection.status = CollectionStatus.PROCESSING
 
         result = await search_service.search_single_collection(
-            collection=mock_collection,
-            query="test query",
-            k=10,
-            search_params={},
+            collection=mock_collection, query="test query", k=10, search_params={}
         )
 
         assert result[0] == mock_collection
@@ -252,10 +246,7 @@ class TestSearchSingleCollection:
             ]
 
             result = await search_service.search_single_collection(
-                collection=mock_collection,
-                query="test query",
-                k=10,
-                search_params={},
+                collection=mock_collection, query="test query", k=10, search_params={}
             )
 
             assert result[0] == mock_collection
@@ -288,10 +279,7 @@ class TestSearchSingleCollection:
             ]
 
             result = await search_service.search_single_collection(
-                collection=mock_collection,
-                query="test query",
-                k=10,
-                search_params={},
+                collection=mock_collection, query="test query", k=10, search_params={}
             )
 
             assert result[0] == mock_collection
@@ -324,10 +312,7 @@ class TestSearchSingleCollection:
                 )
 
                 result = await search_service.search_single_collection(
-                    collection=mock_collection,
-                    query="test query",
-                    k=10,
-                    search_params={},
+                    collection=mock_collection, query="test query", k=10, search_params={}
                 )
 
                 assert result[0] == mock_collection
@@ -345,10 +330,7 @@ class TestSearchSingleCollection:
             mock_client.post.side_effect = httpx.ConnectError("Cannot connect")
 
             result = await search_service.search_single_collection(
-                collection=mock_collection,
-                query="test query",
-                k=10,
-                search_params={},
+                collection=mock_collection, query="test query", k=10, search_params={}
             )
 
             assert result[0] == mock_collection
@@ -366,10 +348,7 @@ class TestSearchSingleCollection:
             mock_client.post.side_effect = httpx.RequestError("Network error")
 
             result = await search_service.search_single_collection(
-                collection=mock_collection,
-                query="test query",
-                k=10,
-                search_params={},
+                collection=mock_collection, query="test query", k=10, search_params={}
             )
 
             assert result[0] == mock_collection
@@ -387,10 +366,7 @@ class TestSearchSingleCollection:
             mock_client.post.side_effect = ValueError("Unexpected error")
 
             result = await search_service.search_single_collection(
-                collection=mock_collection,
-                query="test query",
-                k=10,
-                search_params={},
+                collection=mock_collection, query="test query", k=10, search_params={}
             )
 
             assert result[0] == mock_collection
@@ -413,11 +389,7 @@ class TestSearchSingleCollection:
             mock_client.post.return_value = mock_response_obj
 
             await search_service.search_single_collection(
-                collection=mock_collection,
-                query="test query",
-                k=10,
-                search_params={},
-                timeout=custom_timeout,
+                collection=mock_collection, query="test query", k=10, search_params={}, timeout=custom_timeout
             )
 
             # Verify custom timeout was used
@@ -590,10 +562,7 @@ class TestMultiCollectionSearch:
             ]
 
             result = await search_service.multi_collection_search(
-                user_id=1,
-                collection_uuids=[c.id for c in ready_collections],
-                query="test query",
-                k=10,
+                user_id=1, collection_uuids=[c.id for c in ready_collections], query="test query", k=10
             )
 
             # Should have results from successful collection
@@ -669,10 +638,7 @@ class TestMultiCollectionSearch:
             mock_client.post.return_value = mock_response_obj
 
             result = await search_service.multi_collection_search(
-                user_id=1,
-                collection_uuids=[mock_collection.id],
-                query="test query",
-                k=10,
+                user_id=1, collection_uuids=[mock_collection.id], query="test query", k=10
             )
 
             assert len(result["results"]) == 0
@@ -689,11 +655,7 @@ class TestMultiCollectionSearch:
         )
 
         with pytest.raises(AccessDeniedError):
-            await search_service.multi_collection_search(
-                user_id=1,
-                collection_uuids=["some-uuid"],
-                query="test query",
-            )
+            await search_service.multi_collection_search(user_id=1, collection_uuids=["some-uuid"], query="test query")
 
 
 class TestSingleCollectionSearch:
@@ -803,9 +765,7 @@ class TestSingleCollectionSearch:
 
             with pytest.raises(EntityNotFoundError) as exc_info:
                 await search_service.single_collection_search(
-                    user_id=1,
-                    collection_uuid=mock_collection.id,
-                    query="test query",
+                    user_id=1, collection_uuid=mock_collection.id, query="test query"
                 )
 
             assert f"collection with ID '{mock_collection.id}' not found" in str(exc_info.value)
@@ -822,9 +782,7 @@ class TestSingleCollectionSearch:
 
             with pytest.raises(AccessDeniedError) as exc_info:
                 await search_service.single_collection_search(
-                    user_id=1,
-                    collection_uuid=mock_collection.id,
-                    query="test query",
+                    user_id=1, collection_uuid=mock_collection.id, query="test query"
                 )
 
             assert f"User '1' does not have access to collection '{mock_collection.id}'" in str(exc_info.value)
@@ -841,9 +799,7 @@ class TestSingleCollectionSearch:
 
             with pytest.raises(httpx.HTTPStatusError):
                 await search_service.single_collection_search(
-                    user_id=1,
-                    collection_uuid=mock_collection.id,
-                    query="test query",
+                    user_id=1, collection_uuid=mock_collection.id, query="test query"
                 )
 
     @pytest.mark.asyncio()
@@ -860,9 +816,7 @@ class TestSingleCollectionSearch:
 
             with pytest.raises(ValueError, match="Some error"):
                 await search_service.single_collection_search(
-                    user_id=1,
-                    collection_uuid=mock_collection.id,
-                    query="test query",
+                    user_id=1, collection_uuid=mock_collection.id, query="test query"
                 )
 
     @pytest.mark.asyncio()
@@ -875,11 +829,7 @@ class TestSingleCollectionSearch:
         )
 
         with pytest.raises(AccessDeniedError):
-            await search_service.single_collection_search(
-                user_id=1,
-                collection_uuid="some-uuid",
-                query="test query",
-            )
+            await search_service.single_collection_search(user_id=1, collection_uuid="some-uuid", query="test query")
 
 
 class TestSearchServiceEdgeCases:
@@ -904,11 +854,7 @@ class TestSearchServiceEdgeCases:
             ]
 
             await search_service.search_single_collection(
-                collection=mock_collection,
-                query="test query",
-                k=10,
-                search_params={},
-                timeout=partial_timeout,
+                collection=mock_collection, query="test query", k=10, search_params={}, timeout=partial_timeout
             )
 
             # Verify retry used default values when original was None
@@ -944,9 +890,7 @@ class TestSearchServiceEdgeCases:
             mock_client.post.side_effect = response_objs
 
             result = await search_service.multi_collection_search(
-                user_id=1,
-                collection_uuids=[c.id for c in all_collections],
-                query="test query",
+                user_id=1, collection_uuids=[c.id for c in all_collections], query="test query"
             )
 
             # Should only search 2 ready collections
@@ -986,10 +930,7 @@ class TestSearchServiceEdgeCases:
             ]
 
             result = await search_service.search_single_collection(
-                collection=mock_collection,
-                query="test query",
-                k=10,
-                search_params={},
+                collection=mock_collection, query="test query", k=10, search_params={}
             )
 
             assert result[0] == mock_collection
@@ -1029,9 +970,7 @@ class TestSearchServiceEdgeCases:
             start_time = time.time()
 
             await search_service.multi_collection_search(
-                user_id=1,
-                collection_uuids=[c.id for c in ready_collections],
-                query="test query",
+                user_id=1, collection_uuids=[c.id for c in ready_collections], query="test query"
             )
 
             elapsed_time = time.time() - start_time

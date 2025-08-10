@@ -153,7 +153,6 @@ async def recommend_strategy(
     try:
         recommendation = await service.recommend_strategy(
             file_types=file_types,
-            user_id=current_user["id"],
         )
 
         return StrategyRecommendation(
@@ -245,13 +244,10 @@ async def generate_preview(
 
         # Generate preview
         result = await service.preview_chunking(
-            document_id=preview_request.document_id,
-            content=preview_request.content,
+            content=preview_request.content or "",
             strategy=preview_request.strategy,
             config=preview_request.config.model_dump() if preview_request.config else None,
             max_chunks=preview_request.max_chunks,
-            include_metrics=preview_request.include_metrics,
-            user_id=current_user["id"],
         )
 
         # Ensure config has strategy field
@@ -329,13 +325,10 @@ async def compare_strategies(
 
             try:
                 result = await service.preview_chunking(
-                    document_id=compare_request.document_id,
-                    content=compare_request.content,
+                    content=compare_request.content or "",
                     strategy=strategy,
                     config=config,
                     max_chunks=compare_request.max_chunks_per_strategy,
-                    include_metrics=True,
-                    user_id=current_user["id"],
                 )
 
                 strategy_def = ChunkingStrategyRegistry.get_strategy_definition(strategy)
@@ -453,7 +446,7 @@ async def clear_preview_cache(
     Clear cached preview results for a specific preview ID.
     """
     try:
-        await service.clear_preview_cache(preview_id, user_id=current_user["id"])
+        await service.clear_preview_cache(preview_id)
     except Exception as e:
         logger.warning(f"Failed to clear preview cache: {e}")
         # Don't raise error for cache clear failures
@@ -497,8 +490,7 @@ async def start_chunking_operation(
         validation_result = await service.validate_config_for_collection(
             collection_id=collection_id,
             strategy=chunking_request.strategy.value,
-            config=chunking_request.config.model_dump() if chunking_request.config else None,
-            user_id=current_user["id"],
+            config=chunking_request.config.model_dump() if chunking_request.config else {},
         )
 
         # Check if configuration is valid
@@ -526,23 +518,21 @@ async def start_chunking_operation(
         websocket_channel, _ = await service.start_chunking_operation(
             collection_id=collection_id,
             strategy=chunking_request.strategy.value,
-            config=chunking_request.config.model_dump() if chunking_request.config else None,
-            document_ids=chunking_request.document_ids,
+            config=chunking_request.config.model_dump() if chunking_request.config else {},
             user_id=current_user["id"],
-            operation_data=operation,
         )
 
         # Queue the chunking task
         background_tasks.add_task(
             process_chunking_operation,
-            operation_id=operation["uuid"],
-            collection_id=collection_id,
-            strategy=chunking_request.strategy,
-            config=chunking_request.config,
-            document_ids=chunking_request.document_ids,
-            user_id=current_user["id"],
-            websocket_channel=websocket_channel,
-            service=service,
+            operation["uuid"],
+            collection_id,
+            chunking_request.strategy,
+            chunking_request.config,
+            chunking_request.document_ids,
+            current_user["id"],
+            websocket_channel,
+            service,
         )
 
         return ChunkingOperationResponse(
@@ -618,14 +608,14 @@ async def update_chunking_strategy(
             # Queue reprocessing task
             background_tasks.add_task(
                 process_chunking_operation,
-                operation_id=operation["uuid"],
-                collection_id=collection_id,
-                strategy=update_request.strategy,
-                config=update_request.config,
-                document_ids=None,  # Process all documents
-                user_id=current_user["id"],
-                websocket_channel=websocket_channel,
-                service=service,
+                operation["uuid"],
+                collection_id,
+                update_request.strategy,
+                update_request.config,
+                None,  # Process all documents
+                current_user["id"],
+                websocket_channel,
+                service,
             )
 
             return ChunkingOperationResponse(
@@ -717,20 +707,19 @@ async def get_chunking_stats(
     try:
         stats = await service.get_chunking_statistics(
             collection_id=collection_id,
-            user_id=current_user["id"],
         )
 
         return ChunkingStats(
-            total_chunks=stats.total_chunks,
-            total_documents=stats.total_documents,
-            avg_chunk_size=stats.average_chunk_size,
-            min_chunk_size=getattr(stats, "min_chunk_size", 0),
-            max_chunk_size=getattr(stats, "max_chunk_size", 0),
-            size_variance=getattr(stats, "size_variance", 0.0),
-            strategy_used=ChunkingStrategy(getattr(stats, "strategy", "fixed_size")),
-            last_updated=getattr(stats, "last_updated", datetime.now(UTC)),
-            processing_time_seconds=getattr(stats, "processing_time", 0.0),
-            quality_metrics=stats.performance_metrics if hasattr(stats, "performance_metrics") else {},
+            total_chunks=stats.get("total_chunks", 0),
+            total_documents=stats.get("total_documents", 0),
+            avg_chunk_size=stats.get("average_chunk_size", 0),
+            min_chunk_size=stats.get("min_chunk_size", 0),
+            max_chunk_size=stats.get("max_chunk_size", 0),
+            size_variance=stats.get("size_variance", 0.0),
+            strategy_used=ChunkingStrategy(stats.get("strategy", "fixed_size")),
+            last_updated=stats.get("last_updated", datetime.now(UTC)),
+            processing_time_seconds=stats.get("processing_time", 0.0),
+            quality_metrics=stats.get("performance_metrics", {}),
         )
 
     except Exception as e:
@@ -884,7 +873,6 @@ async def analyze_document(
         # Would perform actual document analysis
         recommendation = await service.recommend_strategy(
             file_types=[analysis_request.file_type] if analysis_request.file_type else [],
-            user_id=current_user["id"],
         )
 
         return DocumentAnalysisResponse(
@@ -1015,7 +1003,6 @@ async def get_operation_progress(
     try:
         progress = await service.get_chunking_progress(
             operation_id=operation_id,
-            user_id=current_user["id"],
         )
 
         if not progress:
@@ -1049,12 +1036,12 @@ async def get_operation_progress(
 # Background task helper
 async def process_chunking_operation(
     operation_id: str,
-    collection_id: str,
-    strategy: ChunkingStrategy,
-    config: ChunkingConfigBase | None,
-    document_ids: list[str] | None,
-    user_id: int,
-    websocket_channel: str,
+    _collection_id: str,
+    _strategy: ChunkingStrategy,
+    _config: ChunkingConfigBase | None,
+    _document_ids: list[str] | None,
+    _user_id: int,
+    _websocket_channel: str,
     service: ChunkingService,
 ) -> None:
     """
@@ -1063,10 +1050,4 @@ async def process_chunking_operation(
     """
     await service.process_chunking_operation(
         operation_id=operation_id,
-        collection_id=collection_id,
-        strategy=strategy.value,
-        config=config.model_dump() if config else None,
-        document_ids=document_ids,
-        user_id=user_id,
-        websocket_channel=websocket_channel,
     )
