@@ -85,13 +85,41 @@ class TestMemoryPool:
     
     def test_clear_pool(self):
         """Test clearing the pool."""
-        import pytest
-        pytest.skip("Temporarily skipping test_clear_pool due to hanging issue")
+        pool = MemoryPool(buffer_size=256, pool_size=3)
+        
+        # Acquire and release to generate statistics
+        buffer_id, _ = pool.acquire_sync()
+        pool.release(buffer_id)
+        
+        # Stats before clear
+        stats = pool.get_statistics()
+        assert stats['total_acquisitions'] == 1
+        assert stats['total_releases'] == 1
+        
+        # Clear the pool
+        pool.clear()
+        
+        # Stats after clear should be reset
+        stats = pool.get_statistics()
+        assert stats['total_acquisitions'] == 0
+        assert stats['total_releases'] == 0
+        assert stats['available'] == 3
+        assert stats['in_use'] == 0
     
     def test_clear_with_buffers_in_use(self):
         """Test that clear fails when buffers are in use."""
-        import pytest
-        pytest.skip("Temporarily skipping test involving pool.clear() due to hanging issue")
+        pool = MemoryPool(buffer_size=128, pool_size=2)
+        
+        # Acquire a buffer
+        buffer_id, _ = pool.acquire_sync()
+        
+        # Try to clear (should fail)
+        with pytest.raises(RuntimeError, match="Cannot clear pool"):
+            pool.clear()
+        
+        # Release and then clear should work
+        pool.release(buffer_id)
+        pool.clear()  # Should not raise
     
     def test_invalid_release(self):
         """Test releasing an invalid buffer ID."""
@@ -111,8 +139,17 @@ class TestMemoryPool:
     
     def test_buffer_clearing_on_acquire(self):
         """Test that buffers are cleared when acquired."""
-        import pytest
-        pytest.skip("Buffer clearing temporarily disabled to fix hanging issue")
+        pool = MemoryPool(buffer_size=10, pool_size=1)
+        
+        # Acquire, modify, and release
+        buffer_id, buffer = pool.acquire_sync()
+        buffer[0:5] = b"hello"
+        pool.release(buffer_id)
+        
+        # Acquire again - should be cleared
+        buffer_id2, buffer2 = pool.acquire_sync()
+        assert buffer_id2 == buffer_id  # Same buffer
+        assert buffer2[0:5] == b"\x00\x00\x00\x00\x00"  # Should be cleared
     
     def test_resize_buffer(self):
         """Test resizing a buffer."""

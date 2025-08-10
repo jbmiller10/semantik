@@ -85,9 +85,7 @@ class MemoryPool:
 
                     # Clear the buffer before returning
                     buffer = self.buffers[buffer_id]
-                    # Skip clearing to avoid hanging in tests - TODO: investigate root cause
-                    # del buffer[:]
-                    # buffer.extend(bytearray(self.buffer_size))
+                    buffer[:] = b"\x00" * len(buffer)
 
                     logger.debug(
                         f"Acquired buffer {buffer_id} (size: {len(buffer)}), "
@@ -141,9 +139,7 @@ class MemoryPool:
 
                     # Clear the buffer before returning
                     buffer = self.buffers[buffer_id]
-                    # Skip clearing to avoid hanging in tests - TODO: investigate root cause
-                    # del buffer[:]
-                    # buffer.extend(bytearray(self.buffer_size))
+                    buffer[:] = b"\x00" * len(buffer)
 
                     logger.debug(
                         f"Acquired buffer {buffer_id} (size: {len(buffer)}), "
@@ -180,10 +176,7 @@ class MemoryPool:
                 raise ValueError(f"Buffer {buffer_id} is not in use")
 
             # Clear sensitive data for security
-            # TODO: Buffer clearing causes hanging in tests - investigate root cause
-            # buffer = self.buffers[buffer_id]
-            # del buffer[:]
-            # buffer.extend(bytearray(self.buffer_size))
+            self.buffers[buffer_id][:] = b"\x00" * len(self.buffers[buffer_id])
 
             # Return to available pool
             self.in_use.remove(buffer_id)
@@ -305,10 +298,9 @@ class MemoryPool:
             if self.in_use:
                 raise RuntimeError(f"Cannot clear pool: {len(self.in_use)} buffers still in use")
 
-            # Clear all buffers - temporarily disabled due to hanging issues
-            # TODO: Investigate why buffer clearing causes hangs in tests
-            # for i in range(len(self.buffers)):
-            #     self.buffers[i] = bytearray(self.buffer_size)
+            # Clear all buffers
+            for buffer in self.buffers:
+                buffer[:] = b"\x00" * len(buffer)
 
             # Reset state
             self.available = deque(range(self.pool_size))
