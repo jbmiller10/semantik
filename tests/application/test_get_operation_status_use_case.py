@@ -28,7 +28,7 @@ class TestGetOperationStatusUseCase:
         """Create mock chunking operation repository."""
         repo = AsyncMock()
         repo.find_by_id = AsyncMock()  # Changed from get_by_id to match implementation
-        repo.find_by_document_id = AsyncMock()
+        repo.find_by_document = AsyncMock()
         return repo
 
     @pytest.fixture()
@@ -249,7 +249,7 @@ class TestGetOperationStatusUseCase:
         operation.chunks_processed = 5
         operation.error_message = None
 
-        use_case.operation_repository.find_by_document_id.return_value = [operation]
+        use_case.operation_repository.find_by_document.return_value = [operation]
 
         # Act
         response = await use_case.execute(request)
@@ -257,7 +257,7 @@ class TestGetOperationStatusUseCase:
         # Assert
         assert response.operation_id == operation.id
         assert response.status == DTOOperationStatus.IN_PROGRESS  # PROCESSING maps to IN_PROGRESS
-        use_case.operation_repository.find_by_document_id.assert_called_once_with("doc-123")
+        use_case.operation_repository.find_by_document.assert_called_once_with("doc-123")
 
     @pytest.mark.asyncio()
     async def test_get_latest_operation_for_document(self, use_case):
@@ -286,7 +286,7 @@ class TestGetOperationStatusUseCase:
         new_operation.updated_at = datetime.now(tz=UTC)
         new_operation.error_message = None
 
-        use_case.operation_repository.find_by_document_id.return_value = [old_operation, new_operation]
+        use_case.operation_repository.find_by_document.return_value = [old_operation, new_operation]
 
         # Act
         response = await use_case.execute(request)

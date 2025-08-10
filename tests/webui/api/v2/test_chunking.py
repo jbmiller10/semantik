@@ -616,18 +616,19 @@ class TestCollectionProcessing:
 
     def test_get_chunking_stats_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test getting chunking statistics for a collection."""
-        # Create a mock object with all the attributes the API expects
-        mock_stats = MagicMock()
-        mock_stats.total_documents = 10
-        mock_stats.total_chunks = 100
-        mock_stats.average_chunk_size = 512
-        mock_stats.min_chunk_size = 100
-        mock_stats.max_chunk_size = 1024
-        mock_stats.size_variance = 50.0
-        mock_stats.strategy = "semantic"
-        mock_stats.last_updated = datetime.now(UTC)
-        mock_stats.processing_time = 120
-        mock_stats.performance_metrics = {"coherence": 0.8, "completeness": 0.9}
+        # Return a dictionary as expected by the endpoint
+        mock_stats = {
+            "total_documents": 10,
+            "total_chunks": 100,
+            "average_chunk_size": 512,
+            "min_chunk_size": 100,
+            "max_chunk_size": 1024,
+            "size_variance": 50.0,
+            "strategy": "semantic",
+            "last_updated": datetime.now(UTC),
+            "processing_time": 120,
+            "performance_metrics": {"coherence": 0.8, "completeness": 0.9},
+        }
 
         mock_chunking_service.get_chunking_statistics.return_value = mock_stats
 

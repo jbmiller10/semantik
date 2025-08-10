@@ -361,7 +361,7 @@ class TestChunkingOperation:
         start_time = datetime.now(tz=UTC)
         timeout_time = start_time + timedelta(seconds=ChunkingOperation.MAX_OPERATION_DURATION_SECONDS + 1)
 
-        mock_datetime.utcnow.side_effect = [start_time, timeout_time]
+        mock_datetime.now.return_value = timeout_time
 
         chunking_operation.start()
         chunking_operation._started_at = start_time

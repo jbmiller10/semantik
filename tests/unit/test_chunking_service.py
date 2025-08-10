@@ -277,7 +277,7 @@ Content under header 2.
         """Test getting chunking statistics."""
         # Mock collection
         mock_collection = MagicMock(id="test-collection", uuid="test-collection")
-        chunking_service.collection_repo.get_by_id = AsyncMock(return_value=mock_collection)
+        chunking_service.collection_repo.get_by_uuid = AsyncMock(return_value=mock_collection)
 
         # Mock operations data
         mock_operations = []
@@ -310,7 +310,7 @@ Content under header 2.
         """Test validating config for collection."""
         # Mock collection
         mock_collection = MagicMock(id="test-collection", uuid="test-collection")
-        chunking_service.collection_repo.get_by_id = AsyncMock(return_value=mock_collection)
+        chunking_service.collection_repo.get_by_uuid = AsyncMock(return_value=mock_collection)
 
         # Mock validator to return valid
         chunking_service.validator.validate_config = MagicMock(return_value=(True, []))
@@ -338,7 +338,7 @@ Content under header 2.
         """Test config validation with invalid parameters."""
         # Mock collection
         mock_collection = MagicMock(id="test-collection", uuid="test-collection")
-        chunking_service.collection_repo.get_by_id = AsyncMock(return_value=mock_collection)
+        chunking_service.collection_repo.get_by_uuid = AsyncMock(return_value=mock_collection)
 
         # Mock validator to return invalid with errors
         chunking_service.validator.validate_config = MagicMock(return_value=(False, ["chunk_size is too large"]))
@@ -458,7 +458,7 @@ Content under header 2.
         mock_operation.status = "in_progress"
         mock_operation.started_at = datetime.now(UTC)
         mock_operation.completed_at = None
-        mock_operation.metadata = {
+        mock_operation.meta = {
             "chunks_processed": 50,
             "total_chunks": 100,
         }

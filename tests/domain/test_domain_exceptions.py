@@ -257,7 +257,7 @@ class TestBusinessRuleEnforcement:
         operation._started_at = start_time
 
         with patch("packages.shared.chunking.domain.entities.chunking_operation.datetime") as mock_datetime:
-            mock_datetime.utcnow.return_value = timeout_time
+            mock_datetime.now.return_value = timeout_time
             is_valid, issues = operation.validate_results()
 
         # Assert

@@ -95,6 +95,7 @@ def chunking_service(
 
     # Setup async methods for collection_repo
     mock_collection_repo.get_by_id = AsyncMock(return_value=MagicMock(id="coll-123", name="Test Collection"))
+    mock_collection_repo.get_by_uuid = AsyncMock(return_value=MagicMock(id="coll-123", name="Test Collection"))
 
     # Create mock Qdrant client
     mock_qdrant = MagicMock()
@@ -772,7 +773,7 @@ class TestProgressTracking:
         mock_operation = SimpleNamespace(
             id=operation_id,
             status="in_progress",
-            metadata={
+            meta={
                 "chunks_processed": 250,
                 "total_chunks": 500,
             },
@@ -804,7 +805,7 @@ class TestProgressTracking:
         mock_operation = SimpleNamespace(
             id=operation_id,
             status="in_progress",
-            metadata={"chunks_processed": 60, "total_chunks": 100},
+            meta={"chunks_processed": 60, "total_chunks": 100},
             started_at=datetime.now(UTC),
             error_message=None,
         )

@@ -608,14 +608,14 @@ async def update_chunking_strategy(
             # Queue reprocessing task
             background_tasks.add_task(
                 process_chunking_operation,
-                operation_id=operation["uuid"],
-                collection_id=collection_id,
-                strategy=update_request.strategy,
-                config=update_request.config,
-                document_ids=None,  # Process all documents
-                user_id=current_user["id"],
-                websocket_channel=websocket_channel,
-                service=service,
+                operation["uuid"],
+                collection_id,
+                update_request.strategy,
+                update_request.config,
+                None,  # Process all documents
+                current_user["id"],
+                websocket_channel,
+                service,
             )
 
             return ChunkingOperationResponse(
