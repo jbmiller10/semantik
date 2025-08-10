@@ -10,7 +10,6 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import text
-from pgvector.sqlalchemy import Vector
 
 
 # revision identifiers, used by Alembic.
@@ -47,7 +46,6 @@ def upgrade() -> None:
             collection_id UUID NOT NULL,
             chunk_index INTEGER NOT NULL,
             content TEXT NOT NULL,
-            embedding vector(1536),
             metadata JSONB DEFAULT '{}',
             document_id VARCHAR,
             chunking_config_id INTEGER,
