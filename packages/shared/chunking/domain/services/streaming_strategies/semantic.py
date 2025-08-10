@@ -8,6 +8,7 @@ bounded memory usage by buffering up to 10 sentences (max 50KB).
 
 import re
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from packages.shared.chunking.domain.entities.chunk import Chunk
@@ -30,10 +31,10 @@ class StreamingSemanticStrategy(StreamingChunkingStrategy):
     MAX_BUFFER_SIZE = 50 * 1024  # 50KB max buffer
     MAX_SENTENCES = 10  # Maximum sentences in buffer
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the streaming semantic strategy."""
         super().__init__("semantic")
-        self._sentence_buffer = []  # Buffer of (sentence, tokens, features)
+        self._sentence_buffer: list[tuple[str, int, dict]] = []  # Buffer of (sentence, tokens, features)
         self._incomplete_sentence = ""  # Incomplete sentence from previous window
         self._chunk_index = 0
         self._char_offset = 0
@@ -50,7 +51,7 @@ class StreamingSemanticStrategy(StreamingChunkingStrategy):
         Returns:
             List of chunks produced from this window
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         # Get text from window
         text = window.decode_safe()
@@ -149,7 +150,7 @@ class StreamingSemanticStrategy(StreamingChunkingStrategy):
         Returns:
             Dictionary of features for similarity comparison
         """
-        features = {
+        features: dict[str, Any] = {
             "length": len(sentence.split()),
             "has_number": bool(re.search(r"\d", sentence)),
             "has_quote": '"' in sentence or "'" in sentence,
@@ -251,7 +252,7 @@ class StreamingSemanticStrategy(StreamingChunkingStrategy):
                 jaccard = intersection / union
                 score += jaccard * 0.4
 
-        return min(1.0, score)
+        return float(min(1.0, score))
 
     def _should_emit_chunk(self) -> bool:
         """
@@ -270,7 +271,7 @@ class StreamingSemanticStrategy(StreamingChunkingStrategy):
             previous_features = [s[2] for s in self._sentence_buffer[-5:-2]]
 
             # Calculate average similarity
-            total_similarity = 0
+            total_similarity = 0.0
             comparisons = 0
 
             for recent in recent_features:
@@ -427,7 +428,7 @@ class StreamingSemanticStrategy(StreamingChunkingStrategy):
         if len(sentences) <= 1:
             return 1.0
 
-        total_similarity = 0
+        total_similarity = 0.0
         comparisons = 0
 
         for i in range(len(sentences) - 1):
@@ -473,7 +474,7 @@ class StreamingSemanticStrategy(StreamingChunkingStrategy):
         Returns:
             List of final chunks
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         # Process incomplete sentence if any
         if self._incomplete_sentence:

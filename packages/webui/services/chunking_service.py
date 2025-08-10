@@ -69,7 +69,7 @@ class SimpleChunkingStrategyFactory:
 
     def get_default_config(self, strategy_type: str) -> dict[str, Any]:
         """Get default configuration for a strategy."""
-        defaults = {
+        defaults: dict[str, dict[str, Any]] = {
             "character": {"chunk_size": 1000, "chunk_overlap": 200},
             "recursive": {"chunk_size": 1000, "chunk_overlap": 200},
             "markdown": {"chunk_size": 1000, "chunk_overlap": 200},
@@ -898,7 +898,7 @@ class ChunkingService:
         Returns:
             Default configuration
         """
-        defaults = {
+        defaults: dict[str, dict[str, Any]] = {
             "character": {
                 "chunk_size": 1000,
                 "chunk_overlap": 200,

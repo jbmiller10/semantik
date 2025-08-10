@@ -7,6 +7,7 @@ ensuring consistent stream processing across different chunking approaches.
 """
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
@@ -31,7 +32,7 @@ class StreamingChunkingStrategy(ABC):
         """
         self._name = name
         self._buffer_size = 0
-        self._state = {}  # Strategy-specific state
+        self._state: dict[str, Any] = {}  # Strategy-specific state
         self._is_finalized = False
 
     @property

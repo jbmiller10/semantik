@@ -45,7 +45,7 @@ class StreamingHybridStrategy(StreamingChunkingStrategy):
     MAX_BUFFER_SIZE = 150 * 1024  # 150KB max buffer
     DETECTION_WINDOW = 1024  # Bytes to analyze for content type
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the streaming hybrid strategy."""
         super().__init__("hybrid")
 
@@ -58,13 +58,13 @@ class StreamingHybridStrategy(StreamingChunkingStrategy):
         }
 
         # State
-        self._current_strategy = None
-        self._content_buffer = []
+        self._current_strategy: StreamingChunkingStrategy | None = None
+        self._content_buffer: list[str] = []
         self._buffer_size = 0
         self._detection_buffer = ""
         self._chunk_index = 0
         self._char_offset = 0
-        self._strategy_scores = {}
+        self._strategy_scores: dict[ContentType, int] = {}
         self._pending_text = ""
 
     async def process_window(self, window: StreamingWindow, config: ChunkConfig, is_final: bool = False) -> list[Chunk]:
@@ -79,7 +79,7 @@ class StreamingHybridStrategy(StreamingChunkingStrategy):
         Returns:
             List of chunks produced from this window
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         # Get text from window
         text = window.decode_safe()
@@ -239,7 +239,7 @@ class StreamingHybridStrategy(StreamingChunkingStrategy):
             scores[ContentType.STRUCTURED] += 15
 
         # Return highest scoring type
-        best_type = max(scores, key=scores.get)
+        best_type = max(scores, key=lambda k: scores[k])
 
         # Store scores for potential strategy switching
         self._strategy_scores = scores
@@ -280,7 +280,7 @@ class StreamingHybridStrategy(StreamingChunkingStrategy):
 
         return False
 
-    def _split_into_sections(self, text: str, is_final: bool) -> list[tuple[str, ContentType | None]]:
+    def _split_into_sections(self, text: str, is_final: bool) -> list[tuple[str, ContentType]]:
         """
         Split text into logical sections.
 
@@ -385,7 +385,7 @@ class StreamingHybridStrategy(StreamingChunkingStrategy):
         Returns:
             List of final chunks
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         # Process pending text
         if self._pending_text:

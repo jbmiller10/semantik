@@ -27,13 +27,44 @@ class StreamingCharacterStrategy(StreamingChunkingStrategy):
     while using minimal memory.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the streaming character chunking strategy."""
         super().__init__("character")
         self._overlap_buffer = ""
         self._chunk_index = 0
         self._byte_offset = 0
         self._char_offset = 0
+
+    def find_word_boundary(self, text: str, target_position: int, prefer_before: bool = True) -> int:
+        """
+        Find the nearest word boundary to a target position.
+
+        Args:
+            text: The text to search in
+            target_position: Target character position
+            prefer_before: If True, prefer boundary before target
+
+        Returns:
+            Position of nearest word boundary
+        """
+        if not text or target_position < 0:
+            return 0
+
+        if target_position >= len(text):
+            return len(text)
+
+        if prefer_before:
+            # Search backwards for a word boundary
+            for i in range(target_position, -1, -1):
+                if i < len(text) and (text[i].isspace() or text[i] in '.,;:!?"'):
+                    # Return position after the boundary character
+                    return min(i + 1, len(text))
+            return 0
+        # Search forwards for a word boundary
+        for i in range(target_position, len(text)):
+            if text[i].isspace() or text[i] in '.,;:!?"':
+                return i
+        return len(text)
 
     async def process_window(self, window: StreamingWindow, config: ChunkConfig, is_final: bool = False) -> list[Chunk]:
         """
@@ -47,7 +78,7 @@ class StreamingCharacterStrategy(StreamingChunkingStrategy):
         Returns:
             List of chunks produced from this window
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         # Get text from window
         text = window.decode_safe()
@@ -162,7 +193,7 @@ class StreamingCharacterStrategy(StreamingChunkingStrategy):
         Returns:
             List of final chunks
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         # Process any remaining overlap buffer as final text
         if self._overlap_buffer:

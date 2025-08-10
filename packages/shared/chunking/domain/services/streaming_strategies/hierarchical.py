@@ -87,7 +87,7 @@ class StreamingHierarchicalStrategy(StreamingChunkingStrategy):
     MAX_BUFFER_SIZE = 10 * 1024  # 10KB max buffer
     MAX_TREE_DEPTH = 5  # Maximum tree depth
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the streaming hierarchical strategy."""
         super().__init__("hierarchical")
         self._root = TreeNode(content="", level=0, node_type="root")
@@ -108,7 +108,7 @@ class StreamingHierarchicalStrategy(StreamingChunkingStrategy):
         Returns:
             List of chunks produced from this window
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         # Get text from window
         text = window.decode_safe()
@@ -272,7 +272,7 @@ class StreamingHierarchicalStrategy(StreamingChunkingStrategy):
         Returns:
             List of chunks from pruned nodes
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         # Prune from root
         pruned_nodes = self._root.prune_to_size(self.MAX_BUFFER_SIZE // 2)
@@ -294,7 +294,7 @@ class StreamingHierarchicalStrategy(StreamingChunkingStrategy):
         Returns:
             List of chunks from deep branches
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         def find_deep_branches(node: TreeNode, depth: int = 0) -> list[TreeNode]:
             deep = []
@@ -330,7 +330,7 @@ class StreamingHierarchicalStrategy(StreamingChunkingStrategy):
         Returns:
             List of chunks from subtrees
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         # Find complete sections
         sections_to_emit = []
@@ -361,7 +361,7 @@ class StreamingHierarchicalStrategy(StreamingChunkingStrategy):
         Returns:
             List of final chunks
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         # Process pending text
         if self._pending_text:
@@ -406,7 +406,7 @@ class StreamingHierarchicalStrategy(StreamingChunkingStrategy):
             return None
 
         # Calculate hierarchy path
-        hierarchy_path = []
+        hierarchy_path: list[str] = []
         current = node
         while current and current.parent:
             if current.node_type == "heading":

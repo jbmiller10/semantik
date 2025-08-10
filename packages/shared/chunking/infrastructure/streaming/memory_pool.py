@@ -12,6 +12,7 @@ import os
 import time
 from collections import deque
 from threading import Lock
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ class MemoryPool:
         self.available = deque(range(pool_size))
 
         # Track buffers in use
-        self.in_use = set()
+        self.in_use: set[int] = set()
 
         # Thread safety
         self._lock = Lock()
@@ -348,11 +349,11 @@ class MemoryPool:
                 f"in_use={len(self.in_use)})"
             )
 
-    def __enter__(self):
+    def __enter__(self) -> "MemoryPool":
         """Context manager entry."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Context manager exit - ensure all buffers returned."""
         if self.in_use:
             # Log warning but don't raise - buffers will be GC'd

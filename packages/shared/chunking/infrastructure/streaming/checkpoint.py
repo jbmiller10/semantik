@@ -14,8 +14,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import aiofiles
-import aiofiles.os
+import aiofiles  # type: ignore[import-untyped]
+import aiofiles.os  # type: ignore[import-untyped]
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class StreamingCheckpoint:
     # Processing state
     last_window_content: str = ""
     pending_bytes: bytes = b""
-    processing_stats: dict[str, Any] = None
+    processing_stats: dict[str, Any] | None = None
 
     def to_dict(self) -> dict:
         """Convert checkpoint to dictionary for serialization."""

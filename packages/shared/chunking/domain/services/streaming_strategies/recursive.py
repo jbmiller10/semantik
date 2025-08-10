@@ -28,11 +28,11 @@ class StreamingRecursiveStrategy(StreamingChunkingStrategy):
 
     MAX_BUFFER_SIZE = 10 * 1024  # 10KB max buffer
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the streaming recursive strategy."""
         super().__init__("recursive")
-        self._paragraph_buffer = []  # Buffer for current paragraph
-        self._current_chunk = []  # Current chunk being built
+        self._paragraph_buffer: list[str] = []  # Buffer for current paragraph
+        self._current_chunk: list[str] = []  # Current chunk being built
         self._current_chunk_size = 0  # Size in tokens
         self._chunk_index = 0
         self._char_offset = 0
@@ -50,7 +50,7 @@ class StreamingRecursiveStrategy(StreamingChunkingStrategy):
         Returns:
             List of chunks produced from this window
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         # Get text from window
         text = window.decode_safe()
@@ -107,7 +107,7 @@ class StreamingRecursiveStrategy(StreamingChunkingStrategy):
         Returns:
             List of chunks created
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         # Split paragraph into sentences
         sentences = self._split_sentences(paragraph)
@@ -151,7 +151,7 @@ class StreamingRecursiveStrategy(StreamingChunkingStrategy):
         Returns:
             List of chunks created
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         # Process sentence by sentence without buffering entire paragraph
         sentences = self._split_sentences(paragraph)
@@ -162,7 +162,7 @@ class StreamingRecursiveStrategy(StreamingChunkingStrategy):
             if sentence_size > self.MAX_BUFFER_SIZE:
                 # Split sentence by words
                 words = sentence.split()
-                word_buffer = []
+                word_buffer: list[str] = []
                 word_buffer_size = 0
 
                 for word in words:
@@ -320,7 +320,7 @@ class StreamingRecursiveStrategy(StreamingChunkingStrategy):
         Returns:
             List of final chunks
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         # Process pending text
         if self._pending_text:

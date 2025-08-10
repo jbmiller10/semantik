@@ -43,18 +43,18 @@ class StreamingMarkdownStrategy(StreamingChunkingStrategy):
 
     MAX_BUFFER_SIZE = 100 * 1024  # 100KB max buffer
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the streaming Markdown strategy."""
         super().__init__("markdown")
-        self._heading_stack = []  # Current heading hierarchy
-        self._current_section = []  # Current section content
+        self._heading_stack: list[str] = []  # Current heading hierarchy
+        self._current_section: list[str] = []  # Current section content
         self._section_size = 0  # Size in bytes
         self._in_code_block = False  # Track if we're in a code block
         self._code_fence = ""  # The fence used (``` or ~~~)
-        self._pending_lines = []  # Lines from previous window
+        self._pending_lines: list[str] = []  # Lines from previous window
         self._chunk_index = 0
         self._char_offset = 0
-        self._table_buffer = []  # Buffer for table rows
+        self._table_buffer: list[str] = []  # Buffer for table rows
         self._in_table = False
 
     async def process_window(self, window: StreamingWindow, config: ChunkConfig, is_final: bool = False) -> list[Chunk]:
@@ -69,7 +69,7 @@ class StreamingMarkdownStrategy(StreamingChunkingStrategy):
         Returns:
             List of chunks produced from this window
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         # Get text from window
         text = window.decode_safe()
@@ -225,7 +225,7 @@ class StreamingMarkdownStrategy(StreamingChunkingStrategy):
         Returns:
             List of chunks if section boundary detected
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         # Extract heading level
         match = re.match(r"^(#{1,6})\s+(.+)$", line.strip())
@@ -271,7 +271,7 @@ class StreamingMarkdownStrategy(StreamingChunkingStrategy):
         Returns:
             List of chunks if table completed
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         # Simple table detection
         if "|" in line:
@@ -428,7 +428,7 @@ class StreamingMarkdownStrategy(StreamingChunkingStrategy):
         Returns:
             List of final chunks
         """
-        chunks = []
+        chunks: list[Chunk] = []
 
         # Process pending lines
         if self._pending_lines:

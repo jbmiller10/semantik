@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-import aiofiles
+import aiofiles  # type: ignore[import-untyped]
 import redis.asyncio as redis
 
 from packages.shared.chunking.domain.entities.chunk import Chunk
@@ -113,11 +113,11 @@ class StreamingDocumentProcessor:
             UnicodeDecodeError: If file encoding invalid
         """
         # Validate file
-        file_path = Path(file_path)
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
+        file_path_obj = Path(file_path)
+        if not file_path_obj.exists():
+            raise FileNotFoundError(f"File not found: {file_path_obj}")
 
-        file_size = file_path.stat().st_size
+        file_size = file_path_obj.stat().st_size
         operation_id = operation_id or str(uuid4())
         self.current_operation_id = operation_id
 
@@ -136,7 +136,7 @@ class StreamingDocumentProcessor:
         document_id = str(uuid4())
 
         try:
-            async with aiofiles.open(file_path, "rb") as file:
+            async with aiofiles.open(file_path_obj, "rb") as file:
                 # Resume from checkpoint if available
                 if checkpoint:
                     await file.seek(checkpoint.byte_position)
@@ -224,7 +224,7 @@ class StreamingDocumentProcessor:
                             await self.checkpoint_manager.save_checkpoint(
                                 operation_id=operation_id,
                                 document_id=document_id,
-                                file_path=str(file_path),
+                                file_path=str(file_path_obj),
                                 byte_position=bytes_processed,
                                 char_position=0,  # Would need char tracking
                                 chunks_processed=chunks_processed,
