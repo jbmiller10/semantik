@@ -10,7 +10,7 @@ Tests cover:
 
 import contextlib
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import text
@@ -294,7 +294,7 @@ class TestPartitionPerformance:
                 )
 
         # Measure insert time
-        start_time = datetime.now()
+        start_time = datetime.now(UTC)
 
         # Bulk insert
         for chunk in insert_data:
@@ -310,7 +310,7 @@ class TestPartitionPerformance:
 
         await db_session.commit()
 
-        insert_time = (datetime.now() - start_time).total_seconds()
+        insert_time = (datetime.now(UTC) - start_time).total_seconds()
 
         # Performance assertion - should complete reasonably quickly
         # Adjust threshold based on your performance requirements
@@ -341,7 +341,7 @@ class TestPartitionPerformance:
         await db_session.commit()
 
         # Measure query time
-        start_time = datetime.now()
+        start_time = datetime.now(UTC)
 
         result = await db_session.execute(
             text(
@@ -355,7 +355,7 @@ class TestPartitionPerformance:
         )
 
         rows = result.fetchall()
-        query_time = (datetime.now() - start_time).total_seconds()
+        query_time = (datetime.now(UTC) - start_time).total_seconds()
 
         # Should return correct number of rows
         assert len(rows) == 10
