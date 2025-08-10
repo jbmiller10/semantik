@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Unit tests for startup_tasks module.
 
@@ -6,7 +7,10 @@ This module tests the application startup tasks including
 initialization of default data.
 """
 
+import asyncio
 import logging
+from collections.abc import Generator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -44,7 +48,7 @@ class TestStartupTasks:
         ):
 
             # Mock the async generator
-            async def mock_db_generator():
+            async def mock_db_generator() -> Generator[Any, None, None]:
                 yield mock_session
 
             mock_get_db.return_value = mock_db_generator()
@@ -160,7 +164,7 @@ class TestStartupTasks:
         ):
 
             # Mock the async generator
-            async def mock_db_generator():
+            async def mock_db_generator() -> Generator[Any, None, None]:
                 yield mock_session
 
             mock_get_db.return_value = mock_db_generator()
@@ -190,7 +194,7 @@ class TestStartupTasks:
             patch("packages.webui.startup_tasks.ChunkingStrategyService") as mock_service_class,
         ):
 
-            async def mock_db_generator():
+            async def mock_db_generator() -> Generator[Any, None, None]:
                 yield mock_session
 
             mock_get_db.return_value = mock_db_generator()
@@ -210,7 +214,7 @@ class TestStartupTasks:
         """Test when database is unavailable."""
 
         # Mock the async generator to raise an exception
-        async def mock_db_generator():
+        async def mock_db_generator() -> Generator[Any, None, None]:
             raise Exception("Database connection refused")
             yield  # This won't be reached
 
@@ -262,7 +266,7 @@ class TestStartupTasks:
             patch("packages.webui.startup_tasks.ChunkingStrategyService") as mock_service_class,
         ):
 
-            async def mock_db_generator():
+            async def mock_db_generator() -> Generator[Any, None, None]:
                 yield mock_session
 
             mock_get_db.return_value = mock_db_generator()
@@ -310,11 +314,11 @@ class TestStartupTasks:
             # Create separate generators for each call
             call_count = 0
 
-            def create_db_generator():
+            def create_db_generator() -> None:
                 nonlocal call_count
                 call_count += 1
 
-                async def mock_db_generator():
+                async def mock_db_generator() -> Generator[Any, None, None]:
                     yield mock_session
 
                 return mock_db_generator()
@@ -323,7 +327,6 @@ class TestStartupTasks:
             mock_service_class.return_value = mock_chunking_service
 
             # Run multiple concurrent executions
-            import asyncio
 
             tasks = [ensure_default_data() for _ in range(3)]
             await asyncio.gather(*tasks)

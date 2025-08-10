@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Test checkpoint and resume functionality in streaming processor.
 
@@ -24,7 +25,7 @@ from packages.shared.chunking.infrastructure.streaming.checkpoint import (
 class InterruptibleStrategy(ChunkingStrategy):
     """Chunking strategy that can be interrupted for testing."""
 
-    def __init__(self, interrupt_after: int | None = None):
+    def __init__(self, interrupt_after: int | None = None) -> None:
         super().__init__("interruptible_strategy")  # Pass name to parent constructor
         self.chunks_processed = 0
         self.interrupt_after = interrupt_after
@@ -79,12 +80,12 @@ class TestCheckpointManager:
     """Test suite for checkpoint manager."""
 
     @pytest.fixture()
-    def checkpoint_dir(self):
+    def checkpoint_dir(self) -> None:
         """Create temporary checkpoint directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             yield tmpdir
 
-    async def test_save_and_load_checkpoint(self, checkpoint_dir):
+    async def test_save_and_load_checkpoint(self, checkpoint_dir) -> None:
         """Test saving and loading checkpoints."""
         manager = CheckpointManager(checkpoint_dir)
 
@@ -119,7 +120,7 @@ class TestCheckpointManager:
         assert loaded.pending_bytes == b"incomplete"
         assert loaded.metadata["test"] == "data"
 
-    async def test_delete_checkpoint(self, checkpoint_dir):
+    async def test_delete_checkpoint(self, checkpoint_dir) -> None:
         """Test deleting checkpoints."""
         manager = CheckpointManager(checkpoint_dir)
 
@@ -149,7 +150,7 @@ class TestCheckpointManager:
         loaded = await manager.load_checkpoint(operation_id)
         assert loaded is None
 
-    async def test_checkpoint_interval_logic(self, checkpoint_dir):
+    async def test_checkpoint_interval_logic(self, checkpoint_dir) -> None:
         """Test checkpoint interval determination."""
         manager = CheckpointManager(checkpoint_dir)
 
@@ -161,7 +162,7 @@ class TestCheckpointManager:
         assert manager.should_checkpoint(50 * 1024 * 1024, 0) is False
         assert manager.should_checkpoint(150 * 1024 * 1024, 50 * 1024 * 1024) is True
 
-    async def test_list_checkpoints(self, checkpoint_dir):
+    async def test_list_checkpoints(self, checkpoint_dir) -> None:
         """Test listing all checkpoints."""
         manager = CheckpointManager(checkpoint_dir)
 
@@ -188,7 +189,7 @@ class TestCheckpointManager:
         listed_ids = [cp["operation_id"] for cp in checkpoints]
         assert all(op_id in listed_ids for op_id in operation_ids)
 
-    async def test_cleanup_old_checkpoints(self, checkpoint_dir):
+    async def test_cleanup_old_checkpoints(self, checkpoint_dir) -> None:
         """Test cleanup of old checkpoints."""
         manager = CheckpointManager(checkpoint_dir)
         manager.max_checkpoint_age = 0  # Set to 0 hours for immediate cleanup
@@ -217,7 +218,7 @@ class TestCheckpointManager:
         loaded = await manager.load_checkpoint(operation_id)
         assert loaded is None
 
-    async def test_estimate_progress(self, checkpoint_dir):
+    async def test_estimate_progress(self, checkpoint_dir) -> None:
         """Test progress estimation from checkpoint."""
         manager = CheckpointManager(checkpoint_dir)
 

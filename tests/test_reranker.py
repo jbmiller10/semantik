@@ -3,6 +3,7 @@ Unit tests for CrossEncoderReranker class
 Tests the reranking functionality with mocked models
 """
 
+import importlib.util
 import queue
 import threading
 from collections.abc import Callable, Generator
@@ -12,9 +13,9 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 import torch
 from torch import Tensor
+from vecpipe.reranker import CrossEncoderReranker
 
 # Import the class to test
-from vecpipe.reranker import CrossEncoderReranker
 
 # Test constants
 TEST_MODEL_NAME = "Qwen/Qwen3-Reranker-0.6B"
@@ -782,7 +783,6 @@ class TestAdditionalCoverage:
         mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
     ) -> None:
         """Test flash attention detection logic"""
-        import importlib.util
 
         # Test when flash_attn is available
         with patch.object(importlib.util, "find_spec") as mock_find_spec:

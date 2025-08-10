@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Comprehensive unit tests for HybridChunker.
 
@@ -20,7 +21,7 @@ from packages.shared.text_processing.strategies.hybrid_chunker import ChunkingSt
 class MockChunker:
     """Mock chunker for testing strategy delegation."""
 
-    def __init__(self, strategy_name: str, **kwargs):
+    def __init__(self, strategy_name: str, **kwargs) -> None:
         self.strategy_name = strategy_name
         self.kwargs = kwargs
         self.chunk_count = 0
@@ -94,7 +95,7 @@ This is a markdown document with various elements.
 - Bullet point 3
 
 ```python
-def hello():
+def hello() -> None:
     print("Hello, World!")
 ```
 
@@ -138,7 +139,7 @@ This should still use the default recursive chunker.
         }
 
     @pytest.fixture()
-    def mock_chunking_factory(self):  # noqa: PT004
+    def mock_chunking_factory(self) -> None:  # noqa: PT004
         """Mock ChunkingFactory to return our mock chunkers."""
 
         def create_chunker(config: dict[str, Any]) -> MockChunker:
@@ -153,7 +154,7 @@ This should still use the default recursive chunker.
         ):
             yield
 
-    def test_initialization(self):
+    def test_initialization(self) -> None:
         """Test HybridChunker initialization with various parameters."""
         # Default initialization
         chunker = HybridChunker()
@@ -177,7 +178,7 @@ This should still use the default recursive chunker.
         assert chunker.enable_strategy_override is False
         assert chunker.fallback_strategy == ChunkingStrategy.CHARACTER
 
-    def test_analyze_markdown_content(self, sample_texts):
+    def test_analyze_markdown_content(self, sample_texts) -> None:
         """Test markdown content analysis."""
         chunker = HybridChunker()
 
@@ -214,7 +215,7 @@ This should still use the default recursive chunker.
         assert is_md is False
         assert 0.05 < density < 0.5  # Medium markdown density (adjusted for actual calculation)
 
-    def test_estimate_semantic_coherence(self, sample_texts):
+    def test_estimate_semantic_coherence(self, sample_texts) -> None:
         """Test semantic coherence estimation."""
         chunker = HybridChunker()
 
@@ -234,7 +235,7 @@ This should still use the default recursive chunker.
         coherence = chunker._estimate_semantic_coherence("")
         assert coherence == 0.5  # Default for empty text
 
-    def test_select_strategy_markdown_file(self, sample_texts):
+    def test_select_strategy_markdown_file(self, sample_texts) -> None:
         """Test strategy selection for markdown files."""
         chunker = HybridChunker()
 
@@ -244,7 +245,7 @@ This should still use the default recursive chunker.
         assert strategy == ChunkingStrategy.MARKDOWN
         assert "markdown file extension" in reasoning.lower()
 
-    def test_select_strategy_markdown_density(self, sample_texts):
+    def test_select_strategy_markdown_density(self, sample_texts) -> None:
         """Test strategy selection based on markdown density."""
         chunker = HybridChunker(markdown_threshold=0.2)
 
@@ -252,7 +253,7 @@ This should still use the default recursive chunker.
         assert strategy == ChunkingStrategy.MARKDOWN
         assert "markdown syntax density" in reasoning.lower()
 
-    def test_select_strategy_large_coherent(self, sample_texts):
+    def test_select_strategy_large_coherent(self, sample_texts) -> None:
         """Test strategy selection for large coherent documents."""
         chunker = HybridChunker(
             large_doc_threshold=10000,  # Lower threshold for testing
@@ -264,7 +265,7 @@ This should still use the default recursive chunker.
         assert "large document" in reasoning.lower()
         assert "high semantic coherence" in reasoning.lower()
 
-    def test_select_strategy_semantic(self, sample_texts):
+    def test_select_strategy_semantic(self, sample_texts) -> None:
         """Test strategy selection for semantically coherent text."""
         chunker = HybridChunker(semantic_coherence_threshold=0.4)  # Adjusted based on actual coherence scores
 
@@ -272,7 +273,7 @@ This should still use the default recursive chunker.
         assert strategy == ChunkingStrategy.SEMANTIC
         assert "semantic coherence" in reasoning.lower()
 
-    def test_select_strategy_default(self, sample_texts):
+    def test_select_strategy_default(self, sample_texts) -> None:
         """Test default strategy selection."""
         chunker = HybridChunker()
 
@@ -280,7 +281,7 @@ This should still use the default recursive chunker.
         assert strategy == ChunkingStrategy.RECURSIVE
         assert "general text" in reasoning.lower()
 
-    def test_select_strategy_override(self, sample_texts):
+    def test_select_strategy_override(self, sample_texts) -> None:
         """Test manual strategy override."""
         chunker = HybridChunker(enable_strategy_override=True)
 
@@ -294,7 +295,7 @@ This should still use the default recursive chunker.
         strategy, params, reasoning = chunker_no_override._select_strategy(sample_texts["general"], metadata)
         assert strategy != ChunkingStrategy.CHARACTER  # Should ignore override
 
-    def test_chunk_text_sync(self, sample_texts, mock_chunking_factory):
+    def test_chunk_text_sync(self, sample_texts, mock_chunking_factory) -> None:
         """Test synchronous chunking with various strategies."""
         chunker = HybridChunker()
 
@@ -318,7 +319,7 @@ This should still use the default recursive chunker.
         assert chunks == []
 
     @pytest.mark.asyncio()
-    async def test_chunk_text_async(self, sample_texts, mock_chunking_factory):
+    async def test_chunk_text_async(self, sample_texts, mock_chunking_factory) -> None:
         """Test asynchronous chunking."""
         chunker = HybridChunker(semantic_coherence_threshold=0.4)  # Adjusted threshold
 
@@ -330,7 +331,7 @@ This should still use the default recursive chunker.
         assert all(chunk.metadata.get("hybrid_chunker") is True for chunk in chunks)
         assert all(chunk.metadata.get("selected_strategy") == "semantic" for chunk in chunks)
 
-    def test_chunker_caching(self, mock_chunking_factory):
+    def test_chunker_caching(self, mock_chunking_factory) -> None:
         """Test that chunkers are cached properly."""
         chunker = HybridChunker()
 
@@ -346,19 +347,19 @@ This should still use the default recursive chunker.
         chunker3 = chunker._get_chunker("recursive", {"chunk_size": 200})
         assert chunker3 is not chunker1  # Different instance due to different params
 
-    def test_fallback_on_strategy_failure(self, sample_texts):
+    def test_fallback_on_strategy_failure(self, sample_texts) -> None:
         """Test fallback mechanism when primary strategy fails."""
         chunker = HybridChunker(fallback_strategy=ChunkingStrategy.RECURSIVE)
 
         # Mock chunker to fail during chunk_text, not during creation
         # This tests the actual fallback logic in chunk_text method
         class FailingMockChunker(MockChunker):
-            def chunk_text(self, *args, **kwargs):
+            def chunk_text(self, *args, **kwargs) -> None:
                 if self.strategy_name == "markdown":
                     raise RuntimeError("Markdown chunking failed")
                 return super().chunk_text(*args, **kwargs)
 
-        def create_chunker_for_fallback_test(config):
+        def create_chunker_for_fallback_test(config) -> None:
             strategy = config.get("strategy", "unknown")
             return FailingMockChunker(strategy, **config.get("params", {}))
 
@@ -378,12 +379,12 @@ This should still use the default recursive chunker.
                 assert chunk.metadata.get("fallback_used") is True
                 assert chunk.metadata.get("original_strategy_failed") == ChunkingStrategy.MARKDOWN.value
 
-    def test_emergency_single_chunk(self, sample_texts):
+    def test_emergency_single_chunk(self, sample_texts) -> None:
         """Test emergency single chunk creation when all strategies fail."""
         chunker = HybridChunker()
 
         # Mock all chunker creation to fail
-        def always_fail_create_chunker(config):  # noqa: ARG001
+        def always_fail_create_chunker(config) -> None:  # noqa: ARG001
             raise RuntimeError("All chunkers fail for testing")
 
         with patch(
@@ -402,7 +403,7 @@ This should still use the default recursive chunker.
             assert chunks[0].metadata.get("selected_strategy") == "emergency_single_chunk"
             assert chunks[0].metadata.get("all_strategies_failed") is True
 
-    def test_validate_config(self):
+    def test_validate_config(self) -> None:
         """Test configuration validation."""
         chunker = HybridChunker()
 
@@ -432,7 +433,7 @@ This should still use the default recursive chunker.
         # Invalid fallback strategy
         assert chunker.validate_config({"fallback_strategy": "unknown"}) is False
 
-    def test_estimate_chunks(self):
+    def test_estimate_chunks(self) -> None:
         """Test chunk estimation for different document sizes."""
         chunker = HybridChunker(large_doc_threshold=50000)
 
@@ -455,7 +456,7 @@ This should still use the default recursive chunker.
         estimate = chunker.estimate_chunks(1000, config_bad_overlap)
         assert estimate >= 1  # Should handle gracefully
 
-    def test_threshold_boundaries(self, sample_texts):
+    def test_threshold_boundaries(self, sample_texts) -> None:
         """Test edge cases around threshold boundaries."""
         # Test markdown threshold boundary
         chunker = HybridChunker(markdown_threshold=0.1)
@@ -475,7 +476,7 @@ This should still use the default recursive chunker.
         strategy, _, _ = chunker._select_strategy(exactly_100_chars, None)
         assert strategy in list(ChunkingStrategy)  # Should select a valid strategy
 
-    def test_metadata_preservation(self, sample_texts, mock_chunking_factory):
+    def test_metadata_preservation(self, sample_texts, mock_chunking_factory) -> None:
         """Test that original metadata is preserved and enhanced."""
         chunker = HybridChunker()
 
@@ -496,7 +497,7 @@ This should still use the default recursive chunker.
             assert chunk.metadata.get("hybrid_chunker") is True
             assert "selected_strategy" in chunk.metadata
 
-    def test_logging_output(self, sample_texts, mock_chunking_factory, caplog):
+    def test_logging_output(self, sample_texts, mock_chunking_factory, caplog) -> None:
         """Test that appropriate logging is produced."""
         chunker = HybridChunker()
 
@@ -508,7 +509,7 @@ This should still use the default recursive chunker.
         assert any("Document log_test:" in record.message for record in caplog.records)
 
     @pytest.mark.asyncio()
-    async def test_concurrent_async_chunking(self, sample_texts, mock_chunking_factory):
+    async def test_concurrent_async_chunking(self, sample_texts, mock_chunking_factory) -> None:
         """Test concurrent async chunking operations."""
         chunker = HybridChunker()
 
@@ -526,14 +527,14 @@ This should still use the default recursive chunker.
         assert all(len(result) > 0 for result in results)
         assert all(all(chunk.metadata.get("hybrid_chunker") is True for chunk in result) for result in results)
 
-    def test_strategy_params_propagation(self, mock_chunking_factory):
+    def test_strategy_params_propagation(self, mock_chunking_factory) -> None:
         """Test that strategy-specific parameters are properly propagated."""
         chunker = HybridChunker()
 
         # Mock the strategy selection to return specific params
         original_select = chunker._select_strategy
 
-        def mock_select_strategy(text, metadata):
+        def mock_select_strategy(text, metadata) -> None:
             strategy, _, reasoning = original_select(text, metadata)
             params = {"custom_param": "custom_value", "chunk_size": 200}
             return strategy, params, reasoning
@@ -546,14 +547,14 @@ This should still use the default recursive chunker.
         # (In real implementation, params would be passed to the actual chunker)
         assert len(chunks) > 0
 
-    def test_character_fallback_as_last_resort(self):
+    def test_character_fallback_as_last_resort(self) -> None:
         """Test that character chunker is used as absolute last resort."""
         chunker = HybridChunker(fallback_strategy=ChunkingStrategy.SEMANTIC)
 
         # Mock the _get_chunker method to track attempts and control behavior
         attempted_strategies = []
 
-        def mock_get_chunker(strategy, params=None):  # noqa: ARG001
+        def mock_get_chunker(strategy, params=None) -> None:  # noqa: ARG001
             attempted_strategies.append(strategy)
 
             # For this test, we want to test the actual fallback logic in chunk_text
@@ -562,7 +563,7 @@ This should still use the default recursive chunker.
                 mock_chunker = MockChunker(strategy)
 
                 # Override chunk_text to raise an error
-                def failing_chunk_text(*args, **kwargs):  # noqa: ARG001
+                def failing_chunk_text(*args, **kwargs) -> None:  # noqa: ARG001
                     raise RuntimeError("Markdown chunking failed")
 
                 mock_chunker.chunk_text = failing_chunk_text
@@ -571,7 +572,7 @@ This should still use the default recursive chunker.
                 mock_chunker = MockChunker(strategy)
 
                 # Also make semantic fail
-                def failing_chunk_text(*args, **kwargs):  # noqa: ARG001
+                def failing_chunk_text(*args, **kwargs) -> None:  # noqa: ARG001
                     raise RuntimeError("Semantic chunking failed")
 
                 mock_chunker.chunk_text = failing_chunk_text
@@ -589,7 +590,7 @@ This should still use the default recursive chunker.
         assert "semantic" in attempted_strategies  # This is the configured fallback
         assert len(chunks) > 0
 
-    def test_performance_monitoring_integration(self, sample_texts, mock_chunking_factory):
+    def test_performance_monitoring_integration(self, sample_texts, mock_chunking_factory) -> None:
         """Test that performance monitoring is properly integrated."""
         chunker = HybridChunker()
 

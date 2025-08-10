@@ -8,6 +8,7 @@ channel management, and error scenarios related to chunking operations.
 import asyncio
 import contextlib
 import json
+import time
 import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -60,10 +61,10 @@ def mock_websocket() -> AsyncMock:
     # Track state
     mock.client_state = {"connected": False}
 
-    async def accept_connection():
+    async def accept_connection() -> None:
         mock.client_state["connected"] = True
 
-    async def close_connection(code=1000, reason=""):  # noqa: ARG001
+    async def close_connection(code=1000, reason="") -> None:  # noqa: ARG001
         mock.client_state["connected"] = False
 
     mock.accept.side_effect = accept_connection
@@ -73,19 +74,19 @@ def mock_websocket() -> AsyncMock:
 
 
 @pytest.fixture()
-def mock_operation():
+def mock_operation() -> None:
     """Create a mock operation object."""
 
     class MockEnum:
         """Mock enum with value attribute."""
 
-        def __init__(self, value):
+        def __init__(self, value) -> None:
             self.value = value
 
     class MockOperation:
         """Mock operation with required attributes."""
 
-        def __init__(self):
+        def __init__(self) -> None:
             self.uuid = str(uuid.uuid4())
             self.collection_id = "test-collection-123"
             self.type = MockEnum("chunking")
@@ -114,7 +115,7 @@ class TestWebSocketConnection:
         operation_id = mock_operation.uuid
 
         # Set up operation getter
-        async def get_operation(op_id):
+        async def get_operation(op_id) -> None:
             return mock_operation if op_id == operation_id else None
 
         ws_manager.set_operation_getter(get_operation)
@@ -262,7 +263,6 @@ class TestProgressUpdates:
         assert should_send is False
 
         # Simulate time passing
-        import time
 
         time.sleep(1.1)
 
@@ -384,7 +384,7 @@ class TestChannelManagement:
 
         # Add a consumer task
         # Create a proper mock coroutine
-        async def mock_coro():
+        async def mock_coro() -> None:
             pass
 
         mock_task = asyncio.create_task(mock_coro())
@@ -604,7 +604,7 @@ class TestPerformanceAndScaling:
         messages = []
 
         # Capture messages as they're sent
-        async def capture_xadd(_stream, data, **_kwargs):
+        async def capture_xadd(_stream, data, **_kwargs) -> None:
             messages.append(json.loads(data.get("message", data.get("data", "{}"))))
             return f"{len(messages)}-0"
 
@@ -627,7 +627,7 @@ class TestPerformanceAndScaling:
             ws_manager.connections[key] = {AsyncMock(spec=WebSocket)}
 
             # Create a proper mock coroutine
-            async def mock_coro():
+            async def mock_coro() -> None:
                 pass
 
             mock_task = asyncio.create_task(mock_coro())
@@ -635,7 +635,6 @@ class TestPerformanceAndScaling:
             ws_manager.consumer_tasks[f"op-{i}"] = mock_task
 
         # Measure cleanup time
-        import time
 
         start = time.time()
         await ws_manager.shutdown()
@@ -663,7 +662,7 @@ class TestIntegrationScenarios:
         channel = f"chunking:{collection_id}:{operation_id}"
 
         # 1. Connect WebSocket
-        async def get_operation(op_id):
+        async def get_operation(op_id) -> None:
             return {
                 "uuid": op_id,
                 "status": "pending",

@@ -20,19 +20,19 @@ class TestPartitionMonitoringService:
     """Test cases for PartitionMonitoringService."""
 
     @pytest.fixture()
-    def mock_session(self):
+    def mock_session(self) -> None:
         """Create a mock async session."""
         session = AsyncMock(spec=AsyncSession)
         session.execute = AsyncMock()
         return session
 
     @pytest.fixture()
-    def service(self, mock_session):
+    def service(self, mock_session) -> None:
         """Create a PartitionMonitoringService instance."""
         return PartitionMonitoringService(mock_session)
 
     @pytest.fixture()
-    def sample_health_data(self):
+    def sample_health_data(self) -> None:
         """Create sample partition health data."""
         return [
             {
@@ -71,7 +71,7 @@ class TestPartitionMonitoringService:
         ]
 
     @pytest.fixture()
-    def sample_skew_metrics(self):
+    def sample_skew_metrics(self) -> None:
         """Create sample skew metrics."""
         return [
             {
@@ -89,7 +89,7 @@ class TestPartitionMonitoringService:
         ]
 
     @pytest.mark.asyncio()
-    async def test_get_partition_health_summary_success(self, service, mock_session, sample_health_data):
+    async def test_get_partition_health_summary_success(self, service, mock_session, sample_health_data) -> None:
         """Test getting partition health summary successfully."""
         # Mock the database result
         mock_rows = []
@@ -113,7 +113,7 @@ class TestPartitionMonitoringService:
         assert result[2].health_status == PartitionHealthStatus.UNBALANCED
 
     @pytest.mark.asyncio()
-    async def test_get_partition_health_summary_error(self, service, mock_session):
+    async def test_get_partition_health_summary_error(self, service, mock_session) -> None:
         """Test error handling in get_partition_health_summary."""
         mock_session.execute.side_effect = Exception("Database error")
 
@@ -121,7 +121,7 @@ class TestPartitionMonitoringService:
             await service.get_partition_health_summary()
 
     @pytest.mark.asyncio()
-    async def test_analyze_partition_skew_success(self, service, mock_session, sample_skew_metrics):
+    async def test_analyze_partition_skew_success(self, service, mock_session, sample_skew_metrics) -> None:
         """Test analyzing partition skew successfully."""
         # Mock the database result
         mock_rows = []
@@ -144,7 +144,7 @@ class TestPartitionMonitoringService:
         assert result[1].status == SkewStatus.NORMAL
 
     @pytest.mark.asyncio()
-    async def test_analyze_partition_skew_error(self, service, mock_session):
+    async def test_analyze_partition_skew_error(self, service, mock_session) -> None:
         """Test error handling in analyze_partition_skew."""
         mock_session.execute.side_effect = Exception("Database error")
 
@@ -152,7 +152,7 @@ class TestPartitionMonitoringService:
             await service.analyze_partition_skew()
 
     @pytest.mark.asyncio()
-    async def test_check_partition_health_all_healthy(self, service, mock_session):
+    async def test_check_partition_health_all_healthy(self, service, mock_session) -> None:
         """Test health check when all partitions are healthy."""
         # Mock healthy partition data
         healthy_data = [
@@ -195,7 +195,7 @@ class TestPartitionMonitoringService:
                 assert result.metrics["healthy_count"] == 3
 
     @pytest.mark.asyncio()
-    async def test_check_partition_health_with_warnings(self, service, mock_session, sample_health_data):
+    async def test_check_partition_health_with_warnings(self, service, mock_session, sample_health_data) -> None:
         """Test health check with warnings and unbalanced partitions."""
         # Mock partition data with issues
         with patch.object(service, "get_partition_health_summary") as mock_health_summary:
@@ -240,7 +240,7 @@ class TestPartitionMonitoringService:
                 assert result.metrics["healthy_count"] == 1
 
     @pytest.mark.asyncio()
-    async def test_check_partition_health_error(self, service, mock_session):
+    async def test_check_partition_health_error(self, service, mock_session) -> None:
         """Test health check error handling."""
         with patch.object(service, "get_partition_health_summary") as mock_health_summary:
             mock_health_summary.side_effect = Exception("Database connection failed")
@@ -252,7 +252,7 @@ class TestPartitionMonitoringService:
             assert len(result.alerts) == 0
 
     @pytest.mark.asyncio()
-    async def test_get_partition_statistics_single_partition(self, service, mock_session):
+    async def test_get_partition_statistics_single_partition(self, service, mock_session) -> None:
         """Test getting statistics for a single partition."""
         partition_num = 1
 
@@ -277,7 +277,7 @@ class TestPartitionMonitoringService:
         assert "created_at" in stats
 
     @pytest.mark.asyncio()
-    async def test_get_partition_statistics_single_partition_not_found(self, service, mock_session):
+    async def test_get_partition_statistics_single_partition_not_found(self, service, mock_session) -> None:
         """Test getting statistics for non-existent partition."""
         mock_result = Mock()
         mock_result.fetchone.return_value = None
@@ -288,7 +288,7 @@ class TestPartitionMonitoringService:
         assert stats == {}
 
     @pytest.mark.asyncio()
-    async def test_get_partition_statistics_all_partitions(self, service, mock_session):
+    async def test_get_partition_statistics_all_partitions(self, service, mock_session) -> None:
         """Test getting statistics for all partitions."""
         mock_row = Mock(
             partition_count=10,
@@ -311,7 +311,7 @@ class TestPartitionMonitoringService:
         assert stats["chunk_count_stddev"] == 250.5
 
     @pytest.mark.asyncio()
-    async def test_get_partition_statistics_all_partitions_none_values(self, service, mock_session):
+    async def test_get_partition_statistics_all_partitions_none_values(self, service, mock_session) -> None:
         """Test getting statistics with None values returns defaults."""
         mock_row = Mock(
             partition_count=None,
@@ -334,7 +334,7 @@ class TestPartitionMonitoringService:
         assert stats["chunk_count_stddev"] == 0.0
 
     @pytest.mark.asyncio()
-    async def test_get_partition_statistics_error(self, service, mock_session):
+    async def test_get_partition_statistics_error(self, service, mock_session) -> None:
         """Test error handling in get_partition_statistics."""
         mock_session.execute.side_effect = Exception("Query failed")
 
@@ -342,7 +342,7 @@ class TestPartitionMonitoringService:
             await service.get_partition_statistics()
 
     @pytest.mark.asyncio()
-    async def test_get_rebalancing_recommendations_no_issues(self, service, mock_session):
+    async def test_get_rebalancing_recommendations_no_issues(self, service, mock_session) -> None:
         """Test getting recommendations when no rebalancing needed."""
         # Mock healthy partitions
         healthy_data = [
@@ -368,7 +368,7 @@ class TestPartitionMonitoringService:
             assert len(recommendations) == 0
 
     @pytest.mark.asyncio()
-    async def test_get_rebalancing_recommendations_with_issues(self, service, mock_session):
+    async def test_get_rebalancing_recommendations_with_issues(self, service, mock_session) -> None:
         """Test getting recommendations for unbalanced partitions."""
         # Mock unbalanced partitions
         unbalanced_data = [
@@ -415,7 +415,7 @@ class TestPartitionMonitoringService:
             assert recommendations[1]["current_skew"] == 0.45
 
     @pytest.mark.asyncio()
-    async def test_get_rebalancing_recommendations_error(self, service, mock_session):
+    async def test_get_rebalancing_recommendations_error(self, service, mock_session) -> None:
         """Test error handling in get_rebalancing_recommendations."""
         with patch.object(service, "get_partition_health_summary") as mock_health_summary:
             mock_health_summary.side_effect = Exception("Health check failed")
@@ -423,7 +423,7 @@ class TestPartitionMonitoringService:
             with pytest.raises(Exception, match="Health check failed"):
                 await service.get_rebalancing_recommendations()
 
-    def test_threshold_constants(self, service):
+    def test_threshold_constants(self, service) -> None:
         """Test that threshold constants are properly set."""
         assert service.SKEW_WARNING_THRESHOLD == 0.3
         assert service.SKEW_CRITICAL_THRESHOLD == 0.5

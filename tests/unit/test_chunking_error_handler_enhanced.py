@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Unit tests for enhanced ChunkingErrorHandler functionality.
 
@@ -25,7 +26,7 @@ from packages.webui.services.chunking_error_handler import (
 
 
 @pytest.fixture()
-async def mock_redis():
+async def mock_redis() -> None:
     """Create a mock Redis client."""
     redis = AsyncMock(spec=Redis)
     redis.setex = AsyncMock()
@@ -36,13 +37,13 @@ async def mock_redis():
 
     # Mock scan_iter to return an async iterator
     class AsyncIteratorMock:
-        def __init__(self, items):
+        def __init__(self, items) -> None:
             self.items = items
 
-        def __aiter__(self):
+        def __aiter__(self) -> None:
             return self
 
-        async def __anext__(self):
+        async def __anext__(self) -> None:
             if self.items:
                 return self.items.pop(0)
             raise StopAsyncIteration
@@ -52,7 +53,7 @@ async def mock_redis():
 
 
 @pytest.fixture()
-def error_handler(mock_redis):
+def error_handler(mock_redis) -> None:
     """Create an error handler with mock Redis."""
     return ChunkingErrorHandler(redis_client=mock_redis)
 
@@ -61,7 +62,7 @@ class TestHandleWithCorrelation:
     """Test correlation ID handling functionality."""
 
     @pytest.mark.asyncio()
-    async def test_handle_with_correlation_success(self, error_handler, mock_redis):
+    async def test_handle_with_correlation_success(self, error_handler, mock_redis) -> None:
         """Test successful error handling with correlation ID."""
         operation_id = "test_op_123"
         correlation_id = "corr_456"
@@ -91,7 +92,7 @@ class TestHandleWithCorrelation:
             mock_redis.setex.assert_called()
 
     @pytest.mark.asyncio()
-    async def test_handle_with_correlation_no_retry(self, error_handler):
+    async def test_handle_with_correlation_no_retry(self, error_handler) -> None:
         """Test error handling when retry limit exceeded."""
         operation_id = "test_op_123"
         correlation_id = "corr_456"
@@ -115,7 +116,7 @@ class TestHandleResourceExhaustion:
     """Test resource exhaustion handling."""
 
     @pytest.mark.asyncio()
-    async def test_handle_memory_exhaustion(self, error_handler):
+    async def test_handle_memory_exhaustion(self, error_handler) -> None:
         """Test handling memory resource exhaustion."""
         operation_id = "test_op_123"
 
@@ -139,7 +140,7 @@ class TestHandleResourceExhaustion:
             assert result.alternative_strategy == "streaming"
 
     @pytest.mark.asyncio()
-    async def test_handle_cpu_exhaustion(self, error_handler):
+    async def test_handle_cpu_exhaustion(self, error_handler) -> None:
         """Test handling CPU resource exhaustion."""
         with patch("psutil.cpu_percent", return_value=85.0):
             result = await error_handler.handle_resource_exhaustion(
@@ -154,7 +155,7 @@ class TestHandleResourceExhaustion:
             assert result.alternative_strategy == "character"
 
     @pytest.mark.asyncio()
-    async def test_queue_operation_on_exhaustion(self, error_handler, mock_redis):
+    async def test_queue_operation_on_exhaustion(self, error_handler, mock_redis) -> None:
         """Test queueing operation when resources exhausted."""
         mock_redis.lpos = AsyncMock(side_effect=[None, 5])  # Not queued, then position 5
 
@@ -174,7 +175,7 @@ class TestCleanupFailedOperation:
     """Test cleanup functionality."""
 
     @pytest.mark.asyncio()
-    async def test_cleanup_save_partial(self, error_handler, mock_redis):
+    async def test_cleanup_save_partial(self, error_handler, mock_redis) -> None:
         """Test cleanup with partial results saved."""
         operation_id = "test_op_123"
         partial_results = [
@@ -206,7 +207,7 @@ class TestCleanupFailedOperation:
         error_handler.save_partial_results.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_cleanup_rollback(self, error_handler):
+    async def test_cleanup_rollback(self, error_handler) -> None:
         """Test cleanup with rollback strategy."""
         result = await error_handler.cleanup_failed_operation(
             operation_id="test_op",
@@ -221,7 +222,7 @@ class TestCleanupFailedOperation:
 class TestCreateErrorReport:
     """Test error report generation."""
 
-    def test_create_error_report_with_history(self, error_handler):
+    def test_create_error_report_with_history(self, error_handler) -> None:
         """Test creating error report from history."""
         operation_id = "test_op_123"
 
@@ -264,7 +265,7 @@ class TestCreateErrorReport:
         assert report.recovery_attempts[0]["retry_count"] == 2
         assert len(report.recommendations) > 0
 
-    def test_create_error_report_with_provided_errors(self, error_handler):
+    def test_create_error_report_with_provided_errors(self, error_handler) -> None:
         """Test creating error report with provided errors."""
         operation_id = "test_op_123"
         errors = [
@@ -284,7 +285,7 @@ class TestCreateErrorReport:
 class TestHelperMethods:
     """Test helper methods."""
 
-    def test_calculate_adaptive_batch_size(self, error_handler):
+    def test_calculate_adaptive_batch_size(self, error_handler) -> None:
         """Test adaptive batch size calculation."""
         # Very high usage
         assert error_handler._calculate_adaptive_batch_size(9.5, 10.0) == 4
@@ -298,7 +299,7 @@ class TestHelperMethods:
         # Low usage
         assert error_handler._calculate_adaptive_batch_size(5.0, 10.0) == 32
 
-    def test_create_operation_fingerprint(self, error_handler):
+    def test_create_operation_fingerprint(self, error_handler) -> None:
         """Test operation fingerprint creation."""
         context = {
             "collection_id": "coll_123",
@@ -317,7 +318,7 @@ class TestHelperMethods:
         assert fingerprint == fingerprint2
 
     @pytest.mark.asyncio()
-    async def test_save_operation_state(self, error_handler, mock_redis):
+    async def test_save_operation_state(self, error_handler, mock_redis) -> None:
         """Test saving operation state to Redis."""
         operation_id = "test_op"
         correlation_id = "corr_123"

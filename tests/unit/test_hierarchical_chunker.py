@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Comprehensive unit tests for HierarchicalChunker.
 
@@ -67,7 +68,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
             ),
         }
 
-    def test_initialization(self):
+    def test_initialization(self) -> None:
         """Test HierarchicalChunker initialization with various parameters."""
         # Default initialization
         chunker = HierarchicalChunker()
@@ -90,7 +91,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
         chunker = HierarchicalChunker(chunk_overlap=50)
         assert chunker.chunk_overlap == 50
 
-    def test_initialization_validation(self):
+    def test_initialization_validation(self) -> None:
         """Test HierarchicalChunker initialization validation."""
         # Empty chunk sizes
         with pytest.raises(ValueError, match="chunk_sizes must contain at least one size"):
@@ -106,7 +107,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
             # Should warn about 600 being more than half of 1000
             mock_logger.warning.assert_called()
 
-    def test_chunk_text_empty(self):
+    def test_chunk_text_empty(self) -> None:
         """Test chunking empty or whitespace-only text."""
         chunker = HierarchicalChunker()
 
@@ -122,7 +123,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
         chunks = chunker.chunk_text("", "doc3", None)
         assert chunks == []
 
-    def test_chunk_text_basic(self, sample_texts):
+    def test_chunk_text_basic(self, sample_texts) -> None:
         """Test basic synchronous chunking functionality."""
         chunker = HierarchicalChunker(chunk_sizes=[200, 100, 50])
 
@@ -149,7 +150,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
             assert chunk.metadata["chunk_sizes"] == [200, 100, 50]
             assert "is_leaf" in chunk.metadata
 
-    def test_parent_child_relationships(self, sample_texts):
+    def test_parent_child_relationships(self, sample_texts) -> None:
         """Test that parent-child relationships are properly maintained."""
         chunker = HierarchicalChunker(chunk_sizes=[500, 200, 100])
 
@@ -169,7 +170,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
                 # Parent should have a lower hierarchy level (higher in hierarchy)
                 assert parent_chunk.metadata["hierarchy_level"] < chunk.metadata["hierarchy_level"]
 
-    def test_hierarchy_levels(self, sample_texts):
+    def test_hierarchy_levels(self, sample_texts) -> None:
         """Test correct assignment of hierarchy levels."""
         chunker = HierarchicalChunker(chunk_sizes=[1000, 500, 250])
 
@@ -202,7 +203,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
             # Parent chunks should generally be larger
             assert avg_parent_size >= avg_leaf_size
 
-    def test_leaf_node_identification(self, sample_texts):
+    def test_leaf_node_identification(self, sample_texts) -> None:
         """Test that leaf nodes are correctly identified."""
         chunker = HierarchicalChunker(chunk_sizes=[400, 200, 100])
 
@@ -221,7 +222,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
             if parent.metadata.get("child_chunk_ids"):
                 assert len(parent.metadata["child_chunk_ids"]) > 0
 
-    async def test_chunk_text_async(self, sample_texts):
+    async def test_chunk_text_async(self, sample_texts) -> None:
         """Test asynchronous chunking functionality."""
         chunker = HierarchicalChunker(chunk_sizes=[300, 150, 75])
 
@@ -236,7 +237,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
             assert "hierarchy_level" in chunk.metadata
             assert "is_leaf" in chunk.metadata
 
-    def test_metadata_preservation(self, sample_texts):
+    def test_metadata_preservation(self, sample_texts) -> None:
         """Test that original metadata is preserved and extended."""
         chunker = HierarchicalChunker()
 
@@ -262,7 +263,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
             assert "child_chunk_ids" in chunk.metadata
             assert "is_leaf" in chunk.metadata
 
-    def test_performance_monitoring(self, sample_texts):
+    def test_performance_monitoring(self, sample_texts) -> None:
         """Test performance characteristics with target of 400 chunks/sec."""
         chunker = HierarchicalChunker(chunk_sizes=[500, 250, 125])
 
@@ -309,7 +310,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
                 # Verify performance logged correctly
                 # 450 chunks in 1.125 seconds = 400 chunks/sec
 
-    def test_error_handling_with_fallback(self, sample_texts):
+    def test_error_handling_with_fallback(self, sample_texts) -> None:
         """Test error handling and fallback to character chunking."""
         chunker = HierarchicalChunker(chunk_sizes=[200, 100, 50])
 
@@ -326,7 +327,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
             for chunk in chunks:
                 assert chunk.metadata.get("strategy") == "character"
 
-    async def test_async_error_handling(self, sample_texts):
+    async def test_async_error_handling(self, sample_texts) -> None:
         """Test async error handling and fallback."""
         chunker = HierarchicalChunker(chunk_sizes=[200, 100, 50])
 
@@ -342,7 +343,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
             for chunk in chunks:
                 assert chunk.metadata.get("strategy") == "character"
 
-    def test_single_level_hierarchy(self, sample_texts):
+    def test_single_level_hierarchy(self, sample_texts) -> None:
         """Test edge case with single hierarchy level."""
         chunker = HierarchicalChunker(chunk_sizes=[500])
 
@@ -356,7 +357,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
             assert chunk.metadata["hierarchy_level"] == 0
             assert chunk.metadata["chunk_sizes"] == [500]
 
-    def test_very_small_document(self, sample_texts):
+    def test_very_small_document(self, sample_texts) -> None:
         """Test with document smaller than smallest chunk size."""
         chunker = HierarchicalChunker(chunk_sizes=[1000, 500, 250])
 
@@ -369,7 +370,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
         leaf_chunks = [c for c in chunks if c.metadata.get("is_leaf", False)]
         assert len(leaf_chunks) >= 1
 
-    def test_validate_config(self):
+    def test_validate_config(self) -> None:
         """Test configuration validation."""
         chunker = HierarchicalChunker()
 
@@ -400,7 +401,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
         for config in invalid_configs:
             assert chunker.validate_config(config) is False
 
-    def test_estimate_chunks(self):
+    def test_estimate_chunks(self) -> None:
         """Test chunk estimation for capacity planning."""
         chunker = HierarchicalChunker(chunk_sizes=[1000, 500, 250])
 
@@ -423,7 +424,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
         estimate = chunker.estimate_chunks(10000, config)
         assert estimate >= 3  # At least one chunk per level
 
-    def test_unicode_and_special_characters(self):
+    def test_unicode_and_special_characters(self) -> None:
         """Test handling of Unicode and special characters."""
         chunker = HierarchicalChunker(chunk_sizes=[200, 100, 50])
 
@@ -447,7 +448,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
                 assert isinstance(chunk.text, str)
                 assert chunk.metadata["is_leaf"] in [True, False]
 
-    async def test_concurrent_async_chunking(self, sample_texts):
+    async def test_concurrent_async_chunking(self, sample_texts) -> None:
         """Test concurrent async chunking operations."""
         chunker = HierarchicalChunker(chunk_sizes=[400, 200, 100])
 
@@ -466,7 +467,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
             assert len(chunks) >= 1
             assert all(isinstance(chunk, ChunkResult) for chunk in chunks)
 
-    def test_build_hierarchy_info(self):
+    def test_build_hierarchy_info(self) -> None:
         """Test the _build_hierarchy_info helper method."""
         chunker = HierarchicalChunker(chunk_sizes=[1000, 500, 250])
 
@@ -516,7 +517,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
         # Level assignment: grandchild_node has child_node as parent, so level 2
         assert grandchild_info["level"] == 2
 
-    def test_chunk_id_format(self, sample_texts):
+    def test_chunk_id_format(self, sample_texts) -> None:
         """Test chunk ID formatting for both leaf and parent chunks."""
         chunker = HierarchicalChunker(chunk_sizes=[300, 150, 75])
 
@@ -535,7 +536,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
         for chunk in parent_chunks:
             assert chunk.chunk_id.startswith("id_format_test_parent_")
 
-    def test_offset_calculation(self, sample_texts):
+    def test_offset_calculation(self, sample_texts) -> None:
         """Test offset calculation for chunks."""
         chunker = HierarchicalChunker(chunk_sizes=[200, 100, 50])
 
@@ -554,7 +555,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
             # Length should match content
             assert chunk.end_offset - chunk.start_offset == len(chunk.text)
 
-    def test_node_relationship_edge_cases(self):
+    def test_node_relationship_edge_cases(self) -> None:
         """Test edge cases in node relationships."""
         chunker = HierarchicalChunker(chunk_sizes=[500, 250, 125])
 
@@ -593,7 +594,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
             assert len(child_ids) == 1
             assert child_ids == ["child_1"]
 
-    def test_warning_for_small_size_differences(self):
+    def test_warning_for_small_size_differences(self) -> None:
         """Test that warnings are logged for small size differences between levels."""
         with patch("packages.shared.text_processing.strategies.hierarchical_chunker.logger") as mock_logger:
             # This should trigger a warning because 600 > 1000/2
@@ -606,7 +607,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
             assert "1000" in warning_message
             assert "half" in warning_message
 
-    def test_descending_order_validation(self):
+    def test_descending_order_validation(self) -> None:
         """Test that chunk sizes are automatically sorted in descending order."""
         # Provide sizes in wrong order
         chunker = HierarchicalChunker(chunk_sizes=[100, 500, 200, 1000])
@@ -619,7 +620,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
         result = chunker.validate_config(config)
         assert result is True  # Should pass but with warning
 
-    def test_uneven_hierarchies(self, sample_texts):
+    def test_uneven_hierarchies(self, sample_texts) -> None:
         """Test handling of documents that create uneven hierarchies."""
         chunker = HierarchicalChunker(chunk_sizes=[1000, 500, 100])
 
@@ -650,7 +651,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
             assert isinstance(chunk.metadata["hierarchy_level"], int)
             assert chunk.metadata["hierarchy_level"] >= 0
 
-    def test_chunk_overlap_handling(self):
+    def test_chunk_overlap_handling(self) -> None:
         """Test that chunk overlap is properly handled."""
         # Test with different overlap values
         for overlap in [0, 10, 50, 100]:
@@ -665,7 +666,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
             # Verify overlap doesn't exceed chunk sizes
             assert chunker.chunk_overlap < min(chunker.chunk_sizes)
 
-    def test_chunk_text_stream(self, sample_texts):
+    def test_chunk_text_stream(self, sample_texts) -> None:
         """Test streaming functionality for memory-efficient processing."""
         chunker = HierarchicalChunker(chunk_sizes=[500, 250, 125])
 
@@ -689,7 +690,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
         regular_chunks = chunker.chunk_text(text, "regular_test", include_parents=True)
         assert len(all_streamed) == len(regular_chunks)
 
-    async def test_chunk_text_stream_async(self, sample_texts):
+    async def test_chunk_text_stream_async(self, sample_texts) -> None:
         """Test async streaming functionality."""
         chunker = HierarchicalChunker(chunk_sizes=[400, 200, 100])
 
@@ -702,7 +703,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
         assert len(chunks) > 0
         assert all(isinstance(chunk, ChunkResult) for chunk in chunks)
 
-    def test_lazy_parent_generation(self, sample_texts):
+    def test_lazy_parent_generation(self, sample_texts) -> None:
         """Test on-demand parent chunk generation."""
         chunker = HierarchicalChunker(chunk_sizes=[500, 250, 125])
 
@@ -726,7 +727,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
         parent_ids = [chunk.chunk_id for chunk in parent_chunks]
         assert len(parent_ids) == len(set(parent_ids))
 
-    def test_include_parents_parameter(self, sample_texts):
+    def test_include_parents_parameter(self, sample_texts) -> None:
         """Test that include_parents parameter works correctly."""
         chunker = HierarchicalChunker(chunk_sizes=[400, 200, 100])
 
@@ -745,7 +746,7 @@ Dimensionality reduction techniques like PCA and t-SNE help visualize and proces
         assert all(chunk.metadata.get("is_leaf", False) for chunk in without_parents)
         assert len(without_parents) == len(leaf_with)
 
-    def test_offset_accuracy(self, sample_texts):
+    def test_offset_accuracy(self, sample_texts) -> None:
         """Test that offset calculation is accurate."""
         chunker = HierarchicalChunker(chunk_sizes=[200, 100, 50])
 

@@ -7,6 +7,7 @@ import pytest
 from qdrant_client import QdrantClient
 
 from packages.shared.database.repositories.collection_repository import CollectionRepository
+from packages.webui.tasks import _process_index_operation
 
 
 @pytest.fixture()
@@ -27,9 +28,8 @@ def mock_qdrant_client() -> Mock:
 
 
 @pytest.mark.asyncio()
-async def test_collection_creation_persists_in_qdrant(mock_qdrant_client):
+async def test_collection_creation_persists_in_qdrant(mock_qdrant_client) -> None:
     """Test that collections created in tasks persist in Qdrant."""
-    from packages.webui.tasks import _process_index_operation
 
     # Mock the qdrant manager to return our mock client
     with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant_manager:
@@ -84,9 +84,8 @@ async def test_collection_creation_persists_in_qdrant(mock_qdrant_client):
 
 
 @pytest.mark.asyncio()
-async def test_collection_creation_rollback_on_db_failure(mock_qdrant_client):
+async def test_collection_creation_rollback_on_db_failure(mock_qdrant_client) -> None:
     """Test that Qdrant collection is deleted if database update fails."""
-    from packages.webui.tasks import _process_index_operation
 
     # Mock the qdrant manager to return our mock client
     with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant_manager:
@@ -136,7 +135,7 @@ async def test_collection_creation_rollback_on_db_failure(mock_qdrant_client):
 
 
 @pytest.mark.asyncio()
-async def test_collection_naming_convention():
+async def test_collection_naming_convention() -> None:
     """Test that collection names follow the expected format."""
     collection_id = "550e8400-e29b-41d4-a716-446655440000"
     expected_name = "col_550e8400_e29b_41d4_a716_446655440000"

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Unit tests for the memory pool component.
 
@@ -13,7 +14,7 @@ from packages.shared.chunking.infrastructure.streaming.memory_pool import Memory
 class TestMemoryPool:
     """Test cases for MemoryPool class."""
 
-    def test_pool_initialization(self):
+    def test_pool_initialization(self) -> None:
         """Test pool is properly initialized."""
         pool = MemoryPool(buffer_size=1024, pool_size=5)
 
@@ -23,7 +24,7 @@ class TestMemoryPool:
         assert pool.used_buffers == 0
         assert pool.total_memory == 5 * 1024
 
-    def test_acquire_and_release_sync(self):
+    def test_acquire_and_release_sync(self) -> None:
         """Test synchronous buffer acquisition and release."""
         pool = MemoryPool(buffer_size=512, pool_size=3)
 
@@ -39,7 +40,7 @@ class TestMemoryPool:
         assert pool.used_buffers == 0
         assert pool.available_buffers == 3
 
-    def test_statistics_tracking(self):
+    def test_statistics_tracking(self) -> None:
         """Test that statistics are properly tracked."""
         pool = MemoryPool(buffer_size=256, pool_size=2)
 
@@ -64,7 +65,7 @@ class TestMemoryPool:
         assert stats["in_use"] == 0
         assert stats["available"] == 2
 
-    def test_pool_exhaustion(self):
+    def test_pool_exhaustion(self) -> None:
         """Test behavior when pool is exhausted."""
         pool = MemoryPool(buffer_size=128, pool_size=2)
 
@@ -84,7 +85,7 @@ class TestMemoryPool:
         buffer3_id, _ = pool.acquire_sync()
         assert buffer3_id == buffer1_id  # Should reuse the released buffer
 
-    def test_clear_pool(self):
+    def test_clear_pool(self) -> None:
         """Test clearing the pool."""
         pool = MemoryPool(buffer_size=256, pool_size=3)
 
@@ -107,7 +108,7 @@ class TestMemoryPool:
         assert stats["available"] == 3
         assert stats["in_use"] == 0
 
-    def test_clear_with_buffers_in_use(self):
+    def test_clear_with_buffers_in_use(self) -> None:
         """Test that clear fails when buffers are in use."""
         pool = MemoryPool(buffer_size=128, pool_size=2)
 
@@ -122,7 +123,7 @@ class TestMemoryPool:
         pool.release(buffer_id)
         pool.clear()  # Should not raise
 
-    def test_invalid_release(self):
+    def test_invalid_release(self) -> None:
         """Test releasing an invalid buffer ID."""
         pool = MemoryPool(buffer_size=128, pool_size=2)
 
@@ -138,7 +139,7 @@ class TestMemoryPool:
         with pytest.raises(ValueError, match="not in use"):
             pool.release(buffer_id)
 
-    def test_buffer_clearing_on_acquire(self):
+    def test_buffer_clearing_on_acquire(self) -> None:
         """Test that buffers are cleared when acquired."""
         pool = MemoryPool(buffer_size=10, pool_size=1)
 
@@ -152,7 +153,7 @@ class TestMemoryPool:
         assert buffer_id2 == buffer_id  # Same buffer
         assert buffer2[0:5] == b"\x00\x00\x00\x00\x00"  # Should be cleared
 
-    def test_resize_buffer(self):
+    def test_resize_buffer(self) -> None:
         """Test resizing a buffer."""
         pool = MemoryPool(buffer_size=128, pool_size=2)
 

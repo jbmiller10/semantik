@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Comprehensive unit tests for SemanticChunker.
 
@@ -54,7 +55,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
             ),
         }
 
-    def test_initialization(self, mock_embed_model):
+    def test_initialization(self, mock_embed_model) -> None:
         """Test SemanticChunker initialization with various parameters."""
         # Valid initialization
         chunker = SemanticChunker(
@@ -78,14 +79,14 @@ Books provide knowledge and entertainment. Data science is transforming industri
         with pytest.raises(ValueError, match="max_chunk_size must be positive"):
             SemanticChunker(max_chunk_size=-10)
 
-    def test_splitter_initialization_without_embed_model(self):
+    def test_splitter_initialization_without_embed_model(self) -> None:
         """Test that splitter initialization fails without embed model."""
         chunker = SemanticChunker()  # No embed_model provided
 
         with pytest.raises(RuntimeError, match="Embedding model not provided"):
             chunker._get_splitter()
 
-    def test_splitter_lazy_initialization(self, mock_embed_model):
+    def test_splitter_lazy_initialization(self, mock_embed_model) -> None:
         """Test that splitter is lazily initialized."""
         chunker = SemanticChunker(embed_model=mock_embed_model)
 
@@ -101,7 +102,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
         splitter2 = chunker._get_splitter()
         assert splitter is splitter2
 
-    def test_chunk_text_empty(self, mock_embed_model):
+    def test_chunk_text_empty(self, mock_embed_model) -> None:
         """Test chunking empty or whitespace-only text."""
         chunker = SemanticChunker(embed_model=mock_embed_model)
 
@@ -117,7 +118,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
         chunks = chunker.chunk_text("", "doc3", None)
         assert chunks == []
 
-    def test_chunk_text_basic(self, mock_embed_model, sample_texts):
+    def test_chunk_text_basic(self, mock_embed_model, sample_texts) -> None:
         """Test basic synchronous chunking functionality."""
         chunker = SemanticChunker(
             breakpoint_percentile_threshold=95, buffer_size=1, max_chunk_size=100, embed_model=mock_embed_model
@@ -147,7 +148,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
             assert chunk.metadata["breakpoint_threshold"] == 95
             assert chunk.metadata["strategy"] == "semantic"
 
-    async def test_chunk_text_async(self, mock_embed_model, sample_texts):
+    async def test_chunk_text_async(self, mock_embed_model, sample_texts) -> None:
         """Test asynchronous chunking functionality."""
         chunker = SemanticChunker(breakpoint_percentile_threshold=90, buffer_size=2, embed_model=mock_embed_model)
 
@@ -162,7 +163,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
             assert chunk.metadata["semantic_boundary"] is True
             assert chunk.metadata["breakpoint_threshold"] == 90
 
-    def test_metadata_preservation(self, mock_embed_model, sample_texts):
+    def test_metadata_preservation(self, mock_embed_model, sample_texts) -> None:
         """Test that original metadata is preserved and extended."""
         chunker = SemanticChunker(embed_model=mock_embed_model)
 
@@ -187,7 +188,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
             assert "breakpoint_threshold" in chunk.metadata
             assert chunk.metadata["strategy"] == "semantic"
 
-    def test_performance_monitoring(self, mock_embed_model, sample_texts):
+    def test_performance_monitoring(self, mock_embed_model, sample_texts) -> None:
         """Test performance characteristics with mocked timing."""
         chunker = SemanticChunker(embed_model=mock_embed_model)
 
@@ -218,7 +219,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
                     metadata={"threshold": chunker.breakpoint_percentile_threshold},
                 )
 
-    def test_retry_logic_success(self, mock_embed_model, sample_texts):
+    def test_retry_logic_success(self, mock_embed_model, sample_texts) -> None:
         """Test retry logic succeeds after transient failure."""
         chunker = SemanticChunker(embed_model=mock_embed_model)
 
@@ -226,7 +227,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
         mock_splitter = MagicMock()
         fail_count = 0
 
-        def side_effect(docs):  # noqa: ARG001
+        def side_effect(docs) -> None:  # noqa: ARG001
             nonlocal fail_count
             if fail_count < 2:
                 fail_count += 1
@@ -249,7 +250,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
             # Verify retry was attempted
             assert mock_splitter.get_nodes_from_documents.call_count == 3
 
-    def test_retry_logic_max_failures(self, mock_embed_model, sample_texts):
+    def test_retry_logic_max_failures(self, mock_embed_model, sample_texts) -> None:
         """Test retry logic fails after max attempts then falls back to character chunking."""
         chunker = SemanticChunker(embed_model=mock_embed_model)
 
@@ -280,7 +281,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
             assert len(chunks) >= 1
             assert all(chunk.metadata["strategy"] == "character" for chunk in chunks)
 
-    def test_fallback_to_character_chunker(self, mock_embed_model, sample_texts):
+    def test_fallback_to_character_chunker(self, mock_embed_model, sample_texts) -> None:
         """Test fallback to character chunker on embedding errors."""
         chunker = SemanticChunker(max_chunk_size=100, embed_model=mock_embed_model)
 
@@ -295,7 +296,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
             # Character chunker adds different metadata
             assert all(chunk.metadata["strategy"] == "character" for chunk in chunks)
 
-    async def test_async_fallback_to_character_chunker(self, mock_embed_model, sample_texts):
+    async def test_async_fallback_to_character_chunker(self, mock_embed_model, sample_texts) -> None:
         """Test async fallback to character chunker on embedding errors."""
         chunker = SemanticChunker(max_chunk_size=100, embed_model=mock_embed_model)
 
@@ -309,7 +310,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
             assert len(chunks) >= 1
             assert all(chunk.metadata["strategy"] == "character" for chunk in chunks)
 
-    def test_validate_config(self, mock_embed_model):
+    def test_validate_config(self, mock_embed_model) -> None:
         """Test configuration validation."""
         chunker = SemanticChunker(embed_model=mock_embed_model)
 
@@ -343,7 +344,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
         for config in invalid_configs:
             assert chunker.validate_config(config) is False
 
-    def test_estimate_chunks(self, mock_embed_model):
+    def test_estimate_chunks(self, mock_embed_model) -> None:
         """Test chunk estimation for capacity planning."""
         chunker = SemanticChunker(max_chunk_size=1000, embed_model=mock_embed_model)
 
@@ -372,7 +373,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
         # Should be constrained by max chunk size
         assert estimate >= 25  # At minimum 10000 / (100 * 4)
 
-    def test_unicode_and_special_characters(self, mock_embed_model):
+    def test_unicode_and_special_characters(self, mock_embed_model) -> None:
         """Test handling of Unicode and special characters."""
         chunker = SemanticChunker(embed_model=mock_embed_model)
 
@@ -395,7 +396,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
             combined = "".join(chunk.text for chunk in chunks)
             assert combined == text
 
-    async def test_concurrent_async_chunking(self, mock_embed_model, sample_texts):
+    async def test_concurrent_async_chunking(self, mock_embed_model, sample_texts) -> None:
         """Test concurrent async chunking operations."""
         chunker = SemanticChunker(embed_model=mock_embed_model)
 
@@ -414,7 +415,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
             assert len(chunks) >= 1
             assert all(isinstance(chunk, ChunkResult) for chunk in chunks)
 
-    def test_chunk_with_splitter_helper(self, mock_embed_model, sample_texts):
+    def test_chunk_with_splitter_helper(self, mock_embed_model, sample_texts) -> None:
         """Test the _chunk_with_splitter helper method."""
         chunker = SemanticChunker(embed_model=mock_embed_model)
 
@@ -445,21 +446,21 @@ Books provide knowledge and entertainment. Data science is transforming industri
             assert chunk.metadata["source"] == "test"
             assert chunk.metadata["semantic_boundary"] is True
 
-    def test_exponential_backoff(self, mock_embed_model, sample_texts):
+    def test_exponential_backoff(self, mock_embed_model, sample_texts) -> None:
         """Test exponential backoff in retry logic."""
         chunker = SemanticChunker(embed_model=mock_embed_model)
 
         # Track sleep calls
         sleep_calls = []
 
-        def mock_sleep(duration):
+        def mock_sleep(duration) -> None:
             sleep_calls.append(duration)
 
         # Mock splitter to fail twice
         mock_splitter = MagicMock()
         fail_count = 0
 
-        def side_effect(docs):  # noqa: ARG001
+        def side_effect(docs) -> None:  # noqa: ARG001
             nonlocal fail_count
             if fail_count < 2:
                 fail_count += 1
@@ -481,7 +482,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
             assert sleep_calls[0] == 1.0  # First retry: 1 second
             assert sleep_calls[1] == 2.0  # Second retry: 2 seconds (doubled)
 
-    def test_semantic_boundaries_preserved(self, mock_embed_model):
+    def test_semantic_boundaries_preserved(self, mock_embed_model) -> None:
         """Test that semantic boundaries are properly identified."""
         chunker = SemanticChunker(breakpoint_percentile_threshold=95, buffer_size=1, embed_model=mock_embed_model)
 
@@ -507,7 +508,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
             assert chunk.metadata["semantic_boundary"] is True
             assert chunk.metadata["breakpoint_threshold"] == 95
 
-    async def test_async_initialization_lock(self, mock_embed_model):
+    async def test_async_initialization_lock(self, mock_embed_model) -> None:
         """Test that async initialization works properly."""
         chunker = SemanticChunker(embed_model=mock_embed_model)
 
@@ -520,7 +521,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
         splitter2 = await chunker._get_splitter_async()
         assert splitter1 is splitter2
 
-    def test_large_document_handling(self, mock_embed_model, sample_texts):
+    def test_large_document_handling(self, mock_embed_model, sample_texts) -> None:
         """Test handling of large documents."""
         chunker = SemanticChunker(
             breakpoint_percentile_threshold=95, buffer_size=1, max_chunk_size=1000, embed_model=mock_embed_model
@@ -552,7 +553,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
                 assert chunk.start_offset == expected_offset
                 expected_offset = chunk.end_offset
 
-    def test_performance_target(self, mock_embed_model):
+    def test_performance_target(self, mock_embed_model) -> None:
         """Test that semantic chunker achieves target performance of ~150 chunks/sec."""
         chunker = SemanticChunker(embed_model=mock_embed_model)
 
@@ -571,7 +572,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
             # Set up timing: start at 100.0, end at 101.0 (1 second elapsed)
             mock_time.side_effect = [100.0, 101.0]
 
-            def mock_get_nodes(docs):  # noqa: ARG001
+            def mock_get_nodes(docs) -> None:  # noqa: ARG001
                 # Simulate the time it takes to process
                 return mock_nodes
 
@@ -597,7 +598,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
                 # Verify metrics were set
                 assert mock_metrics.output_chunks == 150
 
-    def test_non_embedding_error_no_fallback(self, mock_embed_model):
+    def test_non_embedding_error_no_fallback(self, mock_embed_model) -> None:
         """Test that non-embedding errors don't trigger fallback to character chunking."""
         chunker = SemanticChunker(embed_model=mock_embed_model)
 
@@ -613,7 +614,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
             # The chunker wraps exceptions in RuntimeError
             chunker.chunk_text("Test text", "error_doc")
 
-    def test_small_buffer_size(self, mock_embed_model):
+    def test_small_buffer_size(self, mock_embed_model) -> None:
         """Test semantic chunker with very small buffer size."""
         chunker = SemanticChunker(
             breakpoint_percentile_threshold=90, buffer_size=1, embed_model=mock_embed_model  # Minimum buffer size
@@ -626,7 +627,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
         for chunk in chunks:
             assert chunk.metadata["semantic_boundary"] is True
 
-    async def test_async_chunk_with_metadata_override(self, mock_embed_model):
+    async def test_async_chunk_with_metadata_override(self, mock_embed_model) -> None:
         """Test async chunking preserves and extends metadata correctly."""
         chunker = SemanticChunker(embed_model=mock_embed_model)
 
@@ -647,7 +648,7 @@ Books provide knowledge and entertainment. Data science is transforming industri
             # Custom fields should be preserved
             assert chunk.metadata["custom_field"] == "preserved"
 
-    def test_empty_nodes_from_splitter(self, mock_embed_model):
+    def test_empty_nodes_from_splitter(self, mock_embed_model) -> None:
         """Test handling when splitter returns empty nodes list."""
         chunker = SemanticChunker(embed_model=mock_embed_model)
 

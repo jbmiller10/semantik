@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Basic functionality test for streaming pipeline.
 This demonstrates the core features without complex validation.
@@ -15,7 +16,7 @@ from packages.shared.chunking.infrastructure.streaming.processor import Streamin
 from packages.shared.chunking.infrastructure.streaming.window import StreamingWindow
 
 
-def test_utf8_boundary():
+def test_utf8_boundary() -> None:
     """Test UTF-8 boundary detection."""
     print("\n=== UTF-8 Boundary Detection ===")
     processor = StreamingDocumentProcessor()
@@ -34,7 +35,7 @@ def test_utf8_boundary():
         print(f"  {status} {description}: {result} (expected {expected})")
 
 
-async def test_memory_pool():
+async def test_memory_pool() -> None:
     """Test memory pool management."""
     print("\n=== Memory Pool Management ===")
     pool = MemoryPool(buffer_size=1024, pool_size=3)
@@ -63,7 +64,7 @@ async def test_memory_pool():
     print(f"  ✓ Pool stats: {stats['available']}/{stats['pool_size']} available")
 
 
-def test_streaming_window():
+def test_streaming_window() -> None:
     """Test streaming window operations."""
     print("\n=== Streaming Window ===")
     window = StreamingWindow(max_size=100)
@@ -93,7 +94,7 @@ def test_streaming_window():
     print(f"  ✓ Window slide: {initial_size} -> {window.size} bytes")
 
 
-async def test_checkpoint():
+async def test_checkpoint() -> None:
     """Test checkpoint save and load."""
     print("\n=== Checkpoint Management ===")
 
@@ -126,7 +127,7 @@ async def test_checkpoint():
         print(f"  ✓ Deleted checkpoint: {deleted}")
 
 
-async def test_memory_usage():
+async def test_memory_usage() -> None:
     """Test memory bounded processing."""
     print("\n=== Memory Bounded Processing ===")
 
@@ -164,7 +165,7 @@ async def test_memory_usage():
         Path(test_file).unlink(missing_ok=True)
 
 
-async def main():
+async def main() -> None:
     """Run all basic tests."""
     print("\n" + "=" * 50)
     print("STREAMING PIPELINE - BASIC FUNCTIONALITY TEST")

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Comprehensive tests for streaming chunking strategies.
 
@@ -8,7 +9,6 @@ Tests verify:
 3. Proper boundary handling (UTF-8, sentences, etc.)
 4. No data loss or corruption
 """
-
 
 import pytest
 
@@ -31,7 +31,7 @@ class TestStreamingStrategies:
     """Test suite for all streaming chunking strategies."""
 
     @pytest.fixture()
-    def chunk_config(self):
+    def chunk_config(self) -> None:
         """Create a standard chunk configuration."""
         return ChunkConfig(
             min_tokens=100,
@@ -41,7 +41,7 @@ class TestStreamingStrategies:
         )
 
     @pytest.fixture()
-    def sample_text(self):
+    def sample_text(self) -> None:
         """Generate sample text for testing."""
         return """
         # Introduction
@@ -58,7 +58,7 @@ class TestStreamingStrategies:
         Here's a code example:
 
         ```python
-        def hello_world():
+        def hello_world() -> None:
             print("Hello, World!")
             return True
         ```
@@ -86,7 +86,7 @@ class TestStreamingStrategies:
         """
 
     @pytest.fixture()
-    def large_text(self):
+    def large_text(self) -> None:
         """Generate large text for memory testing."""
         # Generate 1MB of text
         words = ["word"] * 50000
@@ -141,7 +141,7 @@ class TestStreamingStrategies:
         return windows
 
     @pytest.mark.asyncio()
-    async def test_character_strategy_consistency(self, chunk_config, sample_text):
+    async def test_character_strategy_consistency(self, chunk_config, sample_text) -> None:
         """Test that streaming character strategy matches non-streaming output."""
         # Non-streaming version
         non_streaming = CharacterChunkingStrategy()
@@ -178,7 +178,7 @@ class TestStreamingStrategies:
             )
 
     @pytest.mark.asyncio()
-    async def test_character_strategy_memory_bounds(self, chunk_config, large_text):
+    async def test_character_strategy_memory_bounds(self, chunk_config, large_text) -> None:
         """Test that character strategy respects memory bounds."""
         strategy = StreamingCharacterStrategy()
         max_buffer = strategy.get_max_buffer_size()
@@ -194,7 +194,7 @@ class TestStreamingStrategies:
             assert buffer_size <= max_buffer, f"Buffer size {buffer_size} exceeds max {max_buffer}"
 
     @pytest.mark.asyncio()
-    async def test_recursive_strategy_memory_bounds(self, chunk_config, large_text):
+    async def test_recursive_strategy_memory_bounds(self, chunk_config, large_text) -> None:
         """Test that recursive strategy respects memory bounds."""
         strategy = StreamingRecursiveStrategy()
         max_buffer = strategy.get_max_buffer_size()
@@ -210,7 +210,7 @@ class TestStreamingStrategies:
             assert buffer_size <= max_buffer, f"Buffer size {buffer_size} exceeds max {max_buffer} (10KB)"
 
     @pytest.mark.asyncio()
-    async def test_semantic_strategy_memory_bounds(self, chunk_config, large_text):
+    async def test_semantic_strategy_memory_bounds(self, chunk_config, large_text) -> None:
         """Test that semantic strategy respects memory bounds."""
         strategy = StreamingSemanticStrategy()
         max_buffer = strategy.get_max_buffer_size()
@@ -226,7 +226,7 @@ class TestStreamingStrategies:
             assert buffer_size <= max_buffer, f"Buffer size {buffer_size} exceeds max {max_buffer} (50KB)"
 
     @pytest.mark.asyncio()
-    async def test_markdown_strategy_memory_bounds(self, chunk_config, large_text):
+    async def test_markdown_strategy_memory_bounds(self, chunk_config, large_text) -> None:
         """Test that markdown strategy respects memory bounds."""
         strategy = StreamingMarkdownStrategy()
         max_buffer = strategy.get_max_buffer_size()
@@ -245,7 +245,7 @@ class TestStreamingStrategies:
             assert buffer_size <= max_buffer, f"Buffer size {buffer_size} exceeds max {max_buffer} (100KB)"
 
     @pytest.mark.asyncio()
-    async def test_hierarchical_strategy_memory_bounds(self, chunk_config, large_text):
+    async def test_hierarchical_strategy_memory_bounds(self, chunk_config, large_text) -> None:
         """Test that hierarchical strategy respects memory bounds."""
         strategy = StreamingHierarchicalStrategy()
         max_buffer = strategy.get_max_buffer_size()
@@ -261,7 +261,7 @@ class TestStreamingStrategies:
             assert buffer_size <= max_buffer, f"Buffer size {buffer_size} exceeds max {max_buffer} (10KB)"
 
     @pytest.mark.asyncio()
-    async def test_hybrid_strategy_memory_bounds(self, chunk_config, large_text):
+    async def test_hybrid_strategy_memory_bounds(self, chunk_config, large_text) -> None:
         """Test that hybrid strategy respects memory bounds."""
         strategy = StreamingHybridStrategy()
         max_buffer = strategy.get_max_buffer_size()
@@ -277,7 +277,7 @@ class TestStreamingStrategies:
             assert buffer_size <= max_buffer, f"Buffer size {buffer_size} exceeds max {max_buffer} (150KB)"
 
     @pytest.mark.asyncio()
-    async def test_utf8_boundary_handling(self, chunk_config):
+    async def test_utf8_boundary_handling(self, chunk_config) -> None:
         """Test proper handling of UTF-8 boundaries with realistic streaming."""
         # Text with multi-byte UTF-8 characters
         text = "Hello 世界! This is a test with 中文 characters. 😀🎉 More text here."
@@ -331,7 +331,7 @@ class TestStreamingStrategies:
         assert "🎉" in reconstructed
 
     @pytest.mark.asyncio()
-    async def test_sentence_boundary_preservation(self, chunk_config):
+    async def test_sentence_boundary_preservation(self, chunk_config) -> None:
         """Test that sentence boundaries are preserved."""
         text = (
             "This is the first sentence. This is the second sentence! "
@@ -373,7 +373,7 @@ class TestStreamingStrategies:
                         assert last_char in ".!?," or content[-1].isalnum()
 
     @pytest.mark.asyncio()
-    async def test_no_data_loss(self, chunk_config, sample_text):
+    async def test_no_data_loss(self, chunk_config, sample_text) -> None:
         """Test that no data is lost during streaming."""
         strategies = [
             StreamingCharacterStrategy(),
@@ -425,7 +425,7 @@ class TestStreamingStrategies:
             ), f"{strategy_name}: Missing 'Conclusion' section"
 
     @pytest.mark.asyncio()
-    async def test_overlap_handling(self, chunk_config):
+    async def test_overlap_handling(self, chunk_config) -> None:
         """Test that overlap is handled correctly."""
         text = " ".join([f"Sentence {i}." for i in range(100)])
 
@@ -464,7 +464,7 @@ class TestStreamingStrategies:
             assert len(common) > 0, "No overlap detected between consecutive chunks"
 
     @pytest.mark.asyncio()
-    async def test_empty_input_handling(self, chunk_config):
+    async def test_empty_input_handling(self, chunk_config) -> None:
         """Test handling of empty input."""
         strategies = [
             StreamingCharacterStrategy(),
@@ -487,7 +487,7 @@ class TestStreamingStrategies:
             assert len(chunks) + len(final_chunks) == 0
 
     @pytest.mark.asyncio()
-    async def test_state_reset(self, chunk_config, sample_text):
+    async def test_state_reset(self, chunk_config, sample_text) -> None:
         """Test that reset properly clears state."""
         strategy = StreamingSemanticStrategy()
 

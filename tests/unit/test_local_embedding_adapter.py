@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """Unit tests for LocalEmbeddingAdapter.
 
 This module tests the LocalEmbeddingAdapter to ensure:
@@ -21,17 +22,17 @@ class TestLocalEmbeddingAdapter:
     """Test suite for LocalEmbeddingAdapter."""
 
     @pytest.fixture()
-    def adapter(self):
+    def adapter(self) -> None:
         """Create a LocalEmbeddingAdapter instance."""
         return LocalEmbeddingAdapter()
 
-    def test_initialization(self, adapter):
+    def test_initialization(self, adapter) -> None:
         """Test adapter initialization."""
         assert adapter._embed_dim is None
         assert hasattr(adapter, "_get_query_embedding")
         assert hasattr(adapter, "_aget_query_embedding")
 
-    def test_embed_dim_not_initialized(self, adapter):
+    def test_embed_dim_not_initialized(self, adapter) -> None:
         """Test embed_dim property when service is not initialized."""
         with patch("packages.shared.text_processing.embedding_adapter.embedding_service") as mock_service:
             # Simulate uninitialized service
@@ -43,7 +44,7 @@ class TestLocalEmbeddingAdapter:
 
             assert "Embedding service is not initialized" in str(exc_info.value)
 
-    def test_embed_dim_dynamic_retrieval(self, adapter):
+    def test_embed_dim_dynamic_retrieval(self, adapter) -> None:
         """Test dynamic dimension retrieval from service."""
         with patch("packages.shared.text_processing.embedding_adapter.embedding_service") as mock_service:
             # Mock the service structure
@@ -59,7 +60,7 @@ class TestLocalEmbeddingAdapter:
             assert adapter.embed_dim == 384
             mock_inner_service.get_dimension.assert_called_once()
 
-    def test_embed_dim_lazy_loading_case(self, adapter):
+    def test_embed_dim_lazy_loading_case(self, adapter) -> None:
         """Test dimension retrieval with lazy loading structure."""
         with patch("packages.shared.text_processing.embedding_adapter.embedding_service") as mock_service:
             # Mock lazy loading structure
@@ -73,7 +74,7 @@ class TestLocalEmbeddingAdapter:
 
             assert adapter.embed_dim == 768
 
-    def test_get_query_embedding_success(self, adapter):
+    def test_get_query_embedding_success(self, adapter) -> None:
         """Test successful query embedding generation."""
         mock_embedding = np.array([0.1, 0.2, 0.3])
 
@@ -89,7 +90,7 @@ class TestLocalEmbeddingAdapter:
             assert result == [0.1, 0.2, 0.3]
             mock_service.embed_single.assert_called_once_with("test query")
 
-    def test_get_query_embedding_failure(self, adapter):
+    def test_get_query_embedding_failure(self, adapter) -> None:
         """Test query embedding failure raises EmbeddingError."""
         with (
             patch("packages.shared.text_processing.embedding_adapter.embedding_service") as mock_service,
@@ -103,7 +104,7 @@ class TestLocalEmbeddingAdapter:
             assert "Failed to generate embedding for query" in str(exc_info.value)
             assert "Embedding failed" in str(exc_info.value.__cause__)
 
-    def test_get_query_embedding_with_running_loop(self, adapter):
+    def test_get_query_embedding_with_running_loop(self, adapter) -> None:
         """Test embedding generation when there's already a running event loop."""
         mock_embedding = np.array([0.4, 0.5, 0.6])
         mock_loop = MagicMock()
@@ -123,7 +124,7 @@ class TestLocalEmbeddingAdapter:
             mock_run.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_aget_query_embedding_success(self, adapter):
+    async def test_aget_query_embedding_success(self, adapter) -> None:
         """Test async query embedding generation."""
         mock_embedding = np.array([0.7, 0.8, 0.9])
 
@@ -136,7 +137,7 @@ class TestLocalEmbeddingAdapter:
             mock_service.embed_single.assert_called_once_with("async query")
 
     @pytest.mark.asyncio()
-    async def test_aget_query_embedding_failure(self, adapter):
+    async def test_aget_query_embedding_failure(self, adapter) -> None:
         """Test async query embedding failure."""
         with patch("packages.shared.text_processing.embedding_adapter.embedding_service") as mock_service:
             mock_service.embed_single = AsyncMock(side_effect=Exception("Async failed"))
@@ -146,7 +147,7 @@ class TestLocalEmbeddingAdapter:
 
             assert "Failed to generate embedding for query" in str(exc_info.value)
 
-    def test_get_text_embeddings_success(self, adapter):
+    def test_get_text_embeddings_success(self, adapter) -> None:
         """Test batch text embedding generation."""
         mock_embeddings = np.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]])
 
@@ -161,7 +162,7 @@ class TestLocalEmbeddingAdapter:
             assert result == [[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]]
             mock_service.embed_texts.assert_called_once_with(["text1", "text2", "text3"])
 
-    def test_get_text_embeddings_failure(self, adapter):
+    def test_get_text_embeddings_failure(self, adapter) -> None:
         """Test batch embedding failure raises EmbeddingError."""
         with (
             patch("packages.shared.text_processing.embedding_adapter.embedding_service") as mock_service,
@@ -175,7 +176,7 @@ class TestLocalEmbeddingAdapter:
             assert "Failed to generate embeddings for texts" in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_aget_text_embeddings_success(self, adapter):
+    async def test_aget_text_embeddings_success(self, adapter) -> None:
         """Test async batch embedding generation."""
         mock_embeddings = np.array([[0.1, 0.2], [0.3, 0.4]])
 
@@ -186,7 +187,7 @@ class TestLocalEmbeddingAdapter:
 
             assert result == [[0.1, 0.2], [0.3, 0.4]]
 
-    def test_no_random_fallback(self, adapter):
+    def test_no_random_fallback(self, adapter) -> None:
         """Verify there's no random embedding fallback on failure."""
         with (
             patch("packages.shared.text_processing.embedding_adapter.embedding_service") as mock_service,
@@ -201,7 +202,7 @@ class TestLocalEmbeddingAdapter:
             # Verify no random generation occurred
             # (No numpy.random calls or similar fallback logic)
 
-    def test_event_loop_cleanup(self, adapter):
+    def test_event_loop_cleanup(self, adapter) -> None:
         """Test proper event loop cleanup after sync operations."""
         mock_embedding = np.array([0.1, 0.2, 0.3])
 
@@ -223,12 +224,12 @@ class TestLocalEmbeddingAdapter:
             assert mock_set_loop.call_count == 2  # Once to set, once to clear
             mock_set_loop.assert_called_with(None)  # Last call should clear
 
-    def test_concurrent_safety(self, adapter):
+    def test_concurrent_safety(self, adapter) -> None:
         """Test that adapter handles concurrent requests safely."""
         mock_embeddings = [np.array([0.1, 0.2]), np.array([0.3, 0.4])]
         call_count = 0
 
-        def side_effect(*args):  # noqa: ARG001
+        def side_effect(*args) -> None:  # noqa: ARG001
             nonlocal call_count
             result = mock_embeddings[call_count % 2]
             call_count += 1
@@ -247,7 +248,7 @@ class TestLocalEmbeddingAdapter:
             assert result1 == [0.1, 0.2]
             assert result2 == [0.3, 0.4]
 
-    def test_service_structure_validation(self, adapter):
+    def test_service_structure_validation(self, adapter) -> None:
         """Test proper error when service structure is unexpected."""
         with patch("packages.shared.text_processing.embedding_adapter.embedding_service") as mock_service:
             # Mock unexpected structure

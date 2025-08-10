@@ -2,11 +2,16 @@
 
 from collections.abc import Generator
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 from passlib.context import CryptContext
+
+from packages.shared.database import get_db
+from packages.webui.dependencies import get_auth_repository, get_user_repository
+from packages.webui.main import app
 
 # Create pwd_context locally to avoid imports from shared.database
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -22,7 +27,7 @@ def mock_repositories() -> tuple[MagicMock, MagicMock, dict[str, dict]]:
     # Store users in memory for testing
     users_db: dict[str, dict] = {}
 
-    async def create_user(user_data):
+    async def create_user(user_data) -> None:
         # Handle both dictionary input and keyword arguments
         if isinstance(user_data, dict):
             username = user_data.get("username")
@@ -65,19 +70,19 @@ def mock_repositories() -> tuple[MagicMock, MagicMock, dict[str, dict]]:
 
         return user_dict
 
-    async def get_user_by_username(username: str):
+    async def get_user_by_username(username: str) -> None:
         return users_db.get(username)
 
-    async def get_user_by_email(email: str):
+    async def get_user_by_email(email: str) -> None:
         return users_db.get(email)
 
-    async def get_user(user_id: int):
+    async def get_user(user_id: int) -> None:
         for user in users_db.values():
             if user.id == user_id:
                 return user
         return None
 
-    async def count_users():
+    async def count_users() -> None:
         # Count unique users (don't double count users stored by both username and email)
         unique_users = set()
         for user in users_db.values():
@@ -115,16 +120,12 @@ def client(mock_repositories) -> Generator[TestClient, None, None]:
             mock_ws_manager.startup = AsyncMock()
             mock_ws_manager.shutdown = AsyncMock()
 
-            from packages.shared.database import get_db
-            from packages.webui.dependencies import get_auth_repository, get_user_repository
-            from packages.webui.main import app
-
             mock_user_repo, mock_auth_repo, _ = mock_repositories
 
             # Mock database session
             mock_db = AsyncMock()
 
-            async def override_get_db():
+            async def override_get_db() -> Generator[Any, None, None]:
                 yield mock_db
 
             # Override repository dependencies

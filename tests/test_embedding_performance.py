@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
+
 """
 Performance benchmarks for embedding service
 """
+
 import asyncio
+import gc
+import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from unittest.mock import MagicMock
+
+import psutil
+
+from packages.shared.embedding import EmbeddingService, cleanup, get_embedding_service, initialize_embedding_service
 
 # Mock metrics before importing
 sys.modules["packages.shared.metrics.prometheus"] = MagicMock()
@@ -15,7 +23,6 @@ sys.modules["packages.shared.metrics.prometheus"] = MagicMock()
 
 def benchmark_sync_embeddings() -> dict[str, Any]:
     """Benchmark synchronous embedding generation."""
-    from packages.shared.embedding import EmbeddingService
 
     service = EmbeddingService(mock_mode=True)
 
@@ -45,7 +52,6 @@ def benchmark_sync_embeddings() -> dict[str, Any]:
 
 async def benchmark_async_embeddings() -> dict[str, Any]:
     """Benchmark asynchronous embedding generation."""
-    from packages.shared.embedding import initialize_embedding_service
 
     # Initialize with mock model
     service = await initialize_embedding_service("test-model", mock_mode=True)
@@ -75,7 +81,6 @@ async def benchmark_async_embeddings() -> dict[str, Any]:
 
 def benchmark_concurrent_requests() -> dict[str, Any]:
     """Benchmark concurrent request handling."""
-    from packages.shared.embedding import EmbeddingService
 
     service = EmbeddingService(mock_mode=True)
 
@@ -107,12 +112,6 @@ def benchmark_concurrent_requests() -> dict[str, Any]:
 
 def benchmark_memory_usage() -> dict[str, Any]:
     """Benchmark memory usage patterns."""
-    import gc
-    import os
-
-    import psutil
-
-    from packages.shared.embedding import EmbeddingService
 
     process = psutil.Process(os.getpid())
     service = EmbeddingService(mock_mode=True)
@@ -154,7 +153,6 @@ def benchmark_memory_usage() -> dict[str, Any]:
 
 async def benchmark_service_lifecycle() -> dict[str, float]:
     """Benchmark service initialization and cleanup."""
-    from packages.shared.embedding import cleanup, get_embedding_service, initialize_embedding_service
 
     results = {}
 

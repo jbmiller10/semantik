@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Validation script for streaming pipeline implementation.
 
@@ -15,20 +16,20 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
 from packages.shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from packages.shared.chunking.infrastructure.streaming.checkpoint import CheckpointManager
 from packages.shared.chunking.infrastructure.streaming.memory_pool import MemoryPool
 from packages.shared.chunking.infrastructure.streaming.processor import StreamingDocumentProcessor
 
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 
 class ValidationStrategy(ChunkingStrategy):
     """Simple strategy for validation testing."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(name="validation_strategy")
         self.chunks_created = 0
 
@@ -94,7 +95,7 @@ def create_test_file(size_mb: int, path: str) -> str:
     return path
 
 
-async def validate_memory_usage():
+async def validate_memory_usage() -> None:
     """Validate: Process 10GB file with <100MB memory usage."""
     print("\n" + "=" * 60)
     print("VALIDATION 1: Memory Usage with Large File")
@@ -159,7 +160,7 @@ async def validate_memory_usage():
         Path(test_file).unlink(missing_ok=True)
 
 
-async def validate_utf8_integrity():
+async def validate_utf8_integrity() -> None:
     """Validate: No UTF-8 character corruption."""
     print("\n" + "=" * 60)
     print("VALIDATION 2: UTF-8 Character Integrity")
@@ -231,7 +232,7 @@ async def validate_utf8_integrity():
         Path(test_file).unlink(missing_ok=True)
 
 
-async def validate_checkpoint_resume():
+async def validate_checkpoint_resume() -> None:
     """Validate: Checkpoint/resume working correctly."""
     print("\n" + "=" * 60)
     print("VALIDATION 3: Checkpoint and Resume")
@@ -319,7 +320,7 @@ async def validate_checkpoint_resume():
         Path(test_file).unlink(missing_ok=True)
 
 
-async def validate_progress_events():
+async def validate_progress_events() -> None:
     """Validate: Progress events emitted every second."""
     print("\n" + "=" * 60)
     print("VALIDATION 4: Progress Event Emission")
@@ -342,7 +343,7 @@ async def validate_progress_events():
         progress_events = []
         last_progress_time = [time.time()]
 
-        def progress_callback(progress: dict[str, Any]):
+        def progress_callback(progress: dict[str, Any]) -> None:
             current_time = time.time()
             time_since_last = current_time - last_progress_time[0]
             progress_events.append(
@@ -396,7 +397,7 @@ async def validate_progress_events():
         Path(test_file).unlink(missing_ok=True)
 
 
-async def validate_backpressure():
+async def validate_backpressure() -> None:
     """Validate: Backpressure prevents memory accumulation."""
     print("\n" + "=" * 60)
     print("VALIDATION 5: Backpressure Management")
@@ -424,7 +425,7 @@ async def validate_backpressure():
         original_manage = processor._manage_backpressure
         pause_events = []
 
-        async def track_backpressure():
+        async def track_backpressure() -> None:
             nonlocal backpressure_triggered
             result = await original_manage()
             if processor.processing_paused:
@@ -463,7 +464,7 @@ async def validate_backpressure():
         Path(test_file).unlink(missing_ok=True)
 
 
-async def validate_edge_cases():
+async def validate_edge_cases() -> None:
     """Validate: All edge cases handled."""
     print("\n" + "=" * 60)
     print("VALIDATION 6: Edge Cases")
@@ -535,7 +536,7 @@ async def validate_edge_cases():
     return True
 
 
-async def main():
+async def main() -> None:
     """Run all validation tests."""
     print("\n" + "=" * 60)
     print("STREAMING PIPELINE VALIDATION")

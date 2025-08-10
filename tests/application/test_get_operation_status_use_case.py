@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+
 """Tests for GetOperationStatusUseCase."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -24,7 +26,7 @@ class TestGetOperationStatusUseCase:
     """Test suite for GetOperationStatusUseCase."""
 
     @pytest.fixture()
-    def mock_repository(self):
+    def mock_repository(self) -> None:
         """Create mock chunking operation repository."""
         repo = AsyncMock()
         repo.find_by_id = AsyncMock()  # Changed from get_by_id to match implementation
@@ -32,21 +34,21 @@ class TestGetOperationStatusUseCase:
         return repo
 
     @pytest.fixture()
-    def mock_chunk_repository(self):
+    def mock_chunk_repository(self) -> None:
         """Create mock chunk repository."""
         repo = AsyncMock()
         repo.find_by_operation = AsyncMock(return_value=[])  # Changed to match implementation
         return repo
 
     @pytest.fixture()
-    def mock_metrics_service(self):
+    def mock_metrics_service(self) -> None:
         """Create mock metrics service."""
         service = AsyncMock()
         service.get_operation_metrics = AsyncMock(return_value=None)
         return service
 
     @pytest.fixture()
-    def use_case(self, mock_repository, mock_chunk_repository, mock_metrics_service):
+    def use_case(self, mock_repository, mock_chunk_repository, mock_metrics_service) -> None:
         """Create use case instance with mocked dependencies."""
         return GetOperationStatusUseCase(
             operation_repository=mock_repository,
@@ -55,7 +57,7 @@ class TestGetOperationStatusUseCase:
         )
 
     @pytest.fixture()
-    def sample_operation(self):
+    def sample_operation(self) -> None:
         """Create a sample chunking operation."""
         config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
 
@@ -70,12 +72,12 @@ class TestGetOperationStatusUseCase:
         return operation
 
     @pytest.fixture()
-    def valid_request(self):
+    def valid_request(self) -> None:
         """Create a valid status request."""
         return GetOperationStatusRequest(operation_id=str(uuid4()))
 
     @pytest.mark.asyncio()
-    async def test_get_status_success(self, use_case, valid_request, sample_operation):
+    async def test_get_status_success(self, use_case, valid_request, sample_operation) -> None:
         """Test successful status retrieval."""
         # Arrange
         # Set attributes directly on the domain entity
@@ -96,7 +98,7 @@ class TestGetOperationStatusUseCase:
         use_case.operation_repository.find_by_id.assert_called_once_with(valid_request.operation_id)
 
     @pytest.mark.asyncio()
-    async def test_get_status_from_repository(self, use_case, valid_request):
+    async def test_get_status_from_repository(self, use_case, valid_request) -> None:
         """Test status retrieval directly from repository."""
         # Arrange
         # Create a mock operation to return from repository
@@ -122,7 +124,7 @@ class TestGetOperationStatusUseCase:
         use_case.operation_repository.find_by_id.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_get_status_operation_not_found(self, use_case, valid_request):
+    async def test_get_status_operation_not_found(self, use_case, valid_request) -> None:
         """Test handling of operation not found."""
         # Arrange
         use_case.operation_repository.find_by_id.return_value = None
@@ -132,7 +134,7 @@ class TestGetOperationStatusUseCase:
             await use_case.execute(valid_request)
 
     @pytest.mark.asyncio()
-    async def test_get_status_completed_operation(self, use_case, valid_request):
+    async def test_get_status_completed_operation(self, use_case, valid_request) -> None:
         """Test status for completed operation."""
         # Arrange
         completed_operation = MagicMock()
@@ -158,7 +160,7 @@ class TestGetOperationStatusUseCase:
         assert response.total_chunks == 10
 
     @pytest.mark.asyncio()
-    async def test_get_status_failed_operation(self, use_case, valid_request):
+    async def test_get_status_failed_operation(self, use_case, valid_request) -> None:
         """Test status for failed operation."""
         # Arrange
         failed_operation = MagicMock()
@@ -186,7 +188,7 @@ class TestGetOperationStatusUseCase:
         assert response.error_details["error_type"] == "RuntimeError"
 
     @pytest.mark.asyncio()
-    async def test_get_status_cancelled_operation(self, use_case, valid_request):
+    async def test_get_status_cancelled_operation(self, use_case, valid_request) -> None:
         """Test status for cancelled operation."""
         # Arrange
         cancelled_operation = MagicMock()
@@ -210,7 +212,7 @@ class TestGetOperationStatusUseCase:
         assert response.progress_percentage == 70.0  # 7/10 * 100
 
     @pytest.mark.asyncio()
-    async def test_get_status_with_timing_info(self, use_case, valid_request):
+    async def test_get_status_with_timing_info(self, use_case, valid_request) -> None:
         """Test that timing information is included in status."""
         # Arrange
         operation = MagicMock()
@@ -233,7 +235,7 @@ class TestGetOperationStatusUseCase:
         assert response.completed_at is None
 
     @pytest.mark.asyncio()
-    async def test_get_status_by_document_id(self, use_case):
+    async def test_get_status_by_document_id(self, use_case) -> None:
         """Test getting status by document ID instead of operation ID."""
         # Arrange
         request = GetOperationStatusRequest(document_id="doc-123")
@@ -260,7 +262,7 @@ class TestGetOperationStatusUseCase:
         use_case.operation_repository.find_by_document.assert_called_once_with("doc-123")
 
     @pytest.mark.asyncio()
-    async def test_get_latest_operation_for_document(self, use_case):
+    async def test_get_latest_operation_for_document(self, use_case) -> None:
         """Test getting latest operation when multiple exist for a document."""
         # Arrange
         request = GetOperationStatusRequest(document_id="doc-multi")
@@ -296,7 +298,7 @@ class TestGetOperationStatusUseCase:
         assert response.status == DTOOperationStatus.IN_PROGRESS
 
     @pytest.mark.asyncio()
-    async def test_status_retrieval_from_repository(self, use_case, valid_request, sample_operation):
+    async def test_status_retrieval_from_repository(self, use_case, valid_request, sample_operation) -> None:
         """Test that status is correctly retrieved from repository."""
         # Arrange
         # Set attributes for progress calculation
@@ -314,7 +316,7 @@ class TestGetOperationStatusUseCase:
         assert response.progress_percentage == 50.0  # 5/10 * 100
 
     @pytest.mark.asyncio()
-    async def test_terminal_state_retrieval(self, use_case, valid_request):
+    async def test_terminal_state_retrieval(self, use_case, valid_request) -> None:
         """Test that terminal states are correctly retrieved."""
         # Arrange
         completed_operation = MagicMock()
@@ -338,14 +340,13 @@ class TestGetOperationStatusUseCase:
         use_case.operation_repository.find_by_id.assert_called_once_with(valid_request.operation_id)
 
     @pytest.mark.asyncio()
-    async def test_concurrent_status_requests(self, use_case, sample_operation):
+    async def test_concurrent_status_requests(self, use_case, sample_operation) -> None:
         """Test handling of concurrent status requests."""
         # Arrange
         requests = [GetOperationStatusRequest(operation_id=sample_operation.id) for _ in range(5)]
         use_case.operation_repository.find_by_id.return_value = sample_operation
 
         # Act
-        import asyncio
 
         responses = await asyncio.gather(*[use_case.execute(req) for req in requests])
 
@@ -356,7 +357,7 @@ class TestGetOperationStatusUseCase:
             assert response.status == DTOOperationStatus.IN_PROGRESS  # PROCESSING maps to IN_PROGRESS
 
     @pytest.mark.asyncio()
-    async def test_status_with_completed_operation_details(self, use_case, valid_request):
+    async def test_status_with_completed_operation_details(self, use_case, valid_request) -> None:
         """Test that completed operation returns all expected details."""
         # Arrange
         operation = MagicMock()
@@ -383,7 +384,7 @@ class TestGetOperationStatusUseCase:
         assert response.error_message is None
 
     @pytest.mark.asyncio()
-    async def test_status_with_processing_operation_timing(self, use_case, valid_request):
+    async def test_status_with_processing_operation_timing(self, use_case, valid_request) -> None:
         """Test timing information for processing operations."""
         # Arrange
         operation = MagicMock()
@@ -410,7 +411,7 @@ class TestGetOperationStatusUseCase:
         assert response.completed_at is None
 
     @pytest.mark.asyncio()
-    async def test_invalid_operation_id_format(self, use_case):
+    async def test_invalid_operation_id_format(self, use_case) -> None:
         """Test handling of operation not found."""
         # Arrange
         request = GetOperationStatusRequest(operation_id="invalid-id-format")

@@ -3,6 +3,7 @@ Comprehensive tests for SearchService covering all methods and edge cases.
 """
 
 import asyncio
+import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -76,7 +77,6 @@ class TestSearchServiceInit:
         assert service.collection_repo == mock_collection_repo
         # httpx.Timeout object doesn't have direct attribute access
         # Check that it's an httpx.Timeout instance with correct values
-        import httpx
 
         assert isinstance(service.default_timeout, httpx.Timeout)
         assert service.default_timeout.connect == 5.0
@@ -964,8 +964,6 @@ class TestSearchServiceEdgeCases:
             mock_client = AsyncMock()
             mock_client_class.return_value.__aenter__.return_value = mock_client
             mock_client.post.side_effect = mock_post
-
-            import time
 
             start_time = time.time()
 

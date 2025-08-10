@@ -8,17 +8,21 @@ NOTE: The embedding service has been moved to a shared package with dependency i
 as part of CORE-003. This test now verifies the flow with the updated architecture.
 """
 
+import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
+
+from packages.vecpipe import model_manager, search_api
+from packages.vecpipe.search_api import app
 
 
 class TestSearchAPIEmbeddingFlow:
     """Test the embedding generation flow in search_api.
 
     NOTE: Due to settings being loaded at module import time, these tests
-    may run with USE_MOCK_EMBEDDINGS=True depending on the environment.
-    This is a known limitation that will be addressed in the CORE-003 refactor.
+        may run with USE_MOCK_EMBEDDINGS=True depending on the environment.
+        This is a known limitation that will be addressed in the CORE-003 refactor.
     """
 
     def test_search_endpoint_embedding_flow(self) -> None:
@@ -62,7 +66,6 @@ class TestSearchAPIEmbeddingFlow:
             mock_qdrant_instance.search = AsyncMock(return_value=[mock_result])
 
             # Import and test
-            from packages.vecpipe.search_api import app
 
             with TestClient(app) as client:
                 query_text = "test query"
@@ -95,14 +98,13 @@ class TestSearchAPIEmbeddingFlow:
     def test_embedding_service_dependency_structure(self, mock_model_manager) -> None:
         """Document and verify the current dependency structure.
 
-        This test documents the current problematic dependency where:
+                This test documents the current problematic dependency where:
         - vecpipe/search_api imports from shared.embedding
         - vecpipe/model_manager imports from shared.embedding
 
         After CORE-003, these imports should come from a shared package.
         """
         # Document current imports (these would fail if structure changes)
-        from packages.vecpipe import model_manager, search_api
 
         # Verify the imports exist (will help catch when refactoring happens)
         # After CORE-003, search_api uses get_embedding_service instead of EmbeddingService
@@ -110,7 +112,6 @@ class TestSearchAPIEmbeddingFlow:
         assert hasattr(model_manager, "EmbeddingService")
 
         # Document that both import from webui
-        import inspect
 
         search_api_source = inspect.getsource(search_api)
         model_manager_source = inspect.getsource(model_manager)
@@ -149,26 +150,23 @@ class TestSearchAPIEmbeddingFlow:
             mock_qdrant_instance.search = AsyncMock(return_value=[])
 
             # Need to patch metrics server to avoid port conflicts
-            with patch("packages.vecpipe.search_api.start_metrics_server"):
-                from packages.vecpipe.search_api import app
+            with patch("packages.vecpipe.search_api.start_metrics_server"), TestClient(app) as client:
+                response = client.post(
+                    "/search",
+                    json={
+                        "query": "test with custom params",
+                        "k": 10,
+                        "search_type": "question",
+                        "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+                        "quantization": "int8",
+                    },
+                )
 
-                with TestClient(app) as client:
-                    response = client.post(
-                        "/search",
-                        json={
-                            "query": "test with custom params",
-                            "k": 10,
-                            "search_type": "question",
-                            "model_name": "sentence-transformers/all-MiniLM-L6-v2",
-                            "quantization": "int8",
-                        },
-                    )
+                assert response.status_code == 200
+                result = response.json()
 
-                    assert response.status_code == 200
-                    result = response.json()
+                # The response should indicate the search type
+                assert result["search_type"] == "question"
 
-                    # The response should indicate the search type
-                    assert result["search_type"] == "question"
-
-                    # Note: model_used in response depends on USE_MOCK_EMBEDDINGS
-                    # so we don't assert on it here
+                # Note: model_used in response depends on USE_MOCK_EMBEDDINGS
+                # so we don't assert on it here

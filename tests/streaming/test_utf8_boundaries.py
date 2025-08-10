@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Test UTF-8 boundary handling in streaming processor.
 
@@ -7,6 +8,7 @@ we never split multi-byte characters.
 """
 
 import random
+import time
 
 import pytest
 
@@ -17,7 +19,7 @@ from packages.shared.chunking.infrastructure.streaming.window import StreamingWi
 class TestUTF8BoundaryHandling:
     """Test suite for UTF-8 boundary detection."""
 
-    def test_ascii_only_boundary(self):
+    def test_ascii_only_boundary(self) -> None:
         """Test boundary detection with ASCII-only text."""
         processor = StreamingDocumentProcessor()
 
@@ -28,7 +30,7 @@ class TestUTF8BoundaryHandling:
         boundary = processor._find_utf8_boundary(data)
         assert boundary == len(data)
 
-    def test_2byte_utf8_boundary(self):
+    def test_2byte_utf8_boundary(self) -> None:
         """Test boundary detection with 2-byte UTF-8 characters."""
         processor = StreamingDocumentProcessor()
 
@@ -43,7 +45,7 @@ class TestUTF8BoundaryHandling:
         boundary = processor._find_utf8_boundary(data, max_pos=5)
         assert boundary == 5  # Can include complete é
 
-    def test_3byte_utf8_boundary(self):
+    def test_3byte_utf8_boundary(self) -> None:
         """Test boundary detection with 3-byte UTF-8 characters."""
         processor = StreamingDocumentProcessor()
 
@@ -61,7 +63,7 @@ class TestUTF8BoundaryHandling:
         boundary = processor._find_utf8_boundary(data, max_pos=hello_len + 3)
         assert boundary == hello_len + 3  # Include complete 中
 
-    def test_4byte_utf8_boundary(self):
+    def test_4byte_utf8_boundary(self) -> None:
         """Test boundary detection with 4-byte UTF-8 characters (emoji)."""
         processor = StreamingDocumentProcessor()
 
@@ -78,7 +80,7 @@ class TestUTF8BoundaryHandling:
         boundary = processor._find_utf8_boundary(data, max_pos=party_len + 4)
         assert boundary == party_len + 4  # Include complete emoji
 
-    def test_mixed_utf8_boundary(self):
+    def test_mixed_utf8_boundary(self) -> None:
         """Test boundary detection with mixed UTF-8 character sizes."""
         processor = StreamingDocumentProcessor()
 
@@ -95,7 +97,7 @@ class TestUTF8BoundaryHandling:
                 decoded = data[:boundary].decode("utf-8", errors="strict")
                 assert isinstance(decoded, str)  # Should not raise
 
-    def test_incomplete_sequence_at_end(self):
+    def test_incomplete_sequence_at_end(self) -> None:
         """Test handling of incomplete UTF-8 sequence at buffer end."""
         processor = StreamingDocumentProcessor()
 
@@ -108,7 +110,7 @@ class TestUTF8BoundaryHandling:
         boundary = processor._find_utf8_boundary(incomplete)
         assert boundary == len(b"Test")  # Should cut before incomplete char
 
-    def test_continuation_bytes_only(self):
+    def test_continuation_bytes_only(self) -> None:
         """Test handling when buffer starts with continuation bytes."""
         processor = StreamingDocumentProcessor()
 
@@ -118,7 +120,7 @@ class TestUTF8BoundaryHandling:
         boundary = processor._find_utf8_boundary(continuation)
         assert boundary == 0  # No valid boundary found
 
-    def test_streaming_window_utf8_safety(self):
+    def test_streaming_window_utf8_safety(self) -> None:
         """Test StreamingWindow's UTF-8 safety in decode_safe."""
         window = StreamingWindow(max_size=1024)
 
@@ -143,7 +145,7 @@ class TestUTF8BoundaryHandling:
         decoded = window.decode_safe()
         assert "世界" in decoded
 
-    def test_random_boundaries_never_corrupt(self):
+    def test_random_boundaries_never_corrupt(self) -> None:
         """Test that random boundaries never cause UTF-8 corruption."""
         processor = StreamingDocumentProcessor()
 
@@ -172,14 +174,14 @@ class TestUTF8BoundaryHandling:
                     except UnicodeDecodeError:
                         pytest.fail(f"UTF-8 corruption at boundary {boundary} for text: {text}")
 
-    def test_zero_length_input(self):
+    def test_zero_length_input(self) -> None:
         """Test boundary detection with empty input."""
         processor = StreamingDocumentProcessor()
 
         assert processor._find_utf8_boundary(b"") == 0
         assert processor._find_utf8_boundary(b"", max_pos=0) == 0
 
-    def test_single_byte_input(self):
+    def test_single_byte_input(self) -> None:
         """Test boundary detection with single byte."""
         processor = StreamingDocumentProcessor()
 
@@ -192,7 +194,7 @@ class TestUTF8BoundaryHandling:
         # Continuation byte (invalid start)
         assert processor._find_utf8_boundary(bytes([0x80])) == 0
 
-    def test_boundary_at_exact_character(self):
+    def test_boundary_at_exact_character(self) -> None:
         """Test that boundaries align with character boundaries."""
         processor = StreamingDocumentProcessor()
 
@@ -211,7 +213,7 @@ class TestUTF8BoundaryHandling:
             if boundary > 0:
                 assert boundary in expected_boundaries or boundary == len(data)
 
-    def test_malformed_utf8_handling(self):
+    def test_malformed_utf8_handling(self) -> None:
         """Test handling of malformed UTF-8 sequences."""
         processor = StreamingDocumentProcessor()
 
@@ -232,14 +234,12 @@ class TestUTF8BoundaryHandling:
 class TestUTF8BoundaryPerformance:
     """Performance tests for UTF-8 boundary detection."""
 
-    def test_large_ascii_performance(self):
+    def test_large_ascii_performance(self) -> None:
         """Test performance with large ASCII-only data."""
         processor = StreamingDocumentProcessor()
 
         # 1MB of ASCII data
         data = b"A" * (1024 * 1024)
-
-        import time
 
         start = time.time()
         boundary = processor._find_utf8_boundary(data)
@@ -248,15 +248,13 @@ class TestUTF8BoundaryPerformance:
         assert boundary == len(data)
         assert elapsed < 0.01  # Should be very fast for ASCII
 
-    def test_large_mixed_utf8_performance(self):
+    def test_large_mixed_utf8_performance(self) -> None:
         """Test performance with large mixed UTF-8 data."""
         processor = StreamingDocumentProcessor()
 
         # Generate mixed UTF-8 data
         text = "Hello 世界 " * 10000  # ~100KB
         data = text.encode("utf-8")
-
-        import time
 
         start = time.time()
 

@@ -15,7 +15,7 @@ class TestChunkRepository:
     """Test cases for ChunkRepository."""
 
     @pytest.fixture()
-    def mock_session(self):
+    def mock_session(self) -> None:
         """Create a mock async session."""
         session = AsyncMock(spec=AsyncSession)
         session.add = MagicMock()
@@ -27,12 +27,12 @@ class TestChunkRepository:
         return session
 
     @pytest.fixture()
-    def repository(self, mock_session):
+    def repository(self, mock_session) -> None:
         """Create a ChunkRepository instance with mocked session."""
         return ChunkRepository(mock_session)
 
     @pytest.fixture()
-    def sample_chunk_data(self):
+    def sample_chunk_data(self) -> None:
         """Create sample chunk data for testing."""
         return {
             "id": str(uuid4()),
@@ -45,7 +45,7 @@ class TestChunkRepository:
         }
 
     @pytest.mark.asyncio()
-    async def test_create_chunk_success(self, repository, mock_session, sample_chunk_data):
+    async def test_create_chunk_success(self, repository, mock_session, sample_chunk_data) -> None:
         """Test successful chunk creation."""
         result = await repository.create_chunk(sample_chunk_data)
 
@@ -56,7 +56,7 @@ class TestChunkRepository:
         mock_session.flush.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_create_chunk_auto_generate_id(self, repository, mock_session):
+    async def test_create_chunk_auto_generate_id(self, repository, mock_session) -> None:
         """Test chunk creation with auto-generated ID."""
         chunk_data = {
             "collection_id": str(uuid4()),
@@ -69,7 +69,7 @@ class TestChunkRepository:
         assert len(result.id) == 36  # UUID string length
 
     @pytest.mark.asyncio()
-    async def test_create_chunk_missing_collection_id(self, repository):
+    async def test_create_chunk_missing_collection_id(self, repository) -> None:
         """Test chunk creation fails without collection_id."""
         chunk_data = {"content": "Test content"}
 
@@ -77,7 +77,7 @@ class TestChunkRepository:
             await repository.create_chunk(chunk_data)
 
     @pytest.mark.asyncio()
-    async def test_create_chunk_invalid_collection_id(self, repository):
+    async def test_create_chunk_invalid_collection_id(self, repository) -> None:
         """Test chunk creation with invalid collection_id."""
         chunk_data = {
             "collection_id": "not-a-uuid",
@@ -88,7 +88,7 @@ class TestChunkRepository:
             await repository.create_chunk(chunk_data)
 
     @pytest.mark.asyncio()
-    async def test_create_chunks_bulk_success(self, repository, mock_session):
+    async def test_create_chunks_bulk_success(self, repository, mock_session) -> None:
         """Test successful bulk chunk creation."""
         chunks_data = [
             {
@@ -100,7 +100,7 @@ class TestChunkRepository:
         ]
 
         # Mock the bulk insert behavior
-        def mock_run_sync(func):
+        def mock_run_sync(func) -> None:
             sync_session = Mock()
             sync_session.bulk_insert_mappings = Mock()
             func(sync_session)
@@ -113,7 +113,7 @@ class TestChunkRepository:
         assert mock_session.run_sync.called
 
     @pytest.mark.asyncio()
-    async def test_create_chunks_bulk_empty_list(self, repository, mock_session):
+    async def test_create_chunks_bulk_empty_list(self, repository, mock_session) -> None:
         """Test bulk creation with empty list."""
         count = await repository.create_chunks_bulk([])
 
@@ -121,7 +121,7 @@ class TestChunkRepository:
         mock_session.run_sync.assert_not_called()
 
     @pytest.mark.asyncio()
-    async def test_create_chunks_bulk_auto_generate_ids(self, repository, mock_session):
+    async def test_create_chunks_bulk_auto_generate_ids(self, repository, mock_session) -> None:
         """Test bulk creation auto-generates IDs."""
         chunks_data = [
             {"collection_id": str(uuid4()), "content": "Chunk 1"},
@@ -131,7 +131,7 @@ class TestChunkRepository:
         # Mock the bulk insert
         inserted_data = []
 
-        def capture_bulk_insert(func):
+        def capture_bulk_insert(func) -> None:
             sync_session = Mock()
             sync_session.bulk_insert_mappings = Mock(side_effect=lambda _model, items: inserted_data.extend(items))
             func(sync_session)
@@ -145,7 +145,7 @@ class TestChunkRepository:
         assert all(len(chunk["id"]) == 36 for chunk in inserted_data)
 
     @pytest.mark.asyncio()
-    async def test_get_chunk_by_id_found(self, repository, mock_session, sample_chunk_data):
+    async def test_get_chunk_by_id_found(self, repository, mock_session, sample_chunk_data) -> None:
         """Test getting chunk by ID when it exists."""
         chunk = Chunk(**sample_chunk_data)
         mock_result = Mock()
@@ -158,7 +158,7 @@ class TestChunkRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_get_chunk_by_id_not_found(self, repository, mock_session):
+    async def test_get_chunk_by_id_not_found(self, repository, mock_session) -> None:
         """Test getting chunk by ID when it doesn't exist."""
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = None
@@ -169,7 +169,7 @@ class TestChunkRepository:
         assert result is None
 
     @pytest.mark.asyncio()
-    async def test_get_chunk_by_id_invalid_ids(self, repository):
+    async def test_get_chunk_by_id_invalid_ids(self, repository) -> None:
         """Test getting chunk with invalid IDs."""
         with pytest.raises(ValueError, match="must be a valid UUID"):
             await repository.get_chunk_by_id("invalid-id", str(uuid4()))
@@ -178,7 +178,7 @@ class TestChunkRepository:
             await repository.get_chunk_by_id(str(uuid4()), "invalid-collection-id")
 
     @pytest.mark.asyncio()
-    async def test_get_chunks_by_document(self, repository, mock_session):
+    async def test_get_chunks_by_document(self, repository, mock_session) -> None:
         """Test getting chunks by document ID."""
         doc_id = str(uuid4())
         collection_id = str(uuid4())
@@ -204,7 +204,7 @@ class TestChunkRepository:
         assert all(chunk.document_id == doc_id for chunk in result)
 
     @pytest.mark.asyncio()
-    async def test_get_chunks_by_document_with_pagination(self, repository, mock_session):
+    async def test_get_chunks_by_document_with_pagination(self, repository, mock_session) -> None:
         """Test getting chunks with limit and offset."""
         mock_result = Mock()
         mock_result.scalars.return_value.all.return_value = []
@@ -216,7 +216,7 @@ class TestChunkRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_get_chunks_by_document_invalid_pagination(self, repository):
+    async def test_get_chunks_by_document_invalid_pagination(self, repository) -> None:
         """Test getting chunks with invalid pagination parameters."""
         doc_id = str(uuid4())
         collection_id = str(uuid4())
@@ -228,7 +228,7 @@ class TestChunkRepository:
             await repository.get_chunks_by_document(doc_id, collection_id, limit=-1)
 
     @pytest.mark.asyncio()
-    async def test_get_chunks_by_collection(self, repository, mock_session):
+    async def test_get_chunks_by_collection(self, repository, mock_session) -> None:
         """Test getting all chunks for a collection."""
         collection_id = str(uuid4())
         created_after = datetime.now(UTC) - timedelta(days=1)
@@ -252,7 +252,7 @@ class TestChunkRepository:
         assert len(result) == 5
 
     @pytest.mark.asyncio()
-    async def test_update_chunk_embeddings_success(self, repository, mock_session):
+    async def test_update_chunk_embeddings_success(self, repository, mock_session) -> None:
         """Test updating chunk embeddings successfully."""
         collection_id = str(uuid4())
         chunk_updates = [
@@ -275,7 +275,7 @@ class TestChunkRepository:
         assert mock_session.execute.call_count == 3
 
     @pytest.mark.asyncio()
-    async def test_update_chunk_embeddings_empty_list(self, repository, mock_session):
+    async def test_update_chunk_embeddings_empty_list(self, repository, mock_session) -> None:
         """Test updating embeddings with empty list."""
         count = await repository.update_chunk_embeddings([])
 
@@ -283,7 +283,7 @@ class TestChunkRepository:
         mock_session.execute.assert_not_called()
 
     @pytest.mark.asyncio()
-    async def test_update_chunk_embeddings_invalid_data(self, repository):
+    async def test_update_chunk_embeddings_invalid_data(self, repository) -> None:
         """Test updating embeddings with invalid data."""
         # Missing required field
         with pytest.raises(ValueError, match="must have 'id', 'collection_id', and 'embedding_vector_id'"):
@@ -306,7 +306,7 @@ class TestChunkRepository:
             )
 
     @pytest.mark.asyncio()
-    async def test_update_chunk_embeddings_batch_size_limit(self, repository):
+    async def test_update_chunk_embeddings_batch_size_limit(self, repository) -> None:
         """Test updating embeddings exceeds batch size limit."""
         # Create more updates than allowed
         chunk_updates = [
@@ -322,7 +322,7 @@ class TestChunkRepository:
             await repository.update_chunk_embeddings(chunk_updates)
 
     @pytest.mark.asyncio()
-    async def test_delete_chunks_by_document(self, repository, mock_session):
+    async def test_delete_chunks_by_document(self, repository, mock_session) -> None:
         """Test deleting chunks by document ID."""
         mock_result = Mock()
         mock_result.rowcount = 5
@@ -334,7 +334,7 @@ class TestChunkRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_delete_chunks_by_collection(self, repository, mock_session):
+    async def test_delete_chunks_by_collection(self, repository, mock_session) -> None:
         """Test deleting all chunks for a collection."""
         mock_result = Mock()
         mock_result.rowcount = 100
@@ -346,7 +346,7 @@ class TestChunkRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_get_chunk_statistics(self, repository, mock_session):
+    async def test_get_chunk_statistics(self, repository, mock_session) -> None:
         """Test getting chunk statistics delegates to helper."""
         collection_id = str(uuid4())
 
@@ -364,7 +364,7 @@ class TestChunkRepository:
             mock_helper.get_partition_statistics.assert_called_once_with(mock_session, collection_id)
 
     @pytest.mark.asyncio()
-    async def test_count_chunks_by_document(self, repository, mock_session):
+    async def test_count_chunks_by_document(self, repository, mock_session) -> None:
         """Test counting chunks for a document."""
         mock_result = Mock()
         mock_result.scalar.return_value = 10
@@ -375,7 +375,7 @@ class TestChunkRepository:
         assert count == 10
 
     @pytest.mark.asyncio()
-    async def test_count_chunks_by_document_none_result(self, repository, mock_session):
+    async def test_count_chunks_by_document_none_result(self, repository, mock_session) -> None:
         """Test counting chunks returns 0 for None result."""
         mock_result = Mock()
         mock_result.scalar.return_value = None
@@ -386,7 +386,7 @@ class TestChunkRepository:
         assert count == 0
 
     @pytest.mark.asyncio()
-    async def test_get_chunks_without_embeddings(self, repository, mock_session):
+    async def test_get_chunks_without_embeddings(self, repository, mock_session) -> None:
         """Test getting chunks that need embeddings."""
         collection_id = str(uuid4())
         chunks = [
@@ -409,7 +409,7 @@ class TestChunkRepository:
         assert all(chunk.embedding_vector_id is None for chunk in result)
 
     @pytest.mark.asyncio()
-    async def test_chunk_exists_true(self, repository, mock_session):
+    async def test_chunk_exists_true(self, repository, mock_session) -> None:
         """Test checking if chunk exists returns True."""
         mock_result = Mock()
         mock_result.scalar.return_value = 1
@@ -420,7 +420,7 @@ class TestChunkRepository:
         assert exists is True
 
     @pytest.mark.asyncio()
-    async def test_chunk_exists_false(self, repository, mock_session):
+    async def test_chunk_exists_false(self, repository, mock_session) -> None:
         """Test checking if chunk exists returns False."""
         mock_result = Mock()
         mock_result.scalar.return_value = 0

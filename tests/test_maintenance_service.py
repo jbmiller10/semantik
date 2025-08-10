@@ -4,13 +4,14 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from packages.vecpipe.maintenance import QdrantMaintenanceService
+
 # Mock settings before importing maintenance module
 with patch("packages.vecpipe.maintenance.settings") as mock_settings:
     mock_settings.DEFAULT_COLLECTION = "work_docs"
     mock_settings.QDRANT_HOST = "localhost"
     mock_settings.QDRANT_PORT = 6333
     mock_settings.INTERNAL_API_KEY = None
-    from packages.vecpipe.maintenance import QdrantMaintenanceService
 
 
 @pytest.fixture()

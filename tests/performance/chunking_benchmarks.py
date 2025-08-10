@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Performance benchmarks for chunking strategies.
 

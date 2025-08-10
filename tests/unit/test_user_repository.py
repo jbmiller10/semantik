@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Comprehensive test suite for webui/repositories/postgres/user_repository.py
 Tests user repository with mocked database operations
@@ -19,7 +20,7 @@ class TestPostgreSQLUserRepository:
     """Test PostgreSQL user repository implementation"""
 
     @pytest.fixture()
-    def mock_session(self):
+    def mock_session(self) -> None:
         """Create a mock AsyncSession"""
         session = AsyncMock()
         session.add = Mock()
@@ -31,11 +32,11 @@ class TestPostgreSQLUserRepository:
         return session
 
     @pytest.fixture()
-    def user_repo(self, mock_session):
+    def user_repo(self, mock_session) -> None:
         """Create user repository with mocked session"""
         return PostgreSQLUserRepository(mock_session)
 
-    def test_initialization(self, mock_session):
+    def test_initialization(self, mock_session) -> None:
         """Test repository initialization"""
         repo = PostgreSQLUserRepository(mock_session)
         assert repo.session == mock_session
@@ -43,7 +44,7 @@ class TestPostgreSQLUserRepository:
         assert isinstance(repo.pwd_context, CryptContext)
 
     @pytest.mark.asyncio()
-    async def test_create_user_success(self, user_repo, mock_session):
+    async def test_create_user_success(self, user_repo, mock_session) -> None:
         """Test successful user creation"""
         user_data = {
             "username": "testuser",
@@ -86,7 +87,7 @@ class TestPostgreSQLUserRepository:
         assert user_obj.is_active is True
 
     @pytest.mark.asyncio()
-    async def test_create_user_missing_required_fields(self, user_repo):
+    async def test_create_user_missing_required_fields(self, user_repo) -> None:
         """Test creating user with missing required fields"""
         incomplete_data = {
             "username": "testuser",
@@ -99,7 +100,7 @@ class TestPostgreSQLUserRepository:
         assert "Username, email, and hashed_password are required" in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_create_user_duplicate_username(self, user_repo, mock_session):
+    async def test_create_user_duplicate_username(self, user_repo, mock_session) -> None:
         """Test creating user with duplicate username"""
         existing_user = Mock(spec=User)
         existing_user.username = "testuser"
@@ -115,7 +116,7 @@ class TestPostgreSQLUserRepository:
         assert "username: testuser" in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_create_user_duplicate_email(self, user_repo, mock_session):
+    async def test_create_user_duplicate_email(self, user_repo, mock_session) -> None:
         """Test creating user with duplicate email"""
         existing_user = Mock(spec=User)
         existing_user.username = "otheruser"
@@ -131,7 +132,7 @@ class TestPostgreSQLUserRepository:
         assert "email: test@example.com" in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_get_user_by_id_success(self, user_repo, mock_session):
+    async def test_get_user_by_id_success(self, user_repo, mock_session) -> None:
         """Test getting user by ID"""
         mock_user = Mock(spec=User)
         mock_user.id = 123
@@ -157,7 +158,7 @@ class TestPostgreSQLUserRepository:
         assert result["email"] == "test@example.com"
 
     @pytest.mark.asyncio()
-    async def test_get_user_by_id_not_found(self, user_repo, mock_session):
+    async def test_get_user_by_id_not_found(self, user_repo, mock_session) -> None:
         """Test getting non-existent user by ID"""
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = None
@@ -167,13 +168,13 @@ class TestPostgreSQLUserRepository:
         assert result is None
 
     @pytest.mark.asyncio()
-    async def test_get_user_by_id_invalid_id(self, user_repo):
+    async def test_get_user_by_id_invalid_id(self, user_repo) -> None:
         """Test getting user with invalid ID"""
         with pytest.raises(InvalidUserIdError):
             await user_repo.get_user_by_id("invalid")
 
     @pytest.mark.asyncio()
-    async def test_get_user_by_username_success(self, user_repo, mock_session):
+    async def test_get_user_by_username_success(self, user_repo, mock_session) -> None:
         """Test getting user by username"""
         mock_user = Mock(spec=User)
         mock_user.id = 123
@@ -197,7 +198,7 @@ class TestPostgreSQLUserRepository:
         assert result["username"] == "testuser"
 
     @pytest.mark.asyncio()
-    async def test_get_user_by_email_success(self, user_repo, mock_session):
+    async def test_get_user_by_email_success(self, user_repo, mock_session) -> None:
         """Test getting user by email"""
         mock_user = Mock(spec=User)
         mock_user.id = 123
@@ -221,7 +222,7 @@ class TestPostgreSQLUserRepository:
         assert result["email"] == "test@example.com"
 
     @pytest.mark.asyncio()
-    async def test_update_user_success(self, user_repo, mock_session):
+    async def test_update_user_success(self, user_repo, mock_session) -> None:
         """Test successful user update"""
         mock_user = Mock(spec=User)
         mock_user.id = 123
@@ -250,7 +251,7 @@ class TestPostgreSQLUserRepository:
         mock_session.flush.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_update_user_not_found(self, user_repo, mock_session):
+    async def test_update_user_not_found(self, user_repo, mock_session) -> None:
         """Test updating non-existent user"""
         mock_session.get.return_value = None
 
@@ -258,13 +259,13 @@ class TestPostgreSQLUserRepository:
         assert result is None
 
     @pytest.mark.asyncio()
-    async def test_update_user_invalid_id(self, user_repo):
+    async def test_update_user_invalid_id(self, user_repo) -> None:
         """Test updating user with invalid ID"""
         with pytest.raises(InvalidUserIdError):
             await user_repo.update_user("invalid", {"username": "new"})
 
     @pytest.mark.asyncio()
-    async def test_update_user_duplicate_username(self, user_repo, mock_session):
+    async def test_update_user_duplicate_username(self, user_repo, mock_session) -> None:
         """Test updating user with duplicate username"""
         mock_user = Mock(spec=User)
         mock_user.id = 123
@@ -284,7 +285,7 @@ class TestPostgreSQLUserRepository:
         assert "username: takenuser" in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_update_user_ignores_invalid_fields(self, user_repo, mock_session):
+    async def test_update_user_ignores_invalid_fields(self, user_repo, mock_session) -> None:
         """Test that update ignores non-allowed fields"""
         mock_user = Mock(spec=User)
         mock_user.id = 123
@@ -317,7 +318,7 @@ class TestPostgreSQLUserRepository:
         assert mock_user.created_at == original_created_at  # Unchanged
 
     @pytest.mark.asyncio()
-    async def test_delete_user_success(self, user_repo, mock_session):
+    async def test_delete_user_success(self, user_repo, mock_session) -> None:
         """Test successful user deletion"""
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = 123
@@ -329,7 +330,7 @@ class TestPostgreSQLUserRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_delete_user_not_found(self, user_repo, mock_session):
+    async def test_delete_user_not_found(self, user_repo, mock_session) -> None:
         """Test deleting non-existent user"""
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = None
@@ -340,13 +341,13 @@ class TestPostgreSQLUserRepository:
         assert result is False
 
     @pytest.mark.asyncio()
-    async def test_delete_user_invalid_id(self, user_repo):
+    async def test_delete_user_invalid_id(self, user_repo) -> None:
         """Test deleting user with invalid ID"""
         with pytest.raises(InvalidUserIdError):
             await user_repo.delete_user("invalid")
 
     @pytest.mark.asyncio()
-    async def test_list_users_no_filters(self, user_repo, mock_session):
+    async def test_list_users_no_filters(self, user_repo, mock_session) -> None:
         """Test listing all users without filters"""
         mock_users = []
         for i in range(3):
@@ -375,7 +376,7 @@ class TestPostgreSQLUserRepository:
         assert result[2]["username"] == "user2"
 
     @pytest.mark.asyncio()
-    async def test_list_users_with_filters(self, user_repo, mock_session):
+    async def test_list_users_with_filters(self, user_repo, mock_session) -> None:
         """Test listing users with filters"""
         active_users = []
         for i in range(2):
@@ -402,7 +403,7 @@ class TestPostgreSQLUserRepository:
         assert all(user["is_active"] for user in result)
 
     @pytest.mark.asyncio()
-    async def test_verify_password_correct(self, user_repo, mock_session):
+    async def test_verify_password_correct(self, user_repo, mock_session) -> None:
         """Test verifying correct password"""
         # Create a real password hash
         pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -419,7 +420,7 @@ class TestPostgreSQLUserRepository:
             assert result["username"] == "testuser"
 
     @pytest.mark.asyncio()
-    async def test_verify_password_incorrect(self, user_repo):
+    async def test_verify_password_incorrect(self, user_repo) -> None:
         """Test verifying incorrect password"""
         pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         hashed = pwd_context.hash("correct_password")
@@ -432,7 +433,7 @@ class TestPostgreSQLUserRepository:
             assert result is None
 
     @pytest.mark.asyncio()
-    async def test_verify_password_user_not_found(self, user_repo):
+    async def test_verify_password_user_not_found(self, user_repo) -> None:
         """Test verifying password for non-existent user"""
         with patch.object(user_repo, "get_user_by_username", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = None
@@ -442,7 +443,7 @@ class TestPostgreSQLUserRepository:
             assert result is None
 
     @pytest.mark.asyncio()
-    async def test_update_last_login_success(self, user_repo, mock_session):
+    async def test_update_last_login_success(self, user_repo, mock_session) -> None:
         """Test updating last login timestamp"""
         await user_repo.update_last_login("123")
 
@@ -450,13 +451,13 @@ class TestPostgreSQLUserRepository:
         mock_session.flush.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_update_last_login_invalid_id(self, user_repo):
+    async def test_update_last_login_invalid_id(self, user_repo) -> None:
         """Test updating last login with invalid ID"""
         with pytest.raises(InvalidUserIdError):
             await user_repo.update_last_login("invalid")
 
     @pytest.mark.asyncio()
-    async def test_count_users_no_filter(self, user_repo, mock_session):
+    async def test_count_users_no_filter(self, user_repo, mock_session) -> None:
         """Test counting all users"""
         mock_session.scalar.return_value = 42
 
@@ -465,7 +466,7 @@ class TestPostgreSQLUserRepository:
         assert count == 42
 
     @pytest.mark.asyncio()
-    async def test_count_users_with_filter(self, user_repo, mock_session):
+    async def test_count_users_with_filter(self, user_repo, mock_session) -> None:
         """Test counting users with active filter"""
         mock_session.scalar.return_value = 35
 
@@ -474,7 +475,7 @@ class TestPostgreSQLUserRepository:
         assert count == 35
 
     @pytest.mark.asyncio()
-    async def test_count_users_none_result(self, user_repo, mock_session):
+    async def test_count_users_none_result(self, user_repo, mock_session) -> None:
         """Test counting users when result is None"""
         mock_session.scalar.return_value = None
 
@@ -482,12 +483,12 @@ class TestPostgreSQLUserRepository:
 
         assert count == 0
 
-    def test_user_to_dict_none(self, user_repo):
+    def test_user_to_dict_none(self, user_repo) -> None:
         """Test converting None to dict"""
         result = user_repo._user_to_dict(None)
         assert result is None
 
-    def test_user_to_dict_with_all_fields(self, user_repo):
+    def test_user_to_dict_with_all_fields(self, user_repo) -> None:
         """Test converting user with all fields to dict"""
         mock_user = Mock(spec=User)
         mock_user.id = 123
@@ -514,7 +515,7 @@ class TestPostgreSQLUserRepository:
         assert result["updated_at"] is not None
         assert result["last_login"] is not None
 
-    def test_user_to_dict_with_null_fields(self, user_repo):
+    def test_user_to_dict_with_null_fields(self, user_repo) -> None:
         """Test converting user with null optional fields"""
         mock_user = Mock(spec=User)
         mock_user.id = 123
@@ -538,12 +539,12 @@ class TestUserRepositoryEdgeCases:
     """Test edge cases and error scenarios"""
 
     @pytest.fixture()
-    def user_repo(self):
+    def user_repo(self) -> None:
         mock_session = AsyncMock()
         return PostgreSQLUserRepository(mock_session)
 
     @pytest.mark.asyncio()
-    async def test_create_user_with_defaults(self, user_repo):
+    async def test_create_user_with_defaults(self, user_repo) -> None:
         """Test creating user with default values"""
         user_repo.session.scalar = AsyncMock(return_value=None)
         user_repo.session.flush = AsyncMock()
@@ -563,7 +564,7 @@ class TestUserRepositoryEdgeCases:
         assert user_obj.is_superuser is False  # Default
 
     @pytest.mark.asyncio()
-    async def test_integrity_error_handling(self, user_repo):
+    async def test_integrity_error_handling(self, user_repo) -> None:
         """Test handling of database integrity errors"""
         user_repo.session.scalar = AsyncMock(return_value=None)
         user_repo.session.flush = AsyncMock(side_effect=IntegrityError("statement", "params", "orig"))
@@ -571,7 +572,7 @@ class TestUserRepositoryEdgeCases:
         with pytest.raises(DatabaseOperationError):
             await user_repo.create_user({"username": "test", "email": "test@example.com", "hashed_password": "hashed"})
 
-    def test_datetime_to_str_edge_cases(self, user_repo):
+    def test_datetime_to_str_edge_cases(self, user_repo) -> None:
         """Test datetime conversion edge cases"""
         mock_user = Mock(spec=User)
         mock_user.id = 123
@@ -594,7 +595,7 @@ class TestUserRepositoryEdgeCases:
         assert result["last_login"] is None
 
     @pytest.mark.asyncio()
-    async def test_update_user_password(self, user_repo):
+    async def test_update_user_password(self, user_repo) -> None:
         """Test updating user password"""
         mock_user = Mock(spec=User)
         mock_user.id = 123
@@ -617,7 +618,7 @@ class TestUserRepositoryEdgeCases:
         assert mock_user.hashed_password == "new_hash"
 
     @pytest.mark.asyncio()
-    async def test_get_user_shortcut_method(self, user_repo):
+    async def test_get_user_shortcut_method(self, user_repo) -> None:
         """Test get_user method (shortcut for get_user_by_id)"""
         with patch.object(user_repo, "get_user_by_id", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = {"id": 123, "username": "test"}

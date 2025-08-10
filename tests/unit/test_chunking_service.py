@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
+
 """
 Unit tests for ChunkingService.
 
 This module tests the ChunkingService business logic layer.
 """
 
+import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -99,7 +101,7 @@ class TestChunkingService:
     ) -> None:
         """Test chunking preview with code file."""
         code = """
-def hello():
+def hello() -> None:
     print("Hello, world!")
 
 class Test:
@@ -192,7 +194,6 @@ Content under header 2.
         mock_redis: MagicMock,
     ) -> None:
         """Test chunking preview returns cached result."""
-        import json
 
         # Set up cached response
         cached_data = {

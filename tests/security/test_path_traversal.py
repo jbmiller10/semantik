@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Comprehensive security tests for path traversal vulnerability prevention.
 
@@ -6,6 +7,7 @@ Tests all OWASP path traversal patterns and ensures robust validation.
 """
 
 import contextlib
+import os
 import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -18,7 +20,7 @@ from packages.webui.services.chunking_security import ChunkingSecurityValidator,
 class TestPathTraversalSecurity:
     """Test path traversal security validation."""
 
-    def test_basic_traversal_patterns_blocked(self):
+    def test_basic_traversal_patterns_blocked(self) -> None:
         """Test that basic directory traversal patterns are blocked."""
         dangerous_paths = [
             ["../../../etc/passwd"],
@@ -33,7 +35,7 @@ class TestPathTraversalSecurity:
             with pytest.raises(ValidationError, match="Invalid file path"):
                 ChunkingSecurityValidator.validate_file_paths(paths)
 
-    def test_url_encoded_traversal_blocked(self):
+    def test_url_encoded_traversal_blocked(self) -> None:
         """Test that URL-encoded traversal attempts are blocked."""
         dangerous_paths = [
             # Single encoding
@@ -55,7 +57,7 @@ class TestPathTraversalSecurity:
             with pytest.raises(ValidationError, match="Invalid file path"):
                 ChunkingSecurityValidator.validate_file_paths(paths)
 
-    def test_windows_paths_blocked(self):
+    def test_windows_paths_blocked(self) -> None:
         """Test that Windows-specific malicious paths are blocked."""
         dangerous_paths = [
             # Drive letters
@@ -79,7 +81,7 @@ class TestPathTraversalSecurity:
             with pytest.raises(ValidationError, match="Invalid file path"):
                 ChunkingSecurityValidator.validate_file_paths(paths)
 
-    def test_unix_absolute_paths_blocked(self):
+    def test_unix_absolute_paths_blocked(self) -> None:
         """Test that Unix absolute paths are blocked."""
         dangerous_paths = [
             ["/etc/passwd"],
@@ -95,7 +97,7 @@ class TestPathTraversalSecurity:
             with pytest.raises(ValidationError, match="Invalid file path"):
                 ChunkingSecurityValidator.validate_file_paths(paths)
 
-    def test_home_directory_expansion_blocked(self):
+    def test_home_directory_expansion_blocked(self) -> None:
         """Test that home directory expansion attempts are blocked."""
         dangerous_paths = [
             ["~/.ssh/id_rsa"],
@@ -108,7 +110,7 @@ class TestPathTraversalSecurity:
             with pytest.raises(ValidationError, match="Invalid file path"):
                 ChunkingSecurityValidator.validate_file_paths(paths)
 
-    def test_null_byte_injection_blocked(self):
+    def test_null_byte_injection_blocked(self) -> None:
         """Test that null byte injection attempts are blocked."""
         dangerous_paths = [
             ["file.txt\x00.jpg"],
@@ -121,7 +123,7 @@ class TestPathTraversalSecurity:
             with pytest.raises(ValidationError, match="Invalid file path"):
                 ChunkingSecurityValidator.validate_file_paths(paths)
 
-    def test_unicode_attacks_blocked(self):
+    def test_unicode_attacks_blocked(self) -> None:
         """Test that Unicode-based attacks are blocked."""
         dangerous_paths = [
             # Right-to-left override
@@ -141,7 +143,7 @@ class TestPathTraversalSecurity:
             with pytest.raises(ValidationError, match="Invalid file path"):
                 ChunkingSecurityValidator.validate_file_paths(paths)
 
-    def test_multiple_dots_blocked(self):
+    def test_multiple_dots_blocked(self) -> None:
         """Test that suspicious multiple dot patterns are blocked."""
         dangerous_paths = [
             [".."],  # Parent directory reference
@@ -153,9 +155,8 @@ class TestPathTraversalSecurity:
             with pytest.raises(ValidationError, match="Invalid file path"):
                 ChunkingSecurityValidator.validate_file_paths(paths)
 
-    def test_backslash_on_unix_blocked(self):
+    def test_backslash_on_unix_blocked(self) -> None:
         """Test that backslashes are blocked on Unix systems."""
-        import os
 
         if os.name != "nt":  # Only test on Unix-like systems
             dangerous_paths = [
@@ -168,7 +169,7 @@ class TestPathTraversalSecurity:
                 with pytest.raises(ValidationError, match="Invalid file path"):
                     ChunkingSecurityValidator.validate_file_paths(paths)
 
-    def test_legitimate_paths_allowed(self):
+    def test_legitimate_paths_allowed(self) -> None:
         """Test that legitimate paths are correctly allowed."""
         safe_paths = [
             ["documents/file.txt"],
@@ -189,7 +190,7 @@ class TestPathTraversalSecurity:
             # Should not raise any exception
             ChunkingSecurityValidator.validate_file_paths(paths)
 
-    def test_base_directory_containment(self):
+    def test_base_directory_containment(self) -> None:
         """Test that paths are contained within base directory when specified."""
         with TemporaryDirectory() as temp_dir:
             base_dir = temp_dir
@@ -216,7 +217,7 @@ class TestPathTraversalSecurity:
                 # Should not raise exception
                 ChunkingSecurityValidator.validate_file_paths(paths, base_dir=base_dir)
 
-    def test_symlink_resolution(self):
+    def test_symlink_resolution(self) -> None:
         """Test that symlinks are properly resolved and validated."""
         with TemporaryDirectory() as temp_dir:
             base_path = Path(temp_dir)
@@ -235,7 +236,7 @@ class TestPathTraversalSecurity:
             # (This would require creating a symlink to outside directory,
             # which might not be possible in test environment)
 
-    def test_performance_under_10ms(self):
+    def test_performance_under_10ms(self) -> None:
         """Test that validation completes within 10ms performance requirement."""
         # Test with various path types
         test_cases = [
@@ -254,7 +255,7 @@ class TestPathTraversalSecurity:
             elapsed_time = (time.perf_counter() - start_time) * 1000  # Convert to ms
             assert elapsed_time < 10, f"Validation took {elapsed_time:.2f}ms, exceeding 10ms limit"
 
-    def test_error_messages_no_path_leakage(self):
+    def test_error_messages_no_path_leakage(self) -> None:
         """Test that error messages don't leak sensitive path information."""
         dangerous_paths = [
             ["/etc/passwd"],
@@ -275,7 +276,7 @@ class TestPathTraversalSecurity:
             # Should only contain generic error message
             assert error_message == "Invalid file path"
 
-    def test_input_validation(self):
+    def test_input_validation(self) -> None:
         """Test input type validation."""
         # Test non-list input
         with pytest.raises(ValidationError, match="file_paths must be a list"):
@@ -295,7 +296,7 @@ class TestPathTraversalSecurity:
         with pytest.raises(ValidationError, match="File path too long"):
             ChunkingSecurityValidator.validate_file_paths(long_path)
 
-    def test_complex_encoding_combinations(self):
+    def test_complex_encoding_combinations(self) -> None:
         """Test complex combinations of encoding and obfuscation."""
         dangerous_paths = [
             # Mixed encoding and traversal
@@ -312,7 +313,7 @@ class TestPathTraversalSecurity:
             with pytest.raises(ValidationError, match="Invalid file path"):
                 ChunkingSecurityValidator.validate_file_paths(paths)
 
-    def test_case_sensitivity(self):
+    def test_case_sensitivity(self) -> None:
         """Test that validation handles case variations properly."""
         dangerous_paths = [
             # Case variations in encoding
@@ -330,7 +331,7 @@ class TestPathTraversalSecurity:
             with pytest.raises(ValidationError, match="Invalid file path"):
                 ChunkingSecurityValidator.validate_file_paths(paths)
 
-    def test_empty_and_edge_cases(self):
+    def test_empty_and_edge_cases(self) -> None:
         """Test edge cases and empty inputs."""
         # Empty list should be allowed
         ChunkingSecurityValidator.validate_file_paths([])

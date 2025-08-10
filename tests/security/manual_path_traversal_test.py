@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
+
 """
 Manual testing script for path traversal vulnerability fixes.
 Run this to verify the security implementation.
 """
+
+import time
 
 from packages.webui.services.chunking_security import ChunkingSecurityValidator, ValidationError
 
@@ -16,7 +19,7 @@ def test_path(path: str) -> tuple[bool, str]:
         return False, str(e)
 
 
-def main():
+def main() -> None:
     """Run manual security tests."""
     print("=" * 80)
     print("PATH TRAVERSAL SECURITY VALIDATION TESTING")
@@ -101,7 +104,6 @@ def main():
             print(f"   - {len(allowed_tests) - allowed_count} legitimate paths were incorrectly blocked")
 
     print("\n📊 Performance Check:")
-    import time
 
     start = time.perf_counter()
     for _ in range(1000):

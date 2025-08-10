@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Integration test for the complete streaming pipeline.
 
@@ -9,11 +10,13 @@ processor with real files and strategies.
 import asyncio
 import tempfile
 import tracemalloc
+from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
+from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from packages.shared.chunking.infrastructure.streaming.checkpoint import CheckpointManager
@@ -25,21 +28,30 @@ from packages.shared.chunking.infrastructure.streaming.window import StreamingWi
 class SimpleChunkingStrategy(ChunkingStrategy):
     """Simple chunking strategy for integration testing."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("simple_strategy")  # Pass name to parent constructor
 
-    def chunk(self, text: str, config: ChunkConfig) -> list:
+    def chunk(
+        self,
+        content: str,
+        config: ChunkConfig,
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> list[Chunk]:
         """Create chunks by splitting on double newlines."""
         chunks = []
-        paragraphs = text.split("\n\n")
+        paragraphs = content.split("\n\n")
 
-        for _, paragraph in enumerate(paragraphs):
+        for i, paragraph in enumerate(paragraphs):
             if paragraph.strip():
-                chunk = MagicMock()
+                chunk = MagicMock(spec=Chunk)
                 chunk.content = paragraph.strip()
                 chunk.metadata = MagicMock()
                 chunk.metadata.token_count = len(paragraph.split())
                 chunks.append(chunk)
+
+                if progress_callback:
+                    progress = (i + 1) / len(paragraphs) * 100
+                    progress_callback(progress)
 
         return chunks
 
@@ -50,9 +62,10 @@ class SimpleChunkingStrategy(ChunkingStrategy):
         return True, None
 
     def estimate_chunks(self, content_length: int, config: ChunkConfig) -> int:
-        """Estimate number of chunks for testing."""
-        # Rough estimate: one chunk per 200 characters (paragraphs are larger)
-        return max(1, content_length // 200)
+        """Estimate the number of chunks that will be produced."""
+        # Simple estimation based on average paragraph size
+        avg_paragraph_size = 500  # characters
+        return max(1, content_length // avg_paragraph_size)
 
 
 class TestStreamingIntegration:
@@ -67,7 +80,7 @@ class TestStreamingIntegration:
         config.estimate_chunks = lambda tokens: max(1, tokens // 100)
         return config
 
-    async def test_complete_pipeline_small_file(self, mock_config):
+    async def test_complete_pipeline_small_file(self, mock_config) -> None:
         """Test complete pipeline with a small text file."""
         # Create test file with known content
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
@@ -108,7 +121,7 @@ The streaming processor should handle this efficiently."""
         finally:
             Path(temp_file).unlink(missing_ok=True)
 
-    async def test_pipeline_with_utf8_content(self, mock_config):
+    async def test_pipeline_with_utf8_content(self, mock_config) -> None:
         """Test pipeline with UTF-8 content including emojis and CJK."""
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".txt", delete=False) as f:
             content = """English paragraph with simple text.
@@ -149,7 +162,7 @@ Mixed: English café 中文 🎉 all together."""
         finally:
             Path(temp_file).unlink(missing_ok=True)
 
-    async def test_pipeline_memory_constraints(self, mock_config):
+    async def test_pipeline_memory_constraints(self, mock_config) -> None:
         """Test that pipeline respects memory constraints with large file."""
         # Create a 10MB file
         file_size = 10 * 1024 * 1024
@@ -197,7 +210,7 @@ Mixed: English café 中文 🎉 all together."""
         finally:
             Path(temp_file).unlink(missing_ok=True)
 
-    async def test_pipeline_concurrent_processing(self, mock_config):
+    async def test_pipeline_concurrent_processing(self, mock_config) -> None:
         """Test concurrent document processing."""
         # Create multiple test files
         temp_files = []
@@ -211,7 +224,7 @@ Mixed: English café 中文 🎉 all together."""
             # Shared memory pool for all processors
             memory_pool = MemoryPool(buffer_size=1024, pool_size=10)
 
-            async def process_file(file_path: str, file_id: int):
+            async def process_file(file_path: str, file_id: int) -> None:
                 processor = StreamingDocumentProcessor(memory_pool=memory_pool)
                 strategy = SimpleChunkingStrategy()
 
@@ -239,14 +252,14 @@ Mixed: English café 中文 🎉 all together."""
             for f in temp_files:
                 Path(f).unlink(missing_ok=True)
 
-    async def test_pipeline_error_handling(self, mock_config):
+    async def test_pipeline_error_handling(self, mock_config) -> None:
         """Test error handling in the pipeline."""
         # Test with non-existent file
         processor = StreamingDocumentProcessor()
         strategy = SimpleChunkingStrategy()
 
         # PT012: Refactored to avoid complex statement in pytest.raises
-        async def process_nonexistent():
+        async def process_nonexistent() -> None:
             async for _ in processor.process_document("/non/existent/file.txt", strategy, mock_config):
                 pass
 
@@ -255,7 +268,7 @@ Mixed: English café 中文 🎉 all together."""
 
         # Test with directory instead of file
         # PT012: Refactored to avoid complex statement in pytest.raises
-        async def process_directory():
+        async def process_directory() -> None:
             with tempfile.TemporaryDirectory() as tmpdir:
                 async for _ in processor.process_document(tmpdir, strategy, mock_config):
                     pass
@@ -263,7 +276,7 @@ Mixed: English café 中文 🎉 all together."""
         with pytest.raises(IsADirectoryError):
             await process_directory()
 
-    def test_streaming_window_operations(self):
+    def test_streaming_window_operations(self) -> None:
         """Test streaming window operations."""
         window = StreamingWindow(max_size=1024)
 
@@ -289,7 +302,7 @@ Mixed: English café 中文 🎉 all together."""
         assert remaining > 0
         assert remaining == window.max_size - window.size
 
-    def test_memory_pool_operations(self):
+    def test_memory_pool_operations(self) -> None:
         """Test memory pool operations."""
         pool = MemoryPool(buffer_size=512, pool_size=3)
 
@@ -316,7 +329,7 @@ Mixed: English café 中文 🎉 all together."""
 
 if __name__ == "__main__":
     # Run a simple test
-    async def main():
+    async def main() -> None:
         test = TestStreamingIntegration()
         config = test.mock_config()
         await test.test_complete_pipeline_small_file(config)

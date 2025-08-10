@@ -217,7 +217,7 @@ class TestDirectoryScanService:
         # Mock stat to raise PermissionError for specific file
         original_stat = Path.stat
 
-        def mock_stat(self, *args, **kwargs):
+        def mock_stat(self, *args, **kwargs) -> None:
             if "restricted" in str(self):
                 raise PermissionError("Access denied")
             return original_stat(self, *args, **kwargs)

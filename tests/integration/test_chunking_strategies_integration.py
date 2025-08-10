@@ -38,7 +38,7 @@ This is the first section with some **bold** text.
 This section has `code` and [links](http://example.com).
 
 ```python
-def hello():
+def hello() -> None:
     print("Hello, world!")
 ```
 """,
@@ -52,10 +52,10 @@ def hello():
         return calculate_fibonacci(n-1) + calculate_fibonacci(n-2)
 
 class FibonacciCalculator:
-    def __init__(self):
+    def __init__(self) -> None:
         self.cache = {}
 
-    def calculate(self, n):
+    def calculate(self, n) -> None:
         if n in self.cache:
             return self.cache[n]
 

@@ -28,12 +28,12 @@ class TestWebSocketMessageFlow:
     """Test WebSocket message flow through Redis streams."""
 
     @pytest.fixture()
-    def mock_redis_client(self):
+    def mock_redis_client(self) -> None:
         """Create a mock Redis client that tracks messages."""
         client = AsyncMock(spec=redis.Redis)
         client.messages = []  # Track messages for verification
 
-        async def mock_xadd(stream_key, message_dict, **kwargs):
+        async def mock_xadd(stream_key, message_dict, **kwargs) -> None:
             client.messages.append(
                 {"stream": stream_key, "message": json.loads(message_dict["message"]), "maxlen": kwargs.get("maxlen")}
             )
@@ -46,11 +46,11 @@ class TestWebSocketMessageFlow:
 
         return client
 
-    async def test_index_operation_websocket_messages(self, mock_redis_client):
+    async def test_index_operation_websocket_messages(self, mock_redis_client) -> None:
         """Test WebSocket messages during INDEX operation."""
 
         # Create an async function that returns the mock
-        async def mock_from_url(*_args, **_kwargs):
+        async def mock_from_url(*_args, **_kwargs) -> None:
             return mock_redis_client
 
         with (
@@ -110,11 +110,11 @@ class TestWebSocketMessageFlow:
             assert index_complete_msg["message"]["data"]["qdrant_collection"] == "test_vec"
             assert index_complete_msg["message"]["data"]["vector_dim"] == 1024
 
-    async def test_append_operation_progress_messages(self, mock_redis_client):
+    async def test_append_operation_progress_messages(self, mock_redis_client) -> None:
         """Test progress messages during APPEND operation."""
 
         # Create an async function that returns the mock
-        async def mock_from_url(*_args, **_kwargs):
+        async def mock_from_url(*_args, **_kwargs) -> None:
             return mock_redis_client
 
         with (
@@ -173,11 +173,11 @@ class TestWebSocketMessageFlow:
             assert data["new_documents_registered"] == 3
             assert data["duplicate_documents_skipped"] == 2
 
-    async def test_reindex_operation_checkpoint_messages(self, mock_redis_client):
+    async def test_reindex_operation_checkpoint_messages(self, mock_redis_client) -> None:
         """Test checkpoint messages during REINDEX operation."""
 
         # Create an async function that returns the mock
-        async def mock_from_url(*_args, **_kwargs):
+        async def mock_from_url(*_args, **_kwargs) -> None:
             return mock_redis_client
 
         with (
@@ -186,11 +186,11 @@ class TestWebSocketMessageFlow:
             patch("packages.webui.tasks.qdrant_manager") as mock_qdrant,
         ):
             # Mock reindex_handler as an async function
-            async def mock_reindex_handler(*_args, **_kwargs):
+            async def mock_reindex_handler(*_args, **_kwargs) -> None:
                 return {"collection_name": "staging_123", "vector_dim": 1536}
 
             # Mock _validate_reindex as an async function
-            async def mock_validate_reindex(*_args, **_kwargs):
+            async def mock_validate_reindex(*_args, **_kwargs) -> None:
                 return {"passed": True, "issues": [], "sample_size": 10}
 
             with (
@@ -259,11 +259,11 @@ class TestWebSocketMessageFlow:
                     assert "validation_complete" in message_types
                     assert "reindex_completed" in message_types
 
-    async def test_error_message_propagation(self, mock_redis_client):
+    async def test_error_message_propagation(self, mock_redis_client) -> None:
         """Test error messages are properly sent through WebSocket."""
 
         # Create an async function that returns the mock
-        async def mock_from_url(*_args, **_kwargs):
+        async def mock_from_url(*_args, **_kwargs) -> None:
             return mock_redis_client
 
         with (
@@ -310,11 +310,11 @@ class TestWebSocketMessageFlow:
             # The operation fails before any messages are sent
             # No assertion on message count as error happens early
 
-    async def test_concurrent_updates_ordering(self, mock_redis_client):
+    async def test_concurrent_updates_ordering(self, mock_redis_client) -> None:
         """Test that concurrent updates maintain order."""
 
         # Create an async function that returns the mock
-        async def mock_from_url(*_args, **_kwargs):
+        async def mock_from_url(*_args, **_kwargs) -> None:
             return mock_redis_client
 
         with patch("redis.asyncio.from_url", new=mock_from_url):
@@ -340,22 +340,22 @@ class TestWebSocketMessageFormats:
     """Test specific WebSocket message formats for frontend compatibility."""
 
     @pytest.fixture()
-    async def updater(self):
+    async def updater(self) -> None:
         """Create an updater instance."""
         updater = CeleryTaskWithOperationUpdates("test-op")
         yield updater
         await updater.close()
 
-    async def test_progress_message_format(self):
+    async def test_progress_message_format(self) -> None:
         """Test progress message format matches frontend expectations."""
         updater = CeleryTaskWithOperationUpdates("test-op")
         captured_messages = []
 
         # Create an async function that returns the mock
-        async def mock_from_url(*_args, **_kwargs):
+        async def mock_from_url(*_args, **_kwargs) -> None:
             mock_redis = AsyncMock()
 
-            async def capture_xadd(_stream, message, **_kwargs):
+            async def capture_xadd(_stream, message, **_kwargs) -> None:
                 captured_messages.append(json.loads(message["message"]))
 
             mock_redis.xadd = AsyncMock(side_effect=capture_xadd)
@@ -390,16 +390,16 @@ class TestWebSocketMessageFormats:
                 # Ensure cleanup
                 await updater.close()
 
-    async def test_completion_message_format(self):
+    async def test_completion_message_format(self) -> None:
         """Test completion message includes all required fields."""
         updater = CeleryTaskWithOperationUpdates("test-op")
         captured_messages = []
 
         # Create an async function that returns the mock
-        async def mock_from_url(*_args, **_kwargs):
+        async def mock_from_url(*_args, **_kwargs) -> None:
             mock_redis = AsyncMock()
 
-            async def capture_xadd(_stream, message, **_kwargs):
+            async def capture_xadd(_stream, message, **_kwargs) -> None:
                 captured_messages.append(json.loads(message["message"]))
 
             mock_redis.xadd = AsyncMock(side_effect=capture_xadd)
@@ -435,16 +435,16 @@ class TestWebSocketMessageFormats:
             finally:
                 await updater.close()
 
-    async def test_error_message_sanitization(self):
+    async def test_error_message_sanitization(self) -> None:
         """Test error messages are sanitized before sending."""
         updater = CeleryTaskWithOperationUpdates("test-op")
         captured_messages = []
 
         # Create an async function that returns the mock
-        async def mock_from_url(*_args, **_kwargs):
+        async def mock_from_url(*_args, **_kwargs) -> None:
             mock_redis = AsyncMock()
 
-            async def capture_xadd(_stream, message, **_kwargs):
+            async def capture_xadd(_stream, message, **_kwargs) -> None:
                 captured_messages.append(json.loads(message["message"]))
 
             mock_redis.xadd = AsyncMock(side_effect=capture_xadd)
@@ -477,7 +477,7 @@ class TestWebSocketMessageFormats:
 class TestRedisStreamBehavior:
     """Test Redis stream-specific behavior."""
 
-    async def test_stream_ttl_setting(self):
+    async def test_stream_ttl_setting(self) -> None:
         """Test that TTL is set on first message."""
         updater = CeleryTaskWithOperationUpdates("test-ttl")
 
@@ -489,7 +489,7 @@ class TestRedisStreamBehavior:
         mock_redis.ping = AsyncMock()
 
         # Create an async function that returns the mock
-        async def mock_from_url(*_args, **_kwargs):
+        async def mock_from_url(*_args, **_kwargs) -> None:
             return mock_redis
 
         with patch("redis.asyncio.from_url", new=mock_from_url):
@@ -515,7 +515,7 @@ class TestRedisStreamBehavior:
             finally:
                 await updater.close()
 
-    async def test_stream_maxlen_enforcement(self):
+    async def test_stream_maxlen_enforcement(self) -> None:
         """Test that stream length is limited."""
         updater = CeleryTaskWithOperationUpdates("test-maxlen")
 
@@ -527,7 +527,7 @@ class TestRedisStreamBehavior:
         mock_redis.ping = AsyncMock()
 
         # Create an async function that returns the mock
-        async def mock_from_url(*_args, **_kwargs):
+        async def mock_from_url(*_args, **_kwargs) -> None:
             return mock_redis
 
         with patch("redis.asyncio.from_url", new=mock_from_url):
@@ -544,7 +544,7 @@ class TestRedisStreamBehavior:
             finally:
                 await updater.close()
 
-    async def test_redis_connection_pooling(self):
+    async def test_redis_connection_pooling(self) -> None:
         """Test that Redis connections are reused within updater."""
         updater = CeleryTaskWithOperationUpdates("test-pool")
 
@@ -559,7 +559,7 @@ class TestRedisStreamBehavior:
         call_count = 0
 
         # Create an async function that returns the same mock
-        async def mock_from_url(*_args, **_kwargs):
+        async def mock_from_url(*_args, **_kwargs) -> None:
             nonlocal call_count
             call_count += 1
             return mock_redis
@@ -586,7 +586,7 @@ class TestRedisStreamBehavior:
 class TestWebSocketIntegrationScenarios:
     """Test complete WebSocket integration scenarios."""
 
-    async def test_full_document_processing_flow(self):
+    async def test_full_document_processing_flow(self) -> None:
         """Test complete document processing flow with all messages."""
         operation_id = "full-flow-op"
 
@@ -594,10 +594,10 @@ class TestWebSocketIntegrationScenarios:
         all_messages = []
 
         # Create an async function that returns the mock
-        async def mock_from_url(*_args, **_kwargs):
+        async def mock_from_url(*_args, **_kwargs) -> None:
             mock_redis = AsyncMock()
 
-            async def track_xadd(_stream, message, **_kwargs):
+            async def track_xadd(_stream, message, **_kwargs) -> None:
                 msg_data = json.loads(message["message"])
                 all_messages.append({"time": datetime.now(UTC), "type": msg_data["type"], "data": msg_data["data"]})
 
@@ -654,17 +654,17 @@ class TestWebSocketIntegrationScenarios:
             for i in range(1, len(all_messages)):
                 assert all_messages[i]["time"] >= all_messages[i - 1]["time"]
 
-    async def test_operation_failure_flow(self):
+    async def test_operation_failure_flow(self) -> None:
         """Test message flow when operation fails."""
         operation_id = "fail-flow-op"
 
         all_messages = []
 
         # Create an async function that returns the mock
-        async def mock_from_url(*_args, **_kwargs):
+        async def mock_from_url(*_args, **_kwargs) -> None:
             mock_redis = AsyncMock()
 
-            async def track_xadd(_stream, message, **_kwargs):
+            async def track_xadd(_stream, message, **_kwargs) -> None:
                 msg_data = json.loads(message["message"])
                 all_messages.append(msg_data)
 

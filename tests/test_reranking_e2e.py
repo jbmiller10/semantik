@@ -5,6 +5,9 @@ Tests the complete flow from frontend parameters to backend processing and respo
 
 import pytest
 
+from packages.shared.contracts.search import SearchRequest
+from packages.vecpipe.search_api import SearchResponse
+
 
 class TestRerankingE2E:
     """Test complete reranking flow through all layers"""
@@ -26,9 +29,8 @@ class TestRerankingE2E:
         assert True, "API service implementation verified by code inspection"
 
     @pytest.mark.asyncio()
-    async def test_webui_search_forwards_to_vecpipe(self):
+    async def test_webui_search_forwards_to_vecpipe(self) -> None:
         """Test that webui search.py forwards reranking params to vecpipe"""
-        from packages.shared.contracts.search import SearchRequest
 
         # Create a request with reranking parameters
         request = SearchRequest(
@@ -63,9 +65,8 @@ class TestRerankingE2E:
         assert "rerank_model" in search_params
 
     @pytest.mark.asyncio()
-    async def test_vecpipe_processes_reranking(self):
+    async def test_vecpipe_processes_reranking(self) -> None:
         """Test that vecpipe search_api.py processes reranking correctly"""
-        from packages.vecpipe.search_api import SearchRequest, SearchResponse
 
         # Create a search request with reranking
         request = SearchRequest(
