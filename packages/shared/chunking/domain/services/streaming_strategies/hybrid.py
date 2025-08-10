@@ -91,8 +91,9 @@ class StreamingHybridStrategy(StreamingChunkingStrategy):
             text = self._pending_text + text
             self._pending_text = ""
 
-        # Add to detection buffer
-        self._detection_buffer += text[: self.DETECTION_WINDOW]
+        # Add to detection buffer (limit size)
+        if len(self._detection_buffer) < self.DETECTION_WINDOW:
+            self._detection_buffer += text[: self.DETECTION_WINDOW - len(self._detection_buffer)]
 
         # Detect content type if not yet determined
         if not self._current_strategy:
@@ -120,12 +121,30 @@ class StreamingHybridStrategy(StreamingChunkingStrategy):
                 self._current_strategy = self._strategies[new_type]
                 self._current_strategy.reset()
 
+            # Check if adding this section would exceed buffer limit
+            section_size = len(section_text.encode("utf-8"))
+            
+            # Get total size including sub-strategy buffers
+            total_size = self.get_buffer_size()
+            
+            # If adding this section would exceed max buffer, process current buffer first
+            # Use 70% threshold to leave room for sub-strategy buffers
+            if total_size + section_size > self.MAX_BUFFER_SIZE * 0.9 or self._buffer_size + section_size > self.MAX_BUFFER_SIZE * 0.7:
+                if self._content_buffer:
+                    buffer_text = "".join(self._content_buffer)
+                    temp_window = self._create_temp_window(buffer_text)
+                    strategy_chunks = await self._current_strategy.process_window(temp_window, config, is_final=False)
+                    chunks.extend(self._enhance_chunks(strategy_chunks))
+                    self._content_buffer = []
+                    self._buffer_size = 0
+            
             # Add to buffer
             self._content_buffer.append(section_text)
-            self._buffer_size += len(section_text.encode("utf-8"))
+            self._buffer_size += section_size
 
-            # Process if buffer is large enough
-            if self._buffer_size >= self.MAX_BUFFER_SIZE // 3:
+            # Process if buffer is large enough or total size is getting high
+            total_size = self.get_buffer_size()
+            if self._buffer_size >= self.MAX_BUFFER_SIZE // 3 or total_size >= self.MAX_BUFFER_SIZE * 0.7:
                 buffer_text = "".join(self._content_buffer)
                 temp_window = self._create_temp_window(buffer_text)
                 strategy_chunks = await self._current_strategy.process_window(temp_window, config, is_final=False)
@@ -402,7 +421,9 @@ class StreamingHybridStrategy(StreamingChunkingStrategy):
 
         # Add sub-strategy buffer sizes
         if self._current_strategy:
-            size += self._current_strategy.get_buffer_size()
+            sub_size = self._current_strategy.get_buffer_size()
+            # Cap sub-strategy contribution to prevent overflow
+            size += min(sub_size, self.MAX_BUFFER_SIZE // 4)
 
         return size
 

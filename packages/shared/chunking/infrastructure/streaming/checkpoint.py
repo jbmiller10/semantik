@@ -48,20 +48,26 @@ class StreamingCheckpoint:
         """Convert checkpoint to dictionary for serialization."""
         data = asdict(self)
         # Convert bytes to base64 for JSON serialization
-        if data.get("pending_bytes"):
+        if "pending_bytes" in data and data["pending_bytes"] is not None:
             import base64
-
-            data["pending_bytes"] = base64.b64encode(data["pending_bytes"]).decode("ascii")
+            
+            # Handle both non-empty and empty bytes
+            if isinstance(data["pending_bytes"], bytes):
+                data["pending_bytes"] = base64.b64encode(data["pending_bytes"]).decode("ascii")
         return data
 
     @classmethod
     def from_dict(cls, data: dict) -> "StreamingCheckpoint":
         """Create checkpoint from dictionary."""
         # Convert base64 back to bytes
-        if data.get("pending_bytes"):
+        if "pending_bytes" in data:
             import base64
-
-            data["pending_bytes"] = base64.b64decode(data["pending_bytes"])
+            
+            if data["pending_bytes"]:
+                data["pending_bytes"] = base64.b64decode(data["pending_bytes"])
+            else:
+                # Handle empty string (from empty bytes)
+                data["pending_bytes"] = b""
         return cls(**data)
 
 

@@ -301,17 +301,27 @@ class StreamingDocumentProcessor:
             return 0
 
         if max_pos == -1:
-            max_pos = len(data) - 1
+            max_pos = len(data)
+        else:
+            max_pos = min(max_pos, len(data))
+        
+        # If max_pos is 0, return 0
+        if max_pos == 0:
+            return 0
 
-        # Start from the end and walk backwards
-        pos = max_pos
+        # Start from the desired position and walk backwards
+        pos = max_pos - 1
+        
+        # Special case: if we're looking at the last position and it's ASCII
+        if pos < len(data) and data[pos] < 0x80:
+            return max_pos
 
-        while pos > 0:
+        while pos >= 0:
             byte = data[pos]
 
             # ASCII byte (0xxxxxxx) - safe to cut after
             if byte < 0x80:
-                return pos + 1
+                return min(pos + 1, max_pos)
 
             # UTF-8 start byte (11xxxxxx) - check if complete
             if byte >= 0xC0:
@@ -326,8 +336,8 @@ class StreamingDocumentProcessor:
                     # Invalid UTF-8, treat as boundary
                     return pos
 
-                # Check if we have the complete sequence
-                if pos + expected_len <= len(data):
+                # Check if we have the complete sequence within max_pos
+                if pos + expected_len <= max_pos and pos + expected_len <= len(data):
                     # Validate continuation bytes
                     valid = True
                     for i in range(1, expected_len):
@@ -341,9 +351,9 @@ class StreamingDocumentProcessor:
 
                     if valid:
                         # Complete valid sequence, safe to cut after
-                        return pos + expected_len
+                        return min(pos + expected_len, max_pos)
 
-                # Incomplete sequence, cut before
+                # Incomplete sequence or extends beyond max_pos, cut before
                 return pos
 
             # Continuation byte (10xxxxxx) - keep going back

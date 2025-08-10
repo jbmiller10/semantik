@@ -47,6 +47,12 @@ class StreamingWindow:
         if self._pending_bytes:
             data = bytes(self._pending_bytes) + data
             self._pending_bytes.clear()
+        
+        # Check if incoming data is larger than max_size
+        if len(data) > self.max_size:
+            raise MemoryError(
+                f"Incoming data size {len(data)} exceeds maximum window size {self.max_size}"
+            )
 
         # Check memory constraint
         if len(self.buffer) + len(data) > self.max_size:
@@ -60,6 +66,22 @@ class StreamingWindow:
                     f"Window size would exceed {self.max_size} bytes. "
                     "Process or slide window before appending more data."
                 )
+            
+            # Calculate how much we need to slide
+            needed_space = len(data)
+            available_after_slide = self.max_size - (len(self.buffer) // 2)  # After default slide
+            
+            if needed_space > available_after_slide:
+                # Even after sliding, we won't have enough space
+                logger.error(
+                    f"Cannot fit {len(data)} bytes even after sliding. "
+                    f"Max size: {self.max_size}, would have after slide: {available_after_slide}"
+                )
+                raise MemoryError(
+                    f"Cannot fit {len(data)} bytes even after sliding window. "
+                    f"Maximum available: {available_after_slide} bytes"
+                )
+            
             logger.debug(f"Sliding window to make room for {len(data)} bytes")
             self.slide()
 
@@ -78,10 +100,24 @@ class StreamingWindow:
 
         # Find safe UTF-8 boundary
         safe_end = self._find_utf8_boundary(self.buffer)
+        
+        # If safe_end is 0, the entire buffer is incomplete or invalid UTF-8
+        if safe_end == 0:
+            # Store entire buffer as pending and return empty string
+            if not self._pending_bytes:
+                self._pending_bytes = bytearray()
+            self._pending_bytes.extend(self.buffer)
+            self.buffer = bytearray()
+            return ""
 
         # Split at boundary
         decodable = self.buffer[:safe_end]
-        self._pending_bytes = self.buffer[safe_end:]
+        
+        # Store incomplete bytes for next iteration
+        if safe_end < len(self.buffer):
+            if not self._pending_bytes:
+                self._pending_bytes = bytearray()
+            self._pending_bytes.extend(self.buffer[safe_end:])
 
         # Clear the main buffer after extracting decodable portion
         self.buffer = bytearray()
@@ -118,53 +154,59 @@ class StreamingWindow:
         if not data:
             return 0
 
-        if from_end:
-            # Walk backwards from the end
-            pos = len(data) - 1
-
-            while pos >= 0:
-                byte = data[pos]
-
-                # ASCII byte (0xxxxxxx) - safe boundary after it
-                if byte < 0x80:
-                    return pos + 1
-
-                # UTF-8 start byte (11xxxxxx) - boundary before it
-                if byte >= 0xC0:
-                    # Verify we have complete sequence
-                    expected_len = self._get_utf8_char_length(byte)
-                    if pos + expected_len <= len(data):
-                        # Complete character, boundary after it
-                        return pos + expected_len
-                    else:
-                        # Incomplete character, boundary before it
-                        return pos
-
-                # Continuation byte (10xxxxxx) - keep searching
-                pos -= 1
-
-            return 0
-        else:
-            # Walk forward from the start (used for validation)
-            pos = 0
-            while pos < len(data):
-                byte = data[pos]
-
-                if byte < 0x80:
-                    # ASCII
-                    pos += 1
-                elif byte >= 0xC0:
-                    # Multi-byte sequence start
-                    char_len = self._get_utf8_char_length(byte)
-                    if pos + char_len > len(data):
-                        # Incomplete sequence
-                        return pos
-                    pos += char_len
-                else:
-                    # Invalid start byte
-                    return pos
-
-            return pos
+        # Always validate from the start to find the last valid boundary
+        pos = 0
+        last_valid_boundary = 0
+        
+        while pos < len(data):
+            byte = data[pos]
+            
+            if byte < 0x80:
+                # ASCII character (0xxxxxxx)
+                pos += 1
+                last_valid_boundary = pos
+            elif byte < 0xC0:
+                # Continuation byte (10xxxxxx) at start position - invalid
+                # No valid UTF-8 from this point
+                break
+            elif byte < 0xE0:
+                # 2-byte sequence (110xxxxx)
+                if pos + 2 > len(data):
+                    # Incomplete sequence
+                    break
+                # Check continuation byte
+                if not (0x80 <= data[pos + 1] < 0xC0):
+                    # Invalid continuation
+                    break
+                pos += 2
+                last_valid_boundary = pos
+            elif byte < 0xF0:
+                # 3-byte sequence (1110xxxx)
+                if pos + 3 > len(data):
+                    # Incomplete sequence
+                    break
+                # Check continuation bytes
+                if not all(0x80 <= data[pos + i] < 0xC0 for i in range(1, 3)):
+                    # Invalid continuation
+                    break
+                pos += 3
+                last_valid_boundary = pos
+            elif byte < 0xF8:
+                # 4-byte sequence (11110xxx)
+                if pos + 4 > len(data):
+                    # Incomplete sequence
+                    break
+                # Check continuation bytes
+                if not all(0x80 <= data[pos + i] < 0xC0 for i in range(1, 4)):
+                    # Invalid continuation
+                    break
+                pos += 4
+                last_valid_boundary = pos
+            else:
+                # Invalid UTF-8 start byte
+                break
+        
+        return last_valid_boundary
 
     def _get_utf8_char_length(self, first_byte: int) -> int:
         """

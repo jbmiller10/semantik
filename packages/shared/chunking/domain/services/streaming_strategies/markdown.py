@@ -325,8 +325,35 @@ class StreamingMarkdownStrategy(StreamingChunkingStrategy):
         if not content.strip():
             return None
 
-        # Create metadata with heading context
+        # Check token count and split if necessary
         token_count = self.count_tokens(content)
+        
+        # If content exceeds max_tokens, we need to split it
+        if token_count > config.max_tokens:
+            # Split content to fit within max_tokens
+            # Estimate how much content we can keep
+            ratio = config.max_tokens / token_count
+            target_chars = int(len(content) * ratio * 0.9)  # Use 90% to be safe
+            
+            # Find a good split point (preferably at a line break)
+            split_point = target_chars
+            newline_pos = content.rfind('\n', 0, target_chars)
+            if newline_pos > target_chars * 0.5:  # If we found a newline not too far back
+                split_point = newline_pos
+            
+            # Take the first part
+            content = content[:split_point].strip()
+            
+            # Recalculate token count for the truncated content
+            token_count = self.count_tokens(content)
+            
+            # Keep the remaining lines for the next chunk
+            remaining_content = content[split_point:].strip()
+            if remaining_content:
+                # Convert back to lines and keep them in pending
+                self._pending_lines.extend(remaining_content.split('\n'))
+
+        # Create metadata with heading context
         effective_min_tokens = min(config.min_tokens, token_count, 1)
 
         metadata = ChunkMetadata(
