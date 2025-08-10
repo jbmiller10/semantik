@@ -55,10 +55,7 @@ class TestGetOperation:
 
     @pytest.mark.asyncio()
     async def test_get_operation_success(
-        self,
-        mock_user: dict[str, Any],
-        mock_operation: MagicMock,
-        mock_operation_service: AsyncMock,
+        self, mock_user: dict[str, Any], mock_operation: MagicMock, mock_operation_service: AsyncMock
     ) -> None:
         """Test successful operation retrieval."""
         # Setup
@@ -66,9 +63,7 @@ class TestGetOperation:
 
         # Execute
         result = await get_operation(
-            operation_uuid=mock_operation.uuid,
-            current_user=mock_user,
-            service=mock_operation_service,
+            operation_uuid=mock_operation.uuid, current_user=mock_user, service=mock_operation_service
         )
 
         # Verify
@@ -84,16 +79,11 @@ class TestGetOperation:
         assert result.completed_at is None
 
         mock_operation_service.get_operation.assert_awaited_once_with(
-            operation_uuid=mock_operation.uuid,
-            user_id=mock_user["id"],
+            operation_uuid=mock_operation.uuid, user_id=mock_user["id"]
         )
 
     @pytest.mark.asyncio()
-    async def test_get_operation_not_found(
-        self,
-        mock_user: dict[str, Any],
-        mock_operation_service: AsyncMock,
-    ) -> None:
+    async def test_get_operation_not_found(self, mock_user: dict[str, Any], mock_operation_service: AsyncMock) -> None:
         """Test operation not found error."""
         # Setup
         operation_uuid = "non-existent-uuid"
@@ -101,20 +91,14 @@ class TestGetOperation:
 
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
-            await get_operation(
-                operation_uuid=operation_uuid,
-                current_user=mock_user,
-                service=mock_operation_service,
-            )
+            await get_operation(operation_uuid=operation_uuid, current_user=mock_user, service=mock_operation_service)
 
         assert exc_info.value.status_code == 404
         assert f"Operation '{operation_uuid}' not found" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
     async def test_get_operation_access_denied(
-        self,
-        mock_user: dict[str, Any],
-        mock_operation_service: AsyncMock,
+        self, mock_user: dict[str, Any], mock_operation_service: AsyncMock
     ) -> None:
         """Test access denied error."""
         # Setup
@@ -125,21 +109,14 @@ class TestGetOperation:
 
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
-            await get_operation(
-                operation_uuid=operation_uuid,
-                current_user=mock_user,
-                service=mock_operation_service,
-            )
+            await get_operation(operation_uuid=operation_uuid, current_user=mock_user, service=mock_operation_service)
 
         assert exc_info.value.status_code == 403
         assert "You don't have access to this operation" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
     async def test_get_operation_with_error_message(
-        self,
-        mock_user: dict[str, Any],
-        mock_operation: MagicMock,
-        mock_operation_service: AsyncMock,
+        self, mock_user: dict[str, Any], mock_operation: MagicMock, mock_operation_service: AsyncMock
     ) -> None:
         """Test getting operation with error message."""
         # Setup
@@ -150,9 +127,7 @@ class TestGetOperation:
 
         # Execute
         result = await get_operation(
-            operation_uuid=mock_operation.uuid,
-            current_user=mock_user,
-            service=mock_operation_service,
+            operation_uuid=mock_operation.uuid, current_user=mock_user, service=mock_operation_service
         )
 
         # Verify
@@ -162,9 +137,7 @@ class TestGetOperation:
 
     @pytest.mark.asyncio()
     async def test_get_operation_generic_error(
-        self,
-        mock_user: dict[str, Any],
-        mock_operation_service: AsyncMock,
+        self, mock_user: dict[str, Any], mock_operation_service: AsyncMock
     ) -> None:
         """Test generic error handling."""
         # Setup
@@ -172,11 +145,7 @@ class TestGetOperation:
 
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
-            await get_operation(
-                operation_uuid="test-uuid",
-                current_user=mock_user,
-                service=mock_operation_service,
-            )
+            await get_operation(operation_uuid="test-uuid", current_user=mock_user, service=mock_operation_service)
 
         assert exc_info.value.status_code == 500
         assert "Failed to get operation" in str(exc_info.value.detail)
@@ -187,10 +156,7 @@ class TestCancelOperation:
 
     @pytest.mark.asyncio()
     async def test_cancel_operation_success(
-        self,
-        mock_user: dict[str, Any],
-        mock_operation: MagicMock,
-        mock_operation_service: AsyncMock,
+        self, mock_user: dict[str, Any], mock_operation: MagicMock, mock_operation_service: AsyncMock
     ) -> None:
         """Test successful operation cancellation."""
         # Setup
@@ -200,9 +166,7 @@ class TestCancelOperation:
 
         # Execute
         result = await cancel_operation(
-            operation_uuid=mock_operation.uuid,
-            current_user=mock_user,
-            service=mock_operation_service,
+            operation_uuid=mock_operation.uuid, current_user=mock_user, service=mock_operation_service
         )
 
         # Verify
@@ -211,15 +175,12 @@ class TestCancelOperation:
         assert result.completed_at is not None
 
         mock_operation_service.cancel_operation.assert_awaited_once_with(
-            operation_uuid=mock_operation.uuid,
-            user_id=mock_user["id"],
+            operation_uuid=mock_operation.uuid, user_id=mock_user["id"]
         )
 
     @pytest.mark.asyncio()
     async def test_cancel_operation_not_found(
-        self,
-        mock_user: dict[str, Any],
-        mock_operation_service: AsyncMock,
+        self, mock_user: dict[str, Any], mock_operation_service: AsyncMock
     ) -> None:
         """Test cancelling non-existent operation."""
         # Setup
@@ -229,9 +190,7 @@ class TestCancelOperation:
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
             await cancel_operation(
-                operation_uuid=operation_uuid,
-                current_user=mock_user,
-                service=mock_operation_service,
+                operation_uuid=operation_uuid, current_user=mock_user, service=mock_operation_service
             )
 
         assert exc_info.value.status_code == 404
@@ -239,9 +198,7 @@ class TestCancelOperation:
 
     @pytest.mark.asyncio()
     async def test_cancel_operation_access_denied(
-        self,
-        mock_user: dict[str, Any],
-        mock_operation_service: AsyncMock,
+        self, mock_user: dict[str, Any], mock_operation_service: AsyncMock
     ) -> None:
         """Test access denied when cancelling operation."""
         # Setup
@@ -253,9 +210,7 @@ class TestCancelOperation:
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
             await cancel_operation(
-                operation_uuid=operation_uuid,
-                current_user=mock_user,
-                service=mock_operation_service,
+                operation_uuid=operation_uuid, current_user=mock_user, service=mock_operation_service
             )
 
         assert exc_info.value.status_code == 403
@@ -263,9 +218,7 @@ class TestCancelOperation:
 
     @pytest.mark.asyncio()
     async def test_cancel_operation_validation_error(
-        self,
-        mock_user: dict[str, Any],
-        mock_operation_service: AsyncMock,
+        self, mock_user: dict[str, Any], mock_operation_service: AsyncMock
     ) -> None:
         """Test validation error when operation cannot be cancelled."""
         # Setup
@@ -275,20 +228,14 @@ class TestCancelOperation:
 
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
-            await cancel_operation(
-                operation_uuid="test-uuid",
-                current_user=mock_user,
-                service=mock_operation_service,
-            )
+            await cancel_operation(operation_uuid="test-uuid", current_user=mock_user, service=mock_operation_service)
 
         assert exc_info.value.status_code == 400
         assert "Operation is already completed and cannot be cancelled" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
     async def test_cancel_operation_generic_error(
-        self,
-        mock_user: dict[str, Any],
-        mock_operation_service: AsyncMock,
+        self, mock_user: dict[str, Any], mock_operation_service: AsyncMock
     ) -> None:
         """Test generic error handling during cancellation."""
         # Setup
@@ -296,11 +243,7 @@ class TestCancelOperation:
 
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
-            await cancel_operation(
-                operation_uuid="test-uuid",
-                current_user=mock_user,
-                service=mock_operation_service,
-            )
+            await cancel_operation(operation_uuid="test-uuid", current_user=mock_user, service=mock_operation_service)
 
         assert exc_info.value.status_code == 500
         assert "Failed to cancel operation" in str(exc_info.value.detail)
@@ -311,9 +254,7 @@ class TestListOperations:
 
     @pytest.mark.asyncio()
     async def test_list_operations_success_no_filters(
-        self,
-        mock_user: dict[str, Any],
-        mock_operation_service: AsyncMock,
+        self, mock_user: dict[str, Any], mock_operation_service: AsyncMock
     ) -> None:
         """Test listing operations without filters."""
         # Setup
@@ -351,18 +292,12 @@ class TestListOperations:
         assert result[2].id == "op-2"
 
         mock_operation_service.list_operations.assert_awaited_once_with(
-            user_id=mock_user["id"],
-            status_list=None,
-            operation_type=None,
-            offset=0,
-            limit=50,
+            user_id=mock_user["id"], status_list=None, operation_type=None, offset=0, limit=50
         )
 
     @pytest.mark.asyncio()
     async def test_list_operations_with_status_filter(
-        self,
-        mock_user: dict[str, Any],
-        mock_operation_service: AsyncMock,
+        self, mock_user: dict[str, Any], mock_operation_service: AsyncMock
     ) -> None:
         """Test listing operations with status filter."""
         # Setup
@@ -405,9 +340,7 @@ class TestListOperations:
 
     @pytest.mark.asyncio()
     async def test_list_operations_with_type_filter(
-        self,
-        mock_user: dict[str, Any],
-        mock_operation_service: AsyncMock,
+        self, mock_user: dict[str, Any], mock_operation_service: AsyncMock
     ) -> None:
         """Test listing operations with type filter."""
         # Setup
@@ -441,18 +374,12 @@ class TestListOperations:
         assert result[0].type == OperationType.REINDEX.value
 
         mock_operation_service.list_operations.assert_awaited_once_with(
-            user_id=mock_user["id"],
-            status_list=None,
-            operation_type=OperationType.REINDEX,
-            offset=0,
-            limit=50,
+            user_id=mock_user["id"], status_list=None, operation_type=OperationType.REINDEX, offset=0, limit=50
         )
 
     @pytest.mark.asyncio()
     async def test_list_operations_with_pagination(
-        self,
-        mock_user: dict[str, Any],
-        mock_operation_service: AsyncMock,
+        self, mock_user: dict[str, Any], mock_operation_service: AsyncMock
     ) -> None:
         """Test listing operations with pagination."""
         # Setup
@@ -489,18 +416,12 @@ class TestListOperations:
         assert result[9].id == "op-19"
 
         mock_operation_service.list_operations.assert_awaited_once_with(
-            user_id=mock_user["id"],
-            status_list=None,
-            operation_type=None,
-            offset=10,  # (page-1) * per_page
-            limit=10,
+            user_id=mock_user["id"], status_list=None, operation_type=None, offset=10, limit=10  # (page-1) * per_page
         )
 
     @pytest.mark.asyncio()
     async def test_list_operations_invalid_status(
-        self,
-        mock_user: dict[str, Any],
-        mock_operation_service: AsyncMock,
+        self, mock_user: dict[str, Any], mock_operation_service: AsyncMock
     ) -> None:
         """Test listing operations with invalid status."""
         # Execute & Verify
@@ -520,9 +441,7 @@ class TestListOperations:
 
     @pytest.mark.asyncio()
     async def test_list_operations_invalid_type(
-        self,
-        mock_user: dict[str, Any],
-        mock_operation_service: AsyncMock,
+        self, mock_user: dict[str, Any], mock_operation_service: AsyncMock
     ) -> None:
         """Test listing operations with invalid type."""
         # Execute & Verify
@@ -542,9 +461,7 @@ class TestListOperations:
 
     @pytest.mark.asyncio()
     async def test_list_operations_with_failed_operations(
-        self,
-        mock_user: dict[str, Any],
-        mock_operation_service: AsyncMock,
+        self, mock_user: dict[str, Any], mock_operation_service: AsyncMock
     ) -> None:
         """Test listing operations including failed ones with error messages."""
         # Setup
@@ -597,9 +514,7 @@ class TestListOperations:
 
     @pytest.mark.asyncio()
     async def test_list_operations_generic_error(
-        self,
-        mock_user: dict[str, Any],
-        mock_operation_service: AsyncMock,
+        self, mock_user: dict[str, Any], mock_operation_service: AsyncMock
     ) -> None:
         """Test generic error handling when listing operations."""
         # Setup
@@ -670,10 +585,7 @@ class TestOperationWebSocket:
 
             # Verify
             mock_get_user.assert_awaited_once_with("valid-jwt-token")
-            mock_service.verify_websocket_access.assert_awaited_once_with(
-                operation_uuid="op-123",
-                user_id=1,
-            )
+            mock_service.verify_websocket_access.assert_awaited_once_with(operation_uuid="op-123", user_id=1)
             mock_ws_manager.connect.assert_awaited_once_with(mock_websocket, "op-123", "1")
             mock_websocket.send_json.assert_awaited_once_with({"type": "pong"})
             mock_ws_manager.disconnect.assert_awaited_once_with(mock_websocket, "op-123", "1")

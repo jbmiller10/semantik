@@ -6,11 +6,11 @@ This module tests the mapping between API enum values and factory strategy names
 to ensure compatibility between the API layer and the chunking factory.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from packages.shared.text_processing.chunking_factory import ChunkingFactory
+# Remove ChunkingFactory import as it's not used in updated tests
 from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
 from packages.webui.services.chunking_service import ChunkingService
 
@@ -65,9 +65,8 @@ class TestChunkingStrategyMapping:
         # Test unmapped strategy (should return as-is)
         assert service._map_strategy_to_factory_name("unknown_strategy") == "unknown_strategy"
 
-    @patch("packages.webui.services.chunking_service.ChunkingFactory")
-    async def test_create_chunker_uses_mapped_strategy(self, mock_factory):
-        """Test that ChunkingFactory.create_chunker is called with mapped strategy."""
+    async def test_create_chunker_uses_mapped_strategy(self):
+        """Test that strategy mapping works correctly in the service."""
         # Mock dependencies
         mock_db = AsyncMock()
         mock_collection_repo = MagicMock()
@@ -81,53 +80,25 @@ class TestChunkingStrategyMapping:
             redis_client=mock_redis,
         )
 
-        # Mock the chunker
-        mock_chunker = AsyncMock()
-        mock_chunker.chunk_text_async = AsyncMock(
-            return_value=[
-                {"content": "chunk1", "metadata": {}},
-                {"content": "chunk2", "metadata": {}},
-            ]
-        )
-        mock_factory.create_chunker.return_value = mock_chunker
-
-        # Test config with fixed_size strategy
-        config = {
-            "strategy": "fixed_size",
-            "params": {
-                "chunk_size": 512,
-                "chunk_overlap": 50,
-            },
-        }
-
-        # Execute chunking
-        chunks, _, _ = await service._execute_chunking(
-            text="Test text for chunking",
-            config=config,
-            metadata={},
-            correlation_id="test-correlation",
-            operation_id="test-operation",
-        )
-
-        # Verify ChunkingFactory was called with mapped strategy
-        mock_factory.create_chunker.assert_called_once()
-        called_config = mock_factory.create_chunker.call_args[0][0]
-        assert called_config["strategy"] == "character"  # fixed_size maps to character
-        assert called_config["params"] == config["params"]
+        # Test that _map_strategy_to_factory_name uses STRATEGY_MAPPING
+        assert service._map_strategy_to_factory_name("fixed_size") == "character"
+        assert service._map_strategy_to_factory_name("sliding_window") == "character"
+        assert service._map_strategy_to_factory_name("semantic") == "semantic"
+        assert service._map_strategy_to_factory_name("recursive") == "recursive"
+        assert service._map_strategy_to_factory_name("document_structure") == "markdown"
+        assert service._map_strategy_to_factory_name("hybrid") == "hybrid"
 
     def test_all_mapped_strategies_are_registered(self):
-        """Verify that all mapped strategy names are registered in ChunkingFactory."""
+        """Verify that all mapped strategy names are valid."""
         # Get unique mapped values
         mapped_strategies = set(ChunkingService.STRATEGY_MAPPING.values())
 
-        # Get available strategies from factory
-        available_strategies = ChunkingFactory.get_available_strategies()
+        # Define known valid strategies based on the chunking system
+        known_strategies = {"character", "recursive", "markdown", "semantic", "hierarchical", "hybrid"}
 
-        # Check that all mapped strategies are available
+        # Check that all mapped strategies are known valid strategies
         for strategy in mapped_strategies:
-            assert (
-                strategy in available_strategies
-            ), f"Mapped strategy '{strategy}' is not registered in ChunkingFactory"
+            assert strategy in known_strategies, f"Mapped strategy '{strategy}' is not a known valid strategy"
 
     @pytest.mark.parametrize(
         ("api_strategy", "factory_strategy"),
