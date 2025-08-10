@@ -6,8 +6,7 @@ import os
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 
 @pytest.mark.asyncio()
@@ -203,6 +202,12 @@ async def db_session():
         "DATABASE_URL",
         "postgresql+asyncpg://postgres:postgres@localhost:5432/semantik_test"
     )
+    
+    # Ensure we're using asyncpg driver for async tests
+    if DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif DATABASE_URL.startswith("postgresql+psycopg2://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
 
     # Create async engine
     engine = create_async_engine(
@@ -212,8 +217,8 @@ async def db_session():
         pool_pre_ping=True,
     )
 
-    # Create async session factory
-    async_session = sessionmaker(
+    # Create async session factory using async_sessionmaker
+    async_session = async_sessionmaker(
         engine,
         class_=AsyncSession,
         expire_on_commit=False
@@ -239,14 +244,14 @@ async def cleanup_chunks_dependencies(session: AsyncSession):
     Helper function to clean up all chunks table dependencies.
     Based on the migration's cleanup_chunks_dependencies function.
     """
-    # Drop views that depend on chunks
+    # Drop views that depend on chunks (in dependency order)
     views_to_drop = [
-        "partition_distribution",
-        "partition_health",
-        "partition_size_distribution",
-        "partition_chunk_distribution",
         "partition_hot_spots",
         "partition_health_summary",
+        "partition_size_distribution",
+        "partition_chunk_distribution",
+        "partition_distribution",
+        "partition_health",
         "active_chunking_configs"
     ]
 

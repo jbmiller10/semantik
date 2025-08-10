@@ -54,6 +54,8 @@ def db_session() -> Generator[Session, None, None]:
             "DROP VIEW IF EXISTS partition_health_summary CASCADE",
             "DROP VIEW IF EXISTS partition_size_distribution CASCADE",
             "DROP VIEW IF EXISTS partition_chunk_distribution CASCADE",
+            "DROP VIEW IF EXISTS partition_distribution CASCADE",
+            "DROP VIEW IF EXISTS partition_health CASCADE",
             "DROP VIEW IF EXISTS active_chunking_configs CASCADE",
             "DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE",
         ]
