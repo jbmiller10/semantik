@@ -8,16 +8,16 @@ import re
 
 def verify_migration_file():
     """Read and verify the migration file content."""
-    
+
     migration_file = "/home/john/semantik/alembic/versions/ae558c9e183f_implement_100_direct_list_partitions.py"
-    
-    with open(migration_file, 'r') as f:
+
+    with open(migration_file) as f:
         content = f.read()
-    
+
     print("=" * 80)
     print("MIGRATION FILE VERIFICATION")
     print("=" * 80)
-    
+
     # Check for critical components
     checks = {
         "Drop old chunks table": "DROP TABLE IF EXISTS chunks CASCADE" in content,
@@ -39,31 +39,31 @@ def verify_migration_file():
         "Foreign key to collections": "FOREIGN KEY (collection_id) REFERENCES collections(id)" in content,
         "Has downgrade function": "def downgrade()" in content,
     }
-    
+
     all_passed = True
     for check_name, passed in checks.items():
         status = "✓" if passed else "✗"
         print(f"{status} {check_name}")
         if not passed:
             all_passed = False
-    
+
     # Count SQL statements
     print("\n" + "=" * 80)
     print("STATEMENT COUNTS")
     print("=" * 80)
-    
+
     drop_count = len(re.findall(r'DROP\s+(?:TABLE|VIEW|FUNCTION|MATERIALIZED VIEW)', content, re.IGNORECASE))
     create_table_count = len(re.findall(r'CREATE\s+TABLE', content, re.IGNORECASE))
     create_index_count = len(re.findall(r'CREATE\s+INDEX', content, re.IGNORECASE))
     create_view_count = len(re.findall(r'CREATE\s+(?:OR\s+REPLACE\s+)?VIEW', content, re.IGNORECASE))
     create_function_count = len(re.findall(r'CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION', content, re.IGNORECASE))
-    
+
     print(f"DROP statements: {drop_count}")
     print(f"CREATE TABLE statements: {create_table_count}")
-    print(f"CREATE INDEX statements: {create_index_count}")  
+    print(f"CREATE INDEX statements: {create_index_count}")
     print(f"CREATE VIEW statements: {create_view_count}")
     print(f"CREATE FUNCTION statements: {create_function_count}")
-    
+
     # Check partition loop details
     partition_loop = re.search(r'FOR i IN (\d+)\.\.(\d+) LOOP', content)
     if partition_loop:
@@ -76,23 +76,23 @@ def verify_migration_file():
     else:
         print("\n⚠️  WARNING: Could not find partition loop")
         all_passed = False
-    
+
     # Check for proper partition naming
     print("\n" + "=" * 80)
     print("PARTITION NAMING CHECK")
     print("=" * 80)
-    
+
     if "LPAD(i::text, 2, '0')" in content:
         print("✓ Uses zero-padding for partition numbers (00-99)")
     else:
         print("✗ Missing zero-padding for partition numbers")
         all_passed = False
-    
+
     # Summary
     print("\n" + "=" * 80)
     print("SUMMARY")
     print("=" * 80)
-    
+
     if all_passed:
         print("✅ SUCCESS: Migration file has all required components!")
         print("\nKey features implemented:")
@@ -103,7 +103,7 @@ def verify_migration_file():
         print("- Clean downgrade path")
     else:
         print("❌ FAILURE: Some required components are missing!")
-    
+
     return all_passed
 
 

@@ -43,6 +43,7 @@ from .background_tasks import start_background_tasks, stop_background_tasks  # n
 from .middleware.correlation import CorrelationMiddleware, configure_logging_with_correlation  # noqa: E402
 from .middleware.rate_limit import RateLimitMiddleware  # noqa: E402
 from .rate_limiter import limiter, rate_limit_exceeded_handler  # noqa: E402
+
 # Use the scalable WebSocket manager for horizontal scaling
 from .websocket.scalable_manager import scalable_ws_manager as ws_manager  # noqa: E402
 

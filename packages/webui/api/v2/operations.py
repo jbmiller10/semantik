@@ -18,6 +18,7 @@ from packages.webui.api.schemas import ErrorResponse, OperationResponse
 from packages.webui.auth import get_current_user, get_current_user_websocket
 from packages.webui.services.factory import get_operation_service
 from packages.webui.services.operation_service import OperationService
+
 # Use the scalable WebSocket manager for horizontal scaling
 from packages.webui.websocket.scalable_manager import scalable_ws_manager as ws_manager
 

@@ -5,18 +5,17 @@ Revises: add_chunking_strategy_cols
 Create Date: 2025-08-10 02:20:06.337096
 
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
-import sqlalchemy as sa
 from sqlalchemy import text
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = 'ae558c9e183f'
-down_revision: Union[str, Sequence[str], None] = 'add_chunking_strategy_cols'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = 'add_chunking_strategy_cols'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def cleanup_chunks_dependencies(conn):
@@ -24,26 +23,26 @@ def cleanup_chunks_dependencies(conn):
     # Drop views that depend on chunks (including from other migrations)
     views_to_drop = [
         "partition_distribution",
-        "partition_health", 
+        "partition_health",
         "partition_size_distribution",
         "partition_chunk_distribution",
         "partition_hot_spots",
         "partition_health_summary",
         "active_chunking_configs"
     ]
-    
+
     for view in views_to_drop:
         try:
             conn.execute(text(f"DROP VIEW IF EXISTS {view} CASCADE"))
         except Exception:
             pass  # Ignore if view doesn't exist
-    
+
     # Drop materialized views
     try:
         conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
     except Exception:
         pass
-    
+
     # Drop functions that might reference chunks
     functions_to_drop = [
         ("analyze_partition_skew", ""),
@@ -51,7 +50,7 @@ def cleanup_chunks_dependencies(conn):
         ("get_partition_for_collection", "VARCHAR"),
         ("refresh_collection_chunking_stats", "")
     ]
-    
+
     for func_name, params in functions_to_drop:
         try:
             if params:
@@ -60,13 +59,13 @@ def cleanup_chunks_dependencies(conn):
                 conn.execute(text(f"DROP FUNCTION IF EXISTS {func_name}() CASCADE"))
         except Exception:
             pass
-    
+
     # Drop triggers
     try:
         conn.execute(text("DROP TRIGGER IF EXISTS set_partition_key ON chunks CASCADE"))
     except Exception:
         pass
-        
+
     try:
         conn.execute(text("DROP FUNCTION IF EXISTS compute_partition_key() CASCADE"))
     except Exception:
@@ -76,24 +75,24 @@ def cleanup_chunks_dependencies(conn):
 def upgrade() -> None:
     """
     Implement 100 direct LIST partitions for optimal chunk distribution.
-    
+
     This migration:
     1. Drops the old chunks table with 16 HASH partitions
     2. Creates a new chunks table with 100 LIST partitions
     3. Uses PostgreSQL's hashtext() for even distribution
     4. Creates monitoring views for partition health
     """
-    
+
     conn = op.get_bind()
-    
+
     # Step 1: Drop old tables and views (we're pre-release!)
     # Clean up all dependencies first
     cleanup_chunks_dependencies(conn)
-    
+
     # Now drop the tables
     conn.execute(text("DROP TABLE IF EXISTS chunks CASCADE"))
     conn.execute(text("DROP TABLE IF EXISTS partition_mappings CASCADE"))  # Remove any old mapping tables
-    
+
     # Step 2: Create trigger function to compute partition key
     # We use a trigger because PostgreSQL doesn't allow expressions or generated columns
     # in partition keys when combined with PRIMARY KEY constraints
@@ -106,7 +105,7 @@ def upgrade() -> None:
         END;
         $$ LANGUAGE plpgsql;
     """))
-    
+
     # Step 3: Create new partitioned table with regular partition_key column
     conn.execute(text("""
         CREATE TABLE chunks (
@@ -129,7 +128,7 @@ def upgrade() -> None:
             FOREIGN KEY (chunking_config_id) REFERENCES chunking_configs(id)
         ) PARTITION BY LIST (partition_key)
     """))
-    
+
     # Step 4: Create trigger to auto-compute partition_key on INSERT
     conn.execute(text("""
         CREATE TRIGGER set_partition_key
@@ -137,7 +136,7 @@ def upgrade() -> None:
         FOR EACH ROW
         EXECUTE FUNCTION compute_partition_key();
     """))
-    
+
     # Step 5: Create 100 partitions with proper indexes
     conn.execute(text("""
         DO $$
@@ -152,7 +151,7 @@ def upgrade() -> None:
                     LPAD(i::text, 2, '0'),
                     i
                 );
-                
+
                 -- Create index on collection_id for each partition
                 EXECUTE format('
                     CREATE INDEX idx_chunks_part_%s_collection 
@@ -160,7 +159,7 @@ def upgrade() -> None:
                     LPAD(i::text, 2, '0'),
                     LPAD(i::text, 2, '0')
                 );
-                
+
                 -- Create index on created_at for each partition
                 EXECUTE format('
                     CREATE INDEX idx_chunks_part_%s_created 
@@ -168,7 +167,7 @@ def upgrade() -> None:
                     LPAD(i::text, 2, '0'),
                     LPAD(i::text, 2, '0')
                 );
-                
+
                 -- Create index on chunk_index for each partition
                 EXECUTE format('
                     CREATE INDEX idx_chunks_part_%s_chunk_index 
@@ -176,7 +175,7 @@ def upgrade() -> None:
                     LPAD(i::text, 2, '0'),
                     LPAD(i::text, 2, '0')
                 );
-                
+
                 -- Create index on document_id if it exists
                 EXECUTE format('
                     CREATE INDEX idx_chunks_part_%s_document 
@@ -188,9 +187,9 @@ def upgrade() -> None:
             END LOOP;
         END $$;
     """))
-    
+
     # Step 6: Create monitoring views for partition health
-    
+
     # Main health monitoring view
     conn.execute(text("""
         CREATE OR REPLACE VIEW partition_health AS
@@ -235,7 +234,7 @@ def upgrade() -> None:
         CROSS JOIN stats_summary ss
         ORDER BY partition_id;
     """))
-    
+
     # Distribution analysis view
     conn.execute(text("""
         CREATE OR REPLACE VIEW partition_distribution AS
@@ -267,7 +266,7 @@ def upgrade() -> None:
             100 - partitions_used as empty_partitions
         FROM distribution_stats ds;
     """))
-    
+
     # Step 7: Create helper functions for partition assignment
     conn.execute(text("""
         CREATE OR REPLACE FUNCTION get_partition_for_collection(collection_id VARCHAR)
@@ -276,7 +275,7 @@ def upgrade() -> None:
             RETURN 'chunks_part_' || LPAD((mod(hashtext(collection_id::text), 100))::text, 2, '0');
         END;
         $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
-        
+
         -- Also create a function to get the partition key directly
         CREATE OR REPLACE FUNCTION get_partition_key(collection_id VARCHAR)
         RETURNS INTEGER AS $$
@@ -285,7 +284,7 @@ def upgrade() -> None:
         END;
         $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
     """))
-    
+
     # Step 8: Create function to analyze partition skew
     # Note: Old version already dropped in Step 1
     conn.execute(text("""
@@ -314,20 +313,20 @@ def upgrade() -> None:
             INTO v_avg_rows, v_max_rows, v_min_rows
             FROM pg_stat_user_tables
             WHERE relname LIKE 'chunks_part_%';
-            
+
             -- Calculate skew ratio
             v_max_skew := CASE 
                 WHEN v_avg_rows > 0 THEN v_max_rows::NUMERIC / v_avg_rows
                 ELSE 0
             END;
-            
+
             -- Count partitions over 20% threshold
             SELECT COUNT(*)
             INTO v_over_threshold
             FROM pg_stat_user_tables
             WHERE relname LIKE 'chunks_part_%'
               AND n_live_tup > v_avg_rows * 1.2;
-            
+
             RETURN QUERY
             SELECT 
                 CASE 
@@ -348,7 +347,7 @@ def upgrade() -> None:
         END;
         $$ LANGUAGE plpgsql;
     """))
-    
+
     # Step 9: Create active chunking configs view (recreate with new structure)
     conn.execute(text("""
         CREATE VIEW active_chunking_configs AS
@@ -372,7 +371,7 @@ def upgrade() -> None:
         ) sub ON cc.id = sub.chunking_config_id
         WHERE cc.use_count > 0;
     """))
-    
+
     # Step 10: Create materialized view for collection statistics
     conn.execute(text("""
         CREATE MATERIALIZED VIEW collection_chunking_stats AS
@@ -390,13 +389,13 @@ def upgrade() -> None:
         GROUP BY c.id, c.name
         WITH DATA;
     """))
-    
+
     # Create index on materialized view
     conn.execute(text("""
         CREATE UNIQUE INDEX ix_collection_chunking_stats_id 
         ON collection_chunking_stats(id);
     """))
-    
+
     # Create refresh function for materialized view
     conn.execute(text("""
         CREATE OR REPLACE FUNCTION refresh_collection_chunking_stats()
@@ -412,15 +411,15 @@ def downgrade() -> None:
     """
     Rollback to 16 HASH partitions (not recommended).
     """
-    
+
     conn = op.get_bind()
-    
+
     # Clean up all dependencies first
     cleanup_chunks_dependencies(conn)
-    
+
     # Drop the 100-partition table
     conn.execute(text("DROP TABLE IF EXISTS chunks CASCADE"))
-    
+
     # Recreate the original 16-partition structure
     conn.execute(text("""
         CREATE TABLE chunks (
@@ -442,14 +441,14 @@ def downgrade() -> None:
             FOREIGN KEY (chunking_config_id) REFERENCES chunking_configs(id)
         ) PARTITION BY HASH (collection_id);
     """))
-    
+
     # Create 16 partitions
     for i in range(16):
         conn.execute(text(f"""
             CREATE TABLE chunks_p{i} PARTITION OF chunks
             FOR VALUES WITH (MODULUS 16, REMAINDER {i});
         """))
-    
+
     # Recreate original indexes
     conn.execute(text("""
         CREATE INDEX ix_chunks_collection_id_document_id ON chunks(collection_id, document_id);

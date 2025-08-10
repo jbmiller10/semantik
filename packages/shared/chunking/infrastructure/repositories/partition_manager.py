@@ -52,7 +52,7 @@ class PartitionManager:
 
     Uses 100 direct LIST partitions with PostgreSQL's hashtext() function
     for even distribution of collections across partitions.
-    
+
     The chunks table uses a trigger to automatically compute the 'partition_key'
     column as mod(hashtext(collection_id::text), 100) on INSERT. This approach
     works around PostgreSQL's limitations with PRIMARY KEY constraints and
@@ -366,7 +366,7 @@ class PartitionManager:
             'last_chunk': data_row.last_chunk if data_row else None
         }
 
-    async def get_partition_efficiency_report(
+    async def get_efficiency_report(
         self,
         db: AsyncSession
     ) -> dict[str, Any]:
@@ -434,3 +434,18 @@ class PartitionManager:
                 'poor': efficiency_score < 50
             }
         }
+
+    async def get_partition_efficiency_report(
+        self,
+        db: AsyncSession
+    ) -> dict[str, Any]:
+        """
+        Alias for get_efficiency_report for backward compatibility.
+
+        Args:
+            db: Database session
+
+        Returns:
+            Dictionary with efficiency metrics and analysis
+        """
+        return await self.get_efficiency_report(db)
