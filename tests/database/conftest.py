@@ -12,7 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 # First check if DATABASE_URL is directly provided
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-if not DATABASE_URL:
+if DATABASE_URL:
+    # Convert to async URL if needed
+    if DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+elif not DATABASE_URL:
     # Otherwise construct it from individual components
     POSTGRES_USER = os.environ.get("POSTGRES_USER", "postgres")
     POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "postgres")  # Default password for testing

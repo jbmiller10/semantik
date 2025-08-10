@@ -397,31 +397,54 @@ async def db_session():
     import asyncpg
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from urllib.parse import urlparse, urlunparse
 
-    from packages.shared.config.postgres import postgres_config
     from packages.shared.database.models import Base
 
-    # Use PostgreSQL for tests - get URL from environment or config
+    # Get database URL from environment, prioritizing DATABASE_URL
     database_url = os.environ.get("DATABASE_URL")
-    if database_url:
-        # Convert to async URL if needed
-        if database_url.startswith("postgresql://"):
-            database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    
+    if not database_url:
+        # Construct from individual components if DATABASE_URL not set
+        POSTGRES_USER = os.environ.get("POSTGRES_USER", "postgres")
+        POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "postgres")
+        POSTGRES_DB = os.environ.get("POSTGRES_DB", "semantik_test")
+        POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "localhost")
+        POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
+        
+        if POSTGRES_PASSWORD:
+            database_url = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+        else:
+            database_url = f"postgresql://{POSTGRES_USER}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+    
+    # Convert to async URL for SQLAlchemy
+    if database_url.startswith("postgresql://"):
+        async_database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
     else:
-        # Use default test database configuration
-        database_url = postgres_config.async_database_url
+        async_database_url = database_url
 
     # Try to connect to the database
     try:
-        # Test connection
-        conn = await asyncpg.connect(database_url.replace("postgresql+asyncpg://", "postgresql://"))
+        # Parse the URL to extract connection parameters for asyncpg
+        parsed = urlparse(database_url)
+        conn_params = {
+            "host": parsed.hostname or "localhost",
+            "port": parsed.port or 5432,
+            "database": parsed.path.lstrip('/') if parsed.path else "semantik_test",
+            "user": parsed.username or "postgres",
+        }
+        if parsed.password:
+            conn_params["password"] = parsed.password
+            
+        # Test connection with asyncpg
+        conn = await asyncpg.connect(**conn_params)
         await conn.close()
-    except (asyncpg.InvalidPasswordError, OSError) as e:
+    except (asyncpg.InvalidPasswordError, OSError, Exception) as e:
         # If we can't connect to a real database, skip these tests
         pytest.skip(f"PostgreSQL test database not available: {e}")
         return
 
-    engine = create_async_engine(database_url, echo=False)
+    engine = create_async_engine(async_database_url, echo=False)
 
     # Helper function to drop views before tables
     async def drop_views_and_tables(conn):
