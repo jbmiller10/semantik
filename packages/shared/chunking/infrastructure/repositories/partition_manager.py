@@ -74,7 +74,7 @@ class PartitionManager:
         PARTITION BY LIST (mod(hashtext(collection_id::text), 100)) clause.
 
         Args:
-            collection_id: UUID string of the collection
+            collection_id: Collection ID string (VARCHAR in database)
 
         Returns:
             Partition ID (0-99) - approximate, for monitoring purposes
@@ -93,7 +93,7 @@ class PartitionManager:
         Get the partition table name for a collection.
 
         Args:
-            collection_id: UUID string of the collection
+            collection_id: Collection ID string (VARCHAR in database)
 
         Returns:
             Partition table name (e.g., 'chunks_part_42')
@@ -319,7 +319,7 @@ class PartitionManager:
 
         Args:
             db: Database session
-            collection_id: UUID string of the collection
+            collection_id: Collection ID string (VARCHAR in database)
 
         Returns:
             Dictionary with partition assignment details

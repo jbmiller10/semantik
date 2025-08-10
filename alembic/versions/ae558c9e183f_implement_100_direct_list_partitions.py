@@ -56,7 +56,7 @@ def upgrade() -> None:
     conn.execute(text("""
         CREATE TABLE chunks (
             id BIGSERIAL,
-            collection_id UUID NOT NULL,
+            collection_id VARCHAR NOT NULL,
             partition_key INTEGER NOT NULL,
             chunk_index INTEGER NOT NULL,
             content TEXT NOT NULL,
@@ -215,7 +215,7 @@ def upgrade() -> None:
     
     # Step 7: Create helper functions for partition assignment
     conn.execute(text("""
-        CREATE OR REPLACE FUNCTION get_partition_for_collection(collection_id UUID)
+        CREATE OR REPLACE FUNCTION get_partition_for_collection(collection_id VARCHAR)
         RETURNS TEXT AS $$
         BEGIN
             RETURN 'chunks_part_' || LPAD((mod(hashtext(collection_id::text), 100))::text, 2, '0');
@@ -223,7 +223,7 @@ def upgrade() -> None:
         $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
         
         -- Also create a function to get the partition key directly
-        CREATE OR REPLACE FUNCTION get_partition_key(collection_id UUID)
+        CREATE OR REPLACE FUNCTION get_partition_key(collection_id VARCHAR)
         RETURNS INTEGER AS $$
         BEGIN
             RETURN mod(hashtext(collection_id::text), 100);
@@ -361,8 +361,8 @@ def downgrade() -> None:
     
     # Drop all new views and functions
     conn.execute(text("DROP FUNCTION IF EXISTS analyze_partition_skew() CASCADE"))
-    conn.execute(text("DROP FUNCTION IF EXISTS get_partition_key(UUID) CASCADE"))
-    conn.execute(text("DROP FUNCTION IF EXISTS get_partition_for_collection(UUID) CASCADE"))
+    conn.execute(text("DROP FUNCTION IF EXISTS get_partition_key(VARCHAR) CASCADE"))
+    conn.execute(text("DROP FUNCTION IF EXISTS get_partition_for_collection(VARCHAR) CASCADE"))
     conn.execute(text("DROP VIEW IF EXISTS partition_distribution CASCADE"))
     conn.execute(text("DROP VIEW IF EXISTS partition_health CASCADE"))
     conn.execute(text("DROP VIEW IF EXISTS active_chunking_configs CASCADE"))
