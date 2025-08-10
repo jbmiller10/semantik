@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+
 """Test script to debug search timeout issue"""
+
 import time
 
 import requests

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Unit tests for chunking strategy mapping.
 
@@ -10,15 +11,16 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-# Remove ChunkingFactory import as it's not used in updated tests
 from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
 from packages.webui.services.chunking_service import ChunkingService
+
+# Remove ChunkingFactory import as it's not used in updated tests
 
 
 class TestChunkingStrategyMapping:
     """Test the mapping between API strategy names and factory strategy names."""
 
-    def test_strategy_mapping_completeness(self):
+    def test_strategy_mapping_completeness(self) -> None:
         """Ensure all ChunkingStrategy enum values are mapped."""
         # All enum values should have a mapping
         for strategy in ChunkingStrategy:
@@ -26,7 +28,7 @@ class TestChunkingStrategyMapping:
                 strategy.value in ChunkingService.STRATEGY_MAPPING
             ), f"Strategy {strategy.value} is not mapped in ChunkingService.STRATEGY_MAPPING"
 
-    def test_strategy_mapping_values(self):
+    def test_strategy_mapping_values(self) -> None:
         """Verify correct mapping of each strategy."""
         expected_mapping = {
             "fixed_size": "character",
@@ -39,7 +41,7 @@ class TestChunkingStrategyMapping:
 
         assert expected_mapping == ChunkingService.STRATEGY_MAPPING
 
-    def test_map_strategy_to_factory_name(self):
+    def test_map_strategy_to_factory_name(self) -> None:
         """Test the _map_strategy_to_factory_name method."""
         # Mock dependencies
         mock_db = AsyncMock()
@@ -65,7 +67,7 @@ class TestChunkingStrategyMapping:
         # Test unmapped strategy (should return as-is)
         assert service._map_strategy_to_factory_name("unknown_strategy") == "unknown_strategy"
 
-    async def test_create_chunker_uses_mapped_strategy(self):
+    async def test_create_chunker_uses_mapped_strategy(self) -> None:
         """Test that strategy mapping works correctly in the service."""
         # Mock dependencies
         mock_db = AsyncMock()
@@ -88,7 +90,7 @@ class TestChunkingStrategyMapping:
         assert service._map_strategy_to_factory_name("document_structure") == "markdown"
         assert service._map_strategy_to_factory_name("hybrid") == "hybrid"
 
-    def test_all_mapped_strategies_are_registered(self):
+    def test_all_mapped_strategies_are_registered(self) -> None:
         """Verify that all mapped strategy names are valid."""
         # Get unique mapped values
         mapped_strategies = set(ChunkingService.STRATEGY_MAPPING.values())
@@ -111,7 +113,7 @@ class TestChunkingStrategyMapping:
             (ChunkingStrategy.HYBRID, "hybrid"),
         ],
     )
-    def test_strategy_enum_to_factory_mapping(self, api_strategy, factory_strategy):
+    def test_strategy_enum_to_factory_mapping(self, api_strategy, factory_strategy) -> None:
         """Test mapping from ChunkingStrategy enum to factory strategy name."""
         # Mock dependencies
         mock_db = AsyncMock()

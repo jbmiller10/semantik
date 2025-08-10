@@ -5,9 +5,10 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-# Import the module so we can patch it properly
 import packages.webui.main
 from packages.webui.main import _validate_cors_origins, create_app
+
+# Import the module so we can patch it properly
 
 
 class TestCORSOriginValidation:

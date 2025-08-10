@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Comprehensive test suite for webui/repositories/postgres/auth_repository.py
 Tests authentication repository with mocked database operations
@@ -19,7 +20,7 @@ class TestPostgreSQLAuthRepository:
     """Test PostgreSQL auth repository implementation"""
 
     @pytest.fixture()
-    def mock_session(self):
+    def mock_session(self) -> None:
         """Create a mock AsyncSession"""
         session = AsyncMock()
         session.add = Mock()
@@ -29,18 +30,18 @@ class TestPostgreSQLAuthRepository:
         return session
 
     @pytest.fixture()
-    def auth_repo(self, mock_session):
+    def auth_repo(self, mock_session) -> None:
         """Create auth repository with mocked session"""
         return PostgreSQLAuthRepository(mock_session)
 
-    def test_initialization(self, mock_session):
+    def test_initialization(self, mock_session) -> None:
         """Test repository initialization"""
         repo = PostgreSQLAuthRepository(mock_session)
         assert repo.session == mock_session
         assert repo.model == RefreshToken
 
     @pytest.mark.asyncio()
-    async def test_save_refresh_token_success(self, auth_repo, mock_session):
+    async def test_save_refresh_token_success(self, auth_repo, mock_session) -> None:
         """Test successful refresh token save"""
         user_id = "123"
         token_hash = "test_hash"
@@ -61,13 +62,13 @@ class TestPostgreSQLAuthRepository:
         assert token_obj.is_revoked is False
 
     @pytest.mark.asyncio()
-    async def test_save_refresh_token_invalid_user_id(self, auth_repo):
+    async def test_save_refresh_token_invalid_user_id(self, auth_repo) -> None:
         """Test save refresh token with invalid user ID"""
         with pytest.raises(InvalidUserIdError):
             await auth_repo.save_refresh_token("invalid", "hash", datetime.now(UTC))
 
     @pytest.mark.asyncio()
-    async def test_save_refresh_token_integrity_error(self, auth_repo, mock_session):
+    async def test_save_refresh_token_integrity_error(self, auth_repo, mock_session) -> None:
         """Test save refresh token with integrity error (e.g., user doesn't exist)"""
         mock_session.flush.side_effect = IntegrityError("statement", "params", "orig")
 
@@ -78,7 +79,7 @@ class TestPostgreSQLAuthRepository:
         assert exc_info.value.entity_type == "refresh_token"
 
     @pytest.mark.asyncio()
-    async def test_save_refresh_token_generic_error(self, auth_repo, mock_session):
+    async def test_save_refresh_token_generic_error(self, auth_repo, mock_session) -> None:
         """Test save refresh token with generic database error"""
         mock_session.flush.side_effect = Exception("Database error")
 
@@ -88,7 +89,7 @@ class TestPostgreSQLAuthRepository:
         assert exc_info.value.operation == "save"
 
     @pytest.mark.asyncio()
-    async def test_verify_refresh_token_valid(self, auth_repo, mock_session):
+    async def test_verify_refresh_token_valid(self, auth_repo, mock_session) -> None:
         """Test verifying a valid refresh token"""
         token = "test_token"
         hashlib.sha256(token.encode()).hexdigest()
@@ -114,7 +115,7 @@ class TestPostgreSQLAuthRepository:
         # The query should check for token_hash, not revoked, and not expired
 
     @pytest.mark.asyncio()
-    async def test_verify_refresh_token_not_found(self, auth_repo, mock_session):
+    async def test_verify_refresh_token_not_found(self, auth_repo, mock_session) -> None:
         """Test verifying non-existent refresh token"""
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = None
@@ -124,7 +125,7 @@ class TestPostgreSQLAuthRepository:
         assert result is None
 
     @pytest.mark.asyncio()
-    async def test_verify_refresh_token_user_inactive(self, auth_repo, mock_session):
+    async def test_verify_refresh_token_user_inactive(self, auth_repo, mock_session) -> None:
         """Test verifying token for inactive user"""
         token = "test_token"
 
@@ -143,7 +144,7 @@ class TestPostgreSQLAuthRepository:
         assert result is None
 
     @pytest.mark.asyncio()
-    async def test_verify_refresh_token_error(self, auth_repo, mock_session):
+    async def test_verify_refresh_token_error(self, auth_repo, mock_session) -> None:
         """Test verify refresh token with database error"""
         mock_session.execute.side_effect = Exception("Database error")
 
@@ -153,7 +154,7 @@ class TestPostgreSQLAuthRepository:
         assert exc_info.value.operation == "verify"
 
     @pytest.mark.asyncio()
-    async def test_revoke_refresh_token_success(self, auth_repo, mock_session):
+    async def test_revoke_refresh_token_success(self, auth_repo, mock_session) -> None:
         """Test successful token revocation"""
         token = "test_token"
         hashlib.sha256(token.encode()).hexdigest()
@@ -169,7 +170,7 @@ class TestPostgreSQLAuthRepository:
         # Should be an update query setting is_revoked = True
 
     @pytest.mark.asyncio()
-    async def test_revoke_refresh_token_not_found(self, auth_repo, mock_session):
+    async def test_revoke_refresh_token_not_found(self, auth_repo, mock_session) -> None:
         """Test revoking non-existent token"""
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = None
@@ -179,7 +180,7 @@ class TestPostgreSQLAuthRepository:
         await auth_repo.revoke_refresh_token("invalid_token")
 
     @pytest.mark.asyncio()
-    async def test_revoke_refresh_token_error(self, auth_repo, mock_session):
+    async def test_revoke_refresh_token_error(self, auth_repo, mock_session) -> None:
         """Test revoke token with database error"""
         mock_session.execute.side_effect = Exception("Database error")
 
@@ -189,7 +190,7 @@ class TestPostgreSQLAuthRepository:
         assert exc_info.value.operation == "revoke"
 
     @pytest.mark.asyncio()
-    async def test_update_user_last_login_success(self, auth_repo, mock_session):
+    async def test_update_user_last_login_success(self, auth_repo, mock_session) -> None:
         """Test successful last login update"""
         user_id = "123"
 
@@ -203,13 +204,13 @@ class TestPostgreSQLAuthRepository:
         # Should be updating User.last_login
 
     @pytest.mark.asyncio()
-    async def test_update_user_last_login_invalid_user_id(self, auth_repo):
+    async def test_update_user_last_login_invalid_user_id(self, auth_repo) -> None:
         """Test update last login with invalid user ID"""
         with pytest.raises(InvalidUserIdError):
             await auth_repo.update_user_last_login("invalid")
 
     @pytest.mark.asyncio()
-    async def test_update_user_last_login_error(self, auth_repo, mock_session):
+    async def test_update_user_last_login_error(self, auth_repo, mock_session) -> None:
         """Test update last login with database error"""
         mock_session.execute.side_effect = Exception("Database error")
 
@@ -219,7 +220,7 @@ class TestPostgreSQLAuthRepository:
         assert exc_info.value.operation == "update"
 
     @pytest.mark.asyncio()
-    async def test_cleanup_expired_tokens_success(self, auth_repo, mock_session):
+    async def test_cleanup_expired_tokens_success(self, auth_repo, mock_session) -> None:
         """Test successful cleanup of expired tokens"""
         # Mock deleted token IDs
         mock_result = Mock()
@@ -232,7 +233,7 @@ class TestPostgreSQLAuthRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_cleanup_expired_tokens_none_found(self, auth_repo, mock_session):
+    async def test_cleanup_expired_tokens_none_found(self, auth_repo, mock_session) -> None:
         """Test cleanup when no expired tokens found"""
         mock_result = Mock()
         mock_result.scalars.return_value.all.return_value = []
@@ -243,7 +244,7 @@ class TestPostgreSQLAuthRepository:
         assert count == 0
 
     @pytest.mark.asyncio()
-    async def test_cleanup_expired_tokens_error(self, auth_repo, mock_session):
+    async def test_cleanup_expired_tokens_error(self, auth_repo, mock_session) -> None:
         """Test cleanup with database error"""
         mock_session.execute.side_effect = Exception("Database error")
 
@@ -253,7 +254,7 @@ class TestPostgreSQLAuthRepository:
         assert exc_info.value.operation == "cleanup"
 
     @pytest.mark.asyncio()
-    async def test_revoke_all_user_tokens_success(self, auth_repo, mock_session):
+    async def test_revoke_all_user_tokens_success(self, auth_repo, mock_session) -> None:
         """Test revoking all tokens for a user"""
         user_id = "123"
 
@@ -266,13 +267,13 @@ class TestPostgreSQLAuthRepository:
         assert count == 2
 
     @pytest.mark.asyncio()
-    async def test_revoke_all_user_tokens_invalid_user_id(self, auth_repo):
+    async def test_revoke_all_user_tokens_invalid_user_id(self, auth_repo) -> None:
         """Test revoke all tokens with invalid user ID"""
         with pytest.raises(InvalidUserIdError):
             await auth_repo.revoke_all_user_tokens("invalid")
 
     @pytest.mark.asyncio()
-    async def test_revoke_all_user_tokens_error(self, auth_repo, mock_session):
+    async def test_revoke_all_user_tokens_error(self, auth_repo, mock_session) -> None:
         """Test revoke all tokens with database error"""
         mock_session.execute.side_effect = Exception("Database error")
 
@@ -282,7 +283,7 @@ class TestPostgreSQLAuthRepository:
         assert exc_info.value.operation == "revoke_all"
 
     @pytest.mark.asyncio()
-    async def test_get_active_token_count_success(self, auth_repo, mock_session):
+    async def test_get_active_token_count_success(self, auth_repo, mock_session) -> None:
         """Test getting active token count"""
         user_id = "123"
 
@@ -293,7 +294,7 @@ class TestPostgreSQLAuthRepository:
         assert count == 5
 
     @pytest.mark.asyncio()
-    async def test_get_active_token_count_zero(self, auth_repo, mock_session):
+    async def test_get_active_token_count_zero(self, auth_repo, mock_session) -> None:
         """Test getting active token count when none exist"""
         mock_session.scalar.return_value = None
 
@@ -302,13 +303,13 @@ class TestPostgreSQLAuthRepository:
         assert count == 0
 
     @pytest.mark.asyncio()
-    async def test_get_active_token_count_invalid_user_id(self, auth_repo):
+    async def test_get_active_token_count_invalid_user_id(self, auth_repo) -> None:
         """Test get active token count with invalid user ID"""
         with pytest.raises(InvalidUserIdError):
             await auth_repo.get_active_token_count("invalid")
 
     @pytest.mark.asyncio()
-    async def test_create_token_success(self, auth_repo, mock_session):
+    async def test_create_token_success(self, auth_repo, mock_session) -> None:
         """Test create token (compatibility method)"""
         user_id = "123"
         token = "test_token"
@@ -324,7 +325,7 @@ class TestPostgreSQLAuthRepository:
             assert args[1] == hashlib.sha256(token.encode()).hexdigest()
 
     @pytest.mark.asyncio()
-    async def test_create_token_with_datetime(self, auth_repo, mock_session):
+    async def test_create_token_with_datetime(self, auth_repo, mock_session) -> None:
         """Test create token with datetime object"""
         user_id = "123"
         token = "test_token"
@@ -336,7 +337,7 @@ class TestPostgreSQLAuthRepository:
             mock_save.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_get_token_user_id(self, auth_repo):
+    async def test_get_token_user_id(self, auth_repo) -> None:
         """Test get token user ID (compatibility method)"""
         token = "test_token"
 
@@ -349,7 +350,7 @@ class TestPostgreSQLAuthRepository:
             mock_verify.assert_called_once_with(token)
 
     @pytest.mark.asyncio()
-    async def test_delete_token(self, auth_repo):
+    async def test_delete_token(self, auth_repo) -> None:
         """Test delete token (compatibility method)"""
         token = "test_token"
 
@@ -358,7 +359,7 @@ class TestPostgreSQLAuthRepository:
 
             mock_revoke.assert_called_once_with(token)
 
-    def test_hash_token(self, auth_repo):
+    def test_hash_token(self, auth_repo) -> None:
         """Test token hashing"""
         token = "test_token"
         expected_hash = hashlib.sha256(token.encode()).hexdigest()
@@ -373,12 +374,12 @@ class TestAuthRepositoryEdgeCases:
     """Test edge cases and error scenarios"""
 
     @pytest.fixture()
-    def auth_repo(self):
+    def auth_repo(self) -> None:
         mock_session = AsyncMock()
         return PostgreSQLAuthRepository(mock_session)
 
     @pytest.mark.asyncio()
-    async def test_save_refresh_token_with_none_expires(self, auth_repo):
+    async def test_save_refresh_token_with_none_expires(self, auth_repo) -> None:
         """Test saving token with None expiration"""
         auth_repo.session.flush = AsyncMock()
 
@@ -386,7 +387,7 @@ class TestAuthRepositoryEdgeCases:
         await auth_repo.save_refresh_token("123", "hash", None)
 
     @pytest.mark.asyncio()
-    async def test_verify_token_with_expired_token(self, auth_repo):
+    async def test_verify_token_with_expired_token(self, auth_repo) -> None:
         """Test verifying an expired but not revoked token"""
         token = "expired_token"
 
@@ -399,7 +400,7 @@ class TestAuthRepositoryEdgeCases:
         assert result is None
 
     @pytest.mark.asyncio()
-    async def test_concurrent_token_operations(self, auth_repo):
+    async def test_concurrent_token_operations(self, auth_repo) -> None:
         """Test handling concurrent token operations"""
         # This would test race conditions in real scenarios
         # Mock multiple simultaneous operations
@@ -411,7 +412,7 @@ class TestAuthRepositoryEdgeCases:
 
         # Should handle gracefully without errors
 
-    def test_hash_token_unicode(self, auth_repo):
+    def test_hash_token_unicode(self, auth_repo) -> None:
         """Test hashing tokens with unicode characters"""
         token = "test_token_🔐"
 
@@ -421,7 +422,7 @@ class TestAuthRepositoryEdgeCases:
         assert len(result) == 64
 
     @pytest.mark.asyncio()
-    async def test_token_operations_with_very_long_user_id(self, auth_repo):
+    async def test_token_operations_with_very_long_user_id(self, auth_repo) -> None:
         """Test operations with very long numeric user IDs"""
         user_id = "999999999999999999"  # Very large but valid integer
 
@@ -431,7 +432,7 @@ class TestAuthRepositoryEdgeCases:
         await auth_repo.save_refresh_token(user_id, "hash", datetime.now(UTC))
 
     @pytest.mark.asyncio()
-    async def test_cleanup_with_no_expired_tokens(self, auth_repo):
+    async def test_cleanup_with_no_expired_tokens(self, auth_repo) -> None:
         """Test cleanup when database has no expired tokens"""
         mock_result = Mock()
         mock_result.scalars.return_value.all.return_value = []

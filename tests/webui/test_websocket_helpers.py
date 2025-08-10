@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import logging
 import os
 from typing import Any
 from unittest.mock import AsyncMock
@@ -36,7 +37,7 @@ class MockWebSocketClient:
         client_ref = self
 
         # Create an AsyncMock that captures messages
-        async def send_json_impl(data):
+        async def send_json_impl(data) -> None:
             async with client_ref._message_lock:
                 client_ref.received_messages.append(data.copy() if isinstance(data, dict) else data)
 
@@ -44,20 +45,20 @@ class MockWebSocketClient:
         self.websocket.send_json = AsyncMock()
         self.websocket.send_json.side_effect = send_json_impl
 
-    async def connect(self, manager, operation_id: str, user_id: str):
+    async def connect(self, manager, operation_id: str, user_id: str) -> None:
         """Connect to WebSocket manager."""
         await manager.connect(self.websocket, operation_id, user_id)
 
-    async def disconnect(self, manager, operation_id: str, user_id: str):
+    async def disconnect(self, manager, operation_id: str, user_id: str) -> None:
         """Disconnect from WebSocket manager."""
         await manager.disconnect(self.websocket, operation_id, user_id)
 
-    async def send_message(self, message: dict[str, Any]):
+    async def send_message(self, message: dict[str, Any]) -> None:
         """Send a message (simulate client sending)."""
         self.sent_messages.append(message)
         # In real implementation, this would trigger manager handlers
 
-    def _ensure_messages_tracked(self):
+    def _ensure_messages_tracked(self) -> None:
         """Legacy method kept for compatibility."""
         # Messages are now captured directly in send_json side effect
 
@@ -73,7 +74,6 @@ class MockWebSocketClient:
                 filtered = [msg for msg in self.received_messages if msg.get("type") == message_type]
                 if not filtered and self.received_messages:
                     # This helps debug when messages are received but don't match the expected type
-                    import logging
 
                     logger = logging.getLogger(__name__)
                     logger.debug(
@@ -103,7 +103,7 @@ class WebSocketTestHarness:
         self.clients[client_id] = client
         return client
 
-    async def connect_clients(self, operation_id: str, num_clients: int = 1, user_prefix: str = "user"):
+    async def connect_clients(self, operation_id: str, num_clients: int = 1, user_prefix: str = "user") -> None:
         """Connect multiple clients to an operation."""
         connected_clients = []
         for i in range(num_clients):
@@ -118,7 +118,7 @@ class WebSocketTestHarness:
         await asyncio.sleep(BASE_DELAY)
         return connected_clients
 
-    async def broadcast_and_verify(self, operation_id: str, message_type: str, data: dict[str, Any]):
+    async def broadcast_and_verify(self, operation_id: str, message_type: str, data: dict[str, Any]) -> None:
         """Broadcast a message and verify all clients received it."""
         await self.manager.send_update(operation_id, message_type, data)
 
@@ -133,11 +133,11 @@ class WebSocketTestHarness:
 
         return results
 
-    async def cleanup(self):
+    async def cleanup(self) -> None:
         """Clean up all connections and consumer tasks."""
         try:
 
-            async def perform_cleanup():
+            async def perform_cleanup() -> None:
                 # First, cancel all consumer tasks to prevent event loop errors
                 for task_id, task in list(self.manager.consumer_tasks.items()):
                     task.cancel()
@@ -149,7 +149,6 @@ class WebSocketTestHarness:
                         pass
                     except Exception as e:
                         # Log but don't fail
-                        import logging
 
                         logger = logging.getLogger(__name__)
                         logger.warning(f"Error cancelling task {task_id} in helper cleanup: {e}")
@@ -183,7 +182,7 @@ class WebSocketTestHarness:
             self.clients.clear()
 
 
-async def simulate_operation_updates(updater, delays: list[float] | None = None):
+async def simulate_operation_updates(updater, delays: list[float] | None = None) -> None:
     """Simulate a sequence of operation updates with optional delays."""
     if delays is None:
         delays = [0.1] * 6  # Default delays between updates

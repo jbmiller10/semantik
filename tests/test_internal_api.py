@@ -1,13 +1,16 @@
 """Tests for internal API endpoints."""
 
 from collections.abc import Generator
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
+from packages.shared.database.factory import create_collection_repository
+from packages.vecpipe.maintenance import QdrantMaintenanceService
 from packages.webui.api.internal import router, verify_internal_api_key
+from packages.webui.dependencies import get_collection_repository, get_db
 
 
 class TestInternalAPIAuth:
@@ -51,12 +54,6 @@ class TestInternalAPIEndpoints:
     @pytest.fixture()
     def client_with_mocked_repos(self, mock_collection_repository) -> Generator[TestClient, None, None]:
         """Create test client with mocked repositories."""
-        from unittest.mock import AsyncMock
-
-        from fastapi import FastAPI
-
-        from packages.shared.database.factory import create_collection_repository
-        from packages.webui.dependencies import get_collection_repository, get_db
 
         app = FastAPI()
         app.include_router(router)
@@ -77,7 +74,6 @@ class TestInternalAPIEndpoints:
     def test_get_all_vector_store_names_success(self, client_with_mocked_repos, mock_collection_repository) -> None:
         """Test successful retrieval of all vector store names."""
         # Mock repository response
-        from unittest.mock import AsyncMock, MagicMock
 
         # Create mock collections with vector_store_name attribute
         mock_collection1 = MagicMock()
@@ -127,7 +123,6 @@ class TestInternalAPIEndpoints:
     def test_get_all_vector_store_names_empty_list(self, client_with_mocked_repos, mock_collection_repository) -> None:
         """Test retrieval when no collections exist."""
         # Mock repository response
-        from unittest.mock import AsyncMock
 
         mock_collection_repository.list_all = AsyncMock(return_value=[])
 
@@ -146,9 +141,8 @@ class TestInternalAPIIntegration:
     """Integration tests for internal API with maintenance service."""
 
     @pytest.mark.asyncio()
-    async def test_maintenance_service_api_integration(self):
+    async def test_maintenance_service_api_integration(self) -> None:
         """Test that maintenance service can successfully call internal API."""
-        from packages.vecpipe.maintenance import QdrantMaintenanceService
 
         # Create maintenance service
         with patch("packages.vecpipe.maintenance.QdrantClient", return_value=MagicMock()):

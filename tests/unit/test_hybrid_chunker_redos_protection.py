@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """Unit tests for ReDoS protection in HybridChunker.
 
 This module tests the Regular Expression Denial of Service (ReDoS) protection
@@ -14,18 +15,23 @@ from unittest.mock import patch
 
 import pytest
 
-from packages.shared.text_processing.strategies.hybrid_chunker import REGEX_TIMEOUT, HybridChunker, safe_regex_findall
+from packages.shared.text_processing.strategies.hybrid_chunker import (
+    REGEX_TIMEOUT,
+    HybridChunker,
+    safe_regex_findall,
+    timeout,
+)
 
 
 class TestHybridChunkerReDoSProtection:
     """Test suite for ReDoS protection in HybridChunker."""
 
     @pytest.fixture()
-    def chunker(self):
+    def chunker(self) -> None:
         """Create a HybridChunker instance."""
         return HybridChunker()
 
-    def test_safe_regex_findall_normal_pattern(self):
+    def test_safe_regex_findall_normal_pattern(self) -> None:
         """Test safe_regex_findall with normal, safe patterns."""
         # Test with compiled pattern
         pattern = re.compile(r"\d+", re.MULTILINE)
@@ -37,7 +43,7 @@ class TestHybridChunkerReDoSProtection:
         matches = safe_regex_findall(r"\w+", "hello world", re.IGNORECASE)
         assert matches == ["hello", "world"]
 
-    def test_safe_regex_findall_empty_results(self):
+    def test_safe_regex_findall_empty_results(self) -> None:
         """Test safe_regex_findall when no matches found."""
         pattern = re.compile(r"xyz")
         text = "abc def"
@@ -47,7 +53,7 @@ class TestHybridChunkerReDoSProtection:
     @pytest.mark.skipif(
         True, reason="ReDoS test is time-dependent and may be flaky"  # Skip by default as it's time-dependent
     )
-    def test_safe_regex_findall_timeout(self):
+    def test_safe_regex_findall_timeout(self) -> None:
         """Test that regex execution times out for malicious patterns."""
         # This is a known ReDoS pattern: (a+)+
         # With long input, it causes exponential backtracking
@@ -57,12 +63,12 @@ class TestHybridChunkerReDoSProtection:
         with pytest.raises(TimeoutError):
             safe_regex_findall(pattern, text)
 
-    def test_regex_timeout_value(self):
+    def test_regex_timeout_value(self) -> None:
         """Test that REGEX_TIMEOUT is set to a reasonable value."""
         assert REGEX_TIMEOUT == 1  # Should be 1 second
         assert isinstance(REGEX_TIMEOUT, int)
 
-    def test_markdown_pattern_compilation(self, chunker):
+    def test_markdown_pattern_compilation(self, chunker) -> None:
         """Test that markdown patterns are pre-compiled during initialization."""
         assert hasattr(chunker, "_compiled_patterns")
         assert isinstance(chunker._compiled_patterns, dict)
@@ -88,7 +94,7 @@ class TestHybridChunkerReDoSProtection:
             assert isinstance(weight, float)
             assert weight > 0
 
-    def test_markdown_analysis_with_pattern_failure(self, chunker):
+    def test_markdown_analysis_with_pattern_failure(self, chunker) -> None:
         """Test markdown analysis continues even when patterns fail."""
         test_text = "# Header\n\nSome content with **bold** text."
 
@@ -96,7 +102,7 @@ class TestHybridChunkerReDoSProtection:
         original_safe_regex = safe_regex_findall
         call_count = 0
 
-        def mock_safe_regex(pattern, text, flags=0):
+        def mock_safe_regex(pattern, text, flags=0) -> None:
             nonlocal call_count
             call_count += 1
             # Make every other pattern fail
@@ -114,7 +120,7 @@ class TestHybridChunkerReDoSProtection:
             assert isinstance(density, float)
             assert density >= 0  # Should have found some markdown elements
 
-    def test_semantic_coherence_with_regex_failure(self, chunker):
+    def test_semantic_coherence_with_regex_failure(self, chunker) -> None:
         """Test semantic coherence calculation handles regex failures gracefully."""
         test_text = """This is a test document with repeated words.
         The test document contains test content for testing.
@@ -131,7 +137,7 @@ class TestHybridChunkerReDoSProtection:
             assert isinstance(coherence, float)
             assert 0.0 <= coherence <= 1.0
 
-    def test_malicious_pattern_in_markdown_file(self, chunker):
+    def test_malicious_pattern_in_markdown_file(self, chunker) -> None:
         """Test that malicious content doesn't cause ReDoS in markdown detection."""
         # Create content that could trigger ReDoS with poorly written patterns
         malicious_content = "a" * 1000 + "[[[[[[" + "]]]]]]" + "(((((" + ")))))"
@@ -146,17 +152,17 @@ class TestHybridChunkerReDoSProtection:
         assert isinstance(is_file, bool)
         assert isinstance(density, float)
 
-    def test_compile_markdown_patterns_timeout_handling(self):
+    def test_compile_markdown_patterns_timeout_handling(self) -> None:
         """Test that pattern compilation handles timeouts gracefully."""
         # Create a new chunker and mock the timeout context
         with patch("packages.shared.text_processing.strategies.hybrid_chunker.timeout") as mock_timeout:
             # Make timeout raise TimeoutError for specific patterns
-            def timeout_side_effect(seconds):  # noqa: ARG001
+            def timeout_side_effect(seconds) -> None:  # noqa: ARG001
                 class TimeoutContext:
-                    def __enter__(self):
+                    def __enter__(self) -> None:
                         return self
 
-                    def __exit__(self, *args):
+                    def __exit__(self, *args) -> None:
                         # Simulate timeout on complex patterns
                         if hasattr(self, "_pattern_check"):
                             raise TimeoutError("Pattern compilation timeout")
@@ -179,7 +185,7 @@ class TestHybridChunkerReDoSProtection:
             assert len(chunker._compiled_patterns) > 0
 
     @pytest.mark.asyncio()
-    async def test_async_chunk_text_with_pattern_failures(self, chunker):
+    async def test_async_chunk_text_with_pattern_failures(self, chunker) -> None:
         """Test async chunking continues despite regex pattern failures."""
         test_text = """# Test Document
 
@@ -195,7 +201,7 @@ class TestHybridChunkerReDoSProtection:
         with patch("packages.shared.text_processing.strategies.hybrid_chunker.safe_regex_findall") as mock_safe:
             call_count = 0
 
-            def side_effect(pattern, text, flags=0):  # noqa: ARG001
+            def side_effect(pattern, text, flags=0) -> None:  # noqa: ARG001
                 nonlocal call_count
                 call_count += 1
                 # Fail on some calls
@@ -212,7 +218,7 @@ class TestHybridChunkerReDoSProtection:
             assert len(chunks) > 0
             assert all(chunk.text for chunk in chunks)
 
-    def test_regex_pattern_security_validation(self, chunker):
+    def test_regex_pattern_security_validation(self, chunker) -> None:
         """Test that patterns are validated for security during compilation."""
         # Patterns should have reasonable complexity
         for pattern_str, (compiled_pattern, _) in chunker._compiled_patterns.items():
@@ -225,7 +231,7 @@ class TestHybridChunkerReDoSProtection:
             # Patterns should compile successfully
             assert compiled_pattern is not None
 
-    def test_performance_with_large_documents(self, chunker):
+    def test_performance_with_large_documents(self, chunker) -> None:
         """Test that regex operations perform well on large documents."""
         # Create a large document with mixed content
         large_doc = ""
@@ -244,18 +250,16 @@ class TestHybridChunkerReDoSProtection:
         assert elapsed_time < 1.0  # Should be much faster than timeout
         assert density > 0  # Should detect markdown elements
 
-    def test_safe_regex_findall_with_malformed_pattern(self):
+    def test_safe_regex_findall_with_malformed_pattern(self) -> None:
         """Test safe_regex_findall handles malformed patterns gracefully."""
         # Test with invalid regex pattern
         with pytest.raises(re.error):
             safe_regex_findall(r"[", "test text")  # Unclosed bracket
 
-    def test_timeout_context_manager(self):
+    def test_timeout_context_manager(self) -> None:
         """Test the timeout context manager behavior."""
         # This test verifies the timeout mechanism works
         # Note: actual implementation differs between Unix/Windows
-
-        from packages.shared.text_processing.strategies.hybrid_chunker import timeout
 
         # Test normal execution (no timeout)
         with timeout(2):

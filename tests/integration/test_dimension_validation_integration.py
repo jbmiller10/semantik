@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """Integration tests for dimension validation in search API and tasks.
 
 This module tests the integration of dimension validation utilities with:
@@ -8,10 +9,12 @@ This module tests the integration of dimension validation utilities with:
 """
 
 import asyncio
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
+from shared.database.exceptions import DimensionMismatchError
 from shared.embedding.validation import (
     adjust_embeddings_dimension,
     get_model_dimension,
@@ -31,7 +34,7 @@ class TestDimensionValidationIntegration:
     """Integration tests for dimension validation across the system."""
 
     @pytest.fixture()
-    def mock_embedding_service(self):
+    def mock_embedding_service(self) -> None:
         """Mock embedding service with configurable dimensions."""
         service = MagicMock()
         service._service = MagicMock()
@@ -41,7 +44,7 @@ class TestDimensionValidationIntegration:
         return service
 
     @pytest.fixture()
-    def mock_collection(self):
+    def mock_collection(self) -> None:
         """Mock collection with dimension info."""
         collection = MagicMock()
         collection.id = "test-collection"
@@ -50,7 +53,7 @@ class TestDimensionValidationIntegration:
         return collection
 
     @pytest.mark.asyncio()
-    async def test_search_api_query_dimension_validation(self, mock_embedding_service):
+    async def test_search_api_query_dimension_validation(self, mock_embedding_service) -> None:
         """Test that search API validates query embedding dimensions."""
         pytest.skip("Search service integration test needs updating for new architecture")
 
@@ -79,7 +82,7 @@ class TestDimensionValidationIntegration:
             mock_embedding_service.embed_single.assert_called_with(query)
 
     @pytest.mark.asyncio()
-    async def test_search_api_dimension_mismatch_handling(self, mock_embedding_service):
+    async def test_search_api_dimension_mismatch_handling(self, mock_embedding_service) -> None:
         """Test search API handles dimension mismatches gracefully."""
         pytest.skip("Search service integration test needs updating for new architecture")
 
@@ -111,7 +114,7 @@ class TestDimensionValidationIntegration:
                 mock_adjust.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_indexing_task_dimension_validation(self, mock_collection, mock_embedding_service):
+    async def test_indexing_task_dimension_validation(self, mock_collection, mock_embedding_service) -> None:
         """Test that indexing tasks validate embedding dimensions."""
         pytest.skip("Indexing task test needs updating for new architecture")
 
@@ -132,7 +135,7 @@ class TestDimensionValidationIntegration:
                 assert mock_embedding_service._service.get_dimension.called
 
     @pytest.mark.asyncio()
-    async def test_reindexing_task_dimension_validation(self, mock_collection, mock_embedding_service):
+    async def test_reindexing_task_dimension_validation(self, mock_collection, mock_embedding_service) -> None:
         """Test that re-indexing tasks handle dimension changes."""
         pytest.skip("Reindexing task test needs updating for new architecture")
 
@@ -161,7 +164,7 @@ class TestDimensionValidationIntegration:
                     call_args = mock_recreate.call_args
                     assert call_args is not None
 
-    def test_get_model_dimension(self):
+    def test_get_model_dimension(self) -> None:
         """Test getting model dimensions."""
         # Test known models
         dim = get_model_dimension("text-embedding-ada-002")
@@ -172,7 +175,7 @@ class TestDimensionValidationIntegration:
         dim = get_model_dimension("unknown-model-xyz")
         assert dim is None
 
-    def test_validate_embedding_dimensions(self):
+    def test_validate_embedding_dimensions(self) -> None:
         """Test embedding dimensions validation function."""
         # Test valid embeddings
         embeddings = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
@@ -180,12 +183,11 @@ class TestDimensionValidationIntegration:
         validate_embedding_dimensions(embeddings, expected_dimension=3)
 
         # Test invalid dimensions
-        from shared.database.exceptions import DimensionMismatchError
 
         with pytest.raises(DimensionMismatchError):
             validate_embedding_dimensions(embeddings, expected_dimension=4)
 
-    def test_adjust_embeddings_dimension_truncation(self):
+    def test_adjust_embeddings_dimension_truncation(self) -> None:
         """Test embedding dimension adjustment with truncation."""
         # Create embeddings with dimension 512
         embeddings = [
@@ -200,7 +202,7 @@ class TestDimensionValidationIntegration:
         assert all(len(emb) == 384 for emb in adjusted)
         assert adjusted[0] == list(range(384))
 
-    def test_adjust_embeddings_dimension_padding(self):
+    def test_adjust_embeddings_dimension_padding(self) -> None:
         """Test embedding dimension adjustment with padding."""
         # Create embeddings with dimension 384
         embeddings = [
@@ -216,7 +218,7 @@ class TestDimensionValidationIntegration:
         # Check padding with zeros
         assert adjusted[0][384:] == [0.0] * 128
 
-    def test_adjust_embeddings_dimension_normalization(self):
+    def test_adjust_embeddings_dimension_normalization(self) -> None:
         """Test embedding dimension adjustment with normalization."""
         # Create embeddings
         embeddings = [[3.0, 4.0]]  # Norm = 5
@@ -229,7 +231,7 @@ class TestDimensionValidationIntegration:
         assert abs(norm - 1.0) < 1e-6
 
     @pytest.mark.asyncio()
-    async def test_end_to_end_search_with_dimension_validation(self):
+    async def test_end_to_end_search_with_dimension_validation(self) -> None:
         """Test end-to-end search flow with dimension validation."""
         # This would be a full integration test with actual services
         # For now, we mock the key components
@@ -250,12 +252,10 @@ class TestDimensionValidationIntegration:
             # Verify search was called
             mock_service.search.assert_called_once()
 
-    def test_dimension_validation_error_messages(self):
+    def test_dimension_validation_error_messages(self) -> None:
         """Test that dimension validation provides helpful error messages."""
         # Test dimension mismatch error
         embeddings = [[1.0] * 512]
-
-        from shared.database.exceptions import DimensionMismatchError
 
         with pytest.raises(DimensionMismatchError) as exc_info:
             validate_embedding_dimensions(embeddings, expected_dimension=384)
@@ -264,13 +264,12 @@ class TestDimensionValidationIntegration:
         assert "512" in error_msg or "dimension" in error_msg.lower()
 
     @pytest.mark.asyncio()
-    async def test_concurrent_dimension_validation(self):
+    async def test_concurrent_dimension_validation(self) -> None:
         """Test dimension validation under concurrent load."""
 
         # Create multiple concurrent validation tasks
-        from shared.database.exceptions import DimensionMismatchError
 
-        async def validate_task(embeddings, dimension):
+        async def validate_task(embeddings, dimension) -> None:
             try:
                 validate_embedding_dimensions(embeddings, dimension)
                 return True
@@ -291,7 +290,7 @@ class TestDimensionValidationIntegration:
         expected = [True, True, False] * 5
         assert results == expected
 
-    def test_dimension_compatibility_matrix(self):
+    def test_dimension_compatibility_matrix(self) -> None:
         """Test dimension compatibility between different models."""
         # Common embedding model dimensions
         model_dimensions = {
@@ -306,7 +305,6 @@ class TestDimensionValidationIntegration:
         for model1, dim1 in model_dimensions.items():
             for _, dim2 in model_dimensions.items():
                 # Test compatibility
-                from shared.database.exceptions import DimensionMismatchError
 
                 try:
                     validate_dimension_compatibility(expected_dimension=dim2, actual_dimension=dim1, model_name=model1)
@@ -319,9 +317,8 @@ class TestDimensionValidationIntegration:
                 else:
                     assert not is_compatible
 
-    def test_dimension_validation_performance(self):
+    def test_dimension_validation_performance(self) -> None:
         """Test performance of dimension validation operations."""
-        import time
 
         # Create large batch of embeddings
         num_embeddings = 1000

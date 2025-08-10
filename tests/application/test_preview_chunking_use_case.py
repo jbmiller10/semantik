@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+
 """Tests for PreviewChunkingUseCase."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -17,7 +19,7 @@ class TestPreviewChunkingUseCase:
     """Test suite for PreviewChunkingUseCase."""
 
     @pytest.fixture()
-    def mock_document_service(self):
+    def mock_document_service(self) -> None:
         """Create mock document service."""
         service = MagicMock()
         service.get_document_content = AsyncMock(return_value="This is a sample document content for testing.")
@@ -31,7 +33,7 @@ class TestPreviewChunkingUseCase:
         return service
 
     @pytest.fixture()
-    def mock_strategy_factory(self):
+    def mock_strategy_factory(self) -> None:
         """Create mock strategy factory."""
         factory = MagicMock()
         mock_strategy = MagicMock()
@@ -67,7 +69,7 @@ class TestPreviewChunkingUseCase:
         return factory
 
     @pytest.fixture()
-    def mock_notification_service(self):
+    def mock_notification_service(self) -> None:
         """Create mock notification service."""
         service = MagicMock()
         service.notify_preview_generated = AsyncMock()
@@ -81,7 +83,7 @@ class TestPreviewChunkingUseCase:
         return service
 
     @pytest.fixture()
-    def mock_metrics_service(self):
+    def mock_metrics_service(self) -> None:
         """Create mock metrics service."""
         service = MagicMock()
         service.record_preview_request = AsyncMock()
@@ -94,7 +96,9 @@ class TestPreviewChunkingUseCase:
         return service
 
     @pytest.fixture()
-    def use_case(self, mock_document_service, mock_strategy_factory, mock_notification_service, mock_metrics_service):
+    def use_case(
+        self, mock_document_service, mock_strategy_factory, mock_notification_service, mock_metrics_service
+    ) -> None:
         """Create use case instance with mocked dependencies."""
         return PreviewChunkingUseCase(
             document_service=mock_document_service,
@@ -104,7 +108,7 @@ class TestPreviewChunkingUseCase:
         )
 
     @pytest.fixture()
-    def valid_request(self):
+    def valid_request(self) -> None:
         """Create a valid preview request."""
         return PreviewRequest(
             file_path="/data/documents/test.txt",
@@ -117,7 +121,7 @@ class TestPreviewChunkingUseCase:
         )
 
     @pytest.mark.asyncio()
-    async def test_successful_preview_generation(self, use_case, valid_request):
+    async def test_successful_preview_generation(self, use_case, valid_request) -> None:
         """Test successful preview generation."""
         # Act
         response = await use_case.execute(valid_request)
@@ -143,7 +147,7 @@ class TestPreviewChunkingUseCase:
         use_case.metrics_service.record_strategy_performance.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_preview_with_limited_chunks(self, use_case, valid_request):
+    async def test_preview_with_limited_chunks(self, use_case, valid_request) -> None:
         """Test that preview respects max_preview_chunks limit."""
         # Arrange
         # Create more chunks than the limit
@@ -174,7 +178,7 @@ class TestPreviewChunkingUseCase:
         assert response.chunks[4].content == "Chunk 4"
 
     @pytest.mark.asyncio()
-    async def test_preview_with_custom_parameters(self, use_case):
+    async def test_preview_with_custom_parameters(self, use_case) -> None:
         """Test preview with additional strategy parameters."""
         # Arrange
         request = PreviewRequest(
@@ -200,7 +204,7 @@ class TestPreviewChunkingUseCase:
         )
 
     @pytest.mark.asyncio()
-    async def test_document_not_found(self, use_case, valid_request):
+    async def test_document_not_found(self, use_case, valid_request) -> None:
         """Test handling of document not found error."""
         # Arrange
         use_case.document_service.load_partial.side_effect = FileNotFoundError("Document not found")
@@ -214,7 +218,7 @@ class TestPreviewChunkingUseCase:
         use_case.notification_service.notify_operation_failed.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_strategy_not_found(self, use_case, valid_request):
+    async def test_strategy_not_found(self, use_case, valid_request) -> None:
         """Test handling of unknown strategy."""
         # Arrange
         use_case.strategy_factory.create_strategy.side_effect = StrategyNotFoundError("unknown_strategy")
@@ -226,7 +230,7 @@ class TestPreviewChunkingUseCase:
         use_case.notification_service.notify_operation_failed.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_invalid_configuration(self, use_case):
+    async def test_invalid_configuration(self, use_case) -> None:
         """Test handling of invalid configuration."""
         # Arrange
         invalid_request = PreviewRequest(
@@ -247,7 +251,7 @@ class TestPreviewChunkingUseCase:
             await use_case.execute(invalid_request)
 
     @pytest.mark.asyncio()
-    async def test_document_too_large_for_preview(self, use_case, valid_request):
+    async def test_document_too_large_for_preview(self, use_case, valid_request) -> None:
         """Test handling of document too large for preview."""
         # Arrange
         large_content = "x" * (100 * 1024 * 1024)  # 100MB
@@ -261,7 +265,7 @@ class TestPreviewChunkingUseCase:
         assert response.sample_size_bytes <= valid_request.preview_size_kb * 1024
 
     @pytest.mark.asyncio()
-    async def test_empty_document(self, use_case, valid_request):
+    async def test_empty_document(self, use_case, valid_request) -> None:
         """Test handling of empty document."""
         # Arrange
         use_case.document_service.extract_text.return_value = ""
@@ -278,7 +282,7 @@ class TestPreviewChunkingUseCase:
         assert response.sample_size_bytes == 0
 
     @pytest.mark.asyncio()
-    async def test_estimation_accuracy(self, use_case, valid_request):
+    async def test_estimation_accuracy(self, use_case, valid_request) -> None:
         """Test chunk count estimation for full document."""
         # Arrange
         sample_content = "Sample content " * 20  # Small sample
@@ -324,7 +328,7 @@ class TestPreviewChunkingUseCase:
         assert response.estimated_total_chunks >= int(2 * ratio * 0.5)  # Allow some variance
 
     @pytest.mark.asyncio()
-    async def test_metrics_recording(self, use_case, valid_request):
+    async def test_metrics_recording(self, use_case, valid_request) -> None:
         """Test that metrics are properly recorded."""
         # Act
         _ = await use_case.execute(valid_request)
@@ -343,7 +347,7 @@ class TestPreviewChunkingUseCase:
     @pytest.mark.asyncio()
     async def test_no_metrics_service(
         self, mock_document_service, mock_strategy_factory, mock_notification_service, valid_request
-    ):
+    ) -> None:
         """Test that use case works without metrics service."""
         # Arrange
         use_case = PreviewChunkingUseCase(
@@ -361,7 +365,7 @@ class TestPreviewChunkingUseCase:
         assert len(response.preview_chunks) > 0
 
     @pytest.mark.asyncio()
-    async def test_chunk_dto_conversion(self, use_case, valid_request):
+    async def test_chunk_dto_conversion(self, use_case, valid_request) -> None:
         """Test proper conversion of chunks to DTOs."""
         # Arrange
         test_chunks = [
@@ -397,12 +401,12 @@ class TestPreviewChunkingUseCase:
         assert chunk_dto.metadata is not None
 
     @pytest.mark.asyncio()
-    async def test_progress_callback_integration(self, use_case, valid_request):
+    async def test_progress_callback_integration(self, use_case, valid_request) -> None:
         """Test that progress callback is passed to strategy."""
         # Arrange
         _ = []
 
-        def mock_chunk_with_progress(_content, progress_callback=None):
+        def mock_chunk_with_progress(_content, progress_callback=None) -> None:
             # Note: The actual implementation only passes content, not config
             if progress_callback:
                 progress_callback(25.0)
@@ -437,7 +441,7 @@ class TestPreviewChunkingUseCase:
         assert call_args is not None
 
     @pytest.mark.asyncio()
-    async def test_concurrent_preview_requests(self, use_case):
+    async def test_concurrent_preview_requests(self, use_case) -> None:
         """Test handling of concurrent preview requests."""
         # Arrange
         requests = [
@@ -452,7 +456,6 @@ class TestPreviewChunkingUseCase:
         ]
 
         # Act
-        import asyncio
 
         responses = await asyncio.gather(*[use_case.execute(req) for req in requests])
 
@@ -464,7 +467,7 @@ class TestPreviewChunkingUseCase:
             assert isinstance(response, PreviewResponse)
 
     @pytest.mark.asyncio()
-    async def test_validation_of_preview_size(self, use_case):
+    async def test_validation_of_preview_size(self, use_case) -> None:
         """Test validation of preview_size_kb parameter."""
         # Arrange
         request = PreviewRequest(
@@ -481,7 +484,7 @@ class TestPreviewChunkingUseCase:
             await use_case.execute(request)
 
     @pytest.mark.asyncio()
-    async def test_notification_on_success(self, use_case, valid_request):
+    async def test_notification_on_success(self, use_case, valid_request) -> None:
         """Test that success notification is sent."""
         # Act
         _ = await use_case.execute(valid_request)
@@ -493,7 +496,7 @@ class TestPreviewChunkingUseCase:
         assert call_args[0][1] == 2  # chunk_count
 
     @pytest.mark.asyncio()
-    async def test_notification_on_error(self, use_case, valid_request):
+    async def test_notification_on_error(self, use_case, valid_request) -> None:
         """Test that error notification is sent on failure."""
         # Arrange
         use_case.document_service.load_partial.side_effect = Exception("Unexpected error")

@@ -1,13 +1,25 @@
 #!/usr/bin/env python3
+
 """
 Full integration tests for embedding service across packages
 """
+
+import asyncio
 import sys
 import unittest
 from typing import Any
 from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
+
+from packages.shared.embedding import (
+    EmbeddingService,
+    cleanup,
+    embedding_service,
+    get_embedding_service,
+    initialize_embedding_service,
+)
+from packages.shared.embedding.models import list_available_models
 
 # Mock metrics before importing
 sys.modules["packages.shared.metrics.prometheus"] = MagicMock()
@@ -22,7 +34,6 @@ class TestVecpipeIntegration(unittest.TestCase):
         mock_cuda.return_value = False
 
         # Import after mocking
-        from packages.shared.embedding import EmbeddingService, embedding_service
 
         # Mock the model manager's usage pattern
         # model_manager.py uses embedding_service directly
@@ -53,8 +64,6 @@ class TestVecpipeIntegration(unittest.TestCase):
         """Test embed_chunks_unified.py usage pattern."""
         mock_cuda.return_value = False
 
-        from packages.shared.embedding import EmbeddingService
-
         # This is how embed_chunks_unified uses the service
         service = EmbeddingService(mock_mode=True)
 
@@ -84,8 +93,6 @@ class TestVecpipeIntegration(unittest.TestCase):
         """Test search_api.py integration pattern."""
         mock_cuda.return_value = False
 
-        from packages.shared.embedding import EmbeddingService
-
         # Create a mock service for testing
         mock_service = EmbeddingService(mock_mode=True)
         mock_service.load_model("test-model")
@@ -106,8 +113,6 @@ class TestWebuiIntegration(unittest.TestCase):
     def test_operations_api_integration(self, mock_cuda: Mock) -> None:
         """Test operations API usage pattern."""
         mock_cuda.return_value = False
-
-        from packages.shared.embedding import EmbeddingService
 
         # Create mock service for testing
         mock_service = EmbeddingService(mock_mode=True)
@@ -141,9 +146,6 @@ class TestWebuiIntegration(unittest.TestCase):
         """Test models API usage pattern."""
         mock_cuda.return_value = False
 
-        from packages.shared.embedding import EmbeddingService
-        from packages.shared.embedding.models import list_available_models
-
         # Get available models
         models = list_available_models()
         assert len(models) > 0
@@ -168,8 +170,6 @@ class TestCrossPackageWorkflow(unittest.TestCase):
     def test_full_ingestion_workflow(self, mock_cuda: Mock) -> None:
         """Test full document ingestion workflow."""
         mock_cuda.return_value = False
-
-        from packages.shared.embedding import EmbeddingService
 
         # Initialize service (as webui would)
         service = EmbeddingService(mock_mode=True)
@@ -215,10 +215,7 @@ class TestCrossPackageWorkflow(unittest.TestCase):
         """Test async service lifecycle across packages."""
         mock_cuda.return_value = False
 
-        import asyncio
-
         async def async_test() -> None:
-            from packages.shared.embedding import cleanup, get_embedding_service, initialize_embedding_service
 
             # 1. Initialize service (as search_api might)
             await initialize_embedding_service(
@@ -260,7 +257,6 @@ class TestErrorHandlingIntegration(unittest.TestCase):
 
         # Mock bitsandbytes not available
         with patch.dict(sys.modules, {"bitsandbytes": None}):
-            from packages.shared.embedding import EmbeddingService
 
             service = EmbeddingService(mock_mode=True)
             service.allow_quantization_fallback = True
@@ -277,8 +273,6 @@ class TestErrorHandlingIntegration(unittest.TestCase):
     def test_oom_recovery_pattern(self, mock_cuda: Mock) -> None:
         """Test OOM recovery pattern used in the codebase."""
         mock_cuda.return_value = False
-
-        from packages.shared.embedding import EmbeddingService
 
         service = EmbeddingService(mock_mode=True)
         service.load_model("test-model")

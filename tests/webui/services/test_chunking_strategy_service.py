@@ -14,7 +14,7 @@ class TestChunkingStrategyService:
     """Test cases for ChunkingStrategyService."""
 
     @pytest.fixture()
-    def mock_session(self):
+    def mock_session(self) -> None:
         """Create a mock async session."""
         session = AsyncMock(spec=AsyncSession)
         session.add = MagicMock()
@@ -23,12 +23,12 @@ class TestChunkingStrategyService:
         return session
 
     @pytest.fixture()
-    def service(self, mock_session):
+    def service(self, mock_session) -> None:
         """Create a ChunkingStrategyService instance."""
         return ChunkingStrategyService(mock_session)
 
     @pytest.fixture()
-    def sample_strategy(self):
+    def sample_strategy(self) -> None:
         """Create a sample chunking strategy."""
         return ChunkingStrategy(
             id=str(uuid4()),
@@ -39,7 +39,7 @@ class TestChunkingStrategyService:
         )
 
     @pytest.mark.asyncio()
-    async def test_ensure_default_strategies_creates_all(self, service, mock_session):
+    async def test_ensure_default_strategies_creates_all(self, service, mock_session) -> None:
         """Test creating all default strategies when none exist."""
         # Mock that no strategies exist
         mock_result = Mock()
@@ -53,7 +53,7 @@ class TestChunkingStrategyService:
         mock_session.commit.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_ensure_default_strategies_skips_existing(self, service, mock_session, sample_strategy):
+    async def test_ensure_default_strategies_skips_existing(self, service, mock_session, sample_strategy) -> None:
         """Test that existing strategies are not recreated."""
         # Mock that first strategy exists, others don't
         existing_strategy = ChunkingStrategy(
@@ -62,7 +62,7 @@ class TestChunkingStrategyService:
 
         call_count = 0
 
-        def mock_execute_side_effect(*_args, **_kwargs):
+        def mock_execute_side_effect(*_args, **_kwargs) -> None:
             nonlocal call_count
             mock_result = Mock()
             if call_count == 0:
@@ -83,7 +83,7 @@ class TestChunkingStrategyService:
         mock_session.commit.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_ensure_default_strategies_all_exist(self, service, mock_session):
+    async def test_ensure_default_strategies_all_exist(self, service, mock_session) -> None:
         """Test when all default strategies already exist."""
         # Mock that all strategies exist
         mock_result = Mock()
@@ -97,7 +97,7 @@ class TestChunkingStrategyService:
         mock_session.commit.assert_not_called()
 
     @pytest.mark.asyncio()
-    async def test_get_all_strategies(self, service, mock_session):
+    async def test_get_all_strategies(self, service, mock_session) -> None:
         """Test getting all strategies."""
         strategies = [
             ChunkingStrategy(name="strategy1", is_active=True),
@@ -115,7 +115,7 @@ class TestChunkingStrategyService:
         assert all(isinstance(s, ChunkingStrategy) for s in result)
 
     @pytest.mark.asyncio()
-    async def test_get_all_strategies_active_only(self, service, mock_session):
+    async def test_get_all_strategies_active_only(self, service, mock_session) -> None:
         """Test getting only active strategies."""
         active_strategies = [
             ChunkingStrategy(name="strategy1", is_active=True),
@@ -132,7 +132,7 @@ class TestChunkingStrategyService:
         assert all(s.is_active for s in result)
 
     @pytest.mark.asyncio()
-    async def test_get_strategy_by_name_found(self, service, mock_session, sample_strategy):
+    async def test_get_strategy_by_name_found(self, service, mock_session, sample_strategy) -> None:
         """Test getting strategy by name when it exists."""
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = sample_strategy
@@ -144,7 +144,7 @@ class TestChunkingStrategyService:
         assert result.name == "test_strategy"
 
     @pytest.mark.asyncio()
-    async def test_get_strategy_by_name_not_found(self, service, mock_session):
+    async def test_get_strategy_by_name_not_found(self, service, mock_session) -> None:
         """Test getting strategy by name when it doesn't exist."""
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = None
@@ -155,7 +155,7 @@ class TestChunkingStrategyService:
         assert result is None
 
     @pytest.mark.asyncio()
-    async def test_get_default_strategy_found(self, service, mock_session):
+    async def test_get_default_strategy_found(self, service, mock_session) -> None:
         """Test getting the default strategy."""
         default_strategy = ChunkingStrategy(name="recursive", is_active=True, meta={"recommended_default": True})
 
@@ -168,7 +168,7 @@ class TestChunkingStrategyService:
         assert result.meta["recommended_default"] is True
 
     @pytest.mark.asyncio()
-    async def test_get_default_strategy_not_found(self, service, mock_session):
+    async def test_get_default_strategy_not_found(self, service, mock_session) -> None:
         """Test when no default strategy is set."""
         # Since the actual implementation uses PostgreSQL-specific JSON queries,
         # we need to patch the entire method
@@ -178,7 +178,7 @@ class TestChunkingStrategyService:
         assert result is None
 
     @pytest.mark.asyncio()
-    async def test_update_strategy_success(self, service, mock_session, sample_strategy):
+    async def test_update_strategy_success(self, service, mock_session, sample_strategy) -> None:
         """Test updating a strategy successfully."""
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = sample_strategy
@@ -199,7 +199,7 @@ class TestChunkingStrategyService:
         mock_session.commit.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_update_strategy_not_found(self, service, mock_session):
+    async def test_update_strategy_not_found(self, service, mock_session) -> None:
         """Test updating non-existent strategy."""
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = None
@@ -211,7 +211,7 @@ class TestChunkingStrategyService:
         mock_session.commit.assert_not_called()
 
     @pytest.mark.asyncio()
-    async def test_update_strategy_ignores_invalid_fields(self, service, mock_session, sample_strategy):
+    async def test_update_strategy_ignores_invalid_fields(self, service, mock_session, sample_strategy) -> None:
         """Test that only allowed fields are updated."""
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = sample_strategy
@@ -229,7 +229,7 @@ class TestChunkingStrategyService:
         assert result.name == original_name  # Name unchanged
         assert result.description == "Updated description"  # Description updated
 
-    def test_default_strategies_structure(self, service):
+    def test_default_strategies_structure(self, service) -> None:
         """Test that DEFAULT_STRATEGIES has the expected structure."""
         assert len(service.DEFAULT_STRATEGIES) == 6
 

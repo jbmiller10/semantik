@@ -352,7 +352,7 @@ class TestEdgeCasesAndThreadSafety:
             )
 
         # Run multiple concurrent requests
-        async def run_concurrent():
+        async def run_concurrent() -> None:
             tasks = [
                 generate_embedding("text1"),
                 generate_embedding("text2", 0.1),

@@ -1,10 +1,9 @@
 """End-to-end tests for WebSocket integration with collection operations."""
 
-# mypy: ignore-errors
-
 import contextlib
 import json
 import os
+import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -12,6 +11,8 @@ from pathlib import Path
 import pytest
 import requests
 import websocket
+
+# mypy: ignore-errors
 
 
 def service_available(url: str) -> bool:
@@ -137,7 +138,6 @@ class TestWebSocketIntegration:
             )
 
             # Run WebSocket in a separate thread
-            import threading
 
             ws_thread = threading.Thread(target=ws.run_forever)
             ws_thread.daemon = True
@@ -232,7 +232,6 @@ class TestWebSocketIntegration:
             ws = websocket.WebSocketApp(ws_url, on_message=on_message)
 
             # Run WebSocket in a separate thread
-            import threading
 
             ws_thread = threading.Thread(target=ws.run_forever)
             ws_thread.daemon = True
@@ -304,7 +303,6 @@ class TestWebSocketIntegration:
                 )
 
         # Monitor all operations concurrently via WebSocket
-        import threading
 
         def monitor_operation(op_data) -> None:
             """Monitor a single operation via WebSocket."""
@@ -417,7 +415,6 @@ class TestWebSocketIntegration:
             ws = websocket.WebSocketApp(ws_url, on_message=on_message)
 
             # Start WebSocket connection
-            import threading
 
             ws_thread = threading.Thread(target=ws.run_forever)
             ws_thread.daemon = True
@@ -476,7 +473,6 @@ class TestWebSocketIntegration:
         ws = websocket.WebSocketApp(ws_url, on_close=on_close)
 
         # Run WebSocket (should close immediately due to auth failure)
-        import threading
 
         ws_thread = threading.Thread(target=ws.run_forever)
         ws_thread.daemon = True
@@ -563,8 +559,6 @@ class TestWebSocketIntegration:
                             print(f"Permission test - WebSocket closed with code {code}: {reason}")
 
                         ws = websocket.WebSocketApp(ws_url, on_close=on_close)
-
-                        import threading
 
                         ws_thread = threading.Thread(target=ws.run_forever)
                         ws_thread.daemon = True

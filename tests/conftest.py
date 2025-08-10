@@ -1,15 +1,49 @@
 """Shared test configuration and fixtures."""
 
 import os
+import random
 import sys
-from datetime import UTC
+from collections.abc import Generator
+from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import urlparse
+from uuid import uuid4
 
+import asyncpg
 import pytest
 import pytest_asyncio
+import redis.asyncio as redis
+from dotenv import load_dotenv
+from fastapi import WebSocket
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+import packages.webui.celery_app as celery_module
+from packages.shared.database import get_db
+from packages.shared.database.factory import (
+    create_auth_repository,
+    create_collection_repository,
+    create_user_repository,
+)
+from packages.shared.database.models import (
+    Base,
+    Collection,
+    CollectionStatus,
+    Document,
+    DocumentStatus,
+    Operation,
+    OperationStatus,
+    OperationType,
+    User,
+)
+from packages.webui.auth import create_access_token, get_current_user
+from packages.webui.main import app
+from packages.webui.utils.qdrant_manager import qdrant_manager
+from packages.webui.websocket_manager import RedisStreamWebSocketManager
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -17,7 +51,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Load test environment if available
 test_env_path = Path(__file__).parent.parent / ".env.test"
 if test_env_path.exists():
-    from dotenv import load_dotenv
 
     load_dotenv(test_env_path, override=True)
 
@@ -34,11 +67,6 @@ os.environ.setdefault("DISABLE_RATE_LIMITING", "true")
 @pytest.fixture()
 def test_client(test_user) -> None:
     """Create a test client for the FastAPI app with auth mocked."""
-    from unittest.mock import AsyncMock, MagicMock, patch
-
-    from packages.shared.database import get_db
-    from packages.webui.auth import get_current_user
-    from packages.webui.main import app
 
     # Mock the lifespan events to prevent real connections
     with (
@@ -51,10 +79,10 @@ def test_client(test_user) -> None:
         mock_ws.shutdown = AsyncMock()
 
         # Override dependencies
-        async def override_get_current_user():
+        async def override_get_current_user() -> None:
             return test_user
 
-        async def override_get_db():
+        async def override_get_db() -> Generator[Any, None, None]:
             # Return a mock database session
             mock_db = AsyncMock()
             # Mock common async methods
@@ -83,7 +111,6 @@ def test_client(test_user) -> None:
 @pytest.fixture()
 def unauthenticated_test_client() -> None:
     """Create a test client without authentication override."""
-    from packages.webui.main import app
 
     # Clear any existing overrides
     app.dependency_overrides.clear()
@@ -99,16 +126,9 @@ def test_client_with_mocks(
     mock_auth_repository,
 ) -> None:
     """Create a test client with mocked repositories and auth."""
-    from packages.shared.database.factory import (
-        create_auth_repository,
-        create_collection_repository,
-        create_user_repository,
-    )
-    from packages.webui.auth import get_current_user
-    from packages.webui.main import app
 
     # Override the authentication dependency
-    async def override_get_current_user():
+    async def override_get_current_user() -> None:
         return test_user
 
     # Override repository dependencies
@@ -137,7 +157,6 @@ def mock_qdrant_client() -> None:
 @pytest.fixture()
 def test_user() -> None:
     """Test user data."""
-    from datetime import datetime
 
     return {
         "id": 1,
@@ -152,7 +171,6 @@ def test_user() -> None:
 @pytest.fixture()
 def auth_headers(test_user) -> None:
     """Create authorization headers with a test JWT token."""
-    from packages.webui.auth import create_access_token
 
     token = create_access_token(data={"sub": test_user["username"]})
     return {"Authorization": f"Bearer {token}"}
@@ -165,13 +183,11 @@ def test_user_headers(auth_headers) -> None:
 
 
 @pytest_asyncio.fixture
-async def async_client(test_user):
+async def async_client(test_user) -> None:
     """Create an async test client for the FastAPI app with auth mocked."""
-    from packages.webui.auth import get_current_user
-    from packages.webui.main import app
 
     # Override the authentication dependency
-    async def override_get_current_user():
+    async def override_get_current_user() -> None:
         return test_user
 
     app.dependency_overrides[get_current_user] = override_get_current_user
@@ -210,7 +226,7 @@ def _reset_singletons() -> None:
 def create_async_mock(return_value=None) -> None:
     """Helper to create an async mock that returns a value."""
 
-    async def async_mock(*_args, **_kwargs):
+    async def async_mock(*_args, **_kwargs) -> None:
         return return_value
 
     return MagicMock(side_effect=async_mock)
@@ -256,8 +272,6 @@ def mock_auth_repository() -> None:
 def mock_redis_client() -> None:
     """Create a mock Redis client for testing WebSocket functionality."""
 
-    import redis.asyncio as redis
-
     class MockRedisStreams:
         def __init__(self) -> None:
             self.streams = {}
@@ -266,7 +280,7 @@ def mock_redis_client() -> None:
 
     mock_streams = MockRedisStreams()
 
-    async def mock_xadd(stream_key, data, maxlen=None):
+    async def mock_xadd(stream_key, data, maxlen=None) -> None:
         if stream_key not in mock_streams.streams:
             mock_streams.streams[stream_key] = []
 
@@ -281,7 +295,7 @@ def mock_redis_client() -> None:
 
         return msg_id
 
-    async def mock_xrange(stream_key, min="-", max="+", count=None):  # noqa: ARG001
+    async def mock_xrange(stream_key, min="-", max="+", count=None) -> None:  # noqa: ARG001
         if stream_key not in mock_streams.streams:
             return []
 
@@ -291,12 +305,12 @@ def mock_redis_client() -> None:
 
         return messages
 
-    async def mock_xgroup_create(stream_key, group_name, id="0"):
+    async def mock_xgroup_create(stream_key, group_name, id="0") -> None:
         if stream_key not in mock_streams.consumer_groups:
             mock_streams.consumer_groups[stream_key] = {}
         mock_streams.consumer_groups[stream_key][group_name] = {"last_delivered_id": id, "consumers": {}}
 
-    async def mock_xreadgroup(group_name, consumer_name, streams, count=None, block=None):  # noqa: ARG001
+    async def mock_xreadgroup(group_name, consumer_name, streams, count=None, block=None) -> None:  # noqa: ARG001
         results = []
 
         for stream_key, last_id in streams.items():
@@ -361,8 +375,6 @@ def mock_redis_client() -> None:
 def mock_websocket() -> None:
     """Create a mock WebSocket connection."""
 
-    from fastapi import WebSocket
-
     mock = AsyncMock(spec=WebSocket)
     mock.accept = AsyncMock()
     mock.send_json = AsyncMock()
@@ -374,7 +386,6 @@ def mock_websocket() -> None:
 @pytest.fixture()
 def mock_websocket_manager(mock_redis_client) -> None:
     """Create a mock WebSocket manager with Redis client."""
-    from packages.webui.websocket_manager import RedisStreamWebSocketManager
 
     manager = RedisStreamWebSocketManager()
     manager.redis = mock_redis_client
@@ -391,46 +402,67 @@ def websocket_test_client(test_client) -> None:
 
 # Additional fixtures for collection deletion tests
 @pytest_asyncio.fixture
-async def db_session():
+async def db_session() -> None:
     """Create a new database session for testing."""
     # Check if we have a test database available
-    import asyncpg
-    from sqlalchemy import text
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-    from packages.shared.config.postgres import postgres_config
-    from packages.shared.database.models import Base
-
-    # Use PostgreSQL for tests - get URL from environment or config
+    # Get database URL from environment, prioritizing DATABASE_URL
     database_url = os.environ.get("DATABASE_URL")
-    if database_url:
-        # Convert to async URL if needed
-        if database_url.startswith("postgresql://"):
-            database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    if not database_url:
+        # Construct from individual components if DATABASE_URL not set
+        postgres_user = os.environ.get("POSTGRES_USER", "postgres")
+        postgres_password = os.environ.get("POSTGRES_PASSWORD", "postgres")
+        postgres_db = os.environ.get("POSTGRES_DB", "semantik_test")
+        postgres_host = os.environ.get("POSTGRES_HOST", "localhost")
+        postgres_port = os.environ.get("POSTGRES_PORT", "5432")
+
+        if postgres_password:
+            database_url = (
+                f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}"
+            )
+        else:
+            database_url = f"postgresql://{postgres_user}@{postgres_host}:{postgres_port}/{postgres_db}"
+
+    # Convert to async URL for SQLAlchemy
+    if database_url.startswith("postgresql://"):
+        async_database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
     else:
-        # Use default test database configuration
-        database_url = postgres_config.async_database_url
+        async_database_url = database_url
 
     # Try to connect to the database
     try:
-        # Test connection
-        conn = await asyncpg.connect(database_url.replace("postgresql+asyncpg://", "postgresql://"))
+        # Parse the URL to extract connection parameters for asyncpg
+        parsed = urlparse(database_url)
+        conn_params = {
+            "host": parsed.hostname or "localhost",
+            "port": parsed.port or 5432,
+            "database": parsed.path.lstrip("/") if parsed.path else "semantik_test",
+            "user": parsed.username or "postgres",
+        }
+        if parsed.password:
+            conn_params["password"] = parsed.password
+
+        # Test connection with asyncpg
+        conn = await asyncpg.connect(**conn_params)
         await conn.close()
-    except (asyncpg.InvalidPasswordError, OSError) as e:
+    except (asyncpg.InvalidPasswordError, OSError, Exception) as e:
         # If we can't connect to a real database, skip these tests
         pytest.skip(f"PostgreSQL test database not available: {e}")
         return
 
-    engine = create_async_engine(database_url, echo=False)
+    engine = create_async_engine(async_database_url, echo=False)
 
     # Helper function to drop views before tables
-    async def drop_views_and_tables(conn):
+    async def drop_views_and_tables(conn) -> None:
         # Drop views first (in dependency order)
         views_to_drop = [
             "DROP VIEW IF EXISTS partition_hot_spots CASCADE",
             "DROP VIEW IF EXISTS partition_health_summary CASCADE",
             "DROP VIEW IF EXISTS partition_size_distribution CASCADE",
             "DROP VIEW IF EXISTS partition_chunk_distribution CASCADE",
+            "DROP VIEW IF EXISTS partition_distribution CASCADE",
+            "DROP VIEW IF EXISTS partition_health CASCADE",
             "DROP VIEW IF EXISTS active_chunking_configs CASCADE",
             "DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE",
         ]
@@ -456,12 +488,8 @@ async def db_session():
 
 
 @pytest_asyncio.fixture
-async def test_user_db(db_session):
+async def test_user_db(db_session) -> None:
     """Create a test user in the database."""
-    import random
-    from datetime import datetime
-
-    from packages.shared.database.models import User
 
     # Use random ID to avoid conflicts
     user_id = random.randint(1000, 9999)
@@ -481,12 +509,8 @@ async def test_user_db(db_session):
 
 
 @pytest_asyncio.fixture
-async def other_user_db(db_session):
+async def other_user_db(db_session) -> None:
     """Create another test user in the database."""
-    import random
-    from datetime import datetime
-
-    from packages.shared.database.models import User
 
     # Use random ID to avoid conflicts
     user_id = random.randint(10000, 19999)
@@ -506,16 +530,12 @@ async def other_user_db(db_session):
 
 
 @pytest_asyncio.fixture
-async def collection_factory(db_session):
+async def collection_factory(db_session) -> None:
     """Factory for creating test collections."""
-    from datetime import datetime
-    from uuid import uuid4
-
-    from packages.shared.database.models import Collection, CollectionStatus
 
     created_collections = []
 
-    async def _create_collection(**kwargs):
+    async def _create_collection(**kwargs) -> None:
         # owner_id must be provided - no default
         if "owner_id" not in kwargs:
             raise ValueError("owner_id must be provided when creating a collection")
@@ -551,16 +571,12 @@ async def collection_factory(db_session):
 
 
 @pytest_asyncio.fixture
-async def document_factory(db_session):
+async def document_factory(db_session) -> None:
     """Factory for creating test documents."""
-    from datetime import datetime
-    from uuid import uuid4
-
-    from packages.shared.database.models import Document, DocumentStatus
 
     created_documents = []
 
-    async def _create_document(**kwargs):
+    async def _create_document(**kwargs) -> None:
         defaults = {
             "id": str(uuid4()),  # Add UUID for document ID
             "collection_id": 1,
@@ -588,16 +604,12 @@ async def document_factory(db_session):
 
 
 @pytest_asyncio.fixture
-async def operation_factory(db_session):
+async def operation_factory(db_session) -> None:
     """Factory for creating test operations."""
-    from datetime import datetime
-    from uuid import uuid4
-
-    from packages.shared.database.models import Operation, OperationStatus, OperationType
 
     created_operations = []
 
-    async def _create_operation(**kwargs):
+    async def _create_operation(**kwargs) -> None:
         # user_id must be provided - no default
         if "user_id" not in kwargs:
             raise ValueError("user_id must be provided when creating an operation")
@@ -630,7 +642,7 @@ async def operation_factory(db_session):
 
 
 @pytest.fixture()
-def mock_qdrant_deletion():
+def mock_qdrant_deletion() -> Generator[Any, None, None]:
     """Mock Qdrant client specifically for deletion tests."""
     mock = MagicMock()
 
@@ -644,7 +656,6 @@ def mock_qdrant_deletion():
     mock.create_collection = AsyncMock()
 
     # Patch the qdrant manager
-    from packages.webui.utils.qdrant_manager import qdrant_manager
 
     original_get_client = qdrant_manager.get_client
     qdrant_manager.get_client = lambda: mock
@@ -656,13 +667,12 @@ def mock_qdrant_deletion():
 
 
 @pytest.fixture()
-def mock_celery_for_deletion():
+def mock_celery_for_deletion() -> Generator[Any, None, None]:
     """Mock Celery app for deletion tests."""
     mock_app = MagicMock()
     mock_app.send_task = MagicMock()
 
     # Patch the celery app
-    import packages.webui.celery_app as celery_module
 
     original_app = celery_module.celery_app
     celery_module.celery_app = mock_app

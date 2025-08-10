@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Extended tests for HierarchicalChunker to improve code coverage.
 
@@ -25,7 +26,7 @@ from packages.shared.text_processing.strategies.hierarchical_chunker import (
 class TestHierarchicalChunkerExtended:
     """Extended test suite for HierarchicalChunker edge cases and security."""
 
-    def test_security_max_hierarchy_depth(self):
+    def test_security_max_hierarchy_depth(self) -> None:
         """Test that excessive hierarchy depth is rejected."""
         # Create chunk sizes exceeding MAX_HIERARCHY_DEPTH
         excessive_sizes = [1000 - (i * 100) for i in range(MAX_HIERARCHY_DEPTH + 2)]
@@ -33,23 +34,23 @@ class TestHierarchicalChunkerExtended:
         with pytest.raises(ValueError, match="Too many hierarchy levels"):
             HierarchicalChunker(chunk_sizes=excessive_sizes)
 
-    def test_security_max_chunk_size(self):
+    def test_security_max_chunk_size(self) -> None:
         """Test that excessive chunk sizes are rejected."""
         # Try to create chunker with size exceeding MAX_CHUNK_SIZE
         with pytest.raises(ValueError, match="exceeds maximum allowed size"):
             HierarchicalChunker(chunk_sizes=[MAX_CHUNK_SIZE + 1, 1000, 500])
 
-    def test_security_negative_chunk_size(self):
+    def test_security_negative_chunk_size(self) -> None:
         """Test that negative chunk sizes are rejected."""
         with pytest.raises(ValueError, match="Invalid chunk size.*Must be positive"):
             HierarchicalChunker(chunk_sizes=[1000, -500, 250])
 
-    def test_security_zero_chunk_size(self):
+    def test_security_zero_chunk_size(self) -> None:
         """Test that zero chunk sizes are rejected."""
         with pytest.raises(ValueError, match="Invalid chunk size.*Must be positive"):
             HierarchicalChunker(chunk_sizes=[1000, 0, 250])
 
-    def test_text_exceeds_max_length(self):
+    def test_text_exceeds_max_length(self) -> None:
         """Test handling of text exceeding MAX_TEXT_LENGTH."""
         chunker = HierarchicalChunker(chunk_sizes=[1000, 500, 250])
 
@@ -59,7 +60,7 @@ class TestHierarchicalChunkerExtended:
         with pytest.raises(ValueError, match="Text too large to process"):
             chunker.chunk_text(oversized_text, "oversized_doc")
 
-    def test_text_exceeds_max_length_streaming(self):
+    def test_text_exceeds_max_length_streaming(self) -> None:
         """Test streaming with text exceeding MAX_TEXT_LENGTH."""
         chunker = HierarchicalChunker(chunk_sizes=[1000, 500, 250])
 
@@ -68,7 +69,7 @@ class TestHierarchicalChunkerExtended:
         with pytest.raises(ValueError, match="Text too large to process"):
             list(chunker.chunk_text_stream(oversized_text, "oversized_stream"))
 
-    async def test_text_exceeds_max_length_async(self):
+    async def test_text_exceeds_max_length_async(self) -> None:
         """Test async chunking with text exceeding MAX_TEXT_LENGTH."""
         chunker = HierarchicalChunker(chunk_sizes=[1000, 500, 250])
 
@@ -77,7 +78,7 @@ class TestHierarchicalChunkerExtended:
         with pytest.raises(ValueError, match="Text too large to process"):
             await chunker.chunk_text_async(oversized_text, "oversized_async")
 
-    def test_large_text_segmentation(self):
+    def test_large_text_segmentation(self) -> None:
         """Test that large texts are processed in segments."""
         chunker = HierarchicalChunker(chunk_sizes=[2000, 1000, 500])
 
@@ -106,7 +107,7 @@ class TestHierarchicalChunkerExtended:
             assert mock_parser.get_nodes_from_documents.call_count > 1
             assert len(chunks) > 0
 
-    def test_estimate_node_offset_with_children(self):
+    def test_estimate_node_offset_with_children(self) -> None:
         """Test offset estimation for parent nodes with children."""
         chunker = HierarchicalChunker(chunk_sizes=[1000, 500, 250])
 
@@ -147,7 +148,7 @@ class TestHierarchicalChunkerExtended:
         # Parent offset should span from min child start to max child end
         assert offset == (15, 62)
 
-    def test_estimate_node_offset_single_child(self):
+    def test_estimate_node_offset_single_child(self) -> None:
         """Test offset estimation for parent with single child."""
         chunker = HierarchicalChunker(chunk_sizes=[1000, 500, 250])
 
@@ -175,7 +176,7 @@ class TestHierarchicalChunkerExtended:
         # Should use the single child's offset
         assert offset == (15, 35)
 
-    def test_build_offset_map_with_exact_match_failure(self):
+    def test_build_offset_map_with_exact_match_failure(self) -> None:
         """Test offset map building when exact match fails."""
         chunker = HierarchicalChunker(chunk_sizes=[500, 250, 125])
 
@@ -199,7 +200,7 @@ class TestHierarchicalChunkerExtended:
         assert "node_1" in offset_map
         assert "node_2" in offset_map
 
-    def test_build_offset_map_overlapping_content(self):
+    def test_build_offset_map_overlapping_content(self) -> None:
         """Test offset map with overlapping content."""
         chunker = HierarchicalChunker(chunk_sizes=[500, 250, 125])
 
@@ -228,14 +229,14 @@ class TestHierarchicalChunkerExtended:
         start2, end2 = offset_map["node2"]
         assert end1 <= start2 or end2 <= start1  # No overlap
 
-    def test_empty_stream_with_whitespace(self):
+    def test_empty_stream_with_whitespace(self) -> None:
         """Test streaming with whitespace-only text."""
         chunker = HierarchicalChunker(chunk_sizes=[500, 250, 125])
 
         chunks = list(chunker.chunk_text_stream("   \n\t  ", "whitespace_doc"))
         assert chunks == []
 
-    async def test_empty_async_stream_with_whitespace(self):
+    async def test_empty_async_stream_with_whitespace(self) -> None:
         """Test async streaming with whitespace-only text."""
         chunker = HierarchicalChunker(chunk_sizes=[500, 250, 125])
 
@@ -245,7 +246,7 @@ class TestHierarchicalChunkerExtended:
 
         assert chunks == []
 
-    def test_validate_config_excessive_hierarchy(self):
+    def test_validate_config_excessive_hierarchy(self) -> None:
         """Test config validation with excessive hierarchy depth."""
         chunker = HierarchicalChunker()
 
@@ -254,7 +255,7 @@ class TestHierarchicalChunkerExtended:
 
         assert chunker.validate_config(config) is False
 
-    def test_validate_config_excessive_chunk_size(self):
+    def test_validate_config_excessive_chunk_size(self) -> None:
         """Test config validation with chunk size exceeding maximum."""
         chunker = HierarchicalChunker()
 
@@ -262,7 +263,7 @@ class TestHierarchicalChunkerExtended:
 
         assert chunker.validate_config(config) is False
 
-    def test_validate_config_exception_handling(self):
+    def test_validate_config_exception_handling(self) -> None:
         """Test config validation exception handling."""
         chunker = HierarchicalChunker()
 
@@ -275,7 +276,7 @@ class TestHierarchicalChunkerExtended:
             # The actual error message varies, just check that error was called
             mock_logger.error.assert_called()
 
-    def test_get_parent_chunks_no_node_ids(self):
+    def test_get_parent_chunks_no_node_ids(self) -> None:
         """Test parent chunk generation when leaf chunks lack node IDs."""
         chunker = HierarchicalChunker(chunk_sizes=[500, 250, 125])
 
@@ -300,7 +301,7 @@ class TestHierarchicalChunkerExtended:
             mock_logger.warning.assert_called_with("No valid node IDs found in leaf chunks")
             assert parent_chunks == []
 
-    def test_get_parent_chunks_with_node_children_list(self):
+    def test_get_parent_chunks_with_node_children_list(self) -> None:
         """Test parent chunk generation with children as list."""
         chunker = HierarchicalChunker(chunk_sizes=[500, 250, 125])
 
@@ -354,7 +355,7 @@ class TestHierarchicalChunkerExtended:
             assert parent_chunks[0].metadata["node_id"] == "parent"
             assert not parent_chunks[0].metadata["is_leaf"]
 
-    def test_get_parent_chunks_with_single_child(self):
+    def test_get_parent_chunks_with_single_child(self) -> None:
         """Test parent chunk generation with single child (not list)."""
         chunker = HierarchicalChunker(chunk_sizes=[500, 250, 125])
 
@@ -393,7 +394,7 @@ class TestHierarchicalChunkerExtended:
             assert len(parent_chunks) == 1
             assert parent_chunks[0].metadata["node_id"] == "parent"
 
-    def test_get_parent_chunks_exception_handling(self):
+    def test_get_parent_chunks_exception_handling(self) -> None:
         """Test parent chunk generation with exception."""
         chunker = HierarchicalChunker(chunk_sizes=[500, 250, 125])
 
@@ -418,7 +419,7 @@ class TestHierarchicalChunkerExtended:
             mock_logger.error.assert_called()
             assert parent_chunks == []
 
-    def test_build_hierarchy_info_infinite_loop_prevention(self):
+    def test_build_hierarchy_info_infinite_loop_prevention(self) -> None:
         """Test that hierarchy info building prevents infinite loops."""
         chunker = HierarchicalChunker(chunk_sizes=[500, 250, 125])
 
@@ -448,7 +449,7 @@ class TestHierarchicalChunkerExtended:
         # Should have detected the cycle and stopped
         assert hierarchy_info["level"] >= 0  # Should have a valid level
 
-    def test_node_without_get_content_method(self):
+    def test_node_without_get_content_method(self) -> None:
         """Test handling of nodes without get_content method."""
         chunker = HierarchicalChunker(chunk_sizes=[500, 250, 125])
 
@@ -469,7 +470,7 @@ class TestHierarchicalChunkerExtended:
         with pytest.raises(AttributeError):
             chunker._build_offset_map(text, nodes)
 
-    def test_streaming_error_handling_fallback(self):
+    def test_streaming_error_handling_fallback(self) -> None:
         """Test streaming fallback when hierarchical parsing fails."""
         chunker = HierarchicalChunker(chunk_sizes=[200, 100, 50])
 
@@ -491,7 +492,7 @@ class TestHierarchicalChunkerExtended:
             for chunk in chunks:
                 assert chunk.metadata.get("strategy") == "character"
 
-    def test_build_hierarchy_info_node_not_in_map(self):
+    def test_build_hierarchy_info_node_not_in_map(self) -> None:
         """Test hierarchy info when parent node is not in node map."""
         chunker = HierarchicalChunker(chunk_sizes=[500, 250, 125])
 
@@ -512,7 +513,7 @@ class TestHierarchicalChunkerExtended:
         assert hierarchy_info["parent_id"] == "missing_parent"
         assert hierarchy_info["level"] == 1  # One level up even though parent is missing
 
-    def test_build_offset_map_empty_content(self):
+    def test_build_offset_map_empty_content(self) -> None:
         """Test offset map with nodes having empty content."""
         chunker = HierarchicalChunker(chunk_sizes=[500, 250, 125])
 
@@ -539,7 +540,7 @@ class TestHierarchicalChunkerExtended:
             start, end = offset_map["empty"]
             assert end - start == 0  # Empty content
 
-    async def test_async_streaming_executor_handling(self):
+    async def test_async_streaming_executor_handling(self) -> None:
         """Test async streaming with executor."""
         chunker = HierarchicalChunker(chunk_sizes=[200, 100, 50])
 

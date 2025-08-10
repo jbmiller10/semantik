@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Comprehensive test suite for webui/services/operation_service.py
 Tests operation lifecycle, state transitions, and error handling
@@ -16,19 +17,19 @@ class TestOperationService:
     """Test OperationService implementation"""
 
     @pytest.fixture()
-    def mock_session(self):
+    def mock_session(self) -> None:
         """Create a mock AsyncSession"""
         session = AsyncMock()
         session.commit = AsyncMock()
         return session
 
     @pytest.fixture()
-    def mock_operation_repo(self):
+    def mock_operation_repo(self) -> None:
         """Create a mock OperationRepository"""
         return AsyncMock()
 
     @pytest.fixture()
-    def operation_service(self, mock_session, mock_operation_repo):
+    def operation_service(self, mock_session, mock_operation_repo) -> None:
         """Create OperationService with mocked dependencies"""
         return OperationService(
             db_session=mock_session,
@@ -36,7 +37,7 @@ class TestOperationService:
         )
 
     @pytest.mark.asyncio()
-    async def test_get_operation_success(self, operation_service, mock_operation_repo):
+    async def test_get_operation_success(self, operation_service, mock_operation_repo) -> None:
         """Test successful operation retrieval"""
         # Mock operation
         mock_operation = Mock(spec=Operation)
@@ -58,7 +59,7 @@ class TestOperationService:
         )
 
     @pytest.mark.asyncio()
-    async def test_get_operation_not_found(self, operation_service, mock_operation_repo):
+    async def test_get_operation_not_found(self, operation_service, mock_operation_repo) -> None:
         """Test get operation when not found"""
         mock_operation_repo.get_by_uuid_with_permission_check.side_effect = EntityNotFoundError(
             "operation", "test-uuid"
@@ -68,7 +69,7 @@ class TestOperationService:
             await operation_service.get_operation("test-uuid", 123)
 
     @pytest.mark.asyncio()
-    async def test_get_operation_access_denied(self, operation_service, mock_operation_repo):
+    async def test_get_operation_access_denied(self, operation_service, mock_operation_repo) -> None:
         """Test get operation when access is denied"""
         mock_operation_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError(
             user_id="456", resource_type="operation", resource_id="test-uuid"
@@ -81,7 +82,7 @@ class TestOperationService:
     @patch("webui.services.operation_service.celery_app")
     async def test_cancel_operation_success(
         self, mock_celery_app, operation_service, mock_operation_repo, mock_session
-    ):
+    ) -> None:
         """Test successful operation cancellation"""
         # Mock operation
         mock_operation = Mock(spec=Operation)
@@ -110,7 +111,7 @@ class TestOperationService:
     @patch("webui.services.operation_service.celery_app")
     async def test_cancel_operation_no_task_id(
         self, mock_celery_app, operation_service, mock_operation_repo, mock_session
-    ):
+    ) -> None:
         """Test cancelling operation without Celery task ID"""
         # Mock operation without task_id
         mock_operation = Mock(spec=Operation)
@@ -134,7 +135,7 @@ class TestOperationService:
     @patch("webui.services.operation_service.logger")
     async def test_cancel_operation_celery_revoke_failure(
         self, mock_logger, mock_celery_app, operation_service, mock_operation_repo, mock_session
-    ):
+    ) -> None:
         """Test operation cancellation when Celery revoke fails"""
         # Mock operation
         mock_operation = Mock(spec=Operation)
@@ -160,7 +161,7 @@ class TestOperationService:
         mock_session.commit.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_cancel_operation_invalid_state(self, operation_service, mock_operation_repo):
+    async def test_cancel_operation_invalid_state(self, operation_service, mock_operation_repo) -> None:
         """Test cancelling operation in invalid state"""
         mock_operation_repo.cancel.side_effect = ValidationError("Operation cannot be cancelled in COMPLETED state")
 
@@ -168,7 +169,7 @@ class TestOperationService:
             await operation_service.cancel_operation("test-uuid", 123)
 
     @pytest.mark.asyncio()
-    async def test_list_operations_no_filters(self, operation_service, mock_operation_repo):
+    async def test_list_operations_no_filters(self, operation_service, mock_operation_repo) -> None:
         """Test listing operations without filters"""
         # Mock operations
         mock_operations = []
@@ -195,7 +196,7 @@ class TestOperationService:
         )
 
     @pytest.mark.asyncio()
-    async def test_list_operations_with_filters(self, operation_service, mock_operation_repo):
+    async def test_list_operations_with_filters(self, operation_service, mock_operation_repo) -> None:
         """Test listing operations with filters"""
         # Mock filtered operations
         mock_operations = []
@@ -228,7 +229,7 @@ class TestOperationService:
         )
 
     @pytest.mark.asyncio()
-    async def test_verify_websocket_access_success(self, operation_service, mock_operation_repo):
+    async def test_verify_websocket_access_success(self, operation_service, mock_operation_repo) -> None:
         """Test successful WebSocket access verification"""
         # Mock operation
         mock_operation = Mock(spec=Operation)
@@ -247,7 +248,7 @@ class TestOperationService:
         )
 
     @pytest.mark.asyncio()
-    async def test_verify_websocket_access_denied(self, operation_service, mock_operation_repo):
+    async def test_verify_websocket_access_denied(self, operation_service, mock_operation_repo) -> None:
         """Test WebSocket access verification when denied"""
         mock_operation_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError(
             user_id="456", resource_type="operation", resource_id="test-uuid"
@@ -261,7 +262,7 @@ class TestOperationLifecycle:
     """Test operation state transitions and lifecycle"""
 
     @pytest.fixture()
-    def operation_service(self):
+    def operation_service(self) -> None:
         mock_session = AsyncMock()
         mock_operation_repo = AsyncMock()
         return OperationService(
@@ -270,7 +271,7 @@ class TestOperationLifecycle:
         )
 
     @pytest.mark.asyncio()
-    async def test_operation_state_transition_pending_to_processing(self, operation_service):
+    async def test_operation_state_transition_pending_to_processing(self, operation_service) -> None:
         """Test transition from PENDING to PROCESSING state"""
         # Mock operation in PENDING state
         mock_operation = Mock(spec=Operation)
@@ -280,7 +281,7 @@ class TestOperationLifecycle:
         # The service layer should respect state transitions enforced by the repository
 
     @pytest.mark.asyncio()
-    async def test_operation_state_transition_processing_to_completed(self, operation_service):
+    async def test_operation_state_transition_processing_to_completed(self, operation_service) -> None:
         """Test transition from PROCESSING to COMPLETED state"""
         # Mock operation in PROCESSING state
         mock_operation = Mock(spec=Operation)
@@ -289,7 +290,7 @@ class TestOperationLifecycle:
         # State transitions would be enforced at repository level
 
     @pytest.mark.asyncio()
-    async def test_operation_state_transition_to_failed(self, operation_service):
+    async def test_operation_state_transition_to_failed(self, operation_service) -> None:
         """Test transition to FAILED state from any active state"""
         # Operations can fail from PENDING or PROCESSING states
         for initial_status in [OperationStatus.PENDING, OperationStatus.PROCESSING]:
@@ -303,7 +304,7 @@ class TestOperationServiceErrorHandling:
     """Test error handling in operation service"""
 
     @pytest.fixture()
-    def operation_service(self):
+    def operation_service(self) -> None:
         mock_session = AsyncMock()
         mock_operation_repo = AsyncMock()
         return OperationService(
@@ -312,7 +313,7 @@ class TestOperationServiceErrorHandling:
         )
 
     @pytest.mark.asyncio()
-    async def test_handle_repository_error(self, operation_service):
+    async def test_handle_repository_error(self, operation_service) -> None:
         """Test handling of repository errors"""
         operation_service.operation_repo.get_by_uuid_with_permission_check.side_effect = Exception(
             "Database connection error"
@@ -322,7 +323,7 @@ class TestOperationServiceErrorHandling:
             await operation_service.get_operation("test-uuid", 123)
 
     @pytest.mark.asyncio()
-    async def test_handle_concurrent_cancellation(self, operation_service):
+    async def test_handle_concurrent_cancellation(self, operation_service) -> None:
         """Test handling concurrent cancellation attempts"""
         # First cancellation succeeds
         mock_operation = Mock(spec=Operation)
@@ -344,7 +345,7 @@ class TestOperationServiceIntegration:
 
     @pytest.mark.asyncio()
     @patch("webui.services.operation_service.celery_app")
-    async def test_operation_cancellation_workflow(self, mock_celery_app):
+    async def test_operation_cancellation_workflow(self, mock_celery_app) -> None:
         """Test complete operation cancellation workflow"""
         # Setup
         mock_session = AsyncMock()
@@ -376,7 +377,7 @@ class TestOperationServiceIntegration:
         mock_session.commit.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_operation_listing_pagination(self):
+    async def test_operation_listing_pagination(self) -> None:
         """Test operation listing with pagination"""
         mock_session = AsyncMock()
         mock_operation_repo = AsyncMock()

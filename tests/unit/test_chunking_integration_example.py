@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
+
 """
 Unit tests for chunking_integration_example module.
 
 This module tests the example integration endpoints and services.
 """
 
+import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.responses import JSONResponse
 
 from packages.webui.api.chunking_exceptions import ChunkingMemoryError, ChunkingValidationError
-from packages.webui.api.chunking_integration_example import ChunkingService, router
+from packages.webui.api.chunking_integration_example import ChunkingService, process_document, router
 from packages.webui.middleware.correlation import get_correlation_id
 
 
@@ -44,7 +47,7 @@ class TestChunkingIntegrationExample:
         """Test successful document processing."""
 
         # Override the dependency
-        def override_get_correlation_id():
+        def override_get_correlation_id() -> None:
             return mock_correlation_id
 
         app.dependency_overrides[get_correlation_id] = override_get_correlation_id
@@ -68,16 +71,15 @@ class TestChunkingIntegrationExample:
         """Test processing with missing document ID."""
 
         # Override the dependency
-        def override_get_correlation_id():
+        def override_get_correlation_id() -> None:
             return mock_correlation_id
 
         app.dependency_overrides[get_correlation_id] = override_get_correlation_id
 
         # Register a basic exception handler for ChunkingValidationError
-        from starlette.responses import JSONResponse
 
         @app.exception_handler(ChunkingValidationError)
-        async def chunking_validation_handler(_request, exc: ChunkingValidationError):
+        async def chunking_validation_handler(_request, exc: ChunkingValidationError) -> None:
             return JSONResponse(
                 status_code=400,
                 content={
@@ -105,9 +107,6 @@ class TestChunkingIntegrationExample:
         mock_correlation_id: str,
     ) -> None:
         """Test that validation error is raised correctly."""
-        import asyncio
-
-        from packages.webui.api.chunking_integration_example import process_document
 
         with patch("packages.webui.api.chunking_integration_example.get_correlation_id") as mock_get_id:
             mock_get_id.return_value = mock_correlation_id
@@ -207,8 +206,6 @@ class TestChunkingIntegrationExample:
     def test_example_imports(self) -> None:
         """Test that all required imports are available."""
         # This test verifies the imports work correctly
-        from packages.webui.api.chunking_exceptions import ChunkingMemoryError, ChunkingValidationError
-        from packages.webui.api.chunking_integration_example import ChunkingService, process_document, router
 
         assert ChunkingMemoryError is not None
         assert ChunkingValidationError is not None
@@ -222,7 +219,6 @@ class TestChunkingIntegrationExample:
         mock_correlation_id: str,
     ) -> None:
         """Test that correlation ID dependency works correctly."""
-        from packages.webui.api.chunking_integration_example import process_document
 
         with patch("packages.webui.api.chunking_integration_example.get_correlation_id") as mock_get_id:
             mock_get_id.return_value = mock_correlation_id

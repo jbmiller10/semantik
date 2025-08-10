@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Unit tests for chunking Celery tasks.
 
@@ -30,7 +31,7 @@ from packages.webui.chunking_tasks import (
 class TestChunkingTask:
     """Test ChunkingTask base class functionality."""
 
-    def test_init(self):
+    def test_init(self) -> None:
         """Test task initialization."""
         task = ChunkingTask()
         assert task._shutdown_handler_registered is False
@@ -42,7 +43,7 @@ class TestChunkingTask:
     @patch("packages.webui.chunking_tasks.get_redis_client")
     @patch("packages.webui.chunking_tasks.chunking_tasks_started")
     @patch("packages.webui.chunking_tasks.chunking_active_operations")
-    def test_before_start(self, mock_active_ops, mock_started, mock_redis):
+    def test_before_start(self, mock_active_ops, mock_started, mock_redis) -> None:
         """Test task setup before execution."""
         mock_redis.return_value = MagicMock(spec=Redis)
 
@@ -60,7 +61,7 @@ class TestChunkingTask:
 
     @patch("packages.webui.chunking_tasks.chunking_tasks_completed")
     @patch("packages.webui.chunking_tasks.chunking_active_operations")
-    def test_on_success(self, mock_active_ops, mock_completed):
+    def test_on_success(self, mock_active_ops, mock_completed) -> None:
         """Test successful task completion handling."""
         task = ChunkingTask()
         task._circuit_breaker_failures = 5
@@ -85,7 +86,7 @@ class TestChunkingTask:
 
     @patch("packages.webui.chunking_tasks.chunking_tasks_failed")
     @patch("packages.webui.chunking_tasks.chunking_active_operations")
-    def test_on_failure(self, mock_active_ops, mock_failed):
+    def test_on_failure(self, mock_active_ops, mock_failed) -> None:
         """Test task failure handling."""
         task = ChunkingTask()
         # Mock the request property using property mock
@@ -119,7 +120,7 @@ class TestChunkingTask:
         # Should send to DLQ since retries exceeded
         assert task._redis_client.rpush.called
 
-    def test_circuit_breaker_logic(self):
+    def test_circuit_breaker_logic(self) -> None:
         """Test circuit breaker state transitions."""
         task = ChunkingTask()
 
@@ -139,7 +140,7 @@ class TestChunkingTask:
         assert task._check_circuit_breaker() is True
         assert task._circuit_breaker_state == "half_open"
 
-    def test_graceful_shutdown_handler(self):
+    def test_graceful_shutdown_handler(self) -> None:
         """Test graceful shutdown signal handling."""
         task = ChunkingTask()
         task._handle_shutdown(None, None)
@@ -158,7 +159,7 @@ class TestProcessChunkingOperation:
         mock_redis,
         mock_session,
         mock_pg_manager,
-    ):
+    ) -> None:
         """Test successful chunking operation."""
         # Setup mocks
         mock_redis.return_value = MagicMock(spec=Redis)
@@ -209,7 +210,7 @@ class TestProcessChunkingOperation:
         mock_coll_repo.update_status.assert_called()
 
     @pytest.mark.asyncio()
-    async def test_idempotency_check(self):
+    async def test_idempotency_check(self) -> None:
         """Test idempotent operation handling."""
         # Mock already completed operation
         mock_operation = Mock(
@@ -251,7 +252,7 @@ class TestProcessChunkingOperation:
 
     @pytest.mark.asyncio()
     @patch("packages.webui.chunking_tasks.ChunkingErrorHandler")
-    async def test_partial_failure_handling(self, mock_error_handler_class):
+    async def test_partial_failure_handling(self, mock_error_handler_class) -> None:
         """Test handling of partial failures."""
         # Setup error handler mock
         mock_error_handler = AsyncMock()
@@ -315,7 +316,7 @@ class TestProcessChunkingOperation:
         # Error handler's handle_partial_failure should not be called
         mock_error_handler.handle_partial_failure.assert_not_called()
 
-    def test_soft_time_limit_handling(self):
+    def test_soft_time_limit_handling(self) -> None:
         """Test handling of soft time limit."""
         # Skip this test as it requires complex Celery task binding
         pytest.skip("Testing Celery task soft time limit requires Celery runtime")
@@ -325,7 +326,7 @@ class TestResourceManagement:
     """Test resource monitoring and limits."""
 
     @pytest.mark.asyncio()
-    async def test_check_resource_limits_memory_exhausted(self):
+    async def test_check_resource_limits_memory_exhausted(self) -> None:
         """Test resource limit checking when memory is exhausted."""
         mock_error_handler = AsyncMock()
         mock_error_handler.handle_resource_exhaustion.return_value = Mock(action="fail")
@@ -344,7 +345,7 @@ class TestResourceManagement:
             assert exc_info.value.resource_type == ResourceType.MEMORY
 
     @pytest.mark.asyncio()
-    async def test_check_resource_limits_cpu_high(self):
+    async def test_check_resource_limits_cpu_high(self) -> None:
         """Test resource checking with high CPU usage."""
         mock_error_handler = AsyncMock()
         mock_error_handler.handle_resource_exhaustion.return_value = Mock(
@@ -370,7 +371,7 @@ class TestResourceManagement:
             mock_sleep.assert_called_once_with(5)
 
     @pytest.mark.asyncio()
-    async def test_monitor_resources_memory_limit(self):
+    async def test_monitor_resources_memory_limit(self) -> None:
         """Test monitoring exceeds memory limit."""
         mock_process = Mock(spec=psutil.Process)
         mock_process.memory_info.return_value = Mock(rss=5.1 * 1024**3)  # 5.1GB
@@ -391,7 +392,7 @@ class TestResourceManagement:
         assert exc_info.value.memory_limit == CHUNKING_MEMORY_LIMIT_GB * 1024**3
 
     @pytest.mark.asyncio()
-    async def test_calculate_batch_size(self):
+    async def test_calculate_batch_size(self) -> None:
         """Test adaptive batch size calculation."""
         mock_error_handler = Mock()
         mock_error_handler._calculate_adaptive_batch_size.return_value = 16
@@ -412,7 +413,7 @@ class TestProgressTracking:
     """Test progress updates and monitoring."""
 
     @pytest.mark.asyncio()
-    async def test_send_progress_update(self):
+    async def test_send_progress_update(self) -> None:
         """Test sending progress updates via Redis."""
         mock_redis = AsyncMock()
         mock_redis.xadd = AsyncMock()
@@ -435,7 +436,7 @@ class TestProgressTracking:
         mock_redis.expire.assert_called_once_with("chunking:progress:op-123", 3600)
 
     @pytest.mark.asyncio()
-    async def test_send_progress_update_no_redis(self):
+    async def test_send_progress_update_no_redis(self) -> None:
         """Test progress update handles missing Redis gracefully."""
         # Should not raise exception
         await _send_progress_update(
@@ -451,7 +452,7 @@ class TestSoftTimeout:
     """Test soft timeout handling."""
 
     @pytest.mark.asyncio()
-    async def test_handle_soft_timeout(self):
+    async def test_handle_soft_timeout(self) -> None:
         """Test saving state on soft timeout."""
         mock_task = Mock(spec=ChunkingTask)
         mock_request = Mock(id="task-123")
@@ -480,7 +481,7 @@ class TestRetryAndMonitoring:
     """Test retry and monitoring tasks."""
 
     @patch("packages.webui.chunking_tasks.process_chunking_operation")
-    def test_retry_failed_documents(self, mock_process):
+    def test_retry_failed_documents(self, mock_process) -> None:
         """Test retry task for failed documents."""
         mock_process.apply_async.return_value.get.return_value = {"status": "success"}
 
@@ -498,7 +499,7 @@ class TestRetryAndMonitoring:
         assert result["status"] == "success"
 
     @patch("packages.webui.chunking_tasks.get_redis_client")
-    def test_monitor_dead_letter_queue(self, mock_redis_func):
+    def test_monitor_dead_letter_queue(self, mock_redis_func) -> None:
         """Test DLQ monitoring task."""
         mock_redis = MagicMock(spec=Redis)
         mock_redis_func.return_value = mock_redis
@@ -527,7 +528,7 @@ class TestRetryAndMonitoring:
         assert result["alert"] is True
 
     @patch("packages.webui.chunking_tasks.get_redis_client")
-    def test_monitor_dead_letter_queue_error(self, mock_redis_func):
+    def test_monitor_dead_letter_queue_error(self, mock_redis_func) -> None:
         """Test DLQ monitoring with Redis error."""
         mock_redis = MagicMock(spec=Redis)
         mock_redis_func.return_value = mock_redis
