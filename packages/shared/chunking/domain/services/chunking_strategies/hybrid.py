@@ -10,21 +10,6 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, TypedDict
 
-
-class ContentAnalysis(TypedDict):
-    """Type definition for content analysis results."""
-
-    total_chars: int
-    total_lines: int
-    has_markdown: bool
-    has_code: bool
-    has_structure: bool
-    sentence_count: int
-    avg_sentence_length: float
-    is_mixed: bool
-    sections: list[dict[str, Any]]
-
-
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.services.chunking_strategies.base import (
     ChunkingStrategy,
@@ -43,6 +28,20 @@ from packages.shared.chunking.domain.services.chunking_strategies.semantic impor
 )
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
+
+
+class ContentAnalysis(TypedDict):
+    """Type definition for content analysis results."""
+
+    total_chars: int
+    total_lines: int
+    has_markdown: bool
+    has_code: bool
+    has_structure: bool
+    sentence_count: int
+    avg_sentence_length: float
+    is_mixed: bool
+    sections: list[dict[str, Any]]
 
 
 class HybridChunkingStrategy(ChunkingStrategy):
