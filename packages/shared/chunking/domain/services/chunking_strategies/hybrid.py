@@ -8,6 +8,22 @@ content characteristics to achieve optimal results.
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any, TypedDict
+
+
+class ContentAnalysis(TypedDict):
+    """Type definition for content analysis results."""
+
+    total_chars: int
+    total_lines: int
+    has_markdown: bool
+    has_code: bool
+    has_structure: bool
+    sentence_count: int
+    avg_sentence_length: float
+    is_mixed: bool
+    sections: list[dict[str, Any]]
+
 
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.services.chunking_strategies.base import (
@@ -149,7 +165,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
         # Post-process chunks for consistency
         return self._post_process_chunks(chunks, config)
 
-    def _analyze_content(self, content: str) -> dict:
+    def _analyze_content(self, content: str) -> ContentAnalysis:
         """
         Analyze content characteristics.
 
@@ -159,14 +175,14 @@ class HybridChunkingStrategy(ChunkingStrategy):
         Returns:
             Dictionary with content analysis results
         """
-        analysis = {
+        analysis: ContentAnalysis = {
             "total_chars": len(content),
             "total_lines": content.count("\n") + 1,
             "has_markdown": False,
             "has_code": False,
             "has_structure": False,
             "sentence_count": 0,
-            "avg_sentence_length": 0,
+            "avg_sentence_length": 0.0,
             "is_mixed": False,
             "sections": [],
         }
@@ -281,7 +297,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
         # Default to prose
         return "prose"
 
-    def _select_primary_strategy(self, analysis: dict) -> str:
+    def _select_primary_strategy(self, analysis: ContentAnalysis) -> str:
         """
         Select the primary chunking strategy based on content analysis.
 
@@ -310,7 +326,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
         self,
         content: str,
         config: ChunkConfig,
-        analysis: dict,
+        analysis: ContentAnalysis,
         progress_callback: Callable[[float], None] | None = None,
     ) -> list[Chunk]:
         """

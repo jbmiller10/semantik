@@ -77,8 +77,7 @@ class SimpleChunkingStrategyFactory:
             "hierarchical": {"chunk_sizes": [2048, 512], "chunk_overlap": 50},
             "hybrid": {"primary_strategy": "recursive", "fallback_strategy": "character"},
         }
-        result = defaults.get(strategy_type, {})
-        return result
+        return defaults.get(strategy_type, {})
 
 
 class ChunkingService:
@@ -224,10 +223,7 @@ class ChunkingService:
             # Check if cached result exists
             if cache_result and self.redis_client:
                 # Get strategy string for cache key before conversion
-                if strategy and hasattr(strategy, "value"):
-                    cache_strategy = strategy.value
-                else:
-                    cache_strategy = strategy or "recursive"
+                cache_strategy = strategy.value if strategy and hasattr(strategy, "value") else strategy or "recursive"
                 cache_key = self._generate_cache_key(content, cache_strategy, config)
                 cached = await self.redis_client.get(cache_key)
                 if cached:
