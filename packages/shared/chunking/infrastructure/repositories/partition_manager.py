@@ -52,6 +52,10 @@ class PartitionManager:
 
     Uses 100 direct LIST partitions with PostgreSQL's hashtext() function
     for even distribution of collections across partitions.
+    
+    The chunks table includes a generated column 'partition_key' that stores
+    mod(hashtext(collection_id::text), 100) to enable PRIMARY KEY constraints
+    with partitioning.
     """
 
     PARTITION_COUNT = 100
