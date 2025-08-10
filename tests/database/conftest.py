@@ -1,7 +1,7 @@
 """Database test fixtures and configuration."""
 
 import os
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
@@ -9,37 +9,55 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 # Get database URL from environment or use a test database
-POSTGRES_USER = os.environ.get("POSTGRES_USER", "postgres")
-POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "")
-POSTGRES_DB = os.environ.get("POSTGRES_DB", "semantik_test")
-POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "localhost")
-POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
+# First check if DATABASE_URL is directly provided
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# Construct the database URL
-if POSTGRES_PASSWORD:
-    DATABASE_URL = f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
-else:
-    DATABASE_URL = f"postgresql+asyncpg://{POSTGRES_USER}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+if not DATABASE_URL:
+    # Otherwise construct it from individual components
+    POSTGRES_USER = os.environ.get("POSTGRES_USER", "postgres")
+    POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "postgres")  # Default password for testing
+    POSTGRES_DB = os.environ.get("POSTGRES_DB", "semantik_test")
+    POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "localhost")
+    POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
+
+    # Construct the database URL
+    if POSTGRES_PASSWORD:
+        DATABASE_URL = f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+    else:
+        DATABASE_URL = f"postgresql+asyncpg://{POSTGRES_USER}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
 
 @pytest_asyncio.fixture
 async def db_session() -> AsyncIterator[AsyncSession]:
     """Create a database session for testing.
-    
+
     This fixture creates a real database connection for integration tests.
     It ensures the database has the required migrations applied.
+
+    Requirements:
+    - PostgreSQL must be running (use `make docker-postgres-up`)
+    - Database migrations must be applied (use `poetry run alembic upgrade head`)
     """
+    import sys
+
+    # Print database connection info for debugging
+    print(f"\nConnecting to database: {DATABASE_URL.replace(':' + DATABASE_URL.split(':')[2].split('@')[0] + '@', ':****@')}", file=sys.stderr)
+
     # Create engine
-    engine = create_async_engine(
-        DATABASE_URL,
-        echo=False,
-        pool_pre_ping=True,
-    )
-    
-    async with engine.begin() as conn:
-        # Ensure the partition views exist by running the migration SQL
-        # This is a simplified version that creates the views if they don't exist
-        await conn.execute(text("""
+    try:
+        engine = create_async_engine(
+            DATABASE_URL,
+            echo=False,
+            pool_pre_ping=True,
+        )
+    except Exception as e:
+        pytest.skip(f"Database connection failed: {e}\nMake sure PostgreSQL is running with: make docker-postgres-up")
+
+    try:
+        async with engine.begin() as conn:
+            # Ensure the partition views exist by running the migration SQL
+            # This is a simplified version that creates the views if they don't exist
+            await conn.execute(text("""
             -- Create partition_health view if it doesn't exist
             CREATE OR REPLACE VIEW partition_health AS
             WITH partition_stats AS (
@@ -83,7 +101,7 @@ async def db_session() -> AsyncIterator[AsyncSession]:
             )
             ORDER BY partition_id;
         """))
-        
+
         await conn.execute(text("""
             -- Create partition_distribution view if it doesn't exist
             CREATE OR REPLACE VIEW partition_distribution AS
@@ -128,7 +146,7 @@ async def db_session() -> AsyncIterator[AsyncSession]:
                 END AS distribution_status
             FROM stats;
         """))
-        
+
         # Create the chunks table if it doesn't exist (partitioned table)
         await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS chunks (
@@ -142,7 +160,7 @@ async def db_session() -> AsyncIterator[AsyncSession]:
                 PRIMARY KEY (id, collection_id)
             ) PARTITION BY HASH (collection_id);
         """))
-        
+
         # Create partitions if they don't exist
         for i in range(100):
             partition_name = f"chunks_part_{i:02d}"
@@ -151,13 +169,17 @@ async def db_session() -> AsyncIterator[AsyncSession]:
                 PARTITION OF chunks 
                 FOR VALUES WITH (modulus 100, remainder {i});
             """))
-    
+    except Exception as e:
+        await engine.dispose()
+        pytest.skip(f"Database setup failed: {e}\nMake sure migrations are applied with: poetry run alembic upgrade head")
+
     # Create a new session for the test
-    async with AsyncSession(engine, expire_on_commit=False) as session:
-        yield session
-        await session.rollback()
-    
-    await engine.dispose()
+    try:
+        async with AsyncSession(engine, expire_on_commit=False) as session:
+            yield session
+            await session.rollback()
+    finally:
+        await engine.dispose()
 
 
 @pytest_asyncio.fixture

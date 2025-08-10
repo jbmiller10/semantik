@@ -21,6 +21,8 @@ from packages.shared.chunking.infrastructure.repositories.partition_manager impo
     PartitionManager,
 )
 
+# The db_session fixture from conftest.py in this directory will be automatically discovered by pytest
+
 
 class TestPartitionDistribution:
     """Test even distribution of data across partitions."""
@@ -34,9 +36,7 @@ class TestPartitionDistribution:
         manager = PartitionManager()
 
         # Test with known UUIDs
-        test_cases = [
-            str(uuid.uuid4()) for _ in range(100)
-        ]
+        test_cases = [str(uuid.uuid4()) for _ in range(100)]
 
         for collection_id in test_cases:
             partition_id = manager.get_partition_id(collection_id)
@@ -107,15 +107,11 @@ class TestPartitionDistribution:
 
         # Assert max deviation is within 40% threshold (accounting for hash algorithm differences)
         assert max_deviation < 0.40, (
-            f"Maximum deviation {max_deviation:.2%} exceeds 40% threshold. "
-            f"Distribution may be uneven."
+            f"Maximum deviation {max_deviation:.2%} exceeds 40% threshold. Distribution may be uneven."
         )
 
         # Verify all partitions get some data (statistical test)
-        empty_partitions = sum(
-            1 for i in range(PartitionManager.PARTITION_COUNT)
-            if i not in partition_counts
-        )
+        empty_partitions = sum(1 for i in range(PartitionManager.PARTITION_COUNT) if i not in partition_counts)
 
         # With 10,000 items across 100 partitions, probability of any partition
         # being empty is extremely low
@@ -141,9 +137,7 @@ class TestPartitionDistribution:
 
         # Sequential IDs should still hash to different partitions
         # We expect at least 50 different partitions to be used
-        assert len(partition_counts) > 50, (
-            f"Sequential IDs only distributed to {len(partition_counts)} partitions"
-        )
+        assert len(partition_counts) > 50, f"Sequential IDs only distributed to {len(partition_counts)} partitions"
 
 
 @pytest.mark.asyncio()
@@ -167,7 +161,7 @@ class TestPartitionOperations:
             assert partition.partition_name.startswith("chunks_part_")
             assert partition.row_count >= 0
             assert partition.size_bytes >= 0
-            assert partition.partition_status in ['HOT', 'COLD', 'NORMAL']
+            assert partition.partition_status in ["HOT", "COLD", "NORMAL"]
 
     async def test_distribution_stats(self, db_session: AsyncSession):
         """Test distribution statistics calculation."""
@@ -180,7 +174,7 @@ class TestPartitionOperations:
         assert stats.partitions_used >= 0
         assert stats.empty_partitions >= 0
         assert stats.partitions_used + stats.empty_partitions <= 100
-        assert stats.distribution_status in ['HEALTHY', 'WARNING', 'REBALANCE NEEDED']
+        assert stats.distribution_status in ["HEALTHY", "WARNING", "REBALANCE NEEDED"]
         assert len(stats.recommendations) > 0
 
     async def test_partition_skew_analysis(self, db_session: AsyncSession):
@@ -190,13 +184,13 @@ class TestPartitionOperations:
         # Analyze skew
         skew_data = await manager.analyze_partition_skew(db_session)
 
-        assert 'status' in skew_data
-        assert 'max_skew_ratio' in skew_data
-        assert 'recommendation' in skew_data
+        assert "status" in skew_data
+        assert "max_skew_ratio" in skew_data
+        assert "recommendation" in skew_data
 
         # With empty or minimal data, should be healthy
-        if skew_data['status'] != 'NO_DATA':
-            assert skew_data['status'] in ['HEALTHY', 'WARNING', 'CRITICAL']
+        if skew_data["status"] != "NO_DATA":
+            assert skew_data["status"] in ["HEALTHY", "WARNING", "CRITICAL"]
 
     async def test_verify_partition_assignment(self, db_session: AsyncSession):
         """Test that Python and PostgreSQL partition calculations are computed properly.
@@ -212,19 +206,16 @@ class TestPartitionOperations:
         test_ids = [str(uuid.uuid4()) for _ in range(10)]
 
         for collection_id in test_ids:
-            result = await manager.verify_partition_for_collection(
-                db_session,
-                collection_id
-            )
+            result = await manager.verify_partition_for_collection(db_session, collection_id)
 
             # Both Python and DB should compute partition IDs (they won't match)
-            assert result['collection_id'] == collection_id
-            assert result['python_partition_id'] is not None
-            assert result['db_partition_id'] is not None
+            assert result["collection_id"] == collection_id
+            assert result["python_partition_id"] is not None
+            assert result["db_partition_id"] is not None
 
             # The partition names should be valid
-            assert result['python_partition_name'].startswith("chunks_part_")
-            assert result['db_partition_name'].startswith("chunks_part_")
+            assert result["python_partition_name"].startswith("chunks_part_")
+            assert result["db_partition_name"].startswith("chunks_part_")
 
             # Don't assert they match - they use different hash algorithms!
 
@@ -240,16 +231,15 @@ class TestPartitionPruning:
         collection_id = str(uuid.uuid4())
 
         # Get query plan
-        explain_query = text("""
+        explain_query = text(
+            """
             EXPLAIN (FORMAT JSON, BUFFERS FALSE, ANALYZE FALSE) 
             SELECT * FROM chunks 
             WHERE collection_id = :collection_id
-        """)
-
-        result = await db_session.execute(
-            explain_query,
-            {"collection_id": collection_id}
+        """
         )
+
+        result = await db_session.execute(explain_query, {"collection_id": collection_id})
 
         plan_json = result.scalar()
 
@@ -265,24 +255,18 @@ class TestPartitionPruning:
                 partition_refs.append(partition_name)
 
         # Should reference at most 1 partition (or 0 if optimized away)
-        assert len(partition_refs) <= 1, (
-            f"Query plan references multiple partitions: {partition_refs}"
-        )
+        assert len(partition_refs) <= 1, f"Query plan references multiple partitions: {partition_refs}"
 
     async def test_partition_constraint_exclusion(self, db_session: AsyncSession):
         """
         Verify that PostgreSQL constraint exclusion is working.
         """
         # Check that constraint_exclusion is properly configured
-        result = await db_session.execute(
-            text("SHOW constraint_exclusion")
-        )
+        result = await db_session.execute(text("SHOW constraint_exclusion"))
         setting = result.scalar()
 
         # Should be 'partition' or 'on' for proper partition pruning
-        assert setting in ['partition', 'on'], (
-            f"constraint_exclusion is '{setting}', should be 'partition' or 'on'"
-        )
+        assert setting in ["partition", "on"], f"constraint_exclusion is '{setting}', should be 'partition' or 'on'"
 
 
 @pytest.mark.asyncio()
@@ -299,12 +283,14 @@ class TestPartitionPerformance:
         for _ in range(num_collections):
             collection_id = str(uuid.uuid4())
             for chunk_idx in range(chunks_per_collection):
-                insert_data.append({
-                    'collection_id': collection_id,
-                    'chunk_index': chunk_idx,
-                    'content': f'Test content for chunk {chunk_idx}',
-                    'metadata': {}
-                })
+                insert_data.append(
+                    {
+                        "collection_id": collection_id,
+                        "chunk_index": chunk_idx,
+                        "content": f"Test content for chunk {chunk_idx}",
+                        "metadata": {},
+                    }
+                )
 
         # Measure insert time
         start_time = datetime.now()
@@ -312,11 +298,13 @@ class TestPartitionPerformance:
         # Bulk insert
         for chunk in insert_data:
             await db_session.execute(
-                text("""
+                text(
+                    """
                     INSERT INTO chunks (collection_id, chunk_index, content, metadata)
                     VALUES (:collection_id, :chunk_index, :content, :metadata)
-                """),
-                chunk
+                """
+                ),
+                chunk,
             )
 
         await db_session.commit()
@@ -341,16 +329,13 @@ class TestPartitionPerformance:
         # Insert some test data
         for i in range(10):
             await db_session.execute(
-                text("""
+                text(
+                    """
                     INSERT INTO chunks (collection_id, chunk_index, content, metadata)
                     VALUES (:collection_id, :chunk_index, :content, :metadata)
-                """),
-                {
-                    'collection_id': collection_id,
-                    'chunk_index': i,
-                    'content': f'Test content {i}',
-                    'metadata': {}
-                }
+                """
+                ),
+                {"collection_id": collection_id, "chunk_index": i, "content": f"Test content {i}", "metadata": {}},
             )
         await db_session.commit()
 
@@ -358,12 +343,14 @@ class TestPartitionPerformance:
         start_time = datetime.now()
 
         result = await db_session.execute(
-            text("""
+            text(
+                """
                 SELECT * FROM chunks 
                 WHERE collection_id = :collection_id
                 ORDER BY chunk_index
-            """),
-            {"collection_id": collection_id}
+            """
+            ),
+            {"collection_id": collection_id},
         )
 
         rows = result.fetchall()
@@ -394,10 +381,7 @@ class TestPartitionMonitoring:
         for partition in hot_partitions:
             assert isinstance(partition, PartitionHealth)
             # Hot partitions should have positive deviation or HOT status
-            assert (
-                partition.partition_status == 'HOT' or
-                partition.pct_deviation_from_avg > 10
-            )
+            assert partition.partition_status == "HOT" or partition.pct_deviation_from_avg > 10
 
     async def test_efficiency_report(self, db_session: AsyncSession):
         """Test comprehensive efficiency report generation."""
@@ -407,24 +391,21 @@ class TestPartitionMonitoring:
         report = await manager.get_efficiency_report(db_session)
 
         # Verify report structure
-        assert 'efficiency_score' in report
-        assert 0 <= report['efficiency_score'] <= 100
+        assert "efficiency_score" in report
+        assert 0 <= report["efficiency_score"] <= 100
 
-        assert 'total_partitions' in report
-        assert report['total_partitions'] == 100
+        assert "total_partitions" in report
+        assert report["total_partitions"] == 100
 
-        assert 'distribution_status' in report
-        assert 'recommendations' in report
-        assert isinstance(report['recommendations'], list)
+        assert "distribution_status" in report
+        assert "recommendations" in report
+        assert isinstance(report["recommendations"], list)
 
-        assert 'partition_efficiency' in report
-        efficiency = report['partition_efficiency']
-        assert sum([
-            efficiency['excellent'],
-            efficiency['good'],
-            efficiency['fair'],
-            efficiency['poor']
-        ]) == 1  # Exactly one should be True
+        assert "partition_efficiency" in report
+        efficiency = report["partition_efficiency"]
+        assert (
+            sum([efficiency["excellent"], efficiency["good"], efficiency["fair"], efficiency["poor"]]) == 1
+        )  # Exactly one should be True
 
 
 class TestPartitionMaintenance:
@@ -462,61 +443,11 @@ class TestPartitionMaintenance:
             name_id = int(name_parts[2])
 
             # Should match
-            assert partition_id == name_id, (
-                f"Partition ID {partition_id} doesn't match name ID {name_id}"
-            )
+            assert partition_id == name_id, f"Partition ID {partition_id} doesn't match name ID {name_id}"
 
 
-# Fixtures for database testing
-@pytest.fixture()
-async def db_session():
-    """
-    Provide a database session for testing with proper cleanup.
-    """
-    import os
-
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
-    # Get database URL from environment or use default
-    DATABASE_URL = os.environ.get(
-        "DATABASE_URL",
-        "postgresql+asyncpg://postgres:postgres@localhost:5432/semantik_test"
-    )
-    
-    # Ensure we're using asyncpg driver for async tests
-    if DATABASE_URL.startswith("postgresql://"):
-        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
-    elif DATABASE_URL.startswith("postgresql+psycopg2://"):
-        DATABASE_URL = DATABASE_URL.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
-
-    # Create async engine
-    engine = create_async_engine(
-        DATABASE_URL,
-        echo=False,
-        future=True,
-        pool_pre_ping=True,
-    )
-
-    # Create async session factory using async_sessionmaker
-    async_session = async_sessionmaker(
-        engine,
-        class_=AsyncSession,
-        expire_on_commit=False
-    )
-
-    # Create session
-    async with async_session() as session:
-        # Clean up any existing test data before test
-        await cleanup_chunks_dependencies(session)
-
-        yield session
-
-        # Clean up after test
-        await cleanup_chunks_dependencies(session)
-        await session.rollback()
-
-    # Close engine
-    await engine.dispose()
+# Import the db_session fixture from conftest.py - it creates the necessary views
+# The conftest.py fixture already handles all the setup we need
 
 
 async def cleanup_chunks_dependencies(session: AsyncSession):
@@ -532,7 +463,7 @@ async def cleanup_chunks_dependencies(session: AsyncSession):
         "partition_chunk_distribution",
         "partition_distribution",
         "partition_health",
-        "active_chunking_configs"
+        "active_chunking_configs",
     ]
 
     for view in views_to_drop:

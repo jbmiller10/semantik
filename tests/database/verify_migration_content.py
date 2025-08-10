@@ -22,13 +22,15 @@ def verify_migration_file():
     checks = {
         "Drop old chunks table": "DROP TABLE IF EXISTS chunks CASCADE" in content,
         "Drop partition_mappings": "DROP TABLE IF EXISTS partition_mappings CASCADE" in content,
-        "Create chunks with LIST partitioning": "PARTITION BY LIST (mod(hashtext(collection_id::text), 100))" in content,
+        "Create chunks with LIST partitioning": "PARTITION BY LIST (mod(hashtext(collection_id::text), 100))"
+        in content,
         "Create 100 partitions": "FOR i IN 0..99 LOOP" in content,
         "Partition naming (chunks_part_XX)": "chunks_part_%s" in content,
         "Create indexes on partitions": "CREATE INDEX idx_chunks_part_" in content,
         "Create partition_health view": "CREATE OR REPLACE VIEW partition_health" in content,
         "Create partition_distribution view": "CREATE OR REPLACE VIEW partition_distribution" in content,
-        "Create get_partition_for_collection function": "CREATE OR REPLACE FUNCTION get_partition_for_collection" in content,
+        "Create get_partition_for_collection function": "CREATE OR REPLACE FUNCTION get_partition_for_collection"
+        in content,
         "Create analyze_partition_skew function": "CREATE OR REPLACE FUNCTION analyze_partition_skew" in content,
         "Create collection_chunking_stats view": "CREATE MATERIALIZED VIEW collection_chunking_stats" in content,
         "Uses BIGSERIAL for id": "id BIGSERIAL" in content,
@@ -52,11 +54,11 @@ def verify_migration_file():
     print("STATEMENT COUNTS")
     print("=" * 80)
 
-    drop_count = len(re.findall(r'DROP\s+(?:TABLE|VIEW|FUNCTION|MATERIALIZED VIEW)', content, re.IGNORECASE))
-    create_table_count = len(re.findall(r'CREATE\s+TABLE', content, re.IGNORECASE))
-    create_index_count = len(re.findall(r'CREATE\s+INDEX', content, re.IGNORECASE))
-    create_view_count = len(re.findall(r'CREATE\s+(?:OR\s+REPLACE\s+)?VIEW', content, re.IGNORECASE))
-    create_function_count = len(re.findall(r'CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION', content, re.IGNORECASE))
+    drop_count = len(re.findall(r"DROP\s+(?:TABLE|VIEW|FUNCTION|MATERIALIZED VIEW)", content, re.IGNORECASE))
+    create_table_count = len(re.findall(r"CREATE\s+TABLE", content, re.IGNORECASE))
+    create_index_count = len(re.findall(r"CREATE\s+INDEX", content, re.IGNORECASE))
+    create_view_count = len(re.findall(r"CREATE\s+(?:OR\s+REPLACE\s+)?VIEW", content, re.IGNORECASE))
+    create_function_count = len(re.findall(r"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION", content, re.IGNORECASE))
 
     print(f"DROP statements: {drop_count}")
     print(f"CREATE TABLE statements: {create_table_count}")
@@ -65,7 +67,7 @@ def verify_migration_file():
     print(f"CREATE FUNCTION statements: {create_function_count}")
 
     # Check partition loop details
-    partition_loop = re.search(r'FOR i IN (\d+)\.\.(\d+) LOOP', content)
+    partition_loop = re.search(r"FOR i IN (\d+)\.\.(\d+) LOOP", content)
     if partition_loop:
         start, end = partition_loop.groups()
         partition_count = int(end) - int(start) + 1
@@ -109,5 +111,6 @@ def verify_migration_file():
 
 if __name__ == "__main__":
     import sys
+
     success = verify_migration_file()
     sys.exit(0 if success else 1)

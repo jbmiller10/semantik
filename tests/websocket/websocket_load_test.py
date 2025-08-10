@@ -28,10 +28,7 @@ import aiohttp
 from aiohttp import ClientWebSocketResponse
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -139,11 +136,7 @@ class WebSocketLoadTester:
 
             # Store connection
             self.connections[conn_id] = ws
-            self.stats[conn_id] = ConnectionStats(
-                connection_id=conn_id,
-                user_id=user_id,
-                connected_at=time.time()
-            )
+            self.stats[conn_id] = ConnectionStats(connection_id=conn_id, user_id=user_id, connected_at=time.time())
 
             # Start message handler
             asyncio.create_task(self._handle_messages(conn_id, ws))
@@ -221,10 +214,7 @@ class WebSocketLoadTester:
 
     async def broadcast_to_user(self, user_id: str, message: dict):
         """Send a message to all connections for a user."""
-        user_connections = [
-            conn_id for conn_id, stats in self.stats.items()
-            if stats.user_id == user_id
-        ]
+        user_connections = [conn_id for conn_id, stats in self.stats.items() if stats.user_id == user_id]
 
         for conn_id in user_connections:
             with contextlib.suppress(Exception):
@@ -264,20 +254,13 @@ class WebSocketLoadTester:
             "total_errors": total_errors,
             "avg_latency_ms": statistics.mean(all_latencies) if all_latencies else 0,
             "p50_latency_ms": statistics.median(all_latencies) if all_latencies else 0,
-            "p99_latency_ms": (
-                sorted(all_latencies)[int(len(all_latencies) * 0.99)]
-                if all_latencies else 0
-            ),
+            "p99_latency_ms": (sorted(all_latencies)[int(len(all_latencies) * 0.99)] if all_latencies else 0),
             "max_latency_ms": max(all_latencies) if all_latencies else 0,
         }
 
 
 async def run_load_test(
-    url: str,
-    num_connections: int,
-    duration: int,
-    connections_per_second: int = 100,
-    auth_token: str | None = None
+    url: str, num_connections: int, duration: int, connections_per_second: int = 100, auth_token: str | None = None
 ):
     """Run the load test.
 
@@ -331,10 +314,7 @@ async def run_load_test(
             # Send test messages to random users
             for i in range(min(10, num_connections // 100)):
                 user_id = f"load_test_user_{i}"
-                await tester.broadcast_to_user(
-                    user_id,
-                    {"type": "load_test", "data": f"Test message at {time.time()}"}
-                )
+                await tester.broadcast_to_user(user_id, {"type": "load_test", "data": f"Test message at {time.time()}"})
 
             # Print current stats
             stats = tester.get_stats_summary()
@@ -369,11 +349,11 @@ async def run_load_test(
 
         # Check acceptance criteria
         success = True
-        if final_stats['p99_latency_ms'] > 100:
+        if final_stats["p99_latency_ms"] > 100:
             logger.error(f"FAILED: P99 latency ({final_stats['p99_latency_ms']:.2f}ms) exceeds 100ms requirement")
             success = False
 
-        if final_stats['total_errors'] > num_connections * 0.01:  # Allow 1% error rate
+        if final_stats["total_errors"] > num_connections * 0.01:  # Allow 1% error rate
             logger.error(f"FAILED: Error rate too high ({final_stats['total_errors']} errors)")
             success = False
 
@@ -392,37 +372,15 @@ def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="WebSocket Load Testing Tool")
     parser.add_argument(
-        "--url",
-        default="ws://localhost:8000",
-        help="WebSocket server URL (default: ws://localhost:8000)"
+        "--url", default="ws://localhost:8000", help="WebSocket server URL (default: ws://localhost:8000)"
     )
     parser.add_argument(
-        "--connections",
-        type=int,
-        default=1000,
-        help="Number of concurrent connections (default: 1000)"
+        "--connections", type=int, default=1000, help="Number of concurrent connections (default: 1000)"
     )
-    parser.add_argument(
-        "--duration",
-        type=int,
-        default=60,
-        help="Test duration in seconds (default: 60)"
-    )
-    parser.add_argument(
-        "--rate",
-        type=int,
-        default=100,
-        help="Connections per second during ramp-up (default: 100)"
-    )
-    parser.add_argument(
-        "--token",
-        help="Authentication token for WebSocket connections"
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Enable verbose logging"
-    )
+    parser.add_argument("--duration", type=int, default=60, help="Test duration in seconds (default: 60)")
+    parser.add_argument("--rate", type=int, default=100, help="Connections per second during ramp-up (default: 100)")
+    parser.add_argument("--token", help="Authentication token for WebSocket connections")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
 
     args = parser.parse_args()
 
@@ -436,7 +394,7 @@ def main():
             num_connections=args.connections,
             duration=args.duration,
             connections_per_second=args.rate,
-            auth_token=args.token
+            auth_token=args.token,
         )
     )
 

@@ -492,7 +492,7 @@ class TestRedisFailure:
         manager = ScalableWebSocketManager(redis_url="redis://localhost:6379/15")
 
         # Mock Redis to be None
-        with patch.object(manager, 'redis_client', None):
+        with patch.object(manager, "redis_client", None):
             ws1 = MockWebSocket()
             ws2 = MockWebSocket()
 

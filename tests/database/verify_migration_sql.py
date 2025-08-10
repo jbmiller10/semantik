@@ -17,12 +17,13 @@ def extract_sql_statements():
 
     class MockConnection:
         """Mock connection to capture SQL statements."""
+
         def __init__(self):
             self.statements = []
 
         def execute(self, statement):
             # Extract SQL text
-            if hasattr(statement, 'text'):
+            if hasattr(statement, "text"):
                 sql = str(statement.text)
             else:
                 sql = str(statement)
@@ -30,6 +31,7 @@ def extract_sql_statements():
 
     class MockOp:
         """Mock Alembic op to capture operations."""
+
         def __init__(self):
             self.conn = MockConnection()
 
@@ -38,6 +40,7 @@ def extract_sql_statements():
 
     # Monkey-patch the op module
     import alembic.op as real_op
+
     mock_op = MockOp()
 
     # Temporarily replace op functions

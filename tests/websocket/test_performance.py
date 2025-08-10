@@ -57,7 +57,7 @@ async def manager():
     manager = ScalableWebSocketManager(
         redis_url="redis://localhost:6379/15",
         max_connections_per_user=100,  # Higher limit for load testing
-        max_total_connections=10000
+        max_total_connections=10000,
     )
 
     yield manager
@@ -159,10 +159,7 @@ class TestMessageLatency:
         max_wait = 0.1
         all_received = False
         while not all_received and (time.time() - start_time) < max_wait:
-            all_received = all(
-                any(m.get("type") == "broadcast_test" for m in ws.sent_messages)
-                for ws in connections
-            )
+            all_received = all(any(m.get("type") == "broadcast_test" for m in ws.sent_messages) for ws in connections)
             if not all_received:
                 await asyncio.sleep(0.001)
 
@@ -205,7 +202,8 @@ class TestConnectionScaling:
 
         # Count how many received it
         received_count = sum(
-            1 for ws, _ in connections[:5]  # user_0 appears at indices 0, 20, 40, 60, 80
+            1
+            for ws, _ in connections[:5]  # user_0 appears at indices 0, 20, 40, 60, 80
             if any(m.get("type") == "scale_test" for m in ws.sent_messages)
         )
 
@@ -218,9 +216,7 @@ class TestConnectionScaling:
         """Test handling 1000 concurrent connections."""
         # Use dedicated manager with higher limits
         manager = ScalableWebSocketManager(
-            redis_url="redis://localhost:6379/15",
-            max_connections_per_user=100,
-            max_total_connections=10000
+            redis_url="redis://localhost:6379/15", max_connections_per_user=100, max_total_connections=10000
         )
 
         await manager.startup()
@@ -264,8 +260,7 @@ class TestConnectionScaling:
 
             # Count deliveries
             delivered = sum(
-                1 for ws, _ in connections
-                if any(m.get("type") == "thousand_test" for m in ws.sent_messages)
+                1 for ws, _ in connections if any(m.get("type") == "thousand_test" for m in ws.sent_messages)
             )
 
             # Should deliver to all connections for that user (10 connections)

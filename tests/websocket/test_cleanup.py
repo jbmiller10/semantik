@@ -123,10 +123,7 @@ class TestConnectionCleanup:
         dead_connections = []
         for conn_id, websocket in list(manager.local_connections.items()):
             try:
-                await asyncio.wait_for(
-                    websocket.send_json({"type": "ping"}),
-                    timeout=1.0
-                )
+                await asyncio.wait_for(websocket.send_json({"type": "ping"}), timeout=1.0)
             except Exception:
                 dead_connections.append(conn_id)
 
@@ -157,12 +154,16 @@ class TestConnectionCleanup:
 
         # Both should be subscribed to operation channel
         subscriptions = list(manager.pubsub.channels.keys())
-        operation_channel = f"operation:{operation_id}".encode() if subscriptions and isinstance(subscriptions[0], bytes) else f"operation:{operation_id}"
+        operation_channel = (
+            f"operation:{operation_id}".encode()
+            if subscriptions and isinstance(subscriptions[0], bytes)
+            else f"operation:{operation_id}"
+        )
         assert operation_channel in subscriptions
 
         # Disconnect first connection
         await manager.disconnect(conn1)
-        
+
         # Allow time for unsubscription check to process
         await asyncio.sleep(0.1)
 
@@ -172,7 +173,7 @@ class TestConnectionCleanup:
 
         # Disconnect second connection
         await manager.disconnect(conn2)
-        
+
         # Allow time for unsubscription to be processed
         await asyncio.sleep(0.1)
 
@@ -224,13 +225,9 @@ class TestConnectionCleanup:
             "connection_id": orphaned_conn_id,
             "user_id": "orphaned_user",
             "instance_id": dead_instance_id,
-            "connected_at": time.time()
+            "connected_at": time.time(),
         }
-        await redis_client.hset(
-            "websocket:connections",
-            orphaned_conn_id,
-            json.dumps(orphaned_data)
-        )
+        await redis_client.hset("websocket:connections", orphaned_conn_id, json.dumps(orphaned_data))
         await redis_client.sadd("websocket:user:orphaned_user", orphaned_conn_id)
 
         # Run cleanup task logic
@@ -314,7 +311,7 @@ class TestTTLManagement:
         # Store connection data before simulated crash
         conn_data_before = await redis_client.hget("websocket:connections", conn1)
         assert conn_data_before is not None  # Verify connection was registered
-        
+
         # Simulate a crash by NOT calling shutdown (which would clean up)
         # Instead, just cancel background tasks to stop the manager without cleanup
         if manager.listener_task and not manager.listener_task.done():
@@ -323,11 +320,11 @@ class TestTTLManagement:
             manager.heartbeat_task.cancel()
         if manager.cleanup_task and not manager.cleanup_task.done():
             manager.cleanup_task.cancel()
-        
+
         # Clear local state without Redis cleanup (simulating crash)
         manager.local_connections.clear()
         manager.connection_metadata.clear()
-        
+
         # Also remove the instance key to simulate the instance is dead
         await redis_client.delete(f"websocket:instance:{instance_id}")
 
@@ -431,7 +428,7 @@ class TestGracefulFailover:
             conn_id = await manager.connect(ws, "test_user")
             # If Redis is truly down, this would fail
             # but the manager should handle it gracefully
-        except (AttributeError, TypeError) as e:
+        except (AttributeError, TypeError):
             # Expected when redis_client is None
             assert True  # This is expected behavior
         except Exception as e:
@@ -469,17 +466,11 @@ class TestMemoryManagement:
 
         # Manually add old throttle entries
         old_time = time.time() - 400  # More than 5 minutes old
-        manager._message_throttle = {
-            "old_channel": old_time,
-            "recent_channel": time.time()
-        }
+        manager._message_throttle = {"old_channel": old_time, "recent_channel": time.time()}
 
         # Simulate cleanup logic
         now = time.time()
-        old_entries = [
-            channel for channel, last_time in manager._message_throttle.items()
-            if now - last_time > 300
-        ]
+        old_entries = [channel for channel, last_time in manager._message_throttle.items() if now - last_time > 300]
 
         for channel in old_entries:
             del manager._message_throttle[channel]

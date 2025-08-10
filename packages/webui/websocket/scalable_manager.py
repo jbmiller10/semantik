@@ -34,9 +34,12 @@ class ScalableWebSocketManager:
     - Support for user channels and collection broadcasts
     """
 
-    def __init__(self, redis_url: str = "redis://localhost:6379/2",
-                 max_connections_per_user: int = 10,
-                 max_total_connections: int = 10000) -> None:
+    def __init__(
+        self,
+        redis_url: str = "redis://localhost:6379/2",
+        max_connections_per_user: int = 10,
+        max_total_connections: int = 10000,
+    ) -> None:
         """Initialize the scalable WebSocket manager.
 
         Args:
@@ -123,7 +126,7 @@ class ScalableWebSocketManager:
 
                 except Exception as e:
                     if attempt < max_retries - 1:
-                        wait_time = retry_delay * (2 ** attempt)
+                        wait_time = retry_delay * (2**attempt)
                         logger.warning(f"Failed to start manager: {e}. Retrying in {wait_time:.1f}s...")
                         await asyncio.sleep(wait_time)
                     else:
@@ -181,9 +184,9 @@ class ScalableWebSocketManager:
 
         logger.info(f"ScalableWebSocketManager instance {self.instance_id} shut down complete")
 
-    async def connect(self, websocket: WebSocket, user_id: str,
-                     operation_id: str | None = None,
-                     collection_id: str | None = None) -> str:
+    async def connect(
+        self, websocket: WebSocket, user_id: str, operation_id: str | None = None, collection_id: str | None = None
+    ) -> str:
         """Handle new WebSocket connection.
 
         Args:
@@ -206,10 +209,7 @@ class ScalableWebSocketManager:
             raise ConnectionError("Server connection limit exceeded")
 
         # Check user connection limit
-        user_conn_count = sum(
-            1 for metadata in self.connection_metadata.values()
-            if metadata.get("user_id") == user_id
-        )
+        user_conn_count = sum(1 for metadata in self.connection_metadata.values() if metadata.get("user_id") == user_id)
 
         if user_conn_count >= self.max_connections_per_user:
             logger.warning(f"User {user_id} exceeded connection limit ({self.max_connections_per_user})")
@@ -285,10 +285,7 @@ class ScalableWebSocketManager:
                 await self.redis_client.srem(f"websocket:user:{user_id}", connection_id)
 
                 # Check if user has any remaining connections on this instance
-                remaining_local = any(
-                    m.get("user_id") == user_id
-                    for m in self.connection_metadata.values()
-                )
+                remaining_local = any(m.get("user_id") == user_id for m in self.connection_metadata.values())
 
                 if not remaining_local:
                     # Unsubscribe from user channel if no local connections
@@ -296,25 +293,18 @@ class ScalableWebSocketManager:
 
             # Handle operation channel
             if operation_id:
-                remaining_op = any(
-                    m.get("operation_id") == operation_id
-                    for m in self.connection_metadata.values()
-                )
+                remaining_op = any(m.get("operation_id") == operation_id for m in self.connection_metadata.values())
                 if not remaining_op:
                     await self.pubsub.unsubscribe(f"operation:{operation_id}")
 
             # Handle collection channel
             if collection_id:
-                remaining_coll = any(
-                    m.get("collection_id") == collection_id
-                    for m in self.connection_metadata.values()
-                )
+                remaining_coll = any(m.get("collection_id") == collection_id for m in self.connection_metadata.values())
                 if not remaining_coll:
                     await self.pubsub.unsubscribe(f"collection:{collection_id}")
 
         logger.info(
-            f"WebSocket disconnected: connection={connection_id}, user={user_id}, "
-            f"instance={self.instance_id}"
+            f"WebSocket disconnected: connection={connection_id}, user={user_id}, instance={self.instance_id}"
         )
 
     async def send_to_user(self, user_id: str, message: dict) -> None:
@@ -333,22 +323,23 @@ class ScalableWebSocketManager:
             all_connections = await self.redis_client.smembers(f"websocket:user:{user_id}")
 
             # Filter out local connections
-            remote_connections = [
-                conn_id for conn_id in all_connections
-                if conn_id not in self.local_connections
-            ]
+            remote_connections = [conn_id for conn_id in all_connections if conn_id not in self.local_connections]
 
             if remote_connections:
                 # Publish to Redis for other instances
                 await self.redis_client.publish(
                     f"user:{user_id}",
-                    json.dumps({
-                        "message": message,
-                        "from_instance": self.instance_id,
-                        "timestamp": time.time(),
-                    })
+                    json.dumps(
+                        {
+                            "message": message,
+                            "from_instance": self.instance_id,
+                            "timestamp": time.time(),
+                        }
+                    ),
                 )
-                logger.debug(f"Published message to user {user_id} channel for {len(remote_connections)} remote connections")
+                logger.debug(
+                    f"Published message to user {user_id} channel for {len(remote_connections)} remote connections"
+                )
 
     async def send_to_operation(self, operation_id: str, message: dict) -> None:
         """Send message to all connections watching an operation.
@@ -374,11 +365,13 @@ class ScalableWebSocketManager:
         if self.redis_client:
             await self.redis_client.publish(
                 f"operation:{operation_id}",
-                json.dumps({
-                    "message": message,
-                    "from_instance": self.instance_id,
-                    "timestamp": time.time(),
-                })
+                json.dumps(
+                    {
+                        "message": message,
+                        "from_instance": self.instance_id,
+                        "timestamp": time.time(),
+                    }
+                ),
             )
 
         logger.debug(f"Sent operation message to {local_sent} local connections, published to Redis")
@@ -407,11 +400,13 @@ class ScalableWebSocketManager:
         if self.redis_client:
             await self.redis_client.publish(
                 f"collection:{collection_id}",
-                json.dumps({
-                    "message": message,
-                    "from_instance": self.instance_id,
-                    "timestamp": time.time(),
-                })
+                json.dumps(
+                    {
+                        "message": message,
+                        "from_instance": self.instance_id,
+                        "timestamp": time.time(),
+                    }
+                ),
             )
 
         logger.debug(f"Broadcast to collection {collection_id}: {local_sent} local, published to Redis")
@@ -422,20 +417,18 @@ class ScalableWebSocketManager:
             "instance_id": self.instance_id,
             "started_at": time.time(),
             "hostname": await self._get_hostname(),
-            "pid": asyncio.get_event_loop()._thread_id if hasattr(asyncio.get_event_loop(), '_thread_id') else None,
+            "pid": asyncio.get_event_loop()._thread_id if hasattr(asyncio.get_event_loop(), "_thread_id") else None,
         }
 
         await self.redis_client.setex(
-            f"websocket:instance:{self.instance_id}",
-            60,  # 60 second TTL
-            json.dumps(instance_data)
+            f"websocket:instance:{self.instance_id}", 60, json.dumps(instance_data)  # 60 second TTL
         )
 
         logger.info(f"Registered instance {self.instance_id} in Redis")
 
-    async def _register_connection(self, connection_id: str, user_id: str,
-                                  operation_id: str | None = None,
-                                  collection_id: str | None = None) -> None:
+    async def _register_connection(
+        self, connection_id: str, user_id: str, operation_id: str | None = None, collection_id: str | None = None
+    ) -> None:
         """Register connection in Redis registry."""
         connection_data = {
             "connection_id": connection_id,
@@ -447,11 +440,7 @@ class ScalableWebSocketManager:
         }
 
         # Store in connections hash
-        await self.redis_client.hset(
-            "websocket:connections",
-            connection_id,
-            json.dumps(connection_data)
-        )
+        await self.redis_client.hset("websocket:connections", connection_id, json.dumps(connection_data))
 
         # Add to user set
         await self.redis_client.sadd(f"websocket:user:{user_id}", connection_id)
@@ -569,9 +558,10 @@ class ScalableWebSocketManager:
                 "instance_id": self.instance_id,
                 "connections": len(self.local_connections),
                 "users": len(set(m.get("user_id") for m in self.connection_metadata.values())),
-                "uptime": time.time() - self.connection_metadata.get(
-                    next(iter(self.connection_metadata), ""), {}
-                ).get("connected_at", time.time()),
+                "uptime": time.time()
+                - self.connection_metadata.get(next(iter(self.connection_metadata), ""), {}).get(
+                    "connected_at", time.time()
+                ),
             }
             logger.info(f"Instance stats: {stats}")
 
@@ -583,10 +573,7 @@ class ScalableWebSocketManager:
 
                 # Refresh instance TTL
                 if self.redis_client:
-                    await self.redis_client.expire(
-                        f"websocket:instance:{self.instance_id}",
-                        60
-                    )
+                    await self.redis_client.expire(f"websocket:instance:{self.instance_id}", 60)
 
                     # Update instance stats
                     stats = {
@@ -594,20 +581,13 @@ class ScalableWebSocketManager:
                         "users": len(set(m.get("user_id") for m in self.connection_metadata.values())),
                         "updated_at": time.time(),
                     }
-                    await self.redis_client.hset(
-                        "websocket:instances:stats",
-                        self.instance_id,
-                        json.dumps(stats)
-                    )
+                    await self.redis_client.hset("websocket:instances:stats", self.instance_id, json.dumps(stats))
 
                 # Ping all local connections
                 dead_connections = []
                 for conn_id, websocket in list(self.local_connections.items()):
                     try:
-                        await asyncio.wait_for(
-                            websocket.send_json({"type": "ping"}),
-                            timeout=5.0
-                        )
+                        await asyncio.wait_for(websocket.send_json({"type": "ping"}), timeout=5.0)
                     except Exception:
                         dead_connections.append(conn_id)
 
@@ -617,8 +597,7 @@ class ScalableWebSocketManager:
                     await self.disconnect(conn_id)
 
                 logger.debug(
-                    f"Heartbeat: {len(self.local_connections)} connections, "
-                    f"{len(dead_connections)} removed"
+                    f"Heartbeat: {len(self.local_connections)} connections, {len(dead_connections)} removed"
                 )
 
         except asyncio.CancelledError:
@@ -701,6 +680,7 @@ class ScalableWebSocketManager:
     async def _get_hostname(self) -> str:
         """Get hostname for instance identification."""
         import socket
+
         try:
             return socket.gethostname()
         except Exception:
@@ -716,8 +696,12 @@ class ScalableWebSocketManager:
             "instance_id": self.instance_id,
             "local_connections": len(self.local_connections),
             "unique_users": len(set(m.get("user_id") for m in self.connection_metadata.values())),
-            "operations": len(set(m.get("operation_id") for m in self.connection_metadata.values() if m.get("operation_id"))),
-            "collections": len(set(m.get("collection_id") for m in self.connection_metadata.values() if m.get("collection_id"))),
+            "operations": len(
+                set(m.get("operation_id") for m in self.connection_metadata.values() if m.get("operation_id"))
+            ),
+            "collections": len(
+                set(m.get("collection_id") for m in self.connection_metadata.values() if m.get("collection_id"))
+            ),
         }
 
         # Get global stats from Redis
@@ -730,10 +714,12 @@ class ScalableWebSocketManager:
                 instance_keys = await self.redis_client.keys("websocket:instance:*")
                 active_instances = len(instance_keys)
 
-                stats.update({
-                    "total_connections": total_connections,
-                    "active_instances": active_instances,
-                })
+                stats.update(
+                    {
+                        "total_connections": total_connections,
+                        "active_instances": active_instances,
+                    }
+                )
 
             except Exception as e:
                 logger.warning(f"Failed to get Redis stats: {e}")

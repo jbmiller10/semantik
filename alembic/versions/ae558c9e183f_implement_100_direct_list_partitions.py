@@ -5,6 +5,7 @@ Revises: add_chunking_strategy_cols
 Create Date: 2025-08-10 02:20:06.337096
 
 """
+
 from collections.abc import Sequence
 
 from sqlalchemy import text
@@ -12,8 +13,8 @@ from sqlalchemy import text
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = 'ae558c9e183f'
-down_revision: str | Sequence[str] | None = 'add_chunking_strategy_cols'
+revision: str = "ae558c9e183f"
+down_revision: str | Sequence[str] | None = "add_chunking_strategy_cols"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -28,7 +29,7 @@ def cleanup_chunks_dependencies(conn):
         "partition_chunk_distribution",
         "partition_hot_spots",
         "partition_health_summary",
-        "active_chunking_configs"
+        "active_chunking_configs",
     ]
 
     for view in views_to_drop:
@@ -48,7 +49,7 @@ def cleanup_chunks_dependencies(conn):
         ("analyze_partition_skew", ""),
         ("get_partition_key", "VARCHAR"),
         ("get_partition_for_collection", "VARCHAR"),
-        ("refresh_collection_chunking_stats", "")
+        ("refresh_collection_chunking_stats", ""),
     ]
 
     for func_name, params in functions_to_drop:
@@ -96,7 +97,9 @@ def upgrade() -> None:
     # Step 2: Create trigger function to compute partition key
     # We use a trigger because PostgreSQL doesn't allow expressions or generated columns
     # in partition keys when combined with PRIMARY KEY constraints
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         CREATE OR REPLACE FUNCTION compute_partition_key()
         RETURNS TRIGGER AS $$
         BEGIN
@@ -104,10 +107,14 @@ def upgrade() -> None:
             RETURN NEW;
         END;
         $$ LANGUAGE plpgsql;
-    """))
+    """
+        )
+    )
 
     # Step 3: Create new partitioned table with regular partition_key column
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         CREATE TABLE chunks (
             id BIGSERIAL,
             collection_id VARCHAR NOT NULL,
@@ -127,18 +134,26 @@ def upgrade() -> None:
             FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
             FOREIGN KEY (chunking_config_id) REFERENCES chunking_configs(id)
         ) PARTITION BY LIST (partition_key)
-    """))
+    """
+        )
+    )
 
     # Step 4: Create trigger to auto-compute partition_key on INSERT
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         CREATE TRIGGER set_partition_key
         BEFORE INSERT ON chunks
         FOR EACH ROW
         EXECUTE FUNCTION compute_partition_key();
-    """))
+    """
+        )
+    )
 
     # Step 5: Create 100 partitions with proper indexes
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         DO $$
         DECLARE
             i INT;
@@ -186,12 +201,16 @@ def upgrade() -> None:
                 );
             END LOOP;
         END $$;
-    """))
+    """
+        )
+    )
 
     # Step 6: Create monitoring views for partition health
 
     # Main health monitoring view
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         CREATE OR REPLACE VIEW partition_health AS
         WITH partition_stats AS (
             SELECT 
@@ -233,10 +252,14 @@ def upgrade() -> None:
         FROM partition_stats ps
         CROSS JOIN stats_summary ss
         ORDER BY partition_id;
-    """))
+    """
+        )
+    )
 
     # Distribution analysis view
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         CREATE OR REPLACE VIEW partition_distribution AS
         WITH partition_counts AS (
             SELECT 
@@ -265,10 +288,14 @@ def upgrade() -> None:
             END as distribution_status,
             100 - partitions_used as empty_partitions
         FROM distribution_stats ds;
-    """))
+    """
+        )
+    )
 
     # Step 7: Create helper functions for partition assignment
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         CREATE OR REPLACE FUNCTION get_partition_for_collection(collection_id VARCHAR)
         RETURNS TEXT AS $$
         BEGIN
@@ -283,11 +310,15 @@ def upgrade() -> None:
             RETURN mod(hashtext(collection_id::text), 100);
         END;
         $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
-    """))
+    """
+        )
+    )
 
     # Step 8: Create function to analyze partition skew
     # Note: Old version already dropped in Step 1
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         CREATE OR REPLACE FUNCTION analyze_partition_skew()
         RETURNS TABLE(
             status TEXT,
@@ -346,10 +377,14 @@ def upgrade() -> None:
                 END as recommendation;
         END;
         $$ LANGUAGE plpgsql;
-    """))
+    """
+        )
+    )
 
     # Step 9: Create active chunking configs view (recreate with new structure)
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         CREATE VIEW active_chunking_configs AS
         SELECT
             cc.id,
@@ -370,10 +405,14 @@ def upgrade() -> None:
             GROUP BY chunking_config_id
         ) sub ON cc.id = sub.chunking_config_id
         WHERE cc.use_count > 0;
-    """))
+    """
+        )
+    )
 
     # Step 10: Create materialized view for collection statistics
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         CREATE MATERIALIZED VIEW collection_chunking_stats AS
         SELECT
             c.id,
@@ -388,23 +427,33 @@ def upgrade() -> None:
         LEFT JOIN chunks ch ON c.id = ch.collection_id
         GROUP BY c.id, c.name
         WITH DATA;
-    """))
+    """
+        )
+    )
 
     # Create index on materialized view
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         CREATE UNIQUE INDEX ix_collection_chunking_stats_id 
         ON collection_chunking_stats(id);
-    """))
+    """
+        )
+    )
 
     # Create refresh function for materialized view
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         CREATE OR REPLACE FUNCTION refresh_collection_chunking_stats()
         RETURNS void AS $$
         BEGIN
             REFRESH MATERIALIZED VIEW CONCURRENTLY collection_chunking_stats;
         END;
         $$ LANGUAGE plpgsql;
-    """))
+    """
+        )
+    )
 
 
 def downgrade() -> None:
@@ -421,7 +470,9 @@ def downgrade() -> None:
     conn.execute(text("DROP TABLE IF EXISTS chunks CASCADE"))
 
     # Recreate the original 16-partition structure
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         CREATE TABLE chunks (
             id UUID DEFAULT gen_random_uuid() NOT NULL,
             collection_id VARCHAR NOT NULL,
@@ -440,20 +491,30 @@ def downgrade() -> None:
             FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
             FOREIGN KEY (chunking_config_id) REFERENCES chunking_configs(id)
         ) PARTITION BY HASH (collection_id);
-    """))
+    """
+        )
+    )
 
     # Create 16 partitions
     for i in range(16):
-        conn.execute(text(f"""
+        conn.execute(
+            text(
+                f"""
             CREATE TABLE chunks_p{i} PARTITION OF chunks
             FOR VALUES WITH (MODULUS 16, REMAINDER {i});
-        """))
+        """
+            )
+        )
 
     # Recreate original indexes
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         CREATE INDEX ix_chunks_collection_id_document_id ON chunks(collection_id, document_id);
         CREATE INDEX ix_chunks_document_id ON chunks(document_id);
         CREATE INDEX ix_chunks_chunking_config_id ON chunks(chunking_config_id);
         CREATE INDEX ix_chunks_collection_id_chunk_index ON chunks(collection_id, chunk_index);
         CREATE INDEX ix_chunks_created_at ON chunks(created_at);
-    """))
+    """
+        )
+    )
