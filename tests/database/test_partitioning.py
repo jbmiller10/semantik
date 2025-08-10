@@ -468,19 +468,15 @@ async def cleanup_chunks_dependencies(session: AsyncSession):
     ]
 
     for view in views_to_drop:
-        try:
+        with contextlib.suppress(Exception):
             await session.execute(text(f"DROP VIEW IF EXISTS {view} CASCADE"))
-        except Exception:
-            pass  # Ignore if view doesn't exist
 
     # Drop materialized views
     with contextlib.suppress(Exception):
         await session.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
 
     # Clear any test data from chunks table
-    try:
+    with contextlib.suppress(Exception):
         await session.execute(text("TRUNCATE TABLE chunks CASCADE"))
-    except Exception:
-        pass  # Table might not exist or might have dependencies
 
     await session.commit()

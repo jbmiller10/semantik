@@ -432,6 +432,8 @@ class TestGracefulFailover:
 
         # The manager should handle the connection gracefully even without Redis
         # It will work in degraded mode (no Redis features)
+        connection_id = None
+
         try:
             connection_id = await manager.connect(ws, "test_user")
             # Connection should succeed even without Redis
@@ -443,7 +445,10 @@ class TestGracefulFailover:
         except Exception as e:
             # If any exception occurs, it should be handled gracefully
             # and not be a critical error
-            assert "redis" in str(e).lower() or "connection" in str(e).lower()
+            error_msg = str(e).lower()
+            # Check error is related to redis or connection
+            if "redis" not in error_msg and "connection" not in error_msg:
+                raise  # Re-raise if it's an unexpected error type
 
         # Restore Redis client
         manager.redis_client = original_client
