@@ -40,10 +40,13 @@ def upgrade() -> None:
     conn.execute(text("DROP TABLE IF EXISTS partition_mappings CASCADE"))  # Remove any old mapping tables
     
     # Step 2: Create new partitioned table with optimal structure
+    # Note: We add partition_key as a generated column to work around PostgreSQL's
+    # limitation with PRIMARY KEY on expression-based partitions
     conn.execute(text("""
         CREATE TABLE chunks (
             id BIGSERIAL,
             collection_id UUID NOT NULL,
+            partition_key INTEGER GENERATED ALWAYS AS (mod(hashtext(collection_id::text), 100)) STORED,
             chunk_index INTEGER NOT NULL,
             content TEXT NOT NULL,
             metadata JSONB DEFAULT '{}',
@@ -55,10 +58,10 @@ def upgrade() -> None:
             embedding_vector_id VARCHAR,
             created_at TIMESTAMPTZ DEFAULT NOW(),
             updated_at TIMESTAMPTZ DEFAULT NOW(),
-            PRIMARY KEY (id, collection_id),
+            PRIMARY KEY (id, collection_id, partition_key),
             FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
             FOREIGN KEY (chunking_config_id) REFERENCES chunking_configs(id)
-        ) PARTITION BY LIST (mod(hashtext(collection_id::text), 100))
+        ) PARTITION BY LIST (partition_key)
     """))
     
     # Step 3: Create 100 partitions with proper indexes
@@ -191,12 +194,20 @@ def upgrade() -> None:
         FROM distribution_stats ds;
     """))
     
-    # Step 5: Create helper function for partition assignment
+    # Step 5: Create helper functions for partition assignment
     conn.execute(text("""
         CREATE OR REPLACE FUNCTION get_partition_for_collection(collection_id UUID)
         RETURNS TEXT AS $$
         BEGIN
             RETURN 'chunks_part_' || LPAD((mod(hashtext(collection_id::text), 100))::text, 2, '0');
+        END;
+        $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
+        
+        -- Also create a function to get the partition key directly
+        CREATE OR REPLACE FUNCTION get_partition_key(collection_id UUID)
+        RETURNS INTEGER AS $$
+        BEGIN
+            RETURN mod(hashtext(collection_id::text), 100);
         END;
         $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
     """))
@@ -331,6 +342,7 @@ def downgrade() -> None:
     
     # Drop all new views and functions
     conn.execute(text("DROP FUNCTION IF EXISTS analyze_partition_skew() CASCADE"))
+    conn.execute(text("DROP FUNCTION IF EXISTS get_partition_key(UUID) CASCADE"))
     conn.execute(text("DROP FUNCTION IF EXISTS get_partition_for_collection(UUID) CASCADE"))
     conn.execute(text("DROP VIEW IF EXISTS partition_distribution CASCADE"))
     conn.execute(text("DROP VIEW IF EXISTS partition_health CASCADE"))
