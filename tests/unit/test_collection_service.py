@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Comprehensive test suite for webui/services/collection_service.py
 Tests collection CRUD operations, permission checking, state transitions, and error handling
@@ -18,29 +19,29 @@ class TestCollectionService:
     """Test CollectionService implementation"""
 
     @pytest.fixture()
-    def mock_session(self):
+    def mock_session(self) -> None:
         """Create a mock AsyncSession"""
         session = AsyncMock()
         session.commit = AsyncMock()
         return session
 
     @pytest.fixture()
-    def mock_collection_repo(self):
+    def mock_collection_repo(self) -> None:
         """Create a mock CollectionRepository"""
         return AsyncMock()
 
     @pytest.fixture()
-    def mock_operation_repo(self):
+    def mock_operation_repo(self) -> None:
         """Create a mock OperationRepository"""
         return AsyncMock()
 
     @pytest.fixture()
-    def mock_document_repo(self):
+    def mock_document_repo(self) -> None:
         """Create a mock DocumentRepository"""
         return AsyncMock()
 
     @pytest.fixture()
-    def collection_service(self, mock_session, mock_collection_repo, mock_operation_repo, mock_document_repo):
+    def collection_service(self, mock_session, mock_collection_repo, mock_operation_repo, mock_document_repo) -> None:
         """Create CollectionService with mocked dependencies"""
         return CollectionService(
             db_session=mock_session,
@@ -53,7 +54,7 @@ class TestCollectionService:
     @patch("packages.webui.services.collection_service.celery_app")
     async def test_create_collection_success(
         self, mock_celery_app, collection_service, mock_collection_repo, mock_operation_repo, mock_session
-    ):
+    ) -> None:
         """Test successful collection creation with minimal config"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -133,7 +134,7 @@ class TestCollectionService:
     @patch("packages.webui.services.collection_service.celery_app")
     async def test_create_collection_with_custom_config(
         self, mock_celery_app, collection_service, mock_collection_repo, mock_operation_repo, mock_session
-    ):
+    ) -> None:
         """Test collection creation with custom configuration"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -198,7 +199,7 @@ class TestCollectionService:
         )
 
     @pytest.mark.asyncio()
-    async def test_create_collection_empty_name(self, collection_service):
+    async def test_create_collection_empty_name(self, collection_service) -> None:
         """Test collection creation with empty name"""
         with pytest.raises(ValueError, match="Collection name is required"):
             await collection_service.create_collection(user_id=123, name="")
@@ -207,7 +208,7 @@ class TestCollectionService:
             await collection_service.create_collection(user_id=123, name="   ")
 
     @pytest.mark.asyncio()
-    async def test_create_collection_already_exists(self, collection_service, mock_collection_repo):
+    async def test_create_collection_already_exists(self, collection_service, mock_collection_repo) -> None:
         """Test collection creation when name already exists"""
         mock_collection_repo.create.side_effect = EntityAlreadyExistsError("collection", "Test Collection")
 
@@ -218,7 +219,7 @@ class TestCollectionService:
     @patch("packages.webui.services.collection_service.celery_app")
     async def test_add_source_success(
         self, mock_celery_app, collection_service, mock_collection_repo, mock_operation_repo, mock_session
-    ):
+    ) -> None:
         """Test successful source addition to collection"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -277,7 +278,7 @@ class TestCollectionService:
         assert operation_dict["type"] == OperationType.APPEND.value
 
     @pytest.mark.asyncio()
-    async def test_add_source_invalid_state(self, collection_service, mock_collection_repo):
+    async def test_add_source_invalid_state(self, collection_service, mock_collection_repo) -> None:
         """Test adding source to collection in invalid state"""
         # Mock collection in ERROR state
         mock_collection = Mock(spec=Collection)
@@ -291,7 +292,9 @@ class TestCollectionService:
             )
 
     @pytest.mark.asyncio()
-    async def test_add_source_active_operation(self, collection_service, mock_collection_repo, mock_operation_repo):
+    async def test_add_source_active_operation(
+        self, collection_service, mock_collection_repo, mock_operation_repo
+    ) -> None:
         """Test adding source when another operation is in progress"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -312,7 +315,7 @@ class TestCollectionService:
     @patch("packages.webui.services.collection_service.celery_app")
     async def test_reindex_collection_success(
         self, mock_celery_app, collection_service, mock_collection_repo, mock_operation_repo, mock_session
-    ):
+    ) -> None:
         """Test successful collection reindexing"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -387,7 +390,7 @@ class TestCollectionService:
         mock_celery_app.send_task.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_reindex_collection_processing_state(self, collection_service, mock_collection_repo):
+    async def test_reindex_collection_processing_state(self, collection_service, mock_collection_repo) -> None:
         """Test reindexing collection that is currently processing"""
         # Mock collection in PROCESSING state
         mock_collection = Mock(spec=Collection)
@@ -399,7 +402,7 @@ class TestCollectionService:
             await collection_service.reindex_collection(collection_id="collection-123", user_id=123)
 
     @pytest.mark.asyncio()
-    async def test_reindex_collection_error_state(self, collection_service, mock_collection_repo):
+    async def test_reindex_collection_error_state(self, collection_service, mock_collection_repo) -> None:
         """Test reindexing failed collection"""
         # Mock collection in ERROR state
         mock_collection = Mock(spec=Collection)
@@ -414,7 +417,7 @@ class TestCollectionService:
     @patch("packages.webui.services.collection_service.qdrant_manager")
     async def test_delete_collection_success(
         self, mock_qdrant_manager, collection_service, mock_collection_repo, mock_operation_repo
-    ):
+    ) -> None:
         """Test successful collection deletion"""
         # Mock collection - use string UUID
         mock_collection = Mock(spec=Collection)
@@ -453,7 +456,7 @@ class TestCollectionService:
         mock_collection_repo.delete.assert_called_once_with("collection-123", 123)
 
     @pytest.mark.asyncio()
-    async def test_delete_collection_not_owner(self, collection_service, mock_collection_repo):
+    async def test_delete_collection_not_owner(self, collection_service, mock_collection_repo) -> None:
         """Test deleting collection when not the owner"""
         # Mock collection owned by different user
         mock_collection = Mock(spec=Collection)
@@ -468,7 +471,7 @@ class TestCollectionService:
     @pytest.mark.asyncio()
     async def test_delete_collection_active_operations(
         self, collection_service, mock_collection_repo, mock_operation_repo
-    ):
+    ) -> None:
         """Test deleting collection with active operations"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -488,7 +491,7 @@ class TestCollectionService:
     @patch("packages.webui.services.collection_service.logger")
     async def test_delete_collection_qdrant_failure(
         self, mock_logger, mock_qdrant_manager, collection_service, mock_collection_repo, mock_operation_repo
-    ):
+    ) -> None:
         """Test collection deletion when Qdrant deletion fails"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -519,7 +522,7 @@ class TestCollectionService:
     @patch("packages.webui.services.collection_service.celery_app")
     async def test_remove_source_success(
         self, mock_celery_app, collection_service, mock_collection_repo, mock_operation_repo, mock_session
-    ):
+    ) -> None:
         """Test successful source removal from collection"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -568,7 +571,7 @@ class TestCollectionService:
         assert operation_dict["type"] == OperationType.REMOVE_SOURCE.value
 
     @pytest.mark.asyncio()
-    async def test_remove_source_invalid_state(self, collection_service, mock_collection_repo):
+    async def test_remove_source_invalid_state(self, collection_service, mock_collection_repo) -> None:
         """Test removing source from collection in invalid state"""
         # Mock collection in PENDING state
         mock_collection = Mock(spec=Collection)
@@ -584,7 +587,7 @@ class TestCollectionService:
             )
 
     @pytest.mark.asyncio()
-    async def test_list_for_user(self, collection_service, mock_collection_repo):
+    async def test_list_for_user(self, collection_service, mock_collection_repo) -> None:
         """Test listing collections for user"""
         # Mock collections
         mock_collections = []
@@ -607,7 +610,7 @@ class TestCollectionService:
         mock_collection_repo.list_for_user.assert_called_once_with(user_id=123, offset=0, limit=50, include_public=True)
 
     @pytest.mark.asyncio()
-    async def test_update_collection_success(self, collection_service, mock_collection_repo, mock_session):
+    async def test_update_collection_success(self, collection_service, mock_collection_repo, mock_session) -> None:
         """Test successful collection update"""
         # Mock collection - use integer ID internally
         mock_collection = Mock(spec=Collection)
@@ -640,7 +643,7 @@ class TestCollectionService:
         assert result == updated_collection
 
     @pytest.mark.asyncio()
-    async def test_update_collection_not_owner(self, collection_service, mock_collection_repo):
+    async def test_update_collection_not_owner(self, collection_service, mock_collection_repo) -> None:
         """Test updating collection when not the owner"""
         # Mock collection owned by different user
         mock_collection = Mock(spec=Collection)
@@ -653,7 +656,7 @@ class TestCollectionService:
             await collection_service.update(collection_id="collection-123", user_id=123, updates={"name": "New Name"})
 
     @pytest.mark.asyncio()
-    async def test_list_documents(self, collection_service, mock_collection_repo, mock_document_repo):
+    async def test_list_documents(self, collection_service, mock_collection_repo, mock_document_repo) -> None:
         """Test listing documents in collection"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -684,7 +687,7 @@ class TestCollectionService:
         )
 
     @pytest.mark.asyncio()
-    async def test_list_operations(self, collection_service, mock_collection_repo, mock_operation_repo):
+    async def test_list_operations(self, collection_service, mock_collection_repo, mock_operation_repo) -> None:
         """Test listing operations for collection"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -720,7 +723,7 @@ class TestCollectionServiceErrorHandling:
     """Test error handling in collection service"""
 
     @pytest.fixture()
-    def collection_service(self):
+    def collection_service(self) -> None:
         mock_session = AsyncMock()
         mock_collection_repo = AsyncMock()
         mock_operation_repo = AsyncMock()
@@ -733,7 +736,7 @@ class TestCollectionServiceErrorHandling:
         )
 
     @pytest.mark.asyncio()
-    async def test_handle_repository_error(self, collection_service):
+    async def test_handle_repository_error(self, collection_service) -> None:
         """Test handling of repository errors"""
         collection_service.collection_repo.get_by_uuid_with_permission_check.side_effect = Exception(
             "Database connection error"
@@ -745,7 +748,7 @@ class TestCollectionServiceErrorHandling:
     @pytest.mark.asyncio()
     @patch("packages.webui.services.collection_service.celery_app")
     @patch("packages.webui.services.collection_service.logger")
-    async def test_create_collection_partial_failure(self, mock_logger, mock_celery_app, collection_service):
+    async def test_create_collection_partial_failure(self, mock_logger, mock_celery_app, collection_service) -> None:
         """Test collection creation when operation creation fails"""
         # Mock collection creation success
         mock_collection = Mock(spec=Collection)
@@ -766,7 +769,7 @@ class TestCollectionServiceIntegration:
     @pytest.mark.asyncio()
     @patch("packages.webui.services.collection_service.celery_app")
     @patch("packages.webui.services.collection_service.uuid")
-    async def test_collection_creation_workflow(self, mock_uuid, mock_celery_app):
+    async def test_collection_creation_workflow(self, mock_uuid, mock_celery_app) -> None:
         """Test complete collection creation workflow"""
         # Setup UUIDs
         mock_uuid_obj = Mock()
@@ -845,7 +848,7 @@ class TestCollectionServiceIntegration:
         mock_session.commit.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_collection_state_validation(self):
+    async def test_collection_state_validation(self) -> None:
         """Test collection state validation across operations"""
         # Setup service
         mock_session = AsyncMock()

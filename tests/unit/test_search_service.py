@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Comprehensive test suite for webui/services/search_service.py
 Tests query building, result processing, multi-collection search, and reranking integration
@@ -19,19 +20,19 @@ class TestSearchService:
     """Test SearchService implementation"""
 
     @pytest.fixture()
-    def mock_session(self):
+    def mock_session(self) -> None:
         """Create a mock AsyncSession"""
         session = AsyncMock()
         session.commit = AsyncMock()
         return session
 
     @pytest.fixture()
-    def mock_collection_repo(self):
+    def mock_collection_repo(self) -> None:
         """Create a mock CollectionRepository"""
         return AsyncMock()
 
     @pytest.fixture()
-    def search_service(self, mock_session, mock_collection_repo):
+    def search_service(self, mock_session, mock_collection_repo) -> None:
         """Create SearchService with mocked dependencies"""
         return SearchService(
             db_session=mock_session,
@@ -41,7 +42,7 @@ class TestSearchService:
         )
 
     @pytest.mark.asyncio()
-    async def test_validate_collection_access_success(self, search_service, mock_collection_repo):
+    async def test_validate_collection_access_success(self, search_service, mock_collection_repo) -> None:
         """Test successful collection access validation"""
         # Mock collections
         mock_collections = []
@@ -65,7 +66,7 @@ class TestSearchService:
         assert mock_collection_repo.get_by_uuid_with_permission_check.call_count == 3
 
     @pytest.mark.asyncio()
-    async def test_validate_collection_access_denied(self, search_service, mock_collection_repo):
+    async def test_validate_collection_access_denied(self, search_service, mock_collection_repo) -> None:
         """Test collection access validation when access is denied"""
         # Mock access denied error
         mock_collection_repo.get_by_uuid_with_permission_check.side_effect = AccessDeniedError(
@@ -76,7 +77,7 @@ class TestSearchService:
             await search_service.validate_collection_access(["uuid-1"], user_id=123)
 
     @pytest.mark.asyncio()
-    async def test_validate_collection_not_found(self, search_service, mock_collection_repo):
+    async def test_validate_collection_not_found(self, search_service, mock_collection_repo) -> None:
         """Test collection access validation when collection not found"""
         # Mock not found error
         mock_collection_repo.get_by_uuid_with_permission_check.side_effect = EntityNotFoundError("collection", "uuid-1")
@@ -86,7 +87,7 @@ class TestSearchService:
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.search_service.httpx.AsyncClient")
-    async def test_search_single_collection_success(self, mock_httpx_client, search_service):
+    async def test_search_single_collection_success(self, mock_httpx_client, search_service) -> None:
         """Test successful single collection search"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -134,7 +135,7 @@ class TestSearchService:
         assert request_data["collection"] == "collection_123"
 
     @pytest.mark.asyncio()
-    async def test_search_single_collection_not_ready(self, search_service):
+    async def test_search_single_collection_not_ready(self, search_service) -> None:
         """Test search on collection that is not ready"""
         # Mock collection in PROCESSING state
         mock_collection = Mock(spec=Collection)
@@ -154,7 +155,7 @@ class TestSearchService:
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.search_service.httpx.AsyncClient")
-    async def test_search_single_collection_timeout_retry(self, mock_httpx_client, search_service):
+    async def test_search_single_collection_timeout_retry(self, mock_httpx_client, search_service) -> None:
         """Test search with timeout and successful retry"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -194,7 +195,7 @@ class TestSearchService:
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.search_service.httpx.AsyncClient")
-    async def test_search_single_collection_http_errors(self, mock_httpx_client, search_service):
+    async def test_search_single_collection_http_errors(self, mock_httpx_client, search_service) -> None:
         """Test handling of various HTTP errors"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -236,7 +237,7 @@ class TestSearchService:
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.search_service.httpx.AsyncClient")
-    async def test_search_single_collection_connection_error(self, mock_httpx_client, search_service):
+    async def test_search_single_collection_connection_error(self, mock_httpx_client, search_service) -> None:
         """Test handling of connection errors"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -262,7 +263,9 @@ class TestSearchService:
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.search_service.httpx.AsyncClient")
-    async def test_multi_collection_search_success(self, mock_httpx_client, search_service, mock_collection_repo):
+    async def test_multi_collection_search_success(
+        self, mock_httpx_client, search_service, mock_collection_repo
+    ) -> None:
         """Test successful multi-collection search"""
         # Mock collections
         mock_collections = []
@@ -321,7 +324,9 @@ class TestSearchService:
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.search_service.httpx.AsyncClient")
-    async def test_multi_collection_search_with_errors(self, mock_httpx_client, search_service, mock_collection_repo):
+    async def test_multi_collection_search_with_errors(
+        self, mock_httpx_client, search_service, mock_collection_repo
+    ) -> None:
         """Test multi-collection search with some collections failing"""
         # Mock collections
         mock_collections = []
@@ -370,7 +375,9 @@ class TestSearchService:
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.search_service.httpx.AsyncClient")
-    async def test_multi_collection_search_hybrid_params(self, mock_httpx_client, search_service, mock_collection_repo):
+    async def test_multi_collection_search_hybrid_params(
+        self, mock_httpx_client, search_service, mock_collection_repo
+    ) -> None:
         """Test multi-collection search with hybrid search parameters"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -412,7 +419,9 @@ class TestSearchService:
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.search_service.httpx.AsyncClient")
-    async def test_single_collection_search_method(self, mock_httpx_client, search_service, mock_collection_repo):
+    async def test_single_collection_search_method(
+        self, mock_httpx_client, search_service, mock_collection_repo
+    ) -> None:
         """Test the single_collection_search method (different from search_single_collection)"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -470,7 +479,9 @@ class TestSearchService:
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.search_service.httpx.AsyncClient")
-    async def test_single_collection_search_http_errors(self, mock_httpx_client, search_service, mock_collection_repo):
+    async def test_single_collection_search_http_errors(
+        self, mock_httpx_client, search_service, mock_collection_repo
+    ) -> None:
         """Test single_collection_search error handling"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -503,7 +514,7 @@ class TestSearchService:
             )
 
     @pytest.mark.asyncio()
-    async def test_search_service_custom_timeout(self, mock_session, mock_collection_repo):
+    async def test_search_service_custom_timeout(self, mock_session, mock_collection_repo) -> None:
         """Test SearchService with custom timeout configuration"""
         custom_timeout = httpx.Timeout(timeout=60.0, connect=10.0, read=60.0, write=10.0)
         service = SearchService(
@@ -519,7 +530,7 @@ class TestSearchService:
     @pytest.mark.asyncio()
     @patch("packages.webui.services.search_service.time")
     @patch("packages.webui.services.search_service.httpx.AsyncClient")
-    async def test_search_timing(self, mock_httpx_client, mock_time, search_service, mock_collection_repo):
+    async def test_search_timing(self, mock_httpx_client, mock_time, search_service, mock_collection_repo) -> None:
         """Test that search timing is measured correctly"""
         # Mock time
         mock_time.time.side_effect = [1000.0, 1001.5]  # 1.5 second search
@@ -553,7 +564,7 @@ class TestSearchServiceErrorHandling:
     """Test error handling edge cases"""
 
     @pytest.fixture()
-    def search_service(self):
+    def search_service(self) -> None:
         mock_session = AsyncMock()
         mock_collection_repo = AsyncMock()
         return SearchService(
@@ -563,7 +574,7 @@ class TestSearchServiceErrorHandling:
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.search_service.httpx.AsyncClient")
-    async def test_unexpected_search_error(self, mock_httpx_client, search_service):
+    async def test_unexpected_search_error(self, mock_httpx_client, search_service) -> None:
         """Test handling of unexpected errors during search"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -589,7 +600,7 @@ class TestSearchServiceErrorHandling:
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.search_service.httpx.AsyncClient")
-    async def test_retry_with_extended_timeout(self, mock_httpx_client, search_service):
+    async def test_retry_with_extended_timeout(self, mock_httpx_client, search_service) -> None:
         """Test timeout extension calculation during retry"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
@@ -599,7 +610,7 @@ class TestSearchServiceErrorHandling:
         # Track timeout values used
         timeout_values = []
 
-        async def capture_timeout(*args, **kwargs):  # noqa: ARG001
+        async def capture_timeout(*args, **kwargs) -> None:  # noqa: ARG001
             # Capture the timeout from the AsyncClient context manager
             timeout_values.append(mock_httpx_client.call_args[1].get("timeout"))
             if len(timeout_values) == 1:
@@ -636,7 +647,7 @@ class TestSearchServiceIntegration:
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.search_service.httpx.AsyncClient")
-    async def test_concurrent_collection_searches(self, mock_httpx_client):
+    async def test_concurrent_collection_searches(self, mock_httpx_client) -> None:
         """Test concurrent searches across multiple collections"""
         # Setup service
         mock_session = AsyncMock()
@@ -687,7 +698,7 @@ class TestSearchServiceIntegration:
         assert len(collection_ids) == 5
 
     @pytest.mark.asyncio()
-    async def test_search_result_aggregation(self):
+    async def test_search_result_aggregation(self) -> None:
         """Test proper aggregation and sorting of search results"""
         # Setup service
         mock_session = AsyncMock()

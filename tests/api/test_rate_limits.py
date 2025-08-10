@@ -5,25 +5,28 @@ This module tests rate limiting, circuit breaker pattern, and admin bypass funct
 """
 
 import os
+from collections.abc import Generator
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import status
 from httpx import AsyncClient
+from slowapi.errors import RateLimitExceeded
 
 from packages.webui.config.rate_limits import RateLimitConfig
 from packages.webui.rate_limiter import circuit_breaker
 
 
 @pytest.fixture()
-def mock_redis():
+def mock_redis() -> Generator[Any, None, None]:
     """Mock Redis for rate limiting tests."""
     with patch("packages.webui.rate_limiter.limiter") as mock_limiter:
         yield mock_limiter
 
 
 @pytest.fixture()
-def bypass_token():
+def bypass_token() -> Generator[Any, None, None]:
     """Set and return a bypass token for testing."""
     original = os.environ.get("RATE_LIMIT_BYPASS_TOKEN")
     test_token = "test-bypass-token-123"
@@ -40,7 +43,7 @@ def bypass_token():
 
 
 @pytest.fixture()
-def _reset_circuit_breaker():
+def _reset_circuit_breaker() -> Generator[Any, None, None]:
     """Reset circuit breaker state before each test."""
     circuit_breaker.failure_counts.clear()
     circuit_breaker.blocked_until.clear()
@@ -53,7 +56,7 @@ def _reset_circuit_breaker():
 @pytest.mark.skipif(
     os.getenv("CI", "false").lower() == "true", reason="Requires database connection not available in CI"
 )
-async def test_preview_rate_limit(async_client: AsyncClient, auth_headers: dict):
+async def test_preview_rate_limit(async_client: AsyncClient, auth_headers: dict) -> None:
     """Test that preview endpoint enforces rate limits."""
     # Mock the chunking service
     with patch("packages.webui.services.factory.get_chunking_service") as mock_service:
@@ -101,7 +104,7 @@ async def test_preview_rate_limit(async_client: AsyncClient, auth_headers: dict)
 @pytest.mark.skipif(
     os.getenv("CI", "false").lower() == "true", reason="Requires database connection not available in CI"
 )
-async def test_compare_rate_limit(async_client: AsyncClient, auth_headers: dict):
+async def test_compare_rate_limit(async_client: AsyncClient, auth_headers: dict) -> None:
     """Test that compare endpoint enforces stricter rate limits."""
     # Mock the chunking service
     with patch("packages.webui.services.factory.get_chunking_service") as mock_service:
@@ -143,7 +146,7 @@ async def test_compare_rate_limit(async_client: AsyncClient, auth_headers: dict)
 
 
 @pytest.mark.asyncio()
-async def test_admin_bypass_token(async_client: AsyncClient, bypass_token: str):
+async def test_admin_bypass_token(async_client: AsyncClient, bypass_token: str) -> None:
     """Test that admin bypass token allows unlimited requests."""
     # Mock the chunking service
     with patch("packages.webui.services.factory.get_chunking_service") as mock_service:
@@ -185,15 +188,14 @@ async def test_admin_bypass_token(async_client: AsyncClient, bypass_token: str):
 async def test_circuit_breaker_activation(
     async_client: AsyncClient,
     auth_headers: dict,
-):
+) -> None:
     """Test that circuit breaker activates after consecutive failures."""
     # Mock to simulate rate limit failures
     with patch("packages.webui.rate_limiter.limiter.limit") as mock_limit:
         # Create a mock decorator that always raises RateLimitExceeded
-        def mock_decorator(limit_string):  # noqa: ARG001
-            def decorator(func):  # noqa: ARG001
-                async def wrapper(*args, **kwargs):  # noqa: ARG001
-                    from slowapi.errors import RateLimitExceeded
+        def mock_decorator(limit_string) -> None:  # noqa: ARG001
+            def decorator(func) -> None:  # noqa: ARG001
+                async def wrapper(*args, **kwargs) -> None:  # noqa: ARG001
 
                     raise RateLimitExceeded("Rate limit exceeded")
 
@@ -227,7 +229,7 @@ async def test_circuit_breaker_activation(
 
 
 @pytest.mark.asyncio()
-async def test_rate_limit_headers(async_client: AsyncClient, auth_headers: dict):
+async def test_rate_limit_headers(async_client: AsyncClient, auth_headers: dict) -> None:
     """Test that rate limit headers are included in responses."""
     with patch("packages.webui.services.factory.get_chunking_service") as mock_service:
         mock_service.return_value.preview_chunking = AsyncMock(
@@ -264,7 +266,7 @@ async def test_rate_limit_headers(async_client: AsyncClient, auth_headers: dict)
 @pytest.mark.skipif(
     os.getenv("CI", "false").lower() == "true", reason="Requires database connection not available in CI"
 )
-async def test_process_hourly_rate_limit(async_client: AsyncClient, auth_headers: dict):
+async def test_process_hourly_rate_limit(async_client: AsyncClient, auth_headers: dict) -> None:
     """Test that process endpoint has hourly rate limits."""
     # Mock dependencies
     with (
@@ -302,7 +304,7 @@ async def test_process_hourly_rate_limit(async_client: AsyncClient, auth_headers
 @pytest.mark.asyncio()
 async def test_different_users_have_separate_limits(
     async_client: AsyncClient,
-):
+) -> None:
     """Test that different users have independent rate limits."""
     # Mock the chunking service
     with patch("packages.webui.services.factory.get_chunking_service") as mock_service:
@@ -350,7 +352,7 @@ async def test_different_users_have_separate_limits(
 
 
 @pytest.mark.asyncio()
-async def test_rate_limit_with_redis_failure(async_client: AsyncClient, auth_headers: dict):
+async def test_rate_limit_with_redis_failure(async_client: AsyncClient, auth_headers: dict) -> None:
     """Test fallback behavior when Redis is unavailable."""
     # Simulate Redis connection failure
     with patch("packages.webui.rate_limiter.limiter") as mock_limiter:

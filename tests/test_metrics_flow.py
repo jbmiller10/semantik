@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
+
 """
 Test script to verify metrics are being collected during operation processing
 """
+
 import os
 import sys
 from pathlib import Path
+
+import prometheus_client  # noqa: E402
 
 # Add the project directory to Python path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -13,8 +17,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 os.environ["WEBUI_METRICS_PORT"] = "9092"
 
 # Import after setting environment variables
-import prometheus_client  # noqa: E402
-
 from packages.shared.metrics.prometheus import (  # noqa: E402
     record_chunks_created,
     record_embeddings_generated,

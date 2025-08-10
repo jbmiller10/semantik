@@ -56,7 +56,7 @@ class TestCollectionRepository:
         )
 
     @pytest.mark.asyncio()
-    async def test_create_collection_success(self, repository, mock_session):
+    async def test_create_collection_success(self, repository, mock_session) -> None:
         """Test successful collection creation."""
         # Setup
         user_id = 1
@@ -89,7 +89,7 @@ class TestCollectionRepository:
         mock_session.flush.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_create_collection_name_already_exists(self, repository, mock_session, sample_collection):
+    async def test_create_collection_name_already_exists(self, repository, mock_session, sample_collection) -> None:
         """Test collection creation with duplicate name."""
         # Setup
         mock_result = MagicMock()
@@ -103,7 +103,7 @@ class TestCollectionRepository:
         assert "Failed to create collection" in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_create_collection_validation_errors(self, repository, mock_session):
+    async def test_create_collection_validation_errors(self, repository, mock_session) -> None:
         """Test validation errors during collection creation."""
         # Mock no existing collection
         mock_result = MagicMock()
@@ -130,7 +130,7 @@ class TestCollectionRepository:
         assert "Chunk overlap must be less than chunk size" in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_create_collection_integrity_error(self, repository, mock_session):
+    async def test_create_collection_integrity_error(self, repository, mock_session) -> None:
         """Test handling of integrity errors."""
         # Setup
         mock_result = MagicMock()
@@ -144,7 +144,7 @@ class TestCollectionRepository:
             await repository.create(name="test", owner_id=1)
 
     @pytest.mark.asyncio()
-    async def test_get_by_uuid(self, repository, mock_session, sample_collection):
+    async def test_get_by_uuid(self, repository, mock_session, sample_collection) -> None:
         """Test getting collection by UUID."""
         # Setup
         mock_result = MagicMock()
@@ -159,7 +159,7 @@ class TestCollectionRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_get_by_uuid_not_found(self, repository, mock_session):
+    async def test_get_by_uuid_not_found(self, repository, mock_session) -> None:
         """Test getting non-existent collection by UUID."""
         # Setup
         mock_result = MagicMock()
@@ -173,7 +173,7 @@ class TestCollectionRepository:
         assert result is None
 
     @pytest.mark.asyncio()
-    async def test_get_by_name(self, repository, mock_session, sample_collection):
+    async def test_get_by_name(self, repository, mock_session, sample_collection) -> None:
         """Test getting collection by name."""
         # Setup
         mock_result = MagicMock()
@@ -187,7 +187,7 @@ class TestCollectionRepository:
         assert result == sample_collection
 
     @pytest.mark.asyncio()
-    async def test_get_by_uuid_with_permission_check_owner(self, repository, mock_session, sample_collection):
+    async def test_get_by_uuid_with_permission_check_owner(self, repository, mock_session, sample_collection) -> None:
         """Test getting collection with permission check as owner."""
         # Setup
         mock_result = MagicMock()
@@ -201,7 +201,7 @@ class TestCollectionRepository:
         assert result == sample_collection
 
     @pytest.mark.asyncio()
-    async def test_get_by_uuid_with_permission_check_public(self, repository, mock_session, sample_collection):
+    async def test_get_by_uuid_with_permission_check_public(self, repository, mock_session, sample_collection) -> None:
         """Test getting public collection with permission check."""
         # Setup
         sample_collection.is_public = True
@@ -216,7 +216,7 @@ class TestCollectionRepository:
         assert result == sample_collection
 
     @pytest.mark.asyncio()
-    async def test_get_by_uuid_with_permission_check_denied(self, repository, mock_session, sample_collection):
+    async def test_get_by_uuid_with_permission_check_denied(self, repository, mock_session, sample_collection) -> None:
         """Test permission denied for private collection."""
         # Setup
         sample_collection.is_public = False
@@ -231,7 +231,7 @@ class TestCollectionRepository:
         assert sample_collection.id in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_get_by_uuid_with_permission_check_not_found(self, repository, mock_session):
+    async def test_get_by_uuid_with_permission_check_not_found(self, repository, mock_session) -> None:
         """Test permission check for non-existent collection."""
         # Setup
         mock_result = MagicMock()
@@ -244,7 +244,7 @@ class TestCollectionRepository:
         assert "collection" in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_list_for_user(self, repository, mock_session):
+    async def test_list_for_user(self, repository, mock_session) -> None:
         """Test listing collections for a user."""
         # Setup
         user_id = 1
@@ -266,7 +266,7 @@ class TestCollectionRepository:
         assert total == 3
 
     @pytest.mark.asyncio()
-    async def test_list_for_user_with_pagination(self, repository, mock_session):
+    async def test_list_for_user_with_pagination(self, repository, mock_session) -> None:
         """Test listing collections with pagination."""
         # Setup
         user_id = 1
@@ -288,7 +288,7 @@ class TestCollectionRepository:
         assert total == 10
 
     @pytest.mark.asyncio()
-    async def test_update_status(self, repository, mock_session, sample_collection):
+    async def test_update_status(self, repository, mock_session, sample_collection) -> None:
         """Test updating collection status."""
         # Setup - first call returns collection, second call for update
         mock_result = MagicMock()
@@ -306,7 +306,7 @@ class TestCollectionRepository:
         mock_session.flush.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_update_status_not_found(self, repository, mock_session):
+    async def test_update_status_not_found(self, repository, mock_session) -> None:
         """Test updating status of non-existent collection."""
         # Setup
         mock_result = MagicMock()
@@ -318,7 +318,7 @@ class TestCollectionRepository:
             await repository.update_status("nonexistent", CollectionStatus.READY)
 
     @pytest.mark.asyncio()
-    async def test_update_stats(self, repository, mock_session, sample_collection):
+    async def test_update_stats(self, repository, mock_session, sample_collection) -> None:
         """Test updating collection statistics."""
         # Setup
         mock_result = MagicMock()
@@ -337,7 +337,7 @@ class TestCollectionRepository:
         mock_session.flush.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_update_stats_validation_errors(self, repository, mock_session):
+    async def test_update_stats_validation_errors(self, repository, mock_session) -> None:
         """Test validation errors when updating stats."""
         # Mock get_by_uuid to return None (not needed as validation happens first)
         mock_result = MagicMock()
@@ -360,7 +360,7 @@ class TestCollectionRepository:
         assert "Total size cannot be negative" in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_rename(self, repository, mock_session, sample_collection):
+    async def test_rename(self, repository, mock_session, sample_collection) -> None:
         """Test renaming a collection."""
         # Setup
         # First call checks for existing name
@@ -381,7 +381,7 @@ class TestCollectionRepository:
         mock_session.flush.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_rename_validation_errors(self, repository):
+    async def test_rename_validation_errors(self, repository) -> None:
         """Test validation errors when renaming."""
         # Test empty name
         with pytest.raises(ValidationError) as exc_info:
@@ -394,7 +394,7 @@ class TestCollectionRepository:
         assert "Collection name cannot be empty" in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_rename_duplicate_name(self, repository, mock_session, sample_collection):
+    async def test_rename_duplicate_name(self, repository, mock_session, sample_collection) -> None:
         """Test renaming to an existing name."""
         # Setup - existing collection found
         mock_result = MagicMock()
@@ -406,7 +406,7 @@ class TestCollectionRepository:
             await repository.rename("test-id", "existing-name", 1)
 
     @pytest.mark.asyncio()
-    async def test_rename_not_owner(self, repository, mock_session, sample_collection):
+    async def test_rename_not_owner(self, repository, mock_session, sample_collection) -> None:
         """Test renaming collection by non-owner."""
         # Setup
         # First call - no existing collection with new name
@@ -424,7 +424,7 @@ class TestCollectionRepository:
             await repository.rename(sample_collection.id, "new-name", 999)
 
     @pytest.mark.asyncio()
-    async def test_delete(self, repository, mock_session, sample_collection):
+    async def test_delete(self, repository, mock_session, sample_collection) -> None:
         """Test deleting a collection."""
         # Setup
         mock_result = MagicMock()
@@ -440,7 +440,7 @@ class TestCollectionRepository:
         mock_session.flush.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_delete_not_owner(self, repository, mock_session, sample_collection):
+    async def test_delete_not_owner(self, repository, mock_session, sample_collection) -> None:
         """Test deleting collection by non-owner."""
         # Setup
         mock_result = MagicMock()
@@ -452,7 +452,7 @@ class TestCollectionRepository:
             await repository.delete(sample_collection.id, 999)
 
     @pytest.mark.asyncio()
-    async def test_get_document_count(self, repository, mock_session):
+    async def test_get_document_count(self, repository, mock_session) -> None:
         """Test getting document count for a collection."""
         # Setup
         mock_session.scalar.return_value = 42
@@ -465,7 +465,7 @@ class TestCollectionRepository:
         mock_session.scalar.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_database_operation_error_handling(self, repository, mock_session):
+    async def test_database_operation_error_handling(self, repository, mock_session) -> None:
         """Test handling of unexpected database errors."""
         # Setup
         mock_session.execute.side_effect = Exception("Database connection lost")

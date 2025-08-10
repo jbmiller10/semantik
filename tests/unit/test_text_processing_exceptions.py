@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """Unit tests for text processing exception hierarchy.
 
 This module tests the new exception hierarchy introduced in
@@ -32,7 +33,7 @@ from packages.shared.text_processing.exceptions import (  # Factory errors; Spec
 class TestExceptionHierarchy:
     """Test the exception hierarchy structure and inheritance."""
 
-    def test_base_exception_hierarchy(self):
+    def test_base_exception_hierarchy(self) -> None:
         """Test that all exceptions inherit from TextProcessingError."""
         # Base level exceptions
         assert issubclass(ChunkingError, TextProcessingError)
@@ -57,7 +58,7 @@ class TestExceptionHierarchy:
         for exc_class in all_exceptions:
             assert issubclass(exc_class, TextProcessingError)
 
-    def test_chunking_error_hierarchy(self):
+    def test_chunking_error_hierarchy(self) -> None:
         """Test chunking error inheritance."""
         assert issubclass(ChunkSizeError, ChunkingError)
         assert issubclass(HierarchyDepthError, ChunkingError)
@@ -65,19 +66,19 @@ class TestExceptionHierarchy:
         assert issubclass(ChunkerCreationError, ChunkingError)
         assert issubclass(UnknownStrategyError, ChunkerCreationError)
 
-    def test_embedding_error_hierarchy(self):
+    def test_embedding_error_hierarchy(self) -> None:
         """Test embedding error inheritance."""
         assert issubclass(TransientEmbeddingError, EmbeddingError)
         assert issubclass(PermanentEmbeddingError, EmbeddingError)
         assert issubclass(DimensionMismatchError, EmbeddingError)
         assert issubclass(EmbeddingServiceNotInitializedError, EmbeddingError)
 
-    def test_validation_error_hierarchy(self):
+    def test_validation_error_hierarchy(self) -> None:
         """Test validation error inheritance."""
         assert issubclass(ConfigValidationError, ValidationError)
         assert issubclass(RegexTimeoutError, ValidationError)
 
-    def test_exception_instantiation(self):
+    def test_exception_instantiation(self) -> None:
         """Test that all exceptions can be instantiated with a message."""
         exceptions = [
             TextProcessingError("Base text processing error"),
@@ -102,7 +103,7 @@ class TestExceptionHierarchy:
             assert isinstance(exc, TextProcessingError)
             assert str(exc) == exc.args[0]
 
-    def test_exception_catching_patterns(self):
+    def test_exception_catching_patterns(self) -> None:
         """Test various exception catching patterns."""
         # Test catching specific exceptions
         with pytest.raises(ChunkSizeError):
@@ -119,7 +120,7 @@ class TestExceptionHierarchy:
         with pytest.raises(TextProcessingError):
             raise RegexTimeoutError("Regex timeout")
 
-    def test_transient_vs_permanent_embedding_errors(self):
+    def test_transient_vs_permanent_embedding_errors(self) -> None:
         """Test distinction between transient and permanent embedding errors."""
         # Transient errors (retryable)
         transient_errors = [
@@ -145,7 +146,7 @@ class TestExceptionHierarchy:
             assert isinstance(err, EmbeddingError)
             assert not isinstance(err, TransientEmbeddingError)
 
-    def test_factory_error_hierarchy(self):
+    def test_factory_error_hierarchy(self) -> None:
         """Test factory-related error hierarchy."""
         # UnknownStrategyError is a specific type of ChunkerCreationError
         with pytest.raises(ChunkerCreationError):
@@ -155,7 +156,7 @@ class TestExceptionHierarchy:
         with pytest.raises(ChunkingError):
             raise ChunkerCreationError("Factory initialization failed")
 
-    def test_error_context_preservation(self):
+    def test_error_context_preservation(self) -> None:
         """Test that exceptions preserve context when chained."""
         # Set up the low-level error outside the pytest.raises block
         try:
@@ -174,7 +175,7 @@ class TestExceptionHierarchy:
         assert isinstance(exc_info.value.__cause__, ValueError)
         assert str(exc_info.value.__cause__) == "Invalid dimension: -1"
 
-    def test_exception_type_checking(self):
+    def test_exception_type_checking(self) -> None:
         """Test type checking for exception handling decisions."""
 
         def handle_embedding_error(error: EmbeddingError) -> str:
@@ -194,7 +195,7 @@ class TestExceptionHierarchy:
         assert handle_embedding_error(EmbeddingServiceNotInitializedError()) == "initialize"
         assert handle_embedding_error(DimensionMismatchError("384 != 512")) == "resize"
 
-    def test_exception_messages(self):
+    def test_exception_messages(self) -> None:
         """Test exception message formatting."""
         # Test with single argument
         exc1 = ChunkSizeError("Chunk size 1500 exceeds maximum 1000")
@@ -208,7 +209,7 @@ class TestExceptionHierarchy:
         exc3 = ValidationError()
         assert str(exc3) == ""
 
-    def test_regex_timeout_error_specifics(self):
+    def test_regex_timeout_error_specifics(self) -> None:
         """Test RegexTimeoutError for ReDoS protection."""
         pattern = r"(a+)+"
         text = "a" * 100
@@ -221,7 +222,7 @@ class TestExceptionHierarchy:
         assert "timed out" in str(error)
         assert str(timeout) in str(error)
 
-    def test_security_related_exceptions(self):
+    def test_security_related_exceptions(self) -> None:
         """Test exceptions related to security validations."""
         # Text length validation
         max_length = 5_000_000

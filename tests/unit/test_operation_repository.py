@@ -249,7 +249,7 @@ class TestOperationRepository:
     @pytest.mark.asyncio()
     async def test_get_by_uuid_with_permission_check_public_collection(
         self, repository, mock_session, sample_operation
-    ):
+    ) -> None:
         """Test getting operation on public collection."""
         # Setup
         sample_operation.user_id = 999

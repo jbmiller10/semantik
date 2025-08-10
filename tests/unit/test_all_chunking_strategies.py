@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Comprehensive unit tests for all chunking strategies.
 
@@ -14,6 +15,7 @@ from llama_index.core.embeddings import MockEmbedding
 
 from packages.shared.text_processing.base_chunker import ChunkResult
 from packages.shared.text_processing.chunking_factory import ChunkingFactory
+from packages.shared.text_processing.file_type_detector import FileTypeDetector
 from packages.shared.text_processing.strategies.character_chunker import CharacterChunker
 from packages.shared.text_processing.strategies.hierarchical_chunker import HierarchicalChunker
 from packages.shared.text_processing.strategies.hybrid_chunker import HybridChunker
@@ -63,10 +65,10 @@ class TestChunkingStrategies:
 class Calculator:
     """Simple calculator class."""
 
-    def add(self, a, b):
+    def add(self, a, b) -> None:
         return a + b
 
-    def multiply(self, a, b):
+    def multiply(self, a, b) -> None:
         return a * b
 ''',
         "javascript": """function greet(name) {
@@ -477,7 +479,7 @@ For more complex scenarios...
     async def test_code_file_optimization(self) -> None:
         """Test code files get optimized parameters."""
         code_file = """
-def fibonacci(n):
+def fibonacci(n) -> None:
     \"\"\"Calculate fibonacci number recursively.
 
     Args:
@@ -496,29 +498,29 @@ def fibonacci(n):
 class Calculator:
     \"\"\"A simple calculator class with basic operations.\"\"\"
 
-    def __init__(self):
+    def __init__(self) -> None:
         \"\"\"Initialize the calculator.\"\"\"
         self.history = []
 
-    def add(self, a, b):
+    def add(self, a, b) -> None:
         \"\"\"Add two numbers and store in history.\"\"\"
         result = a + b
         self.history.append(f"{a} + {b} = {result}")
         return result
 
-    def multiply(self, a, b):
+    def multiply(self, a, b) -> None:
         \"\"\"Multiply two numbers and store in history.\"\"\"
         result = a * b
         self.history.append(f"{a} * {b} = {result}")
         return result
 
-    def subtract(self, a, b):
-        \"\"\"Subtract b from a and store in history.\"\"\"
+    def subtract(self, a, b) -> None:
+\"\"\"Subtract b from a and store in history.\"\"\"
         result = a - b
         self.history.append(f"{a} - {b} = {result}")
         return result
 
-    def divide(self, a, b):
+    def divide(self, a, b) -> None:
         \"\"\"Divide a by b and store in history.\"\"\"
         if b == 0:
             raise ValueError("Cannot divide by zero")
@@ -526,11 +528,11 @@ class Calculator:
         self.history.append(f"{a} / {b} = {result}")
         return result
 
-    def get_history(self):
+    def get_history(self) -> None:
         \"\"\"Get the calculation history.\"\"\"
         return self.history.copy()
 
-    def clear_history(self):
+    def clear_history(self) -> None:
         \"\"\"Clear the calculation history.\"\"\"
         self.history.clear()
 
@@ -545,7 +547,6 @@ if __name__ == "__main__":
 """
 
         # Test with .py file type
-        from packages.shared.text_processing.file_type_detector import FileTypeDetector
 
         config = FileTypeDetector.get_optimal_config("test.py")
         assert config["strategy"] == "recursive"

@@ -9,12 +9,17 @@ This test suite covers additional functionality not covered in the main test fil
 """
 
 import asyncio
+import time
+from collections.abc import Generator
 from contextlib import asynccontextmanager
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
 from packages.webui.tasks import (
+    CLEANUP_DELAY_MAX_SECONDS,
+    CLEANUP_DELAY_MIN_SECONDS,
     CeleryTaskWithOperationUpdates,
     _audit_collection_deletion,
     _audit_collection_deletions_batch,
@@ -34,7 +39,7 @@ class TestTaskHelperFunctions:
     """Test various helper functions used in tasks."""
 
     @patch("packages.webui.tasks.test_task")
-    def test_test_task(self, mock_test_task):
+    def test_test_task(self, mock_test_task) -> None:
         """Test the test_task for Celery verification."""
         # Mock the decorated task to return expected result
         mock_test_task.delay.return_value = Mock()
@@ -46,7 +51,7 @@ class TestTaskHelperFunctions:
         assert result["status"] == "success"
         assert result["message"] == "Celery is working!"
 
-    def test_sanitize_audit_details(self):
+    def test_sanitize_audit_details(self) -> None:
         """Test audit details sanitization."""
         # Test with sensitive keys
         details = {
@@ -65,7 +70,7 @@ class TestTaskHelperFunctions:
         assert "secret_key" not in sanitized
         assert sanitized["normal_data"] == "this is fine"
 
-    def test_sanitize_audit_details_nested(self):
+    def test_sanitize_audit_details_nested(self) -> None:
         """Test sanitization of nested structures."""
         details = {
             "config": {
@@ -88,12 +93,12 @@ class TestTaskHelperFunctions:
         assert sanitized["paths"][0] == "/home/~/file.txt"
         assert sanitized["paths"][1] == "/Users/~/Documents/data.csv"
 
-    def test_sanitize_audit_details_none(self):
+    def test_sanitize_audit_details_none(self) -> None:
         """Test sanitization with None input."""
         assert _sanitize_audit_details(None) is None
 
     @patch("shared.text_processing.extraction.extract_and_serialize")
-    def test_extract_and_serialize_thread_safe(self, mock_extract):
+    def test_extract_and_serialize_thread_safe(self, mock_extract) -> None:
         """Test thread-safe text extraction wrapper."""
         # Mock the extraction function to avoid file access
         mock_extract.return_value = [("Test content", {"page": 1})]
@@ -110,7 +115,7 @@ class TestAuditLogging:
 
     @patch("shared.database.models.CollectionAuditLog")
     @patch("shared.database.database.AsyncSessionLocal")
-    async def test_audit_log_operation_success(self, mock_session_local, mock_audit_log_class):
+    async def test_audit_log_operation_success(self, mock_session_local, mock_audit_log_class) -> None:
         """Test successful audit log creation."""
         # Create a proper async session mock
         mock_session = AsyncMock()
@@ -119,7 +124,7 @@ class TestAuditLogging:
 
         # Create an async context manager factory
         @asynccontextmanager
-        async def session_context():
+        async def session_context() -> Generator[Any, None, None]:
             yield mock_session
 
         # Make AsyncSessionLocal return our context manager when called
@@ -155,7 +160,7 @@ class TestAuditLogging:
         mock_session.commit.assert_called_once()
 
     @patch("shared.database.database.AsyncSessionLocal")
-    async def test_audit_log_operation_failure(self, mock_session_local):
+    async def test_audit_log_operation_failure(self, mock_session_local) -> None:
         """Test audit log creation handles failures gracefully."""
         # Setup session to fail
         mock_session = MagicMock()
@@ -174,7 +179,7 @@ class TestAuditLogging:
 
     @patch("shared.database.models.CollectionAuditLog")
     @patch("shared.database.database.AsyncSessionLocal")
-    async def test_audit_collection_deletion(self, mock_session_local, mock_audit_log_class):
+    async def test_audit_collection_deletion(self, mock_session_local, mock_audit_log_class) -> None:
         """Test audit logging for collection deletion."""
         # Setup session mock
         mock_session = MagicMock()
@@ -210,7 +215,7 @@ class TestAuditLogging:
 
     @patch("shared.database.models.CollectionAuditLog")
     @patch("shared.database.database.AsyncSessionLocal")
-    async def test_audit_collection_deletions_batch(self, mock_session_local, mock_audit_log_class):
+    async def test_audit_collection_deletions_batch(self, mock_session_local, mock_audit_log_class) -> None:
         """Test batch audit logging for multiple collection deletions."""
         # Setup session mock
         mock_session = MagicMock()
@@ -225,7 +230,7 @@ class TestAuditLogging:
         # Mock audit log
         mock_audit_logs = []
 
-        def create_audit_log(**kwargs):
+        def create_audit_log(**kwargs) -> None:
             log = MagicMock()
             for k, v in kwargs.items():
                 setattr(log, k, v)
@@ -244,7 +249,7 @@ class TestAuditLogging:
         assert mock_session.add.call_count == 3
         assert mock_session.commit.call_count == 1  # Single commit for batch
 
-    async def test_audit_collection_deletions_batch_empty(self):
+    async def test_audit_collection_deletions_batch_empty(self) -> None:
         """Test batch audit with empty list."""
         # Should handle empty list gracefully
         await _audit_collection_deletions_batch([])
@@ -256,7 +261,7 @@ class TestMetricsRecording:
 
     @patch("shared.database.models.OperationMetrics")
     @patch("shared.database.database.AsyncSessionLocal")
-    async def test_record_operation_metrics_success(self, mock_session_local, mock_metrics_class):
+    async def test_record_operation_metrics_success(self, mock_session_local, mock_metrics_class) -> None:
         """Test successful operation metrics recording."""
         # Setup session mock
         mock_session = MagicMock()
@@ -277,7 +282,7 @@ class TestMetricsRecording:
         # Mock metrics
         mock_metrics = []
 
-        def create_metric(**kwargs):
+        def create_metric(**kwargs) -> None:
             metric = MagicMock()
             for k, v in kwargs.items():
                 setattr(metric, k, v)
@@ -307,14 +312,14 @@ class TestMetricsRecording:
         mock_session.commit.assert_called_once()
 
     @patch("packages.webui.tasks.update_collection_stats")
-    async def test_update_collection_metrics(self, mock_update_stats):
+    async def test_update_collection_metrics(self, mock_update_stats) -> None:
         """Test collection metrics update."""
         await _update_collection_metrics("col-123", 100, 1000, 10240000)
 
         mock_update_stats.assert_called_once_with("col-123", 100, 1000, 10240000)
 
     @patch("packages.webui.tasks.update_collection_stats")
-    async def test_update_collection_metrics_failure(self, mock_update_stats):
+    async def test_update_collection_metrics_failure(self, mock_update_stats) -> None:
         """Test collection metrics update handles failures."""
         mock_update_stats.side_effect = Exception("Metrics error")
 
@@ -327,7 +332,7 @@ class TestActiveCollections:
 
     @patch("shared.database.repositories.collection_repository.CollectionRepository")
     @patch("shared.database.database.AsyncSessionLocal")
-    async def test_get_active_collections(self, mock_session_local, mock_repo_class):
+    async def test_get_active_collections(self, mock_session_local, mock_repo_class) -> None:
         """Test getting active collections from database."""
         # Setup session mock
         mock_session = MagicMock()
@@ -366,11 +371,12 @@ class TestActiveCollections:
         assert "col_1_v2" in active
         assert "vec_col_2" in active
         assert "staging_col_2" in active
-        # col3 has no vector store name, so nothing from it
+
+    # col3 has no vector store name, so nothing from it
 
     @patch("shared.database.repositories.collection_repository.CollectionRepository")
     @patch("shared.database.database.AsyncSessionLocal")
-    async def test_get_active_collections_with_string_staging(self, mock_session_local, mock_repo_class):
+    async def test_get_active_collections_with_string_staging(self, mock_session_local, mock_repo_class) -> None:
         """Test handling of staging info as dict."""
         # Setup session mock
         mock_session = MagicMock()
@@ -405,7 +411,9 @@ class TestStagingCleanup:
     @patch("shared.database.repositories.collection_repository.CollectionRepository")
     @patch("shared.database.database.AsyncSessionLocal")
     @patch("packages.webui.tasks.qdrant_manager")
-    async def test_cleanup_staging_resources_success(self, mock_qdrant_manager, mock_session_local, mock_repo_class):
+    async def test_cleanup_staging_resources_success(
+        self, mock_qdrant_manager, mock_session_local, mock_repo_class
+    ) -> None:
         """Test successful staging cleanup."""
         # Setup session mock
         mock_session = MagicMock()
@@ -443,7 +451,7 @@ class TestStagingCleanup:
 
     @patch("shared.database.repositories.collection_repository.CollectionRepository")
     @patch("shared.database.database.AsyncSessionLocal")
-    async def test_cleanup_staging_resources_no_staging(self, mock_session_local, mock_repo_class):
+    async def test_cleanup_staging_resources_no_staging(self, mock_session_local, mock_repo_class) -> None:
         """Test cleanup when no staging exists."""
         # Setup session mock
         mock_session = MagicMock()
@@ -471,7 +479,7 @@ class TestStagingCleanup:
     @patch("packages.webui.tasks.qdrant_manager")
     async def test_cleanup_staging_resources_qdrant_failure(
         self, mock_qdrant_manager, mock_session_local, mock_repo_class
-    ):
+    ) -> None:
         """Test cleanup continues despite Qdrant failures."""
         # Setup session mock
         mock_session = MagicMock()
@@ -504,7 +512,7 @@ class TestStagingCleanup:
 class TestCleanupOldResults:
     """Test cleanup of old Celery results."""
 
-    def test_cleanup_old_results_default(self):
+    def test_cleanup_old_results_default(self) -> None:
         """Test cleanup with default parameters."""
         result = cleanup_old_results()
 
@@ -513,7 +521,7 @@ class TestCleanupOldResults:
         assert "errors" in result
         assert isinstance(result["errors"], list)
 
-    def test_cleanup_old_results_custom_days(self):
+    def test_cleanup_old_results_custom_days(self) -> None:
         """Test cleanup with custom retention period."""
         result = cleanup_old_results(days_to_keep=30)
 
@@ -521,7 +529,7 @@ class TestCleanupOldResults:
         assert result["celery_results_deleted"] >= 0
 
     @patch("packages.webui.tasks.logger")
-    def test_cleanup_old_results_with_error(self, mock_logger):
+    def test_cleanup_old_results_with_error(self, mock_logger) -> None:
         """Test cleanup handles errors gracefully."""
         with patch("packages.webui.tasks.datetime") as mock_datetime:
             mock_datetime.now.side_effect = Exception("Time error")
@@ -535,7 +543,7 @@ class TestCleanupOldResults:
 class TestConcurrentOperations:
     """Test handling of concurrent operations."""
 
-    async def test_multiple_updaters_same_operation(self):
+    async def test_multiple_updaters_same_operation(self) -> None:
         """Test multiple updaters for same operation don't conflict."""
         operation_id = "shared-op-123"
 
@@ -551,7 +559,7 @@ class TestConcurrentOperations:
             mock_redis.ping = AsyncMock(return_value=True)
 
             # Make from_url return a coroutine that returns the mock redis
-            async def return_mock_redis(*_args, **_kwargs):
+            async def return_mock_redis(*_args, **_kwargs) -> None:
                 return mock_redis
 
             mock_from_url.side_effect = return_mock_redis
@@ -567,14 +575,14 @@ class TestConcurrentOperations:
             assert updates_sent == 3
             assert mock_redis.xadd.call_count >= 3
 
-    async def test_concurrent_operation_processing(self):
+    async def test_concurrent_operation_processing(self) -> None:
         """Test concurrent processing doesn't cause issues."""
         # This is more of a design validation test
         # In practice, Celery handles concurrency at the task level
 
         operation_ids = ["op-1", "op-2", "op-3"]
 
-        async def process_mock_operation(op_id):
+        async def process_mock_operation(op_id) -> None:
             """Mock operation processing."""
             await asyncio.sleep(0.1)  # Simulate work
             return {"operation_id": op_id, "success": True}
@@ -590,7 +598,7 @@ class TestConcurrentOperations:
 class TestEdgeCases:
     """Test edge cases and error conditions."""
 
-    async def test_updater_with_invalid_redis_url(self):
+    async def test_updater_with_invalid_redis_url(self) -> None:
         """Test updater handles invalid Redis URL."""
         updater = CeleryTaskWithOperationUpdates("test-op")
 
@@ -605,9 +613,8 @@ class TestEdgeCases:
                 async with updater:
                     pass
 
-    def test_cleanup_delay_calculation_edge_cases(self):
+    def test_cleanup_delay_calculation_edge_cases(self) -> None:
         """Test cleanup delay calculation edge cases."""
-        from packages.webui.tasks import CLEANUP_DELAY_MAX_SECONDS, CLEANUP_DELAY_MIN_SECONDS
 
         # Negative vector count should use minimum
         assert calculate_cleanup_delay(-100) == CLEANUP_DELAY_MIN_SECONDS
@@ -617,7 +624,7 @@ class TestEdgeCases:
 
     @patch("shared.database.models.CollectionAuditLog")
     @patch("shared.database.database.AsyncSessionLocal")
-    async def test_audit_log_with_circular_reference(self, mock_session_local, mock_audit_log_class):
+    async def test_audit_log_with_circular_reference(self, mock_session_local, mock_audit_log_class) -> None:
         """Test audit logging handles circular references in details."""
         # Setup session mock
         mock_session = MagicMock()
@@ -650,7 +657,7 @@ class TestEdgeCases:
 class TestPerformance:
     """Performance-related tests."""
 
-    async def test_large_batch_updates(self):
+    async def test_large_batch_updates(self) -> None:
         """Test sending many updates in quick succession."""
         updater = CeleryTaskWithOperationUpdates("perf-test-op")
 
@@ -663,7 +670,7 @@ class TestPerformance:
             mock_redis.ping = AsyncMock(return_value=True)
 
             # Make from_url return a coroutine that returns the mock redis
-            async def return_mock_redis(*_args, **_kwargs):
+            async def return_mock_redis(*_args, **_kwargs) -> None:
                 return mock_redis
 
             mock_from_url.side_effect = return_mock_redis
@@ -676,7 +683,7 @@ class TestPerformance:
             # All updates should be sent
             assert mock_redis.xadd.call_count == 100
 
-    def test_sanitize_large_audit_details(self):
+    def test_sanitize_large_audit_details(self) -> None:
         """Test sanitization performance with large nested structure."""
         # Create large nested structure
         large_details = {
@@ -692,7 +699,6 @@ class TestPerformance:
         }
 
         # Should complete in reasonable time
-        import time
 
         start = time.time()
         sanitized = _sanitize_audit_details(large_details)

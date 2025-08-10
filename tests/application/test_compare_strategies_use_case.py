@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+
 """Tests for CompareStrategiesUseCase."""
 
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,7 +19,7 @@ class TestCompareStrategiesUseCase:
     """Test suite for CompareStrategiesUseCase."""
 
     @pytest.fixture()
-    def mock_document_service(self):
+    def mock_document_service(self) -> None:
         """Create mock document service."""
         service = MagicMock()
         service.get_document_content = AsyncMock(
@@ -35,7 +37,7 @@ class TestCompareStrategiesUseCase:
         return service
 
     @pytest.fixture()
-    def mock_strategy_factory(self):
+    def mock_strategy_factory(self) -> None:
         """Create mock strategy factory."""
         factory = MagicMock()
 
@@ -171,7 +173,7 @@ class TestCompareStrategiesUseCase:
             ),
         ]
 
-        def create_strategy_side_effect(strategy_type, config=None):  # noqa: ARG001
+        def create_strategy_side_effect(strategy_type, config=None) -> None:  # noqa: ARG001
             if strategy_type == ChunkingStrategy.CHARACTER.value:
                 return character_strategy
             if strategy_type == ChunkingStrategy.SEMANTIC.value:
@@ -184,7 +186,7 @@ class TestCompareStrategiesUseCase:
         return factory
 
     @pytest.fixture()
-    def mock_metrics_service(self):
+    def mock_metrics_service(self) -> None:
         """Create mock metrics service."""
         service = MagicMock()
         service.record_comparison = AsyncMock()
@@ -195,7 +197,7 @@ class TestCompareStrategiesUseCase:
         return service
 
     @pytest.fixture()
-    def mock_notification_service(self):
+    def mock_notification_service(self) -> None:
         """Create mock notification service."""
         service = MagicMock()
         service.notify_comparison_started = AsyncMock()
@@ -210,7 +212,9 @@ class TestCompareStrategiesUseCase:
         return service
 
     @pytest.fixture()
-    def use_case(self, mock_document_service, mock_strategy_factory, mock_notification_service, mock_metrics_service):
+    def use_case(
+        self, mock_document_service, mock_strategy_factory, mock_notification_service, mock_metrics_service
+    ) -> None:
         """Create use case instance with mocked dependencies."""
         return CompareStrategiesUseCase(
             document_service=mock_document_service,
@@ -220,7 +224,7 @@ class TestCompareStrategiesUseCase:
         )
 
     @pytest.fixture()
-    def valid_request(self):
+    def valid_request(self) -> None:
         """Create a valid comparison request."""
         return CompareStrategiesRequest(
             file_path="/data/documents/compare.txt",
@@ -232,7 +236,7 @@ class TestCompareStrategiesUseCase:
         )
 
     @pytest.mark.asyncio()
-    async def test_successful_strategy_comparison(self, use_case, valid_request):
+    async def test_successful_strategy_comparison(self, use_case, valid_request) -> None:
         """Test successful comparison of multiple strategies."""
         # Act
         response = await use_case.execute(valid_request)
@@ -259,7 +263,7 @@ class TestCompareStrategiesUseCase:
         assert rec_comparison.chunk_count == 4
 
     @pytest.mark.asyncio()
-    async def test_comparison_with_recommendation(self, use_case, valid_request):
+    async def test_comparison_with_recommendation(self, use_case, valid_request) -> None:
         """Test that comparison includes recommendation."""
         # Act
         response = await use_case.execute(valid_request)
@@ -271,7 +275,7 @@ class TestCompareStrategiesUseCase:
         assert len(response.recommendation.reasoning) > 0
 
     @pytest.mark.asyncio()
-    async def test_comparison_with_invalid_strategy(self, use_case):
+    async def test_comparison_with_invalid_strategy(self, use_case) -> None:
         """Test comparison with invalid strategy name."""
         # Arrange
         request = CompareStrategiesRequest(
@@ -290,10 +294,11 @@ class TestCompareStrategiesUseCase:
         assert len(response.comparisons) == 1
         assert response.comparisons[0].strategy_name == "character"
         # Should note the error in response
-        # Since we removed invalid_strategy from the test, this check is no longer needed
+
+    # Since we removed invalid_strategy from the test, this check is no longer needed
 
     @pytest.mark.asyncio()
-    async def test_comparison_with_empty_strategies_list(self, use_case):
+    async def test_comparison_with_empty_strategies_list(self, use_case) -> None:
         """Test comparison with empty strategies list."""
         # Arrange
         request = CompareStrategiesRequest(
@@ -305,7 +310,7 @@ class TestCompareStrategiesUseCase:
             await use_case.execute(request)
 
     @pytest.mark.asyncio()
-    async def test_comparison_metrics_calculation(self, use_case, valid_request):
+    async def test_comparison_metrics_calculation(self, use_case, valid_request) -> None:
         """Test that metrics are properly calculated for each strategy."""
         # Act
         response = await use_case.execute(valid_request)
@@ -323,7 +328,7 @@ class TestCompareStrategiesUseCase:
             assert metric.processing_time_ms >= 0
 
     @pytest.mark.asyncio()
-    async def test_quality_metrics_evaluation(self, use_case, valid_request):
+    async def test_quality_metrics_evaluation(self, use_case, valid_request) -> None:
         """Test that quality metrics are evaluated."""
         # Act
         response = await use_case.execute(valid_request)
@@ -340,7 +345,7 @@ class TestCompareStrategiesUseCase:
                 assert 0 <= value <= 1
 
     @pytest.mark.asyncio()
-    async def test_performance_comparison(self, use_case, valid_request):
+    async def test_performance_comparison(self, use_case, valid_request) -> None:
         """Test performance comparison between strategies."""
         # Act
         with patch("time.perf_counter") as mock_time:
@@ -353,7 +358,7 @@ class TestCompareStrategiesUseCase:
         assert len(set(processing_times)) > 1  # Should have different times
 
     @pytest.mark.asyncio()
-    async def test_sample_chunks_included(self, use_case, valid_request):
+    async def test_sample_chunks_included(self, use_case, valid_request) -> None:
         """Test that sample chunks are included in comparison."""
         # Act
         response = await use_case.execute(valid_request)
@@ -371,7 +376,7 @@ class TestCompareStrategiesUseCase:
                 # assert chunk.end_position > chunk.start_position
 
     @pytest.mark.asyncio()
-    async def test_comparison_with_custom_parameters(self, use_case):
+    async def test_comparison_with_custom_parameters(self, use_case) -> None:
         """Test comparison with custom strategy parameters."""
         # Arrange
         request = CompareStrategiesRequest(
@@ -392,10 +397,9 @@ class TestCompareStrategiesUseCase:
         assert response.comparisons[0].parameters["similarity_threshold"] == 0.9
 
     @pytest.mark.asyncio()
-    async def test_parallel_strategy_execution(self, use_case, valid_request):
+    async def test_parallel_strategy_execution(self, use_case, valid_request) -> None:
         """Test that strategies are executed in parallel for efficiency."""
         # Act
-        import time
 
         start_time = time.time()
         response = await use_case.execute(valid_request)
@@ -408,7 +412,7 @@ class TestCompareStrategiesUseCase:
         # Execution time should be reasonable (not 3x single strategy time)
 
     @pytest.mark.asyncio()
-    async def test_document_not_found(self, use_case, valid_request):
+    async def test_document_not_found(self, use_case, valid_request) -> None:
         """Test handling of document not found error."""
         # Arrange
         use_case.document_service.load_partial.side_effect = FileNotFoundError("Document not found")
@@ -420,7 +424,7 @@ class TestCompareStrategiesUseCase:
         assert "Document not found" in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_recommendation_logic(self, use_case, valid_request):
+    async def test_recommendation_logic(self, use_case, valid_request) -> None:
         """Test recommendation logic based on comparison results."""
         # Act
         response = await use_case.execute(valid_request)
@@ -443,7 +447,7 @@ class TestCompareStrategiesUseCase:
         )
 
     @pytest.mark.asyncio()
-    async def test_metrics_recording(self, use_case, valid_request):
+    async def test_metrics_recording(self, use_case, valid_request) -> None:
         """Test that comparison metrics are recorded."""
         # Act
         _ = await use_case.execute(valid_request)
@@ -454,7 +458,7 @@ class TestCompareStrategiesUseCase:
         assert use_case.metrics_service.record_strategy_performance.call_count == 3
 
     @pytest.mark.asyncio()
-    async def test_comparison_with_large_document(self, use_case, valid_request):
+    async def test_comparison_with_large_document(self, use_case, valid_request) -> None:
         """Test comparison with large document (uses sampling)."""
         # Arrange
         # Simulate that load_partial returned a sample of the document
@@ -472,7 +476,7 @@ class TestCompareStrategiesUseCase:
         assert response.sample_size_bytes <= valid_request.sample_size_kb * 1024
 
     @pytest.mark.asyncio()
-    async def test_edge_case_single_strategy(self, use_case):
+    async def test_edge_case_single_strategy(self, use_case) -> None:
         """Test comparison with single strategy."""
         # Arrange
         request = CompareStrategiesRequest(
@@ -493,7 +497,7 @@ class TestCompareStrategiesUseCase:
         assert response.recommendation is not None
 
     @pytest.mark.asyncio()
-    async def test_comparison_result_sorting(self, use_case, valid_request):
+    async def test_comparison_result_sorting(self, use_case, valid_request) -> None:
         """Test that comparison results are sorted by quality."""
         # Act
         response = await use_case.execute(valid_request)

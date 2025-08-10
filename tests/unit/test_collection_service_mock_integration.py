@@ -12,7 +12,7 @@ class TestCollectionServiceMockIntegration:
     """Test CollectionService with mocked dependencies."""
 
     @pytest.mark.asyncio()
-    async def test_collection_deletion_via_service_commits_transaction(self):
+    async def test_collection_deletion_via_service_commits_transaction(self) -> None:
         """Test that CollectionService.delete_collection properly commits the transaction."""
         # Mock database session
         db_session = AsyncMock()
@@ -56,7 +56,7 @@ class TestCollectionServiceMockIntegration:
             mock_qdrant_client.delete_collection.assert_called_once_with("test_vector_store")
 
     @pytest.mark.asyncio()
-    async def test_collection_deletion_handles_missing_qdrant_collection(self):
+    async def test_collection_deletion_handles_missing_qdrant_collection(self) -> None:
         """Test that deletion succeeds even if Qdrant collection doesn't exist."""
         # Mock database session
         db_session = AsyncMock()
@@ -92,7 +92,7 @@ class TestCollectionServiceMockIntegration:
             db_session.commit.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_collection_deletion_fails_with_active_operations(self):
+    async def test_collection_deletion_fails_with_active_operations(self) -> None:
         """Test that collection cannot be deleted while operations are active."""
         # Mock database session
         db_session = AsyncMock()
@@ -121,7 +121,7 @@ class TestCollectionServiceMockIntegration:
         db_session.commit.assert_not_called()
 
     @pytest.mark.asyncio()
-    async def test_collection_deletion_requires_owner_permission(self):
+    async def test_collection_deletion_requires_owner_permission(self) -> None:
         """Test that only the owner can delete a collection."""
         # Mock database session
         db_session = AsyncMock()

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+
 """Tests for CancelOperationUseCase."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -15,7 +17,7 @@ class TestCancelOperationUseCase:
     """Test suite for CancelOperationUseCase."""
 
     @pytest.fixture()
-    def mock_repository(self):
+    def mock_repository(self) -> None:
         """Create mock chunking operation repository."""
         repo = AsyncMock()
         repo.get_by_id = AsyncMock()
@@ -23,7 +25,7 @@ class TestCancelOperationUseCase:
         return repo
 
     @pytest.fixture()
-    def mock_unit_of_work(self, mock_repository):
+    def mock_unit_of_work(self, mock_repository) -> None:
         """Create mock unit of work."""
         uow = AsyncMock()
         uow.__aenter__ = AsyncMock(return_value=uow)
@@ -34,7 +36,7 @@ class TestCancelOperationUseCase:
         return uow
 
     @pytest.fixture()
-    def mock_notification_service(self):
+    def mock_notification_service(self) -> None:
         """Create mock notification service."""
         service = AsyncMock()
         service.notify_operation_cancelled = AsyncMock()
@@ -45,12 +47,12 @@ class TestCancelOperationUseCase:
     # as they are not used by the actual CancelOperationUseCase
 
     @pytest.fixture()
-    def use_case(self, mock_unit_of_work, mock_notification_service):
+    def use_case(self, mock_unit_of_work, mock_notification_service) -> None:
         """Create use case instance with mocked dependencies."""
         return CancelOperationUseCase(unit_of_work=mock_unit_of_work, notification_service=mock_notification_service)
 
     @pytest.fixture()
-    def processing_operation(self):
+    def processing_operation(self) -> None:
         """Create an operation in PROCESSING state."""
         operation = MagicMock()
         operation.id = str(uuid4())
@@ -60,7 +62,7 @@ class TestCancelOperationUseCase:
         return operation
 
     @pytest.fixture()
-    def pending_operation(self):
+    def pending_operation(self) -> None:
         """Create an operation in PENDING state."""
         operation = MagicMock()
         operation.id = str(uuid4())
@@ -70,14 +72,14 @@ class TestCancelOperationUseCase:
         return operation
 
     @pytest.fixture()
-    def valid_request(self, processing_operation):
+    def valid_request(self, processing_operation) -> None:
         """Create a valid cancel request."""
         return CancelOperationRequest(operation_id=processing_operation.id, reason="User requested cancellation")
 
     @pytest.mark.asyncio()
     async def test_successful_cancellation_processing_operation(
         self, use_case, valid_request, processing_operation, mock_unit_of_work
-    ):
+    ) -> None:
         """Test successful cancellation of a processing operation."""
         # Arrange
         mock_unit_of_work.operations = AsyncMock()
@@ -105,7 +107,9 @@ class TestCancelOperationUseCase:
         use_case.notification_service.notify_operation_cancelled.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_successful_cancellation_pending_operation(self, use_case, pending_operation, mock_unit_of_work):
+    async def test_successful_cancellation_pending_operation(
+        self, use_case, pending_operation, mock_unit_of_work
+    ) -> None:
         """Test successful cancellation of a pending operation."""
         # Arrange
         request = CancelOperationRequest(
@@ -129,7 +133,7 @@ class TestCancelOperationUseCase:
         assert response.cancellation_reason == "Cancelled before processing started"
 
     @pytest.mark.asyncio()
-    async def test_cancellation_without_reason(self, use_case, processing_operation, mock_unit_of_work):
+    async def test_cancellation_without_reason(self, use_case, processing_operation, mock_unit_of_work) -> None:
         """Test cancellation without providing a reason."""
         # Arrange
         request = CancelOperationRequest(operation_id=processing_operation.id)
@@ -150,7 +154,7 @@ class TestCancelOperationUseCase:
         assert response.cancellation_reason is None
 
     @pytest.mark.asyncio()
-    async def test_cancel_operation_not_found(self, use_case, valid_request, mock_unit_of_work):
+    async def test_cancel_operation_not_found(self, use_case, valid_request, mock_unit_of_work) -> None:
         """Test cancellation of non-existent operation."""
         # Arrange
         mock_unit_of_work.operations = AsyncMock()
@@ -162,7 +166,7 @@ class TestCancelOperationUseCase:
         use_case.unit_of_work.rollback.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_cancel_completed_operation_fails(self, use_case, mock_unit_of_work):
+    async def test_cancel_completed_operation_fails(self, use_case, mock_unit_of_work) -> None:
         """Test that cancelling a completed operation fails."""
         # Arrange
         completed_operation = MagicMock()
@@ -179,7 +183,7 @@ class TestCancelOperationUseCase:
         use_case.unit_of_work.rollback.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_cancel_failed_operation_fails(self, use_case, mock_unit_of_work):
+    async def test_cancel_failed_operation_fails(self, use_case, mock_unit_of_work) -> None:
         """Test that cancelling a failed operation fails."""
         # Arrange
         failed_operation = MagicMock()
@@ -195,7 +199,7 @@ class TestCancelOperationUseCase:
             await use_case.execute(request)
 
     @pytest.mark.asyncio()
-    async def test_cancel_already_cancelled_operation(self, use_case, mock_unit_of_work):
+    async def test_cancel_already_cancelled_operation(self, use_case, mock_unit_of_work) -> None:
         """Test cancelling an already cancelled operation."""
         # Arrange
         cancelled_operation = MagicMock()
@@ -213,7 +217,7 @@ class TestCancelOperationUseCase:
     @pytest.mark.asyncio()
     async def test_task_manager_cancellation_failure(
         self, use_case, valid_request, processing_operation, mock_unit_of_work
-    ):
+    ) -> None:
         """Test handling when task manager fails to cancel task."""
         # Arrange
         mock_unit_of_work.operations = AsyncMock()
@@ -235,7 +239,7 @@ class TestCancelOperationUseCase:
     @pytest.mark.asyncio()
     async def test_notification_failure_does_not_affect_cancellation(
         self, use_case, valid_request, processing_operation, mock_unit_of_work
-    ):
+    ) -> None:
         """Test that notification failure doesn't prevent cancellation."""
         # Arrange
         mock_unit_of_work.operations = AsyncMock()
@@ -262,7 +266,7 @@ class TestCancelOperationUseCase:
     @pytest.mark.asyncio()
     async def test_event_publishing_failure_does_not_affect_cancellation(
         self, use_case, valid_request, processing_operation, mock_unit_of_work
-    ):
+    ) -> None:
         """Test that event publishing failure doesn't prevent cancellation."""
         # Arrange
         mock_unit_of_work.operations = AsyncMock()
@@ -278,7 +282,7 @@ class TestCancelOperationUseCase:
         # but notify_error fail to test partial failure
         call_count = [0]
 
-        def notify_error_side_effect(*_args, **_kwargs):
+        def notify_error_side_effect(*_args, **_kwargs) -> None:
             call_count[0] += 1
             if call_count[0] == 2:  # Fail on the second call (after successful commit)
                 # Don't raise, just log would have failed
@@ -298,7 +302,7 @@ class TestCancelOperationUseCase:
     @pytest.mark.asyncio()
     async def test_transaction_rollback_on_error(
         self, use_case, valid_request, processing_operation, mock_unit_of_work
-    ):
+    ) -> None:
         """Test that transaction is rolled back on error."""
         # Arrange
         mock_unit_of_work.operations = AsyncMock()
@@ -317,7 +321,7 @@ class TestCancelOperationUseCase:
         use_case.unit_of_work.rollback.assert_called()
 
     @pytest.mark.asyncio()
-    async def test_force_cancellation(self, use_case, mock_unit_of_work):
+    async def test_force_cancellation(self, use_case, mock_unit_of_work) -> None:
         """Test force cancellation bypasses state checks."""
         # Arrange
         completed_operation = MagicMock()
@@ -347,7 +351,7 @@ class TestCancelOperationUseCase:
         assert response.cancellation_reason == "Force cancel"
 
     @pytest.mark.asyncio()
-    async def test_concurrent_cancellation_requests(self, use_case, processing_operation, mock_unit_of_work):
+    async def test_concurrent_cancellation_requests(self, use_case, processing_operation, mock_unit_of_work) -> None:
         """Test handling of concurrent cancellation requests."""
         # Arrange
         requests = [
@@ -364,7 +368,7 @@ class TestCancelOperationUseCase:
         # Simulate first request succeeds, others see already cancelled
         call_count = 0
 
-        async def find_by_id_side_effect(_op_id):
+        async def find_by_id_side_effect(_op_id) -> None:
             nonlocal call_count
             if call_count == 0:
                 processing_operation.status = "in_progress"
@@ -377,7 +381,6 @@ class TestCancelOperationUseCase:
         mock_unit_of_work.operations.mark_cancelled = AsyncMock()
 
         # Act
-        import asyncio
 
         responses = await asyncio.gather(*[use_case.execute(req) for req in requests], return_exceptions=True)
 
@@ -391,7 +394,7 @@ class TestCancelOperationUseCase:
     @pytest.mark.asyncio()
     async def test_cancel_with_cleanup_operations(
         self, use_case, valid_request, processing_operation, mock_unit_of_work
-    ):
+    ) -> None:
         """Test that cancellation performs cleanup operations."""
         # Arrange
         mock_unit_of_work.operations = AsyncMock()
@@ -421,7 +424,7 @@ class TestCancelOperationUseCase:
     @pytest.mark.asyncio()
     async def test_cancel_returns_partial_results(
         self, use_case, valid_request, processing_operation, mock_unit_of_work
-    ):
+    ) -> None:
         """Test that cancellation returns partial results if available."""
         # Arrange
         processing_operation.status = "in_progress"
@@ -445,7 +448,7 @@ class TestCancelOperationUseCase:
         assert response.cancellation_reason == "User requested cancellation"
 
     @pytest.mark.asyncio()
-    async def test_invalid_operation_id_format(self, use_case, mock_unit_of_work):
+    async def test_invalid_operation_id_format(self, use_case, mock_unit_of_work) -> None:
         """Test handling of invalid operation ID format."""
         # Arrange
         request = CancelOperationRequest(operation_id="invalid-uuid-format", reason="Test")
