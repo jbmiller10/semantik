@@ -104,7 +104,14 @@ class StreamingHybridStrategy(StreamingChunkingStrategy):
         # Split text into sections for processing
         sections = self._split_into_sections(text, is_final)
 
+        # Process each section
         for section_text, _ in sections:
+            # Ensure current strategy is initialized
+            if not self._current_strategy:
+                content_type = self._detect_content_type(section_text)
+                self._current_strategy = self._strategies[content_type]
+                self._current_strategy.reset()
+
             # Check if we should switch strategies
             if self._should_switch_strategy(section_text):
                 # Process buffered content with current strategy
@@ -128,7 +135,6 @@ class StreamingHybridStrategy(StreamingChunkingStrategy):
             total_size = self.get_buffer_size()
 
             # If adding this section would exceed max buffer, process current buffer first
-            # Use 70% threshold to leave room for sub-strategy buffers
             if (
                 total_size + section_size > self.MAX_BUFFER_SIZE * 0.9
                 or self._buffer_size + section_size > self.MAX_BUFFER_SIZE * 0.7
@@ -144,33 +150,48 @@ class StreamingHybridStrategy(StreamingChunkingStrategy):
             self._content_buffer.append(section_text)
             self._buffer_size += section_size
 
-            # Process if buffer is large enough or total size is getting high
-            total_size = self.get_buffer_size()
-            if self._buffer_size >= self.MAX_BUFFER_SIZE // 3 or total_size >= self.MAX_BUFFER_SIZE * 0.7:
+            # Process if buffer is large enough or it's the last section
+            # Much lower threshold for smaller documents
+            min_buffer_size = min(self.MAX_BUFFER_SIZE // 20, 1024)  # Process at 7.5KB or 1KB
+            is_last_section = sections and section_text == sections[-1][0]
+
+            if (self._buffer_size >= min_buffer_size or is_last_section) and self._content_buffer:
                 buffer_text = "".join(self._content_buffer)
                 temp_window = self._create_temp_window(buffer_text)
                 strategy_chunks = await self._current_strategy.process_window(temp_window, config, is_final=False)
                 chunks.extend(self._enhance_chunks(strategy_chunks))
 
-                # Keep overlap for context
-                if config.overlap_tokens > 0 and self._content_buffer:
-                    overlap_text = self._content_buffer[-1][-500:]  # Keep last 500 chars
-                    self._content_buffer = [overlap_text]
-                    self._buffer_size = len(overlap_text.encode("utf-8"))
-                else:
-                    self._content_buffer = []
-                    self._buffer_size = 0
+                # Clear buffer after processing
+                # Don't keep overlap in hybrid strategy as sub-strategies handle it
+                self._content_buffer = []
+                self._buffer_size = 0
 
-        # Process remaining buffer if final
-        if is_final and self._content_buffer:
+        # If not final but we have accumulated content, process it to avoid loss
+        if not is_final and self._content_buffer and len(sections) == 0:
+            # No new sections in this window, process what we have
             buffer_text = "".join(self._content_buffer)
             temp_window = self._create_temp_window(buffer_text)
-            strategy_chunks = await self._current_strategy.process_window(temp_window, config, is_final=True)
+            strategy_chunks = await self._current_strategy.process_window(temp_window, config, is_final=False)
             chunks.extend(self._enhance_chunks(strategy_chunks))
 
-            # Finalize current strategy
-            final_chunks = await self._current_strategy.finalize(config)
-            chunks.extend(self._enhance_chunks(final_chunks))
+            # Clear buffer - sub-strategies handle overlap
+            self._content_buffer = []
+            self._buffer_size = 0
+
+        # Process remaining buffer if final
+        if is_final:
+            if self._content_buffer:
+                buffer_text = "".join(self._content_buffer)
+                temp_window = self._create_temp_window(buffer_text)
+                strategy_chunks = await self._current_strategy.process_window(temp_window, config, is_final=True)
+                chunks.extend(self._enhance_chunks(strategy_chunks))
+                self._content_buffer = []
+                self._buffer_size = 0
+
+            # Finalize current strategy if it exists
+            if self._current_strategy:
+                final_chunks = await self._current_strategy.finalize(config)
+                chunks.extend(self._enhance_chunks(final_chunks))
 
         return chunks
 
@@ -296,16 +317,46 @@ class StreamingHybridStrategy(StreamingChunkingStrategy):
         # Simple splitting by double newlines
         parts = text.split("\n\n")
 
-        # Keep last part if not final (might be incomplete)
+        # For non-final windows:
+        # - If we have multiple parts, keep the last one as pending (might be incomplete)
+        # - Always process complete sections to avoid data loss
         if not is_final and len(parts) > 1:
-            self._pending_text = parts[-1]
-            parts = parts[:-1]
+            # Only keep last part as pending if it looks incomplete (no punctuation at end)
+            last_part = parts[-1].strip()
+            if last_part and last_part[-1] not in ".!?:":
+                self._pending_text = parts[-1]
+                parts = parts[:-1]
+        # Always process single parts - they're likely complete sections
 
-        for part in parts:
+        # Reconstruct sections with separators preserved
+        reconstructed: list[tuple[str, ContentType]] = []
+        for i, part in enumerate(parts):
             if part.strip():
-                # Detect type for each section
-                section_type = self._detect_content_type(part)
-                sections.append((part, section_type))
+                # Add separator before non-first parts
+                if i > 0 and reconstructed:
+                    # Add the separator to the previous section to preserve structure
+                    if reconstructed:
+                        last_text, last_type = reconstructed[-1]
+                        reconstructed[-1] = (last_text + "\n\n" + part, last_type)
+                    else:
+                        section_type = self._detect_content_type(part)
+                        reconstructed.append((part, section_type))
+                else:
+                    # First section or after empty reconstructed
+                    section_type = self._detect_content_type(part)
+                    reconstructed.append((part, section_type))
+
+        # For very small documents, keep as single section
+        if len(text) < 200 and len(reconstructed) <= 2:
+            # Combine into single section for small documents
+            if reconstructed:
+                combined_text = "\n\n".join(r[0] for r in reconstructed)
+                combined_type = self._detect_content_type(combined_text)
+                sections = [(combined_text, combined_type)]
+            else:
+                sections = []
+        else:
+            sections = reconstructed
 
         return sections
 

@@ -138,6 +138,28 @@ class StreamingCharacterStrategy(StreamingChunkingStrategy):
             # Create chunk metadata
             token_count = self.count_tokens(chunk_text)
 
+            # If token count exceeds max, trim the chunk
+            if token_count > config.max_tokens:
+                # Reduce chunk size to stay within limits
+                # Use a more conservative estimate
+                reduction_factor = config.max_tokens / token_count
+                new_end = start + int((end - start) * reduction_factor * 0.95)  # 95% to be safe
+
+                # Adjust to word boundary
+                new_end = self.find_word_boundary(text, new_end, prefer_before=True)
+
+                # Re-extract and clean chunk text
+                chunk_text = text[start:new_end]
+                chunk_text = self.clean_chunk_text(chunk_text)
+
+                if not chunk_text:
+                    position = end
+                    continue
+
+                # Recalculate token count
+                token_count = self.count_tokens(chunk_text)
+                end = new_end
+
             # For very small chunks or documents, be lenient with min_tokens
             effective_min_tokens = min(config.min_tokens, token_count, 1)
 
