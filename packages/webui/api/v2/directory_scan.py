@@ -18,7 +18,8 @@ from packages.webui.auth import get_current_user, get_current_user_websocket
 from packages.webui.rate_limiter import limiter
 from packages.webui.services.directory_scan_service import DirectoryScanService
 from packages.webui.services.factory import get_directory_scan_service
-from packages.webui.websocket_manager import ws_manager
+# Use the scalable WebSocket manager for horizontal scaling
+from packages.webui.websocket.scalable_manager import scalable_ws_manager as ws_manager
 
 logger = logging.getLogger(__name__)
 
