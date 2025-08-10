@@ -78,6 +78,16 @@ class Chunk:
         """Get the processing time in milliseconds."""
         return self._processing_time_ms
 
+    @property
+    def min_tokens(self) -> int:
+        """Get the minimum tokens for this chunk."""
+        return self._min_tokens
+
+    @property
+    def max_tokens(self) -> int:
+        """Get the maximum tokens for this chunk."""
+        return self._max_tokens
+
     def set_embedding(self, embedding: list[float]) -> None:
         """
         Set the embedding vector for the chunk.
