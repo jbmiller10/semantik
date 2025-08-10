@@ -437,7 +437,7 @@ class TestGracefulFailover:
             # Connection should succeed even without Redis
             assert connection_id is not None
             assert connection_id in manager.local_connections
-            
+
             # Cleanup the connection
             await manager.disconnect(connection_id)
         except Exception as e:

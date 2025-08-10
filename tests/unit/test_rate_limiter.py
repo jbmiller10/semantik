@@ -81,7 +81,7 @@ class TestRateLimiterIntegration:
         if hasattr(limiter._limiter, "storage") and hasattr(limiter._limiter.storage, "storage"):
             # Check if it's a dict (in-memory storage) before trying to clear
             storage_obj = limiter._limiter.storage.storage
-            if hasattr(storage_obj, "clear") and callable(getattr(storage_obj, "clear")):
+            if hasattr(storage_obj, "clear") and callable(storage_obj.clear):
                 storage_obj.clear()
             # For Redis storage, we would need to use flushdb() or delete specific keys
             # but we don't want to clear the entire Redis database in tests

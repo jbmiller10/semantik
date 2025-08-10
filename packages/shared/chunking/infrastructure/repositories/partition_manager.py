@@ -211,7 +211,7 @@ class PartitionManager:
 
         # Generate recommendations based on metrics
         recommendations = []
-        
+
         # Handle None values from database
         max_skew_ratio = float(row.max_skew_ratio or 0)
 
@@ -222,9 +222,7 @@ class PartitionManager:
             )
             recommendations.append("Consider reviewing collection distribution patterns.")
         elif max_skew_ratio > self.SKEW_WARNING_THRESHOLD:
-            recommendations.append(
-                f"Moderate skew detected ({max_skew_ratio:.2f}x). Monitor partition growth closely."
-            )
+            recommendations.append(f"Moderate skew detected ({max_skew_ratio:.2f}x). Monitor partition growth closely.")
 
         if row.empty_partitions > self.PARTITION_COUNT * 0.5:
             recommendations.append(f"{row.empty_partitions} partitions are empty. This is normal for small datasets.")
