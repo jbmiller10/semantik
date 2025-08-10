@@ -290,13 +290,67 @@ class TestPartitionPerformance:
 
     async def test_bulk_insert_performance(self, db_session: AsyncSession) -> None:
         """Test that bulk inserts distribute across partitions efficiently."""
+        # First, create a test user
+        user_id = 1
+        await db_session.execute(
+            text(
+                """
+                INSERT INTO users (id, username, email, hashed_password, is_active, is_superuser, created_at, updated_at)
+                VALUES (:id, :username, :email, :hashed_password, true, false, NOW(), NOW())
+                ON CONFLICT (id) DO NOTHING
+            """
+            ),
+            {
+                "id": user_id,
+                "username": "testuser",
+                "email": "test@example.com",
+                "hashed_password": "hashedpass",
+            },
+        )
+        await db_session.commit()
+
         # Generate test data
         num_collections = 10
         chunks_per_collection = 100
 
-        insert_data = []
-        for _ in range(num_collections):
+        # Create collections first
+        collection_ids = []
+        for i in range(num_collections):
             collection_id = str(uuid.uuid4())
+            collection_ids.append(collection_id)
+            
+            await db_session.execute(
+                text(
+                    """
+                    INSERT INTO collections (
+                        id, name, owner_id, vector_store_name, embedding_model,
+                        quantization, chunk_size, chunk_overlap, is_public,
+                        created_at, updated_at, status, document_count, vector_count, total_size_bytes
+                    )
+                    VALUES (
+                        :id, :name, :owner_id, :vector_store_name, :embedding_model,
+                        :quantization, :chunk_size, :chunk_overlap, :is_public,
+                        NOW(), NOW(), 'ready', 0, 0, 0
+                    )
+                """
+                ),
+                {
+                    "id": collection_id,
+                    "name": f"test_collection_{i}",
+                    "owner_id": user_id,
+                    "vector_store_name": f"test_vector_{i}",
+                    "embedding_model": "test_model",
+                    "quantization": "float16",
+                    "chunk_size": 1000,
+                    "chunk_overlap": 200,
+                    "is_public": False,
+                },
+            )
+        await db_session.commit()
+
+        # Prepare chunk insert data
+        insert_data = []
+        for collection_id in collection_ids:
             for chunk_idx in range(chunks_per_collection):
                 insert_data.append(
                     {
@@ -310,7 +364,7 @@ class TestPartitionPerformance:
         # Measure insert time
         start_time = datetime.now(UTC)
 
-        # Bulk insert
+        # Bulk insert chunks
         for chunk in insert_data:
             # Calculate partition_key using get_partition_key function
             partition_key_result = await db_session.execute(
@@ -346,7 +400,56 @@ class TestPartitionPerformance:
 
     async def test_query_performance_with_partition_key(self, db_session: AsyncSession) -> None:
         """Test query performance when partition key is used."""
+        # First, create a test user
+        user_id = 1
+        await db_session.execute(
+            text(
+                """
+                INSERT INTO users (id, username, email, hashed_password, is_active, is_superuser, created_at, updated_at)
+                VALUES (:id, :username, :email, :hashed_password, true, false, NOW(), NOW())
+                ON CONFLICT (id) DO NOTHING
+            """
+            ),
+            {
+                "id": user_id,
+                "username": "testuser",
+                "email": "test@example.com",
+                "hashed_password": "hashedpass",
+            },
+        )
+        await db_session.commit()
+
         collection_id = str(uuid.uuid4())
+
+        # Create the collection first
+        await db_session.execute(
+            text(
+                """
+                INSERT INTO collections (
+                    id, name, owner_id, vector_store_name, embedding_model,
+                    quantization, chunk_size, chunk_overlap, is_public,
+                    created_at, updated_at, status, document_count, vector_count, total_size_bytes
+                )
+                VALUES (
+                    :id, :name, :owner_id, :vector_store_name, :embedding_model,
+                    :quantization, :chunk_size, :chunk_overlap, :is_public,
+                    NOW(), NOW(), 'ready', 0, 0, 0
+                )
+            """
+            ),
+            {
+                "id": collection_id,
+                "name": "test_collection_perf",
+                "owner_id": user_id,
+                "vector_store_name": "test_vector_perf",
+                "embedding_model": "test_model",
+                "quantization": "float16",
+                "chunk_size": 1000,
+                "chunk_overlap": 200,
+                "is_public": False,
+            },
+        )
+        await db_session.commit()
 
         # Calculate partition_key once for this collection
         partition_key_result = await db_session.execute(
