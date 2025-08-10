@@ -39,14 +39,25 @@ def upgrade() -> None:
     conn.execute(text("DROP TABLE IF EXISTS chunks CASCADE"))
     conn.execute(text("DROP TABLE IF EXISTS partition_mappings CASCADE"))  # Remove any old mapping tables
     
-    # Step 2: Create new partitioned table with optimal structure
-    # Note: We add partition_key as a generated column to work around PostgreSQL's
-    # limitation with PRIMARY KEY on expression-based partitions
+    # Step 2: Create trigger function to compute partition key
+    # We use a trigger because PostgreSQL doesn't allow expressions or generated columns
+    # in partition keys when combined with PRIMARY KEY constraints
+    conn.execute(text("""
+        CREATE OR REPLACE FUNCTION compute_partition_key()
+        RETURNS TRIGGER AS $$
+        BEGIN
+            NEW.partition_key := mod(hashtext(NEW.collection_id::text), 100);
+            RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+    """))
+    
+    # Step 3: Create new partitioned table with regular partition_key column
     conn.execute(text("""
         CREATE TABLE chunks (
             id BIGSERIAL,
             collection_id UUID NOT NULL,
-            partition_key INTEGER GENERATED ALWAYS AS (mod(hashtext(collection_id::text), 100)) STORED,
+            partition_key INTEGER NOT NULL,
             chunk_index INTEGER NOT NULL,
             content TEXT NOT NULL,
             metadata JSONB DEFAULT '{}',
@@ -64,7 +75,15 @@ def upgrade() -> None:
         ) PARTITION BY LIST (partition_key)
     """))
     
-    # Step 3: Create 100 partitions with proper indexes
+    # Step 4: Create trigger to auto-compute partition_key on INSERT
+    conn.execute(text("""
+        CREATE TRIGGER set_partition_key
+        BEFORE INSERT ON chunks
+        FOR EACH ROW
+        EXECUTE FUNCTION compute_partition_key();
+    """))
+    
+    # Step 5: Create 100 partitions with proper indexes
     conn.execute(text("""
         DO $$
         DECLARE
@@ -115,7 +134,7 @@ def upgrade() -> None:
         END $$;
     """))
     
-    # Step 4: Create monitoring views for partition health
+    # Step 6: Create monitoring views for partition health
     
     # Main health monitoring view
     conn.execute(text("""
@@ -194,7 +213,7 @@ def upgrade() -> None:
         FROM distribution_stats ds;
     """))
     
-    # Step 5: Create helper functions for partition assignment
+    # Step 7: Create helper functions for partition assignment
     conn.execute(text("""
         CREATE OR REPLACE FUNCTION get_partition_for_collection(collection_id UUID)
         RETURNS TEXT AS $$
@@ -212,7 +231,7 @@ def upgrade() -> None:
         $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
     """))
     
-    # Step 6: Create function to analyze partition skew
+    # Step 8: Create function to analyze partition skew
     conn.execute(text("""
         CREATE OR REPLACE FUNCTION analyze_partition_skew()
         RETURNS TABLE(
@@ -274,7 +293,7 @@ def upgrade() -> None:
         $$ LANGUAGE plpgsql;
     """))
     
-    # Step 7: Create active chunking configs view (recreate with new structure)
+    # Step 9: Create active chunking configs view (recreate with new structure)
     conn.execute(text("""
         CREATE VIEW active_chunking_configs AS
         SELECT
@@ -298,7 +317,7 @@ def upgrade() -> None:
         WHERE cc.use_count > 0;
     """))
     
-    # Step 8: Create materialized view for collection statistics
+    # Step 10: Create materialized view for collection statistics
     conn.execute(text("""
         CREATE MATERIALIZED VIEW collection_chunking_stats AS
         SELECT
@@ -349,6 +368,10 @@ def downgrade() -> None:
     conn.execute(text("DROP VIEW IF EXISTS active_chunking_configs CASCADE"))
     conn.execute(text("DROP FUNCTION IF EXISTS refresh_collection_chunking_stats() CASCADE"))
     conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
+    
+    # Drop the trigger and trigger function
+    conn.execute(text("DROP TRIGGER IF EXISTS set_partition_key ON chunks CASCADE"))
+    conn.execute(text("DROP FUNCTION IF EXISTS compute_partition_key() CASCADE"))
     
     # Drop the 100-partition table
     conn.execute(text("DROP TABLE IF EXISTS chunks CASCADE"))
