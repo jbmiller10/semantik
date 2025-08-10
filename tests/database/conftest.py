@@ -145,11 +145,11 @@ async def db_session() -> AsyncIterator[AsyncSession]:
                         CREATE OR REPLACE VIEW partition_distribution AS
                         WITH partition_counts AS (
                             SELECT
-                                mod(hashtext(collection_id::text), 100) as partition_id,
+                                abs(hashtext(collection_id::text)) % 100 as partition_id,
                                 COUNT(DISTINCT collection_id) as collection_count,
                                 COUNT(*) as chunk_count
                             FROM chunks
-                            GROUP BY mod(hashtext(collection_id::text), 100)
+                            GROUP BY abs(hashtext(collection_id::text)) % 100
                         ),
                         distribution_stats AS (
                             SELECT
@@ -191,7 +191,33 @@ async def db_session() -> AsyncIterator[AsyncSession]:
                         CREATE OR REPLACE FUNCTION get_partition_for_collection(collection_id VARCHAR)
                         RETURNS TEXT AS $$
                         BEGIN
-                            RETURN 'chunks_part_' || LPAD((mod(hashtext(collection_id::text), 100))::text, 2, '0');
+                            -- Ensure partition_key is always positive (0-99)
+                            RETURN 'chunks_part_' || LPAD((abs(hashtext(collection_id::text)) % 100)::text, 2, '0');
+                        END;
+                        $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
+                        """
+                    )
+                )
+
+            # Check if get_partition_key function exists
+            result = await conn.execute(
+                text(
+                    """
+                    SELECT COUNT(*)
+                    FROM pg_proc
+                    WHERE proname = 'get_partition_key'
+                    """
+                )
+            )
+            if result.scalar() == 0:
+                await conn.execute(
+                    text(
+                        """
+                        CREATE OR REPLACE FUNCTION get_partition_key(collection_id VARCHAR)
+                        RETURNS INTEGER AS $$
+                        BEGIN
+                            -- Ensure partition_key is always positive (0-99)
+                            RETURN abs(hashtext(collection_id::text)) % 100;
                         END;
                         $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
                         """

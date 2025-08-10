@@ -73,7 +73,8 @@ class PartitionManager:
         NOTE: This is for reference/monitoring only. PostgreSQL uses its own
         hashtext() function for actual partition assignment during INSERT operations.
         The partition assignment is handled automatically by PostgreSQL's
-        PARTITION BY LIST (mod(hashtext(collection_id::text), 100)) clause.
+        PARTITION BY LIST (abs(hashtext(collection_id::text)) % 100) clause.
+        We use abs() to ensure partition keys are always positive (0-99).
 
         Args:
             collection_id: Collection ID string (VARCHAR in database)

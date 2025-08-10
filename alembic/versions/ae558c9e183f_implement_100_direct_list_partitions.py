@@ -94,7 +94,8 @@ def upgrade() -> None:
         CREATE OR REPLACE FUNCTION compute_partition_key()
         RETURNS TRIGGER AS $$
         BEGIN
-            NEW.partition_key := mod(hashtext(NEW.collection_id::text), 100);
+            -- Ensure partition_key is always positive (0-99)
+            NEW.partition_key := abs(hashtext(NEW.collection_id::text)) % 100;
             RETURN NEW;
         END;
         $$ LANGUAGE plpgsql;
@@ -254,11 +255,11 @@ def upgrade() -> None:
         CREATE OR REPLACE VIEW partition_distribution AS
         WITH partition_counts AS (
             SELECT
-                mod(hashtext(collection_id::text), 100) as partition_id,
+                abs(hashtext(collection_id::text)) % 100 as partition_id,
                 COUNT(DISTINCT collection_id) as collection_count,
                 COUNT(*) as chunk_count
             FROM chunks
-            GROUP BY mod(hashtext(collection_id::text), 100)
+            GROUP BY abs(hashtext(collection_id::text)) % 100
         ),
         distribution_stats AS (
             SELECT
@@ -290,7 +291,8 @@ def upgrade() -> None:
         CREATE OR REPLACE FUNCTION get_partition_for_collection(collection_id VARCHAR)
         RETURNS TEXT AS $$
         BEGIN
-            RETURN 'chunks_part_' || LPAD((mod(hashtext(collection_id::text), 100))::text, 2, '0');
+            -- Ensure partition_key is always positive (0-99)
+            RETURN 'chunks_part_' || LPAD((abs(hashtext(collection_id::text)) % 100)::text, 2, '0');
         END;
         $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
 
@@ -298,7 +300,8 @@ def upgrade() -> None:
         CREATE OR REPLACE FUNCTION get_partition_key(collection_id VARCHAR)
         RETURNS INTEGER AS $$
         BEGIN
-            RETURN mod(hashtext(collection_id::text), 100);
+            -- Ensure partition_key is always positive (0-99)
+            RETURN abs(hashtext(collection_id::text)) % 100;
         END;
         $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
     """
@@ -412,7 +415,7 @@ def upgrade() -> None:
             COUNT(ch.id) as total_chunks,
             AVG(ch.token_count)::NUMERIC(10,2) as avg_tokens_per_chunk,
             MAX(ch.created_at) as last_chunk_created,
-            mod(hashtext(c.id::text), 100) as partition_id,
+            abs(hashtext(c.id::text)) % 100 as partition_id,
             get_partition_for_collection(c.id) as partition_name
         FROM collections c
         LEFT JOIN chunks ch ON c.id = ch.collection_id
