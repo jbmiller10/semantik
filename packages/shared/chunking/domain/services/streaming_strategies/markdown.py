@@ -161,7 +161,7 @@ class StreamingMarkdownStrategy(StreamingChunkingStrategy):
         stripped = line.strip()
 
         # Code fence
-        if stripped.startswith("```") or stripped.startswith("~~~"):
+        if stripped.startswith(("```", "~~~")):
             return MarkdownBlockType.CODE_BLOCK
 
         # Heading
@@ -236,7 +236,7 @@ class StreamingMarkdownStrategy(StreamingChunkingStrategy):
             return chunks
 
         level = len(match.group(1))
-        heading_text = match.group(2)
+        _ = match.group(2)  # heading_text - not used currently
 
         # Check if this heading starts a new section
         if self._heading_stack:
@@ -260,7 +260,7 @@ class StreamingMarkdownStrategy(StreamingChunkingStrategy):
 
         return chunks
 
-    async def _process_table_line(self, line: str, config: ChunkConfig) -> list[Chunk]:
+    async def _process_table_line(self, line: str, config: ChunkConfig) -> list[Chunk]:  # noqa: ARG002
         """
         Process a table line.
 
@@ -293,7 +293,7 @@ class StreamingMarkdownStrategy(StreamingChunkingStrategy):
             if self._in_table:
                 # End of table - add to section
                 self._current_section.extend(self._table_buffer)
-                self._section_size += sum(len(l.encode("utf-8")) for l in self._table_buffer)
+                self._section_size += sum(len(line.encode("utf-8")) for line in self._table_buffer)
                 self._table_buffer = []
                 self._in_table = False
 
@@ -327,31 +327,31 @@ class StreamingMarkdownStrategy(StreamingChunkingStrategy):
 
         # Check token count and split if necessary
         token_count = self.count_tokens(content)
-        
+
         # If content exceeds max_tokens, we need to split it
         if token_count > config.max_tokens:
             # Split content to fit within max_tokens
             # Estimate how much content we can keep
             ratio = config.max_tokens / token_count
             target_chars = int(len(content) * ratio * 0.9)  # Use 90% to be safe
-            
+
             # Find a good split point (preferably at a line break)
             split_point = target_chars
-            newline_pos = content.rfind('\n', 0, target_chars)
+            newline_pos = content.rfind("\n", 0, target_chars)
             if newline_pos > target_chars * 0.5:  # If we found a newline not too far back
                 split_point = newline_pos
-            
+
             # Take the first part
             content = content[:split_point].strip()
-            
+
             # Recalculate token count for the truncated content
             token_count = self.count_tokens(content)
-            
+
             # Keep the remaining lines for the next chunk
             remaining_content = content[split_point:].strip()
             if remaining_content:
                 # Convert back to lines and keep them in pending
-                self._pending_lines.extend(remaining_content.split('\n'))
+                self._pending_lines.extend(remaining_content.split("\n"))
 
         # Create metadata with heading context
         effective_min_tokens = min(config.min_tokens, token_count, 1)
@@ -440,7 +440,7 @@ class StreamingMarkdownStrategy(StreamingChunkingStrategy):
         # Process table buffer
         if self._table_buffer:
             self._current_section.extend(self._table_buffer)
-            self._section_size += sum(len(l.encode("utf-8")) for l in self._table_buffer)
+            self._section_size += sum(len(line.encode("utf-8")) for line in self._table_buffer)
             self._table_buffer = []
 
         # Emit final section

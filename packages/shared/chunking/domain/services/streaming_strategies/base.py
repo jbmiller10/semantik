@@ -128,50 +128,16 @@ class StreamingChunkingStrategy(ABC):
         if target_position >= len(text):
             return len(text)
 
-        sentence_endings = {".", "!", "?"}
-
-        if prefer_before:
-            for i in range(target_position, -1, -1):
-                if i < len(text) and text[i] in sentence_endings and i + 1 < len(text) and text[i + 1].isspace():
-                    return i + 1
-        else:
-            for i in range(target_position, len(text)):
-                if text[i] in sentence_endings and i + 1 < len(text) and text[i + 1].isspace():
-                    return i + 1
-
-        return target_position
-
-    def find_word_boundary(self, text: str, target_position: int, prefer_before: bool = True) -> int:
-        """
-        Find the nearest word boundary to a target position.
-
-        Args:
-            text: The text to search in
-            target_position: Target character position
-            prefer_before: If True, prefer boundary before target
-
-        Returns:
-            Position of nearest word boundary
-        """
-        if not text or target_position < 0:
-            return 0
-
-        if target_position >= len(text):
-            return len(text)
-
-        if text[target_position].isspace():
-            return target_position
-
         if prefer_before:
             for i in range(target_position, -1, -1):
                 if i < len(text) and text[i].isspace():
                     return i + 1
             return 0
-        else:
-            for i in range(target_position, len(text)):
-                if text[i].isspace():
-                    return i
-            return len(text)
+
+        for i in range(target_position, len(text)):
+            if text[i].isspace():
+                return i
+        return len(text)
 
     def clean_chunk_text(self, text: str) -> str:
         """
@@ -194,7 +160,7 @@ class StreamingChunkingStrategy(ABC):
         result = "\n".join(cleaned_lines)
         return result.strip()
 
-    async def finalize(self, config: ChunkConfig) -> list[Chunk]:
+    async def finalize(self, config: ChunkConfig) -> list[Chunk]:  # noqa: ARG002
         """
         Finalize processing and return any remaining chunks.
 

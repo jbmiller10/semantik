@@ -461,9 +461,7 @@ class StreamingSemanticStrategy(StreamingChunkingStrategy):
         diversity = len(all_keywords) / max(1, sum(s[1] for s in sentences) / 4)
 
         # Balance coherence and diversity
-        density = coherence * 0.6 + min(1.0, diversity) * 0.4
-
-        return density
+        return coherence * 0.6 + min(1.0, diversity) * 0.4
 
     async def finalize(self, config: ChunkConfig) -> list[Chunk]:
         """

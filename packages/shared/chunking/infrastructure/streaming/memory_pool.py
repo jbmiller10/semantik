@@ -86,13 +86,13 @@ class MemoryPool:
 
                     # Get buffer and optionally clear it
                     # In test environments, recreate buffer to avoid hanging issues
-                    if os.environ.get('PYTEST_CURRENT_TEST'):
+                    if os.environ.get("PYTEST_CURRENT_TEST"):
                         # Recreate buffer to avoid hanging with bytearray operations
                         self.buffers[buffer_id] = bytearray(self.buffer_size)
                     else:
                         # Clear existing buffer in production for security
-                        self.buffers[buffer_id][:] = b'\x00' * self.buffer_size
-                    
+                        self.buffers[buffer_id][:] = b"\x00" * self.buffer_size
+
                     buffer = self.buffers[buffer_id]
 
                     logger.debug(
@@ -106,10 +106,10 @@ class MemoryPool:
             if time.time() - start_time > timeout:
                 self.allocation_failures += 1
                 logger.error(
-                    f"Buffer pool exhausted after {timeout:.2f}s wait. " f"In use: {len(self.in_use)}/{self.pool_size}"
+                    f"Buffer pool exhausted after {timeout:.2f}s wait. In use: {len(self.in_use)}/{self.pool_size}"
                 )
                 raise TimeoutError(
-                    f"Buffer pool exhausted: {len(self.in_use)}/{self.pool_size} in use. " f"Waited {timeout:.2f}s"
+                    f"Buffer pool exhausted: {len(self.in_use)}/{self.pool_size} in use. Waited {timeout:.2f}s"
                 )
 
             # Wait before retrying
@@ -147,13 +147,13 @@ class MemoryPool:
 
                     # Get buffer and optionally clear it
                     # In test environments, recreate buffer to avoid hanging issues
-                    if os.environ.get('PYTEST_CURRENT_TEST'):
+                    if os.environ.get("PYTEST_CURRENT_TEST"):
                         # Recreate buffer to avoid hanging with bytearray operations
                         self.buffers[buffer_id] = bytearray(self.buffer_size)
                     else:
                         # Clear existing buffer in production for security
-                        self.buffers[buffer_id][:] = b'\x00' * self.buffer_size
-                    
+                        self.buffers[buffer_id][:] = b"\x00" * self.buffer_size
+
                     buffer = self.buffers[buffer_id]
 
                     logger.debug(
@@ -167,10 +167,10 @@ class MemoryPool:
             if time.time() - start_time > timeout:
                 self.allocation_failures += 1
                 logger.error(
-                    f"Buffer pool exhausted after {timeout:.2f}s wait. " f"In use: {len(self.in_use)}/{self.pool_size}"
+                    f"Buffer pool exhausted after {timeout:.2f}s wait. In use: {len(self.in_use)}/{self.pool_size}"
                 )
                 raise TimeoutError(
-                    f"Buffer pool exhausted: {len(self.in_use)}/{self.pool_size} in use. " f"Waited {timeout:.2f}s"
+                    f"Buffer pool exhausted: {len(self.in_use)}/{self.pool_size} in use. Waited {timeout:.2f}s"
                 )
 
             # Wait before retrying
@@ -191,13 +191,13 @@ class MemoryPool:
                 raise ValueError(f"Buffer {buffer_id} is not in use")
 
             # Clear sensitive data for security
-            if os.environ.get('PYTEST_CURRENT_TEST'):
+            if os.environ.get("PYTEST_CURRENT_TEST"):
                 # Recreate buffer to avoid hanging with bytearray operations
                 size = len(self.buffers[buffer_id])
                 self.buffers[buffer_id] = bytearray(size)
             else:
                 # Clear existing buffer in production
-                self.buffers[buffer_id][:] = b'\x00' * len(self.buffers[buffer_id])
+                self.buffers[buffer_id][:] = b"\x00" * len(self.buffers[buffer_id])
 
             # Return to available pool
             self.in_use.remove(buffer_id)
@@ -324,7 +324,7 @@ class MemoryPool:
                 raise RuntimeError(f"Cannot clear pool: {len(self.in_use)} buffers still in use")
 
             # Clear all buffers
-            if os.environ.get('PYTEST_CURRENT_TEST'):
+            if os.environ.get("PYTEST_CURRENT_TEST"):
                 # Recreate buffers to avoid hanging with bytearray operations
                 for i in range(len(self.buffers)):
                     size = len(self.buffers[i])
@@ -332,7 +332,7 @@ class MemoryPool:
             else:
                 # Clear existing buffers in production
                 for buffer in self.buffers:
-                    buffer[:] = b'\x00' * len(buffer)
+                    buffer[:] = b"\x00" * len(buffer)
 
             # Reset state
             self.available = deque(range(self.pool_size))

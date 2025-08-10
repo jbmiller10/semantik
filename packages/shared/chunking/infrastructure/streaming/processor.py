@@ -300,18 +300,15 @@ class StreamingDocumentProcessor:
         if not data:
             return 0
 
-        if max_pos == -1:
-            max_pos = len(data)
-        else:
-            max_pos = min(max_pos, len(data))
-        
+        max_pos = len(data) if max_pos == -1 else min(max_pos, len(data))
+
         # If max_pos is 0, return 0
         if max_pos == 0:
             return 0
 
         # Start from the desired position and walk backwards
         pos = max_pos - 1
-        
+
         # Special case: if we're looking at the last position and it's ASCII
         if pos < len(data) and data[pos] < 0x80:
             return max_pos

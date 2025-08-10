@@ -206,7 +206,7 @@ class StreamingHierarchicalStrategy(StreamingChunkingStrategy):
                 break
 
         # Detect list markers
-        if stripped.startswith("-") or stripped.startswith("*") or stripped.startswith("+"):
+        if stripped.startswith(("-", "*", "+")):
             return (3 + indent_level // 2, "list_item")
 
         # Numbered lists
@@ -336,13 +336,12 @@ class StreamingHierarchicalStrategy(StreamingChunkingStrategy):
         sections_to_emit = []
 
         for child in self._root.children[:]:  # Copy list for modification
-            if child.node_type == "heading" and child.children:
+            if child.node_type == "heading" and child.children and child.token_count >= config.min_tokens:
                 # Check if section is large enough
-                if child.token_count >= config.min_tokens:
-                    sections_to_emit.append(child)
-                    self._root.children.remove(child)
-                    self._root.size_bytes -= child.size_bytes
-                    self._root.token_count -= child.token_count
+                sections_to_emit.append(child)
+                self._root.children.remove(child)
+                self._root.size_bytes -= child.size_bytes
+                self._root.token_count -= child.token_count
 
         # Create chunks from sections
         for section in sections_to_emit:

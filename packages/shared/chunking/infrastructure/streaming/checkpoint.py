@@ -10,7 +10,7 @@ import json
 import logging
 import re
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -50,7 +50,7 @@ class StreamingCheckpoint:
         # Convert bytes to base64 for JSON serialization
         if "pending_bytes" in data and data["pending_bytes"] is not None:
             import base64
-            
+
             # Handle both non-empty and empty bytes
             if isinstance(data["pending_bytes"], bytes):
                 data["pending_bytes"] = base64.b64encode(data["pending_bytes"]).decode("ascii")
@@ -62,7 +62,7 @@ class StreamingCheckpoint:
         # Convert base64 back to bytes
         if "pending_bytes" in data:
             import base64
-            
+
             if data["pending_bytes"]:
                 data["pending_bytes"] = base64.b64decode(data["pending_bytes"])
             else:
@@ -166,7 +166,7 @@ class CheckpointManager:
             total_chunks=total_chunks,
             operation_id=operation_id,
             strategy_name=strategy_name,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(tz=UTC).isoformat(),
             metadata=metadata or {},
             last_window_content=last_window_content,
             pending_bytes=pending_bytes,
@@ -263,17 +263,17 @@ class CheckpointManager:
         Returns:
             Number of checkpoints cleaned up
         """
-        from datetime import datetime, timedelta
+        from datetime import UTC, datetime, timedelta
 
         cleanup_count = 0
-        cutoff_time = datetime.utcnow() - timedelta(hours=self.max_checkpoint_age)
+        cutoff_time = datetime.now(tz=UTC) - timedelta(hours=self.max_checkpoint_age)
 
         # Scan checkpoint directory
         for checkpoint_file in self.checkpoint_dir.glob("checkpoint_*.json"):
             try:
                 # Check file modification time asynchronously
                 stat = await aiofiles.os.stat(checkpoint_file)
-                mtime = datetime.fromtimestamp(stat.st_mtime)
+                mtime = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
                 if mtime < cutoff_time:
                     await aiofiles.os.remove(checkpoint_file)
                     cleanup_count += 1
@@ -374,4 +374,4 @@ class CheckpointManager:
 
     def __repr__(self) -> str:
         """String representation of the manager."""
-        return f"CheckpointManager(dir='{self.checkpoint_dir}', " f"active={len(self.active_checkpoints)})"
+        return f"CheckpointManager(dir='{self.checkpoint_dir}', active={len(self.active_checkpoints)})"

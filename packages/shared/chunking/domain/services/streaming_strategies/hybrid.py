@@ -104,7 +104,7 @@ class StreamingHybridStrategy(StreamingChunkingStrategy):
         # Split text into sections for processing
         sections = self._split_into_sections(text, is_final)
 
-        for section_text, section_type in sections:
+        for section_text, _ in sections:
             # Check if we should switch strategies
             if self._should_switch_strategy(section_text):
                 # Process buffered content with current strategy
@@ -123,21 +123,23 @@ class StreamingHybridStrategy(StreamingChunkingStrategy):
 
             # Check if adding this section would exceed buffer limit
             section_size = len(section_text.encode("utf-8"))
-            
+
             # Get total size including sub-strategy buffers
             total_size = self.get_buffer_size()
-            
+
             # If adding this section would exceed max buffer, process current buffer first
             # Use 70% threshold to leave room for sub-strategy buffers
-            if total_size + section_size > self.MAX_BUFFER_SIZE * 0.9 or self._buffer_size + section_size > self.MAX_BUFFER_SIZE * 0.7:
-                if self._content_buffer:
-                    buffer_text = "".join(self._content_buffer)
-                    temp_window = self._create_temp_window(buffer_text)
-                    strategy_chunks = await self._current_strategy.process_window(temp_window, config, is_final=False)
-                    chunks.extend(self._enhance_chunks(strategy_chunks))
-                    self._content_buffer = []
-                    self._buffer_size = 0
-            
+            if (
+                total_size + section_size > self.MAX_BUFFER_SIZE * 0.9
+                or self._buffer_size + section_size > self.MAX_BUFFER_SIZE * 0.7
+            ) and self._content_buffer:
+                buffer_text = "".join(self._content_buffer)
+                temp_window = self._create_temp_window(buffer_text)
+                strategy_chunks = await self._current_strategy.process_window(temp_window, config, is_final=False)
+                chunks.extend(self._enhance_chunks(strategy_chunks))
+                self._content_buffer = []
+                self._buffer_size = 0
+
             # Add to buffer
             self._content_buffer.append(section_text)
             self._buffer_size += section_size

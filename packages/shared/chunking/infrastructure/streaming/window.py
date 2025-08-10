@@ -47,12 +47,10 @@ class StreamingWindow:
         if self._pending_bytes:
             data = bytes(self._pending_bytes) + data
             self._pending_bytes.clear()
-        
+
         # Check if incoming data is larger than max_size
         if len(data) > self.max_size:
-            raise MemoryError(
-                f"Incoming data size {len(data)} exceeds maximum window size {self.max_size}"
-            )
+            raise MemoryError(f"Incoming data size {len(data)} exceeds maximum window size {self.max_size}")
 
         # Check memory constraint
         if len(self.buffer) + len(data) > self.max_size:
@@ -66,11 +64,11 @@ class StreamingWindow:
                     f"Window size would exceed {self.max_size} bytes. "
                     "Process or slide window before appending more data."
                 )
-            
+
             # Calculate how much we need to slide
             needed_space = len(data)
             available_after_slide = self.max_size - (len(self.buffer) // 2)  # After default slide
-            
+
             if needed_space > available_after_slide:
                 # Even after sliding, we won't have enough space
                 logger.error(
@@ -81,7 +79,7 @@ class StreamingWindow:
                     f"Cannot fit {len(data)} bytes even after sliding window. "
                     f"Maximum available: {available_after_slide} bytes"
                 )
-            
+
             logger.debug(f"Sliding window to make room for {len(data)} bytes")
             self.slide()
 
@@ -100,7 +98,7 @@ class StreamingWindow:
 
         # Find safe UTF-8 boundary
         safe_end = self._find_utf8_boundary(self.buffer)
-        
+
         # If safe_end is 0, the entire buffer is incomplete or invalid UTF-8
         if safe_end == 0:
             # Store entire buffer as pending and return empty string
@@ -112,7 +110,7 @@ class StreamingWindow:
 
         # Split at boundary
         decodable = self.buffer[:safe_end]
-        
+
         # Store incomplete bytes for next iteration
         if safe_end < len(self.buffer):
             if not self._pending_bytes:
@@ -140,7 +138,7 @@ class StreamingWindow:
                 "This indicates a bug in the UTF-8 boundary detection logic."
             ) from e
 
-    def _find_utf8_boundary(self, data: bytes, from_end: bool = True) -> int:
+    def _find_utf8_boundary(self, data: bytes, from_end: bool = True) -> int:  # noqa: ARG002
         """
         Find a safe UTF-8 character boundary in the data.
 
@@ -157,10 +155,10 @@ class StreamingWindow:
         # Always validate from the start to find the last valid boundary
         pos = 0
         last_valid_boundary = 0
-        
+
         while pos < len(data):
             byte = data[pos]
-            
+
             if byte < 0x80:
                 # ASCII character (0xxxxxxx)
                 pos += 1
@@ -205,7 +203,7 @@ class StreamingWindow:
             else:
                 # Invalid UTF-8 start byte
                 break
-        
+
         return last_valid_boundary
 
     def _get_utf8_char_length(self, first_byte: int) -> int:
@@ -220,15 +218,14 @@ class StreamingWindow:
         """
         if first_byte < 0x80:
             return 1  # ASCII
-        elif first_byte < 0xE0:
+        if first_byte < 0xE0:
             return 2  # 110xxxxx
-        elif first_byte < 0xF0:
+        if first_byte < 0xF0:
             return 3  # 1110xxxx
-        elif first_byte < 0xF8:
+        if first_byte < 0xF8:
             return 4  # 11110xxx
-        else:
-            # Invalid UTF-8 start byte
-            return 1
+        # Invalid UTF-8 start byte
+        return 1
 
     def is_ready(self) -> bool:
         """
