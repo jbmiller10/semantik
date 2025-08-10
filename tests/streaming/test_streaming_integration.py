@@ -362,7 +362,7 @@ Mixed: English café 中文 🎉 all together."""
                 ):
                     pass
     
-    async def test_streaming_window_operations(self):
+    def test_streaming_window_operations(self):
         """Test streaming window operations."""
         window = StreamingWindow(max_size=1024)
         
@@ -388,7 +388,7 @@ Mixed: English café 中文 🎉 all together."""
         assert remaining > 0
         assert remaining == window.max_size - window.size
     
-    async def test_memory_pool_operations(self):
+    def test_memory_pool_operations(self):
         """Test memory pool operations."""
         pool = MemoryPool(buffer_size=512, pool_size=3)
         
@@ -399,8 +399,8 @@ Mixed: English café 中文 🎉 all together."""
         assert stats['available'] == 3
         assert stats['in_use'] == 0
         
-        # Test acquire and release
-        buffer_id, buffer = await pool.acquire()
+        # Test acquire and release using synchronous method
+        buffer_id, buffer = pool.acquire_sync()
         assert len(buffer) == 512
         assert pool.used_buffers == 1
         
