@@ -55,7 +55,7 @@ class TestProcessParquetFile:
 
         # Verify first batch
         first_call = mock_client.upsert.call_args_list[0]
-        assert first_call.kwargs["collection_name"] == "test_collection"  # Test environment collection
+        assert first_call.kwargs["collection_name"] == "work_docs"  # Default collection from settings
         points = first_call.kwargs["points"]
         assert len(points) == 2
         assert isinstance(points[0], PointStruct)

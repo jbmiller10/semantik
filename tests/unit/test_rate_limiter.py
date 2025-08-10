@@ -79,7 +79,12 @@ class TestRateLimiterIntegration:
             limiter._limiter.reset()
         # For in-memory storage, we might need to clear the storage dict
         if hasattr(limiter._limiter, "storage") and hasattr(limiter._limiter.storage, "storage"):
-            limiter._limiter.storage.storage.clear()
+            # Check if it's a dict (in-memory storage) before trying to clear
+            storage_obj = limiter._limiter.storage.storage
+            if hasattr(storage_obj, "clear") and callable(getattr(storage_obj, "clear")):
+                storage_obj.clear()
+            # For Redis storage, we would need to use flushdb() or delete specific keys
+            # but we don't want to clear the entire Redis database in tests
 
     def create_test_app(self, use_fresh_limiter=False) -> None:
         """Create a test FastAPI app with rate limiting"""

@@ -211,16 +211,19 @@ class PartitionManager:
 
         # Generate recommendations based on metrics
         recommendations = []
+        
+        # Handle None values from database
+        max_skew_ratio = float(row.max_skew_ratio or 0)
 
-        if row.max_skew_ratio > self.SKEW_CRITICAL_THRESHOLD:
+        if max_skew_ratio > self.SKEW_CRITICAL_THRESHOLD:
             recommendations.append(
-                f"Critical skew detected ({row.max_skew_ratio:.2f}x). "
+                f"Critical skew detected ({max_skew_ratio:.2f}x). "
                 "Some partitions have significantly more data than others."
             )
             recommendations.append("Consider reviewing collection distribution patterns.")
-        elif row.max_skew_ratio > self.SKEW_WARNING_THRESHOLD:
+        elif max_skew_ratio > self.SKEW_WARNING_THRESHOLD:
             recommendations.append(
-                f"Moderate skew detected ({row.max_skew_ratio:.2f}x). Monitor partition growth closely."
+                f"Moderate skew detected ({max_skew_ratio:.2f}x). Monitor partition growth closely."
             )
 
         if row.empty_partitions > self.PARTITION_COUNT * 0.5:
@@ -236,7 +239,7 @@ class PartitionManager:
             avg_chunks_per_partition=float(row.avg_chunks_per_partition or 0),
             max_chunks=row.max_chunks or 0,
             min_chunks=row.min_chunks or 0,
-            max_skew_ratio=float(row.max_skew_ratio or 0),
+            max_skew_ratio=max_skew_ratio,
             distribution_status=row.distribution_status,
             recommendations=recommendations,
         )

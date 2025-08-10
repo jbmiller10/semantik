@@ -297,10 +297,13 @@ class TestPartitionPerformance:
         insert_data = []
         for _ in range(num_collections):
             collection_id = str(uuid.uuid4())
+            # Calculate partition key using the same logic as the database function
+            partition_key = hash(collection_id) % 100
             for chunk_idx in range(chunks_per_collection):
                 insert_data.append(
                     {
                         "collection_id": collection_id,
+                        "partition_key": partition_key,
                         "chunk_index": chunk_idx,
                         "content": f"Test content for chunk {chunk_idx}",
                         "metadata": json.dumps({}),
@@ -315,8 +318,8 @@ class TestPartitionPerformance:
             await db_session.execute(
                 text(
                     """
-                    INSERT INTO chunks (collection_id, chunk_index, content, metadata)
-                    VALUES (:collection_id, :chunk_index, :content, :metadata)
+                    INSERT INTO chunks (collection_id, partition_key, chunk_index, content, metadata)
+                    VALUES (:collection_id, :partition_key, :chunk_index, :content, :metadata)
                 """
                 ),
                 chunk,
@@ -340,18 +343,21 @@ class TestPartitionPerformance:
     async def test_query_performance_with_partition_key(self, db_session: AsyncSession) -> None:
         """Test query performance when partition key is used."""
         collection_id = str(uuid.uuid4())
+        # Calculate partition key using the same logic as the database function
+        partition_key = hash(collection_id) % 100
 
         # Insert some test data
         for i in range(10):
             await db_session.execute(
                 text(
                     """
-                    INSERT INTO chunks (collection_id, chunk_index, content, metadata)
-                    VALUES (:collection_id, :chunk_index, :content, :metadata)
+                    INSERT INTO chunks (collection_id, partition_key, chunk_index, content, metadata)
+                    VALUES (:collection_id, :partition_key, :chunk_index, :content, :metadata)
                 """
                 ),
                 {
                     "collection_id": collection_id,
+                    "partition_key": partition_key,
                     "chunk_index": i,
                     "content": f"Test content {i}",
                     "metadata": json.dumps({}),

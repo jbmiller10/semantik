@@ -245,7 +245,7 @@ More text after the code."""
         assert len(chunks) > 0
         # Code block should be kept together if it fits in max_tokens
         full_content = "".join(chunk.content for chunk in chunks)
-        assert "def example():" in full_content
+        assert "def example() -> None:" in full_content
 
 
 class TestSemanticChunkingStrategy:
@@ -426,7 +426,7 @@ function helloWorld() {
         assert len(chunks) > 0
         # Code blocks should be preserved
         full_text = " ".join(chunk.content for chunk in chunks)
-        assert "def hello_world():" in full_text
+        assert "def hello_world() -> None:" in full_text
         assert "function helloWorld()" in full_text
 
     def test_list_handling(self, strategy, config) -> None:
