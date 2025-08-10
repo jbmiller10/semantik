@@ -33,9 +33,11 @@ def upgrade() -> None:
     conn = op.get_bind()
     
     # Step 1: Drop old tables and views (we're pre-release!)
+    # Drop existing views and functions from previous migrations that we'll recreate
     conn.execute(text("DROP VIEW IF EXISTS active_chunking_configs CASCADE"))
     conn.execute(text("DROP FUNCTION IF EXISTS refresh_collection_chunking_stats() CASCADE"))
     conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
+    conn.execute(text("DROP FUNCTION IF EXISTS analyze_partition_skew() CASCADE"))
     conn.execute(text("DROP TABLE IF EXISTS chunks CASCADE"))
     conn.execute(text("DROP TABLE IF EXISTS partition_mappings CASCADE"))  # Remove any old mapping tables
     
@@ -232,6 +234,7 @@ def upgrade() -> None:
     """))
     
     # Step 8: Create function to analyze partition skew
+    # Note: Old version already dropped in Step 1
     conn.execute(text("""
         CREATE OR REPLACE FUNCTION analyze_partition_skew()
         RETURNS TABLE(
