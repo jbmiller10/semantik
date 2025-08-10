@@ -128,7 +128,12 @@ class ScalableWebSocketManager:
                         await asyncio.sleep(wait_time)
                     else:
                         logger.error(f"Failed to start ScalableWebSocketManager after {max_retries} attempts: {e}")
-                        raise
+                        logger.warning("Running in local-only mode without Redis")
+                        # Set a flag to indicate local-only mode
+                        self.redis_client = None
+                        self.pubsub = None
+                        self._startup_complete = False  # Indicate partial startup
+                        return  # Don't raise, allow local operation
 
     async def shutdown(self) -> None:
         """Clean up resources and shut down gracefully."""
@@ -226,18 +231,20 @@ class ScalableWebSocketManager:
             "connected_at": time.time(),
         }
 
-        # Register in Redis
-        await self._register_connection(connection_id, user_id, operation_id, collection_id)
+        # Register in Redis if available
+        if self.redis_client:
+            await self._register_connection(connection_id, user_id, operation_id, collection_id)
 
-        # Subscribe to relevant channels
-        channels = [f"user:{user_id}"]
-        if operation_id:
-            channels.append(f"operation:{operation_id}")
-        if collection_id:
-            channels.append(f"collection:{collection_id}")
+        # Subscribe to relevant channels if pub/sub is available
+        if self.pubsub:
+            channels = [f"user:{user_id}"]
+            if operation_id:
+                channels.append(f"operation:{operation_id}")
+            if collection_id:
+                channels.append(f"collection:{collection_id}")
 
-        for channel in channels:
-            await self.pubsub.subscribe(channel)
+            for channel in channels:
+                await self.pubsub.subscribe(channel)
 
         logger.info(
             f"WebSocket connected: connection={connection_id}, user={user_id}, "

@@ -311,10 +311,27 @@ class TestTTLManagement:
         # Store instance ID for later
         instance_id = manager.instance_id
 
-        # Shutdown manager (simulating crash/restart)
-        await manager.shutdown()
+        # Store connection data before simulated crash
+        conn_data_before = await redis_client.hget("websocket:connections", conn1)
+        assert conn_data_before is not None  # Verify connection was registered
+        
+        # Simulate a crash by NOT calling shutdown (which would clean up)
+        # Instead, just cancel background tasks to stop the manager without cleanup
+        if manager.listener_task and not manager.listener_task.done():
+            manager.listener_task.cancel()
+        if manager.heartbeat_task and not manager.heartbeat_task.done():
+            manager.heartbeat_task.cancel()
+        if manager.cleanup_task and not manager.cleanup_task.done():
+            manager.cleanup_task.cancel()
+        
+        # Clear local state without Redis cleanup (simulating crash)
+        manager.local_connections.clear()
+        manager.connection_metadata.clear()
+        
+        # Also remove the instance key to simulate the instance is dead
+        await redis_client.delete(f"websocket:instance:{instance_id}")
 
-        # Connection data should still be in Redis
+        # Connection data should still be in Redis after simulated crash
         conn_data = await redis_client.hget("websocket:connections", conn1)
         assert conn_data is not None
 

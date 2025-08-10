@@ -130,7 +130,11 @@ class TestMigration100Partitions:
         assert row is not None, "chunks table is not partitioned"
 
         # partstrat: 'l' for LIST, 'r' for RANGE, 'h' for HASH
-        assert row.partstrat == 'l', f"Expected LIST partitioning, got {row.partstrat}"
+        # Handle both string and bytes (depending on driver version)
+        partstrat = row.partstrat
+        if isinstance(partstrat, bytes):
+            partstrat = partstrat.decode('utf-8')
+        assert partstrat == 'l', f"Expected LIST partitioning, got {partstrat}"
 
     async def test_partition_constraints(self, db_session: AsyncSession):
         """Verify each partition has the correct constraint."""

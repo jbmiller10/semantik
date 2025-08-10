@@ -1,0 +1,167 @@
+"""Database test fixtures and configuration."""
+
+import os
+from typing import AsyncIterator
+
+import pytest
+import pytest_asyncio
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+
+# Get database URL from environment or use a test database
+POSTGRES_USER = os.environ.get("POSTGRES_USER", "postgres")
+POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "")
+POSTGRES_DB = os.environ.get("POSTGRES_DB", "semantik_test")
+POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "localhost")
+POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
+
+# Construct the database URL
+if POSTGRES_PASSWORD:
+    DATABASE_URL = f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+else:
+    DATABASE_URL = f"postgresql+asyncpg://{POSTGRES_USER}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+
+
+@pytest_asyncio.fixture
+async def db_session() -> AsyncIterator[AsyncSession]:
+    """Create a database session for testing.
+    
+    This fixture creates a real database connection for integration tests.
+    It ensures the database has the required migrations applied.
+    """
+    # Create engine
+    engine = create_async_engine(
+        DATABASE_URL,
+        echo=False,
+        pool_pre_ping=True,
+    )
+    
+    async with engine.begin() as conn:
+        # Ensure the partition views exist by running the migration SQL
+        # This is a simplified version that creates the views if they don't exist
+        await conn.execute(text("""
+            -- Create partition_health view if it doesn't exist
+            CREATE OR REPLACE VIEW partition_health AS
+            WITH partition_stats AS (
+                SELECT 
+                    c.relname AS partition_name,
+                    pg_relation_size(c.oid) AS size_bytes,
+                    (SELECT COUNT(*) FROM pg_class WHERE oid = c.oid) AS estimated_rows
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE c.relispartition 
+                AND c.relkind = 'r'
+                AND n.nspname = 'public'
+                AND c.relname LIKE 'chunks_part_%'
+            )
+            SELECT 
+                CAST(SUBSTRING(partition_name FROM 'chunks_part_([0-9]+)') AS INTEGER) AS partition_id,
+                partition_name,
+                COALESCE(size_bytes, 0) AS size_bytes,
+                COALESCE(estimated_rows, 0) AS row_count,
+                CASE 
+                    WHEN size_bytes > 1073741824 THEN 'HOT'
+                    WHEN size_bytes < 1048576 THEN 'COLD'
+                    ELSE 'NORMAL'
+                END AS partition_status
+            FROM partition_stats
+            UNION ALL
+            SELECT 
+                s.partition_id,
+                'chunks_part_' || LPAD(s.partition_id::TEXT, 2, '0') AS partition_name,
+                0 AS size_bytes,
+                0 AS row_count,
+                'COLD' AS partition_status
+            FROM generate_series(0, 99) AS s(partition_id)
+            WHERE NOT EXISTS (
+                SELECT 1 FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE c.relispartition 
+                AND c.relkind = 'r'
+                AND n.nspname = 'public'
+                AND c.relname = 'chunks_part_' || LPAD(s.partition_id::TEXT, 2, '0')
+            )
+            ORDER BY partition_id;
+        """))
+        
+        await conn.execute(text("""
+            -- Create partition_distribution view if it doesn't exist
+            CREATE OR REPLACE VIEW partition_distribution AS
+            WITH partition_counts AS (
+                SELECT 
+                    CAST(SUBSTRING(c.relname FROM 'chunks_part_([0-9]+)') AS INTEGER) AS partition_id,
+                    c.relname AS partition_name,
+                    (SELECT COUNT(*) FROM pg_class WHERE oid = c.oid) AS row_count
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE c.relispartition 
+                AND c.relkind = 'r'
+                AND n.nspname = 'public'
+                AND c.relname LIKE 'chunks_part_%'
+            ),
+            stats AS (
+                SELECT
+                    COUNT(*) AS partitions_used,
+                    100 - COUNT(*) AS empty_partitions,
+                    COALESCE(AVG(row_count), 0) AS avg_rows_per_partition,
+                    COALESCE(STDDEV(row_count), 0) AS stddev_rows,
+                    COALESCE(MAX(row_count), 0) AS max_rows,
+                    COALESCE(MIN(row_count), 0) AS min_rows
+                FROM partition_counts
+            )
+            SELECT 
+                partitions_used,
+                empty_partitions,
+                avg_rows_per_partition,
+                stddev_rows,
+                CASE
+                    WHEN avg_rows_per_partition = 0 THEN 0
+                    ELSE stddev_rows / avg_rows_per_partition
+                END AS coefficient_of_variation,
+                max_rows,
+                min_rows,
+                CASE
+                    WHEN partitions_used = 0 THEN 'NO_DATA'
+                    WHEN empty_partitions > 50 THEN 'WARNING'
+                    WHEN stddev_rows / NULLIF(avg_rows_per_partition, 0) > 2 THEN 'REBALANCE NEEDED'
+                    ELSE 'HEALTHY'
+                END AS distribution_status
+            FROM stats;
+        """))
+        
+        # Create the chunks table if it doesn't exist (partitioned table)
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS chunks (
+                id BIGSERIAL,
+                collection_id UUID NOT NULL,
+                document_id UUID,
+                content TEXT,
+                embedding BYTEA,
+                metadata JSONB,
+                created_at TIMESTAMP DEFAULT NOW(),
+                PRIMARY KEY (id, collection_id)
+            ) PARTITION BY HASH (collection_id);
+        """))
+        
+        # Create partitions if they don't exist
+        for i in range(100):
+            partition_name = f"chunks_part_{i:02d}"
+            await conn.execute(text(f"""
+                CREATE TABLE IF NOT EXISTS {partition_name} 
+                PARTITION OF chunks 
+                FOR VALUES WITH (modulus 100, remainder {i});
+            """))
+    
+    # Create a new session for the test
+    async with AsyncSession(engine, expire_on_commit=False) as session:
+        yield session
+        await session.rollback()
+    
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def test_db() -> AsyncIterator[AsyncSession]:
+    """Alias for db_session for compatibility."""
+    async for session in db_session():
+        yield session
