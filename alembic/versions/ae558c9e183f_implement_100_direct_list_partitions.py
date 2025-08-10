@@ -19,6 +19,60 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def cleanup_chunks_dependencies(conn):
+    """Helper function to clean up all chunks table dependencies."""
+    # Drop views that depend on chunks (including from other migrations)
+    views_to_drop = [
+        "partition_distribution",
+        "partition_health", 
+        "partition_size_distribution",
+        "partition_chunk_distribution",
+        "partition_hot_spots",
+        "partition_health_summary",
+        "active_chunking_configs"
+    ]
+    
+    for view in views_to_drop:
+        try:
+            conn.execute(text(f"DROP VIEW IF EXISTS {view} CASCADE"))
+        except Exception:
+            pass  # Ignore if view doesn't exist
+    
+    # Drop materialized views
+    try:
+        conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
+    except Exception:
+        pass
+    
+    # Drop functions that might reference chunks
+    functions_to_drop = [
+        ("analyze_partition_skew", ""),
+        ("get_partition_key", "VARCHAR"),
+        ("get_partition_for_collection", "VARCHAR"),
+        ("refresh_collection_chunking_stats", "")
+    ]
+    
+    for func_name, params in functions_to_drop:
+        try:
+            if params:
+                conn.execute(text(f"DROP FUNCTION IF EXISTS {func_name}({params}) CASCADE"))
+            else:
+                conn.execute(text(f"DROP FUNCTION IF EXISTS {func_name}() CASCADE"))
+        except Exception:
+            pass
+    
+    # Drop triggers
+    try:
+        conn.execute(text("DROP TRIGGER IF EXISTS set_partition_key ON chunks CASCADE"))
+    except Exception:
+        pass
+        
+    try:
+        conn.execute(text("DROP FUNCTION IF EXISTS compute_partition_key() CASCADE"))
+    except Exception:
+        pass
+
+
 def upgrade() -> None:
     """
     Implement 100 direct LIST partitions for optimal chunk distribution.
@@ -33,11 +87,10 @@ def upgrade() -> None:
     conn = op.get_bind()
     
     # Step 1: Drop old tables and views (we're pre-release!)
-    # Drop existing views and functions from previous migrations that we'll recreate
-    conn.execute(text("DROP VIEW IF EXISTS active_chunking_configs CASCADE"))
-    conn.execute(text("DROP FUNCTION IF EXISTS refresh_collection_chunking_stats() CASCADE"))
-    conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
-    conn.execute(text("DROP FUNCTION IF EXISTS analyze_partition_skew() CASCADE"))
+    # Clean up all dependencies first
+    cleanup_chunks_dependencies(conn)
+    
+    # Now drop the tables
     conn.execute(text("DROP TABLE IF EXISTS chunks CASCADE"))
     conn.execute(text("DROP TABLE IF EXISTS partition_mappings CASCADE"))  # Remove any old mapping tables
     
@@ -362,19 +415,8 @@ def downgrade() -> None:
     
     conn = op.get_bind()
     
-    # Drop all new views and functions
-    conn.execute(text("DROP FUNCTION IF EXISTS analyze_partition_skew() CASCADE"))
-    conn.execute(text("DROP FUNCTION IF EXISTS get_partition_key(VARCHAR) CASCADE"))
-    conn.execute(text("DROP FUNCTION IF EXISTS get_partition_for_collection(VARCHAR) CASCADE"))
-    conn.execute(text("DROP VIEW IF EXISTS partition_distribution CASCADE"))
-    conn.execute(text("DROP VIEW IF EXISTS partition_health CASCADE"))
-    conn.execute(text("DROP VIEW IF EXISTS active_chunking_configs CASCADE"))
-    conn.execute(text("DROP FUNCTION IF EXISTS refresh_collection_chunking_stats() CASCADE"))
-    conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
-    
-    # Drop the trigger and trigger function
-    conn.execute(text("DROP TRIGGER IF EXISTS set_partition_key ON chunks CASCADE"))
-    conn.execute(text("DROP FUNCTION IF EXISTS compute_partition_key() CASCADE"))
+    # Clean up all dependencies first
+    cleanup_chunks_dependencies(conn)
     
     # Drop the 100-partition table
     conn.execute(text("DROP TABLE IF EXISTS chunks CASCADE"))
