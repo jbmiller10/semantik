@@ -171,7 +171,7 @@ class TestCompareStrategiesUseCase:
             ),
         ]
 
-        def create_strategy_side_effect(strategy_type, _config=None):
+        def create_strategy_side_effect(strategy_type, config=None):  # noqa: ARG001
             if strategy_type == ChunkingStrategy.CHARACTER.value:
                 return character_strategy
             if strategy_type == ChunkingStrategy.SEMANTIC.value:
