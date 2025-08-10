@@ -223,6 +223,55 @@ async def db_session() -> AsyncIterator[AsyncSession]:
                         """
                     )
                 )
+            
+            # Check if compute_partition_key function exists (for trigger)
+            result = await conn.execute(
+                text(
+                    """
+                    SELECT COUNT(*)
+                    FROM pg_proc
+                    WHERE proname = 'compute_partition_key'
+                    """
+                )
+            )
+            if result.scalar() == 0:
+                await conn.execute(
+                    text(
+                        """
+                        CREATE OR REPLACE FUNCTION compute_partition_key()
+                        RETURNS TRIGGER AS $$
+                        BEGIN
+                            -- Ensure partition_key is always positive (0-99)
+                            NEW.partition_key := abs(hashtext(NEW.collection_id::text)) % 100;
+                            RETURN NEW;
+                        END;
+                        $$ LANGUAGE plpgsql;
+                        """
+                    )
+                )
+            
+            # Check if trigger exists on chunks table
+            result = await conn.execute(
+                text(
+                    """
+                    SELECT COUNT(*)
+                    FROM pg_trigger
+                    WHERE tgname = 'set_partition_key'
+                    AND tgrelid = 'chunks'::regclass
+                    """
+                )
+            )
+            if result.scalar() == 0:
+                await conn.execute(
+                    text(
+                        """
+                        CREATE TRIGGER set_partition_key
+                        BEFORE INSERT ON chunks
+                        FOR EACH ROW
+                        EXECUTE FUNCTION compute_partition_key();
+                        """
+                    )
+                )
     except Exception as e:
         await engine.dispose()
         pytest.skip(
